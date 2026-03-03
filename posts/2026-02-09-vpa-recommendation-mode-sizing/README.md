@@ -79,7 +79,7 @@ kubectl describe vpa web-app-vpa -n production
 
 Output shows recommended requests:
 
-```
+```text
 Recommendation:
   Container Recommendations:
     Container Name:  app
@@ -159,7 +159,7 @@ kubectl describe vpa multi-container-vpa -n production
 
 Output shows separate recommendations for each container:
 
-```
+```text
 Container Recommendations:
   Container Name:  app
     Target:
@@ -382,7 +382,7 @@ kubectl describe vpa web-app-vpa -n production
 
 VPA recommends:
 
-```
+```text
 Target:
   Cpu:     200m
   Memory:  512Mi

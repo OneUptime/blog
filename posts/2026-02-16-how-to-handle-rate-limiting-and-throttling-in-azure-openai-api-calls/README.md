@@ -27,7 +27,7 @@ When you hit either limit, the API returns a 429 response with a `Retry-After` h
 
 Here is what a rate-limited response looks like:
 
-```
+```text
 HTTP/1.1 429 Too Many Requests
 Retry-After: 10
 x-ratelimit-remaining-tokens: 0

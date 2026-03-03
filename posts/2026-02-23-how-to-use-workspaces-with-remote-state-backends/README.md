@@ -14,7 +14,7 @@ When you use Terraform workspaces with a remote backend, each workspace gets its
 
 Without workspaces (or in the `default` workspace), your backend stores a single state file at the path you configure. When you create additional workspaces, the backend needs to store multiple state files. Each backend handles this differently, but the general pattern is the same: the workspace name gets incorporated into the state file path.
 
-```
+```text
 Single workspace:
   backend-path/terraform.tfstate
 
@@ -46,7 +46,7 @@ terraform {
 
 The S3 backend uses an `env:` prefix for non-default workspaces:
 
-```
+```text
 Workspace "default":
   s3://my-terraform-state/networking/terraform.tfstate
 
@@ -157,7 +157,7 @@ terraform {
 
 Azure uses a different naming convention. The workspace name becomes part of the blob name:
 
-```
+```text
 Workspace "default":
   tfstate/app.terraform.tfstate
 
@@ -205,7 +205,7 @@ terraform {
 
 GCS stores workspace state files under the configured prefix:
 
-```
+```text
 Workspace "default":
   gs://my-terraform-state/terraform/state/default.tfstate
 
@@ -222,7 +222,7 @@ GCS uses the workspace name directly in the filename, which is cleaner than the 
 
 GCS uses object-level locking through `.tflock` files:
 
-```
+```text
 gs://my-terraform-state/terraform/state/dev.tflock
 ```
 
@@ -244,7 +244,7 @@ terraform {
 
 Consul stores each workspace's state as a separate key-value entry:
 
-```
+```text
 Workspace "default":
   terraform/app
 
@@ -339,7 +339,7 @@ terraform {
 
 Each configuration's workspaces are independent:
 
-```
+```text
 networking "dev" workspace:
   s3://bucket/env:/dev/networking/terraform.tfstate
 

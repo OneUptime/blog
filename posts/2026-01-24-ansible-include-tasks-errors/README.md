@@ -59,7 +59,7 @@ flowchart TB
 ```
 
 Error message:
-```
+```text
 ERROR! Could not find or access 'common.yml'
 ```
 
@@ -91,7 +91,7 @@ Ansible looks for included files relative to the current file's location or the 
 
 ### Directory Structure Reference
 
-```
+```text
 project/
   playbooks/
     main.yml              # include_tasks: tasks/setup.yml
@@ -129,7 +129,7 @@ project/
 ```
 
 Error message:
-```
+```text
 The task includes an option with an undefined variable. The error was: 'app_name' is undefined
 ```
 
@@ -176,7 +176,7 @@ Pass variables explicitly when including tasks:
 ```
 
 Error message:
-```
+```text
 ERROR! You cannot use 'loop' with 'import_tasks'
 ```
 
@@ -223,7 +223,7 @@ Use `include_tasks` for loops, not `import_tasks`:
 ```
 
 Error message:
-```
+```text
 ERROR! 'os_info' is undefined
 ```
 
@@ -316,7 +316,7 @@ With `include_tasks`, tags on the include statement only determine if the includ
 ```
 
 Error message:
-```
+```text
 ERROR! no action detected in task
 ```
 
@@ -357,7 +357,7 @@ Use `import_tasks` for handlers, or include a handlers file:
 ```
 
 Error message:
-```
+```text
 'item' is undefined
 ```
 
@@ -402,7 +402,7 @@ Use `loop_control` to preserve loop variables across includes:
 ```
 
 Error message:
-```
+```text
 ERROR! Could not find or access 'hosts/web-server-01.example.com.yml'
 ```
 
@@ -449,7 +449,7 @@ Sanitize the filename or use a lookup:
 ```
 
 Error message:
-```
+```text
 ERROR! recursive loop detected in included file
 ```
 

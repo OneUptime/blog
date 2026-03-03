@@ -52,7 +52,7 @@ resp.Diagnostics.AddAttributeError(
 
 This produces output that highlights the problematic attribute:
 
-```
+```text
 Error: Invalid Region
 
   on main.tf line 5, in resource "example_server" "web":

@@ -129,7 +129,7 @@ The optimal number of shards depends on several factors:
 
 A practical starting point for most organizations:
 
-```
+```text
 Shard count = ceil(total_clusters / 25)
 ```
 

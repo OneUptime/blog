@@ -72,7 +72,7 @@ service:
 
 ### Heap Usage
 
-```
+```text
 elasticsearch.node.jvm.memory.heap.used         - Current heap usage in bytes
 elasticsearch.node.jvm.memory.heap.max           - Maximum heap size
 elasticsearch.node.jvm.memory.heap.utilization   - Heap usage as a ratio (0-1)
@@ -80,7 +80,7 @@ elasticsearch.node.jvm.memory.heap.utilization   - Heap usage as a ratio (0-1)
 
 Elasticsearch best practice is to set the heap to no more than 50% of available memory and never exceed 30.5 GB (to stay within the JVM compressed oops threshold). Monitor heap utilization:
 
-```
+```text
 heap_percent = (heap.used / heap.max) * 100
 ```
 
@@ -88,7 +88,7 @@ When heap utilization consistently stays above 75%, the JVM spends more time in 
 
 ### Non-Heap Memory
 
-```
+```text
 elasticsearch.node.jvm.memory.nonheap.used - Non-heap memory (metaspace, code cache)
 ```
 
@@ -98,7 +98,7 @@ Non-heap memory holds class metadata and JIT-compiled code. It usually stays sta
 
 Elasticsearch uses two GC pools: young generation (minor GC) and old generation (major GC).
 
-```
+```text
 elasticsearch.node.jvm.gc.collections.count{gc="young"}   - Young gen GC count
 elasticsearch.node.jvm.gc.collections.elapsed{gc="young"} - Young gen GC time
 elasticsearch.node.jvm.gc.collections.count{gc="old"}     - Old gen GC count
@@ -107,7 +107,7 @@ elasticsearch.node.jvm.gc.collections.elapsed{gc="old"}   - Old gen GC time
 
 ### Calculating GC Overhead
 
-```
+```text
 gc_overhead = rate(gc.collections.elapsed[5m]) / 5m * 100
 ```
 
@@ -115,7 +115,7 @@ If GC overhead exceeds 5%, the JVM is spending too much time collecting garbage.
 
 ### GC Pause Duration
 
-```
+```text
 avg_gc_pause = gc.collections.elapsed / gc.collections.count
 ```
 
@@ -125,7 +125,7 @@ Old generation GC pauses are the most impactful. A single old gen pause can last
 
 Elasticsearch uses dedicated thread pools for different operation types:
 
-```
+```text
 # Thread pool types
 search     - Search queries
 write      - Indexing, bulk, delete, update
@@ -137,7 +137,7 @@ snapshot   - Snapshot operations
 
 ### Key Thread Pool Metrics
 
-```
+```text
 elasticsearch.node.thread_pool.threads{state="active"}    - Active threads
 elasticsearch.node.thread_pool.tasks.queued                - Queued tasks
 elasticsearch.node.thread_pool.tasks.rejected              - Rejected tasks
@@ -146,7 +146,7 @@ elasticsearch.node.thread_pool.tasks.completed             - Completed tasks
 
 ### Queue and Rejection Monitoring
 
-```
+```text
 # Tasks waiting in queue
 search_queue = thread_pool.tasks.queued{pool="search"}
 write_queue  = thread_pool.tasks.queued{pool="write"}

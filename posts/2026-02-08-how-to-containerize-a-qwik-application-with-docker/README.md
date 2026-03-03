@@ -20,7 +20,7 @@ npm run qwik add express
 
 This adds the Express adapter, which produces a Node.js server. Your project structure after adding the adapter:
 
-```
+```text
 my-qwik-app/
   src/
     routes/          # Qwik City routes
@@ -130,7 +130,7 @@ CMD ["node", "server/entry.express"]
 
 ## The .dockerignore File
 
-```
+```text
 # .dockerignore
 node_modules
 dist

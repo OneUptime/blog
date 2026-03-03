@@ -75,7 +75,7 @@ Use runtime/default for most containers, avoid unconfined except for debugging, 
 
 Custom profiles define specific restrictions:
 
-```
+```text
 #include <tunables/global>
 
 profile custom-web-profile flags=(attach_disconnected) {

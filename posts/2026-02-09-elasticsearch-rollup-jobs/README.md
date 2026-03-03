@@ -161,7 +161,7 @@ The cron expression controls when rollups run:
 
 This runs at 1 AM every day. Cron format is:
 
-```
+```text
 second minute hour day_of_month month day_of_week
 ```
 

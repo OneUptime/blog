@@ -24,7 +24,7 @@ docker compose ps api
 
 The container names follow the pattern `project_service_index`:
 
-```
+```text
 myproject-api-1
 myproject-api-2
 myproject-api-3
@@ -47,7 +47,7 @@ services:
 ```
 
 Error message:
-```
+```text
 Error response from daemon: driver failed programming external connectivity
 Bind for 0.0.0.0:8080 failed: port is already allocated
 ```

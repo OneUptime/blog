@@ -40,7 +40,7 @@ The convention (used by several OpenTelemetry ecosystem tools) is to use `TRACEP
 
 A `TRACEPARENT` value looks like this:
 
-```
+```text
 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 ```
 

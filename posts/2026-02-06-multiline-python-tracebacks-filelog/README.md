@@ -12,7 +12,7 @@ Python tracebacks have a distinctive format that differs from Java stack traces.
 
 A Python traceback looks like this:
 
-```
+```text
 2026-02-06 14:23:45,123 ERROR django.request - Internal Server Error: /api/orders
 Traceback (most recent call last):
   File "/app/views.py", line 42, in create_order
@@ -123,7 +123,7 @@ import logging
 logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s - %(message)s')
 ```
 
-```
+```text
 2026-02-06 14:23:45,123 ERROR myapp - Something failed
 ```
 
@@ -134,7 +134,7 @@ multiline:
 
 ### Gunicorn/Uvicorn Access Logs
 
-```
+```text
 [2026-02-06 14:23:45 +0000] [12345] [ERROR] Worker failed
 ```
 
@@ -163,7 +163,7 @@ receivers:
 
 Python 3 supports exception chaining with "During handling of the above exception, another exception occurred:" syntax:
 
-```
+```text
 2026-02-06 14:23:45,123 ERROR app - Request failed
 Traceback (most recent call last):
   File "/app/db.py", line 10, in query

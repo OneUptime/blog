@@ -35,7 +35,7 @@ The key insight is that two vectors pointing in the same direction have a cosine
 
 The cosine similarity between two vectors A and B is defined as:
 
-```
+```text
 cosine_similarity(A, B) = (A · B) / (||A|| × ||B||)
 ```
 
@@ -50,7 +50,7 @@ Let us break down each component:
 
 The dot product of two vectors is the sum of the products of their corresponding components:
 
-```
+```text
 A · B = Σ(Aᵢ × Bᵢ) = A₁B₁ + A₂B₂ + ... + AₙBₙ
 ```
 
@@ -58,7 +58,7 @@ A · B = Σ(Aᵢ × Bᵢ) = A₁B₁ + A₂B₂ + ... + AₙBₙ
 
 The magnitude of a vector is calculated using the Euclidean norm:
 
-```
+```text
 ||A|| = √(Σ(Aᵢ²)) = √(A₁² + A₂² + ... + Aₙ²)
 ```
 
@@ -172,7 +172,7 @@ print(f"Cosine Similarity: {similarity:.4f}")
 
 One of the most important optimizations for vector search is pre-normalizing your vectors. A normalized vector has a magnitude of 1, which means:
 
-```
+```text
 For normalized vectors: cosine_similarity(A, B) = A · B
 ```
 

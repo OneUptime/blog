@@ -82,7 +82,7 @@ Let's build a production-ready saga orchestrator in Node.js with TypeScript. We'
 
 ### Project Structure
 
-```
+```text
 src/
   orchestrator/
     SagaOrchestrator.ts

@@ -223,7 +223,7 @@ sudo cephadm bootstrap \
 
 The bootstrap process takes a few minutes. When complete, you will see output like:
 
-```
+```text
 Ceph Dashboard is now available at:
          URL: https://ceph-node1:8443/
         User: admin
@@ -245,7 +245,7 @@ ceph -s
 
 You should see output indicating one monitor and one manager are running:
 
-```
+```text
   cluster:
     id:     a1b2c3d4-e5f6-7890-abcd-ef1234567890
     health: HEALTH_WARN
@@ -280,7 +280,7 @@ ceph orch host ls
 
 Expected output:
 
-```
+```text
 HOST        ADDR        LABELS  STATUS
 ceph-node1  10.0.1.11   _admin
 ceph-node2  10.0.1.12   _admin
@@ -391,7 +391,7 @@ ceph osd pool ls detail
 
 The number 128 represents placement groups (PGs). A rough formula is:
 
-```
+```text
 PGs = (OSDs * 100) / replication_factor
 ```
 

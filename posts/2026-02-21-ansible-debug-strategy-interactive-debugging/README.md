@@ -47,7 +47,7 @@ ANSIBLE_STRATEGY=debug ansible-playbook site.yml
 
 When a task fails with the debug strategy, Ansible pauses and presents a debug prompt:
 
-```
+```text
 TASK [Deploy application config] *********************************************
 fatal: [web-01]: FAILED! => {"changed": false, "msg": "Could not find or access '/home/user/templates/app.conf.j2'"}
 
@@ -61,7 +61,7 @@ At this prompt, you have several commands available.
 
 The debugger supports these commands:
 
-```
+```text
 (debug) p task           # Print the task definition
 (debug) p task.args      # Print the task arguments
 (debug) p result         # Print the task result (including error)
@@ -110,7 +110,7 @@ Let's walk through a real debugging session. You have a playbook that fails:
 
 The template task fails because the template has a typo in a variable name:
 
-```
+```text
 TASK [Deploy config from template] *******************************************
 fatal: [web-01]: FAILED! => {"msg": "AnsibleUndefinedVariable: 'app_vesion' is undefined"}
 
@@ -120,7 +120,7 @@ Debugger invoked
 
 Debug the issue:
 
-```
+```text
 (debug) p task.args
 {'src': 'app.conf.j2', 'dest': '/opt/myapp/config.yml'}
 
@@ -145,7 +145,7 @@ Of course, the real fix is to correct the typo in your template file, but the de
 
 The debugger is excellent for understanding what variables are available:
 
-```
+```text
 (debug) p vars.keys()
 dict_keys(['ansible_hostname', 'ansible_os_family', 'inventory_hostname',
            'app_version', 'app_port', 'ansible_facts', ...])
@@ -169,7 +169,7 @@ dict_keys(['ansible_hostname', 'ansible_os_family', 'inventory_hostname',
 
 You can change task arguments and re-run:
 
-```
+```text
 TASK [Install package] ********************************************************
 fatal: [web-01]: FAILED! => {"msg": "No package matching 'ngix' found"}
 
@@ -252,7 +252,7 @@ The `debugger` keyword options:
 
 When debugging a role, the debugger shows the role context:
 
-```
+```text
 TASK [webserver : Deploy nginx config] ****************************************
 fatal: [web-01]: FAILED! => {"msg": "..."}
 
@@ -266,7 +266,7 @@ Debugger invoked
 
 You can inspect role variables:
 
-```
+```text
 (debug) p vars['webserver_port']
 80
 ```
@@ -286,7 +286,7 @@ Start with `p result._result` to see the exact error. Then inspect the relevant 
 
 For template debugging, you can render the template manually:
 
-```
+```text
 (debug) p lookup('template', 'app.conf.j2')
 ```
 

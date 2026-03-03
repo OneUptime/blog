@@ -338,7 +338,7 @@ services:
 
 Create a `.dockerignore` file to exclude unnecessary files from the build context:
 
-```
+```text
 # .dockerignore
 # Exclude build artifacts and development files
 target/

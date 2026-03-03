@@ -252,7 +252,7 @@ Exponential histograms provide better resolution across the full range of values
 
 Prometheus follows specific naming conventions:
 
-```
+```text
 # Prometheus naming conventions
 http_requests_total          # Counter (must end with _total)
 http_request_duration_seconds  # Histogram (should include unit)
@@ -261,7 +261,7 @@ process_resident_memory_bytes  # Gauge (should include unit)
 
 OpenTelemetry uses semantic conventions with dot-separated namespaces:
 
-```
+```text
 # OpenTelemetry semantic conventions
 http.server.request.count      # Counter
 http.server.request.duration   # Histogram (unit specified separately)

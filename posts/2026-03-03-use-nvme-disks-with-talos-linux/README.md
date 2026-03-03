@@ -14,7 +14,7 @@ NVMe (Non-Volatile Memory Express) disks are the standard for high-performance s
 
 The first thing to know about NVMe disks in Talos Linux is how they are named. Unlike traditional SATA or SAS drives that appear as `/dev/sda`, `/dev/sdb`, etc., NVMe drives use a different naming convention:
 
-```
+```text
 NVMe Device Naming:
   /dev/nvme0n1    - First NVMe drive, first namespace
   /dev/nvme0n1p1  - First partition on the first NVMe drive

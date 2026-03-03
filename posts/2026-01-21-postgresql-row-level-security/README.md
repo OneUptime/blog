@@ -18,7 +18,7 @@ Row-Level Security (RLS) in PostgreSQL enables fine-grained access control at th
 
 ## How RLS Works
 
-```
+```text
 Without RLS:
 SELECT * FROM orders;  -> Returns ALL rows
 

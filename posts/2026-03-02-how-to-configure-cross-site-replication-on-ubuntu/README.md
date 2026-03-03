@@ -134,7 +134,7 @@ For the replication user and pg_hba.conf:
 sudo nano /etc/postgresql/14/main/pg_hba.conf
 ```
 
-```
+```text
 # Allow Site B standby to connect via the VPN tunnel
 host    replication     replicator      172.16.0.2/32           md5
 ```

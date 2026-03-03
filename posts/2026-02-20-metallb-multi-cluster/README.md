@@ -286,7 +286,7 @@ fi
 
 Store all cluster IP allocations in a single Git repository to prevent drift:
 
-```
+```text
 infra-repo/
   clusters/
     cluster-a/

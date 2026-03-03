@@ -202,7 +202,7 @@ gcloud config list
 
 The output looks like:
 
-```
+```text
 [compute]
 region = us-central1
 zone = us-central1-a

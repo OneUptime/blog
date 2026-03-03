@@ -42,7 +42,7 @@ sequenceDiagram
 ## Proxy Protocol Versions
 
 **Version 1 (Text):**
-```
+```text
 PROXY TCP4 203.0.113.50 10.0.0.1 56789 80\r\n
 ```
 

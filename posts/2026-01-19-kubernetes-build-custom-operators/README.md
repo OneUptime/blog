@@ -78,7 +78,7 @@ operator-sdk create api --group apps --version v1alpha1 --kind MyApp --resource 
 
 ### Project Structure
 
-```
+```text
 myapp-operator/
 ├── api/
 │   └── v1alpha1/

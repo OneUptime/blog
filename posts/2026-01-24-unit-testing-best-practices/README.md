@@ -260,7 +260,7 @@ describe('calculateAge', () => {
 
 Organize tests to mirror your source code structure and group related tests logically:
 
-```
+```text
 src/
   services/
     user.service.js

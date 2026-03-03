@@ -308,17 +308,17 @@ You can control how long ECS waits between SIGTERM and SIGKILL with the `stopTim
 ## Common Patterns
 
 **Application + FireLens log router:**
-```
+```text
 log-router (START) --> app
 ```
 
 **Application + proxy + init container:**
-```
+```text
 config-init (SUCCESS) --> proxy (HEALTHY) --> app
 ```
 
 **Application + multiple sidecars:**
-```
+```text
 log-router (START) --> app
 proxy (HEALTHY) --> app
 metrics-agent (START) --> app

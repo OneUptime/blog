@@ -513,7 +513,7 @@ kubectl exec -n metallb-system <speaker-pod> -c frr -- vtysh -c "show bfd peers"
 
 Expected output showing healthy BFD sessions:
 
-```
+```text
 BFD Peers:
         peer 10.0.0.1 vrf default
                 ID: 1

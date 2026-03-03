@@ -246,7 +246,7 @@ kubectl get svc web-app --watch
 
 On cloud providers, this typically takes 1-3 minutes. Once assigned, you'll see:
 
-```
+```text
 NAME      TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)
 web-app   LoadBalancer   10.96.45.123    203.0.113.42     80:31234/TCP,443:31567/TCP
 ```

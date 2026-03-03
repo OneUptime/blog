@@ -105,7 +105,7 @@ This gives you a checklist-style interface where you can pick exactly which reso
 
 Understanding the resource identification format is key to using selective sync effectively.
 
-```
+```text
 GROUP:KIND:NAME
 ```
 

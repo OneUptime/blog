@@ -51,7 +51,7 @@ When any part of this pipeline breaks, you get a batch export error. Let us look
 
 The most common batch export error is a timeout. The exporter tried to send a batch but the collector or backend did not respond in time.
 
-```
+```text
 WARNING:opentelemetry.sdk.trace.export:Span export timed out after 30000ms
 Failed to export 512 spans: deadline exceeded
 ```
@@ -102,7 +102,7 @@ The idea is to send smaller batches more frequently so each individual export co
 
 When the exporter cannot keep up with the rate of incoming spans, the queue fills up and spans get dropped:
 
-```
+```text
 WARNING:opentelemetry.sdk.trace.export:Queue is full, dropping span
 Dropped 128 spans due to queue overflow (queue size: 2048/2048)
 ```
@@ -156,7 +156,7 @@ provider = TracerProvider(
 
 Sometimes the batch processor itself works fine but the exporter cannot connect to the collector at all:
 
-```
+```text
 Failed to export 512 spans: rpc error: code = Unavailable
 desc = connection error: desc = "transport: Error while dialing"
 ```
@@ -210,7 +210,7 @@ OtlpGrpcSpanExporter exporter = OtlpGrpcSpanExporter.builder()
 
 Less common but still worth knowing about: sometimes the batch export fails because a span contains data that cannot be serialized properly. This can happen with very large attribute values or malformed data:
 
-```
+```text
 Failed to export batch: marshal error: attribute value exceeds maximum size
 ```
 
@@ -279,7 +279,7 @@ logging.getLogger("opentelemetry").setLevel(logging.DEBUG)
 
 Debug logging will produce output like this when things are working:
 
-```
+```text
 DEBUG:opentelemetry.sdk.trace.export:BatchSpanProcessor: exporting 256 spans
 DEBUG:opentelemetry.sdk.trace.export:BatchSpanProcessor: export completed successfully
 DEBUG:opentelemetry.sdk.trace.export:BatchSpanProcessor: queue depth 45/2048
@@ -287,7 +287,7 @@ DEBUG:opentelemetry.sdk.trace.export:BatchSpanProcessor: queue depth 45/2048
 
 And like this when things are failing:
 
-```
+```text
 DEBUG:opentelemetry.sdk.trace.export:BatchSpanProcessor: exporting 512 spans
 WARNING:opentelemetry.sdk.trace.export:BatchSpanProcessor: export failed
 ERROR:opentelemetry.exporter.otlp.proto.grpc:Export RPC failed: StatusCode.DEADLINE_EXCEEDED
@@ -299,7 +299,7 @@ WARNING:opentelemetry.sdk.trace.export:BatchSpanProcessor: dropping spans, queue
 
 You can monitor the health of your batch processor using internal metrics. OpenTelemetry SDKs emit metrics about the batch processor that you can scrape:
 
-```
+```text
 # Key metrics to watch
 otel.sdk.span.exported       - Number of successfully exported spans
 otel.sdk.span.dropped        - Number of dropped spans (queue overflow)

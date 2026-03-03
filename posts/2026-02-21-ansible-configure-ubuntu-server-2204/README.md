@@ -113,7 +113,7 @@ Ubuntu 22.04 uses chrony for time synchronization:
 
 The chrony template:
 
-```
+```text
 # chrony.conf.j2 - NTP configuration
 {% for server in ntp_servers %}
 server {{ server }} iburst

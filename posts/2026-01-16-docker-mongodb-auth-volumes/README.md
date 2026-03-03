@@ -264,7 +264,7 @@ networks:
 
 ### Connection String Formats
 
-```
+```text
 # Basic
 mongodb://mongodb:27017
 

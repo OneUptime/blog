@@ -102,7 +102,7 @@ jobs:
 
 Keep your Istio resources in a dedicated directory. A typical layout:
 
-```
+```text
 k8s/
   deployment.yaml
   service.yaml

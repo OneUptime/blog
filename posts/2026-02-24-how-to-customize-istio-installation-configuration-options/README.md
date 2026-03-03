@@ -348,7 +348,7 @@ istioctl install -f base.yaml -f environment-overlay.yaml -y
 
 This is useful for maintaining a base configuration with environment-specific overlays:
 
-```
+```text
 configs/
 ├── base.yaml           # Shared across all environments
 ├── dev-overlay.yaml    # Dev-specific (more logging, fewer replicas)

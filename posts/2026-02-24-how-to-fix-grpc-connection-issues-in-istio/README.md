@@ -264,7 +264,7 @@ Look at the `grpc_status` in the access log. Values like `0` (OK), `14` (UNAVAIL
 
 gRPC has message size limits. If your messages exceed the Envoy buffer limit, you'll get errors:
 
-```
+```text
 grpc: received message larger than max
 ```
 

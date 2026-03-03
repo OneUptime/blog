@@ -226,7 +226,7 @@ receivers:
 
 For Java stack traces:
 
-```
+```text
 2026-02-06 10:30:45 ERROR Database connection failed
     at com.example.Database.connect(Database.java:123)
     at com.example.App.main(App.java:45)

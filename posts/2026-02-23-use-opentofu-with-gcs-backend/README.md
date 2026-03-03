@@ -267,7 +267,7 @@ terraform {
 
 This creates a clean structure in the bucket:
 
-```
+```text
 gs://my-project-id-opentofu-state/
   production/
     network/

@@ -29,7 +29,7 @@ ping -c 5 google.com
 
 Default output:
 
-```
+```text
 PING google.com (142.250.80.46) 56(84) bytes of data.
 64 bytes from lax17s56-in-f14.1e100.net (142.250.80.46): icmp_seq=1 ttl=115 time=12.4 ms
 64 bytes from lax17s56-in-f14.1e100.net (142.250.80.46): icmp_seq=2 ttl=115 time=12.1 ms
@@ -107,7 +107,7 @@ traceroute google.com
 
 Output:
 
-```
+```text
 traceroute to google.com (142.250.80.46), 30 hops max, 60 byte packets
  1  192.168.1.1 (192.168.1.1)  1.234 ms  1.089 ms  0.987 ms
  2  10.0.0.1 (10.0.0.1)  5.432 ms  5.298 ms  5.187 ms
@@ -177,7 +177,7 @@ mtr -c 100 --report google.com
 mtr --report -c 50 google.com
 ```
 
-```
+```text
 Start: 2026-03-02T10:00:00+0000
 HOST: ubuntu-server              Loss%   Snt   Last   Avg  Best  Wrst StDev
   1.|-- 192.168.1.1               0.0%    50    0.9   1.0   0.8   1.5   0.2

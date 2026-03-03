@@ -22,7 +22,7 @@ terraform output
 
 This prints all outputs in a human-readable format:
 
-```
+```text
 instance_id = "i-0abc123def456789"
 instance_public_ip = "54.123.45.67"
 load_balancer_dns = "app-lb-123456789.us-east-1.elb.amazonaws.com"

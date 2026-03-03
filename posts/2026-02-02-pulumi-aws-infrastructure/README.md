@@ -101,7 +101,7 @@ The CLI will prompt you for:
 
 This creates several files:
 
-```
+```text
 pulumi-aws-demo/
 ├── Pulumi.yaml         # Project configuration
 ├── Pulumi.dev.yaml     # Stack-specific configuration
@@ -1093,7 +1093,7 @@ npm test
 
 ### 1. Organize Code by Resource Type
 
-```
+```text
 infrastructure/
 ├── index.ts           # Main entry point
 ├── networking/

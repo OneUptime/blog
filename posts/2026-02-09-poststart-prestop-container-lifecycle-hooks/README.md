@@ -367,7 +367,7 @@ kubectl describe pod my-pod
 
 Look for events like:
 
-```
+```text
 Warning  FailedPostStartHook  Container postStart hook failed: command '/app/init.sh' exited with 1
 ```
 

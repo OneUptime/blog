@@ -29,7 +29,7 @@ Backups are only valuable if they can be restored. Regular backup testing ensure
 
 ## Backup Testing Strategy
 
-```
+```text
 Backup Testing Levels:
 
 Level 1: Existence Check

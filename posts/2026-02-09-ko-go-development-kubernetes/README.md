@@ -444,7 +444,7 @@ helm install api-service charts/api \
 
 Manage multiple services:
 
-```
+```text
 project/
 ├── cmd/
 │   ├── api/

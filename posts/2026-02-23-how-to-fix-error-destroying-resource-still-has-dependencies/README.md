@@ -10,14 +10,14 @@ Description: How to fix Terraform errors when trying to destroy resources that s
 
 You run `terraform destroy` or `terraform apply` (to remove a resource) and get:
 
-```
+```text
 Error: error deleting Security Group (sg-0123456789abcdef0):
 DependencyViolation: resource sg-0123456789abcdef0 has a dependent object
 ```
 
 Or variations like:
 
-```
+```text
 Error: error deleting VPC (vpc-abc123): DependencyViolation: The vpc
 'vpc-abc123' has dependencies and cannot be deleted.
 
@@ -40,7 +40,7 @@ Terraform usually handles this correctly by destroying resources in reverse depe
 
 The most common case:
 
-```
+```text
 Error: error deleting Security Group (sg-0123456789abcdef0):
 DependencyViolation: resource sg-0123456789abcdef0 has a dependent object
 ```
@@ -91,7 +91,7 @@ terraform apply
 
 ## Scenario 2: VPC Has Dependencies
 
-```
+```text
 Error: error deleting VPC (vpc-abc123): DependencyViolation: The vpc
 'vpc-abc123' has dependencies and cannot be deleted.
 ```
@@ -137,7 +137,7 @@ aws ec2 delete-internet-gateway --internet-gateway-id igw-manual456
 
 ## Scenario 3: S3 Bucket Not Empty
 
-```
+```text
 Error: error deleting S3 Bucket (my-bucket): BucketNotEmpty: The bucket
 you tried to delete is not empty.
 ```
@@ -179,7 +179,7 @@ terraform apply
 
 ## Scenario 4: IAM Role Has Policies
 
-```
+```text
 Error: error deleting IAM Role (app-role): DeleteConflict: Cannot delete
 entity, must remove all policies first.
 ```
@@ -247,7 +247,7 @@ terraform apply
 
 ## Scenario 5: Database Has Read Replicas
 
-```
+```text
 Error: error deleting RDS Cluster (my-cluster): InvalidDBClusterStateFault:
 Cluster cannot be deleted, it still contains DB instances in non-deleting state.
 ```

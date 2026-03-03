@@ -100,7 +100,7 @@ sudo nano /etc/ssh/sshd_config
 
 Key security settings:
 
-```
+```text
 # Change the default port (optional but reduces automated attack noise)
 # Port 2222
 
@@ -211,7 +211,7 @@ Running SSH on a non-standard port reduces log noise from automated scanners:
 sudo nano /etc/ssh/sshd_config
 ```
 
-```
+```text
 Port 2222
 ```
 
@@ -251,7 +251,7 @@ On your local machine, an SSH config file saves typing:
 nano ~/.ssh/config
 ```
 
-```
+```text
 # Default settings for all hosts
 Host *
     ServerAliveInterval 60
@@ -293,7 +293,7 @@ Rather than allowing all system users to SSH:
 sudo nano /etc/ssh/sshd_config
 ```
 
-```
+```text
 # Only allow specific users
 AllowUsers admin deploy webmaster
 
@@ -377,13 +377,13 @@ sudo nano /etc/pam.d/sshd
 
 Add at the top:
 
-```
+```text
 auth required pam_google_authenticator.so
 ```
 
 Update sshd_config:
 
-```
+```text
 ChallengeResponseAuthentication yes
 AuthenticationMethods publickey,keyboard-interactive
 ```

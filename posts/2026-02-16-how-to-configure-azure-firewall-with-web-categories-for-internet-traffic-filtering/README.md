@@ -172,7 +172,7 @@ az monitor diagnostic-settings create \
 
 Query the logs to see web category activity:
 
-```
+```text
 // KQL query to see blocked web category requests
 AzureDiagnostics
 | where Category == "AzureFirewallApplicationRule"

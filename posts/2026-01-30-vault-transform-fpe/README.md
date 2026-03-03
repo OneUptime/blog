@@ -18,7 +18,7 @@ HashiCorp Vault's Transform secrets engine provides FPE through the FF3-1 algori
 
 Traditional encryption produces ciphertext that looks nothing like the original:
 
-```
+```text
 Input:  4111-1111-1111-1111
 AES:    7f3d8a2b1e9c4f6a8b2d1e3f5a7c9b0d...
 FPE:    9832-5647-2198-3456
@@ -600,7 +600,7 @@ Audit logs capture:
 
 ### Issue: Template Pattern Does Not Match
 
-```
+```text
 Error: unable to find match for input value
 ```
 
@@ -613,7 +613,7 @@ echo "4111-1111-1111-1111" | grep -E '(\d{4})-(\d{4})-(\d{4})-(\d{4})'
 
 ### Issue: Alphabet Mismatch
 
-```
+```text
 Error: character not in alphabet
 ```
 
@@ -626,7 +626,7 @@ vault read transform/alphabet/numeric
 
 ### Issue: Tweak Decode Failure
 
-```
+```text
 Error: invalid tweak for decode operation
 ```
 

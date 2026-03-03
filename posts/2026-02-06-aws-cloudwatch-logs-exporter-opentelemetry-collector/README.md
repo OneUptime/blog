@@ -676,7 +676,7 @@ aws ec2 create-vpc-endpoint \
 
 Once logs are in CloudWatch, use Logs Insights for analysis:
 
-```
+```text
 # Find error logs
 fields @timestamp, log.body, severity_text
 | filter severity_text = "ERROR"

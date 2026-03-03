@@ -79,7 +79,7 @@ Instead of embedding keys in the playbook, load them from files:
 
 Store the public key files in your Ansible project under `ssh_keys/`:
 
-```
+```text
 project/
   ssh_keys/
     alice.pub

@@ -36,7 +36,7 @@ Understanding the conceptual mapping helps CloudFormation users adapt quickly:
 
 Here is a recommended project structure for GCP:
 
-```
+```text
 infrastructure/
   environments/
     dev/

@@ -238,22 +238,22 @@ rate(envoy_listener_downstream_cx_overflow[5m])
 
 Understanding Envoy's stat naming helps you write better matchers. Stats follow this pattern:
 
-```
+```text
 <prefix>.<qualifier>.<stat_name>
 ```
 
 For cluster (upstream) stats:
-```
+```text
 cluster.outbound|8080||api-service.production.svc.cluster.local.upstream_cx_active
 ```
 
 For listener (downstream) stats:
-```
+```text
 listener.0.0.0.0_15006.downstream_cx_active
 ```
 
 When these are exported to Prometheus, dots become underscores and pipes become dots:
-```
+```text
 envoy_cluster_upstream_cx_active{cluster_name="outbound|8080||api-service.production.svc.cluster.local"}
 ```
 

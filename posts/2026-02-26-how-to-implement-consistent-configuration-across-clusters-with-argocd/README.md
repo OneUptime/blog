@@ -99,7 +99,7 @@ spec:
 
 Use Kustomize to layer base configuration with cluster-specific overrides:
 
-```
+```text
 platform/
   network-policies/
     base/

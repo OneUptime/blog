@@ -61,7 +61,7 @@ For most deployments, you will focus on Login, Account, and Email themes.
 
 Each theme lives in a directory under Keycloak's `themes` folder. Here is the structure for a complete custom theme:
 
-```
+```text
 themes/
   my-company-theme/
     login/

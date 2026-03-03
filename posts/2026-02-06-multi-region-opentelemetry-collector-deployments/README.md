@@ -316,7 +316,7 @@ scrape_configs:
 
 Key metrics to compare across regions:
 
-```
+```text
 # Per-region throughput
 sum by (region) (rate(otelcol_receiver_accepted_spans[5m]))
 

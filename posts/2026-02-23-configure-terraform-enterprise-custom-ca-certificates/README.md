@@ -16,7 +16,7 @@ Configuring TFE to trust your custom CA certificates is one of the first things 
 
 When TFE sees a certificate signed by an unknown CA, you get errors like:
 
-```
+```text
 x509: certificate signed by unknown authority
 tls: failed to verify certificate: x509: certificate signed by unknown authority
 SSL certificate problem: unable to get local issuer certificate

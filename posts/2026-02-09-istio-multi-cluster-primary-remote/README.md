@@ -390,7 +390,7 @@ istioctl proxy-status --context cluster-1
 
 Shows all proxies across clusters:
 
-```
+```text
 NAME                              CLUSTER      VERSION    STATUS      ISTIO VERSION
 frontend-xxx.production           cluster-1    1.20.0     SYNCED      1.20.0
 backend-yyy.production            cluster-2    1.20.0     SYNCED      1.20.0

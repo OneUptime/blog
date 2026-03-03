@@ -103,7 +103,7 @@ volumes:
 
 Without sufficient `shm_size`, PostgreSQL will fail to start or crash during heavy operations with errors like:
 
-```
+```text
 FATAL: could not create shared memory segment: No space left on device
 ```
 

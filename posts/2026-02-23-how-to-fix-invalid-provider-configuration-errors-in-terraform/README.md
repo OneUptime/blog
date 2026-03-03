@@ -10,7 +10,7 @@ Description: How to resolve Invalid Provider Configuration errors in Terraform c
 
 You run `terraform plan` or `terraform apply` and Terraform spits out:
 
-```
+```text
 Error: Invalid provider configuration
 
 Provider "registry.terraform.io/hashicorp/aws" requires explicit configuration.
@@ -20,7 +20,7 @@ as described in the provider documentation.
 
 Or maybe a variation like:
 
-```
+```text
 Error: error configuring Terraform AWS Provider: no valid credential sources for
 Terraform AWS Provider found.
 ```
@@ -69,7 +69,7 @@ terraform {
 
 This is the most common cause of provider configuration errors. Terraform can find the provider, but it cannot authenticate:
 
-```
+```text
 Error: error configuring Terraform AWS Provider: no valid credential sources
 for Terraform AWS Provider found.
 
@@ -260,7 +260,7 @@ resource "aws_s3_bucket" "eu_bucket" {
 
 Sometimes the error is caused by using a provider feature that does not exist in the version you have installed:
 
-```
+```text
 Error: Invalid provider configuration
 
 provider.aws: "default_tags": this field is not available in this
@@ -289,7 +289,7 @@ terraform init -upgrade
 
 Some providers require specific configuration attributes:
 
-```
+```text
 Error: Invalid provider configuration
 
 Provider "registry.terraform.io/hashicorp/google" requires the "project" attribute

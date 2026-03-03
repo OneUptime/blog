@@ -260,7 +260,7 @@ The Partner Center listing requires several pieces of information:
 
 In Partner Center, the technical configuration for your managed application plan needs:
 
-```
+```text
 Plan name: Standard
 Plan ID: standard-plan
 Version: 1.0.0

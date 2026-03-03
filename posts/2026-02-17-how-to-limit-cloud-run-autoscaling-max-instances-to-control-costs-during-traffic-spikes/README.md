@@ -103,19 +103,19 @@ Start with your peak expected traffic:
 
 The formula:
 
-```
+```text
 Max instances = (Peak RPS x Average Duration) / Concurrency
 ```
 
 Example: 500 RPS, 200ms average duration, concurrency of 80:
 
-```
+```text
 Max instances = (500 x 0.2) / 80 = 1.25 = 2 instances
 ```
 
 Add a buffer (2-3x) for safety:
 
-```
+```text
 Recommended max instances = 2 x 3 = 6 instances
 ```
 

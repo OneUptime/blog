@@ -59,7 +59,7 @@ checkov -f tfplan.json
 
 The output groups findings by check status:
 
-```
+```text
 Passed checks: 45, Failed checks: 8, Skipped checks: 2
 
 Check: CKV_AWS_18: "Ensure the S3 bucket has access logging enabled"

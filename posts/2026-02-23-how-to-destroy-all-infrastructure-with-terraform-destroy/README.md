@@ -21,7 +21,7 @@ terraform destroy
 
 When you run `terraform destroy`, Terraform generates a destruction plan (similar to `terraform plan -destroy`) and asks for confirmation:
 
-```
+```text
 Plan: 0 to add, 0 to change, 5 to destroy.
 
 Do you really want to destroy all resources?
@@ -103,7 +103,7 @@ resource "aws_db_instance" "production" {
 
 With this setting, `terraform destroy` (and any plan that would destroy this resource) fails with an error:
 
-```
+```text
 Error: Instance cannot be destroyed
 
   on main.tf line 1:

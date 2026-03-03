@@ -51,7 +51,7 @@ If memory steadily increases and never decreases, the tail sampling processor is
 
 Check the Collector's internal metrics:
 
-```
+```text
 # Prometheus query for traces in the tail sampling buffer
 otelcol_processor_tail_sampling_count_traces_sampled
 otelcol_processor_tail_sampling_sampling_decision_timer_latency
@@ -167,7 +167,7 @@ The load balancing exporter routes by trace ID, ensuring all spans of a trace re
 
 Use this formula to estimate memory needs:
 
-```
+```text
 memory_needed = traces_per_second * decision_wait_seconds * avg_spans_per_trace * avg_span_size_bytes
 
 Example:

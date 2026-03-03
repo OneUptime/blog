@@ -178,7 +178,7 @@ If the custom DNS server forwards to a public resolver (like 8.8.8.8) instead of
 
 **Fix for BIND**: Add a forwarding zone:
 
-```
+```text
 # BIND configuration to forward privatelink queries to Azure DNS
 zone "privatelink.database.windows.net" {
     type forward;

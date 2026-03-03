@@ -29,13 +29,13 @@ flowchart LR
 
 Visit the React error decoder with your error code:
 
-```
+```text
 https://reactjs.org/docs/error-decoder.html?invariant=130
 ```
 
 Or for newer React versions:
 
-```
+```text
 https://react.dev/errors/130
 ```
 

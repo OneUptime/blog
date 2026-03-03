@@ -50,7 +50,7 @@ az cosmosdb sql container create \
 
 ## Project Structure
 
-```
+```text
 recipe-app/
   client/       # Angular frontend
   api/          # Azure Functions backend

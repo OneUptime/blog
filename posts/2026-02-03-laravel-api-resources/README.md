@@ -1010,7 +1010,7 @@ class ArticleResource extends JsonResource
 
 Usage:
 
-```
+```text
 GET /api/articles?fields[articles]=id,title,author
 ```
 

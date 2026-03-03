@@ -180,7 +180,7 @@ spec:
 
 A project using jsonnet-bundler typically looks like this:
 
-```
+```text
 monitoring-stack/
   jsonnetfile.json         # Dependency declarations
   jsonnetfile.lock.json    # Locked versions (committed to Git)

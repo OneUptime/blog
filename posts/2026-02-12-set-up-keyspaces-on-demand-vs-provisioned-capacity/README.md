@@ -197,7 +197,7 @@ Let's compare costs for different workload patterns.
 
 ### Steady Workload (1000 RCU, 500 WCU constant)
 
-```
+```text
 On-demand:
   Reads:  1000 reads/sec x 86,400 sec/day x 30 days = 2.592B reads
   Cost:   2.592B / 1M x $0.25 = $648/month for reads
@@ -215,7 +215,7 @@ For a steady workload, provisioned is almost 7 times cheaper.
 
 ### Spiky Workload (100 RCU baseline, 5000 RCU peak for 2 hours/day)
 
-```
+```text
 On-demand:
   Baseline: 100/sec x 79,200 sec (22 hours) = 7.92M reads
   Peak:     5000/sec x 7,200 sec (2 hours) = 36M reads

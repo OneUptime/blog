@@ -14,13 +14,13 @@ The DEB822 format is the modern replacement for the traditional one-line APT rep
 
 The traditional APT source format looks like this:
 
-```
+```text
 deb [arch=amd64 signed-by=/usr/share/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu jammy stable
 ```
 
 The DEB822 format for the same repository looks like this:
 
-```
+```text
 Types: deb
 URIs: https://download.docker.com/linux/ubuntu
 Suites: jammy
@@ -261,7 +261,7 @@ graph LR
 
 When you use the `deb822_repository` module, the generated `.sources` file looks something like this:
 
-```
+```text
 X-Repolib-Name: docker-ce
 Types: deb
 URIs: https://download.docker.com/linux/ubuntu

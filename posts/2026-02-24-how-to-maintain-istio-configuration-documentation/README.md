@@ -25,7 +25,7 @@ You can't solve this with discipline alone. You need automation and process.
 
 Store all Istio documentation in the same git repository as the configuration:
 
-```
+```text
 infrastructure/
   istio/
     production/

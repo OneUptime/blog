@@ -86,7 +86,7 @@ kubectl exec -n my-app deploy/my-service -c istio-proxy -- \
 
 You'll see metrics like:
 
-```
+```text
 http.inbound_0.0.0.0_8080.jwt_authn.allowed: 15234
 http.inbound_0.0.0.0_8080.jwt_authn.cors_preflight_bypassed: 0
 http.inbound_0.0.0.0_8080.jwt_authn.denied: 423

@@ -132,7 +132,7 @@ Let us build a complete JSON:API implementation for an article management system
 
 ### Project Structure
 
-```
+```text
 src/
 ├── serializers/
 │   ├── JsonApiSerializer.js
@@ -1345,7 +1345,7 @@ if __name__ == '__main__':
 
 One of JSON:API's strengths is compound documents. Instead of making multiple requests, clients can request related resources in a single call:
 
-```
+```text
 GET /api/articles/1?include=author,comments.author
 ```
 
@@ -1412,7 +1412,7 @@ Notice that user 42 appears only once in the `included` array even though they a
 
 Clients can request only specific fields to reduce payload size:
 
-```
+```text
 GET /api/articles?fields[articles]=title,slug&fields[users]=name
 ```
 
@@ -1437,7 +1437,7 @@ Response:
 
 JSON:API defines conventions for filtering and sorting:
 
-```
+```text
 GET /api/articles?filter[status]=published&filter[author]=42&sort=-createdAt,title
 ```
 

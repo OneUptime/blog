@@ -14,7 +14,7 @@ Istio configuration changes can have immediate and far-reaching effects. A Virtu
 
 The foundation of Istio change management is storing all configuration in Git. No one should be applying Istio resources directly with `kubectl apply`. Every change goes through a pull request:
 
-```
+```text
 istio-config/
   base/
     mesh-config.yaml
@@ -95,7 +95,7 @@ The `istioctl validate` command catches syntax errors and invalid field values. 
 
 Different changes need different levels of review. Set this up with CODEOWNERS:
 
-```
+```text
 # .github/CODEOWNERS
 
 # Mesh-wide config needs platform team approval

@@ -34,7 +34,7 @@ kubectl logs deploy/my-service -n my-namespace -c istio-proxy | grep "431\|heade
 
 You might see entries like:
 
-```
+```text
 [2026-02-24T10:15:30.123Z] "GET /api/data HTTP/1.1" 431 - via_upstream - "-" 0 0 0 - "10.0.1.5" "Mozilla/5.0" "abc-123"
 ```
 

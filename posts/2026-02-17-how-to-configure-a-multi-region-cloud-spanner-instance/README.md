@@ -47,7 +47,7 @@ gcloud spanner instance-configs describe nam6
 
 This will show you something like:
 
-```
+```text
 displayName: United States (NAM6)
 replicas:
 - location: us-central1

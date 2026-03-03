@@ -12,7 +12,7 @@ Knowing your error budget exists is not enough. You need to see it burning in re
 
 The data flow looks like this:
 
-```
+```text
 Application (OTel SDK) -> OTel Collector (spanmetrics connector) -> Prometheus -> Grafana
 ```
 

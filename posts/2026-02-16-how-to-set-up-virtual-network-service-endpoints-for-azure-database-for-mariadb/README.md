@@ -260,7 +260,7 @@ az monitor diagnostic-settings create \
 
 In Log Analytics, query connection events:
 
-```
+```text
 AzureDiagnostics
 | where Category == "MySqlAuditLogs"
 | where event_class_s == "connection_log"

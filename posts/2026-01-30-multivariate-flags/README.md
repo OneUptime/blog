@@ -662,7 +662,7 @@ function calculateConfidence(
 
 ### Sample Analysis Output
 
-```
+```text
 Experiment: checkout_flow
 Duration: 14 days
 Total Users: 45,231

@@ -31,7 +31,7 @@ Check east-west gateways in each cluster:
 kubectl get svc -n istio-system istio-eastwestgateway --context cluster1
 ```
 
-```
+```text
 NAME                    TYPE           CLUSTER-IP    EXTERNAL-IP     PORT(S)
 istio-eastwestgateway   LoadBalancer   10.96.1.100   34.123.45.67    15021:31234/TCP,15443:31235/TCP,15012:31236/TCP,15017:31237/TCP
 ```

@@ -341,7 +341,7 @@ meson setup builddir
 
 ### Missing dependency pkg-config file
 
-```
+```text
 ERROR: Dependency 'somelib' not found
 ```
 

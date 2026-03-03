@@ -226,7 +226,7 @@ Let's calculate actual density for a 128 GB server running a simple web applicat
 
 This breakdown shows why VMs hit density limits quickly - most memory goes to infrastructure, not your application.
 
-```
+```text
 Total RAM: 128 GB
 Host/Hypervisor reservation: 8 GB
 Available for VMs: 120 GB
@@ -246,7 +246,7 @@ Practical limit (with memory variance): 60-80 VMs
 
 The same workload in containers requires a fraction of the resources, leaving more for actual application work.
 
-```
+```text
 Total RAM: 128 GB
 Host OS reservation: 4 GB
 Available for containers: 124 GB
@@ -407,7 +407,7 @@ Each VM has its own virtual disk:
 
 This example shows how VM disk images grow linearly with instance count, consuming storage quickly.
 
-```
+```text
 VM1: ubuntu-server.qcow2  (4.2 GB base + application)
 VM2: ubuntu-server.qcow2  (4.2 GB base + application)
 VM3: ubuntu-server.qcow2  (4.2 GB base + application)
@@ -423,7 +423,7 @@ Containers share read-only base layers:
 
 With OverlayFS, 100 containers use only marginally more storage than one, since they share all read-only layers.
 
-```
+```text
 Base layer: ubuntu:22.04          (77 MB, shared)
 ├── Layer 2: apt-get install...   (150 MB, shared)
 ├── Layer 3: application code     (50 MB, shared)
@@ -478,7 +478,7 @@ Let's work through realistic scenarios for a production server.
 
 ### Server Specifications
 
-```
+```text
 CPU: AMD EPYC 7543 (32 cores, 64 threads)
 RAM: 256 GB DDR4
 Storage: 4x 1.92 TB NVMe SSD (RAID 10)
@@ -491,7 +491,7 @@ Running stateless API workers (Node.js/Python/Go):
 
 **VM Approach:**
 
-```
+```text
 Per VM allocation:
   - 4 vCPUs
   - 8 GB RAM
@@ -504,7 +504,7 @@ Maximum VMs: min(60/4, 240/8) = min(15, 30) = 15 VMs
 
 **Container Approach:**
 
-```
+```text
 Per container allocation:
   - 0.5 CPU (limit 2)
   - 512 MB RAM (limit 2 GB)
@@ -524,7 +524,7 @@ Running isolated database instances:
 
 **VM Approach:**
 
-```
+```text
 Per VM allocation:
   - 8 vCPUs
   - 32 GB RAM
@@ -535,7 +535,7 @@ Maximum VMs: min(60/8, 240/32) = min(7, 7) = 7 VMs
 
 **Container Approach:**
 
-```
+```text
 Per container allocation:
   - 4 CPU (limit 8)
   - 16 GB RAM (limit 32 GB)
@@ -557,7 +557,7 @@ Running a typical microservices deployment (various sizes):
 
 The microservices pattern with VMs leads to severe resource fragmentation.
 
-```
+```text
 Mix: 5 large (8 vCPU, 16 GB), 10 medium (4 vCPU, 8 GB), 20 small (2 vCPU, 4 GB)
 Total needed: 120 vCPUs, 200 GB RAM
 
@@ -570,7 +570,7 @@ Can only fit: 2 large + 4 medium + 8 small = 14 services
 
 Containers allow precise resource allocation, eliminating fragmentation waste.
 
-```
+```text
 Mix: 5 large (2 CPU, 4 GB), 10 medium (1 CPU, 2 GB), 20 small (0.5 CPU, 1 GB)
 Total needed: 30 CPUs, 50 GB RAM
 

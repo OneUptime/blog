@@ -55,7 +55,7 @@ Flux checks the repository every 5 minutes and applies changes. The prune settin
 
 Organize your repository to support Flux's reconciliation model:
 
-```
+```text
 fleet-infra/
 ├── clusters/
 │   ├── production/
@@ -238,7 +238,7 @@ Flux decrypts secrets automatically before applying them to the cluster. The enc
 
 Deploy the same configuration to multiple clusters with variations:
 
-```
+```text
 fleet-infra/
 ├── clusters/
 │   ├── prod-us-east/

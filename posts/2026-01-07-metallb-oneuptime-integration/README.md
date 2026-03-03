@@ -634,7 +634,7 @@ The following metrics should be displayed:
 
 Example query for pool utilization:
 
-```
+```text
 # PromQL-style query for IP utilization percentage
 (metallb_allocator_addresses_in_use_total / metallb_allocator_addresses_total) * 100
 ```

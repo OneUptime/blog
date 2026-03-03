@@ -12,7 +12,7 @@ Description: Master ldapsearch on Ubuntu to query LDAP directories effectively, 
 
 ## Basic Syntax
 
-```
+```text
 ldapsearch [options] [filter] [attributes...]
 ```
 
@@ -301,7 +301,7 @@ To avoid typing the server and base DN every time, set defaults in `/etc/ldap/ld
 sudo nano /etc/ldap/ldap.conf
 ```
 
-```
+```text
 BASE    dc=example,dc=com
 URI     ldap://ldap.example.com
 BINDDN  cn=admin,dc=example,dc=com

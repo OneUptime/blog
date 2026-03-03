@@ -25,7 +25,7 @@ There are several real-world scenarios where this matters:
 
 Terraform tests live in `.tftest.hcl` files in your module directory. Each file can contain multiple test `run` blocks that execute Terraform commands and make assertions.
 
-```
+```text
 my-module/
   main.tf
   variables.tf
@@ -369,7 +369,7 @@ terraform test -test-directory=tests
 
 Sample output:
 
-```
+```text
 tests/bicep-equivalence.tftest.hcl... in progress
   run "verify_naming_conventions"... pass
   run "verify_security_settings"... pass

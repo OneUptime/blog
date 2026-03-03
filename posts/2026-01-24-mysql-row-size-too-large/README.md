@@ -14,7 +14,7 @@ The "Row size too large" error in MySQL can be frustrating because it often appe
 
 The error message typically looks like this:
 
-```
+```text
 ERROR 1118 (42000): Row size too large (> 8126). Changing some columns to TEXT or BLOB may help.
 In current row format, BLOB prefix of 768 bytes is stored inline.
 ```

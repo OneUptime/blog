@@ -85,7 +85,7 @@ ls /usr/local/nagios/libexec/ | head -20
 
 Understanding where Nagios stores its files:
 
-```
+```text
 /usr/local/nagios/
 ├── bin/                  # Nagios binary
 ├── etc/                  # Configuration files

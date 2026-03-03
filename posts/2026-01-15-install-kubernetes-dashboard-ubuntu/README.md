@@ -224,7 +224,7 @@ kubectl proxy
 
 With the proxy running, open your browser and navigate to:
 
-```
+```text
 http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/
 ```
 

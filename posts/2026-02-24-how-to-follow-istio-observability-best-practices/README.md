@@ -23,7 +23,7 @@ Istio's default metrics cover the basics well. Focus on these four for your init
 
 Build your SLI/SLO dashboards around request rate, error rate, and latency (the RED method):
 
-```
+```text
 # Error rate
 sum(rate(istio_requests_total{response_code=~"5.*"}[5m])) by (destination_service)
 /
@@ -40,7 +40,7 @@ sum(rate(istio_requests_total[5m])) by (destination_service)
 
 High cardinality is the number one operational issue with Istio metrics. Each unique label combination creates a time series. With the default labels, cardinality grows as:
 
-```
+```text
 sources x destinations x response_codes x methods x protocols x ...
 ```
 
@@ -127,7 +127,7 @@ This is the most common source of broken distributed traces. Istio proxies gener
 
 The headers to propagate:
 
-```
+```text
 x-request-id
 x-b3-traceid
 x-b3-spanid

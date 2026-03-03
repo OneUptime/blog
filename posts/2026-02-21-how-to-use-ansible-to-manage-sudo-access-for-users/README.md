@@ -154,7 +154,7 @@ When sudo rules vary by environment or role, templates give you flexibility.
 
 The template:
 
-```
+```text
 # templates/sudoers_custom.j2 - Custom sudo rules managed by Ansible
 # Do not edit manually
 

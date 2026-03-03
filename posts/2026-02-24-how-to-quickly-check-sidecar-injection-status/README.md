@@ -30,7 +30,7 @@ kubectl get namespaces -L istio-injection
 
 This adds an `ISTIO-INJECTION` column to the output:
 
-```
+```text
 NAME              STATUS   AGE   ISTIO-INJECTION
 default           Active   30d   enabled
 kube-system       Active   30d
@@ -51,7 +51,7 @@ kubectl get namespaces -L istio.io/rev
 
 This shows which revision each namespace is using:
 
-```
+```text
 NAME              STATUS   AGE   REV
 default           Active   30d   1-22
 backend           Active   15d   1-22
@@ -68,7 +68,7 @@ The simplest way to check if a pod has the sidecar is to look at the container c
 kubectl get pods -n default
 ```
 
-```
+```text
 NAME                      READY   STATUS    RESTARTS   AGE
 my-app-7f8c9d6b5-abc12   2/2     Running   0          1h
 db-client-5c8b7d-def34   1/1     Running   0          1h
@@ -84,7 +84,7 @@ kubectl get pod my-app-7f8c9d6b5-abc12 -n default -o jsonpath='{.spec.containers
 
 If the sidecar is injected, you will see `istio-proxy` in the list:
 
-```
+```text
 my-app istio-proxy
 ```
 
@@ -124,7 +124,7 @@ istioctl analyze -n default
 
 This will report any pods that should have sidecars but do not:
 
-```
+```text
 Warning [IST0103] (Pod my-app-abc123.default) The pod is missing the Istio proxy.
 ```
 

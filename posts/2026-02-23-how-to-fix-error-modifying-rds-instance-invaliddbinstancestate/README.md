@@ -12,7 +12,7 @@ The `InvalidDBInstanceState` error occurs when Terraform tries to modify an RDS 
 
 ## What the Error Looks Like
 
-```
+```text
 Error: error modifying RDS DB Instance (my-database):
 InvalidDBInstanceState: Instance my-database is not currently
 available. Please try again later.
@@ -21,7 +21,7 @@ available. Please try again later.
 
 Or sometimes:
 
-```
+```text
 Error: error modifying RDS DB Instance (my-database):
 InvalidDBInstanceState: Cannot modify a DB instance that is
 currently being modified.

@@ -103,13 +103,13 @@ Examine your code to identify which partition keys receive the most traffic. Com
 The most effective fix is choosing a better partition key. The goal is high cardinality with even distribution.
 
 **Before (hot):**
-```
+```text
 Partition key: status = "active"  -> 90% of all items
 Partition key: status = "inactive" -> 10% of all items
 ```
 
 **After (distributed):**
-```
+```text
 Partition key: userId  -> millions of unique values
 GSI with status as partition key for status-based queries
 ```

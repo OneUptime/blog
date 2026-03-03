@@ -116,7 +116,7 @@ The receiver fails to bind to the configured port.
 
 ### Symptoms
 
-```
+```text
 Error: failed to start receiver: listen tcp 0.0.0.0:4317: bind: address already in use
 ```
 
@@ -358,7 +358,7 @@ Receiver expects authentication but application doesn't provide it.
 
 ### Symptoms
 
-```
+```text
 Error: rpc error: code = Unauthenticated desc = missing credentials
 Error: tls: bad certificate
 Error: x509: certificate signed by unknown authority
@@ -450,7 +450,7 @@ Application sends data in format receiver doesn't expect.
 
 ### Symptoms
 
-```
+```text
 Error: malformed HTTP request
 Error: unknown service opentelemetry.proto.collector.trace.v1.TraceService
 ```
@@ -518,7 +518,7 @@ Collector refuses data due to memory or CPU limits.
 
 ### Symptoms
 
-```
+```text
 Error: receiver refused data: memory limit exceeded
 Error: context deadline exceeded
 ```
@@ -605,7 +605,7 @@ Receiver configuration is invalid or incomplete.
 
 ### Symptoms
 
-```
+```text
 Error: error reading configuration: yaml: unmarshal errors
 Error: receiver "otlp" not found in service pipelines
 ```

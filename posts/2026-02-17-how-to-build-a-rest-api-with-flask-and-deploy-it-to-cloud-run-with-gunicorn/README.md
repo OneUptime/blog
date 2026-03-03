@@ -16,7 +16,7 @@ This post walks through building a REST API from scratch, setting up Gunicorn co
 
 Start with the project structure:
 
-```
+```text
 my-api/
   app/
     __init__.py
@@ -30,7 +30,7 @@ my-api/
 
 Create the requirements file:
 
-```
+```text
 # requirements.txt - Production dependencies
 Flask==3.1.0
 gunicorn==22.0.0

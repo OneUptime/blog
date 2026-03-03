@@ -34,7 +34,7 @@ resource "aws_s3_object" "file" {
 
 When you run `terraform plan`, Terraform shows the move instead of a destroy/create:
 
-```
+```text
 Terraform will perform the following actions:
 
   # aws_s3_bucket_object.file has moved to aws_s3_object.file

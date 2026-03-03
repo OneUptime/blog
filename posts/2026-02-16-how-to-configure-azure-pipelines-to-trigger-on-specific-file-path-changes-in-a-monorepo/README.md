@@ -50,7 +50,7 @@ With this configuration:
 
 In a typical monorepo, you create one pipeline per service or major component. Here is the directory structure and corresponding pipeline configuration:
 
-```
+```text
 monorepo/
   services/
     api/

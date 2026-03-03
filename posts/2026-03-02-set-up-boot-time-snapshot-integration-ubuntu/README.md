@@ -87,7 +87,7 @@ sudo snapper -c root create-config /
 
 Snapper places snapshots under `/.snapshots/`. By default, each snapshot directory contains:
 
-```
+```text
 /.snapshots/
     1/
         snapshot/   <- the actual Btrfs subvolume
@@ -137,7 +137,7 @@ sudo update-grub
 
 You should see output like:
 
-```
+```text
 Generating grub configuration file ...
 Found Btrfs snapshot: 2026-03-02_10-00-00 - Before major config change
 Found Btrfs snapshot: 2026-03-01_02-00-00 - Daily auto-snapshot
@@ -217,7 +217,7 @@ Pair `grub-btrfs` with a pre-upgrade hook for automatic protection:
 sudo nano /etc/apt/apt.conf.d/80snapper-pre-upgrade
 ```
 
-```
+```text
 DPkg::Pre-Invoke {
     "if [ -x /usr/bin/snapper ]; then snapper -c root create --description 'Pre-apt' --type pre --print-number --userdata 'important=yes'; fi"
 };
@@ -244,7 +244,7 @@ sudo nano /etc/snapper/configs/root
 
 Set retention limits:
 
-```
+```text
 NUMBER_CLEANUP="yes"
 NUMBER_MIN_AGE="1800"
 NUMBER_LIMIT="10"

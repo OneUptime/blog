@@ -16,7 +16,7 @@ For Talos Linux clusters, ECMP is particularly valuable when combined with BGP t
 
 In traditional routing, each destination has a single next-hop. With ECMP, a destination can have multiple next-hops of equal cost:
 
-```
+```text
 Without ECMP:
 Client -> Router -> Node1 (single path)
 
@@ -147,7 +147,7 @@ When MetalLB runs on multiple nodes and all nodes advertise the same service IP,
 
 The router needs to be configured to support multiple paths. Here is a FRRouting example:
 
-```
+```text
 router bgp 64501
   neighbor k8s peer-group
   neighbor k8s remote-as 64512

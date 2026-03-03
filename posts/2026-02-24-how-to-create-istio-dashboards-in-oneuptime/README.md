@@ -36,7 +36,7 @@ Create status widgets for each critical component:
 
 A time-series chart showing total request rate across the mesh:
 
-```
+```text
 # Total mesh request rate
 sum(rate(istio_requests_total[5m]))
 
@@ -50,7 +50,7 @@ This gives you a quick view of traffic patterns. Sudden drops or spikes are imme
 
 A time-series chart showing error rates:
 
-```
+```text
 # 5xx error rate as percentage
 sum(rate(istio_requests_total{response_code=~"5.*"}[5m]))
 /
@@ -70,7 +70,7 @@ Display 5xx and 4xx on the same chart with different colors. 5xx errors are your
 
 Show p50, p95, and p99 latency on the same chart:
 
-```
+```text
 # P50 latency
 histogram_quantile(0.50,
   sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le)
@@ -95,14 +95,14 @@ Create one of these for each critical service. Use a template variable for the s
 
 ### Service Identity
 
-```
+```text
 # Variable: service_name
 # Example value: api-service.default.svc.cluster.local
 ```
 
 ### Row 1: Request Rate and Error Rate
 
-```
+```text
 # Inbound request rate
 sum(rate(istio_requests_total{destination_service="$service_name"}[5m]))
 
@@ -115,7 +115,7 @@ sum(rate(istio_requests_total{destination_service="$service_name"}[5m]))
 
 ### Row 2: Latency Breakdown
 
-```
+```text
 # P50, P95, P99 for the specific service
 histogram_quantile(0.50,
   sum(rate(istio_request_duration_milliseconds_bucket{destination_service="$service_name"}[5m])) by (le)
@@ -134,7 +134,7 @@ histogram_quantile(0.99,
 
 Show where traffic to this service is coming from:
 
-```
+```text
 # Request rate by source workload
 sum(rate(istio_requests_total{destination_service="$service_name"}[5m])) by (source_workload)
 ```
@@ -143,7 +143,7 @@ Display this as a stacked bar chart or table. This helps you understand which cl
 
 ### Row 4: Response Code Distribution
 
-```
+```text
 # Response codes for this service
 sum(rate(istio_requests_total{destination_service="$service_name"}[5m])) by (response_code)
 ```
@@ -152,7 +152,7 @@ A pie chart or stacked area chart works well here. You want to see the proportio
 
 ### Row 5: TCP Metrics
 
-```
+```text
 # Active TCP connections
 sum(istio_tcp_connections_opened_total{destination_service="$service_name"})
 -
@@ -169,7 +169,7 @@ This dashboard monitors istiod and the mesh infrastructure.
 
 ### Row 1: istiod Resource Usage
 
-```
+```text
 # CPU usage
 rate(container_cpu_usage_seconds_total{namespace="istio-system", container="discovery"}[5m])
 
@@ -179,7 +179,7 @@ container_memory_working_set_bytes{namespace="istio-system", container="discover
 
 ### Row 2: Configuration Push Metrics
 
-```
+```text
 # XDS push rate
 sum(rate(pilot_xds_pushes[5m])) by (type)
 
@@ -194,7 +194,7 @@ histogram_quantile(0.99,
 
 ### Row 3: Connected Proxies
 
-```
+```text
 # Number of connected proxies
 pilot_xds
 
@@ -206,7 +206,7 @@ During an upgrade, you'll see the version distribution shift, which helps you tr
 
 ### Row 4: Certificate Health
 
-```
+```text
 # Root cert expiry (should be far in the future)
 citadel_server_root_cert_expiry_timestamp - time()
 
@@ -223,7 +223,7 @@ If you use Istio Ingress Gateways, create a dashboard specifically for them:
 
 ### Row 1: Gateway Traffic
 
-```
+```text
 # Inbound request rate at the gateway
 sum(rate(istio_requests_total{destination_service_namespace="istio-system", destination_service_name="istio-ingressgateway"}[5m]))
 
@@ -233,7 +233,7 @@ sum(rate(istio_requests_total{source_workload="istio-ingressgateway"}[5m])) by (
 
 ### Row 2: Gateway Latency
 
-```
+```text
 # Latency at the gateway (this includes routing to backend)
 histogram_quantile(0.99,
   sum(rate(istio_request_duration_milliseconds_bucket{source_workload="istio-ingressgateway"}[5m])) by (le, destination_service)
@@ -242,7 +242,7 @@ histogram_quantile(0.99,
 
 ### Row 3: Active Connections
 
-```
+```text
 # Active connections to the gateway
 sum(envoy_server_total_connections{namespace="istio-system"})
 ```

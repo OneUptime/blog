@@ -33,7 +33,7 @@ variable "db_password" {
 
 When you run `terraform plan`, you will see something like this in the output:
 
-```
+```text
 # aws_db_instance.main will be created
 + resource "aws_db_instance" "main" {
     + password = (sensitive value)
@@ -133,7 +133,7 @@ output "connection_string" {
 
 If you try to output a sensitive value without marking the output as sensitive, Terraform will throw an error:
 
-```
+```text
 Error: Output refers to sensitive values
 
 Output "connection_string" includes a sensitive value.

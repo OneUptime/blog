@@ -371,7 +371,7 @@ kubectl get pods -n production --watch
 - Create post-mortem document
 - Update runbooks if needed
 - Review what made rollback necessary
-```
+```text
 
 ## Rollback Metrics
 

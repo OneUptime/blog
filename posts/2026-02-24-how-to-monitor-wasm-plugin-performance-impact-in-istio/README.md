@@ -34,7 +34,7 @@ kubectl exec my-service-pod-xyz -c istio-proxy -- \
 
 You should see metrics like:
 
-```
+```text
 envoy_wasm_envoy_wasm_runtime_v8_active{} 2
 envoy_wasm_envoy_wasm_runtime_v8_created{} 5
 envoy_wasm_remote_load_cache_entries{} 1

@@ -32,7 +32,7 @@ The tracking server stores experiment metadata in PostgreSQL and model artifacts
 
 Set up your Git repository to manage the MLflow deployment:
 
-```
+```text
 mlflow/
   base/
     kustomization.yaml

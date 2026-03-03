@@ -45,7 +45,7 @@ Navigate to Dashboard Settings > Variables > New Variable.
 
 ### Step 2: Configure a Namespace Variable
 
-```
+```text
 Name: namespace
 Label: Namespace
 Type: Query
@@ -96,21 +96,21 @@ flowchart LR
 
 ### Namespace Variable
 
-```
+```text
 Name: namespace
 Query: label_values(kube_pod_info, namespace)
 ```
 
 ### Service Variable (depends on namespace)
 
-```
+```text
 Name: service
 Query: label_values(kube_pod_info{namespace="$namespace"}, created_by_name)
 ```
 
 ### Pod Variable (depends on namespace and service)
 
-```
+```text
 Name: pod
 Query: label_values(kube_pod_info{namespace="$namespace", created_by_name="$service"}, pod)
 Multi-value: Yes
@@ -139,7 +139,7 @@ Use `=~` (regex match) instead of `=` (exact match) for multi-value variables.
 
 An interval variable lets users control the rate window:
 
-```
+```text
 Name: interval
 Type: Interval
 Values: 1m, 5m, 15m, 30m, 1h
@@ -159,7 +159,7 @@ sum by (pod) (
 
 A custom variable provides a fixed list of choices:
 
-```
+```text
 Name: environment
 Type: Custom
 Values: production, staging, development
@@ -170,7 +170,7 @@ Default: production
 
 A data source variable lets users switch between Prometheus instances:
 
-```
+```text
 Name: datasource
 Type: Data source
 Data source type: Prometheus
@@ -215,7 +215,7 @@ To configure repeating:
 
 You can reference variables in panel titles:
 
-```
+```text
 Panel title: CPU Usage - $namespace / $service
 ```
 
@@ -223,7 +223,7 @@ This dynamically updates the title based on the selected values.
 
 ## Common label_values Queries
 
-```
+```text
 # All namespaces
 label_values(kube_pod_info, namespace)
 
@@ -247,7 +247,7 @@ label_values(http_requests_total, status_code)
 
 Sometimes you need to extract part of a label value:
 
-```
+```text
 Name: deployment
 Query: label_values(kube_deployment_status_replicas, deployment)
 Regex: /(.+)/
@@ -255,7 +255,7 @@ Regex: /(.+)/
 
 Or extract a prefix:
 
-```
+```text
 Name: service_group
 Query: label_values(http_requests_total, service)
 # Extract everything before the first hyphen

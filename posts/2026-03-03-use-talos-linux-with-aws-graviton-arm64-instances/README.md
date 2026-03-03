@@ -195,7 +195,7 @@ Run the same benchmark on both x86 and ARM64 nodes to compare.
 
 For Kubernetes worker nodes, here is a practical selection guide:
 
-```
+```text
 Development/Testing:
   t4g.medium  - 2 vCPU, 4 GB RAM  - cheapest option
   t4g.large   - 2 vCPU, 8 GB RAM  - more memory headroom

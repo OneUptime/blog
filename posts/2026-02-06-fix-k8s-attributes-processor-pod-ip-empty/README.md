@@ -12,7 +12,7 @@ The `k8sattributes` processor is one of the most useful components in a Kubernet
 
 The processor maintains a local cache of pod metadata by watching the Kubernetes API. When a span or metric arrives, it extracts the source IP from the connection metadata and looks it up in the cache. If it finds a matching pod, it adds the Kubernetes attributes.
 
-```
+```text
 Incoming span -> Extract source IP -> Look up in pod cache -> Add k8s attributes
 ```
 

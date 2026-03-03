@@ -288,7 +288,7 @@ jobs:
 
 Do not upgrade all environments at once. Follow a staged approach:
 
-```
+```text
 1. Test in CI with both versions (plan comparison)
 2. Upgrade development environment
 3. Run full test suite against dev

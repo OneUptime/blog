@@ -14,7 +14,7 @@ The "403 Forbidden" error with a "directory index of /path/ is forbidden" messag
 
 When you see this in your Nginx error log:
 
-```
+```text
 directory index of "/var/www/html/" is forbidden
 ```
 

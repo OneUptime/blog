@@ -156,7 +156,7 @@ tcpdump -r capture.pcap -c 1 -tttt && tcpdump -r capture.pcap -tttt | tail -1
 
 ### Opening and Filtering Captures
 
-```
+```text
 # Display filters for latency analysis
 
 # Show only TCP conversations
@@ -216,7 +216,7 @@ flowchart TB
 
 ### Key Wireshark Statistics for Latency
 
-```
+```text
 Statistics > TCP Stream Graphs > Round Trip Time
 - Shows RTT over time for selected stream
 - Identify RTT spikes and patterns
@@ -238,7 +238,7 @@ Statistics > Flow Graph
 
 ### Pattern 1: TCP Handshake Latency
 
-```
+```text
 # Wireshark filter
 tcp.flags.syn == 1
 
@@ -300,7 +300,7 @@ if __name__ == "__main__":
 
 ### Pattern 2: Application Response Latency
 
-```
+```text
 # Wireshark filter for HTTP
 http.request or http.response
 
@@ -330,7 +330,7 @@ tshark -r capture.pcap -q -z io,stat,1
 
 ### Pattern 3: Retransmission-Induced Latency
 
-```
+```text
 # Wireshark filter
 tcp.analysis.retransmission or tcp.analysis.fast_retransmission
 
@@ -356,7 +356,7 @@ tshark -r capture.pcap -T fields \
 
 ### Pattern 4: Window Size Issues
 
-```
+```text
 # Wireshark filter
 tcp.window_size_value < 1000 or tcp.analysis.zero_window
 
@@ -368,7 +368,7 @@ tcp.window_size_value < 1000 or tcp.analysis.zero_window
 
 ### Pattern 5: DNS Resolution Latency
 
-```
+```text
 # Wireshark filter
 dns
 
@@ -552,7 +552,7 @@ echo "Full analysis saved to: $OUTPUT_DIR/"
 
 ## Wireshark Display Filter Quick Reference
 
-```
+```text
 # Connection establishment
 tcp.flags.syn == 1 && tcp.flags.ack == 0    # SYN only
 tcp.flags.syn == 1 && tcp.flags.ack == 1    # SYN-ACK

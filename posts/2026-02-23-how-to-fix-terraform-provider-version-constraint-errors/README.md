@@ -14,7 +14,7 @@ Terraform providers are plugins that interact with cloud APIs and other services
 
 Provider version constraint errors typically appear during `terraform init`:
 
-```
+```text
 Error: Failed to query available provider packages
 
 Could not retrieve the list of available versions for provider
@@ -24,7 +24,7 @@ hashicorp/aws: locked provider registry.terraform.io/hashicorp/aws
 
 Or when modules have incompatible constraints:
 
-```
+```text
 Error: Incompatible provider version
 
 Provider registry.terraform.io/hashicorp/aws v4.67.0 does not have a
@@ -143,7 +143,7 @@ This tells Terraform to ignore the current lock file selections and find the new
 
 Some provider versions are not available for all platforms:
 
-```
+```text
 Error: Failed to install provider
 
 Provider registry.terraform.io/hashicorp/aws v5.30.0 does not have
@@ -207,7 +207,7 @@ This is especially important for third-party providers that are not in the `hash
 
 ## Fix 5: Provider Not Found in Registry
 
-```
+```text
 Error: Failed to query available provider packages
 
 Could not retrieve the list of available versions for provider

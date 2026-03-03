@@ -227,7 +227,7 @@ spec:
 
 On the DNS side (outside of Istio), you'll need to set up a wildcard DNS record pointing to your ingress gateway's external IP:
 
-```
+```text
 *.app.example.com    A    <ingress-gateway-external-ip>
 ```
 

@@ -16,7 +16,7 @@ This post walks through setting up a complete Bicep CI/CD pipeline in GitHub Act
 
 Before diving into the workflow, here is how the Bicep project is organized.
 
-```
+```text
 infrastructure/
   modules/
     networking/

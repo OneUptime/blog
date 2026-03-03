@@ -12,7 +12,7 @@ Web servers are probably the most common thing you will automate with Ansible. E
 
 ## Role Structure
 
-```
+```text
 roles/nginx/
   defaults/main.yml
   handlers/main.yml

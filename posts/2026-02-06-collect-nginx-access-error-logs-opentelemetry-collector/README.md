@@ -18,13 +18,13 @@ Before configuring the Collector, it helps to know what NGINX logs look like and
 
 The default NGINX access log uses the "combined" format, which looks like this:
 
-```
+```text
 192.168.1.100 - frank [10/Feb/2026:13:55:36 +0000] "GET /api/users HTTP/1.1" 200 4523 "https://example.com/dashboard" "Mozilla/5.0 (X11; Linux x86_64)"
 ```
 
 The error log has a different format:
 
-```
+```text
 2026/02/10 13:55:36 [error] 12345#0: *67890 open() "/var/www/html/missing.css" failed (2: No such file or directory), client: 192.168.1.100, server: example.com, request: "GET /missing.css HTTP/1.1"
 ```
 

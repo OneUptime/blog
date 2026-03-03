@@ -16,7 +16,7 @@ When a k6 test completes, you see a summary of collected metrics. Here is what e
 
 ### Standard HTTP Metrics
 
-```
+```text
 http_reqs......................: 15234   253.9/s
 http_req_blocked...............: avg=2.1ms    min=1µs      med=3µs      max=502ms    p(90)=5µs      p(95)=8µs
 http_req_connecting............: avg=1.8ms    min=0s       med=0s       max=498ms    p(90)=0s       p(95)=0s
@@ -87,7 +87,7 @@ export default function () {
 
 ### Interpreting Percentile Spread
 
-```
+```text
 http_req_duration:
   avg=127ms
   med=98ms     # 50th percentile - half of requests faster than this
@@ -114,7 +114,7 @@ xychart-beta
 ### Problem 1: Connection Pool Exhaustion
 
 **Symptoms:**
-```
+```text
 http_req_blocked: avg=245ms  min=1µs  med=2µs  max=1.2s  p(90)=890ms  p(95)=1.1s
 ```
 
@@ -125,7 +125,7 @@ High `blocked` time means requests are waiting for available connections.
 ### Problem 2: Slow Server Response
 
 **Symptoms:**
-```
+```text
 http_req_waiting: avg=2.1s  min=45ms  med=1.8s  max=15s  p(95)=4.2s
 ```
 
@@ -136,7 +136,7 @@ High `waiting` time indicates slow backend processing.
 ### Problem 3: Network Bottleneck
 
 **Symptoms:**
-```
+```text
 http_req_receiving: avg=890ms  min=15µs  med=456ms  max=3.2s  p(95)=1.8s
 ```
 
@@ -147,7 +147,7 @@ High `receiving` time with large responses indicates bandwidth limits.
 ### Problem 4: Error Spikes Under Load
 
 **Symptoms:**
-```
+```text
 http_req_failed: 15.2%  ✗ 2312  ✓ 12922
 ```
 
@@ -245,7 +245,7 @@ export default function () {
 
 Output includes tagged metrics:
 
-```
+```text
 http_req_duration{endpoint:checkout}: avg=245ms  p(95)=456ms
 http_req_duration{endpoint:products}: avg=89ms   p(95)=145ms
 http_req_duration{endpoint:search}:   avg=156ms  p(95)=278ms

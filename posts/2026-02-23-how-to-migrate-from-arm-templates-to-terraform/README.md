@@ -47,7 +47,7 @@ az deployment group export \
 
 Create a mapping between ARM resource types and Terraform:
 
-```
+```text
 ARM Resource Type                              Terraform Resource
 -----------------                              ------------------
 Microsoft.Compute/virtualMachines           -> azurerm_linux_virtual_machine / azurerm_windows_virtual_machine
@@ -274,7 +274,7 @@ resource "azurerm_application_insights" "main" {
 
 Use this checklist to track your migration progress:
 
-```
+```text
 [ ] Inventory all ARM deployments and resources
 [ ] Create resource type mapping (ARM to Terraform)
 [ ] Write Terraform configuration for all resources

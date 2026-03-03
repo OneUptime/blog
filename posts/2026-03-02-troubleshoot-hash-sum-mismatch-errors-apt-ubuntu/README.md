@@ -10,7 +10,7 @@ Description: Learn how to diagnose and fix 'Hash Sum Mismatch' errors when runni
 
 Running `sudo apt update` and hitting a "Hash Sum Mismatch" error is one of those intermittent issues that can appear suddenly and be confusing to track down. The error looks something like this:
 
-```
+```text
 W: Failed to fetch http://archive.ubuntu.com/ubuntu/dists/jammy/main/binary-amd64/Packages.xz
    Hash Sum mismatch
    Hashes of expected file:

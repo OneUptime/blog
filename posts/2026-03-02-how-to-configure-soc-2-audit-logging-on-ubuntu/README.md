@@ -39,7 +39,7 @@ Create a comprehensive audit rules file:
 sudo nano /etc/audit/rules.d/99-soc2.rules
 ```
 
-```
+```text
 # /etc/audit/rules.d/99-soc2.rules
 # SOC 2 Audit Rules for Ubuntu
 
@@ -141,7 +141,7 @@ sudo auditctl -s
 sudo nano /etc/audit/auditd.conf
 ```
 
-```
+```text
 # SOC 2 requires retaining logs for at least 1 year (12 months minimum)
 # Configure log rotation accordingly
 
@@ -185,7 +185,7 @@ sudo apt install rsyslog -y
 sudo nano /etc/rsyslog.d/50-soc2-forward.conf
 ```
 
-```
+```text
 # Forward all authentication and audit events to SIEM
 # Replace SIEM_HOST with your actual SIEM address
 
@@ -220,7 +220,7 @@ Ensure SSH logs all authentication attempts in detail:
 sudo nano /etc/ssh/sshd_config.d/logging.conf
 ```
 
-```
+```text
 # Enhanced SSH logging for SOC 2
 LogLevel VERBOSE
 SyslogFacility AUTH

@@ -494,7 +494,7 @@ SET load_balancing = 'nearest_hostname';
 
 ### Pattern 3: Tiered Replicas
 
-```
+```text
 Primary Replica:
   - Handles all writes
   - Handles real-time queries

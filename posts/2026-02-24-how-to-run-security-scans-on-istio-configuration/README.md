@@ -88,7 +88,7 @@ Trivy checks for things like:
 
 Example output for an Istio gateway deployment:
 
-```
+```text
 k8s/istio/gateway-deployment.yaml
 ==================================
 Tests: 23 (SUCCESSES: 18, FAILURES: 5)

@@ -14,7 +14,7 @@ MaxScale is an open-source database proxy developed by MariaDB. It sits between 
 
 A typical MaxScale deployment looks like:
 
-```
+```text
 Application -> MaxScale -> Primary (writes)
                        -> Replica 1 (reads)
                        -> Replica 2 (reads)

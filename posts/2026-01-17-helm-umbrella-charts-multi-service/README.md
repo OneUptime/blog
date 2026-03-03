@@ -48,7 +48,7 @@ Umbrella charts:
 
 ### Directory Structure
 
-```
+```text
 my-application/
 ├── Chart.yaml
 ├── Chart.lock

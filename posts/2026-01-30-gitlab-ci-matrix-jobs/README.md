@@ -92,7 +92,7 @@ This generates six jobs:
 
 GitLab automatically names matrix jobs using the variable values. The naming follows this pattern:
 
-```
+```text
 job_name: [value1, value2, ...]
 ```
 

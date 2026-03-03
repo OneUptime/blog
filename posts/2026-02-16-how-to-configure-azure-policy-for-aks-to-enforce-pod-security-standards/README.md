@@ -161,7 +161,7 @@ kubectl apply -f test-privileged-pod.yaml
 
 You should get an error like:
 
-```
+```text
 Error from server (Forbidden): admission webhook "validation.gatekeeper.sh" denied the request:
 [azurepolicy-psp-privileged-container-xxx] Privileged container is not allowed: nginx
 ```

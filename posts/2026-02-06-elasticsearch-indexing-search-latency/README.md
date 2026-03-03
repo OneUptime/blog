@@ -78,13 +78,13 @@ service:
 
 The indexing rate tells you how many documents per second Elasticsearch is ingesting:
 
-```
+```text
 elasticsearch.node.operations.completed{operation="index"} - Total indexed documents
 elasticsearch.node.operations.time{operation="index"}      - Time spent indexing
 ```
 
 Calculate the rate:
-```
+```text
 indexing_rate = rate(elasticsearch.node.operations.completed{operation="index"}[5m])
 ```
 
@@ -92,7 +92,7 @@ A healthy indexing rate depends on your hardware and document size. Watch for su
 
 ### Indexing Latency
 
-```
+```text
 avg_indexing_latency = elasticsearch.node.operations.time{operation="index"} / elasticsearch.node.operations.completed{operation="index"}
 ```
 
@@ -104,7 +104,7 @@ If average indexing latency increases, possible causes include:
 
 ### Bulk Indexing
 
-```
+```text
 elasticsearch.indices.indexing.index_total    - Documents indexed (per index)
 elasticsearch.indices.indexing.index_time_ms  - Time spent in indexing
 ```
@@ -115,7 +115,7 @@ elasticsearch.indices.indexing.index_time_ms  - Time spent in indexing
 
 Search operations have two phases: query (finding matching documents) and fetch (retrieving document content):
 
-```
+```text
 elasticsearch.indices.search.query.total   - Total search queries
 elasticsearch.indices.search.query.time    - Total query time
 elasticsearch.indices.search.fetch.total   - Total fetch operations
@@ -123,7 +123,7 @@ elasticsearch.indices.search.fetch.time    - Total fetch time
 ```
 
 Calculate average search latency:
-```
+```text
 avg_query_latency = search.query.time / search.query.total
 avg_fetch_latency = search.fetch.time / search.fetch.total
 total_search_latency = avg_query_latency + avg_fetch_latency
@@ -131,7 +131,7 @@ total_search_latency = avg_query_latency + avg_fetch_latency
 
 ### Search Rate
 
-```
+```text
 search_rate = rate(elasticsearch.indices.search.query.total[5m])
 ```
 
@@ -139,7 +139,7 @@ Track this alongside query latency. If search rate increases and latency stays f
 
 ### Scroll and Suggest
 
-```
+```text
 elasticsearch.indices.search.scroll.total    - Scroll queries
 elasticsearch.indices.search.scroll.time     - Scroll query time
 elasticsearch.indices.search.suggest.total   - Suggest queries
@@ -149,7 +149,7 @@ elasticsearch.indices.search.suggest.total   - Suggest queries
 
 Elasticsearch uses Lucene under the hood, which periodically merges small segments into larger ones. This is essential for search performance but consumes I/O:
 
-```
+```text
 elasticsearch.indices.merges.total           - Total merge operations
 elasticsearch.indices.merges.total_time      - Time spent merging
 elasticsearch.indices.merges.total_docs      - Documents merged
@@ -160,7 +160,7 @@ elasticsearch.indices.merges.current_docs    - Documents in active merges
 
 ### Merge Throughput
 
-```
+```text
 merge_throughput = rate(elasticsearch.indices.merges.total_size[5m])
 ```
 

@@ -23,7 +23,7 @@ SideroLink establishes a WireGuard tunnel from each Talos node to a central endp
 
 The architecture looks like this:
 
-```
+```text
 Talos Node 1 (Office)          Omni Endpoint (Cloud)
   WireGuard tunnel ---------> SideroLink Server
   fdae:41e4:...:1              fdae:41e4:...:0
@@ -125,7 +125,7 @@ SideroLink requires minimal firewall rules because connections are initiated fro
 
 ### On the Talos Nodes (Outbound)
 
-```
+```text
 # Required outbound rules
 Protocol: UDP
 Port: 8099 (or your configured WireGuard port)
@@ -137,7 +137,7 @@ No inbound rules are needed on the Talos nodes. This is one of SideroLink's bigg
 
 ### On the Omni Server (Inbound)
 
-```
+```text
 # Required inbound rules
 Protocol: UDP
 Port: 8099
@@ -199,7 +199,7 @@ You can also use the Omni web interface to:
 
 SideroLink creates a flat IPv6 network where every node is directly reachable from the Omni endpoint:
 
-```
+```text
 SideroLink Network: fdae:41e4:649b:9303::/64
 
 Omni Server:       fdae:41e4:649b:9303::1
@@ -235,7 +235,7 @@ This means you can manage nodes in environments where:
 
 For organizations with nodes in multiple locations, SideroLink connects them all to a single Omni instance:
 
-```
+```text
 Site A: Office (10.1.0.0/16)
   - Node A1, A2, A3 -----> SideroLink ---+
                                           |

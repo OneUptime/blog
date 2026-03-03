@@ -262,7 +262,7 @@ How you organize your Git repository directly impacts ArgoCD performance:
 
 **Bad**: One massive repository with all applications
 
-```
+```text
 monorepo/
   app1/
   app2/
@@ -274,7 +274,7 @@ Every Git fetch downloads the entire repository history.
 
 **Better**: Split into per-team or per-domain repositories
 
-```
+```text
 team-frontend/     # 50 apps
 team-backend/      # 80 apps
 team-platform/     # 30 apps
@@ -283,7 +283,7 @@ team-data/         # 40 apps
 
 **Best**: Use a GitOps config repository pattern with shallow references
 
-```
+```text
 gitops-config/        # Small config repo
   applications/       # Application manifests only
   overlays/           # Environment-specific config

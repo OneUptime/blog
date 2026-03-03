@@ -45,7 +45,7 @@ func main() {
 
 Output will vary between iterations:
 
-```
+```text
 Run 1:
   three: 3
   four: 4
@@ -111,7 +111,7 @@ func main() {
 
 Output is always:
 
-```
+```text
 Sorted by key:
   apple: 1
   banana: 2

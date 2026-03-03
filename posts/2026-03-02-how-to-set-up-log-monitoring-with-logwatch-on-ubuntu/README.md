@@ -119,7 +119,7 @@ sudo logwatch --print --format html > /tmp/logwatch-report.html
 
 A typical Logwatch report includes sections like:
 
-```
+```text
  ################### Logwatch 7.6 (01/22/21) ####################
         Processing Initiated: Mon Mar  2 08:00:01 2026
         Date Range Processed: yesterday

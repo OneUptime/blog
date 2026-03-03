@@ -14,7 +14,7 @@ Server-Sent Events (SSE) is a standard for pushing data from server to client ov
 
 A client opens an HTTP connection and the server responds with `Content-Type: text/event-stream`. Instead of sending a complete response and closing the connection, the server keeps the connection open and periodically sends events in a specific format:
 
-```
+```text
 data: {"temperature": 72.5, "unit": "F"}
 
 data: {"temperature": 73.1, "unit": "F"}

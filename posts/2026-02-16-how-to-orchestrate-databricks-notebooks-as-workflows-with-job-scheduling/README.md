@@ -28,7 +28,7 @@ Before creating a workflow, structure your notebooks as modular, reusable units.
 
 Here is an example pipeline structure for a data processing workflow.
 
-```
+```text
 /Repos/production/etl-pipeline/
   01_ingest_raw_data.py
   02_clean_and_validate.py

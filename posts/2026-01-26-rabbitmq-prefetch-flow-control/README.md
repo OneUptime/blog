@@ -152,7 +152,7 @@ Consider these factors:
 
 A rough formula:
 
-```
+```text
 prefetch = target_throughput * avg_processing_time * safety_factor
 
 Example:

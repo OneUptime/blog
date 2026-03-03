@@ -552,7 +552,7 @@ test.describe('Dashboard with fixtures', () => {
 
 Organize your page objects in a clear folder structure.
 
-```
+```text
 tests/
   e2e/
     login.spec.ts

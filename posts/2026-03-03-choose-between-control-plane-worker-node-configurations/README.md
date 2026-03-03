@@ -121,7 +121,7 @@ For a homelab, zero dedicated workers (with scheduling on control plane enabled)
 
 By default, Kubernetes does not schedule regular workloads on control plane nodes. They have a taint that repels normal pods:
 
-```
+```text
 node-role.kubernetes.io/control-plane:NoSchedule
 ```
 

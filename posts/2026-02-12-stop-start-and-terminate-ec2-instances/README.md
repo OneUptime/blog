@@ -250,7 +250,7 @@ Schedule this with AWS EventBridge (CloudWatch Events) and Lambda, or use AWS In
 
 AWS provides the Instance Scheduler solution that handles stop/start schedules through tags:
 
-```
+```text
 Tag: Schedule = office-hours
 ```
 

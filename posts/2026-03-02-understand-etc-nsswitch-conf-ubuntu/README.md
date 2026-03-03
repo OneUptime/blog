@@ -35,7 +35,7 @@ cat /etc/nsswitch.conf
 
 A typical Ubuntu `nsswitch.conf`:
 
-```
+```text
 # /etc/nsswitch.conf
 #
 # Example configuration of GNU Name Service Switch functionality.
@@ -60,7 +60,7 @@ netgroup:       nis
 
 Each line is:
 
-```
+```text
 database: source1 [action] source2 source3...
 ```
 
@@ -89,7 +89,7 @@ Common sources:
 
 Actions in brackets control what happens when a lookup returns a result:
 
-```
+```text
 hosts: files mdns4_minimal [NOTFOUND=return] dns
 ```
 
@@ -120,7 +120,7 @@ Default behavior (without explicit actions):
 
 The `hosts` line is the most commonly tuned:
 
-```
+```text
 hosts: files mdns4_minimal [NOTFOUND=return] dns myhostname
 ```
 
@@ -135,25 +135,25 @@ hosts: files mdns4_minimal [NOTFOUND=return] dns myhostname
 
 **Standard configuration (default Ubuntu):**
 
-```
+```text
 hosts: files mdns4_minimal [NOTFOUND=return] dns myhostname
 ```
 
 **Skip mDNS (server without Avahi):**
 
-```
+```text
 hosts: files dns myhostname
 ```
 
 **Use systemd-resolved:**
 
-```
+```text
 hosts: files mymachines resolve [!UNAVAIL=return] dns mdns4_minimal myhostname
 ```
 
 **Check DNS before mDNS:**
 
-```
+```text
 hosts: files dns mdns4_minimal myhostname
 ```
 
@@ -163,7 +163,7 @@ This is handled differently - in `/etc/resolv.conf` or systemd-resolved options 
 
 ## The passwd and group Databases - User Lookups
 
-```
+```text
 passwd: files systemd
 group:  files systemd
 ```
@@ -175,7 +175,7 @@ group:  files systemd
 
 If your Ubuntu server authenticates against LDAP or Active Directory via SSSD:
 
-```
+```text
 passwd:         files sss
 group:          files sss
 shadow:         files sss
@@ -184,7 +184,7 @@ gshadow:        files
 
 Or with winbind for Active Directory:
 
-```
+```text
 passwd:         files winbind
 group:          files winbind
 shadow:         files
@@ -284,7 +284,7 @@ ls -la /etc/resolv.conf
 
 To use `systemd-resolved` fully through nsswitch:
 
-```
+```text
 hosts: files mymachines resolve [!UNAVAIL=return] dns mdns4_minimal myhostname
 ```
 
@@ -300,7 +300,7 @@ cat /etc/nsswitch.conf | grep hosts
 
 Put the most-frequently-used and fastest source first:
 
-```
+```text
 # Good: local files checked before DNS
 hosts: files dns
 
@@ -332,7 +332,7 @@ netgroup:       nis  # Remove if not using NIS
 
 Always keep `files` first in `passwd`, `group`, and `shadow` databases - this ensures local system accounts always work even if a remote directory (LDAP, AD) is unreachable:
 
-```
+```text
 # Safe - local files first
 passwd: files ldap
 

@@ -203,7 +203,7 @@ sudo systemctl restart NetworkManager
 sudo nano /etc/resolv.conf
 ```
 
-```
+```text
 nameserver 127.0.0.1
 ```
 

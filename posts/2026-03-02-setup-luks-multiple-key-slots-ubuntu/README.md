@@ -51,7 +51,7 @@ sudo cryptsetup luksDump /dev/sdb1
 
 In the output, look for the `Keyslots:` section (LUKS2) or `Key Slot` entries (LUKS1):
 
-```
+```text
 # LUKS2 example output (relevant section):
 Keyslots:
   0: luks2
@@ -204,14 +204,14 @@ sudo nano /etc/crypttab
 
 Add an entry:
 
-```
+```text
 # Format: <name> <device> <key-file> <options>
 data_volume  /dev/sdb1  /root/luks-keyfile  luks,key-slot=1
 ```
 
 Then update `/etc/fstab` to mount the unlocked volume:
 
-```
+```text
 /dev/mapper/data_volume  /data  ext4  defaults  0  2
 ```
 

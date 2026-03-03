@@ -202,7 +202,7 @@ On-demand mode charges per GB of data written and read, plus a per-stream-hour c
 
 Here's a rough comparison:
 
-```
+```text
 Scenario: 5 MB/s average write throughput, with 15 MB/s spikes
 
 Provisioned approach:

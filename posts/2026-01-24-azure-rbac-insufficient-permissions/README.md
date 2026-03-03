@@ -80,7 +80,7 @@ az role assignment list \
 
 When you get a permission error, the message usually includes the action that was denied:
 
-```
+```text
 The client 'user@domain.com' with object id 'xxx' does not have authorization
 to perform action 'Microsoft.Compute/virtualMachines/start/action' over scope
 '/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Compute/virtualMachines/myvm'

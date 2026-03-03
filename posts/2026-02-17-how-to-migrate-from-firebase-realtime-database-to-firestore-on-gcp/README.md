@@ -40,7 +40,7 @@ Realtime Database uses a giant JSON tree. Firestore uses collections and documen
 
 Here is a typical Realtime Database structure and how it maps to Firestore:
 
-```
+```text
 Realtime Database (JSON tree):
 /users
   /user123
@@ -58,7 +58,7 @@ Realtime Database (JSON tree):
 
 The Firestore equivalent uses collections and subcollections:
 
-```
+```text
 Firestore (collections/documents):
 users (collection)
   user123 (document)
@@ -266,7 +266,7 @@ Realtime Database rules:
 
 Equivalent Firestore rules:
 
-```
+```text
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {

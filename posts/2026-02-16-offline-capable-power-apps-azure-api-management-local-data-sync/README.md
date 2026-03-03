@@ -211,7 +211,7 @@ In the Power App canvas, implement offline data management using collections and
 
 Here is the core pattern for building offline-capable screens in Power Apps.
 
-```
+```text
 // App.OnStart - Initialize the app and load cached data
 
 // Load cached data from local storage
@@ -275,7 +275,7 @@ If(varIsOnline,
 
 Design forms that work whether the app is online or offline.
 
-```
+```text
 // Save button OnSelect for an inspection form
 
 // Generate a local ID for offline tracking
@@ -334,7 +334,7 @@ Navigate(scrInspectionList, ScreenTransition.None);
 
 Add a visual indicator showing the app's connection status and pending sync count.
 
-```
+```text
 // Timer control - check connectivity every 30 seconds
 // Timer.OnTimerEnd:
 Set(varIsOnline, Connection.Connected);

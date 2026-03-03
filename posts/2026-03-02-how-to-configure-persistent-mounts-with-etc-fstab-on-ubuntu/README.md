@@ -14,13 +14,13 @@ Description: Configure /etc/fstab on Ubuntu to set up persistent filesystem moun
 
 Each line in `/etc/fstab` has six space-separated fields:
 
-```
+```text
 <device>  <mount point>  <filesystem type>  <options>  <dump>  <fsck order>
 ```
 
 Example:
 
-```
+```text
 UUID=abc12345-def6-7890-abcd-ef1234567890  /data  ext4  defaults,noatime  0  2
 ```
 
@@ -70,7 +70,7 @@ cat -n /etc/fstab
 
 Typical fstab on a fresh Ubuntu install:
 
-```
+```text
 # /etc/fstab: static file system information.
 #
 # Use 'blkid' to print the universally unique identifier for a device.
@@ -100,49 +100,49 @@ lsblk -o NAME,UUID,MOUNTPOINT,FSTYPE
 
 ### Local ext4 data disk
 
-```
+```text
 # Data disk mounted at /data
 UUID=abc12345-def6-7890-abcd-ef1234567890  /data  ext4  defaults,noatime  0  2
 ```
 
 ### XFS disk with performance options
 
-```
+```text
 # High-performance XFS data partition
 UUID=abc12345-def6-7890-abcd-ef1234567890  /data  xfs  defaults,noatime,largeio  0  2
 ```
 
 ### Btrfs with subvolume
 
-```
+```text
 # Btrfs filesystem with subvolume
 UUID=abc12345-def6-7890-abcd-ef1234567890  /  btrfs  subvol=@,defaults,noatime  0  1
 ```
 
 ### Swap partition
 
-```
+```text
 # Swap partition (use device path or UUID)
 UUID=swap-uuid-here  none  swap  sw  0  0
 ```
 
 ### tmpfs (RAM-based temporary filesystem)
 
-```
+```text
 # Temporary storage in RAM (size option limits usage)
 tmpfs  /tmp  tmpfs  defaults,noatime,nosuid,nodev,size=2G  0  0
 ```
 
 ### NFS share
 
-```
+```text
 # NFS mount - note: _netdev option ensures network is up before mounting
 192.168.1.100:/exports/data  /mnt/nfs  nfs  defaults,_netdev,rw  0  0
 ```
 
 ### Samba/CIFS share
 
-```
+```text
 # Windows/Samba share
 //fileserver/share  /mnt/samba  cifs  credentials=/etc/samba/creds,uid=1000,gid=1000,_netdev  0  0
 ```
@@ -169,7 +169,7 @@ tmpfs  /tmp  tmpfs  defaults,noatime,nosuid,nodev,size=2G  0  0
 
 For partitions that don't need executable files or special device files:
 
-```
+```text
 # Secure /tmp - no execution, no device files, no SUID
 tmpfs  /tmp  tmpfs  defaults,noatime,nosuid,nodev,noexec,size=2G  0  0
 
@@ -209,7 +209,7 @@ The `mount -a` command mounts everything in fstab that isn't already mounted. If
 
 For non-critical mounts (external drives, NAS shares), add `nofail` so a missing device doesn't prevent the system from booting:
 
-```
+```text
 # USB drive - won't prevent boot if not present
 UUID=abc12345-def6-7890-abcd-ef1234567890  /mnt/backup  ext4  defaults,noatime,nofail  0  2
 ```

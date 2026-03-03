@@ -288,7 +288,7 @@ ORDER BY application_name;
 
 Expected output shows only cascade replicas:
 
-```
+```text
  client_addr  | application_name |   state   | sync_state |   sent_lsn   | replication_lag_bytes
 --------------+------------------+-----------+------------+--------------+-----------------------
  10.0.2.10    | cascade_west     | streaming | async      | 0/5000000    | 0
@@ -311,7 +311,7 @@ FROM pg_stat_replication;
 
 Expected output shows leaf replicas:
 
-```
+```text
  client_addr  | application_name |   state   |   sent_lsn   | replication_lag_bytes
 --------------+------------------+-----------+--------------+-----------------------
  10.0.2.20    | leaf_west1       | streaming | 0/5000000    | 0

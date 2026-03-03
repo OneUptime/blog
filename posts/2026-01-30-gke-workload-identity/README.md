@@ -500,7 +500,7 @@ kubectl exec -it $POD_NAME -n demo -- gcloud auth list
 
 The output should show the Google Cloud service account as the active account:
 
-```
+```text
                   Credentialed Accounts
 ACTIVE  ACCOUNT
 *       workload-identity-demo-sa@your-project-id.iam.gserviceaccount.com

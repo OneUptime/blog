@@ -33,7 +33,7 @@ flowchart LR
 
 ## Project Structure
 
-```
+```text
 telegraf/
   inventory/
     hosts.yml

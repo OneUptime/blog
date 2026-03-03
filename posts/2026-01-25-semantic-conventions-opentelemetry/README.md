@@ -16,7 +16,7 @@ This guide covers implementing OpenTelemetry semantic conventions to ensure cons
 
 Without conventions, teams independently choose attribute names:
 
-```
+```text
 # Team A
 service: "payment-api"
 request_path: "/api/charge"
@@ -35,7 +35,7 @@ http_status: 200
 
 Querying across these services becomes painful. With semantic conventions, everyone uses:
 
-```
+```text
 service.name: "payment-api"
 http.route: "/api/charge"
 http.response.status_code: 200

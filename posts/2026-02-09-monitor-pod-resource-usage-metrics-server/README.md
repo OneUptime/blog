@@ -72,7 +72,7 @@ kubectl top nodes
 
 Output:
 
-```
+```text
 NAME       CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
 worker-1   1200m        30%    8Gi             40%
 worker-2   800m         20%    6Gi             30%
@@ -86,7 +86,7 @@ kubectl top pods -n production
 
 Output:
 
-```
+```text
 NAME           CPU(cores)   MEMORY(bytes)
 web-app-abc    150m         512Mi
 database-xyz   800m         4Gi
@@ -139,7 +139,7 @@ kubectl top pods -n production --containers
 
 Output:
 
-```
+```text
 POD            NAME       CPU(cores)   MEMORY(bytes)
 web-app-abc    app        120m         400Mi
 web-app-abc    sidecar    30m          112Mi
@@ -222,19 +222,19 @@ Run with:
 Look for these patterns:
 
 **Over-provisioned**: Usage consistently < 30% of requests
-```
+```text
 web-app-abc - Request: 2/4Gi Usage: 200m/800Mi
 ```
 Action: Lower requests to 500m/1Gi
 
 **Under-provisioned**: Usage near or exceeds requests
-```
+```text
 database-xyz - Request: 1/2Gi Usage: 950m/1.9Gi
 ```
 Action: Increase requests to 2/4Gi
 
 **Well-sized**: Usage 40-70% of requests
-```
+```text
 cache-def - Request: 500m/1Gi Usage: 300m/600Mi
 ```
 Action: No change needed

@@ -199,7 +199,7 @@ The difference between union (OR) and intersection (AND) policies is subtle but 
 
 **Union (OR)**: Data is deleted if it satisfies any one of the conditions. This is more aggressive - it cleans up data sooner.
 
-```
+```text
 // Union: maxversions=3 OR maxage=7d
 // Version is deleted if:
 //   - It is NOT one of the 3 most recent versions, OR
@@ -209,7 +209,7 @@ The difference between union (OR) and intersection (AND) policies is subtle but 
 
 **Intersection (AND)**: Data is deleted only if it satisfies all conditions simultaneously. This is more conservative - data sticks around longer.
 
-```
+```text
 // Intersection: maxversions=3 AND maxage=7d
 // Version is deleted only if:
 //   - It is NOT one of the 3 most recent versions, AND

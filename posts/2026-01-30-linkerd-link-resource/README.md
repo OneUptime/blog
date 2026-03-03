@@ -111,7 +111,7 @@ spec:
 
 The `gatewayIdentity` field specifies the expected identity of the target gateway for mTLS verification. This follows the SPIFFE format:
 
-```
+```text
 <service-account>.<namespace>.serviceaccount.identity.linkerd.<trust-domain>
 ```
 

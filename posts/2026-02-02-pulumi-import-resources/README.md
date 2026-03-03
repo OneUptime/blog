@@ -659,7 +659,7 @@ const database = new aws.rds.Instance("mainDb", {
 
 Structure your code logically after importing.
 
-```
+```text
 my-infrastructure/
 ├── index.ts           # Main entry point
 ├── networking/

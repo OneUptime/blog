@@ -24,13 +24,13 @@ These three work together to create a zero-trust security model where no service
 
 In Istio, every workload gets a unique identity based on the SPIFFE (Secure Production Identity Framework for Everyone) standard. The identity format is:
 
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
 For example, a pod running with the `reviews` service account in the `default` namespace gets:
 
-```
+```text
 spiffe://cluster.local/ns/default/sa/reviews
 ```
 

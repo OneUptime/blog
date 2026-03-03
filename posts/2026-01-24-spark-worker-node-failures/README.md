@@ -62,7 +62,7 @@ graph TB
 The most common worker failure is running out of memory. This happens when executors try to process more data than their allocated memory can handle.
 
 **Error Message:**
-```
+```text
 ExecutorLostFailure (executor 3 exited caused by one of the running tasks)
 Reason: Container killed by YARN for exceeding memory limits.
 10.5 GB of 10 GB physical memory used.
@@ -149,7 +149,7 @@ spark-submit \
 Executors must send regular heartbeats to the driver. When processing takes too long or the network is congested, heartbeats can be missed.
 
 **Error Message:**
-```
+```text
 ERROR TaskSchedulerImpl: Lost executor 5 on worker-3.example.com:
 Executor heartbeat timed out after 120000 ms
 ```
@@ -211,7 +211,7 @@ def process_with_checkpointing(spark, df, checkpoint_dir: str):
 Workers need local disk space for shuffle data, spilled data, and temporary files.
 
 **Error Message:**
-```
+```text
 java.io.IOException: No space left on device
 org.apache.spark.shuffle.FetchFailedException: Failed to connect to worker
 ```
@@ -295,7 +295,7 @@ echo "$(date): Cleaned up Spark local directories" >> /var/log/spark-cleanup.log
 Workers communicate constantly during shuffle operations. Network problems can cause cascading failures.
 
 **Error Message:**
-```
+```text
 org.apache.spark.shuffle.FetchFailedException:
 Failed to connect to worker-2.example.com/10.0.1.5:7337
 ```
@@ -354,7 +354,7 @@ def reduce_shuffle_impact(df):
 When one partition has significantly more data than others, that task takes much longer and may fail.
 
 **Error Message:**
-```
+```text
 org.apache.spark.SparkException: Job aborted due to stage failure:
 Task 47 in stage 3.0 failed 4 times
 ```

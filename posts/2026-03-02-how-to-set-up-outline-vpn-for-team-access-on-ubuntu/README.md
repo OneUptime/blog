@@ -49,7 +49,7 @@ The script will:
 
 At the end, you see output like:
 
-```
+```text
 CONGRATULATIONS! Your Outline server is up and running.
 
 To manage your Outline server, copy the following line (including curly
@@ -96,7 +96,7 @@ In the Outline Manager, each row is an access key. By default, one key is create
 
 The access key URL looks like:
 
-```
+```text
 ss://YWVzLTEyOC1nY206cGFzc3dvcmQ=@203.0.113.42:443/?outline=1
 ```
 

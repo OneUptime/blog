@@ -235,7 +235,7 @@ approved_attributes:
 
 Use this formula to estimate the time series count for a new metric before deploying it:
 
-```
+```text
 Total Series = Product of (unique values per attribute)
 Monthly Cost = Total Series * (cost per series per month)
 ```

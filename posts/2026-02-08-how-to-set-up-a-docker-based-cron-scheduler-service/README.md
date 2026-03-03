@@ -51,7 +51,7 @@ CMD cron && tail -f /var/log/cron.log
 
 The crontab file defines the schedule:
 
-```
+```text
 # crontab - Job schedule definitions
 # Format: minute hour day-of-month month day-of-week command
 
@@ -331,7 +331,7 @@ curl -s "${HEARTBEAT_URL:-http://localhost:3000/cron-heartbeat}" > /dev/null 2>&
 
 Add it to your crontab:
 
-```
+```text
 # Heartbeat every minute to verify cron is alive
 * * * * * /scripts/heartbeat.sh >> /var/log/cron.log 2>&1
 ```

@@ -64,7 +64,7 @@ flowchart TD
 ```
 
 **Symptoms:**
-```
+```text
 FATAL  failed to download vulnerability DB
 ```
 
@@ -97,7 +97,7 @@ trivy image nginx:latest
 ### Issue 2: Image Pull Failures
 
 **Symptoms:**
-```
+```text
 FATAL  failed to pull image
 ```
 
@@ -130,7 +130,7 @@ trivy image --insecure private-registry.com/myapp:latest
 ### Issue 3: Timeout During Scan
 
 **Symptoms:**
-```
+```text
 FATAL  context deadline exceeded
 ```
 
@@ -166,7 +166,7 @@ wait
 ### Issue 4: No Vulnerabilities Detected
 
 **Symptoms:**
-```
+```text
 Total: 0 (UNKNOWN: 0, LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0)
 ```
 

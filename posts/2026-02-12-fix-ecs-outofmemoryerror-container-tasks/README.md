@@ -103,13 +103,13 @@ The `-XX:MaxRAMPercentage=75.0` tells the JVM to use at most 75% of available me
 
 Don't set this to 100% - the JVM uses memory outside the heap:
 
-```
+```text
 Total JVM Memory = Heap + Metaspace + Thread Stacks + Native Memory + Code Cache
 ```
 
 For a container with 1024 MB limit:
 
-```
+```text
 Heap (75%):          768 MB
 Metaspace:           ~64 MB
 Thread stacks:       ~50 MB (50 threads x 1MB each)
@@ -182,7 +182,7 @@ docker stats test --no-stream --format '{{.MemUsage}}'
 
 Then set your container limits based on peak usage plus a buffer:
 
-```
+```text
 Hard limit = Peak usage * 1.25 (25% buffer)
 Soft limit = Average usage * 1.1 (10% buffer)
 ```

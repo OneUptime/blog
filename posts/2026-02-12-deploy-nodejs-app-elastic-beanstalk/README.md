@@ -14,7 +14,7 @@ Deploying a Node.js application to Elastic Beanstalk is one of the fastest ways 
 
 Start with a standard Express application. Here's the project structure.
 
-```
+```text
 my-node-app/
   .ebextensions/
     01-nodecommand.config
@@ -127,7 +127,7 @@ And the package.json.
 
 The Procfile tells Beanstalk how to start your application.
 
-```
+```text
 web: node server.js
 ```
 
@@ -172,7 +172,7 @@ gzip_types text/plain text/css application/json application/javascript text/xml 
 
 Like .gitignore but for Beanstalk deployments. Exclude files that shouldn't be uploaded.
 
-```
+```text
 # .ebignore
 node_modules/
 .git/

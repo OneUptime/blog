@@ -8,7 +8,7 @@ Description: Fix OpenTelemetry Collector restart loops caused by TLS certificate
 
 The Collector starts, tries to initialize an exporter with TLS, cannot find the certificate files, and exits with an error. Kubernetes restarts it, and the cycle repeats. The error message is usually:
 
-```
+```text
 Error: cannot start pipelines: failed to create "otlp" exporter:
   failed to load TLS config: open /etc/ssl/certs/ca.crt: no such file or directory
 ```

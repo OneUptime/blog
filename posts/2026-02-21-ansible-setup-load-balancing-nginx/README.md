@@ -34,7 +34,7 @@ graph TD
 
 ## Project Structure
 
-```
+```text
 nginx-lb/
   inventory/
     production.yml

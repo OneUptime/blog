@@ -30,7 +30,7 @@ Total memory request = Heap + Metaspace + Threads + Direct + Overhead
 
 A safe formula:
 
-```
+```text
 Memory Request = (Xmx + MaxMetaspaceSize + (ThreadCount * StackSize) + MaxDirectMemorySize) * 1.25
 ```
 
@@ -88,13 +88,13 @@ The JVM sets heap to 75% of the 4Gi limit (3GB), leaving 1GB for non-heap memory
 
 Metaspace stores class metadata. Default max is unlimited, which is dangerous. Set an explicit limit:
 
-```
+```text
 -XX:MaxMetaspaceSize=256m
 ```
 
 For large applications with many classes:
 
-```
+```text
 -XX:MaxMetaspaceSize=512m
 ```
 
@@ -110,19 +110,19 @@ Look at the Metaspace column and add 20% headroom.
 
 Each thread has a stack. Default stack size is 1MB on Linux. Calculate total:
 
-```
+```text
 Thread Memory = Thread Count * Stack Size
 ```
 
 For 100 threads with default stack:
 
-```
+```text
 100 threads * 1MB = 100MB
 ```
 
 Reduce stack size if you have many threads:
 
-```
+```text
 -Xss512k
 ```
 
@@ -132,7 +132,7 @@ This halves thread overhead.
 
 NIO and some libraries use direct memory outside the heap. Set a limit:
 
-```
+```text
 -XX:MaxDirectMemorySize=512m
 ```
 
@@ -229,7 +229,7 @@ jvm_memory_used_bytes{area="nonheap"}
 
 Enable native memory tracking for detailed analysis:
 
-```
+```text
 -XX:NativeMemoryTracking=summary
 ```
 

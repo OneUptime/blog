@@ -121,7 +121,7 @@ Collector cannot connect to backend endpoint.
 
 ### Symptoms
 
-```
+```text
 Error: failed to export: rpc error: code = Unavailable desc = connection refused
 Error: Post "https://backend:4317": dial tcp: lookup backend: no such host
 ```
@@ -239,7 +239,7 @@ Backend rejects data due to missing or invalid credentials.
 
 ### Symptoms
 
-```
+```text
 Error: rpc error: code = Unauthenticated desc = invalid api key
 Error: 401 Unauthorized
 Error: missing required authentication header
@@ -353,7 +353,7 @@ TLS verification fails between collector and backend.
 
 ### Symptoms
 
-```
+```text
 Error: x509: certificate signed by unknown authority
 Error: tls: bad certificate
 Error: x509: certificate has expired
@@ -456,7 +456,7 @@ Export queue fills up faster than data can be exported.
 
 ### Symptoms
 
-```
+```text
 Error: dropping data, queue is full
 Metric: otelcol_exporter_queue_size == otelcol_exporter_queue_capacity
 Metric: otelcol_exporter_enqueue_failed_spans > 0
@@ -546,7 +546,7 @@ Backend throttles or rejects data due to rate limits.
 
 ### Symptoms
 
-```
+```text
 Error: 429 Too Many Requests
 Error: rate limit exceeded
 Error: quota exceeded
@@ -667,7 +667,7 @@ Exporter configuration is invalid or incompatible with backend.
 
 ### Symptoms
 
-```
+```text
 Error: unknown exporter type "otlp"
 Error: exporter "otlp" is not configured
 Error: invalid endpoint format
@@ -767,7 +767,7 @@ Backend rejects data due to invalid format or schema.
 
 ### Symptoms
 
-```
+```text
 Error: 400 Bad Request
 Error: invalid trace data
 Error: schema validation failed

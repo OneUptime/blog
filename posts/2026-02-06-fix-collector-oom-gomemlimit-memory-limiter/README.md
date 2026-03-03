@@ -82,7 +82,7 @@ If `memory_limiter` is not first, data can accumulate in other processors before
 
 Here is how the three memory controls interact:
 
-```
+```text
 Container limit: 1024 MiB  (OOM-kill happens here)
     |
 GOMEMLIMIT:       800 MiB  (Go GC becomes aggressive here)
@@ -125,7 +125,7 @@ On the client side, OTLP exporters that receive the retriable error will queue t
 
 You will see messages like this in the Collector logs:
 
-```
+```text
 warn    memorylimiter/memorylimiter.go:186
     Memory usage is above soft limit. Refusing data.
     {"kind": "processor", "name": "memory_limiter",

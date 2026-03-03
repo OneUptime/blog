@@ -58,7 +58,7 @@ Let us start by setting up a new project with all the necessary dependencies.
 
 ### Directory Structure
 
-```
+```text
 react-ssr-express/
 ├── src/
 │   ├── client/

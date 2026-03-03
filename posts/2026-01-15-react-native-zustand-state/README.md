@@ -1242,7 +1242,7 @@ For larger applications, organizing state into multiple focused stores improves 
 
 ### Store Organization Structure
 
-```
+```text
 stores/
   index.ts          # Re-exports all stores
   authStore.ts      # Authentication state

@@ -172,7 +172,7 @@ talosctl -n 192.168.1.10 services | grep chrony
 
 In the logs, look for messages like:
 
-```
+```text
 Selected source time.cloudflare.com
 System clock wrong by 0.003421 seconds
 System clock was stepped by 0.003421 seconds

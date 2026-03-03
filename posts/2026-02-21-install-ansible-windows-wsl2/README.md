@@ -166,7 +166,7 @@ ansible all -m ping
 
 Expected output for a successful connection:
 
-```
+```text
 web01 | SUCCESS => {
     "changed": false,
     "ping": "pong"

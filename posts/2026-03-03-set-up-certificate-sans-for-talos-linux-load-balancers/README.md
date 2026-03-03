@@ -217,7 +217,7 @@ Adding extra SANs has no performance cost and prevents future reconfiguration wo
 
 The most common error when SANs are missing is:
 
-```
+```text
 rpc error: code = Unavailable desc = connection error:
 tls: failed to verify certificate: x509: certificate is valid for
 10.0.1.10, not lb.example.com

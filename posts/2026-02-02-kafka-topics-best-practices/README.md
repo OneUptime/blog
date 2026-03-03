@@ -372,7 +372,7 @@ flowchart LR
 
 Use this formula as a starting point:
 
-```
+```text
 Partitions = max(Target Throughput / Partition Throughput, Consumer Count)
 ```
 
@@ -381,7 +381,7 @@ For example:
 - Single partition throughput: 10 MB/s
 - Maximum consumers: 8
 
-```
+```text
 Partitions = max(100/10, 8) = max(10, 8) = 10
 ```
 
@@ -558,7 +558,7 @@ Consistent naming makes topics discoverable and manageable.
 
 ### Recommended Naming Pattern
 
-```
+```text
 <domain>.<entity>.<event-type>.<version>
 ```
 

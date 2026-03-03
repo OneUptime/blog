@@ -43,7 +43,7 @@ nsenter -t $(crictl inspect $CONTAINER_ID | jq .info.pid) -n iptables-save
 
 The iptables rules typically look something like:
 
-```
+```text
 -A OUTPUT -j ISTIO_OUTPUT
 -A ISTIO_OUTPUT -p tcp -j MARK --set-xmark 0x100/0x100
 ```
@@ -65,7 +65,7 @@ eBPF programs attach to the network interfaces and redirect packets directly, av
 
 Here is the detailed flow for a request from pod A to pod B, both in ambient-enrolled namespaces on different nodes:
 
-```
+```text
 1. Pod A sends TCP SYN to Pod B's ClusterIP
 2. CNI redirection captures the packet on Node A
 3. Packet is redirected to ztunnel on Node A (via TPROXY or MARK)

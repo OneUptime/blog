@@ -526,7 +526,7 @@ setup().catch(console.error);
 
 Expected output shows the audit subscriber receiving all 4 messages while workers share them:
 
-```
+```text
 [AUDIT] Order received: order-1
 [AUDIT] Order received: order-2
 [AUDIT] Order received: order-3

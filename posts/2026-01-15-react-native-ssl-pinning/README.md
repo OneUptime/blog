@@ -18,7 +18,7 @@ In a standard HTTPS connection, your app trusts any certificate signed by a Cert
 
 SSL pinning mitigates this risk by hardcoding the expected certificate information directly into your app, bypassing the device's trust store entirely.
 
-```
+```text
 Standard HTTPS Flow:
 App → Validates against device trust store → Server
 

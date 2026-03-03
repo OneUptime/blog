@@ -35,7 +35,7 @@ app.listen(3000);
 ```
 
 Output:
-```
+```text
 GET / 200 5.123 ms - 23
 ```
 
@@ -48,7 +48,7 @@ app.use(morgan('combined'));
 ```
 
 Output:
-```
+```text
 ::1 - - [10/Jan/2024:12:30:45 +0000] "GET / HTTP/1.1" 200 23 "-" "Mozilla/5.0..."
 ```
 
@@ -59,7 +59,7 @@ app.use(morgan('common'));
 ```
 
 Output:
-```
+```text
 ::1 - - [10/Jan/2024:12:30:45 +0000] "GET / HTTP/1.1" 200 23
 ```
 
@@ -70,7 +70,7 @@ app.use(morgan('dev'));
 ```
 
 Output:
-```
+```text
 GET / 200 5.123 ms - 23
 ```
 
@@ -81,7 +81,7 @@ app.use(morgan('short'));
 ```
 
 Output:
-```
+```text
 ::1 - GET / HTTP/1.1 200 23 - 5.123 ms
 ```
 
@@ -92,7 +92,7 @@ app.use(morgan('tiny'));
 ```
 
 Output:
-```
+```text
 GET / 200 23 - 5.123 ms
 ```
 

@@ -70,7 +70,7 @@ Basic register usage:
 ```
 
 Error message:
-```
+```text
 The task includes an option with an undefined variable.
 The error was: 'dict object' has no attribute 'rc'
 ```
@@ -127,7 +127,7 @@ Use `is defined` or default values:
 ```
 
 Error message:
-```
+```text
 'dict object' has no attribute 'stdout'
 ```
 
@@ -209,7 +209,7 @@ flowchart TB
 ```
 
 Error message:
-```
+```text
 'dict object' has no attribute 'stdout_lines'
 ```
 
@@ -311,7 +311,7 @@ Skipped tasks have a `skipped` attribute but no output attributes:
 ```
 
 Error message:
-```
+```text
 'dict object' has no attribute 'stdout'
 ```
 
@@ -466,7 +466,7 @@ Register with `include_tasks` captures inclusion metadata, not task results. Use
 ```
 
 Error message:
-```
+```text
 'str object' has no attribute 'database'
 ```
 

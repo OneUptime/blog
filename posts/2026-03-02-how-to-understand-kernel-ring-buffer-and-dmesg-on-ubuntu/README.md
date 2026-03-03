@@ -155,7 +155,7 @@ dmesg -T | grep -iE "reset|timeout|hung"
 
 A typical dmesg line looks like:
 
-```
+```text
 [    3.452901] EXT4-fs (sda1): mounted filesystem without journal. Opts: (null)
 ```
 

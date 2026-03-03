@@ -278,7 +278,7 @@ kubectl exec bandwidth-client -- iperf3 -c $SERVER_IP -t 30
 
 Example output:
 
-```
+```text
 [ ID] Interval           Transfer     Bandwidth
 [  4]   0.00-30.00  sec  35.8 MBytes  10.0 Mbits/sec  sender
 [  4]   0.00-30.00  sec  35.7 MBytes  9.98 Mbits/sec  receiver
@@ -317,7 +317,7 @@ sudo tc class show dev $VETH
 
 Example output:
 
-```
+```text
 qdisc htb 1: root refcnt 2 r2q 10 default 0 direct_packets_stat 0
 class htb 1:1 root prio 0 rate 10Mbit ceil 10Mbit burst 1600b cburst 1600b
 ```

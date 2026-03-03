@@ -361,7 +361,7 @@ def validate_traffic_route(spec):
 
 For teams using GitOps, the self-service resources live in their application repositories:
 
-```
+```text
 my-service/
   k8s/
     deployment.yaml

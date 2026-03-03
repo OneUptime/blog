@@ -40,13 +40,13 @@ The first section is **GENERAL** where you configure the application identity:
 
 **Application Name**: Enter a unique name for your application. This becomes the ArgoCD Application resource name. Use lowercase, hyphens, and no spaces.
 
-```
+```text
 Application Name: nginx-demo
 ```
 
 **Project**: Select the ArgoCD project this application belongs to. The `default` project is available out of the box and allows deploying to any cluster and namespace. For production, you should create specific projects with restricted permissions.
 
-```
+```text
 Project: default
 ```
 
@@ -68,7 +68,7 @@ The **SOURCE** section tells ArgoCD where to find your Kubernetes manifests:
 
 **Repository URL**: Enter the Git repository URL. If this is a public repository, ArgoCD can access it directly. For private repositories, you need to add credentials first (Settings > Repositories).
 
-```
+```text
 Repository URL: https://github.com/youruser/your-repo.git
 ```
 
@@ -81,13 +81,13 @@ After entering the URL, ArgoCD validates it. If the repository is accessible, a 
 - `v1.0.0` - pins to a specific tag
 - A commit SHA - pins to an exact commit
 
-```
+```text
 Revision: HEAD
 ```
 
 **Path**: The directory within the repository that contains your Kubernetes manifests. ArgoCD automatically detects the type of manifests (plain YAML, Helm, Kustomize) based on the directory contents.
 
-```
+```text
 Path: manifests
 ```
 
@@ -119,13 +119,13 @@ The **DESTINATION** section tells ArgoCD where to deploy:
 
 **Cluster URL**: Select the target Kubernetes cluster. The in-cluster option (`https://kubernetes.default.svc`) is always available. External clusters appear here if you have added them through the CLI.
 
-```
+```text
 Cluster URL: https://kubernetes.default.svc
 ```
 
 **Namespace**: The Kubernetes namespace to deploy resources into. This namespace must exist in the cluster unless you enable the "Create Namespace" sync option.
 
-```
+```text
 Namespace: default
 ```
 
@@ -147,7 +147,7 @@ Checkboxes for common sync options:
 
 Define fields that ArgoCD should ignore when comparing Git state with cluster state. This is useful for fields that Kubernetes mutates (like status fields or defaulted values):
 
-```
+```text
 Group: apps
 Kind: Deployment
 JSON Pointers: /spec/replicas

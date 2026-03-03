@@ -270,7 +270,7 @@ strategy = debug
 
 When a task fails, you get an interactive prompt where you can:
 
-```
+```text
 # Commands available in debug strategy
 p result    # Print the task result
 p task      # Print the task definition

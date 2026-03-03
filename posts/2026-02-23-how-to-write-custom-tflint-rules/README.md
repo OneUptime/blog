@@ -38,7 +38,7 @@ go get github.com/terraform-linters/tflint-plugin-sdk
 
 The project structure looks like this:
 
-```
+```text
 tflint-ruleset-myorg/
   main.go
   rules/

@@ -30,7 +30,7 @@ The flow works as follows:
 
 Let's start by setting up our project structure:
 
-```
+```text
 admission-webhook/
 ├── cmd/
 │   └── webhook/

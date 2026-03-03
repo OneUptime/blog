@@ -16,7 +16,7 @@ This is one of the most debated topics in the GitOps community, and the answer d
 
 All application code and Kubernetes manifests live in one repository.
 
-```
+```text
 monorepo/
   services/
     api/
@@ -66,7 +66,7 @@ monorepo/
 
 Application code and Kubernetes manifests live in separate repositories.
 
-```
+```text
 # Repo 1: Application code (one per service or monorepo)
 api-service/
   src/
@@ -124,7 +124,7 @@ gitops-config/
 
 Each service has its own config repository alongside its code repository.
 
-```
+```text
 # Service A code
 service-a-code/
   src/
@@ -160,7 +160,7 @@ service-b-config/
 
 For most teams, **Approach 2** (separate app and config repos) is the best balance. Here is a more detailed layout of what I recommend:
 
-```
+```text
 gitops-config/
   # ArgoCD Application definitions (managed by platform team)
   argocd/
@@ -313,7 +313,7 @@ This creates merge confusion and makes it hard to promote changes across environ
 
 If you have multiple clusters per environment (regional clusters, disaster recovery), extend the structure:
 
-```
+```text
 services/
   api/
     base/

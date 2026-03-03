@@ -61,7 +61,7 @@ docker init
 
 Docker init detects the pom.xml and identifies the project as Java:
 
-```
+```text
 ? What application platform does your project use? Java
 ? What version of Java do you want to use? 21
 ? What port does your server listen on? 8080
@@ -287,7 +287,7 @@ Setting a memory limit on the app service is important for Java. Without it, the
 
 ## Java-Specific .dockerignore
 
-```
+```text
 # Build output (compiled inside the container)
 target
 build

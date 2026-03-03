@@ -147,7 +147,7 @@ Note: This approach has limitations with variable time ranges in Grafana.
 
 Create variables for flexible time handling:
 
-```
+```text
 # Variable: $day_start
 # Query: floor(now() / 86400) * 86400
 ```

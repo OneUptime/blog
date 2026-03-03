@@ -35,13 +35,13 @@ Before writing any configuration, understand what you're configuring:
 
 Each line in `sources.list` follows this structure:
 
-```
+```text
 deb [options] URI suite component1 component2 ...
 ```
 
 A complete example for Ubuntu 22.04:
 
-```
+```text
 # Primary repository
 deb http://archive.ubuntu.com/ubuntu jammy main restricted universe multiverse
 

@@ -10,7 +10,7 @@ Description: Fix the iam.serviceAccounts.actAs permission denied error that occu
 
 You are deploying a Cloud Function and get this error:
 
-```
+```text
 ERROR: (gcloud.functions.deploy) ResponseError: status=[403], code=[Ok], message=[
 Permission 'iam.serviceAccounts.actAs' denied on service account
 'my-project@appspot.gserviceaccount.com' (or it may not exist).

@@ -27,7 +27,7 @@ The pipeline transforms raw documents through several stages, each critical for 
 
 ## Project Structure
 
-```
+```text
 rag-ingestion/
 ├── src/
 │   ├── extractors/

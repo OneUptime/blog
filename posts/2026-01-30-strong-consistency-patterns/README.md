@@ -1309,13 +1309,13 @@ Strong consistency is not free. Understanding the costs helps you make informed 
 
 Synchronous replication limits throughput to the slowest replica. With three replicas:
 
-```
+```text
 Throughput = min(Replica1_throughput, Replica2_throughput, Replica3_throughput)
 ```
 
 For writes that require consensus:
 
-```
+```text
 Throughput = Consensus_rounds_per_second * Batch_size
 ```
 

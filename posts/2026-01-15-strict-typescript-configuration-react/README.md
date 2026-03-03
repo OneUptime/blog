@@ -805,7 +805,7 @@ function useAuth(): AuthContextType {
 
 Here's a recommended project structure:
 
-```
+```text
 my-react-app/
 ├── src/
 │   ├── components/

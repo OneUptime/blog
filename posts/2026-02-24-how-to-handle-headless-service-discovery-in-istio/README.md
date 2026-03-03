@@ -33,7 +33,7 @@ With a headless service, DNS queries return A records for each pod individually,
 
 You also get individual DNS names for each pod when using a StatefulSet:
 
-```
+```text
 my-database-0.my-database.default.svc.cluster.local
 my-database-1.my-database.default.svc.cluster.local
 my-database-2.my-database.default.svc.cluster.local
@@ -51,7 +51,7 @@ istioctl proxy-config endpoint deploy/my-app | grep my-database
 
 You'll see individual endpoints like:
 
-```
+```text
 10.244.0.15:5432    HEALTHY     OK    outbound|5432||my-database.default.svc.cluster.local
 10.244.0.16:5432    HEALTHY     OK    outbound|5432||my-database.default.svc.cluster.local
 10.244.0.17:5432    HEALTHY     OK    outbound|5432||my-database.default.svc.cluster.local

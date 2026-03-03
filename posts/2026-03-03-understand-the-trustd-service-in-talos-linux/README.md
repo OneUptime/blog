@@ -22,7 +22,7 @@ When you bootstrap a Talos cluster, the initial configuration includes a root CA
 
 Here is the general flow when a worker node joins the cluster:
 
-```
+```text
 Worker Node                     Control Plane (trustd)
     |                                    |
     |--- Generate key pair ------------->|

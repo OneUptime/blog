@@ -206,7 +206,7 @@ export default function () {
 
 Checks appear in the output summary showing the percentage that passed:
 
-```
+```text
 checks.........................: 98.50% (394 out of 400)
   status is 200................: 100.00% (100 out of 100)
   response time < 500ms........: 95.00% (95 out of 100)
@@ -310,7 +310,7 @@ docker run --rm -i grafana/k6 run - < script.js
 
 After a test run, k6 outputs a summary:
 
-```
+```text
           /\      |‾‾| /‾‾/   /‾‾/
      /\  /  \     |  |/  /   /  /
     /  \/    \    |     (   /   ‾‾\

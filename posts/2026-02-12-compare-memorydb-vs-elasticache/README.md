@@ -62,7 +62,7 @@ graph TD
 
 Both services deliver microsecond read latency because reads come from in-memory data structures on the local node. There's essentially no difference in read performance.
 
-```
+```text
 Read latency comparison (p99):
   ElastiCache: ~100-300 microseconds
   MemoryDB:    ~100-300 microseconds
@@ -73,7 +73,7 @@ Read latency comparison (p99):
 
 Here's where they diverge. ElastiCache acknowledges writes as soon as the primary node processes them. MemoryDB waits for the transaction log to durably store the write across AZs.
 
-```
+```text
 Write latency comparison (p99):
   ElastiCache: ~200-500 microseconds
   MemoryDB:    ~3-5 milliseconds
@@ -91,7 +91,7 @@ Both services can handle millions of operations per second at scale. The through
 
 MemoryDB costs more than ElastiCache because of the transaction log infrastructure. Here's a rough comparison for the same node type:
 
-```
+```text
 Monthly cost for cache.r6g.large / db.r6g.large (us-east-1):
 
 ElastiCache (3-node replication group):
@@ -107,7 +107,7 @@ MemoryDB (3-shard cluster, 1 replica each):
 
 However, if you're currently running ElastiCache Redis AND a separate database (like RDS) because you need durability, the total cost comparison changes:
 
-```
+```text
 Architecture comparison:
 
 Option A: ElastiCache + RDS (cache + durable storage)

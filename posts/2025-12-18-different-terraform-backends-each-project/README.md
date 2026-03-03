@@ -161,7 +161,7 @@ export TF_BACKEND_DYNAMODB_TABLE="terraform-locks-project-b"
 
 Organize projects into separate directories, each with its own complete backend configuration.
 
-```
+```text
 infrastructure/
 ├── project-a/
 │   ├── backend.tf

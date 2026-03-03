@@ -55,7 +55,7 @@ argocd app actions list my-app --kind Rollout --group argoproj.io
 
 Example output:
 
-```
+```text
 NAME          DISABLED
 restart       false
 scale-up      false

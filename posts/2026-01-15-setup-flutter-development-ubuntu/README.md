@@ -124,7 +124,7 @@ flutter doctor -v
 
 Example output:
 
-```
+```text
 Doctor summary (to see all details, run flutter doctor -v):
 [✓] Flutter (Channel stable, 3.24.0, on Ubuntu 22.04.3 LTS 6.2.0-39-generic, locale en_US.UTF-8)
 [✗] Android toolchain - develop for Android devices
@@ -324,7 +324,7 @@ tree -L 2
 
 Project structure explanation:
 
-```
+```text
 my_first_app/
 ├── android/          # Android-specific configuration and code
 ├── ios/              # iOS-specific configuration and code (requires macOS)

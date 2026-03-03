@@ -161,7 +161,7 @@ kubectl logs deploy/my-app -c istio-proxy --tail=20
 
 A typical access log entry looks like:
 
-```
+```text
 [2024-01-15T10:30:45.123Z] "GET /api/data HTTP/1.1" 200 - via_upstream - "-" 0 1234 15 14 "-" "curl/7.68.0" "abc-123-def" "service-b:8080" "10.244.1.5:8080" outbound|8080||service-b.default.svc.cluster.local 10.244.2.3:45678 10.96.10.20:8080 10.244.2.3:55555 - default
 ```
 
@@ -178,7 +178,7 @@ kubectl exec deploy/my-app -c istio-proxy -- \
 
 Key metrics to watch:
 
-```
+```text
 # Total requests by destination and response code
 istio_requests_total{destination_service="service-b.default.svc.cluster.local",response_code="200"}
 

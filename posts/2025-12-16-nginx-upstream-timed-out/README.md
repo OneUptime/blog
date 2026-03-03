@@ -31,7 +31,7 @@ sequenceDiagram
 
 The error message in your logs looks like this:
 
-```
+```text
 upstream timed out (110: Connection timed out) while reading response header from upstream
 ```
 

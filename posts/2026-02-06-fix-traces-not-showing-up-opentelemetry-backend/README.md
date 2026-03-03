@@ -196,7 +196,7 @@ kubectl logs -n observability deployment/otel-collector | grep -i "error\|fail\|
 
 Common error patterns and their meaning:
 
-```
+```text
 # Connection refused: backend is unreachable
 "error": "connection refused"
 

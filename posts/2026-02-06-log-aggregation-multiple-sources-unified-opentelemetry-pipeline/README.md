@@ -14,7 +14,7 @@ The OpenTelemetry Collector can serve as that single aggregation point. It suppo
 
 The setup uses a two-tier collector deployment. Agent collectors run on each host and forward logs to a central gateway collector that handles processing and export:
 
-```
+```text
 Host 1: [filelog + OTLP agent] ----\
 Host 2: [filelog + OTLP agent] ------> [Gateway Collector] --> Backend
 Host 3: [syslog + fluent agent] ---/

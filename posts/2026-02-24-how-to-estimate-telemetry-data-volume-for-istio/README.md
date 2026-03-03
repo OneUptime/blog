@@ -43,7 +43,7 @@ Typical numbers per sidecar:
 
 ### Calculating Total Metrics Data
 
-```
+```text
 Metrics data rate = Time_Series x Sample_Size / Scrape_Interval
 
 Where:
@@ -60,7 +60,7 @@ With 15-day retention: 1.7 GB/day x 15 = 25.5 GB
 
 The raw scrape data is much larger than the compressed storage. Each Prometheus scrape for a sidecar transfers 50-200 KB:
 
-```
+```text
 Scrape bandwidth = Num_Sidecars x Scrape_Size / Scrape_Interval
 Example: 500 x 100 KB / 15s = 3.3 MB/s network bandwidth for scraping
 ```
@@ -80,7 +80,7 @@ Each trace consists of multiple spans. A single HTTP request might generate 3-10
 
 ### Volume Calculation
 
-```
+```text
 Trace data rate = RPS x Sampling_Rate x Spans_Per_Request x Avg_Span_Size
 
 Where:
@@ -93,17 +93,17 @@ Where:
 **Example calculations for 10,000 RPS at the edge:**
 
 At 1% sampling:
-```
+```text
 10,000 x 0.01 x 6 spans x 750 bytes = 450 KB/s = 39 GB/day
 ```
 
 At 10% sampling:
-```
+```text
 10,000 x 0.10 x 6 spans x 750 bytes = 4.5 MB/s = 389 GB/day
 ```
 
 At 100% sampling:
-```
+```text
 10,000 x 1.00 x 6 spans x 750 bytes = 45 MB/s = 3.9 TB/day
 ```
 
@@ -138,7 +138,7 @@ Access logs are the most verbose telemetry type. Every request through every sid
 
 Istio's default access log includes information like:
 
-```
+```text
 [2026-02-24T10:15:30.123Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 45 43 "-" "curl/7.68.0" "abc-123-def-456" "users.default.svc.cluster.local:8080" "10.0.1.15:8080" inbound|8080|| 10.0.1.15:42312 10.0.1.15:8080 10.0.2.30:51234 outbound_.8080_._.users.default.svc.cluster.local default
 ```
 
@@ -146,7 +146,7 @@ A typical access log entry is 300-600 bytes.
 
 ### Volume Calculation
 
-```
+```text
 Access log data rate = Total_RPS_Across_Mesh x Avg_Log_Entry_Size x Log_Points
 
 Where:
@@ -157,7 +157,7 @@ Where:
 
 **Example for 10,000 edge RPS with average 3 hops per request:**
 
-```
+```text
 Total proxy-level RPS = 10,000 x 3 hops x 2 (inbound + outbound) = 60,000 log entries/sec
 Data rate = 60,000 x 400 bytes = 24 MB/s = 2.07 TB/day
 ```
@@ -198,7 +198,7 @@ For a mesh with 500 pods and 10,000 edge RPS:
 
 **Recommended production setup:**
 
-```
+```text
 Metrics (default): 1.7 GB/day
 Traces (1% sampling): 39 GB/day
 Access logs (errors only): 20 GB/day
@@ -207,7 +207,7 @@ Total: ~61 GB/day
 
 Compare that to "everything on":
 
-```
+```text
 Metrics + 100% traces + all access logs: ~6 TB/day
 ```
 

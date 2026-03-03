@@ -72,13 +72,13 @@ The credential helper means you never have to manually run `docker login`. Every
 
 Artifact Registry images follow a specific naming pattern:
 
-```
+```text
 LOCATION-docker.pkg.dev/PROJECT_ID/REPOSITORY/IMAGE:TAG
 ```
 
 For example:
 
-```
+```text
 us-central1-docker.pkg.dev/my-project-123/my-docker-repo/myapp:v1.0.0
 ```
 

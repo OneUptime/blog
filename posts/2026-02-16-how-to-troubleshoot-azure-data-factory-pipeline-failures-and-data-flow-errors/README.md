@@ -106,7 +106,7 @@ If you see error code 2200 with a message about cluster creation, try:
 
 Use the `isNull()` and `iif()` functions to handle dirty data in your transformations.
 
-```
+```text
 // Data flow expression to safely cast a string column to integer
 // Returns 0 for null or non-numeric values instead of failing
 iif(isNull(column1) || !isInteger(column1), 0, toInteger(column1))

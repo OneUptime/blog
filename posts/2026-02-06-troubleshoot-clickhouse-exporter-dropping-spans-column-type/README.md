@@ -8,14 +8,14 @@ Description: Fix the OpenTelemetry Collector ClickHouse exporter dropping spans 
 
 You upgrade the OpenTelemetry Collector or the ClickHouse exporter, and suddenly spans start getting dropped. The Collector logs show errors like:
 
-```
+```text
 code: 53, message: Type mismatch in IN or VALUES section.
 Expected: UInt8. Got: String
 ```
 
 Or:
 
-```
+```text
 code: 117, message: Unknown column 'SpanAttributes' in table 'otel.otel_traces'
 ```
 
@@ -179,7 +179,7 @@ When you upgrade, change to `otel_traces_v3`. Old data remains accessible in the
 
 Check the Collector's export metrics:
 
-```
+```text
 # Successful exports
 otelcol_exporter_sent_spans{exporter="clickhouse"}
 

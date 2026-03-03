@@ -12,7 +12,7 @@ The "Cannot access a disposed context" error is one of the most common issues wh
 
 When you see this error:
 
-```
+```text
 System.ObjectDisposedException: Cannot access a disposed context instance.
 A common cause of this error is disposing a context instance that was resolved
 from dependency injection and then later trying to use the same context instance

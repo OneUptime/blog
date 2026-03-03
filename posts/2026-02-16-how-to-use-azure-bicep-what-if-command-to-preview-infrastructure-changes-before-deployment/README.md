@@ -53,7 +53,7 @@ The output is color-coded in the terminal:
 
 Here is what typical output looks like.
 
-```
+```text
 Resource and property changes are indicated with these symbols:
   + Create
   ~ Modify

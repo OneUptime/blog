@@ -88,7 +88,7 @@ Use `consecutiveGatewayErrors` when your service occasionally returns 500 errors
 
 The actual ejection time is calculated as:
 
-```
+```text
 actual_ejection_time = baseEjectionTime * number_of_times_ejected
 ```
 

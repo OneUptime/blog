@@ -193,7 +193,7 @@ istioctl analyze my-virtualservice.yaml my-destinationrule.yaml
 
 Example output:
 
-```
+```text
 Warning [IST0101] (VirtualService default/my-vs) Referenced host not found: "nonexistent-service"
 Warning [IST0108] (DestinationRule default/my-dr) This destination rule is not referenced by any virtual service.
 Error [IST0134] (Gateway default/my-gw) Duplicate gateway port 443 with same host

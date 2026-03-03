@@ -19,7 +19,7 @@ When you create a LoadBalancer service and it stays in Pending:
 kubectl get svc my-service
 ```
 
-```
+```text
 NAME         TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
 my-service   LoadBalancer   10.96.50.100   <pending>     80:31234/TCP   5m
 ```
@@ -55,7 +55,7 @@ kubectl get pods -n metallb-system
 
 Expected output:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-7d5b4c8b9f-xyz12   1/1    Running   0          2d
 speaker-abc12                  1/1    Running   0          2d

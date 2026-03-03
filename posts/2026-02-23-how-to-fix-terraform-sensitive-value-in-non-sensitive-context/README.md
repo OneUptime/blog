@@ -14,7 +14,7 @@ Terraform's sensitive value feature helps prevent secrets from leaking into logs
 
 The most common form of this error looks like:
 
-```
+```text
 Error: Output refers to sensitive values
 
   on outputs.tf line 1:
@@ -27,7 +27,7 @@ output value as sensitive.
 
 Or:
 
-```
+```text
 Error: Invalid for_each argument
 
   on main.tf line 3, in resource "aws_iam_user" "users":

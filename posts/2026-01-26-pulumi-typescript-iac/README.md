@@ -71,7 +71,7 @@ pulumi new aws-typescript
 
 ### Project Structure
 
-```
+```text
 my-infrastructure/
 ├── Pulumi.yaml           # Project name and runtime
 ├── Pulumi.dev.yaml       # Stack-specific config (dev environment)
@@ -686,7 +686,7 @@ pulumi stack ls
 
 ### 1. Organize Code by Concern
 
-```
+```text
 infrastructure/
 ├── index.ts           # Entry point - composes modules
 ├── networking/

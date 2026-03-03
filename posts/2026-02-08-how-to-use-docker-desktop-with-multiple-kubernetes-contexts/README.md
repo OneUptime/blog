@@ -29,7 +29,7 @@ kubectl config current-context
 
 The output shows something like this:
 
-```
+```text
 CURRENT   NAME                 CLUSTER              AUTHINFO             NAMESPACE
 *         docker-desktop       docker-desktop       docker-desktop
           staging-eks          staging-eks          staging-user         default

@@ -193,7 +193,7 @@ Let us build a typical web application with a frontend, API, and database.
 
 ### Project Structure
 
-```
+```text
 myapp/
 ├── docker-compose.yml
 ├── api/

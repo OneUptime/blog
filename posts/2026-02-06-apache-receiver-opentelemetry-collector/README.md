@@ -85,7 +85,7 @@ curl http://localhost/server-status?auto
 
 Expected output shows metrics in plain text format:
 
-```
+```text
 Total Accesses: 1234
 Total kBytes: 5678
 CPULoad: 0.123

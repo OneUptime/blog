@@ -577,7 +577,7 @@ const config: CodegenConfig = {
 ```
 
 This creates:
-```
+```text
 src/
   graphql/
     queries/
@@ -807,7 +807,7 @@ const config: CodegenConfig = {
 
 ### 1. Organize GraphQL Files
 
-```
+```text
 src/
   graphql/
     fragments/

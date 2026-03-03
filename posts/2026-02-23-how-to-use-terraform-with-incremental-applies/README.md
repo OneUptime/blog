@@ -16,7 +16,7 @@ This post covers several approaches to incremental applies in Terraform, from si
 
 In traditional Terraform workflow, every apply processes all resources:
 
-```
+```text
 1. Read entire state (2,000 resources)
 2. Refresh entire state (2,000 API calls)
 3. Compute plan for everything
@@ -25,7 +25,7 @@ In traditional Terraform workflow, every apply processes all resources:
 
 An incremental approach limits this to just the affected resources:
 
-```
+```text
 1. Read relevant state (50 resources)
 2. Refresh relevant state (50 API calls)
 3. Compute plan for affected resources
@@ -38,7 +38,7 @@ Terraform does not have a built-in "incremental mode," but you can achieve incre
 
 The cleanest approach is to split your infrastructure so each project is small enough that a full plan is fast:
 
-```
+```text
 infrastructure/
   networking/      # 80 resources, 30-second plan
   compute/         # 120 resources, 60-second plan

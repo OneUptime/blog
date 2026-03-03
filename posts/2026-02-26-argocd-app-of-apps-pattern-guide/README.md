@@ -40,7 +40,7 @@ flowchart TD
 
 Start with a Git repository that holds your Application manifests:
 
-```
+```text
 argocd-config/
   apps/
     production/
@@ -151,7 +151,7 @@ ArgoCD reads the `apps/production/` directory, finds the Application YAML files,
 
 You can create hierarchies where the parent creates intermediate apps that create more apps:
 
-```
+```text
 root-app
   |
   +-- production-apps (parent)

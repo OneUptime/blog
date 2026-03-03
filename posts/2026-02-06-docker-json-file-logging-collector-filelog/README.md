@@ -42,7 +42,7 @@ The `max-size` and `max-file` options prevent logs from consuming all available 
 
 Each container gets its own directory under `/var/lib/docker/containers/`. The log file path follows this pattern:
 
-```
+```text
 /var/lib/docker/containers/<container-id>/<container-id>-json.log
 ```
 

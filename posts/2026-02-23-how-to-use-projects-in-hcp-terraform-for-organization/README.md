@@ -16,7 +16,7 @@ This guide covers how to create and use projects, assign workspaces to them, man
 
 Projects in HCP Terraform are organizational containers for workspaces. Think of them as folders:
 
-```
+```text
 Organization: acme-corp
   Project: Core Infrastructure
     Workspace: networking-production
@@ -279,7 +279,7 @@ curl \
 
 Organize around business domains or services:
 
-```
+```text
 Project: Payments
   - payments-api-production
   - payments-api-staging
@@ -301,7 +301,7 @@ Project: Analytics
 
 Separate projects per environment:
 
-```
+```text
 Project: Production
   - networking-production
   - app-production
@@ -322,7 +322,7 @@ Project: Development
 
 Each team owns a project:
 
-```
+```text
 Project: Platform Engineering
   - shared-vpc
   - kubernetes-cluster
@@ -344,7 +344,7 @@ Project: Data Team
 
 Combine approaches for larger organizations:
 
-```
+```text
 Project: Platform - Shared Infrastructure
 Project: Platform - Kubernetes
 Project: Backend - Production

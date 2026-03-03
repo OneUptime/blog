@@ -127,7 +127,7 @@ The underlay network provides IP connectivity between all VTEPs. We will use OSP
 
 Configure the spine switch with OSPF and BGP route reflector functionality:
 
-```
+```text
 ! Spine 1 Configuration
 ! Enable required features
 nv overlay evpn
@@ -179,7 +179,7 @@ router ospf UNDERLAY
 
 Configure leaf switches with OSPF participation and VTEP loopbacks:
 
-```
+```text
 ! Leaf 1 Configuration
 ! Enable required features
 nv overlay evpn
@@ -230,7 +230,7 @@ BGP carries EVPN routes between VTEPs. The spine switches act as route reflector
 
 Configure the spine as a BGP route reflector for EVPN address family:
 
-```
+```text
 ! Spine 1 - BGP Route Reflector Configuration
 router bgp 65000
   router-id 10.0.0.101
@@ -265,7 +265,7 @@ router bgp 65000
 
 Configure leaf switches to peer with spine route reflectors:
 
-```
+```text
 ! Leaf 1 - BGP Configuration
 router bgp 65000
   router-id 10.0.0.1
@@ -315,7 +315,7 @@ flowchart LR
 
 ### NVE Interface Configuration
 
-```
+```text
 ! Leaf 1 - NVE Configuration
 ! The NVE interface is the VXLAN tunnel endpoint
 
@@ -350,7 +350,7 @@ Layer 2 VNIs extend VLANs across the VXLAN fabric, providing MAC address mobilit
 
 ### VLAN to VNI Mapping
 
-```
+```text
 ! Leaf 1 - Layer 2 VNI Configuration
 
 ! Create VLANs and map to VNIs
@@ -388,7 +388,7 @@ evpn
 
 Configure access ports connecting to servers or hypervisors:
 
-```
+```text
 ! Leaf 1 - Server-facing ports
 
 interface Ethernet1/1
@@ -447,7 +447,7 @@ flowchart TB
 
 ### VRF Configuration
 
-```
+```text
 ! Leaf 1 - VRF and L3 VNI Configuration
 
 ! Create tenant VRF with L3 VNI
@@ -477,7 +477,7 @@ interface Vlan3001
 
 Configure distributed anycast gateways for optimal traffic flow:
 
-```
+```text
 ! Global anycast gateway MAC (same on all leaves)
 fabric forwarding anycast-gateway-mac 0000.2222.3333
 
@@ -500,7 +500,7 @@ interface Vlan200
 
 ### Update NVE for L3 VNI
 
-```
+```text
 ! Add L3 VNI to NVE interface
 interface nve1
   member vni 50001 associate-vrf
@@ -536,7 +536,7 @@ flowchart TB
 
 Configure the same Ethernet Segment Identifier (ESI) on both leaves:
 
-```
+```text
 ! Leaf 1 - Ethernet Segment Configuration
 
 interface Ethernet1/5
@@ -568,7 +568,7 @@ interface port-channel5
   no shutdown
 ```
 
-```
+```text
 ! Leaf 2 - Matching Ethernet Segment Configuration
 
 interface Ethernet1/5
@@ -676,7 +676,7 @@ show evpn ethernet-segment esi 0000.0000.0001.0001.0001 detail
 
 Here is a complete leaf switch configuration bringing together all components:
 
-```
+```text
 ! Complete Leaf 1 Configuration for EVPN VXLAN
 
 ! Enable features

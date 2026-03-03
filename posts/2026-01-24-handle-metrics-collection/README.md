@@ -514,7 +514,7 @@ service:http_latency:p95
 
 Set appropriate time ranges and resolutions:
 
-```
+```text
 # For dashboards showing last hour, 15s resolution is fine
 # For dashboards showing last week, use 5m resolution
 # For dashboards showing last month, use 1h resolution

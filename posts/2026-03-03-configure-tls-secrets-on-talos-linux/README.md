@@ -102,7 +102,7 @@ kubectl describe secret myapp-tls
 
 The output from `describe` will show:
 
-```
+```text
 Name:         myapp-tls
 Namespace:    default
 Type:         kubernetes.io/tls

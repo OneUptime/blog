@@ -72,13 +72,13 @@ client-output-buffer-limit replica 1gb 512mb 300
 
 The optimal buffer size depends on your write throughput and network latency. Use this formula:
 
-```
+```text
 Buffer Size = Write Throughput (MB/s) x Maximum Network Latency (s) x Safety Factor
 ```
 
 For example, with 50 MB/s write throughput, 2 second maximum latency, and a safety factor of 3:
 
-```
+```text
 Buffer Size = 50 x 2 x 3 = 300 MB
 ```
 
@@ -137,13 +137,13 @@ repl-backlog-ttl 3600
 
 The backlog should be large enough to hold commands during expected disconnection periods:
 
-```
+```text
 Backlog Size = Write Throughput (MB/s) x Maximum Disconnection Time (s)
 ```
 
 For a system with 20 MB/s write throughput and 60 second maximum acceptable disconnection:
 
-```
+```text
 Backlog Size = 20 x 60 = 1200 MB (approximately 1.2 GB)
 ```
 

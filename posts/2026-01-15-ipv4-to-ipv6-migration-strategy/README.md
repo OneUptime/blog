@@ -73,7 +73,7 @@ Start with a complete inventory of every network component.
 
 Create a comprehensive application matrix.
 
-```
+```text
 | Application      | IPv6 Ready | Socket API Version | DNS Resolution | External Dependencies |
 |------------------|------------|--------------------|-----------------|-----------------------|
 | Web Frontend     | Yes        | Dual-stack         | getaddrinfo     | CDN, Analytics        |
@@ -143,7 +143,7 @@ Design your IPv6 addressing scheme before implementation.
 
 **Recommended Structure for /48 Allocation:**
 
-```
+```text
 2001:db8:abcd::/48  (Your allocation)
     |
     +-- 2001:db8:abcd:0000::/64  Infrastructure/Management
@@ -220,7 +220,7 @@ Allows IPv6-only clients to access IPv4-only services.
 
 **Configuration Example (BIND DNS64):**
 
-```
+```text
 dns64 64:ff9b::/96 {
     clients { any; };
     mapped { !rfc1918; any; };
@@ -265,7 +265,7 @@ Combines CLAT (customer-side translator) and PLAT (provider-side translator).
 
 ### Pre-Migration Checklist
 
-```
+```text
 Infrastructure Preparation
 [ ] All network devices firmware updated
 [ ] IPv6 routing protocols configured and tested
@@ -367,7 +367,7 @@ Continuous improvement and eventual IPv4 deprecation.
 
 **DNS Record Example:**
 
-```
+```text
 ; Initial deployment - conservative TTLs
 www.example.com.    300  IN  A      192.0.2.1
 www.example.com.    60   IN  AAAA   2001:db8:abcd:100::1
@@ -395,7 +395,7 @@ For NAT64 environments, configure DNS64 carefully.
 
 **BIND Configuration:**
 
-```
+```text
 options {
     dns64 64:ff9b::/96 {
         clients { ipv6-only-clients; };
@@ -424,7 +424,7 @@ IPv6 security requires specific considerations.
 
 **Essential ICMPv6 Types (Do Not Block):**
 
-```
+```text
 Type 1   - Destination Unreachable
 Type 2   - Packet Too Big (critical for PMTUD)
 Type 3   - Time Exceeded
@@ -471,7 +471,7 @@ Protect against rogue Router Advertisements.
 
 **Cisco Switch Configuration:**
 
-```
+```text
 ipv6 nd raguard policy HOST-POLICY
   device-role host
 
@@ -673,7 +673,7 @@ server {
 
 **HAProxy Configuration:**
 
-```
+```text
 frontend http_front
     bind *:80
     bind :::80
@@ -860,7 +860,7 @@ az network vnet update \
 
 ### Pre-Migration Phase
 
-```
+```text
 Discovery
 [ ] Network device inventory complete
 [ ] Application inventory complete
@@ -879,7 +879,7 @@ Planning
 
 ### Implementation Phase
 
-```
+```text
 Infrastructure
 [ ] Core routing IPv6 enabled
 [ ] BGP sessions established
@@ -903,7 +903,7 @@ Security
 
 ### Post-Migration Phase
 
-```
+```text
 Validation
 [ ] Connectivity verified
 [ ] Performance benchmarked
@@ -974,7 +974,7 @@ Track these metrics throughout your migration.
 
 Define clear success criteria before starting.
 
-```
+```text
 Phase 1 Complete When:
 - 100% of infrastructure IPv6-capable
 - Internal services reachable via IPv6

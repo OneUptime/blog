@@ -87,7 +87,7 @@ curl \
 
 The most common pattern chains infrastructure layers from foundation to application:
 
-```
+```text
 Foundation (VPC, subnets, DNS zones)
   |
   v
@@ -124,7 +124,7 @@ resource "tfe_run_trigger" "monitoring_after_app" {
 
 When a shared service changes, all consumers should update:
 
-```
+```text
 Shared Services (ACM certs, Route53 zones, IAM roles)
   |
   +--> Service A workspace

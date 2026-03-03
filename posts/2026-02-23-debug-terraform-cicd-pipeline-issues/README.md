@@ -49,7 +49,7 @@ env:
 
 The most common CI/CD failure. Symptoms:
 
-```
+```text
 Error: error configuring Terraform AWS Provider: no valid credential sources found
 ```
 
@@ -104,7 +104,7 @@ env:
 
 ## State Lock Issues
 
-```
+```text
 Error: Error acquiring the state lock
 ```
 
@@ -139,7 +139,7 @@ This happens when a previous run didn't release the lock (crash, timeout, manual
 
 ### Provider Download Issues
 
-```
+```text
 Error: Failed to query available provider packages
 ```
 
@@ -169,7 +169,7 @@ Error: Failed to query available provider packages
 
 ### Lock File Hash Mismatch
 
-```
+```text
 Error: Failed to install provider - the current .terraform.lock.hcl
 includes hashes for only darwin_arm64
 ```
@@ -190,7 +190,7 @@ Fix in CI:
 
 ### Refresh Errors
 
-```
+```text
 Error: error reading EC2 Instance: InvalidInstanceID.NotFound
 ```
 

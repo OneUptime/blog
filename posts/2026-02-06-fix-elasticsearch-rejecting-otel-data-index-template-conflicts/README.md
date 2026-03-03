@@ -8,14 +8,14 @@ Description: Fix Elasticsearch rejecting OpenTelemetry trace and log data caused
 
 You configure the OpenTelemetry Collector to export traces or logs to Elasticsearch. The first batch succeeds, but then you start seeing errors:
 
-```
+```text
 mapper_parsing_exception: failed to parse field [attributes.http.status_code]
 of type [long] in document with id 'xyz'. Preview of field's value: '200 OK'
 ```
 
 Or:
 
-```
+```text
 illegal_argument_exception: mapper [resource.attributes.service.name]
 cannot be changed from type [keyword] to [text]
 ```

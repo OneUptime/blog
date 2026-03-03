@@ -73,7 +73,7 @@ Provide your review in this format:
     response = code_reviewer.generate_content(prompt)
     return response.text
 
-# Example: review a Python function
+## Example: review a Python function
 code_to_review = '''
 def get_user_data(user_id):
     conn = sqlite3.connect("users.db")
@@ -90,7 +90,7 @@ review = review_code(
     context="This function is called from a web API endpoint"
 )
 print(review)
-```
+```text
 
 ## Reviewing Git Diffs
 
@@ -118,7 +118,7 @@ Focus on:
     response = code_reviewer.generate_content(prompt)
     return response.text
 
-# Example diff
+## Example diff
 diff = '''
 --- a/api/handlers.py
 +++ b/api/handlers.py
@@ -139,7 +139,7 @@ review = review_diff(
     pr_description="Add endpoint to delete user and their sessions"
 )
 print(review)
-```
+```text
 
 ## Automated Refactoring Suggestions
 
@@ -170,7 +170,7 @@ For each refactoring:
     response = code_reviewer.generate_content(prompt)
     return response.text
 
-# Example: refactor a messy function
+## Example: refactor a messy function
 messy_code = '''
 def process_order(order):
     if order["status"] == "new":
@@ -206,7 +206,7 @@ refactoring = suggest_refactoring(
     ]
 )
 print(refactoring)
-```
+```text
 
 ## Batch Code Review Pipeline
 
@@ -351,7 +351,7 @@ Requirements:
     response = code_reviewer.generate_content(prompt)
     return response.text
 
-# Generate tests for a function
+## Generate tests for a function
 code = '''
 def calculate_shipping(weight_kg, distance_km, express=False):
     if weight_kg <= 0 or distance_km <= 0:
@@ -374,8 +374,10 @@ def calculate_shipping(weight_kg, distance_km, express=False):
 
 tests = generate_tests(code)
 print(tests)
-```
+```text
 
 ## Wrapping Up
 
 Automated code review with Gemini does not replace human reviewers - it augments them. The model catches pattern-level issues consistently, suggests refactors with working code, and can run security scans across entire codebases. Use it as a first pass before human review to catch the easy stuff, so human reviewers can focus on architecture and design decisions. Monitor your automated review pipeline's accuracy and usefulness with tools like OneUptime, and refine your system instructions based on team feedback.
+
+```

@@ -14,7 +14,7 @@ OpenTelemetry SDKs can emit metrics as histograms, which record values in config
 
 The default bucket boundaries for duration histograms are:
 
-```
+```text
 0, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0
 ```
 
@@ -143,7 +143,7 @@ histogram_quantile(0.50,
 
 Use Grafana template variables to make the dashboard interactive:
 
-```
+```text
 # Variable: service_name
 # Query: label_values(http_server_request_duration_seconds_count, service_name)
 # Multi-value: enabled

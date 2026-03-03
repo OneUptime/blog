@@ -30,13 +30,13 @@ In Microsoft Teams, go to Apps, search for "Azure DevOps", and install it. Then 
 
 Once installed, use these commands in the Teams channel:
 
-```
+```text
 @Azure DevOps subscribe https://dev.azure.com/yourorg/yourproject
 ```
 
 This subscribes the channel to notifications from that project. You can filter what events to receive:
 
-```
+```text
 @Azure DevOps subscribe https://dev.azure.com/yourorg/yourproject --area-path "TeamProject\Sprint1"
 @Azure DevOps subscribe https://dev.azure.com/yourorg/yourproject --event pullrequest.created
 @Azure DevOps subscribe https://dev.azure.com/yourorg/yourproject --event build.complete

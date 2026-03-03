@@ -12,7 +12,7 @@ Mutual TLS (mTLS) adds a layer of security where both the client and the server 
 
 In a standard TLS setup, only the server (Collector) presents a certificate. With mTLS, the client (your application SDK) also presents a certificate, and the server verifies it against a trusted CA. Both sides must trust each other.
 
-```
+```text
 Application SDK                    Collector
     |                                  |
     |--- ClientHello ----------------->|
@@ -25,7 +25,7 @@ Application SDK                    Collector
 
 Here are the errors you will encounter and what they mean:
 
-```
+```text
 # Client certificate not sent
 tls: certificate required
 

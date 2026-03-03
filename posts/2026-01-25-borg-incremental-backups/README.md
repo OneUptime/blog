@@ -105,7 +105,7 @@ borg create --stats --progress ::full-{now} /home /etc /var/www
 
 Sample output:
 
-```
+```text
 ------------------------------------------------------------------------------
 Archive name: full-2026-01-25T10:30:00
 Archive fingerprint: a1b2c3d4...

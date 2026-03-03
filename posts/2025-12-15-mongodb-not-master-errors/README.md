@@ -14,7 +14,7 @@ The "not master" error in MongoDB occurs when your application attempts to write
 
 When MongoDB returns "not master" (or the newer "not primary"), it means:
 
-```
+```text
 Error: not master
 Error: not master and slaveOk=false
 MongoError: not primary

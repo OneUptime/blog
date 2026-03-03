@@ -26,7 +26,7 @@ The trade-off is clear: you give up templating and reuse in exchange for simplic
 
 Create a directory in your Git repository containing standard Kubernetes manifests:
 
-```
+```text
 k8s-manifests/
   apps/
     web-app/

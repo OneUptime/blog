@@ -67,7 +67,7 @@ service:
 
 ### Understanding Fragmentation Ratio
 
-```
+```text
 fragmentation_ratio = redis.memory.rss / redis.memory.used
 ```
 
@@ -97,7 +97,7 @@ redis-cli CONFIG SET active-defrag-threshold-lower 10
 
 Monitor the defragmentation process:
 
-```
+```text
 redis.memory.fragmentation_ratio  - Should decrease after enabling defrag
 ```
 
@@ -105,7 +105,7 @@ redis.memory.fragmentation_ratio  - Should decrease after enabling defrag
 
 ### Eviction Rate
 
-```
+```text
 redis.keys.evicted - Total keys evicted (cumulative counter)
 eviction_rate = rate(redis.keys.evicted[5m])
 ```
@@ -116,7 +116,7 @@ Any evictions mean Redis is at its `maxmemory` limit and is removing keys accord
 
 Redis supports several eviction policies. Common ones:
 
-```
+```text
 allkeys-lru        - Remove least recently used keys
 volatile-lru       - Remove LRU keys that have an expire set
 allkeys-lfu        - Remove least frequently used keys
@@ -143,7 +143,7 @@ This shows memory usage by category: datasets, overhead, replication buffers, et
 
 ### Client Count
 
-```
+```text
 redis.clients.connected - Current number of connected clients
 redis.clients.blocked   - Clients blocked on BLPOP/BRPOP
 redis.connections.rejected - Connections rejected (maxclients reached)
@@ -160,7 +160,7 @@ redis-cli CONFIG GET maxclients
 
 Monitor the ratio of connected clients to maxclients:
 
-```
+```text
 client_utilization = redis.clients.connected / maxclients * 100
 ```
 

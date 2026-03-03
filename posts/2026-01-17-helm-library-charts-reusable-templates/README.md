@@ -49,7 +49,7 @@ Library charts:
 
 ### Directory Structure
 
-```
+```text
 my-library/
 ├── Chart.yaml
 ├── templates/

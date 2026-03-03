@@ -323,7 +323,7 @@ cloud-init analyze blame  # Shows which steps took longest
 
 For complex deployments combining shell scripts with cloud-config:
 
-```
+```text
 Content-Type: multipart/mixed; boundary="BOUNDARY"
 MIME-Version: 1.0
 

@@ -14,7 +14,7 @@ Certificate chain errors are one of the most common SSL issues. A server certifi
 
 When a CA issues a server certificate, they typically sign it with an intermediate CA rather than the root CA directly. This creates a chain:
 
-```
+```text
 Root CA (trusted by browsers/OS)
     |
     Intermediate CA

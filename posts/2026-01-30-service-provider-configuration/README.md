@@ -74,7 +74,7 @@ https://oneuptime.com/entity/your-project-id
 
 This is the endpoint where your SP receives SAML responses from the IdP. It must be an HTTPS endpoint that can accept POST requests.
 
-```
+```text
 https://app.example.com/saml/acs
 https://app.example.com/auth/saml/callback
 ```

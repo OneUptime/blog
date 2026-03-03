@@ -40,7 +40,7 @@ JavaScript actions are the most common choice when you need speed and cross-plat
 
 First, create the directory structure for your action:
 
-```
+```text
 my-slack-notifier/
 ├── action.yml
 ├── index.js

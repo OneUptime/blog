@@ -165,7 +165,7 @@ sudo apt install -y geoipupdate
 sudo nano /etc/GeoIP.conf
 ```
 
-```
+```text
 AccountID YOUR_ACCOUNT_ID
 LicenseKey YOUR_LICENSE_KEY
 EditionIDs GeoLite2-Country GeoLite2-ASN

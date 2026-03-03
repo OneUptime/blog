@@ -58,7 +58,7 @@ tracing-subscriber = "0.3"
 
 StatsD uses a simple text-based protocol over UDP. Each metric follows this format:
 
-```
+```text
 <metric_name>:<value>|<type>|@<sample_rate>|#<tags>
 ```
 
@@ -72,7 +72,7 @@ The metric types you will encounter most often:
 
 Sample rates and tags are optional. A metric with all fields looks like:
 
-```
+```text
 http.requests:1|c|@0.5|#env:prod,service:api
 ```
 

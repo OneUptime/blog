@@ -76,7 +76,7 @@ Here is a common Realtime Database structure for a chat app:
 
 And here is how you would restructure it for Firestore:
 
-```
+```text
 // Firestore structure - collections and subcollections
 // rooms (collection)
 //   room1 (document)

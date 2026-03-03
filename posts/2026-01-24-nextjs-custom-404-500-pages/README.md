@@ -526,7 +526,7 @@ export default function TriggerError() {
 
 ## Complete File Structure
 
-```
+```text
 app/
   not-found.tsx          # Global 404 page
   error.tsx              # Global error page

@@ -183,7 +183,7 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 
 The `append-config` action merges the second configuration into the first. This is powerful for layered configurations:
 
-```
+```text
 AmazonCloudWatch-base-config           # CPU, memory, disk, swap (all instances)
 AmazonCloudWatch-webserver-additions    # Nginx logs, HTTP metrics (web servers)
 AmazonCloudWatch-worker-additions       # Queue metrics, worker logs (workers)

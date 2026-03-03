@@ -367,7 +367,7 @@ External files keep kustomization.yaml readable for complex patches.
 
 When patches fail, examine the error message carefully:
 
-```
+```text
 Error: unable to find array element to replace at path /spec/template/spec/containers/5
 ```
 

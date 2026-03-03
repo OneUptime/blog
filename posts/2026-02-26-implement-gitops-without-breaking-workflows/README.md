@@ -25,7 +25,7 @@ Before changing anything, document what you have today. Answer these questions:
 
 Create a simple inventory:
 
-```
+```text
 Service: payment-api
 Current deployment: GitHub Actions -> kubectl apply
 Frequency: 3-4 times per week
@@ -262,7 +262,7 @@ Post this in your team's Slack channel and wiki. The simpler the documentation, 
 
 Track migration progress to keep momentum:
 
-```
+```text
 Total services: 45
 Observed by ArgoCD: 45 (100%)
 Managed by ArgoCD (auto-sync): 32 (71%)

@@ -126,7 +126,7 @@ func TestUnsafeCounter_Race(t *testing.T) {
 
 When a race is detected, the output shows detailed information about the conflicting accesses:
 
-```
+```text
 ==================
 WARNING: DATA RACE
 Read at 0x00c0000a4010 by goroutine 8:

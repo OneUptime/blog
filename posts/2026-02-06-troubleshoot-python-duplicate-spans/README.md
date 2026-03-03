@@ -12,7 +12,7 @@ When every request produces two identical spans in your tracing backend, you hav
 
 In your tracing backend, you see two nearly identical spans for each operation:
 
-```
+```text
 GET /api/users  [================] 45ms  trace_id: abc123
 GET /api/users  [================] 45ms  trace_id: abc123  (same trace!)
 ```

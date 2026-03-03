@@ -44,7 +44,7 @@ ArgoCD monitors the repository and automatically applies changes when commits up
 
 Organize your repository to support multiple applications and environments:
 
-```
+```text
 config-repo/
 ├── apps/
 │   ├── webapp/

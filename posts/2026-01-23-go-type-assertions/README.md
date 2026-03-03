@@ -111,7 +111,7 @@ func main() {
 
 Output:
 
-```
+```text
 String of length 5: "hello"
 Integer: 42
 Float: 3.140000

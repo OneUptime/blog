@@ -23,7 +23,7 @@ Before diving into code, it's essential to understand how the React Native bridg
 
 ### Data Flow
 
-```
+```text
 JavaScript Code
       |
       v
@@ -1001,14 +1001,14 @@ fun safeMethod(data: ReadableMap?, promise: Promise) {
 ### Common Issues and Solutions
 
 **Issue: Module not found**
-```
+```text
 Error: Cannot read property 'methodName' of undefined
 ```
 
 Solution: Ensure the module is properly registered in the package and the package is added to MainApplication.
 
 **Issue: Method not found**
-```
+```text
 Error: DeviceInfo.unknownMethod is not a function
 ```
 

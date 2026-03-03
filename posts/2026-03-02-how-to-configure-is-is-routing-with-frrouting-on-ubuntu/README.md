@@ -51,7 +51,7 @@ sudo nano /etc/frr/daemons
 
 Set `isisd=yes`:
 
-```
+```text
 # /etc/frr/daemons
 zebra=yes
 bgpd=no
@@ -88,7 +88,7 @@ sudo nano /etc/sysctl.conf
 
 Uncomment or add:
 
-```
+```text
 net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 1
 ```
@@ -111,7 +111,7 @@ This example assumes two routers connected via interfaces `eth1` and `eth2`.
 
 On Router 1 (NET: 49.0000.0000.0001.00):
 
-```
+```text
 ! Enter configuration mode
 configure terminal
 
@@ -159,7 +159,7 @@ write memory
 
 On Router 2 (NET: 49.0000.0000.0002.00):
 
-```
+```text
 configure terminal
 
 router isis CORE
@@ -197,7 +197,7 @@ sudo vtysh -c "show isis neighbor"
 
 Expected output when adjacency is up:
 
-```
+```text
 Area CORE:
   System Id           Interface   L  State        Holds  SNPAsent
   router2             eth1        2  Up            28     5
@@ -229,7 +229,7 @@ Routes learned from Router 2 should appear with the `I` or `i` prefix indicator.
 
 For a multi-area IS-IS setup with area routers connecting to a backbone:
 
-```
+```text
 configure terminal
 
 router isis ENTERPRISE
@@ -262,7 +262,7 @@ write memory
 
 To prevent unauthorized routers from forming adjacencies:
 
-```
+```text
 configure terminal
 
 router isis CORE
@@ -294,7 +294,7 @@ write memory
 
 IS-IS uses a metric system to influence path selection. The default metric is 10 per interface. Adjust it to prefer certain paths:
 
-```
+```text
 configure terminal
 
 interface eth1
@@ -350,7 +350,7 @@ sudo vtysh -c "show isis interface eth1"
 
 A common issue is MTU mismatch between routers. IS-IS performs MTU checks during adjacency formation. Ensure both ends of a link have matching MTU values, or disable the check:
 
-```
+```text
 interface eth1
  isis dont-check-mtu
 ```

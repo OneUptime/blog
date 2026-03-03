@@ -18,7 +18,7 @@ The BOOT partition is a dedicated filesystem partition that stores the Linux ker
 
 Here is where the BOOT partition sits in the overall Talos disk layout:
 
-```
+```text
 Talos Disk Layout:
   Partition 1 - EFI System Partition (UEFI) or BIOS boot (legacy)
   Partition 2 - BOOT partition (~1GB)
@@ -64,7 +64,7 @@ The BOOT partition maintains two sets of kernel and initramfs files - slot A and
 
 Here is how an upgrade works with the A/B scheme:
 
-```
+```text
 Before Upgrade:
   Slot A: v1.6.0 (active, currently running)
   Slot B: v1.5.0 (inactive, previous version)

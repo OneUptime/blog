@@ -70,7 +70,7 @@ kubectl -n kube-system edit configmap coredns
 
 The default Corefile should look like this:
 
-```
+```text
 .:53 {
     errors
     health {
@@ -97,7 +97,7 @@ The default Corefile should look like this:
 
 The `loop` plugin detects forwarding loops and will cause CoreDNS to crash with a message like:
 
-```
+```text
 [FATAL] plugin/loop: Loop detected for zone "."
 ```
 
@@ -112,7 +112,7 @@ kubectl -n kube-system edit configmap coredns
 
 Change the `forward` line:
 
-```
+```text
 forward . 8.8.8.8 8.8.4.4 {
     max_concurrent 1000
 }

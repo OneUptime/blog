@@ -169,7 +169,7 @@ Tags help you answer questions like "which microservice is generating the most d
 
 In Query Insights, look for queries with a high ratio of rows scanned to rows returned:
 
-```
+```text
 Rows returned: 10
 Rows scanned: 5,000,000
 ```
@@ -232,7 +232,7 @@ CREATE INDEX idx_orders_created_product ON orders(created_at, product_id);
 
 Query Insights might show the same simple query executed thousands of times in a short period. This is the N+1 pattern:
 
-```
+```text
 SELECT * FROM products WHERE id = ?
 -- Executed 500 times in 1 second
 ```

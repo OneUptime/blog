@@ -127,7 +127,7 @@ rm secrets.yaml
 
 For organizations managing multiple clusters, you might have separate secrets bundles for each environment:
 
-```
+```text
 secrets/
   production/
     secrets.enc.yaml

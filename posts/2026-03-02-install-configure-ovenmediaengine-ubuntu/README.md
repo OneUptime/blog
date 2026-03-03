@@ -59,7 +59,7 @@ sudo mv ovenmediaengine /opt/ovenmediaengine
 
 OME uses an XML configuration file. The default is located at:
 
-```
+```text
 /usr/share/ovenmediaengine/conf/Server.xml
 ```
 
@@ -239,7 +239,7 @@ OvenMediaEngine provides OvenPlayer, its reference web player that uses WebRTC f
 
 The HLS fallback URL is:
 
-```
+```text
 http://YOUR_SERVER_IP:8080/app/test/playlist.m3u8
 ```
 

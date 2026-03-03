@@ -164,7 +164,7 @@ Here are some useful KQL (Kusto Query Language) queries you can run in Log Analy
 
 This query shows the top source-destination pairs by flow count.
 
-```
+```text
 // Top 10 traffic flows by connection count
 AzureNetworkAnalytics_CL
 | where TimeGenerated > ago(1h)
@@ -179,7 +179,7 @@ AzureNetworkAnalytics_CL
 
 This query identifies denied traffic, which is useful for security analysis.
 
-```
+```text
 // All denied traffic in the last 24 hours
 AzureNetworkAnalytics_CL
 | where TimeGenerated > ago(24h)
@@ -195,7 +195,7 @@ AzureNetworkAnalytics_CL
 
 This query shows bandwidth consumption by destination.
 
-```
+```text
 // Bandwidth usage by destination in the last hour
 AzureNetworkAnalytics_CL
 | where TimeGenerated > ago(1h)

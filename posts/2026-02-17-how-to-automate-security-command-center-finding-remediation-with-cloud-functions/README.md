@@ -230,7 +230,7 @@ def fix_flow_logs(resource_name, finding):
 
 ## Step 4: Create the Requirements File
 
-```
+```text
 google-cloud-storage==2.14.0
 google-cloud-compute==1.14.0
 ```

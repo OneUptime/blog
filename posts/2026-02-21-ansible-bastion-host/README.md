@@ -134,7 +134,7 @@ bastion_session_log_dir: /var/log/bastion-sessions
 
 ## SSH Configuration Template
 
-```
+```text
 # roles/bastion/templates/sshd_config.j2 - Hardened SSH configuration
 Port {{ bastion_ssh_port }}
 Protocol 2
@@ -249,7 +249,7 @@ Banner /etc/ssh/banner.txt
 
 ## Fail2ban Configuration Template
 
-```
+```text
 # roles/bastion/templates/jail.local.j2 - Fail2ban SSH jail
 [DEFAULT]
 bantime = {{ bastion_fail2ban_bantime }}
@@ -285,7 +285,7 @@ banaction = ufw
 
 Users connect through the bastion using SSH ProxyJump:
 
-```
+```text
 # Example ~/.ssh/config for users connecting through the bastion
 Host bastion
     HostName bastion.example.com

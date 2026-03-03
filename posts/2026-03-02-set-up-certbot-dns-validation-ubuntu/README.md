@@ -62,7 +62,7 @@ certbot certonly \
 
 Certbot will display a TXT record to add:
 
-```
+```text
 Please deploy a DNS TXT record under the name:
 
 _acme-challenge.example.com
@@ -240,7 +240,7 @@ After successful issuance, certificates are in `/etc/letsencrypt/live/example.co
 ls -la /etc/letsencrypt/live/example.com/
 ```
 
-```
+```text
 cert.pem        -> ../../archive/example.com/cert1.pem
 chain.pem       -> ../../archive/example.com/chain1.pem
 fullchain.pem   -> ../../archive/example.com/fullchain1.pem

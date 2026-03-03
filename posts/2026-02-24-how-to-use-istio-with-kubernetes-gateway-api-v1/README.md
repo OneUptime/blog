@@ -50,7 +50,7 @@ kubectl get gatewayclass
 
 You should see something like:
 
-```
+```text
 NAME    CONTROLLER                    ACCEPTED   AGE
 istio   istio.io/gateway-controller   True       30s
 ```

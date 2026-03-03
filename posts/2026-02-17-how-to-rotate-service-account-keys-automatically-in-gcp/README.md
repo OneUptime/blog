@@ -162,7 +162,7 @@ def rotate_key(cloud_event):
 
 Create the requirements file:
 
-```
+```text
 # requirements.txt
 functions-framework==3.*
 google-cloud-iam==2.*

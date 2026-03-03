@@ -241,7 +241,7 @@ Here is a practical example that enforces a company-wide policy: no IAM user or 
 
 For a real-world setup, structure your IAM automation like this:
 
-```
+```text
 iam/
   inventory/
     aws-accounts.yml

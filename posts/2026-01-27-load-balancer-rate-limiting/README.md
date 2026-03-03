@@ -22,7 +22,7 @@ Before diving into configurations, understanding the core algorithms helps you c
 
 The token bucket algorithm is one of the most popular rate limiting strategies. It works by maintaining a bucket of tokens that refills at a constant rate. Each request consumes a token, and requests are rejected when the bucket is empty.
 
-```
+```text
 # Token Bucket Conceptual Model
 #
 # Bucket Capacity: 100 tokens
@@ -45,7 +45,7 @@ The token bucket algorithm is one of the most popular rate limiting strategies. 
 
 The leaky bucket processes requests at a fixed rate, regardless of how fast they arrive. Excess requests queue up (up to a limit) or are dropped.
 
-```
+```text
 # Leaky Bucket Conceptual Model
 #
 # Processing Rate: 10 requests/second
@@ -64,7 +64,7 @@ The leaky bucket processes requests at a fixed rate, regardless of how fast they
 
 The sliding window algorithm tracks requests over a rolling time window, providing more accurate rate limiting than fixed windows.
 
-```
+```text
 # Sliding Window Log
 #
 # Window: 60 seconds
@@ -1033,7 +1033,7 @@ Proper response handling for rate-limited requests improves client experience an
 
 ### Essential Response Headers
 
-```
+```text
 HTTP/1.1 429 Too Many Requests
 Content-Type: application/json
 Retry-After: 3600

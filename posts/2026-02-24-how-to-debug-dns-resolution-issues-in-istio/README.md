@@ -42,7 +42,7 @@ kubectl exec -it deploy/my-app -c my-app -- cat /etc/resolv.conf
 
 This tells you what DNS servers are configured. The typical output looks like:
 
-```
+```text
 nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5

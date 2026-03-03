@@ -31,7 +31,7 @@ ansible-playbook site.yml -f 20
 
 With the linear strategy, forks determines how many hosts run each task simultaneously. If you have 100 hosts and `forks: 10`:
 
-```
+```text
 Task 1:
   Forks 1-10:  hosts 1-10 (parallel)
   Forks 1-10:  hosts 11-20 (parallel)
@@ -65,7 +65,7 @@ Each task runs on groups of 10 hosts at a time. All 100 hosts must finish the cu
 
 With the free strategy, forks limits the total number of concurrent operations, but hosts can be on different tasks:
 
-```
+```text
 Forks 1-10 (free strategy, 100 hosts):
   Fork 1: host-01 / task 3
   Fork 2: host-02 / task 2
@@ -104,7 +104,7 @@ Different hosts can be on different tasks simultaneously. As soon as a fork fini
 
 With host_pinned, each fork is dedicated to one host until all tasks complete:
 
-```
+```text
 Forks 1-5 (host_pinned, 20 hosts):
   Fork 1: host-01 tasks 1,2,3,4,5 -> host-06 tasks 1,2,3,4,5 -> ...
   Fork 2: host-02 tasks 1,2,3,4,5 -> host-07 tasks 1,2,3,4,5 -> ...

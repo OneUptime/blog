@@ -135,7 +135,7 @@ pass
 
 The tree output makes it easy to navigate:
 
-```
+```text
 Password Store
 +-- API-Keys
 |   +-- aws-root
@@ -153,7 +153,7 @@ Password Store
 
 For secrets that need context (username, URL, notes), use multiline entries. A common convention:
 
-```
+```text
 the-password-on-the-first-line
 username: myusername
 url: https://example.com

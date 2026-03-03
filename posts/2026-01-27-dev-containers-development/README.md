@@ -26,7 +26,7 @@ Key benefits:
 
 Dev Container configuration lives in the `.devcontainer` folder at your project root.
 
-```
+```text
 your-project/
   .devcontainer/
     devcontainer.json     # Main configuration file

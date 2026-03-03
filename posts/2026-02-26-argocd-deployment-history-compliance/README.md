@@ -61,7 +61,7 @@ The strongest aspect of GitOps for compliance is that Git already provides an im
 
 Structure your GitOps repository to make audit queries easy.
 
-```
+```text
 gitops-repo/
   apps/
     production/

@@ -40,7 +40,7 @@ sequenceDiagram
 
 ## Common Async Errors
 
-```
+```text
 FAILED! => {"msg": "async task did not complete within the requested time - 300s"}
 
 FAILED! => {"msg": "Could not find job"}

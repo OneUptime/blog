@@ -105,7 +105,7 @@ kubectl get svc web-app -o wide
 
 The output should show `192.168.1.105` as the external IP:
 
-```
+```text
 NAME      TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
 web-app   LoadBalancer   10.96.45.12    192.168.1.105   80:31234/TCP   5s
 ```
@@ -151,7 +151,7 @@ kubectl describe svc api-gateway
 
 You will see an event like:
 
-```
+```text
 Events:
   Type     Reason            Age   From                Message
   ----     ------            ----  ----                -------

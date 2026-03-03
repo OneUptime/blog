@@ -216,7 +216,7 @@ kubectl get telemetry -A
 
 Expected output:
 
-```
+```text
 NAMESPACE      NAME      AGE
 istio-system   default   7d
 staging        default   3d

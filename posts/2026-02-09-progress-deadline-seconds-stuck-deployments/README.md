@@ -186,7 +186,7 @@ kubectl rollout status deployment/api-server
 
 Within 5 minutes, you'll see:
 
-```
+```text
 Waiting for deployment "api-server" rollout to finish: 0 of 3 updated replicas are available...
 error: deployment "api-server" exceeded its progress deadline
 ```
@@ -199,7 +199,7 @@ kubectl get pods -l app=api-server
 
 Output shows the image pull failure:
 
-```
+```text
 NAME                          READY   STATUS         RESTARTS   AGE
 api-server-7d8f9c5b4d-abc123  0/1     ErrImagePull   0          5m
 api-server-7d8f9c5b4d-def456  0/1     ErrImagePull   0          5m

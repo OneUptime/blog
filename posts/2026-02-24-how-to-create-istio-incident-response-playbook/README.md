@@ -76,7 +76,7 @@ This takes about 2 minutes and gives you a high-level picture of mesh health.
 
 Use this decision tree to narrow down the problem:
 
-```
+```text
 Is istiod healthy?
 ├── NO → Go to "Control Plane Down" scenario
 └── YES
@@ -246,7 +246,7 @@ kubectl get authorizationpolicies -n <namespace>
 
 ### Initial Notification
 
-```
+```text
 [INCIDENT] Istio-related service degradation detected
 
 Severity: P[1/2/3]
@@ -260,7 +260,7 @@ Channel: #incident-[number]
 
 ### Status Update (every 30 minutes for P1)
 
-```
+```text
 [UPDATE] Istio incident - [Incident ID]
 
 Current status: [Investigating/Identified/Mitigating/Resolved]
@@ -272,7 +272,7 @@ Next update: [Time]
 
 ### Resolution Notification
 
-```
+```text
 [RESOLVED] Istio incident - [Incident ID]
 
 Duration: [Start time] to [End time]

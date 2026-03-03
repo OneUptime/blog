@@ -37,7 +37,7 @@ resource "aws_db_instance" "production" {
 
 When you run `terraform destroy`, Terraform will stop with an error:
 
-```
+```text
 Error: Instance cannot be destroyed
 
   on main.tf line 1:
@@ -137,7 +137,7 @@ After applying this change, the resources are removed from state without being d
 
 The most robust approach is to keep critical resources in a separate Terraform configuration with its own state file:
 
-```
+```text
 # Project structure
 infrastructure/
   shared/          # Never destroyed

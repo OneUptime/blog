@@ -193,12 +193,12 @@ If the headless service is in the `database` namespace and you don't include it,
 
 For StatefulSets behind headless services, each pod gets a predictable DNS name:
 
-```
+```text
 <pod-name>.<headless-svc-name>.<namespace>.svc.cluster.local
 ```
 
 For example:
-```
+```text
 mysql-0.mysql-headless.database.svc.cluster.local
 mysql-1.mysql-headless.database.svc.cluster.local
 ```

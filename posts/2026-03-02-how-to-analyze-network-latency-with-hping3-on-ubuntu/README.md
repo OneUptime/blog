@@ -37,7 +37,7 @@ sudo hping3 -1 192.168.1.1
 ```
 
 Output example:
-```
+```text
 HPING 192.168.1.1 (eth0 192.168.1.1): icmp mode set, 28 headers + 0 data bytes
 len=28 ip=192.168.1.1 ttl=64 id=12345 icmp_seq=0 rtt=0.8 ms
 len=28 ip=192.168.1.1 ttl=64 id=12346 icmp_seq=1 rtt=0.7 ms
@@ -123,7 +123,7 @@ sudo hping3 -S -p 443 -c 1000 -i u10000 192.168.1.100
 
 At the end of the run, hping3 prints a summary showing packets transmitted, received, and lost:
 
-```
+```text
 --- 192.168.1.100 hping statistic ---
 1000 packets transmitted, 998 packets received, 0% packet loss
 round-trip min/avg/max = 0.5/1.2/8.7 ms

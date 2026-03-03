@@ -29,7 +29,7 @@ Variables in a variable set behave exactly like workspace-specific variables. Th
 3. Click **Create variable set**
 4. Configure the variable set:
 
-```
+```text
 Name: AWS Production Credentials
 Description: AWS credentials for production workspaces
 Scope: Specific workspaces and projects
@@ -37,7 +37,7 @@ Scope: Specific workspaces and projects
 
 5. Add variables to the set:
 
-```
+```text
 # Environment variable - AWS Access Key
 Key: AWS_ACCESS_KEY_ID
 Value: AKIA...
@@ -286,7 +286,7 @@ resource "tfe_variable" "dd_app_key" {
 
 When a variable is defined in multiple places, workspace-specific variables take priority over variable set values:
 
-```
+```text
 Priority (highest to lowest):
 1. Workspace-specific variables
 2. Variable sets applied to workspace directly
@@ -298,7 +298,7 @@ Priority (highest to lowest):
 
 This means you can set a default in a global variable set and override it on specific workspaces:
 
-```
+```text
 # Global variable set: instance_type = "t3.micro"
 # Production workspace variable: instance_type = "t3.large"
 # Result for production workspace: instance_type = "t3.large"

@@ -96,14 +96,14 @@ Even with cert-manager, you still need to configure your application to reload c
 
 **Istio mTLS** encrypts traffic between Envoy sidecars. The traffic between the application container and its local sidecar (within the same pod) is unencrypted. This is generally considered acceptable because intra-pod communication goes through localhost and is not exposed to the network. However, a compromised container in the same pod could potentially sniff this traffic.
 
-```
+```text
 [App Container] --plaintext--> [Sidecar] ==mTLS==> [Sidecar] --plaintext--> [App Container]
                  (localhost)                                    (localhost)
 ```
 
 **Application-Level TLS** encrypts traffic end-to-end, from the application in one pod to the application in another pod. There is no unencrypted segment (except within your application process itself).
 
-```
+```text
 [App Container] ==TLS==> [Sidecar] ==double-encrypted==> [Sidecar] ==TLS==> [App Container]
 ```
 
@@ -135,7 +135,7 @@ For most applications, the performance difference is negligible. If you are hand
 
 **Istio mTLS** uses SPIFFE identities (Secure Production Identity Framework for Everyone). Each workload gets an identity based on its Kubernetes service account:
 
-```
+```text
 spiffe://cluster.local/ns/default/sa/my-service
 ```
 

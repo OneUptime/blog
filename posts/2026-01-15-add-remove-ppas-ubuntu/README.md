@@ -50,7 +50,7 @@ sudo nano /etc/apt/sources.list.d/custom.list
 ```
 
 Add:
-```
+```text
 deb http://ppa.launchpad.net/user/ppa-name/ubuntu jammy main
 deb-src http://ppa.launchpad.net/user/ppa-name/ubuntu jammy main
 ```

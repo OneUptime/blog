@@ -311,7 +311,7 @@ vagrant up && bash setup-cluster.sh
 
 The beauty of Vagrant is portability. Check your Vagrantfile and setup script into version control:
 
-```
+```text
 project/
   Vagrantfile
   setup-cluster.sh
@@ -320,7 +320,7 @@ project/
 
 Add to `.gitignore`:
 
-```
+```text
 # .gitignore
 controlplane.yaml
 worker.yaml

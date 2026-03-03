@@ -293,7 +293,7 @@ If you have the Grafana sidecar enabled (which is the default in kube-prometheus
 
 Variables make dashboards interactive. Add these to let users filter by node, namespace, or pod:
 
-```
+```text
 # Node variable
 Query: label_values(node_uname_info, instance)
 Name: node
@@ -309,7 +309,7 @@ Name: pod
 
 Use these variables in your panel queries:
 
-```
+```text
 # CPU usage for selected node
 100 - (avg(rate(node_cpu_seconds_total{mode="idle", instance="$node"}[5m])) * 100)
 

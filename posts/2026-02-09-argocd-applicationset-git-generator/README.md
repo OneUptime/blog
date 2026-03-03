@@ -55,7 +55,7 @@ spec:
 
 With this structure:
 
-```
+```text
 apps/
 ├── api-gateway/
 │   └── deployment.yaml
@@ -270,7 +270,7 @@ spec:
 
 Structure:
 
-```
+```text
 teams/
 ├── platform/
 │   └── apps/

@@ -26,7 +26,7 @@ The simplest usage pulls a single file from a remote host:
 
 Here is the important part: `fetch` creates a directory structure based on the hostname. If you run this against a host called `webserver1`, the file ends up at:
 
-```
+```text
 /tmp/collected-logs/webserver1/var/log/myapp/app.log
 ```
 
@@ -86,7 +86,7 @@ Collecting logs from multiple servers is one of the most common use cases:
 
 After running this against three web servers, you get:
 
-```
+```text
 logs/2024-06-15/
   web1.example.com/
     var/log/myapp/app.log

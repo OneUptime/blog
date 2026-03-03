@@ -219,7 +219,7 @@ Lambda sends all `console.log` output to CloudWatch Logs. Use Logs Insights to q
 
 Find the slowest invocations:
 
-```
+```text
 # Find the 10 slowest invocations in the last hour
 filter @type = "REPORT"
 | fields @requestId, @duration, @maxMemoryUsed, @memorySize
@@ -229,7 +229,7 @@ filter @type = "REPORT"
 
 Find cold starts:
 
-```
+```text
 # Identify cold starts and their duration
 filter @type = "REPORT"
 | fields @requestId, @duration, @initDuration
@@ -240,7 +240,7 @@ filter @type = "REPORT"
 
 Calculate error rate:
 
-```
+```text
 # Calculate error rate over time
 filter @type = "REPORT"
 | stats
@@ -252,7 +252,7 @@ filter @type = "REPORT"
 
 Analyze memory usage:
 
-```
+```text
 # Find functions using most of their allocated memory
 filter @type = "REPORT"
 | fields @maxMemoryUsed / 1000000 as memUsedMB, @memorySize as memAllocated
@@ -309,7 +309,7 @@ exports.handler = async (event) => {
 
 Then query with Logs Insights:
 
-```
+```text
 # Query structured logs for slow operations
 filter level = "INFO" and message = "Request completed"
 | stats avg(durationMs) as avgDuration, max(durationMs) as maxDuration, count(*) as requests
@@ -320,7 +320,7 @@ filter level = "INFO" and message = "Request completed"
 
 Lambda costs are based on invocations, duration, and memory. Track them:
 
-```
+```text
 # Estimate Lambda cost from REPORT logs
 filter @type = "REPORT"
 | stats

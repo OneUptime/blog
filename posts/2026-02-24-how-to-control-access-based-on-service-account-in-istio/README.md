@@ -16,13 +16,13 @@ This is what zero-trust networking looks like in practice. Every service proves 
 
 Every pod in Kubernetes runs under a service account. When Istio injects a sidecar, it requests a certificate from the Istio CA that encodes the pod's service account identity in SPIFFE format:
 
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
 For example, a pod running under the `order-processor` service account in the `backend` namespace gets this identity:
 
-```
+```text
 spiffe://cluster.local/ns/backend/sa/order-processor
 ```
 

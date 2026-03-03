@@ -14,7 +14,7 @@ Most teams run at least three environments: development, staging, and production
 
 The cleanest approach is separate inventory directories for each environment:
 
-```
+```text
 inventories/
 ├── development/
 │   ├── hosts.yml

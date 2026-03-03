@@ -104,7 +104,7 @@ dig example.com CAA
 
 If CAA records exist, they must include `pki.goog` to allow Google-managed certificates:
 
-```
+```text
 ; Add this CAA record to your DNS
 your-domain.com. IN CAA 0 issue "pki.goog"
 ```

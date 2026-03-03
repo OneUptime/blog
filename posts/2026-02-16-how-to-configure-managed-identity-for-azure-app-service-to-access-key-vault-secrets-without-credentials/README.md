@@ -128,7 +128,7 @@ The simplest way to use Key Vault secrets in App Service is through Key Vault re
 3. Click New application setting.
 4. For the Name, enter something like `DatabasePassword`.
 5. For the Value, use the Key Vault reference syntax:
-   ```
+   ```text
    @Microsoft.KeyVault(SecretUri=https://myapp-keyvault.vault.azure.net/secrets/database-password/)
    ```
 6. Click OK, then Save.
@@ -155,13 +155,13 @@ Write-Host "App settings configured with Key Vault references."
 
 You can also reference a specific version of a secret:
 
-```
+```text
 @Microsoft.KeyVault(SecretUri=https://myapp-keyvault.vault.azure.net/secrets/database-password/abc123def456)
 ```
 
 Or use the vault name and secret name directly:
 
-```
+```text
 @Microsoft.KeyVault(VaultName=myapp-keyvault;SecretName=database-password)
 ```
 

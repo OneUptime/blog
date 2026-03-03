@@ -37,7 +37,7 @@ And what it should return:
 
 Create the following structure:
 
-```
+```text
 my-project/
   main.tf           # Root module - calls the s3 module
   variables.tf      # Root module variables
@@ -267,7 +267,7 @@ terraform apply
 
 When you run `terraform init`, Terraform will find the local module reference and register it. You will see output like:
 
-```
+```text
 Initializing modules...
 - app_logs_bucket in modules/s3-bucket
 - data_bucket in modules/s3-bucket
@@ -275,7 +275,7 @@ Initializing modules...
 
 The plan will show all the resources the module creates, prefixed with the module name:
 
-```
+```text
 module.app_logs_bucket.aws_s3_bucket.this
 module.app_logs_bucket.aws_s3_bucket_versioning.this
 module.app_logs_bucket.aws_s3_bucket_server_side_encryption_configuration.this
@@ -300,7 +300,7 @@ module.data_bucket.aws_s3_bucket.this
 
 While not required by Terraform, adding a `README.md` to your module directory is a good practice. Document what the module does, what variables it accepts, and show a usage example:
 
-```
+```text
 modules/
   s3-bucket/
     README.md       # Usage documentation

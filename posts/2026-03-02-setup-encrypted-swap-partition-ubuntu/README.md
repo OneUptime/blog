@@ -54,7 +54,7 @@ sudo nano /etc/crypttab
 
 Add a line for your swap partition:
 
-```
+```text
 # Format: <name>  <device>  <key>  <options>
 cryptswap1  /dev/sda2  /dev/urandom  swap,cipher=aes-xts-plain64,size=256
 ```
@@ -77,7 +77,7 @@ sudo nano /etc/fstab
 
 Remove or comment out the existing swap line:
 
-```
+```text
 # Comment out the old swap line:
 # /dev/sda2  none  swap  sw  0  0
 
@@ -143,7 +143,7 @@ Note the UUID reported by mkswap - you may need it.
 sudo nano /etc/crypttab
 ```
 
-```
+```text
 # Use the LUKS partition - no key file means prompt at boot
 cryptswap1  /dev/sda2  none  luks
 ```
@@ -154,7 +154,7 @@ cryptswap1  /dev/sda2  none  luks
 sudo nano /etc/fstab
 ```
 
-```
+```text
 /dev/mapper/cryptswap1  none  swap  sw  0  0
 ```
 
@@ -179,7 +179,7 @@ sudo cryptsetup luksAddKey /dev/sda2 /etc/luks/swap.key
 
 Update `/etc/crypttab` to use the key file:
 
-```
+```text
 cryptswap1  /dev/sda2  /etc/luks/swap.key  luks
 ```
 
@@ -242,7 +242,7 @@ sudo nano /etc/default/grub
 
 Add the resume parameter:
 
-```
+```text
 GRUB_CMDLINE_LINUX="... resume=/dev/mapper/cryptswap1"
 ```
 

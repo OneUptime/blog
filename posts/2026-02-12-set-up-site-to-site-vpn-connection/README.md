@@ -128,7 +128,7 @@ This XML file contains everything you need: tunnel endpoints, pre-shared keys, B
 
 The key parameters you'll find in the config:
 
-```
+```text
 Tunnel 1:
   Outside IP: 35.x.x.x (AWS endpoint)
   Inside IP: 169.254.x.x/30 (tunnel interface)

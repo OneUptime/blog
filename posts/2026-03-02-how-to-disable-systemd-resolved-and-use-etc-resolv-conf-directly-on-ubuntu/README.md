@@ -38,13 +38,13 @@ cat /etc/resolv.conf
 
 On a default Ubuntu installation, `resolv.conf` is a symlink:
 
-```
+```text
 /etc/resolv.conf -> ../run/systemd/resolve/stub-resolv.conf
 ```
 
 The file it points to contains the stub address:
 
-```
+```text
 nameserver 127.0.0.53
 options edns0 trust-ad
 ```

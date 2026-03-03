@@ -240,7 +240,7 @@ Tips for reducing package size:
 
 Example `.gcloudignore`:
 
-```
+```text
 node_modules/
 tests/
 *.test.js

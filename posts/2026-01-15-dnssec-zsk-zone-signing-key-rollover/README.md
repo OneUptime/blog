@@ -86,7 +86,7 @@ The Pre-Publication method is the most commonly used approach for ZSK rollovers.
 
 ### Timeline
 
-```
+```text
 Phase 1: Key Introduction
 |-------- TTL + Propagation Time --------|
 
@@ -143,7 +143,7 @@ dig @localhost example.com DNSKEY +dnssec
 
 You should see both the old and new ZSK in the output:
 
-```
+```text
 example.com.    3600    IN    DNSKEY    256 3 8 (
                         AwEAAd... ; old ZSK
                         ) ; ZSK; alg = RSASHA256
@@ -295,7 +295,7 @@ dig example.com A +dnssec
 
 Example output:
 
-```
+```text
 example.com.    300    IN    A    192.0.2.1
 example.com.    300    IN    RRSIG    A 8 2 300 (
                         20240315000000 20240215000000 12345 example.com.

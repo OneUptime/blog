@@ -111,7 +111,7 @@ cd HelloVapor
 
 A fresh Vapor project has this structure:
 
-```
+```text
 HelloVapor/
 ├── Package.swift           # Swift Package Manager manifest
 ├── Sources/

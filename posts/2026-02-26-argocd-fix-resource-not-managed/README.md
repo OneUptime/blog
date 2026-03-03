@@ -12,13 +12,13 @@ The "resource is not managed" error in ArgoCD means you are trying to perform an
 
 The error typically appears when:
 
-```
+```text
 resource Deployment/my-deployment is not managed by any ArgoCD application
 ```
 
 Or when trying to perform actions from the UI:
 
-```
+```text
 Unable to perform action: resource is not managed
 ```
 

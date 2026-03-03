@@ -32,7 +32,7 @@ With IaC:
 
 Start by organizing your Istio configuration in a repository:
 
-```
+```text
 istio-config/
   base/
     installation/

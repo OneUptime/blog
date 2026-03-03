@@ -22,7 +22,7 @@ SSE uses a simple text-based format over HTTP. The server responds with `Content
 
 ### Event Format
 
-```
+```text
 event: message
 id: 12345
 retry: 5000
@@ -1143,7 +1143,7 @@ server {
 ```
 
 **HAProxy:**
-```
+```text
 frontend http
     bind *:80
     default_backend servers

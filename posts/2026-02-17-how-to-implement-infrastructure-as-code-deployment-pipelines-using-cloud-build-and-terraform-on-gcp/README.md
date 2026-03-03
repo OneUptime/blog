@@ -68,7 +68,7 @@ terraform {
 
 Structure your Terraform code with modules and environment-specific configurations:
 
-```
+```text
 terraform/
   modules/
     networking/

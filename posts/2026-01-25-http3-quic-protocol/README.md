@@ -153,7 +153,7 @@ server {
 
 Caddy has built-in HTTP/3 support enabled by default.
 
-```
+```text
 # Caddyfile
 example.com {
     # HTTP/3 is enabled automatically with HTTPS

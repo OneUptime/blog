@@ -51,7 +51,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 The resulting metrics look like this in the Prometheus exposition format.
 
-```
+```text
 # HELP http_request_duration_seconds HTTP request latency in seconds
 # TYPE http_request_duration_seconds histogram
 http_request_duration_seconds_bucket{le="0.005"} 24054
@@ -251,7 +251,7 @@ histogram_quantile(
 
 The accuracy of histogram_quantile depends on bucket placement. Consider this scenario.
 
-```
+```text
 # Buckets: 0.1, 0.5, 1.0
 # Actual data: 90% of requests complete in 0.15s, 10% take 0.9s
 
@@ -273,7 +273,7 @@ Each histogram bucket creates a separate time series. With labels, this multipli
 
 **Cardinality Calculation**
 
-```
+```text
 Total time series = (buckets + 2) * label_combinations
 
 Example:

@@ -47,7 +47,7 @@ istioctl proxy-config listeners productpage-v1-abc123.default
 
 You'll see a table like:
 
-```
+```text
 ADDRESS       PORT  MATCH                        DESTINATION
 0.0.0.0       15006 ALL                          Inline Route: /*
 0.0.0.0       15006 Addr: *:15006                Non-HTTP/Non-TCP
@@ -77,7 +77,7 @@ istioctl proxy-config routes productpage-v1-abc123.default
 
 Output:
 
-```
+```text
 NAME           DOMAINS                          MATCH     VIRTUAL SERVICE
 9080           reviews, reviews.default + 1     /*        reviews-route.default
 9080           ratings, ratings.default + 1     /*
@@ -101,7 +101,7 @@ Clusters represent the upstream destinations:
 istioctl proxy-config clusters productpage-v1-abc123.default
 ```
 
-```
+```text
 SERVICE FQDN                         PORT   SUBSET   DIRECTION    TYPE     DESTINATION RULE
 reviews.default.svc.cluster.local    9080   v1       outbound     EDS      reviews-dr.default
 reviews.default.svc.cluster.local    9080   v2       outbound     EDS      reviews-dr.default
@@ -134,7 +134,7 @@ istioctl proxy-config endpoints productpage-v1-abc123.default \
   --cluster "outbound|9080|v1|reviews.default.svc.cluster.local"
 ```
 
-```
+```text
 ENDPOINT             STATUS      OUTLIER CHECK   CLUSTER
 10.244.0.15:9080     HEALTHY     OK              outbound|9080|v1|reviews.default.svc.cluster.local
 10.244.0.16:9080     HEALTHY     OK              outbound|9080|v1|reviews.default.svc.cluster.local

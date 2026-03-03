@@ -143,7 +143,7 @@ print(f"Status: {'Healthy' if result['is_healthy'] else 'Scale needed'}")
 ```
 
 Output:
-```
+```text
 CPU Headroom: 19.41%
 Status: Scale needed
 ```
@@ -377,7 +377,7 @@ for p in projections[:7]:
 ```
 
 Output:
-```
+```text
 Current headroom: 35.0%
 Scaling needed by: 2026-05 (4 months)
 
@@ -520,7 +520,7 @@ for month in range(1, 13):
 ```
 
 Output:
-```
+```text
 Seasonal Capacity Analysis (E-commerce)
 ============================================================
 Month         Expected   Required      Gap   Status
@@ -674,7 +674,7 @@ for resource_type in ResourceType:
 ```
 
 Output:
-```
+```text
 Lead Time Impact on Headroom Requirements
 =================================================================
 Resource Type         Lead Time  Growth During Required Headroom
@@ -787,7 +787,7 @@ for r in results:
 ```
 
 Output:
-```
+```text
 Headroom Cost-Benefit Analysis
 ================================================================================
   Headroom   Infra Cost  Outage Prob  Outage Cost   Total Cost    Optimal

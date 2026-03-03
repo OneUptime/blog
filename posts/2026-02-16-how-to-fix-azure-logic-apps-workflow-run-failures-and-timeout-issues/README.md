@@ -119,7 +119,7 @@ In the designer, add a "Condition" action that checks if the output is null or e
 
 You can also use the `coalesce()` function to provide default values:
 
-```
+```text
 @coalesce(body('Get_item')?['Title'], 'Default Title')
 ```
 

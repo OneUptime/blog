@@ -16,13 +16,13 @@ Let me walk through the filter syntax from basics to advanced patterns, with rea
 
 Cloud Logging filters use a comparison-based syntax. The simplest filter compares a field to a value.
 
-```
+```text
 severity = "ERROR"
 ```
 
 You can combine conditions with `AND` and `OR`, and negate with `NOT`.
 
-```
+```text
 severity = "ERROR" AND resource.type = "cloud_run_revision"
 ```
 
@@ -34,13 +34,13 @@ Every log entry has a `logName` field that identifies where it came from. This i
 
 This filter finds all entries from Cloud Run request logs.
 
-```
+```text
 logName = "projects/my-project/logs/run.googleapis.com%2Frequests"
 ```
 
 Note the URL encoding - forward slashes in the log name are encoded as `%2F`. You can also use the `logName:` operator (colon means "has") for partial matching.
 
-```
+```text
 # Find all audit-related logs
 logName : "cloudaudit.googleapis.com"
 ```
@@ -51,7 +51,7 @@ Severity levels in Cloud Logging are: DEFAULT, DEBUG, INFO, NOTICE, WARNING, ERR
 
 This filter finds all log entries at ERROR level or above.
 
-```
+```text
 severity >= "ERROR"
 ```
 
@@ -61,13 +61,13 @@ Many GCP services write plain text logs. To search within them, use the `:` oper
 
 This filter finds log entries containing a specific error message.
 
-```
+```text
 textPayload : "connection refused"
 ```
 
 For case-insensitive substring matching, you can use the `=~` regex operator.
 
-```
+```text
 # Case-insensitive search for connection errors
 textPayload =~ "(?i)connection (refused|reset|timeout)"
 ```
@@ -78,13 +78,13 @@ Structured logs use `jsonPayload` instead of `textPayload`. You can drill into s
 
 This filter looks for a specific error code in a JSON log field.
 
-```
+```text
 jsonPayload.error_code = "DEADLINE_EXCEEDED"
 ```
 
 You can also check for the existence of a field.
 
-```
+```text
 # Find entries that have an error field, regardless of its value
 jsonPayload.error : ""
 ```
@@ -95,19 +95,19 @@ The `=~` and `!~` operators support RE2 regular expressions. These are extremely
 
 This filter matches stack traces containing specific exception types.
 
-```
+```text
 textPayload =~ "(?:NullPointerException|ArrayIndexOutOfBoundsException|ClassCastException)"
 ```
 
 Here is one that finds HTTP errors with specific status codes in the 5xx range.
 
-```
+```text
 httpRequest.status =~ "^5[0-9]{2}$"
 ```
 
 And this finds error messages that contain what looks like a database connection string, which might indicate a configuration leak.
 
-```
+```text
 textPayload =~ "(?i)(jdbc|mongodb|mysql|postgres)://[^\\s]+"
 ```
 
@@ -117,7 +117,7 @@ When debugging distributed systems, you often need to find related errors across
 
 This filter finds errors from any Cloud Run service in the last hour.
 
-```
+```text
 resource.type = "cloud_run_revision"
 AND severity >= "ERROR"
 AND timestamp >= "2026-02-17T00:00:00Z"
@@ -125,7 +125,7 @@ AND timestamp >= "2026-02-17T00:00:00Z"
 
 This one finds timeout errors across Cloud Functions, Cloud Run, and App Engine.
 
-```
+```text
 (resource.type = "cloud_run_revision" OR resource.type = "cloud_function" OR resource.type = "gae_app")
 AND (textPayload : "timeout" OR textPayload : "deadline exceeded" OR jsonPayload.message : "timeout")
 AND severity >= "WARNING"
@@ -175,7 +175,7 @@ gcloud logging read \
 
 Then search for all entries with that trace ID.
 
-```
+```text
 trace = "projects/my-project/traces/abc123def456"
 ```
 
@@ -200,7 +200,7 @@ gcloud logging views create prod-errors \
 
 Here is a quick reference of filters I use regularly.
 
-```
+```text
 # All GKE container errors
 resource.type = "k8s_container" AND severity >= "ERROR"
 

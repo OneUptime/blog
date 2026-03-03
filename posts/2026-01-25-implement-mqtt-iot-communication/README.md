@@ -168,7 +168,7 @@ topic read commands/sensor_device_01/#
 
 Good topic structure is crucial for scalable IoT systems:
 
-```
+```text
 # Topic naming convention
 {domain}/{location}/{device-type}/{device-id}/{measurement}
 

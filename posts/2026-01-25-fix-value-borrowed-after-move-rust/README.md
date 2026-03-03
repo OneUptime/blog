@@ -26,7 +26,7 @@ fn main() {
 
 The error message:
 
-```
+```text
 error[E0382]: borrow of moved value: `s1`
  --> src/main.rs:5:20
   |

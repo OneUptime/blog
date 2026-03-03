@@ -24,7 +24,7 @@ Policy sets in Terraform Enterprise are collections of Sentinel policies that ar
 
 Start by creating a Git repository for your policies:
 
-```
+```text
 sentinel-policies/
     policies/
         require-tags.sentinel
@@ -286,7 +286,7 @@ For more controlled rollouts, use branch-based policy sets:
 
 For organizations with many teams and workspaces, structure your policy sets by scope and concern:
 
-```
+```text
 # Global policies - apply to all workspaces
 global-security/
     sentinel.hcl

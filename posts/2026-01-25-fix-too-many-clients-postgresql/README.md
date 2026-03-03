@@ -16,7 +16,7 @@ The "FATAL: too many clients already" error occurs when your application tries t
 
 When you see this error:
 
-```
+```text
 FATAL: sorry, too many clients already
 FATAL: remaining connection slots are reserved for non-replication superuser connections
 ```

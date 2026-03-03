@@ -92,7 +92,7 @@ kubectl get pods -n istio-operator
 
 Expected output:
 
-```
+```text
 NAME                              READY   STATUS    RESTARTS   AGE
 istio-operator-5f7b8d6c6f-xxxxx   1/1     Running   0          30s
 ```

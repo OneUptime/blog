@@ -49,13 +49,13 @@ In ambient mode, traffic from enrolled pods goes through ztunnel before reaching
 ### The Source IP Problem
 
 Without ambient mode:
-```
+```text
 frontend (10.0.1.5) -> backend (10.0.1.6)
 NetworkPolicy sees: source IP = 10.0.1.5
 ```
 
 With ambient mode:
-```
+```text
 frontend (10.0.1.5) -> ztunnel (node IP) -> [HBONE] -> ztunnel (node IP) -> backend (10.0.1.6)
 ```
 

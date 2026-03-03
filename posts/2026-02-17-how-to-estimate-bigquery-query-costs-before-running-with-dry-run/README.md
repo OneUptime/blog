@@ -38,7 +38,7 @@ bq query --dry_run --use_legacy_sql=false \
 
 The output shows the total bytes that would be processed.
 
-```
+```text
 Query successfully validated. Assuming the tables are not modified,
 running this query will process 2.4 GB of data.
 ```

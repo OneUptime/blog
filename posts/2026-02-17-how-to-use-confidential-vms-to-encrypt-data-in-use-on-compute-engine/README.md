@@ -158,7 +158,7 @@ sudo dmesg | grep -i sev
 
 You should see output like:
 
-```
+```text
 AMD Memory Encryption Features active: SEV
 ```
 

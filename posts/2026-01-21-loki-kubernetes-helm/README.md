@@ -37,7 +37,7 @@ helm search repo grafana/loki
 
 You should see available Loki charts:
 
-```
+```text
 NAME                            CHART VERSION   APP VERSION
 grafana/loki                    5.47.1          2.9.4
 grafana/loki-stack              2.10.1          v2.9.3
@@ -731,7 +731,7 @@ kubectl get pods -n loki
 
 Expected output for distributed mode:
 
-```
+```text
 NAME                                      READY   STATUS    RESTARTS   AGE
 loki-compactor-0                          1/1     Running   0          5m
 loki-distributor-7f8d9c5b6-xxxxx          1/1     Running   0          5m

@@ -25,7 +25,7 @@ flowchart TD
 
 ## Common Error Messages
 
-```
+```text
 ERROR 1136 (21S01): Column count doesn't match value count at row 1
 ERROR 1136 (21S01): Column count doesn't match value count at row 5
 ```

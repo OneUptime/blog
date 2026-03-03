@@ -106,7 +106,7 @@ With the data source connected, build out your screens. Here is a common pattern
 
 Add a Gallery control and set its Items property:
 
-```
+```text
 // Filter customers based on search text
 // SortByColumns sorts results alphabetically by last name
 SortByColumns(
@@ -123,7 +123,7 @@ SortByColumns(
 
 Add a Form control in View mode. Set its DataSource to `[dbo].[Customers]` and its Item to the selected gallery item:
 
-```
+```text
 // Reference the selected customer from the gallery
 BrowseGallery.Selected
 ```
@@ -132,7 +132,7 @@ BrowseGallery.Selected
 
 Add a Form control in Edit mode. Wire up the submit button:
 
-```
+```text
 // Submit the form changes back to Azure SQL
 // After submission, navigate back to the browse screen
 SubmitForm(EditForm);
@@ -190,7 +190,7 @@ END;
 
 Call it from Power Apps like this:
 
-```
+```text
 // Execute the stored procedure and capture the result
 // The connector wraps the result in a table with one row
 Set(
@@ -227,7 +227,7 @@ Azure SQL is fast, but the roundtrip through the Power Apps connector adds laten
 
 **Reduce columns**: Use the `ShowColumns` function to fetch only the columns you need:
 
-```
+```text
 // Only fetch the columns the gallery needs
 // This reduces the payload size significantly
 ShowColumns(
@@ -238,7 +238,7 @@ ShowColumns(
 
 **Use Concurrent for parallel loads**: If your app loads multiple data sources on startup:
 
-```
+```text
 // Load multiple data sources in parallel
 // This cuts the total loading time roughly in half
 Concurrent(

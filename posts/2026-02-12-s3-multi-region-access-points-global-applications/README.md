@@ -141,7 +141,7 @@ You'll want to set up bidirectional replication between all bucket pairs for a f
 
 Once the MRAP is active, you get an endpoint that looks like this:
 
-```
+```text
 arn:aws:s3::123456789012:accesspoint/my-global-access-point.mrap
 ```
 

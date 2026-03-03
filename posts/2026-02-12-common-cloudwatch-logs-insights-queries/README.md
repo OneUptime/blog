@@ -18,7 +18,7 @@ If you're new to the query syntax, start with our [Logs Insights query syntax gu
 
 This is usually the first query you run when something's going wrong:
 
-```
+```text
 filter level = "ERROR"
 | parse @message /(?<errorType>\w+Error|Exception): (?<errorMsg>[^\n]+)/
 | stats count(*) as occurrences by errorType, errorMsg
@@ -30,7 +30,7 @@ filter level = "ERROR"
 
 Great for spotting when errors started spiking:
 
-```
+```text
 stats sum(level = "ERROR") as errors, count(*) as total,
       sum(level = "ERROR") / count(*) * 100 as errorRate
 by bin(5m)
@@ -40,7 +40,7 @@ by bin(5m)
 
 When you need to know which part of your system is failing:
 
-```
+```text
 filter level = "ERROR"
 | stats count(*) as errors by service, endpoint
 | sort errors desc
@@ -51,7 +51,7 @@ filter level = "ERROR"
 
 Useful for finding when a new error type first appeared:
 
-```
+```text
 filter level = "ERROR"
 | parse @message /(?<errorType>\w+Error)/
 | stats earliest(@timestamp) as firstSeen, latest(@timestamp) as lastSeen, count(*) as total by errorType
@@ -64,7 +64,7 @@ filter level = "ERROR"
 
 The go-to query for understanding response time distribution:
 
-```
+```text
 filter ispresent(duration)
 | stats pct(duration, 50) as p50,
         pct(duration, 90) as p90,
@@ -81,7 +81,7 @@ by endpoint
 
 Track how latency changes throughout the day:
 
-```
+```text
 filter ispresent(duration)
 | stats avg(duration) as avgMs, pct(duration, 95) as p95Ms, pct(duration, 99) as p99Ms by bin(5m)
 ```
@@ -90,7 +90,7 @@ filter ispresent(duration)
 
 When you need to investigate specific slow requests:
 
-```
+```text
 filter ispresent(duration) and duration > 5000
 | fields @timestamp, duration, endpoint, userId, requestId
 | sort duration desc
@@ -101,7 +101,7 @@ filter ispresent(duration) and duration > 5000
 
 Check if errors correlate with slow responses:
 
-```
+```text
 filter ispresent(duration)
 | stats avg(duration) as avgMs, count(*) as count by statusCode
 | sort statusCode asc
@@ -113,7 +113,7 @@ filter ispresent(duration)
 
 Basic traffic volume visualization:
 
-```
+```text
 stats count(*) as requests by bin(1m)
 ```
 
@@ -121,7 +121,7 @@ stats count(*) as requests by bin(1m)
 
 Find out which endpoints get the most hits:
 
-```
+```text
 filter ispresent(endpoint)
 | stats count(*) as requests, avg(duration) as avgLatency by endpoint
 | sort requests desc
@@ -132,7 +132,7 @@ filter ispresent(endpoint)
 
 Useful for spotting bots or API client versions:
 
-```
+```text
 filter ispresent(userAgent)
 | parse userAgent /^(?<client>[^\/\s]+)/
 | stats count(*) as requests by client
@@ -144,7 +144,7 @@ filter ispresent(userAgent)
 
 Track how many distinct users are active:
 
-```
+```text
 filter ispresent(userId)
 | stats count_distinct(userId) as uniqueUsers by bin(1h)
 ```
@@ -153,7 +153,7 @@ filter ispresent(userId)
 
 If your logs include country or region:
 
-```
+```text
 filter ispresent(country)
 | stats count(*) as requests, avg(duration) as avgLatency by country
 | sort requests desc
@@ -166,7 +166,7 @@ filter ispresent(country)
 
 See the distribution of response codes:
 
-```
+```text
 stats count(*) as count by statusCode
 | sort statusCode asc
 ```
@@ -175,7 +175,7 @@ stats count(*) as count by statusCode
 
 When you need to dig into server errors:
 
-```
+```text
 filter statusCode >= 500
 | fields @timestamp, statusCode, endpoint, errorMessage, requestId
 | sort @timestamp desc
@@ -186,7 +186,7 @@ filter statusCode >= 500
 
 Visualize the mix of success vs error responses:
 
-```
+```text
 stats sum(statusCode >= 200 and statusCode < 300) as success2xx,
       sum(statusCode >= 300 and statusCode < 400) as redirect3xx,
       sum(statusCode >= 400 and statusCode < 500) as clientError4xx,
@@ -200,7 +200,7 @@ by bin(5m)
 
 Track authentication failures:
 
-```
+```text
 filter event = "auth_failed" or event = "login_failed"
 | stats count(*) as failures by sourceIp, username
 | sort failures desc
@@ -211,7 +211,7 @@ filter event = "auth_failed" or event = "login_failed"
 
 Find IPs making an unusually high number of requests:
 
-```
+```text
 filter ispresent(sourceIp)
 | stats count(*) as requests, count_distinct(endpoint) as uniqueEndpoints by sourceIp
 | filter requests > 1000
@@ -223,7 +223,7 @@ filter ispresent(sourceIp)
 
 Spot users hitting unusual combinations of endpoints:
 
-```
+```text
 filter ispresent(userId)
 | stats count(*) as requests, count_distinct(endpoint) as uniqueEndpoints, count_distinct(sourceIp) as uniqueIps by userId
 | filter uniqueIps > 5
@@ -236,7 +236,7 @@ filter ispresent(userId)
 
 If your application logs queue metrics:
 
-```
+```text
 filter event = "queue_status"
 | stats max(queueDepth) as maxDepth, avg(queueDepth) as avgDepth by bin(5m), queueName
 ```
@@ -245,7 +245,7 @@ filter event = "queue_status"
 
 For apps that log database query times:
 
-```
+```text
 filter ispresent(queryTime) and queryTime > 100
 | fields @timestamp, queryTime, queryType, tableName
 | sort queryTime desc
@@ -256,7 +256,7 @@ filter ispresent(queryTime) and queryTime > 100
 
 Track cache effectiveness:
 
-```
+```text
 filter ispresent(cacheResult)
 | stats sum(cacheResult = "hit") as hits,
         sum(cacheResult = "miss") as misses,
@@ -268,7 +268,7 @@ by bin(5m)
 
 If your application logs resource metrics:
 
-```
+```text
 filter event = "resource_usage"
 | stats avg(memoryUsedMB) as avgMemory, max(memoryUsedMB) as maxMemory, avg(cpuPercent) as avgCpu by bin(5m)
 ```
@@ -279,7 +279,7 @@ filter event = "resource_usage"
 
 Follow a request through your system by request ID:
 
-```
+```text
 filter requestId = "req-abc123def456"
 | fields @timestamp, service, level, @message
 | sort @timestamp asc
@@ -289,7 +289,7 @@ filter requestId = "req-abc123def456"
 
 Get context before and after a specific error occurred:
 
-```
+```text
 filter @timestamp > "2026-02-12T10:00:00" and @timestamp < "2026-02-12T10:05:00"
 | filter @logStream = "specific-log-stream-name"
 | fields @timestamp, level, @message
@@ -301,7 +301,7 @@ filter @timestamp > "2026-02-12T10:00:00" and @timestamp < "2026-02-12T10:05:00"
 
 Understanding your log distribution helps with cost management:
 
-```
+```text
 stats count(*) as count by level
 | sort count desc
 ```
@@ -310,7 +310,7 @@ stats count(*) as count by level
 
 Large log messages can drive up costs:
 
-```
+```text
 fields strlen(@message) as msgLength, @message
 | filter msgLength > 5000
 | sort msgLength desc
@@ -323,7 +323,7 @@ fields strlen(@message) as msgLength, @message
 
 Useful for identifying chatty services:
 
-```
+```text
 stats count(*) as events, sum(strlen(@message)) / 1048576 as estimatedMB by @logStream
 | sort estimatedMB desc
 | limit 20
@@ -331,7 +331,7 @@ stats count(*) as events, sum(strlen(@message)) / 1048576 as estimatedMB by @log
 
 ### Identify log sources producing the most data
 
-```
+```text
 stats count(*) as eventCount by service
 | sort eventCount desc
 | limit 10

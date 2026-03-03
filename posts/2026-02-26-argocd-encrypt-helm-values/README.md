@@ -308,7 +308,7 @@ spec:
 
 Structure your Helm chart for multiple environments with encrypted values per environment:
 
-```
+```text
 charts/myapp/
   Chart.yaml
   values.yaml                    # Shared defaults (no secrets)

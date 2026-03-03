@@ -36,7 +36,7 @@ cmake --version
 
 A typical CMake project layout:
 
-```
+```text
 myproject/
 ├── CMakeLists.txt          # Root CMake file
 ├── src/

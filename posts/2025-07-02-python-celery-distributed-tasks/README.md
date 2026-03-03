@@ -81,7 +81,7 @@ pip install flower
 
 Organize your Celery project for distributed deployment:
 
-```
+```text
 myproject/
     celery_app/
         __init__.py       # Celery app initialization

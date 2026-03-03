@@ -288,7 +288,7 @@ public class ExactlyOnceProcessor {
 
 Idempotence adds minimal overhead.
 
-```
+```text
 Benchmark (messages/sec):
 - Without idempotence: 850,000
 - With idempotence:    820,000

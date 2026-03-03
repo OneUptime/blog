@@ -35,7 +35,7 @@ terragrunt run-all validate
 
 Consider this structure:
 
-```
+```text
 live/dev/
   vpc/
     terragrunt.hcl
@@ -88,7 +88,7 @@ dependency "ecs" {
 
 This creates the graph:
 
-```
+```text
 vpc --> rds --> app
   \--> ecs --/
 ```
@@ -209,7 +209,7 @@ terragrunt run-all fmt -check
 
 With multiple modules running, output can get noisy. Terragrunt prefixes each module's output with its path:
 
-```
+```text
 [live/dev/vpc] Initializing the backend...
 [live/dev/vpc] Apply complete! Resources: 5 added, 0 changed, 0 destroyed.
 [live/dev/rds] Initializing the backend...

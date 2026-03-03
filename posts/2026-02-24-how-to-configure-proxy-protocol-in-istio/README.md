@@ -21,7 +21,7 @@ There are two versions:
 
 A v1 header looks like this:
 
-```
+```text
 PROXY TCP4 192.168.1.100 10.0.0.5 56324 443\r\n
 ```
 
@@ -153,7 +153,7 @@ spec:
 
 In your HAProxy configuration:
 
-```
+```text
 frontend https_front
     bind *:443
     default_backend istio_gateway

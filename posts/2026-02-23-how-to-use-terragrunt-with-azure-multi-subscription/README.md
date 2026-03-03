@@ -27,7 +27,7 @@ Each subscription has its own subscription ID, and resources in different subscr
 
 Here is a directory structure designed for multi-subscription Azure deployments:
 
-```
+```text
 infrastructure/
   modules/                            # Reusable Terraform modules
     vnet/

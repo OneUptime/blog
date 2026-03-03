@@ -57,7 +57,7 @@ gcloud compute reset-windows-password windows-server \
 
 This outputs something like:
 
-```
+```text
 ip_address: 35.192.x.x
 password:   aB3dEf6GhIj
 username:   admin
@@ -228,7 +228,7 @@ gcloud compute instances get-serial-port-output windows-server \
 ```
 
 Inside the VM, check the startup script log at:
-```
+```text
 C:\Program Files\Google\Compute Engine\agent\GCEWindowsAgent.log
 ```
 

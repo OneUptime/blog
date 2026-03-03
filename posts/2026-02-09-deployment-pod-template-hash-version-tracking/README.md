@@ -119,7 +119,7 @@ done
 
 Output during rollout:
 
-```
+```text
 3 pods with hash 7d8f9c5b4d
 2 pods with hash 9f6e8d3c2a
 ---

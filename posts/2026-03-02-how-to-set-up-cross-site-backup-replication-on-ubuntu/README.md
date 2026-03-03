@@ -109,7 +109,7 @@ sudo chmod +x /usr/local/bin/replicate-backups.sh
 
 The flags above are chosen deliberately:
 
-```
+```text
 --archive      Preserves permissions, timestamps, symlinks, owner/group
 --compress     Compresses during transfer (saves bandwidth)
 --checksum     Verifies files using checksums, not just timestamp/size

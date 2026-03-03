@@ -27,7 +27,7 @@ Building production APIs requires more than just handling HTTP requests. You nee
 
 A well-organized project structure is essential for maintainability. Here is a recommended layout for production Gin applications:
 
-```
+```text
 myapi/
 ├── cmd/
 │   └── server/

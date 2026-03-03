@@ -74,7 +74,7 @@ The fix is simple. Add `loop_control` with a `label`:
 
 Now the output shows something like:
 
-```
+```text
 TASK [Configure services] ****
 ok: [server1] => (item=nginx)
 ok: [server1] => (item=postgresql)
@@ -102,7 +102,7 @@ The label is a Jinja2 expression, so you can build informative strings:
 
 Output:
 
-```
+```text
 TASK [Deploy applications] ****
 changed: [server1] => (item=api (production, port 8080))
 changed: [server1] => (item=web (production, port 3000))
@@ -135,7 +135,7 @@ When iterating over dictionaries, label is especially useful because `dict2items
 
 Output:
 
-```
+```text
 TASK [Set sysctl parameters] ****
 ok: [server1] => (item=net.core.somaxconn=1024)
 ok: [server1] => (item=net.ipv4.tcp_max_syn_backlog=2048)
@@ -192,7 +192,7 @@ You can combine `label` with `index_var` and `extended` to create progress-style
 
 Output:
 
-```
+```text
 TASK [Process data files] ****
 changed: [server1] => (item=[1/5] file1.csv)
 changed: [server1] => (item=[2/5] file2.csv)
@@ -241,7 +241,7 @@ You can use Jinja2 conditionals in the label itself:
 
 Output:
 
-```
+```text
 TASK [Manage user accounts] ****
 ok: [server1] => (item=alice (admin))
 changed: [server1] => (item=bob (REMOVING))

@@ -30,7 +30,7 @@ lintian --version
 
 A Debian source package has a specific layout. For a package named `myhello` at version `1.0`:
 
-```
+```text
 myhello-1.0/
 ├── debian/
 │   ├── changelog

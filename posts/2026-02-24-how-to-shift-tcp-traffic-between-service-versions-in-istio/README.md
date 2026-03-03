@@ -375,7 +375,7 @@ kubectl exec deploy/my-client -c istio-proxy -- \
 
 For Prometheus, track TCP metrics:
 
-```
+```text
 # TCP connections opened per second by version
 sum(rate(istio_tcp_connections_opened_total{destination_service="tcp-service.default.svc.cluster.local"}[5m])) by (destination_version)
 

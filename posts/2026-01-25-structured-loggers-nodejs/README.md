@@ -14,7 +14,7 @@ Plain text logs are hard to parse, search, and analyze. Structured logging produ
 
 Compare these two log entries:
 
-```
+```text
 // Unstructured - hard to parse and filter
 [2026-01-25 10:30:45] ERROR User login failed for user@example.com from 192.168.1.1
 

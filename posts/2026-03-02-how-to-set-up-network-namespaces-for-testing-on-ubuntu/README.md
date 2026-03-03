@@ -86,7 +86,7 @@ sudo ip netns exec ns1 ping -c 4 192.168.10.2
 
 This simulates two networks connected by a router:
 
-```
+```text
 ns-client (10.0.1.2) <---> ns-router <---> ns-server (10.0.2.2)
                     (10.0.1.1)   (10.0.2.1)
 ```

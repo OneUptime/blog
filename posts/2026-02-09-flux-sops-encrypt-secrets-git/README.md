@@ -63,7 +63,7 @@ cat age.key | grep "public key:"
 
 You'll see output like:
 
-```
+```text
 # public key: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 ```
 

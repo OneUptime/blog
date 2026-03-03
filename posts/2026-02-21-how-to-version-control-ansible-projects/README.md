@@ -66,7 +66,7 @@ molecule/*/.cache/
 
 Organize the repo so everything needed to run Ansible is in one place:
 
-```
+```text
 ansible-infra/
 ├── .github/
 │   └── workflows/

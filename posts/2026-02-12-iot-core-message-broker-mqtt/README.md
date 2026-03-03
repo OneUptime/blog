@@ -176,7 +176,7 @@ Topics in IoT Core are UTF-8 strings with forward-slash hierarchy. There is no n
 
 Structure your topics in a consistent hierarchy:
 
-```
+```text
 {category}/{device_id}/{data_type}
 
 # Examples:

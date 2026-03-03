@@ -18,7 +18,7 @@ Despite being decades old, syslog remains essential because it is ubiquitous. Yo
 
 Syslog messages have a standard structure:
 
-```
+```text
 <priority>timestamp hostname app-name[pid]: message
 ```
 
@@ -386,7 +386,7 @@ Most network devices support syslog. Here are examples for common platforms:
 
 ### Cisco IOS
 
-```
+```text
 ! Enable logging
 logging on
 logging buffered 64000 debugging
@@ -407,7 +407,7 @@ logging facility local6
 
 ### Juniper Junos
 
-```
+```text
 system {
     syslog {
         host 10.0.0.100 {
@@ -425,7 +425,7 @@ system {
 
 ### Palo Alto
 
-```
+```text
 set deviceconfig system logging syslog-server 10.0.0.100
 set deviceconfig system logging syslog-server 10.0.0.100 transport TCP
 set deviceconfig system logging syslog-server 10.0.0.100 port 514

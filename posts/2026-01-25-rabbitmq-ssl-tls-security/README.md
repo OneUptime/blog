@@ -460,19 +460,19 @@ def connect_with_cert_auth():
 ### Common Errors
 
 **Certificate verification failed**
-```
+```text
 SSL: certificate verify failed
 ```
 Solution: Check CA certificate is correct and trusted.
 
 **Hostname mismatch**
-```
+```text
 SSL: hostname 'x.x.x.x' doesn't match 'rabbitmq.example.com'
 ```
 Solution: Add IP to certificate SAN or use hostname.
 
 **Protocol version mismatch**
-```
+```text
 SSL: no protocols available
 ```
 Solution: Ensure client and server support same TLS versions.

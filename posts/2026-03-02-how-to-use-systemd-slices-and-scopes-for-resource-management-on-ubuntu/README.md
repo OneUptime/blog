@@ -14,7 +14,7 @@ systemd uses the Linux kernel's cgroup mechanism to control how processes share 
 
 Every process on a systemd-managed system belongs to a cgroup. systemd organizes these into a tree:
 
-```
+```text
 -.slice (root slice)
   ├── system.slice
   │   ├── nginx.service

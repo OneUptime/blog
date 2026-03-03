@@ -42,7 +42,7 @@ The circuit breaker has three states:
 
 Without circuit breakers, cascading failures can take down your entire system:
 
-```
+```text
 User Request
     |
     v
@@ -62,7 +62,7 @@ One slow service creates a chain reaction. Threads pile up waiting for responses
 
 With circuit breakers:
 
-```
+```text
 User Request
     |
     v

@@ -137,7 +137,7 @@ kubectl exec <pod-name> -- ip -6 addr show
 
 Expected output showing an IPv6 address:
 
-```
+```text
 3: eth0@if123: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP
     inet6 2001:db8:1234::5/64 scope global
        valid_lft forever preferred_lft forever

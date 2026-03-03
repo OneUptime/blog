@@ -278,7 +278,7 @@ all:
 
 ### Separate Group Variables Files
 
-```
+```text
 # Recommended directory structure
 inventory/
 |-- hosts.yml
@@ -533,7 +533,7 @@ ansible 'webservers[0:2]' -m ping  # First three hosts
 
 ### Directory Structure
 
-```
+```text
 inventories/
 |-- production/
 |   |-- hosts.yml

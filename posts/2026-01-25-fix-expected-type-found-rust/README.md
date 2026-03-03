@@ -14,7 +14,7 @@ The "expected type, found" error family in Rust indicates a mismatch between wha
 
 This error appears in several forms:
 
-```
+```text
 error: expected type, found `42`
 error: expected type, found keyword `let`
 error: expected type, found `foo`

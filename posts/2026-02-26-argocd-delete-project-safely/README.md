@@ -329,7 +329,7 @@ metadata:
 
 Use RBAC to prevent non-admins from deleting projects:
 
-```
+```text
 # Only admins can delete projects
 p, role:admin, projects, delete, *, allow
 p, role:team-lead, projects, delete, *, deny

@@ -158,7 +158,7 @@ http {
 
 Brotli levels 0-11 trade CPU time for compression ratio:
 
-```
+```text
 Level 1  - Fastest, minimal compression (similar to gzip level 1)
 Level 4  - Good balance for dynamic content (real-time compression)
 Level 6  - Default for most web content (good balance)

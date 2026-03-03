@@ -169,7 +169,7 @@ for scenario, count in sorted(scenarios.items()):
 
 Expected output should be close to:
 
-```
+```text
 Sampled trace counts by scenario:
   error-traces: 100
   normal-traces: ~100 (10% of 1000)

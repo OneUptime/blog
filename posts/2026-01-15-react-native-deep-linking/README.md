@@ -303,7 +303,7 @@ Ensure the file is served with `Content-Type: application/json`.
 
 In Xcode, go to your target's "Signing & Capabilities" tab and add the "Associated Domains" capability. Add your domain:
 
-```
+```text
 applinks:yourapp.com
 applinks:www.yourapp.com
 ```
@@ -311,7 +311,7 @@ applinks:www.yourapp.com
 ### Step 4: Verify the Configuration
 
 Use Apple's validation tool to verify your setup:
-```
+```text
 https://app-site-association.cdn-apple.com/a/v1/yourapp.com
 ```
 
@@ -353,7 +353,7 @@ keytool -list -v -keystore your-release-key.keystore -alias your-alias
 ### Step 3: Host the File
 
 Host the file at:
-```
+```text
 https://yourapp.com/.well-known/assetlinks.json
 ```
 

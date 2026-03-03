@@ -48,7 +48,7 @@ Before creating subnets, decide on three things:
 
 Here's a practical CIDR layout:
 
-```
+```text
 VPC: 10.0.0.0/16
 
 Public subnets (one per AZ):

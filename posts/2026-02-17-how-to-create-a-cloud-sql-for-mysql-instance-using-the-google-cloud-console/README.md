@@ -82,7 +82,7 @@ You need to decide on:
 
 Here is what the storage configuration looks like conceptually:
 
-```
+```text
 Storage type:        SSD
 Storage capacity:    100 GB (starting point)
 Auto-increase:       Enabled

@@ -73,7 +73,7 @@ The plugin automatically creates spans with useful attributes for every pipeline
 
 The root span represents the entire pipeline run. It includes attributes like the job name, build number, result, and the node it ran on. Each stage in the pipeline gets its own child span, and individual steps within stages get nested spans.
 
-```
+```text
 Trace: jenkins-pipeline-run
   |
   |-- Span: Pipeline 'my-app-build' #142

@@ -240,7 +240,7 @@ Columnar storage is not universally better. It has clear disadvantages in certai
 
 The standard pattern for data lakes is to store raw data as Parquet files in object storage (S3, GCS, ADLS), partitioned by date or another high-level key.
 
-```
+```text
 s3://data-lake/sales/
   year=2026/
     month=01/

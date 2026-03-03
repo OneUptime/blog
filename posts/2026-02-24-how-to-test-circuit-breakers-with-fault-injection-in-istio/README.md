@@ -204,7 +204,7 @@ kubectl exec deploy/test-client -c istio-proxy -n production -- curl -s localhos
 
 You should see stats like:
 
-```
+```text
 cluster.outbound|8080||payment-service.production.svc.cluster.local.outlier_detection.ejections_active: 1
 cluster.outbound|8080||payment-service.production.svc.cluster.local.outlier_detection.ejections_total: 2
 cluster.outbound|8080||payment-service.production.svc.cluster.local.outlier_detection.ejections_consecutive_5xx: 2
@@ -218,7 +218,7 @@ istioctl proxy-config endpoints deploy/test-client -n production --cluster "outb
 
 Ejected instances show as `UNHEALTHY`:
 
-```
+```text
 ENDPOINT         STATUS      OUTLIER CHECK   CLUSTER
 10.1.2.3:8080    HEALTHY     OK              outbound|8080||payment-service
 10.1.2.4:8080    HEALTHY     OK              outbound|8080||payment-service

@@ -16,13 +16,13 @@ This is called SNI passthrough, and Istio supports it natively.
 
 In a normal TLS setup, the ingress gateway terminates TLS:
 
-```
+```text
 Client -> [TLS] -> Gateway [terminates TLS] -> [plaintext] -> Backend
 ```
 
 With SNI passthrough, the gateway just forwards the encrypted traffic:
 
-```
+```text
 Client -> [TLS] -> Gateway [reads SNI, forwards] -> [TLS] -> Backend
 ```
 

@@ -285,7 +285,7 @@ kubectl exec deploy/fortio-client -n my-namespace -- fortio load \
 
 Track latency percentiles over time with Prometheus:
 
-```
+```text
 histogram_quantile(0.999, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="latency-critical.my-namespace.svc.cluster.local"}[5m])) by (le))
 ```
 

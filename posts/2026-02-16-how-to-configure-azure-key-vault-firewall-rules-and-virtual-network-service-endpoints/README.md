@@ -256,7 +256,7 @@ az monitor diagnostic-settings create \
 
 Query the audit logs to find blocked requests:
 
-```
+```text
 // Find Key Vault requests blocked by firewall
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.KEYVAULT"

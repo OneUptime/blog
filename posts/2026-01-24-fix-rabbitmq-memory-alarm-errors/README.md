@@ -82,7 +82,7 @@ rabbitmqctl status | grep -A 30 "Memory used by category"
 ```
 
 Sample memory breakdown:
-```
+```text
 Memory used by category (bytes):
   allocated_unused: 45,678,912
   atom: 1,234,567

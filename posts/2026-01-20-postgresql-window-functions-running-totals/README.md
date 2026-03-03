@@ -73,7 +73,7 @@ ORDER BY sale_date, region;
 ```
 
 Result:
-```
+```text
  sale_date  | region | amount  | running_total
 ------------+--------+---------+---------------
  2026-01-01 | North  | 1500.00 |       3500.00
@@ -102,7 +102,7 @@ ORDER BY sale_date, id;
 ```
 
 Result:
-```
+```text
  sale_date  | region | amount  | running_total
 ------------+--------+---------+---------------
  2026-01-01 | North  | 1500.00 |       1500.00
@@ -130,7 +130,7 @@ ORDER BY region, sale_date;
 ```
 
 Result:
-```
+```text
  sale_date  | region | amount  | regional_running_total
 ------------+--------+---------+------------------------
  2026-01-01 | North  | 1500.00 |                1500.00
@@ -407,7 +407,7 @@ ORDER BY account_id, txn_date;
 ```
 
 Result:
-```
+```text
  account_id |  txn_date  | txn_type | amount  | balance
 ------------+------------+----------+---------+---------
           1 | 2026-01-01 | deposit  | 1000.00 | 1000.00

@@ -289,7 +289,7 @@ spec:
 
 The analytics service queries Prometheus with client-specific metrics:
 
-```
+```text
 # Total requests for a specific client today
 sum(increase(istio_requests_total{x_client_id="client-abc"}[24h]))
 

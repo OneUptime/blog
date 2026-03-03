@@ -132,7 +132,7 @@ require('dotenv').config({
 
 Organize configurations by environment:
 
-```
+```text
 project/
 ├── .env                 # Default/development
 ├── .env.development     # Development overrides

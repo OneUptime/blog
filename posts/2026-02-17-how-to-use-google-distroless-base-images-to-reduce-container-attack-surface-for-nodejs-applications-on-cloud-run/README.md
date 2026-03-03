@@ -30,7 +30,7 @@ The Node.js distroless image contains the Node.js binary and the minimal system 
 
 Here is what you find in a typical Node.js image versus a distroless image:
 
-```
+```text
 # node:22 (standard image)
 $ docker run --rm node:22 sh -c "find /usr/bin | wc -l"
 168

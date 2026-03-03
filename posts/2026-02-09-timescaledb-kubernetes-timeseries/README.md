@@ -243,7 +243,7 @@ kubectl exec -it timescaledb-0 -n databases -- patronictl list
 
 Output looks like:
 
-```
+```text
 + Cluster: timescaledb (7325486291823456789) ---+----+-----------+
 | Member         | Host      | Role    | State   | TL | Lag in MB |
 +----------------+-----------+---------+---------+----+-----------+

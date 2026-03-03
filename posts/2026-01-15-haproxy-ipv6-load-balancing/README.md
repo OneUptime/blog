@@ -732,7 +732,7 @@ For production deployments, you need redundant HAProxy instances. This section c
 
 Create `/etc/keepalived/keepalived.conf` on the primary node:
 
-```
+```text
 vrrp_script chk_haproxy {
     script "/usr/bin/killall -0 haproxy"
     interval 2
@@ -769,7 +769,7 @@ vrrp_instance VI_1 {
 
 Secondary node configuration:
 
-```
+```text
 vrrp_script chk_haproxy {
     script "/usr/bin/killall -0 haproxy"
     interval 2
@@ -933,7 +933,7 @@ backend postgres_servers
 
 **Problem: HAProxy fails to start with IPv6 bind error**
 
-```
+```text
 [ALERT] ... : Starting frontend XXXX: cannot bind socket [:::80]
 ```
 

@@ -173,7 +173,7 @@ Factor in the storage and compute needed for your observability stack (Prometheu
 
 Here is a worksheet approach for a cluster with 500 pods and 5,000 RPS:
 
-```
+```text
 Sidecar overhead:
   CPU: 500 pods x 50m average = 25,000m = 25 cores
   Memory: 500 pods x 128Mi average = 64 Gi

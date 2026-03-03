@@ -12,7 +12,7 @@ The challenge is that these sync pipelines span multiple systems, often from dif
 
 ## The Sync Pipeline
 
-```
+```text
 ERP (SAP, NetSuite, etc.)
   -> Extract service (pulls changes on schedule)
     -> Transform service (normalizes data)

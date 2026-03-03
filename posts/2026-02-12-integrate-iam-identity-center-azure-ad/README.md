@@ -78,7 +78,7 @@ In the AWS Console:
 
 Update the Azure AD SAML configuration with these values:
 
-```
+```text
 # Values to copy from IAM Identity Center to Azure AD
 ACS URL:    https://us-east-1.signin.aws.amazon.com/saml (from Identity Center)
 Issuer:     https://us-east-1.signin.aws.amazon.com/saml (from Identity Center)
@@ -119,7 +119,7 @@ In Azure AD:
 
 Then configure the attribute mappings:
 
-```
+```text
 # Required attribute mappings for Azure AD to IAM Identity Center
 Azure AD Attribute          -> IAM Identity Center Attribute
 ---------------------------------------------------------------
@@ -201,7 +201,7 @@ In Azure AD:
 
 Example policy: require MFA and a compliant device for any AWS access:
 
-```
+```text
 Policy Name: Require MFA for AWS Access
 Assignments:
   Users: All users

@@ -229,7 +229,7 @@ This results in smaller cache files and faster cache reads. A full fact set can 
 
 Occasionally a cache file might get corrupted (partial write during a crash, disk full, etc.). Ansible will throw a JSON decode error:
 
-```
+```text
 ERROR! Unexpected Exception, this is probably a bug: Expecting value: line 1 column 1 (char 0)
 ```
 

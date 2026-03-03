@@ -57,7 +57,7 @@ The production server only handles the initial full backup and daily incremental
 
 Running a full backup on a 10TB database takes hours. With synthetic fulls, your nightly backup only captures changes, which might take minutes.
 
-```
+```text
 Traditional Weekly Schedule:
 Sunday:    Full backup (10 hours) - Production impact
 Monday:    Incremental (30 minutes)
@@ -503,7 +503,7 @@ Without deduplication, three full backups store 3x the data. With deduplication,
 
 Synthetic fulls restore as fast as traditional full backups because they are complete, consolidated backups.
 
-```
+```text
 Restore Scenarios:
 
 Traditional Incremental Chain (7 days):
@@ -553,7 +553,7 @@ Before implementing synthetic fulls, verify your backup infrastructure supports 
 
 Long incremental chains increase synthetic full creation time and risk.
 
-```
+```text
 Bad: 30 incrementals between synthetic fulls
 - Creation takes hours
 - Single corrupt incremental breaks the chain
@@ -569,7 +569,7 @@ Good: 6-7 incrementals between synthetic fulls
 
 Creating a synthetic full requires space to build the merged result before verification.
 
-```
+```text
 10TB dataset requirements:
 - Minimum: 10TB free for new synthetic full
 - Recommended: 20TB for merge workspace + new backup

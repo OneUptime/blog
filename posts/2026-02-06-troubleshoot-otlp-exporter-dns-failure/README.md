@@ -10,7 +10,7 @@ When the OpenTelemetry OTLP exporter cannot resolve the DNS name of your Collect
 
 ## The Error
 
-```
+```text
 node:internal/process/promises:289
   triggerUncaughtException(err, true /* fromPromise */);
   ^

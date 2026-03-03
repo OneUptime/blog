@@ -16,7 +16,7 @@ The Sentry exporter translates OpenTelemetry span data into Sentry's transaction
 
 In Sentry, navigate to Settings > Projects > [Your Project] > Client Keys (DSN). Copy the DSN string. It looks like:
 
-```
+```text
 https://examplePublicKey@o0.ingest.sentry.io/0
 ```
 

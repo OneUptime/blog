@@ -195,7 +195,7 @@ kubectl describe volumesnapshot mysql-snapshot-20260209
 
 The output should show:
 
-```
+```text
 Name:         mysql-snapshot-20260209
 Namespace:    default
 Status:

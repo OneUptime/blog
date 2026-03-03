@@ -24,7 +24,7 @@ The module should support:
 
 ## Module Structure
 
-```
+```text
 modules/dns-record/
   main.tf
   variables.tf

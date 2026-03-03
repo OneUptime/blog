@@ -47,7 +47,7 @@ spec:
 
 When a client sends a request to `http://app.example.com/some-path`, the gateway responds with:
 
-```
+```text
 HTTP/1.1 301 Moved Permanently
 Location: https://app.example.com/some-path
 ```
@@ -326,7 +326,7 @@ curl -v http://app.example.com/api/v1/users
 
 The response should look like:
 
-```
+```text
 < HTTP/1.1 301 Moved Permanently
 < location: https://app.example.com/api/v1/users
 ```

@@ -170,7 +170,7 @@ Baserow supports these field types:
 
 The formula field supports expressions similar to spreadsheet formulas.
 
-```
+```text
 # Example Baserow formulas
 concat(field('First Name'), ' ', field('Last Name'))
 if(field('Status') = 'Active', 'Yes', 'No')

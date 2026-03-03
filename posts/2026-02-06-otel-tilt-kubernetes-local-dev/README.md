@@ -19,7 +19,7 @@ You need:
 
 Here is a typical setup for a two-service application:
 
-```
+```text
 project/
   Tiltfile
   k8s/

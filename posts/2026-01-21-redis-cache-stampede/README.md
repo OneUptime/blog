@@ -18,7 +18,7 @@ Understanding and preventing cache stampede is critical for building resilient, 
 
 ### The Problem
 
-```
+```text
 Normal operation:
 Request → Cache (HIT) → Return
 

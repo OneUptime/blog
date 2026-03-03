@@ -18,7 +18,7 @@ This guide explains the three execution modes, when to use each one, and how to 
 
 Plans and applies run on HCP Terraform's managed infrastructure. This is the default mode.
 
-```
+```text
 Developer -> terraform plan -> HCP Terraform workers -> Cloud APIs
 ```
 
@@ -35,7 +35,7 @@ Developer -> terraform plan -> HCP Terraform workers -> Cloud APIs
 
 Plans and applies run on your local machine (or CI/CD agent). State is still stored in HCP Terraform.
 
-```
+```text
 Developer -> terraform plan -> Local machine -> Cloud APIs
                                     |
                                     v
@@ -55,7 +55,7 @@ Developer -> terraform plan -> Local machine -> Cloud APIs
 
 Plans and applies run on your own agent processes inside your network.
 
-```
+```text
 Developer -> terraform plan -> HCP Terraform -> Agent (your network) -> Private APIs
 ```
 

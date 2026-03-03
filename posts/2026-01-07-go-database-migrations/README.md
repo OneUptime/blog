@@ -97,7 +97,7 @@ go get -u github.com/golang-migrate/migrate/v4/source/file
 
 A well-organized project structure makes migration management easier. Here is a recommended layout.
 
-```
+```text
 myapp/
 ├── cmd/
 │   └── myapp/
@@ -130,7 +130,7 @@ Migration files come in pairs: an "up" file that applies the change and a "down"
 
 Migration files follow this pattern:
 
-```
+```text
 {version}_{description}.up.sql
 {version}_{description}.down.sql
 ```

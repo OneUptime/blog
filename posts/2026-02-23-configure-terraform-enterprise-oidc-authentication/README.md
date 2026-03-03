@@ -37,7 +37,7 @@ For new TFE deployments, OIDC is the recommended approach unless your organizati
 1. In the Okta admin console, go to **Applications** > **Create App Integration**
 2. Select **OIDC - OpenID Connect** and **Web Application**
 
-```
+```text
 App integration name: Terraform Enterprise
 Grant type: Authorization Code
 Sign-in redirect URIs: https://tfe.example.com/users/oidc/callback
@@ -49,14 +49,14 @@ Assignments: Limit access to selected groups
 
 4. Under the **Sign On** tab, configure claims:
 
-```
+```text
 Groups claim type: Filter
 Groups claim filter: memberOf - Matches regex - .*
 ```
 
 5. Get the OIDC discovery URL:
 
-```
+```text
 https://your-org.okta.com/.well-known/openid-configuration
 ```
 
@@ -64,7 +64,7 @@ https://your-org.okta.com/.well-known/openid-configuration
 
 1. Go to **Azure Active Directory** > **App registrations** > **New registration**
 
-```
+```text
 Name: Terraform Enterprise
 Supported account types: Accounts in this organizational directory only
 Redirect URI: Web - https://tfe.example.com/users/oidc/callback
@@ -76,7 +76,7 @@ Redirect URI: Web - https://tfe.example.com/users/oidc/callback
 
 4. Configure API permissions:
 
-```
+```text
 Microsoft Graph:
   - openid (Delegated)
   - profile (Delegated)
@@ -86,14 +86,14 @@ Microsoft Graph:
 
 5. Configure optional claims under **Token configuration** > **Add optional claim**:
 
-```
+```text
 Token type: ID
 Claims: email, groups, preferred_username
 ```
 
 6. The OIDC discovery URL follows this pattern:
 
-```
+```text
 https://login.microsoftonline.com/{tenant-id}/v2.0/.well-known/openid-configuration
 ```
 
@@ -134,7 +134,7 @@ curl -s \
 
 The Keycloak discovery URL:
 
-```
+```text
 https://keycloak.example.com/realms/your-realm/.well-known/openid-configuration
 ```
 
@@ -146,7 +146,7 @@ https://keycloak.example.com/realms/your-realm/.well-known/openid-configuration
 2. Go to **Admin** > **SSO** > **OIDC**
 3. Fill in the configuration:
 
-```
+```text
 OIDC Provider:         Custom (or select a preset if available)
 Client ID:             your-client-id-from-idp
 Client Secret:         your-client-secret-from-idp

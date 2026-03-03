@@ -24,7 +24,7 @@ kubectl get secrets -n argocd \
 
 Example output:
 
-```
+```text
 CLUSTER                    SHARD
 cluster-prod-us            0
 cluster-prod-eu            1
@@ -104,7 +104,7 @@ kubectl top pods -n argocd \
 
 Healthy output looks like:
 
-```
+```text
 NAME                                  READY   STATUS    CPU    MEMORY
 argocd-application-controller-0       1/1     Running   250m   1.2Gi
 argocd-application-controller-1       1/1     Running   180m   980Mi

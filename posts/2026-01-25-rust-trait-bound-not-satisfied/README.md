@@ -29,7 +29,7 @@ fn main() {
 
 When you uncomment the last line, you will see the error:
 
-```
+```text
 error[E0277]: `Vec<{integer}>` doesn't implement `std::fmt::Display`
  --> src/main.rs:8:17
   |

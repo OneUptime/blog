@@ -216,7 +216,7 @@ kubectl logs deploy/test-client -c istio-proxy -n production | grep "UT"
 
 The access log entry looks like:
 
-```
+```text
 "response_code":"504","response_flags":"UT"
 ```
 

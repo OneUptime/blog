@@ -16,7 +16,7 @@ On Talos Linux, GRE tunnels can connect your Kubernetes cluster to remote networ
 
 GRE takes an inner packet (which can be almost any protocol) and wraps it in a GRE header, then wraps that in an outer IP header:
 
-```
+```text
 [Outer IP Header] [GRE Header] [Inner IP Header] [Payload]
 ```
 
@@ -186,7 +186,7 @@ GRE by itself does not encrypt traffic. For secure tunnels, combine GRE with IPS
 
 The typical architecture is:
 
-```
+```text
 [Inner Packet] -> [GRE Encapsulation] -> [IPSec Encryption] -> [Network]
 ```
 

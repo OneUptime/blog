@@ -30,7 +30,7 @@ The `index_var` option creates a variable that holds the zero-based index of the
 
 Output:
 
-```
+```text
 "Index 0: alpha"
 "Index 1: bravo"
 "Index 2: charlie"

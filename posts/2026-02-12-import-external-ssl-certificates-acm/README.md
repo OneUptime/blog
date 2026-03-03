@@ -37,7 +37,7 @@ You'll need three things to import a certificate:
 
 These files should look like this:
 
-```
+```text
 -----BEGIN CERTIFICATE-----
 MIIFkTCCBHmgAwIBAgISA3j...
 (base64 encoded data)

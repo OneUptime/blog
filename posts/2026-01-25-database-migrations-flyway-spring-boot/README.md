@@ -109,7 +109,7 @@ spring:
 
 Flyway uses a specific naming convention for migration files. Place them in `src/main/resources/db/migration/`.
 
-```
+```text
 V{version}__{description}.sql
 ```
 

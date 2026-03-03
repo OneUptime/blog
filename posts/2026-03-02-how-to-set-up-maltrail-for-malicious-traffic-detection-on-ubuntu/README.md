@@ -121,7 +121,7 @@ The trail files are stored in `/opt/maltrail/trails/` and include:
 
 You can add custom indicators by creating files in `/opt/maltrail/trails/static/custom.txt`:
 
-```
+```text
 # Custom threat intel entries
 # Format: indicator,type,info
 malicious-domain.com,domain,Internal Threat Intel
@@ -216,7 +216,7 @@ awk '{print $9}' /var/log/maltrail/$(date +%Y-%m-%d).log | sort | uniq -c | sort
 
 Log entries look like:
 
-```
+```text
 2026-03-02 14:23:01 192.168.1.55 -> 45.33.32.156:443 (malware.domain.com) [trojan, malware feed: EmergingThreats]
 ```
 
@@ -239,7 +239,7 @@ New deployments tend to have false positives, especially for ad networks and ana
 sudo nano /opt/maltrail/trails/static/whitelist.txt
 ```
 
-```
+```text
 # Whitelisted entries - these will never trigger alerts
 analytics.google.com
 content.googleapis.com

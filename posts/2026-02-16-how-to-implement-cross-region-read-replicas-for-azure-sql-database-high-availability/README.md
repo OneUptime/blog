@@ -78,7 +78,7 @@ After creating the failover group, you get two endpoints:
 
 Update your application connection string to use the failover group endpoint instead of the server-specific endpoint.
 
-```
+```text
 // Before: Direct connection to primary server (does not survive failover)
 Server=sql-primary-eastus.database.windows.net;Database=myDatabase;
 

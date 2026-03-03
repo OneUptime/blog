@@ -303,7 +303,7 @@ This separates access: application services and Kibana can reach the HTTP API on
 
 Because port 9200 is HTTP, you get rich metrics:
 
-```
+```text
 # Request rate
 rate(istio_requests_total{destination_service="elasticsearch.search.svc.cluster.local"}[5m])
 

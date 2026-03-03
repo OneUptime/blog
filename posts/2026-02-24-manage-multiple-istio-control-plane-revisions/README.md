@@ -63,7 +63,7 @@ kubectl get pods -n istio-system -l app=istiod
 
 Output:
 
-```
+```text
 NAME                            READY   STATUS    RESTARTS   AGE
 istiod-stable-6b4c4d8f9-abc12  1/1     Running   0          7d
 istiod-canary-7c5d6e9f1-xyz34  1/1     Running   0          5m
@@ -77,7 +77,7 @@ kubectl get mutatingwebhookconfiguration | grep istio
 
 Each revision creates its own webhook:
 
-```
+```text
 istio-sidecar-injector-stable   1    7d
 istio-sidecar-injector-canary   1    5m
 ```

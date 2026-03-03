@@ -32,7 +32,7 @@ talosctl containers --nodes 192.168.1.10
 
 The output includes the container's namespace, ID, image, process ID, and current status:
 
-```
+```text
 NAMESPACE   ID                                                                 IMAGE                                        PID    STATUS
 k8s.io      0a1b2c3d4e5f                                                      registry.k8s.io/pause:3.9                    1234   RUNNING
 k8s.io      1b2c3d4e5f6a                                                      registry.k8s.io/coredns/coredns:v1.11.1      1235   RUNNING

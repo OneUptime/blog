@@ -12,7 +12,7 @@ Permission denied errors in Terraform with Google Cloud Platform mean the servic
 
 ## What the Error Looks Like
 
-```
+```text
 Error: googleapi: Error 403: Required 'compute.instances.create'
 permission for 'projects/my-project/zones/us-central1-a/instances/my-vm',
 forbidden

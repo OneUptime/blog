@@ -50,7 +50,7 @@ inotifywait -m -r /etc/
 
 Output format:
 
-```
+```text
 /var/www/html/ CREATE index.html
 /var/www/html/ MODIFY index.html
 /var/www/html/ CLOSE_WRITE,CLOSE index.html
@@ -306,7 +306,7 @@ inotifywatch -v -r -t 30 /home/dev/project/
 
 Output:
 
-```
+```text
 Establishing watches...
 Finished establishing watches, now collecting statistics.
 total  modify  close_write  filename

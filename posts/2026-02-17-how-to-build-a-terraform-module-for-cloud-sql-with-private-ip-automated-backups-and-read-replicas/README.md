@@ -16,7 +16,7 @@ In this post, I will walk through building a reusable Terraform module that hand
 
 The module follows the standard Terraform module layout:
 
-```
+```text
 modules/cloud-sql/
   main.tf          # Primary resources
   variables.tf     # Input variables

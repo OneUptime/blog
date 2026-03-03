@@ -34,7 +34,7 @@ There are three enforcement levels:
 
 Sentinel policies live in a Git repository and are linked to your Terraform Cloud organization. Create a repository structure like this:
 
-```
+```text
 sentinel-policies/
   policies/
     azure-encryption.sentinel

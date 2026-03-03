@@ -134,7 +134,7 @@ talosctl gen config prod-us-east https://prod-cp.example.com:6443 \
 
 Organize your configuration repository to make the layering clear:
 
-```
+```text
 talos-configs/
   base/
     machine-config.yaml      # Shared across all clusters

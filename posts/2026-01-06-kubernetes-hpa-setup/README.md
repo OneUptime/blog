@@ -28,7 +28,7 @@ flowchart LR
 
 HPA monitors metrics and calculates desired replicas using:
 
-```
+```text
 desiredReplicas = ceil[currentReplicas * (currentMetricValue / desiredMetricValue)]
 ```
 

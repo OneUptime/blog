@@ -16,7 +16,7 @@ In this guide, we will build a complete REST API for managing books. You will le
 
 Before diving into code, let's establish a clean project layout:
 
-```
+```text
 bookapi/
 ├── main.go
 ├── handlers/

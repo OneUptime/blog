@@ -107,7 +107,7 @@ The `/etc/fstab` file configures filesystems to mount at boot.
 
 ### fstab Format
 
-```
+```text
 <device>  <mount_point>  <type>  <options>  <dump>  <pass>
 ```
 
@@ -138,7 +138,7 @@ sudo nano /etc/fstab
 
 Add:
 
-```
+```text
 # External data drive
 UUID=abc12345-6789-def0-1234-567890abcdef  /mnt/data  ext4  defaults  0  2
 ```
@@ -152,7 +152,7 @@ sudo apt install ntfs-3g -y
 
 Add to fstab:
 
-```
+```text
 # Windows NTFS drive
 UUID=1234ABCD5678EF90  /mnt/windows  ntfs-3g  defaults,uid=1000,gid=1000,umask=022  0  0
 ```
@@ -166,7 +166,7 @@ sudo apt install exfat-fuse exfatprogs -y
 
 Add to fstab:
 
-```
+```text
 # USB exFAT drive
 UUID=1234-ABCD  /mnt/usb  exfat  defaults,uid=1000,gid=1000,umask=022  0  0
 ```
@@ -201,7 +201,7 @@ df -h
 
 ### Recommended Options for External Drives
 
-```
+```text
 # For data drives that should never block boot
 UUID=...  /mnt/data  ext4  defaults,nofail,noatime  0  2
 
@@ -296,7 +296,7 @@ sudo mount -t nfs server:/share /mnt/nfs
 
 fstab entry:
 
-```
+```text
 server:/share  /mnt/nfs  nfs  defaults,_netdev  0  0
 ```
 
@@ -310,7 +310,7 @@ sudo apt install cifs-utils -y
 sudo nano /etc/samba/credentials
 ```
 
-```
+```text
 username=myuser
 password=mypassword
 domain=WORKGROUP
@@ -323,7 +323,7 @@ sudo chmod 600 /etc/samba/credentials
 
 fstab entry:
 
-```
+```text
 //server/share  /mnt/smb  cifs  credentials=/etc/samba/credentials,_netdev,uid=1000,gid=1000  0  0
 ```
 

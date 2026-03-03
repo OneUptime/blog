@@ -135,7 +135,7 @@ ansible-playbook -i inventory.ini site.yml
 
 A common project structure looks like this.
 
-```
+```text
 project/
   site.yml              # Master playbook
   webservers.yml        # Web server plays
@@ -285,7 +285,7 @@ Keep nesting shallow. More than two or three levels deep becomes hard to follow 
 
 Imported playbook paths are relative to the importing playbook's location.
 
-```
+```text
 project/
   site.yml              # imports playbooks/web.yml
   playbooks/

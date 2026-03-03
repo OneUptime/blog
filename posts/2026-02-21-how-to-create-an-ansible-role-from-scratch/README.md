@@ -217,7 +217,7 @@ With the role built, using it is straightforward.
 
 Here is the final directory tree:
 
-```
+```text
 roles/
   webserver/
     tasks/

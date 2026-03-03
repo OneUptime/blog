@@ -27,7 +27,7 @@ The version numbering follows `MAJOR.MINOR.PATCH`:
 
 The primary source is the Istio website:
 
-```
+```text
 https://istio.io/latest/news/releases/
 ```
 
@@ -39,7 +39,7 @@ Each release page includes:
 
 For a specific version:
 
-```
+```text
 https://istio.io/latest/news/releases/1.24.x/
 ```
 
@@ -57,7 +57,7 @@ gh release view 1.24.0 --repo istio/istio
 
 Or browse directly:
 
-```
+```text
 https://github.com/istio/istio/releases
 ```
 
@@ -65,7 +65,7 @@ https://github.com/istio/istio/releases
 
 Security advisories get their own page:
 
-```
+```text
 https://istio.io/latest/news/security/
 ```
 
@@ -79,7 +79,7 @@ These are separate from regular release notes and often require urgent action. E
 
 For granular details, check the change notes:
 
-```
+```text
 https://istio.io/latest/news/releases/1.24.x/announcing-1.24/change-notes/
 ```
 
@@ -104,7 +104,7 @@ gh repo set-default istio/istio
 
 Istio publishes an RSS feed for news and releases:
 
-```
+```text
 https://istio.io/latest/news/feed.xml
 ```
 
@@ -252,7 +252,7 @@ This is a somewhat manual approach (you update the target version), but it catch
 
 The Istio project has several mailing lists:
 
-```
+```text
 istio-announce@googlegroups.com - Release announcements and security advisories
 istio-dev@googlegroups.com - Development discussions
 istio-users@googlegroups.com - User support and discussions
@@ -260,7 +260,7 @@ istio-users@googlegroups.com - User support and discussions
 
 Subscribe to at least `istio-announce`. This is where security advisories first appear:
 
-```
+```text
 https://groups.google.com/g/istio-announce
 ```
 

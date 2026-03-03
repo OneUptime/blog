@@ -34,7 +34,7 @@ Fragmentation is common when:
 
 Run `INFO memory` and look for these fields:
 
-```
+```text
 127.0.0.1:6379> INFO memory
 # Memory
 used_memory:1073741824
@@ -171,7 +171,7 @@ Large collections with millions of fields can stall the defrag loop. If you have
 
 After enabling defrag, monitor these additional fields:
 
-```
+```text
 127.0.0.1:6379> INFO memory
 ...
 active_defrag_running:1

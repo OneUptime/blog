@@ -47,7 +47,7 @@ cat /proc/meminfo | grep -i huge
 
 Output:
 
-```
+```text
 HugePages_Total:    1024
 HugePages_Free:     1024
 HugePages_Rsvd:        0

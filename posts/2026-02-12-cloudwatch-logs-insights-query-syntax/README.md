@@ -16,7 +16,7 @@ This post is a complete reference for the query syntax. We'll go through every c
 
 Every Logs Insights query is a pipeline of commands separated by the pipe (`|`) character. Data flows from left to right through each command:
 
-```
+```text
 fields @timestamp, @message
 | filter @message like /ERROR/
 | sort @timestamp desc
@@ -45,14 +45,14 @@ The available commands are:
 
 For JSON-formatted logs, CloudWatch automatically discovers fields. If your log line is `{"level": "ERROR", "service": "api", "duration": 234}`, you can reference `level`, `service`, and `duration` directly:
 
-```
+```text
 fields @timestamp, level, service, duration
 | limit 20
 ```
 
 You can also rename fields with `as`:
 
-```
+```text
 fields @timestamp, duration as responseTimeMs, service as svc
 | limit 20
 ```
@@ -63,7 +63,7 @@ fields @timestamp, duration as responseTimeMs, service as svc
 
 Basic comparisons:
 
-```
+```text
 # Exact equality
 filter level = "ERROR"
 
@@ -77,7 +77,7 @@ filter level != "DEBUG"
 
 String matching with `like` and `not like`:
 
-```
+```text
 # Contains a substring (case-sensitive)
 filter @message like "timeout"
 
@@ -93,7 +93,7 @@ filter @message not like "healthcheck"
 
 Combining conditions:
 
-```
+```text
 # AND conditions
 filter level = "ERROR" and service = "payment-api"
 
@@ -118,7 +118,7 @@ filter isValidIp(sourceIp)
 
 Use `*` as a wildcard to capture text between literal strings:
 
-```
+```text
 # Parse Apache-style access logs
 parse @message '* - - [*] "* * *" * *' as ip, timestamp, method, path, protocol, statusCode, bytes
 
@@ -135,7 +135,7 @@ parse @message 'level=* msg="*" duration=*ms' as level, message, duration
 
 For more complex patterns, use regex with named capture groups:
 
-```
+```text
 # Regex parsing with named groups
 parse @message /level=(?<level>\w+) msg="(?<msg>[^"]+)" duration=(?<dur>\d+)/
 
@@ -151,7 +151,7 @@ parse @message /(?<clientIp>\d+\.\d+\.\d+\.\d+) .* "(?<method>\w+) (?<path>[^\s]
 
 Available aggregate functions:
 
-```
+```text
 # Count events
 stats count(*) as totalEvents
 
@@ -178,7 +178,7 @@ stats count(*) as errorCount by bin(5m)
 
 The `bin()` function is especially powerful for creating time-series visualizations:
 
-```
+```text
 # Errors per 5-minute window, broken down by service
 filter level = "ERROR"
 | stats count(*) as errors by bin(5m), service
@@ -191,7 +191,7 @@ stats avg(duration) as avgLatency by bin(1m)
 
 `sort` orders results ascending or descending:
 
-```
+```text
 # Sort by timestamp, newest first
 sort @timestamp desc
 
@@ -207,7 +207,7 @@ sort level asc, @timestamp desc
 
 `limit` caps the number of results returned. The default is 1000, and the maximum is 10000:
 
-```
+```text
 # Show only the top 10
 stats count(*) as count by endpoint
 | sort count desc
@@ -218,7 +218,7 @@ stats count(*) as count by endpoint
 
 `display` selects which fields appear in the final output. It's like `fields` but applied at the end of the pipeline:
 
-```
+```text
 fields @timestamp, @message
 | parse @message 'duration=*ms' as duration
 | filter duration > 1000
@@ -231,7 +231,7 @@ fields @timestamp, @message
 
 Logs Insights provides several useful functions:
 
-```
+```text
 # String functions
 filter strlen(@message) > 500
 fields replace(@message, "password=***", "password=[REDACTED]") as sanitized
@@ -257,7 +257,7 @@ Here are some queries you'll find yourself using regularly:
 
 Find the most recent errors:
 
-```
+```text
 filter level = "ERROR"
 | fields @timestamp, @message
 | sort @timestamp desc
@@ -266,13 +266,13 @@ filter level = "ERROR"
 
 Compute error rate over time:
 
-```
+```text
 stats sum(level = "ERROR") / count(*) * 100 as errorRate by bin(5m)
 ```
 
 Find the slowest endpoints:
 
-```
+```text
 filter ispresent(duration)
 | stats avg(duration) as avg, pct(duration, 99) as p99, count(*) as requests by endpoint
 | sort p99 desc
@@ -281,7 +281,7 @@ filter ispresent(duration)
 
 Analyze error patterns:
 
-```
+```text
 filter level = "ERROR"
 | parse @message /(?<errorType>\w+Error): (?<errorMsg>.+)/
 | stats count(*) as occurrences by errorType, errorMsg
@@ -291,7 +291,7 @@ filter level = "ERROR"
 
 Track unique users per hour:
 
-```
+```text
 stats count_distinct(userId) as uniqueUsers by bin(1h)
 ```
 

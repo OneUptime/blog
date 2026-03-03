@@ -115,7 +115,7 @@ flowchart TB
 **Total backups: 23** (covering an entire year)
 
 **Storage calculation:**
-```
+```text
 Full backup size: 100 GB
 Daily incrementals: ~10 GB each
 
@@ -377,7 +377,7 @@ if __name__ == '__main__':
 
 The Tower of Hanoi pattern follows this sequence for determining which set to use:
 
-```
+```text
 Day 1:  A (binary: 001, trailing zeros: 0)
 Day 2:  B (binary: 010, trailing zeros: 1)
 Day 3:  A (binary: 011, trailing zeros: 0)
@@ -618,7 +618,7 @@ fi
 
 Modern backup systems use deduplication to reduce storage:
 
-```
+```text
 Without deduplication:
 - 7 daily backups x 100 GB = 700 GB
 

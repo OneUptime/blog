@@ -292,7 +292,7 @@ dbt source freshness --output freshness.json
 
 Example freshness output:
 
-```
+```text
 Running freshness check for source ecommerce.orders
   - Freshness: PASS (age: 2 hours, threshold: 12 hours)
 
@@ -404,7 +404,7 @@ sources:
 
 A well-organized dbt project separates sources, seeds, and models clearly.
 
-```
+```text
 dbt_project/
 ├── seeds/
 │   ├── seeds.yml           # Seed configurations

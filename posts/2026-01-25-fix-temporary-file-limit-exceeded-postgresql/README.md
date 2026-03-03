@@ -16,7 +16,7 @@ The "temporary file limit exceeded" error in PostgreSQL occurs when a query need
 
 When you see this error:
 
-```
+```text
 ERROR: temporary file size exceeds temp_file_limit (1048576kB)
 ```
 

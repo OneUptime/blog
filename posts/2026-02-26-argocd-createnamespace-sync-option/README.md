@@ -23,7 +23,7 @@ spec:
 
 The sync fails with:
 
-```
+```text
 failed to sync: namespace "my-new-app" not found
 ```
 

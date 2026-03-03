@@ -14,7 +14,7 @@ gRPC is a high-performance RPC framework that uses HTTP/2 and Protocol Buffers. 
 
 Traditional HTTP routing matches on URLs and headers. gRPC routing adds awareness of the gRPC service and method structure. A gRPC request has this format:
 
-```
+```text
 POST /package.ServiceName/MethodName HTTP/2
 Content-Type: application/grpc
 ```

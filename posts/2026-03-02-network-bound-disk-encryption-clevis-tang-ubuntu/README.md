@@ -106,7 +106,7 @@ sudo clevis luks bind -d /dev/sda3 tang \
 
 Clevis will fetch Tang's advertisement, display the thumbprint, and ask you to confirm it matches what Tang shows. Compare this carefully - this is the key verification step:
 
-```
+```text
 The advertisement contains the following signing keys:
 
 WbV_e0ePCaHZBEHDN2gUKHxGSz4

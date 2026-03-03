@@ -88,7 +88,7 @@ Configure the source:
 
 Click "Get Schema" or manually define the output schema:
 
-```
+```text
 sale_id       - string
 date          - string
 product_name  - string
@@ -112,40 +112,40 @@ The Wrangler is Data Fusion's most powerful transform. It provides an interactiv
 In the Wrangler editor, you can see a preview of your data and apply transformations by clicking on columns:
 
 **Parse dates:**
-```
+```text
 parse-as-date :date 'yyyy-MM-dd'
 ```
 
 **Convert numeric fields:**
-```
+```text
 set-type :quantity integer
 set-type :unit_price double
 ```
 
 **Calculate total amount:**
-```
+```text
 set-column :total_amount quantity * unit_price
 ```
 
 **Clean up region names (trim whitespace and uppercase):**
-```
+```text
 trim :region
 uppercase :region
 ```
 
 **Filter out invalid rows:**
-```
+```text
 filter-rows-on condition-if-matched :quantity < 0
 ```
 
 **Drop unnecessary columns:**
-```
+```text
 drop :_raw_column
 ```
 
 Each transformation is recorded as a directive. The full list of directives appears in the Wrangler configuration:
 
-```
+```text
 parse-as-date :date 'yyyy-MM-dd'
 set-type :quantity integer
 set-type :unit_price double
@@ -170,7 +170,7 @@ filter-rows-on condition-if-matched :quantity < 0
 
 The output schema should match what comes out of the Wrangler:
 
-```
+```text
 sale_id       - string
 date          - date
 product_name  - string
@@ -253,7 +253,7 @@ Set up the pipeline to run automatically:
 
 For a daily load at 6 AM:
 
-```
+```text
 Cron expression: 0 6 * * *
 ```
 

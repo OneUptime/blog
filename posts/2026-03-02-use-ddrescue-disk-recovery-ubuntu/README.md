@@ -49,7 +49,7 @@ Always use a mapfile. It turns a one-shot operation into a resumable, iterative 
 
 ## Basic Syntax
 
-```
+```text
 ddrescue [options] infile outfile [mapfile]
 ```
 
@@ -92,7 +92,7 @@ Flags explained:
 
 Watch the progress output. ddrescue shows:
 
-```
+```text
 GNU ddrescue 1.25
      ipos:   12345 MB, non-trimmed:        0 B,  current rate:  80000 kB/s
      opos:   12345 MB, non-scraped:        0 B,  average rate:  75000 kB/s
@@ -245,7 +245,7 @@ sudo photorec /mnt/backup/disk.img
 
 The mapfile is plain text and human-readable:
 
-```
+```text
 # Mapfile. Created by GNU ddrescue version 1.25
 # Command line: ddrescue -f -n /dev/sdb disk.img rescue.map
 # Start time:   2026-03-02 10:00:00

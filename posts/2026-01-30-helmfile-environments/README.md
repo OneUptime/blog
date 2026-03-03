@@ -152,7 +152,7 @@ resources:
 
 Organize your Helmfile project for clarity and maintainability.
 
-```
+```text
 helmfile-project/
 ├── helmfile.yaml              # Main helmfile
 ├── environments/

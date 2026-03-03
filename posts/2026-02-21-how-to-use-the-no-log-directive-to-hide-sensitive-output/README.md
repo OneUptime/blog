@@ -59,7 +59,7 @@ Adding `no_log: true` to a task hides its output:
 
 With `no_log: true`, the output looks like this instead:
 
-```
+```text
 TASK [Create database users] **************************************************
 ok: [db1.example.com] => (item=CENSORED)
 ok: [db1.example.com] => (item=CENSORED)

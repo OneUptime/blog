@@ -24,7 +24,7 @@ public void handleRequest(Request request) {
 
 When the next request arrives on the same thread, it sees the old span as the current context and becomes a child of the previous request's span. Your traces now show unrelated requests as parent-child:
 
-```
+```text
 handleRequest (request A)              [=====] 100ms
   handleRequest (request B)              [=====] 150ms   // WRONG PARENT
     handleRequest (request C)              [===] 80ms     // EVEN MORE WRONG
@@ -84,7 +84,7 @@ System.setProperty("io.opentelemetry.context.enableStrictContext", "true");
 
 With strict context enabled, unclosed scopes throw an error:
 
-```
+```text
 java.lang.AssertionError: Thread [main] opened a scope of SpanContext{...}
   here: <stack trace of makeCurrent()>
   but never closed it.

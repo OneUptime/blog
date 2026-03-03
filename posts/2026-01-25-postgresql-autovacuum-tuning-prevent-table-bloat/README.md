@@ -103,7 +103,7 @@ SHOW autovacuum_max_workers;
 
 The default formula for triggering vacuum is:
 
-```
+```text
 vacuum_threshold = autovacuum_vacuum_threshold + (autovacuum_vacuum_scale_factor * number_of_tuples)
 ```
 

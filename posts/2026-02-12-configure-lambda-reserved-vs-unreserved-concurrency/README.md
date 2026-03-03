@@ -66,13 +66,13 @@ aws lambda put-function-concurrency \
 
 Unreserved concurrency is the pool shared by all functions that do not have reserved concurrency configured. It equals your account limit minus the sum of all reserved concurrency minus the 100-unit buffer.
 
-```
+```text
 Unreserved Pool = Account Limit - Total Reserved - 100 (buffer)
 ```
 
 For example, with a 1,000 account limit and 300 reserved across various functions:
 
-```
+```text
 Unreserved Pool = 1000 - 300 - 100 = 600
 ```
 

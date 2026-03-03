@@ -14,7 +14,7 @@ Namespaces are the foundation of multi-tenancy in Kubernetes. Every team, applic
 
 A well-organized Terraform module follows a standard file layout. Here is the structure for our namespace module:
 
-```
+```text
 modules/kubernetes-namespace/
   main.tf
   variables.tf

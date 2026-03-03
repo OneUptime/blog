@@ -14,7 +14,7 @@ The "ResourceNotFoundException: Requested resource not found" or "Table does not
 
 When DynamoDB cannot find the table you are trying to access, it returns:
 
-```
+```text
 ResourceNotFoundException: Requested resource not found: Table: my-table not found
 ```
 

@@ -484,7 +484,7 @@ You can simulate template inheritance by using a base layout that expects conten
 
 File structure:
 
-```
+```text
 templates/
     base.html
     home.html

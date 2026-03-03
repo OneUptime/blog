@@ -52,7 +52,7 @@ go get github.com/redis/go-redis/v9
 
 We will organize our code into a clean structure that separates concerns.
 
-```
+```text
 go-job-queue/
 ├── cmd/
 │   ├── client/

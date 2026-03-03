@@ -160,7 +160,7 @@ Add Log Analytics as a data source in Grafana, then create alert rules using KQL
 
 Create an alert rule:
 
-```
+```text
 Query A (Log Analytics):
   Heartbeat
   | summarize LastHeartbeat = max(TimeGenerated) by Computer
@@ -268,7 +268,7 @@ Add Prometheus as a data source, then create rules:
 
 **Alert on high error rate**:
 
-```
+```text
 Query A (Prometheus):
   rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
 ```
@@ -277,7 +277,7 @@ This fires when the 5xx error rate exceeds 5%.
 
 **Alert on high pod memory usage**:
 
-```
+```text
 Query A (Prometheus):
   container_memory_usage_bytes{namespace="production"} / container_spec_memory_limit_bytes{namespace="production"} > 0.9
 ```

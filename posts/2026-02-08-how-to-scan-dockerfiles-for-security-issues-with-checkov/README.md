@@ -68,7 +68,7 @@ CMD ["python", "/app/main.py"]
 
 Checkov reports:
 
-```
+```text
 Passed checks: 2, Failed checks: 6, Skipped checks: 0
 
 Check: CKV_DOCKER_2: "Ensure that HEALTHCHECK instructions have been added"
@@ -199,7 +199,7 @@ COPY package.json /app/
 
 Create a thorough `.dockerignore`:
 
-```
+```text
 # .dockerignore
 .env
 *.pem

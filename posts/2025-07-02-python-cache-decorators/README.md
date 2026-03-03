@@ -18,7 +18,7 @@ This guide shows you how to build production-ready cache decorators, from simple
 
 Caching improves performance by storing computed results and returning them for identical inputs. Without caching:
 
-```
+```text
 Call 1: compute_expensive(x) -> 500ms
 Call 2: compute_expensive(x) -> 500ms  
 Call 3: compute_expensive(x) -> 500ms
@@ -27,7 +27,7 @@ Total: 1500ms
 
 With caching:
 
-```
+```text
 Call 1: compute_expensive(x) -> 500ms (cache miss, compute)
 Call 2: compute_expensive(x) -> 0.1ms (cache hit)
 Call 3: compute_expensive(x) -> 0.1ms (cache hit)

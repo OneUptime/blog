@@ -161,7 +161,7 @@ spec:
 
 **Environment overlays.** Kustomize's overlay system is perfect for managing the same application across different environments.
 
-```
+```text
 apps/my-app/
   base/
     kustomization.yaml

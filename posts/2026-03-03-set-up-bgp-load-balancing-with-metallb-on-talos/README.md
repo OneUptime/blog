@@ -16,7 +16,7 @@ BGP mode requires a bit more network infrastructure, but the payoff is better pe
 
 In BGP mode, the MetalLB speaker on each node establishes a BGP peering session with one or more routers on your network. When a service gets an external IP, MetalLB advertises a route to that IP from every node. Your router sees multiple equal-cost paths to the same IP and distributes incoming traffic across all of them.
 
-```
+```text
 Internet -> Router -> ECMP across nodes -> kube-proxy -> pods
 ```
 
@@ -105,7 +105,7 @@ Your router needs to be configured to accept BGP connections from your Talos nod
 
 ### FRR (Free Range Routing)
 
-```
+```text
 router bgp 64513
   bgp router-id 192.168.1.1
   no bgp ebgp-requires-policy
@@ -126,7 +126,7 @@ router bgp 64513
 
 ### VyOS
 
-```
+```text
 set protocols bgp 64513 neighbor 192.168.1.10 remote-as 64512
 set protocols bgp 64513 neighbor 192.168.1.11 remote-as 64512
 set protocols bgp 64513 neighbor 192.168.1.12 remote-as 64512
@@ -136,7 +136,7 @@ set protocols bgp 64513 address-family ipv4-unicast maximum-paths ebgp 8
 
 ### Cisco IOS
 
-```
+```text
 router bgp 64513
   neighbor 192.168.1.10 remote-as 64512
   neighbor 192.168.1.11 remote-as 64512

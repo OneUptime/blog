@@ -146,7 +146,7 @@ snort -V
 
 Expected output:
 
-```
+```text
    ,,_     -*> Snort++ <*-
   o"  )~   Version 3.x.x.x
    ''''    By Martin Roesch & The Snort Team
@@ -994,7 +994,7 @@ sudo cp -r rules/* /etc/snort/rules/snort-registered/
 
 Create `/etc/snort/rules/snort.rules`:
 
-```
+```text
 # Main rule include file
 # Include all rule categories you want to use
 
@@ -1123,13 +1123,13 @@ Understanding Snort rule syntax is essential for both reading existing rules and
 
 ### Rule Structure
 
-```
+```text
 ACTION PROTOCOL SRC_IP SRC_PORT DIRECTION DST_IP DST_PORT (OPTIONS)
 ```
 
 ### Rule Components
 
-```
+```text
 alert tcp $EXTERNAL_NET any -> $HOME_NET 80 (msg:"Example Rule"; sid:1000001; rev:1;)
 |     |   |            |   |  |         |   |
 |     |   |            |   |  |         |   +-- Rule Options
@@ -1162,7 +1162,7 @@ alert tcp $EXTERNAL_NET any -> $HOME_NET 80 (msg:"Example Rule"; sid:1000001; re
 
 ### Common Rule Options
 
-```
+```text
 # Message - what appears in alerts
 msg:"SQL Injection Attempt";
 
@@ -1191,7 +1191,7 @@ metadata:service http, policy security-ips drop;
 
 ### Content Matching Options
 
-```
+```text
 # Basic content match (case-insensitive by default in Snort 3)
 content:"GET";
 
@@ -1221,7 +1221,7 @@ content:"SELECT"; content:"FROM"; content:"WHERE";
 
 ### Regular Expression Options
 
-```
+```text
 # PCRE - Perl Compatible Regular Expressions
 pcre:"/SELECT\s+.*\s+FROM/i";
 
@@ -1248,7 +1248,7 @@ pcre:"/SELECT\s+.*\s+FROM/i";
 
 ### Flow Options
 
-```
+```text
 # Flow direction and state
 flow:to_server,established;
 flow:to_client,established;
@@ -1270,7 +1270,7 @@ flow:only_stream;
 
 ### Threshold Options
 
-```
+```text
 # Limit alerts (1 per 60 seconds per source)
 detection_filter:track by_src, count 1, seconds 60;
 
@@ -1282,7 +1282,7 @@ threshold:type both, track by_src, count 1, seconds 3600;
 
 ### Byte Matching Options
 
-```
+```text
 # Byte test (compare bytes to value)
 # byte_test:bytes_to_convert, operator, value, offset;
 byte_test:2, >, 1024, 0;
@@ -1301,7 +1301,7 @@ content:"data"; within:len_var;
 
 ### Example 1: Detect SQL Injection Attempts
 
-```
+```text
 # /etc/snort/rules/local/sql-injection.rules
 
 # Detect basic SQL injection in HTTP requests
@@ -1344,7 +1344,7 @@ alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS (
 
 ### Example 2: Detect Command Injection
 
-```
+```text
 # /etc/snort/rules/local/command-injection.rules
 
 # Detect command injection via pipe
@@ -1385,7 +1385,7 @@ alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS (
 
 ### Example 3: Detect Reconnaissance Activity
 
-```
+```text
 # /etc/snort/rules/local/recon.rules
 
 # Detect Nmap SYN scan
@@ -1434,7 +1434,7 @@ alert http $EXTERNAL_NET any -> $HTTP_SERVERS $HTTP_PORTS (
 
 ### Example 4: Detect Data Exfiltration
 
-```
+```text
 # /etc/snort/rules/local/exfiltration.rules
 
 # Detect large DNS TXT responses (possible DNS tunneling)
@@ -1475,7 +1475,7 @@ alert http $HOME_NET any -> $EXTERNAL_NET any (
 
 ### Example 5: Detect Malware Indicators
 
-```
+```text
 # /etc/snort/rules/local/malware.rules
 
 # Detect potential reverse shell
@@ -1515,7 +1515,7 @@ alert http $HOME_NET any -> $EXTERNAL_NET any (
 
 ### Example 6: Custom Application Rules
 
-```
+```text
 # /etc/snort/rules/local/custom-app.rules
 
 # Monitor access to sensitive API endpoint
@@ -1831,7 +1831,7 @@ sudo crontab -e
 
 Create `/etc/snort/disablesid.conf`:
 
-```
+```text
 # Disable specific rules
 # Format: gid:sid  # comment
 # or: pcre:regular_expression
@@ -1853,7 +1853,7 @@ pcre:games
 
 Create `/etc/snort/enablesid.conf`:
 
-```
+```text
 # Enable rules that are disabled by default
 # Same format as disablesid.conf
 
@@ -1863,7 +1863,7 @@ pcre:deleted  # Enable rules from deleted.rules
 
 Create `/etc/snort/dropsid.conf`:
 
-```
+```text
 # Change alert to drop for IPS mode
 # Only works when running in inline mode
 
@@ -2032,7 +2032,7 @@ sudo make install
 
 Create `/etc/snort/barnyard2.conf`:
 
-```
+```text
 # Barnyard2 Configuration
 # /etc/snort/barnyard2.conf
 

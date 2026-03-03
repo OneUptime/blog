@@ -312,7 +312,7 @@ SENTINEL get-master-addr-by-name mymaster
 
 Example output from `SENTINEL master mymaster`:
 
-```
+```text
  1) "name"
  2) "mymaster"
  3) "ip"

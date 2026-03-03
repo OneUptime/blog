@@ -12,7 +12,7 @@ You are seeing sporadic "deadline exceeded" errors in your Collector logs, but t
 
 The OTLP exporter has a configurable timeout for each export request. When the backend does not respond within that window, the exporter gives up and logs an error:
 
-```
+```text
 2026-02-06T10:15:32.456Z  error  exporterhelper/queue_sender.go:92
   Exporting failed. Dropping data.
   {"kind": "exporter", "data_type": "traces", "name": "otlp",

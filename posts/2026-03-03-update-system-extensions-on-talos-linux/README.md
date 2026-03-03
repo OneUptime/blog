@@ -14,7 +14,7 @@ System extensions on Talos Linux are tied to the Talos version and the installer
 
 Each system extension is published as an OCI image with version tags that typically correspond to the Talos version they are compatible with:
 
-```
+```text
 ghcr.io/siderolabs/iscsi-tools:v1.7.0     # For Talos v1.7.0
 ghcr.io/siderolabs/iscsi-tools:v1.7.1     # For Talos v1.7.1
 ghcr.io/siderolabs/iscsi-tools:v1.8.0     # For Talos v1.8.0

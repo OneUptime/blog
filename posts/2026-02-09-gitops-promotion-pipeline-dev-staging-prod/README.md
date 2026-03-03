@@ -22,7 +22,7 @@ Each strategy has tradeoffs. Branch-based is simple but requires merging code ac
 
 Create a repository structure with environment branches:
 
-```
+```text
 .
 ├── develop (branch)
 ├── staging (branch)

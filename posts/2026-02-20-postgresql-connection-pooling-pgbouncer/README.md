@@ -252,7 +252,7 @@ SHOW DNS_HOSTS;
 
 Key metrics to watch:
 
-```
+```text
 cl_active   - clients currently executing a query (using a server connection)
 cl_waiting  - clients waiting for a server connection (pool exhausted)
 sv_active   - server connections currently in use

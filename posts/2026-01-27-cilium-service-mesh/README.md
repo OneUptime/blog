@@ -107,7 +107,7 @@ cilium status --wait
 
 Expected output shows all components healthy:
 
-```
+```text
     /¯¯\
  /¯¯\__/¯¯\    Cilium:             OK
  \__/¯¯\__/    Operator:           OK

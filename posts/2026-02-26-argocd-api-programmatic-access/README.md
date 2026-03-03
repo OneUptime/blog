@@ -21,7 +21,7 @@ For most automation use cases, the REST API is the easier choice. It is well-doc
 
 The API documentation is built into ArgoCD. Access it at:
 
-```
+```text
 https://argocd.example.com/swagger-ui
 ```
 

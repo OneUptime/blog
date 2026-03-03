@@ -31,7 +31,7 @@ The App Router was introduced in Next.js 13 and became stable in version 13.4. I
 
 The App Router lives in the `app` directory. Here's a typical project structure:
 
-```
+```text
 my-app/
   app/
     layout.js        # Root layout (required)
@@ -837,7 +837,7 @@ These advanced features enable complex UI patterns like modals and split views.
 
 Parallel routes render multiple pages simultaneously:
 
-```
+```text
 app/
   @modal/
     (.)photo/[id]/

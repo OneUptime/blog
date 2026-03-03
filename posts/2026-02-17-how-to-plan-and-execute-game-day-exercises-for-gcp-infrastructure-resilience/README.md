@@ -39,7 +39,7 @@ Prioritize scenarios based on likelihood and impact. For your first game day, pi
 
 For each scenario, define what "success" looks like. For example:
 
-```
+```text
 Scenario: Cloud SQL primary instance becomes unavailable
 Success criteria:
 - Monitoring detects the outage within 2 minutes
@@ -103,7 +103,7 @@ gcloud compute instances stop web-server-abc123 \
 
 Record timestamps for everything:
 
-```
+```text
 10:00:00 - Instance stopped
 10:00:45 - Health check marks instance unhealthy
 10:01:15 - Load balancer removes instance from pool

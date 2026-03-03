@@ -45,7 +45,7 @@ argocd app sync my-app --dry-run --prune
 
 The output shows the sync operations that would be performed:
 
-```
+```text
 TIMESTAMP  GROUP  KIND        NAMESPACE   NAME    STATUS  HEALTH   HOOK  MESSAGE
            apps   Deployment  production  my-app  Synced  Healthy        deployment.apps/my-app configured (dry run)
                   Service     production  my-app  Synced  Healthy        service/my-app unchanged (dry run)

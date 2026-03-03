@@ -123,7 +123,7 @@ Process:
 ### Plan Output Summary
 ```
 Plan: X to add, Y to change, Z to destroy.
-```
+```text
 
 ### Dependencies
 [Other changes or services that depend on this change]

@@ -32,7 +32,7 @@ cilium status | grep "KubeProxyReplacement"
 
 Should show:
 
-```
+```text
 KubeProxyReplacement:    Strict   [eth0]
 ```
 
@@ -96,7 +96,7 @@ kubectl edit configmap coredns -n kube-system
 
 Add to the Corefile:
 
-```
+```text
 .:53 {
     errors
     health
@@ -384,7 +384,7 @@ kubectl exec -n kube-system cilium-xxxxx -- cilium status
 
 Look for:
 
-```
+```text
 KubeProxyReplacement:  Strict
 Host firewall:         Disabled
 ```

@@ -56,7 +56,7 @@ sudo mv conftest /usr/local/bin/
 
 Organize your policies alongside your Terraform code:
 
-```
+```text
 infrastructure/
   terraform/
     main.tf

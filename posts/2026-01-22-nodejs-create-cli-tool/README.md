@@ -96,7 +96,7 @@ npm init -y
 
 ### Directory Structure
 
-```
+```text
 my-cli/
   bin/
     cli.js         # Entry point

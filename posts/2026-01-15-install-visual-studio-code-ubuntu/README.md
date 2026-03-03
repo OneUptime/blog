@@ -1105,7 +1105,7 @@ VS Code provides excellent Git integration out of the box. Here is how to config
 
 Access Git features from Command Palette (Ctrl+Shift+P):
 
-```
+```text
 # Stage changes
 Git: Stage All Changes
 Git: Stage Changes  (Stage selected file)
@@ -1145,7 +1145,7 @@ Git: Discard All Changes
 
 Create `.vscode/commit-template.txt`:
 
-```
+```text
 # <type>(<scope>): <subject>
 # |<---- Using a Maximum Of 50 Characters ---->|
 

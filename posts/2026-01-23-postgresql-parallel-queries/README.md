@@ -97,7 +97,7 @@ GROUP BY region;
 
 A parallel plan shows "Gather" and "Workers Planned":
 
-```
+```text
 Finalize GroupAggregate  (cost=... rows=4 width=...)
   ->  Gather Merge  (cost=... rows=16 width=...)
         Workers Planned: 4

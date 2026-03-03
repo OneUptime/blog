@@ -12,7 +12,7 @@ Running the same OpenTelemetry configuration in development, staging, and produc
 
 The most straightforward approach is maintaining separate config files for each environment. This is explicit and easy to reason about, even if it means some duplication.
 
-```
+```text
 config/
   otel-base.yaml      # shared settings
   otel-dev.yaml        # development overrides
@@ -220,7 +220,7 @@ METRICS_INTERVAL=10000
 
 For Kubernetes deployments, Kustomize overlays map naturally to environment-specific configs:
 
-```
+```text
 k8s/
   base/
     kustomization.yaml

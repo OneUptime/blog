@@ -60,7 +60,7 @@ The `ref` field creates a named reference that you use with the `$` prefix in `v
 
 ### Chart Repository (helm-charts)
 
-```
+```text
 helm-charts/
   charts/
     my-app/
@@ -78,7 +78,7 @@ helm-charts/
 
 ### Config Repository (app-config)
 
-```
+```text
 app-config/
   my-app/
     dev/

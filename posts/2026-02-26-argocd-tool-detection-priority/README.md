@@ -14,7 +14,7 @@ ArgoCD's automatic tool detection follows a fixed priority order: Helm first, th
 
 ArgoCD's core detection priority is hardcoded in the repo-server:
 
-```
+```text
 Priority 1: Helm        (Chart.yaml)
 Priority 2: Kustomize   (kustomization.yaml / kustomization.yml / Kustomization)
 Priority 3: Jsonnet      (*.jsonnet / *.libsonnet)
@@ -132,7 +132,7 @@ discover:
 
 Structure your repository so the ArgoCD application points at a directory that only contains the tool you want:
 
-```
+```text
 apps/
   my-app/
     helm/                    # Point ArgoCD here for Helm

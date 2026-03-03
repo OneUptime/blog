@@ -78,7 +78,7 @@ stringData:
 
 A well-organized Git repository is critical for edge deployments. You need to separate base configurations from site-specific customizations.
 
-```
+```text
 edge-deployments/
   base/
     point-of-sale/

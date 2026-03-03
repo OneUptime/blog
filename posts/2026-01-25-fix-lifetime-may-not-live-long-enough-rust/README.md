@@ -24,7 +24,7 @@ fn get_str<'a>() -> &'a str {
 
 Error message:
 
-```
+```text
 error[E0597]: `s` does not live long enough
  --> src/main.rs:3:5
   |

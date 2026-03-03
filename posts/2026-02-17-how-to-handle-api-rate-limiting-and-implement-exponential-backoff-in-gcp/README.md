@@ -33,7 +33,7 @@ gcloud services quotas list \
 
 When you exceed a limit, the API returns either:
 
-```
+```text
 HTTP 429 Too Many Requests
 {
   "error": {
@@ -46,7 +46,7 @@ HTTP 429 Too Many Requests
 
 Or for transient errors:
 
-```
+```text
 HTTP 503 Service Unavailable
 ```
 
@@ -56,7 +56,7 @@ Exponential backoff means each retry waits longer than the previous one. Instead
 
 The formula is:
 
-```
+```text
 wait_time = min(base_delay * 2^attempt + random_jitter, max_delay)
 ```
 

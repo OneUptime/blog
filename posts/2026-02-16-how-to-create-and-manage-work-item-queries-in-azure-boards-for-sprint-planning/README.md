@@ -38,7 +38,7 @@ The `@CurrentIteration` macro is powerful because it automatically adjusts as yo
 
 Here is what the query definition looks like in the web UI.
 
-```
+```text
 AND Iteration Path = @CurrentIteration
 AND Work Item Type In (User Story, Bug, Task)
 AND State Not In (Done, Closed, Removed)
@@ -50,7 +50,7 @@ AND State Not In (Done, Closed, Removed)
 
 This is the first question in every sprint planning meeting. What did we not finish?
 
-```
+```text
 AND Iteration Path = @CurrentIteration - 1
 AND State Not In (Done, Closed, Removed)
 AND Work Item Type In (User Story, Bug)
@@ -62,7 +62,7 @@ The `@CurrentIteration - 1` macro gives you the previous sprint. Items showing u
 
 Bugs that need attention before you plan new features.
 
-```
+```text
 AND Work Item Type = Bug
 AND State Not In (Done, Closed, Resolved)
 AND Priority <= 2
@@ -73,7 +73,7 @@ AND Iteration Path Under @CurrentIteration
 
 Work that is in the sprint but nobody has picked up yet.
 
-```
+```text
 AND Iteration Path = @CurrentIteration
 AND Assigned To = ""
 AND State Not In (Done, Closed)
@@ -84,7 +84,7 @@ AND Work Item Type In (User Story, Task)
 
 Work items that are in a state where they need someone to review or test them.
 
-```
+```text
 AND Iteration Path = @CurrentIteration
 AND State = "Ready for Review"
 AND Work Item Type In (User Story, Bug)
@@ -107,7 +107,7 @@ Child filter (linked items):
 
 This gives you a view like:
 
-```
+```text
 User Story: Implement user login
   Task: Create login API endpoint
   Task: Build login form component
@@ -150,7 +150,7 @@ The `@Me` macro makes queries personal. Instead of hardcoding a name, use `@Me` 
 
 This is perfect for a "My Sprint Work" query:
 
-```
+```text
 AND Iteration Path = @CurrentIteration
 AND Assigned To = @Me
 AND State Not In (Done, Closed, Removed)

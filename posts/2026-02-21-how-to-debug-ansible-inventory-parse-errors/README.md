@@ -14,7 +14,7 @@ Ansible inventory files define which hosts to manage and how to group them. When
 
 Inventory parse errors typically look like:
 
-```
+```text
 [WARNING]: Unable to parse /home/deploy/inventory as an inventory source
 [WARNING]: No inventory was parsed, only implicit localhost is available
 
@@ -313,7 +313,7 @@ filters:
 
 **Common plugin errors:**
 
-```
+```text
 [WARNING]: * Failed to parse /home/deploy/aws_ec2.yml with auto plugin: Failed to describe instances: ...
 ```
 
@@ -337,7 +337,7 @@ ansible-inventory -i aws_ec2.yml --list -vvv
 
 When using an inventory directory (multiple files), Ansible tries to parse each file:
 
-```
+```text
 inventory/
   hosts.yml         # YAML inventory
   group_vars/
@@ -384,7 +384,7 @@ yamllint -d relaxed inventory/hosts.yml
 
 Example yamllint output:
 
-```
+```text
 inventory/hosts.yml
   3:1       error    wrong indentation: expected 2 but found 4  (indentation)
   7:21      error    trailing spaces  (trailing-spaces)

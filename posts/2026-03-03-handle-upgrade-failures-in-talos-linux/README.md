@@ -263,7 +263,7 @@ This is why you should always take an etcd snapshot before upgrading and never u
 
 Document your failure handling procedures so your team can respond quickly:
 
-```
+```text
 Upgrade Failure Response Runbook:
 
 1. Identify the failure type:

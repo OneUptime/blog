@@ -61,7 +61,7 @@ The `record` field is the name of the new metric. The `expr` field is the PromQL
 
 Prometheus recommends a naming convention for recording rules:
 
-```
+```text
 level:metric_name:operations
 ```
 

@@ -257,7 +257,7 @@ Anyone with the appropriate RBAC permissions can open the link and see the Workb
 
 You can also create deep links that pre-set parameter values:
 
-```
+```text
 https://portal.azure.com/#blade/AppInsightsExtension/UsageNotebookBlade/ComponentId/...&TimeRange=P1D&Computer=Server1
 ```
 

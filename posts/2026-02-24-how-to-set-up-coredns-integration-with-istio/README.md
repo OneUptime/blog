@@ -30,7 +30,7 @@ kubectl get configmap coredns -n kube-system -o yaml
 
 The default Corefile typically looks like:
 
-```
+```text
 .:53 {
     errors
     health {
@@ -192,7 +192,7 @@ data:
 
 For more advanced setups, you can use the CoreDNS external plugin to serve DNS records from an external source:
 
-```
+```text
 .:53 {
     errors
     health
@@ -221,7 +221,7 @@ Or better, use the cluster-proportional-autoscaler to scale CoreDNS based on clu
 
 Increase the cache TTL for stable services:
 
-```
+```text
 cache 60 {
     success 9984
     denial 9984
@@ -253,7 +253,7 @@ spec:
 
 The autopath plugin in CoreDNS can optimize the search domain expansion:
 
-```
+```text
 .:53 {
     errors
     health

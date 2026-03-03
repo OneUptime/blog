@@ -313,7 +313,7 @@ kubectl describe hpa gateway-collector-hpa -n monitoring
 
 You should see output like this when the HPA is functioning:
 
-```
+```text
 NAME                      REFERENCE                          TARGETS         MINPODS   MAXPODS   REPLICAS
 gateway-collector-hpa     OpenTelemetryCollector/gateway      45%/70%         2         10        3
 ```

@@ -110,7 +110,7 @@ rails generate rspec:install
 
 This creates the following structure:
 
-```
+```text
 spec/
   spec_helper.rb      # RSpec configuration
   rails_helper.rb     # Rails-specific configuration

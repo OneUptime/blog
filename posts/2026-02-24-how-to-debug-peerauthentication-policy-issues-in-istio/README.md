@@ -51,13 +51,13 @@ istioctl x describe pod <target-pod-name> -n <target-namespace>
 
 Look for output like:
 
-```
+```text
 Pod is STRICT and target is STRICT (mTLS is used)
 ```
 
 or
 
-```
+```text
 WARNING: pod is not in mesh (no sidecar)
 ```
 

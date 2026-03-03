@@ -20,14 +20,14 @@ The memory required is not just the raw data size. Java object overhead, hash ma
 
 You will see errors like:
 
-```
+```text
 java.lang.OutOfMemoryError: Java heap space
     at org.apache.beam.runners.dataflow.worker.SideInputCache.readSideInput
 ```
 
 Or in Python:
 
-```
+```text
 MemoryError: Unable to allocate X GiB for side input
 ```
 

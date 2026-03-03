@@ -60,7 +60,7 @@ helm unittest --help
 
 Tests live in a `tests/` directory inside your chart:
 
-```
+```text
 my-app/
   Chart.yaml
   values.yaml
@@ -161,7 +161,7 @@ helm unittest --output-type JUnit --output-file test-results.xml ./charts/my-app
 
 Example output:
 
-```
+```text
 ### Chart: my-app Tests...
 
  PASS  Deployment Tests

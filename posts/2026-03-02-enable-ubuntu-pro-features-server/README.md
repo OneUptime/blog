@@ -87,7 +87,7 @@ sudo canonical-livepatch status --verbose
 
 Example output:
 
-```
+```text
 kernel: 6.8.0-35-generic #35-Ubuntu SMP PREEMPT_DYNAMIC
 server check-in: succeeded
 patch state: ✓ all applicable livepatch modules inserted

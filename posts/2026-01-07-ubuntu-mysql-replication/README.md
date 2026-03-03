@@ -246,7 +246,7 @@ SHOW MASTER STATUS;
 
 The output will look similar to:
 
-```
+```text
 +------------------+----------+--------------+------------------+
 | File             | Position | Binlog_Do_DB | Binlog_Ignore_DB |
 +------------------+----------+--------------+------------------+
@@ -397,7 +397,7 @@ SHOW REPLICA STATUS\G
 
 Expected output showing successful replication:
 
-```
+```text
 *************************** 1. row ***************************
              Replica_IO_State: Waiting for source to send event
                   Source_Host: 192.168.1.10

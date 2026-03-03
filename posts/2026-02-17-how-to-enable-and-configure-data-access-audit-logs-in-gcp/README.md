@@ -175,14 +175,14 @@ Organization-level audit configurations are inherited by all projects. Project-l
 
 Once enabled, data access logs appear in Cloud Logging. You can query them like this:
 
-```
+```text
 # View all data access audit logs
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Fdata_access"
 ```
 
 Filter for a specific service:
 
-```
+```text
 # BigQuery data access logs only
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Fdata_access"
 protoPayload.serviceName="bigquery.googleapis.com"
@@ -190,7 +190,7 @@ protoPayload.serviceName="bigquery.googleapis.com"
 
 Filter for a specific user:
 
-```
+```text
 # Data access by a specific user
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Fdata_access"
 protoPayload.authenticationInfo.principalEmail="user@company.com"
@@ -200,7 +200,7 @@ protoPayload.authenticationInfo.principalEmail="user@company.com"
 
 ### Who Accessed a Specific BigQuery Table
 
-```
+```text
 # Find all access to a specific BigQuery table
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Fdata_access"
 protoPayload.serviceName="bigquery.googleapis.com"
@@ -209,7 +209,7 @@ protoPayload.resourceName=~"datasets/sensitive_data/tables/customer_records"
 
 ### Track Cloud Storage Object Access
 
-```
+```text
 # Who downloaded objects from a specific bucket
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Fdata_access"
 protoPayload.serviceName="storage.googleapis.com"
@@ -219,7 +219,7 @@ protoPayload.methodName="storage.objects.get"
 
 ### Monitor Service Account Data Access
 
-```
+```text
 # All data access by service accounts
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Fdata_access"
 protoPayload.authenticationInfo.principalEmail=~"gserviceaccount.com"

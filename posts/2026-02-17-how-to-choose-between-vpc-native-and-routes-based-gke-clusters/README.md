@@ -124,7 +124,7 @@ The main challenge with VPC-native clusters is IP address planning. You need to 
 
 Here is a rough guide:
 
-```
+```text
 Nodes:     /20 gives 4,096 node IPs (primary range)
 Pods:      /14 gives 262,144 pod IPs (secondary range)
 Services:  /20 gives 4,096 service IPs (secondary range)

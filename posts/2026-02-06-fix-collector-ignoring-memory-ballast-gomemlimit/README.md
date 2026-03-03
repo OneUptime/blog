@@ -8,7 +8,7 @@ Description: Fix deprecated memory ballast configuration in the OpenTelemetry Co
 
 You upgrade the Collector and notice a deprecation warning in the logs:
 
-```
+```text
 warn  ballast extension is deprecated, use GOMEMLIMIT environment variable instead
 ```
 
@@ -202,7 +202,7 @@ kubectl exec <pod> -- env | grep GOMEMLIMIT
 ```
 
 4. The Collector's memory metrics look healthy:
-```
+```text
 # Check these Prometheus metrics
 process_resident_memory_bytes
 go_memstats_heap_inuse_bytes

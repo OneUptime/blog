@@ -580,7 +580,7 @@ flowchart LR
 
 Use this formula as a starting point:
 
-```
+```text
 Optimal Channels = (Peak Concurrent Operations) x 1.5
 
 Example:

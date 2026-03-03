@@ -16,7 +16,7 @@ Versioning Istio configuration is not fundamentally different from versioning ap
 
 The foundation of versioning is keeping all Istio configuration in git. Every VirtualService, DestinationRule, AuthorizationPolicy, and other resource should live in a repository:
 
-```
+```text
 istio-config/
   production/
     virtual-services/

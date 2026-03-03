@@ -33,7 +33,7 @@ After the force push, the remote `main` branch points to commit E, which has a c
 
 When ArgoCD encounters a force-pushed branch, you typically see errors like:
 
-```
+```text
 ComparisonError: rpc error: code = Internal desc = Failed to fetch
 default/my-app: `git fetch origin main` result error: exit status 128
 
@@ -42,7 +42,7 @@ fatal: refusing to merge unrelated histories
 
 Or:
 
-```
+```text
 Unable to resolve 'main' to a commit SHA
 ```
 

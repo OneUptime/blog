@@ -755,7 +755,7 @@ delv +trace example.com
 **Architecture Options**:
 
 1. **Active-Passive with Shared Keys**:
-```
+```text
 Primary Signer (Active) --> Zone Transfer --> Secondary DNS
      |
      v
@@ -763,7 +763,7 @@ Standby Signer (Passive, same keys)
 ```
 
 2. **Active-Active with Key Synchronization**:
-```
+```text
 Signer 1 <--> Key Sync <--> Signer 2
     |                          |
     v                          v
@@ -771,7 +771,7 @@ Secondary DNS <----------> Secondary DNS
 ```
 
 3. **Managed DNSSEC Service**:
-```
+```text
 Zone Management --> Cloud DNSSEC Service --> Global DNS
 ```
 

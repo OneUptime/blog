@@ -66,7 +66,7 @@ nslookup kubernetes.default.svc.cluster.local
 
 Expected output:
 
-```
+```text
 Server:         10.96.0.10
 Address:        10.96.0.10#53
 
@@ -189,7 +189,7 @@ Look for:
 
 Example output:
 
-```
+```text
 10.244.1.10.45678 > 10.96.0.10.53: 12345+ A? my-service.production.svc.cluster.local. (58)
 10.96.0.10.53 > 10.244.1.10.45678: 12345 1/0/0 A 10.96.100.50 (78)
 ```
@@ -206,7 +206,7 @@ kubectl exec debug-tools -- curl http://$SERVICE_IP:8080
 
 Watch for these patterns:
 
-```
+```text
 # Request to service IP
 10.244.1.10.45678 > 10.96.100.50.8080: Flags [S], seq 123
 

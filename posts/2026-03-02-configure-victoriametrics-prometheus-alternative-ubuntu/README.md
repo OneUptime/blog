@@ -277,7 +277,7 @@ users:
 
 Update the systemd service to enable authentication:
 
-```
+```text
 ExecStart=/usr/local/bin/victoria-metrics \
   ...existing flags... \
   -httpAuth.username=admin \

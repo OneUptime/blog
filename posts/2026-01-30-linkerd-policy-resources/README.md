@@ -327,12 +327,12 @@ linkerd identity -n production deploy/api
 ### Identity Format
 
 Linkerd identities follow the SPIFFE format:
-```
+```text
 spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 
 For MeshTLSAuthentication, use the Linkerd-specific format:
-```
+```text
 <service-account>.<namespace>.serviceaccount.identity.linkerd.<trust-domain>
 ```
 

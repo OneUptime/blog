@@ -580,7 +580,7 @@ spec:
 
 Standardize your repository layout across all services.
 
-```
+```text
 service-example/
 ├── k8s/
 │   ├── base/

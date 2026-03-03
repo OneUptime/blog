@@ -14,7 +14,7 @@ GitLab CI is a natural fit for Terragrunt workflows, especially if your organiza
 
 Your GitLab repository should have a structure like this:
 
-```
+```text
 infrastructure/
   terragrunt.hcl             # Root config
   dev/

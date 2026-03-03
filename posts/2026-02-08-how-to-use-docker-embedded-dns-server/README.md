@@ -34,7 +34,7 @@ docker run --rm --network my-network alpine cat /etc/resolv.conf
 
 Output:
 
-```
+```text
 nameserver 127.0.0.11
 options ndots:0
 ```

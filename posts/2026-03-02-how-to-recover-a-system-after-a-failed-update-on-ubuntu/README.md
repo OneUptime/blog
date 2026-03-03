@@ -14,7 +14,7 @@ A failed system update leaves Ubuntu in a broken state - packages are partially 
 
 You'll typically see one of these symptoms:
 
-```
+```text
 dpkg: error processing package <name> (--configure):
  subprocess installed post-installation script returned error exit status 1
 
@@ -305,7 +305,7 @@ sudo lvconvert --merge /dev/ubuntu-vg/root-pre-upgrade
 sudo nano /etc/apt/apt.conf.d/50unattended-upgrades
 ```
 
-```
+```text
 Unattended-Upgrade::Allowed-Origins {
     "${distro_id}:${distro_codename}-security";
     // Commented out: "${distro_id}:${distro_codename}-updates";

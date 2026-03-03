@@ -99,7 +99,7 @@ volumes:
 
 Navigate to Admin > Databases > Add Database and configure:
 
-```
+```text
 Database type: ClickHouse
 Display name: ClickHouse Analytics
 Host: clickhouse.example.com

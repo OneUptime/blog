@@ -466,7 +466,7 @@ helm install redis-prod bitnami/redis -f redis-production-values.yaml -n redis -
 
 Redis services are accessible via Kubernetes DNS:
 
-```
+```text
 # Standalone/Master
 my-redis-master.default.svc.cluster.local:6379
 

@@ -46,7 +46,7 @@ kubectl get pods -n istio-system
 
 You'll see just one deployment:
 
-```
+```text
 NAME                      READY   STATUS    RESTARTS   AGE
 istiod-6c8d5f7b8-x9k2m   1/1     Running   0          30s
 ```

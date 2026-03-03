@@ -72,7 +72,7 @@ sudo -u teamspeak /opt/teamspeak/ts3server_startscript.sh start
 
 Watch the output carefully. You'll see something like:
 
-```
+```text
 ------------------------------------------------------------------
                       I M P O R T A N T
 ------------------------------------------------------------------
@@ -192,7 +192,7 @@ After using the privilege key, you'll have ServerAdmin rights. From here you can
 
 A typical community server channel layout:
 
-```
+```text
 [General]
   - Lobby
   - AFK
@@ -215,7 +215,7 @@ Create channels by right-clicking in the channel list and selecting "Create Chan
 
 TeamSpeak's permission system is detailed but powerful. Key permission groups to configure:
 
-```
+```text
 Server Admin:  Full control (assign only to trusted people)
 Moderator:     Can kick/ban, move users, create temporary channels
 Member:        Can talk, create temporary channels

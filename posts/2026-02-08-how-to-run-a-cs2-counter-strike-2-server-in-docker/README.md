@@ -166,7 +166,7 @@ docker exec cs2-server rcon -a 127.0.0.1:27015 -p your_rcon_password "status"
 
 Common RCON commands for server management.
 
-```
+```text
 # Change the map
 rcon changelevel de_mirage
 

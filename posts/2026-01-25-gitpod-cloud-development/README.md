@@ -14,7 +14,7 @@ Gitpod provides ephemeral, cloud-based development environments that spin up in 
 
 The fastest way to try Gitpod is by prefixing any Git repository URL with `gitpod.io/#`. For example:
 
-```
+```text
 https://gitpod.io/#https://github.com/yourorg/yourproject
 ```
 

@@ -169,7 +169,7 @@ jobs:
 
 Large state files (1000+ resources) cause slow plans. Split them by domain:
 
-```
+```text
 # Before: One massive state
 infrastructure/
   main.tf        # 500+ resources, 20-minute plans

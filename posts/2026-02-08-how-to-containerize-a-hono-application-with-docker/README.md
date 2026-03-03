@@ -164,7 +164,7 @@ export default {
 
 Same principle applies regardless of runtime:
 
-```
+```text
 node_modules
 dist
 .git

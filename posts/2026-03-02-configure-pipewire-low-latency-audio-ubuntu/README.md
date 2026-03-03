@@ -130,7 +130,7 @@ sudo nano /etc/security/limits.d/audio-rt.conf
 
 Add:
 
-```
+```text
 # Allow users in the audio group to use real-time scheduling
 @audio   -  rtprio    95
 @audio   -  memlock   unlimited

@@ -89,7 +89,7 @@ gcloud version
 
 Expected output:
 
-```
+```text
 Google Cloud SDK 460.0.0
 bq 2.0.100
 core 2026.01.10
@@ -146,7 +146,7 @@ gcloud dns managed-zones list
 
 Expected output:
 
-```
+```text
 NAME           DNS_NAME                DESCRIPTION         VISIBILITY
 example-zone   example.com.            Production zone     public
 staging-zone   staging.example.com.    Staging zone        public
@@ -191,7 +191,7 @@ gcloud dns managed-zones update example-zone \
 
 Expected output:
 
-```
+```text
 Updated [https://dns.googleapis.com/dns/v1/projects/my-project/managedZones/example-zone].
 ```
 
@@ -255,7 +255,7 @@ gcloud dns dns-keys list --zone example-zone
 
 Expected output:
 
-```
+```text
 ID   KEY_TAG  TYPE         IS_ACTIVE  DESCRIPTION
 0    12345    keySigning   True
 1    67890    zoneSigning  True
@@ -297,7 +297,7 @@ gcloud dns dns-keys list --zone example-zone \
 
 Expected output:
 
-```
+```text
 KEY_TAG  ALGORITHM        TYPE    DIGEST
 12345    ECDSAP256SHA256  SHA256  1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
 ```
@@ -447,7 +447,7 @@ dig @ns-cloud-a1.googledomains.com example.com DNSKEY +dnssec
 
 Expected output:
 
-```
+```text
 ;; ANSWER SECTION:
 example.com.    300    IN    DNSKEY    256 3 13 (
                 AwEAAb...base64key...
@@ -469,7 +469,7 @@ dig example.com DS +short
 
 Expected output:
 
-```
+```text
 12345 13 2 1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
 ```
 
@@ -481,7 +481,7 @@ dig @ns-cloud-a1.googledomains.com example.com A +dnssec
 
 Expected output:
 
-```
+```text
 ;; ANSWER SECTION:
 example.com.    300    IN    A    192.0.2.1
 example.com.    300    IN    RRSIG    A 13 2 300 (
@@ -580,7 +580,7 @@ gcloud dns managed-zones describe example-zone \
 
 Output:
 
-```
+```text
 NSEC3
 ```
 
@@ -594,7 +594,7 @@ dig @ns-cloud-a1.googledomains.com example.com NSEC3PARAM
 
 Expected output:
 
-```
+```text
 ;; ANSWER SECTION:
 example.com.    0    IN    NSEC3PARAM    1 0 1 AB12CD34
 ```
@@ -704,7 +704,7 @@ gcloud dns managed-zones describe example-zone --format="value(dnssecConfig.stat
 
 Output:
 
-```
+```text
 off
 ```
 

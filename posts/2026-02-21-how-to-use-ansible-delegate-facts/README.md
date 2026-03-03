@@ -193,7 +193,7 @@ A powerful pattern is using `delegate_facts` to build configuration files that r
 
 The HAProxy template uses the gathered facts:
 
-```
+```text
 # templates/haproxy.cfg.j2
 global
     log /dev/log local0

@@ -41,7 +41,7 @@ Every arrow is a dependency that needs to be satisfied. Miss one, and you get an
 
 The most basic error looks like this:
 
-```
+```text
 ModuleNotFoundError: No module named 'opentelemetry'
 ```
 
@@ -96,7 +96,7 @@ CMD ["python", "/app/main.py"]
 
 This is probably the most common error people hit:
 
-```
+```text
 ModuleNotFoundError: No module named 'opentelemetry.exporter.otlp.proto.grpc'
 ```
 
@@ -147,13 +147,13 @@ Notice the underscore prefix on `_log_exporter`. This is a common stumbling poin
 
 This is the sneakiest category of ImportError. You have all the right packages installed, but they are at incompatible versions. The error messages can be misleading:
 
-```
+```text
 ImportError: cannot import name 'StatusCode' from 'opentelemetry.trace'
 ```
 
 or
 
-```
+```text
 AttributeError: module 'opentelemetry.sdk.trace' has no attribute 'SpanLimits'
 ```
 
@@ -178,7 +178,7 @@ pip install --upgrade \
 
 The OpenTelemetry Python packages follow a versioning scheme where the API and SDK share the same version number. Instrumentation packages have their own version scheme but declare compatibility ranges. The safest approach is to pin all packages to the same release:
 
-```
+```text
 # requirements.txt with pinned compatible versions
 # All core packages should use the same version
 opentelemetry-api==1.25.0
@@ -199,7 +199,7 @@ Note that instrumentation packages and semantic conventions use a different vers
 
 Auto-instrumentation libraries are each their own package, and missing one produces errors like:
 
-```
+```text
 ModuleNotFoundError: No module named 'opentelemetry.instrumentation.flask'
 ```
 
@@ -241,13 +241,13 @@ opentelemetry-bootstrap -a install
 
 The OTLP exporters depend on protobuf and grpcio, and version conflicts with these packages cause some of the most confusing errors:
 
-```
+```text
 ImportError: cannot import name 'descriptor' from 'google.protobuf'
 ```
 
 or
 
-```
+```text
 TypeError: Descriptors cannot not be created directly.
 ```
 
@@ -322,7 +322,7 @@ pip install --force-reinstall opentelemetry-api opentelemetry-sdk
 
 When using `opentelemetry-instrument` to auto-instrument your application, you might see errors during startup:
 
-```
+```text
 Failed to auto-instrument 'flask': No module named 'opentelemetry.instrumentation.flask'
 ```
 
@@ -342,7 +342,7 @@ opentelemetry-instrument python myapp.py
 
 If you get errors about missing entry points:
 
-```
+```text
 pkg_resources.DistributionNotFound: The 'opentelemetry-instrumentation-flask' distribution was not found
 ```
 

@@ -255,7 +255,7 @@ Click the gear icon to access dashboard settings:
 ### Variables
 Add variables for filtering (covered in detail in a separate post):
 
-```
+```text
 Name: namespace
 Type: Query
 Query: label_values(http_requests_total, namespace)

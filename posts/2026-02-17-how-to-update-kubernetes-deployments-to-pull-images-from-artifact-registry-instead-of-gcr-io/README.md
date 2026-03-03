@@ -16,7 +16,7 @@ This guide covers updating raw manifests, Helm charts, Kustomize overlays, and h
 
 Every container image reference needs to change from the GCR format to the Artifact Registry format.
 
-```
+```text
 # Old GCR path
 gcr.io/my-project-id/my-app:v1.0.0
 

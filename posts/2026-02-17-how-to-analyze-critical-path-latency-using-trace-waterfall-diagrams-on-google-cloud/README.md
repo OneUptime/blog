@@ -165,7 +165,7 @@ for step in path:
 
 If you see two independent service calls happening one after the other, they could potentially run in parallel:
 
-```
+```text
 Before (sequential - 400ms total):
   Service A: |----- 200ms ------|
   Service B:                     |----- 200ms ------|
@@ -210,7 +210,7 @@ def get_order_details_parallel(order_id):
 
 Look for many small, sequential database spans:
 
-```
+```text
 Waterfall showing N+1 problem:
   GET /users          |----------------------------------------|
     SELECT users      |--|
@@ -248,7 +248,7 @@ If a single database span dominates the waterfall:
 
 If you see a gap before the first child span in a service, it might be connection establishment:
 
-```
+```text
 Service A calls Service B:
   Service A: |--- gap ---|---- actual call ----|
                  ^

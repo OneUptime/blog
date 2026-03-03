@@ -12,19 +12,19 @@ The "already exists" error in ArgoCD appears in two main contexts: when you try 
 
 The error can look like:
 
-```
+```text
 existing application spec is different; use upsert flag to force update
 ```
 
 Or:
 
-```
+```text
 resource already exists and is managed by another application
 ```
 
 Or simply:
 
-```
+```text
 applications.argoproj.io "my-app" already exists
 ```
 
@@ -86,7 +86,7 @@ This is the trickier case. Two ArgoCD applications are trying to manage the same
 
 **Error message:**
 
-```
+```text
 resource Deployment/my-deployment is already managed by application 'other-app'
 ```
 

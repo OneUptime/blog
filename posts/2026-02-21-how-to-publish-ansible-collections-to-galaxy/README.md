@@ -125,7 +125,7 @@ ansible-galaxy collection publish ./dist/my_namespace-my_collection-1.0.0.tar.gz
 
 If successful, you will see output like:
 
-```
+```text
 Publishing collection artifact './dist/my_namespace-my_collection-1.0.0.tar.gz' to default https://galaxy.ansible.com/
 Collection has been published to the Galaxy server default https://galaxy.ansible.com/
 Waiting until Galaxy import task has completed...

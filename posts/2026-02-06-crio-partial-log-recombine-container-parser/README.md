@@ -12,7 +12,7 @@ CRI-O is the container runtime built specifically for Kubernetes. It writes cont
 
 CRI-O writes logs at `/var/log/containers/` with the following format:
 
-```
+```text
 2026-02-06T10:00:00.000000000Z stdout F This is a complete log line
 2026-02-06T10:00:00.000000001Z stdout P This is the first part of a very long
 2026-02-06T10:00:00.000000002Z stdout P log line that was split across multiple
@@ -125,7 +125,7 @@ This approach gives you full control over timeout values, maximum batch sizes, a
 
 Some clusters run both Docker and CRI-O containers. The log formats are different:
 
-```
+```text
 # Docker JSON format
 {"log":"Hello from Docker\n","stream":"stdout","time":"2026-02-06T10:00:00Z"}
 

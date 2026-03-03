@@ -68,7 +68,7 @@ echo "deb [signed-by=/etc/apt/trusted.gpg.d/debian-archive-keyring.gpg] http://d
 sudo nano /etc/apt/preferences.d/debian-chromium
 ```
 
-```
+```text
 # /etc/apt/preferences.d/debian-chromium
 # Pull chromium from Debian but nothing else
 Package: chromium chromium-common chromium-driver chromium-l10n chromium-sandbox
@@ -85,7 +85,7 @@ Pin-Priority: -1
 sudo nano /etc/apt/preferences.d/chromium-no-snap
 ```
 
-```
+```text
 Package: chromium-browser
 Pin: release o=Ubuntu*
 Pin-Priority: -1

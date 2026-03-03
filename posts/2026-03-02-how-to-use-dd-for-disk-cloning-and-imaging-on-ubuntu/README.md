@@ -112,7 +112,7 @@ sudo fdisk -l /dev/sdb | grep "^/dev/"
 
 Example output:
 
-```
+```text
 /dev/sdb1   2048    1050623   1048576  512M Linux filesystem
 /dev/sdb2  1050624  3147775   2097152    1G Linux filesystem
 /dev/sdb3  3147776  62914526  59766751  28.5G Linux filesystem
@@ -142,7 +142,7 @@ sudo dd if=/dev/sda of=/dev/sdb bs=4M status=progress
 
 Output:
 
-```
+```text
 10737418240 bytes (11 GB, 10 GiB) copied, 25.5 s, 421 MB/s
 ```
 

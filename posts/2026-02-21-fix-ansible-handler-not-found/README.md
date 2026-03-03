@@ -12,7 +12,7 @@ The "Handler not found" error occurs when a task uses `notify` to trigger a hand
 
 ## The Error
 
-```
+```text
 ERROR! The requested handler 'restart nginx' was not found in either the main handlers list nor in the listening handlers list
 ```
 

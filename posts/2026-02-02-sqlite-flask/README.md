@@ -39,7 +39,7 @@ SQLite is ideal for:
 
 Before diving into code, here is how a typical Flask project with SQLite looks:
 
-```
+```text
 flask-sqlite-app/
     app/
         __init__.py
@@ -1100,7 +1100,7 @@ if __name__ == '__main__':
 
 ### Requirements File
 
-```
+```text
 # requirements.txt
 flask>=2.0.0
 flask-sqlalchemy>=3.0.0

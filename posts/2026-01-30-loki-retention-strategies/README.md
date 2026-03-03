@@ -248,7 +248,7 @@ kubectl logs -l app=loki-compactor | grep -i retention
 
 You should see entries like:
 
-```
+```text
 level=info ts=2026-01-30T10:00:00.000Z caller=compactor.go:450 msg="applying retention" tenant=team-security retention=8760h0m0s
 ```
 

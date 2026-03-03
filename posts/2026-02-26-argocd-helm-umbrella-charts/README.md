@@ -32,7 +32,7 @@ graph TD
 
 Here is a typical umbrella chart layout:
 
-```
+```text
 my-platform/
   Chart.yaml
   Chart.lock

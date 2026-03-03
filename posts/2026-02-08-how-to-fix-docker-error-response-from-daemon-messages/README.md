@@ -16,7 +16,7 @@ This guide covers the most common daemon error messages, what causes them, and h
 
 Every daemon error follows this pattern:
 
-```
+```text
 Error response from daemon: <specific error message>
 ```
 

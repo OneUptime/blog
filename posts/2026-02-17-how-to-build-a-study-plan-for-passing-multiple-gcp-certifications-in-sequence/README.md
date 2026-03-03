@@ -130,7 +130,7 @@ The key to passing multiple certifications is consistent daily study, not crammi
 
 ### Weekday Schedule (1.5-2 hours per day)
 
-```
+```text
 Morning (30 min): Review flashcards or notes from previous sessions
 Lunch (30 min): Read documentation or watch a short video lesson
 Evening (60 min): Hands-on practice in a GCP project
@@ -138,7 +138,7 @@ Evening (60 min): Hands-on practice in a GCP project
 
 ### Weekend Schedule (3-4 hours per day)
 
-```
+```text
 Saturday: Deep dive into a specific topic area. Build something.
 Sunday: Practice questions and review weak areas.
 ```

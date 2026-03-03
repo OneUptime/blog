@@ -16,7 +16,7 @@ On Cloud Run, SSE works out of the box without session affinity or special proto
 
 SSE is built on top of regular HTTP. The server responds with `Content-Type: text/event-stream` and keeps the connection open, writing events in a specific text format. The browser's `EventSource` API handles reconnection automatically. Each event looks like this:
 
-```
+```text
 event: message
 data: {"text": "Hello, world!"}
 id: 1

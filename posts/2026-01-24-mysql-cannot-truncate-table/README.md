@@ -16,7 +16,7 @@ This guide explains why this error occurs and provides safe solutions to work ar
 
 The full error message looks like this:
 
-```
+```text
 ERROR 1701 (42000): Cannot truncate a table referenced in a foreign key constraint
 (`database`.`child_table`, CONSTRAINT `fk_parent_id` FOREIGN KEY (`parent_id`)
 REFERENCES `database`.`parent_table` (`id`))

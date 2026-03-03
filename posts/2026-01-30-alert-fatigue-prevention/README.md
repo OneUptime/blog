@@ -741,7 +741,7 @@ kubectl rollout undo deployment/<service-name>
 
 ## Escalation
 If unresolved after 30 minutes, escalate to: platform-oncall
-```
+```text
 
 ## Putting It All Together: Alert Fatigue Prevention Checklist
 

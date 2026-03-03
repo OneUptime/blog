@@ -28,7 +28,7 @@ This is the inverse of the `human_readable` filter. Together, they let you work 
 ```
 
 Output:
-```
+```text
 1 KB = 1024
 1 MB = 1048576
 1 GB = 1073741824
@@ -87,7 +87,7 @@ The template:
 ```
 
 Output:
-```
+```text
 -Xms2048m
 -Xmx4096m
 -XX:MaxMetaspaceSize=512m

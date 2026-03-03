@@ -70,7 +70,7 @@ kubectl get nodes
 
 You should see output like this:
 
-```
+```text
 NAME                        STATUS   ROLES           AGE   VERSION
 metallb-lab-control-plane   Ready    control-plane   45s   v1.31.0
 metallb-lab-worker          Ready    <none>          30s   v1.31.0
@@ -89,7 +89,7 @@ docker network inspect kind -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
 
 This will output something like:
 
-```
+```text
 172.18.0.0/16
 ```
 
@@ -146,7 +146,7 @@ kubectl get pods -n metallb-system
 
 Expected output:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-65db86ddc6-k4czj   1/1     Running   0          30s
 speaker-7b2xk                 1/1     Running   0          30s
@@ -284,7 +284,7 @@ kubectl get svc nginx-lb
 
 You should see an external IP from your pool:
 
-```
+```text
 NAME       TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)        AGE
 nginx-lb   LoadBalancer   10.96.45.123   172.18.255.200   80:31234/TCP   10s
 ```

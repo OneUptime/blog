@@ -35,13 +35,13 @@ A common source of confusion is that you can have the right IAM permissions but 
 
 First, figure out who is making the request. The error message usually includes the identity:
 
-```
+```text
 User "user@example.com" cannot list resource "pods" in API group "" in the namespace "production"
 ```
 
 Or for a Kubernetes service account:
 
-```
+```text
 User "system:serviceaccount:default:my-app" cannot get resource "secrets" in API group "" in the namespace "default"
 ```
 

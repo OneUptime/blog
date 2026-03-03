@@ -44,13 +44,13 @@ NODE_ENV = "development"
 
 Alternative: `.nvmrc` for Node-only projects:
 
-```
+```text
 20.11.0
 ```
 
 For Python, use `.python-version`:
 
-```
+```text
 3.11.7
 ```
 
@@ -68,7 +68,7 @@ curl https://mise.run | sh
 # Install project runtimes
 mise install
 ```
-```
+```text
 
 ## Layer 2: Package Dependencies
 

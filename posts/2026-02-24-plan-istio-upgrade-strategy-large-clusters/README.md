@@ -143,7 +143,7 @@ Write these down and share them with the team. During the upgrade, emotions can 
 
 Send a notification to all teams at least two weeks before:
 
-```
+```text
 Subject: Istio Upgrade - [Version] - Starting [Date]
 
 We are upgrading Istio from [current] to [target].
@@ -167,7 +167,7 @@ Questions? Contact [team/channel].
 
 Provide real-time updates in a shared channel:
 
-```
+```text
 [10:00] Starting Phase 2 - Migrating namespace: batch-processing
 [10:15] batch-processing migrated. 0 errors. Monitoring.
 [10:45] batch-processing stable for 30 minutes. Moving to next namespace.

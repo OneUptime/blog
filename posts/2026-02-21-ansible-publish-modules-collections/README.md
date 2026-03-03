@@ -12,7 +12,7 @@ Ansible Collections are the standard way to distribute modules, plugins, roles, 
 
 ## Collection Structure
 
-```
+```text
 my_namespace/
   my_collection/
     galaxy.yml

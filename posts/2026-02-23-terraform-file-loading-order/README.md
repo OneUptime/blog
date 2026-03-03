@@ -19,7 +19,7 @@ Terraform's file loading follows a specific sequence:
 3. Sort override files alphabetically by filename
 4. Process regular files first, then override files
 
-```
+```text
 project/
   compute.tf          # regular - loaded alphabetically
   data.tf             # regular
@@ -65,7 +65,7 @@ The processing order is:
 1. `override.tf` (if it exists) - processed first
 2. Files matching `*_override.tf` - processed in alphabetical order
 
-```
+```text
 override.tf           # processed first
 alpha_override.tf     # processed second
 beta_override.tf      # processed third
@@ -105,7 +105,7 @@ It does NOT automatically load:
 - `.hcl` files (these are for CLI configuration, not Terraform config)
 - Any non-.tf files
 
-```
+```text
 project/
   main.tf              # loaded
   variables.tf         # loaded
@@ -142,7 +142,7 @@ terraform apply \
 # Priority: t3.nano wins (from -var flag)
 ```
 
-```
+```text
 project/
   terraform.tfvars       # loaded first (auto)
   alpha.auto.tfvars      # loaded second (auto, alphabetical)
@@ -181,7 +181,7 @@ Both files contribute to the same configuration. This is useful when some of you
 
 Terraform only reads files from the current directory. Subdirectories are treated as child modules and are only loaded when explicitly called:
 
-```
+```text
 project/
   main.tf                  # root module
   modules/

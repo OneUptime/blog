@@ -53,7 +53,7 @@ az postgres flexible-server firewall-rule create \
 
 Here is the project layout we are building toward.
 
-```
+```text
 flask-pg-app/
     app/
         __init__.py      # Application factory
@@ -101,7 +101,7 @@ class Config:
 
 The `.env` file for local development.
 
-```
+```text
 DATABASE_URL=postgresql://pgadmin:YourStr0ngP@ss!@my-pg-server.postgres.database.azure.com:5432/flaskapp?sslmode=require
 SECRET_KEY=your-random-secret-key
 ```

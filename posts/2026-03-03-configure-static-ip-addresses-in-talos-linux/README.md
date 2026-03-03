@@ -240,7 +240,7 @@ talosctl ping 8.8.8.8 --nodes 192.168.1.10
 
 Before deploying your cluster, plan your IP address allocation:
 
-```
+```text
 # Example IP plan for a small cluster
 192.168.1.1   - Gateway
 192.168.1.2   - DNS server

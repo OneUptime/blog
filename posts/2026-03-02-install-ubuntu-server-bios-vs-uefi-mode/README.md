@@ -59,7 +59,7 @@ The Ubuntu Server installer detects the mode automatically. In UEFI mode, you wi
 
 In BIOS mode with a GPT disk, GRUB needs a special partition to store its core image:
 
-```
+```text
 # BIOS + GPT partition layout
 Device      Size    Type
 /dev/sda1   1 MB    BIOS boot partition (type: 21686148-6449-6E6F-744E-656564454649)
@@ -71,7 +71,7 @@ The BIOS boot partition is not mounted anywhere and has no filesystem - it is ju
 
 If you use MBR partitioning with BIOS (the traditional combination):
 
-```
+```text
 # BIOS + MBR partition layout
 Device      Size    Type
 /dev/sda1   1 GB    ext4 - /boot (bootable flag)
@@ -97,7 +97,7 @@ sudo update-grub
 
 In UEFI mode, the EFI System Partition is required:
 
-```
+```text
 # UEFI + GPT partition layout
 Device      Size     Type           Filesystem
 /dev/sda1   512 MB   EFI System     FAT32 - /boot/efi

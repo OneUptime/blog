@@ -16,7 +16,7 @@ This guide covers designing and implementing cross-zone HA for Talos Linux, incl
 
 A cross-zone HA Talos Linux cluster distributes nodes across three zones:
 
-```
+```text
 Zone A (192.168.1.0/24):
   - cp-1 (control plane)
   - worker-a1, worker-a2

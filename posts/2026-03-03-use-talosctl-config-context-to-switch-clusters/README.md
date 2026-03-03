@@ -32,7 +32,7 @@ talosctl config contexts
 
 The output might look something like this:
 
-```
+```text
 CURRENT   NAME              ENDPOINTS
 *         prod-cluster      192.168.1.10, 192.168.1.11
           staging-cluster   10.0.1.10, 10.0.1.11

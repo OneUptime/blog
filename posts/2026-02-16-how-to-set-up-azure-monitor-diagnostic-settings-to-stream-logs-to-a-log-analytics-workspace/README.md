@@ -116,7 +116,7 @@ The key thing to notice is the `scope` property. Diagnostic settings are child r
 
 After setting up diagnostic settings, give it 5 to 10 minutes for data to appear. Then open your Log Analytics workspace and run a simple query.
 
-```
+```text
 // Check which tables have received data recently
 search *
 | where TimeGenerated > ago(30m)
@@ -178,7 +178,7 @@ Every GB of data ingested into a Log Analytics workspace costs money. Before ena
 
 You can check your current ingestion volume with this KQL query.
 
-```
+```text
 // Check data volume per table over the past 24 hours
 Usage
 | where TimeGenerated > ago(24h)

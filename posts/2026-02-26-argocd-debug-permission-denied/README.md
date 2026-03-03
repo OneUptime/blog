@@ -16,7 +16,7 @@ This guide gives you a systematic approach to diagnosing and fixing permission d
 
 ArgoCD permission denied errors include useful details. Here is a typical error:
 
-```
+```text
 FATA[0000] permission denied: applications, sync, production/web-app, sub: developer@company.com, iat: 2024-01-15T10:00:00Z
 ```
 
@@ -232,7 +232,7 @@ g, frontend-developers, role:deployer
 
 ### Cause 5: Token Expired
 
-```
+```text
 sub: ci-bot, iat: 2023-06-15T10:00:00Z
 ```
 

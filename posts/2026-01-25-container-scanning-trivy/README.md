@@ -70,7 +70,7 @@ trivy image --format json --output results.json nginx:1.25
 
 Example output shows CVE IDs, severity, affected packages, and fixed versions:
 
-```
+```text
 nginx:1.25 (debian 12.2)
 =========================
 Total: 45 (UNKNOWN: 0, LOW: 20, MEDIUM: 15, HIGH: 8, CRITICAL: 2)
@@ -98,7 +98,7 @@ trivy repo --scanners secret https://github.com/myorg/myrepo
 
 When Trivy finds a secret, it reports the file path, line number, and secret type:
 
-```
+```text
 Secrets (1)
 ===========
 +------------------+-------------------+----------+---------------------------+
@@ -263,7 +263,7 @@ db:
 
 Create a `.trivyignore` file for accepted risks:
 
-```
+```text
 # .trivyignore
 # Accepted: No fix available, not exploitable in our context
 CVE-2023-12345

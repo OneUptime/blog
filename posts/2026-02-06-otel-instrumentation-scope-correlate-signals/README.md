@@ -87,7 +87,7 @@ In the OTLP protocol, telemetry is grouped by instrumentation scope:
 
 The OpenTelemetry Java agent automatically sets instrumentation scope for each library it instruments:
 
-```
+```text
 Scope: io.opentelemetry.spring-webmvc-6.0 (version: 2.2.0-alpha)
   -> spans from Spring MVC controller handling
 
@@ -186,7 +186,7 @@ sum(rate(traces_spanmetrics_calls_total[5m])) by (instrumentation_scope_name)
 
 In TraceQL:
 
-```
+```text
 # Find all spans from a specific instrumentation scope
 { scope.name = "io.opentelemetry.jdbc" && duration > 1s }
 ```

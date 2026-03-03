@@ -43,7 +43,7 @@ However, this version field is currently informational only - ArgoCD does not us
 
 The primary versioning mechanism for CMP plugins is the container image tag. Follow semantic versioning for your plugin images:
 
-```
+```text
 my-registry/argocd-cmp-sops:v1.0.0  # Initial release
 my-registry/argocd-cmp-sops:v1.1.0  # New feature (new SOPS version)
 my-registry/argocd-cmp-sops:v1.1.1  # Bug fix
@@ -247,7 +247,7 @@ Or more robustly, use a Kustomize-based approach to add annotations.
 
 Maintain a changelog for your plugins just like you would for application code:
 
-```
+```text
 ## v2.0.0 (2026-02-26) - BREAKING
 - Upgraded SOPS to v4.0.0 (new encryption format)
 - Changed output format to multi-document YAML

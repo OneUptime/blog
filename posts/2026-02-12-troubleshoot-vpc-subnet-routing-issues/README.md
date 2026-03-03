@@ -14,7 +14,7 @@ VPC subnet routing issues are one of the most frustrating problems in AWS. Your 
 
 Every subnet in a VPC is associated with a route table. The route table determines where network traffic is directed. By default, all subnets share the VPC's main route table, which has one route:
 
-```
+```text
 Destination       Target
 10.0.0.0/16       local
 ```
@@ -229,7 +229,7 @@ aws ec2 create-flow-log \
 
 Then query the logs:
 
-```
+```text
 # CloudWatch Logs Insights query for rejected traffic
 fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, action
 | filter action = "REJECT"

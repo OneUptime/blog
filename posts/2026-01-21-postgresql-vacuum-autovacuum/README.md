@@ -131,7 +131,7 @@ autovacuum_analyze_scale_factor = 0.05   # Default: 0.05 (5%)
 ```
 
 Vacuum triggers when:
-```
+```text
 dead_tuples >= threshold + (scale_factor * table_rows)
 ```
 

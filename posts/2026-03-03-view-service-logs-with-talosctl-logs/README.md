@@ -23,7 +23,7 @@ talosctl -n 192.168.1.10 services
 
 You will see output similar to this:
 
-```
+```text
 SERVICE       STATE     HEALTH   LAST CHANGE
 apid          Running   OK       3h ago
 containerd    Running   OK       3h ago

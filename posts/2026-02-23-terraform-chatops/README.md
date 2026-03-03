@@ -22,7 +22,7 @@ With ChatOps, every plan and apply happens in a shared channel. The team sees wh
 
 A typical Terraform ChatOps setup involves three components: a chat platform like Slack, a bot service that handles commands and webhooks, and a CI/CD system that runs Terraform.
 
-```
+```text
 User types /terraform plan prod
        |
        v

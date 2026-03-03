@@ -44,7 +44,7 @@ sudo aa-status
 
 The output shows:
 
-```
+```text
 apparmor module is loaded.
 XX profiles are loaded.
 XX profiles are in enforce mode.
@@ -136,7 +136,7 @@ sudo ls /etc/apparmor.d/ | grep -i nginx
 
 A typical profile file looks like:
 
-```
+```text
 # /etc/apparmor.d/usr.sbin.nginx
 
 #include <tunables/global>
@@ -184,7 +184,7 @@ sudo aa-notify -p -s 1 -w 60 -f /var/log/syslog
 
 Example denial log entry:
 
-```
+```text
 Mar 02 10:15:30 server kernel: audit: type=1400 audit(1234567890.123:45): apparmor="DENIED" operation="open" profile="/usr/sbin/nginx" name="/etc/shadow" pid=1234 comm="nginx" requested_mask="r" denied_mask="r" fsuid=33 ouid=0
 ```
 

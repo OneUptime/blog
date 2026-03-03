@@ -87,7 +87,7 @@ Now, for each service, create an authorization policy that allows only its known
 
 For example, if your architecture looks like this:
 
-```
+```text
 frontend -> api-gateway -> order-service -> payment-service
                         -> inventory-service
                         -> notification-service

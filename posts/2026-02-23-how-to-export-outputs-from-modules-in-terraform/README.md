@@ -16,7 +16,7 @@ This post covers how to define module outputs, access them from the calling conf
 
 Module outputs are defined with `output` blocks, typically in an `outputs.tf` file within the module directory:
 
-```
+```text
 modules/
   vpc/
     main.tf

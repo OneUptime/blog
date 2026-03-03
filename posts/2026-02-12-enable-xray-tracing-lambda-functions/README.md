@@ -313,7 +313,7 @@ Once tracing is active, the X-Ray console gives you:
 
 Filter expressions are powerful:
 
-```
+```text
 # Find slow traces
 duration > 5
 

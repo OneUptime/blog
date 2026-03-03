@@ -89,7 +89,7 @@ This command does several things:
 
 A well-structured GitOps repository makes it easier to manage multiple environments and applications. Here is a recommended layout.
 
-```
+```text
 fleet-config/
   clusters/
     production/

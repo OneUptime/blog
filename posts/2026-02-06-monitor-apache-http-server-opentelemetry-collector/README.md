@@ -207,7 +207,7 @@ Metrics tell you the overall health. Logs tell you what is actually happening re
 
 Apache's default access log format (the "combined" format) looks like this:
 
-```
+```text
 192.168.1.50 - john [10/Feb/2026:14:22:10 +0000] "GET /index.html HTTP/1.1" 200 5324 "https://example.com/" "Mozilla/5.0"
 ```
 

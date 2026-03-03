@@ -72,7 +72,7 @@ sudo cat /etc/usbguard/rules.conf
 
 The output looks something like this:
 
-```
+```text
 allow id 1d6b:0002 serial "" name "xHCI Host Controller" hash "..." parent-hash "..."
 allow id 046d:c52b serial "" name "USB Receiver" hash "..." parent-hash "..."
 allow id 0951:1666 serial "xxxx" name "DataTraveler 3.0" hash "..." parent-hash "..."
@@ -176,7 +176,7 @@ Create a udev rule that logs every USB device connection:
 sudo nano /etc/udev/rules.d/99-usb-audit.rules
 ```
 
-```
+```text
 # Log all USB device connections to syslog
 SUBSYSTEM=="usb", ACTION=="add", RUN+="/usr/bin/logger -t usb-audit 'USB CONNECTED: ID=%s{idVendor}:%s{idProduct} Name=%s{manufacturer}:%s{product} Serial=%s{serial}'"
 SUBSYSTEM=="usb", ACTION=="remove", RUN+="/usr/bin/logger -t usb-audit 'USB REMOVED: ID=%s{idVendor}:%s{idProduct}'"
@@ -202,7 +202,7 @@ To prevent specific USB storage from automounting via udev:
 sudo nano /etc/udev/rules.d/99-block-usb-storage.rules
 ```
 
-```
+```text
 # Block USB mass storage devices from being accessed
 SUBSYSTEM=="block", SUBSYSTEMS=="usb", ACTION=="add", RUN+="/bin/sh -c 'echo 0 > /sys/bus/usb/devices/%k/authorized'"
 ```
@@ -215,7 +215,7 @@ Create an allowlist of known USB devices:
 sudo nano /etc/udev/rules.d/99-usb-allowlist.rules
 ```
 
-```
+```text
 # Allow only known USB devices by vendor:product ID
 # Logitech USB Receiver
 SUBSYSTEM=="usb", ATTR{idVendor}=="046d", ATTR{idProduct}=="c52b", ACTION=="add", ENV{AUTHORIZED}="1"
@@ -243,7 +243,7 @@ udevadm info -a -n /dev/sdb  # for a USB drive at /dev/sdb
 ```
 
 Sample `lsusb` output:
-```
+```text
 Bus 001 Device 003: ID 046d:c52b Logitech, Inc. Nano Receiver
 Bus 002 Device 002: ID 0951:1666 Kingston Technology DataTraveler 3.0
 ```

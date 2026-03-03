@@ -149,7 +149,7 @@ Your on-premises router needs to be configured with:
 
 Here is an example configuration for a Cisco IOS router:
 
-```
+```text
 ! Configure the BGP session with Azure
 router bgp 65510
   neighbor 10.0.255.254 remote-as 65515

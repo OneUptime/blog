@@ -47,7 +47,7 @@ sudo nano /etc/snmp/snmptrapd.conf
 
 For SNMPv1 and v2c with a community string:
 
-```
+```text
 # Accept traps from any host with community string "public"
 authCommunity log,execute,net public
 
@@ -137,7 +137,7 @@ Trap handlers are scripts or commands that run when a specific trap is received.
 sudo nano /etc/snmp/snmptrapd.conf
 ```
 
-```
+```text
 # Accept traps with this community string
 authCommunity execute,log public
 
@@ -210,7 +210,7 @@ sudo nano /etc/snmp/snmptrapd.conf
 
 Add for SNMPv3:
 
-```
+```text
 # SNMPv3 authentication
 createUser trapuser SHA "authpassword123" AES "privpassword456"
 authUser log,execute,net trapuser
@@ -238,7 +238,7 @@ sudo snmptrap -v 3 \
 
 You can run snmptrapd as a forwarder that passes traps to another system:
 
-```
+```text
 # In snmptrapd.conf
 # Forward all traps to a central trap manager
 forward default udp:10.0.0.5:162
@@ -267,7 +267,7 @@ sudo nano /etc/snmp/snmpd.conf
 
 Add to `/etc/snmp/snmpd.conf` on the device side:
 
-```
+```text
 # Send traps to the trap receiver
 trap2sink 10.0.0.100 public 162
 

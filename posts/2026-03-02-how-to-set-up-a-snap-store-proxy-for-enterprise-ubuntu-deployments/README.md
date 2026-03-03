@@ -24,7 +24,7 @@ The proxy is part of Canonical's Ubuntu Advantage (now Ubuntu Pro) offering and 
 
 ## Architecture Overview
 
-```
+```text
 Ubuntu Clients --> Snap Store Proxy --> Snap Store (canonical)
                         |
                    Local Cache
@@ -90,7 +90,7 @@ sudo nano /etc/postgresql/*/main/pg_hba.conf
 
 Find the line for local connections and ensure it allows md5 or scram-sha-256 authentication:
 
-```
+```text
 # IPv4 local connections:
 host    snap_proxy_db    snap_proxy_user    127.0.0.1/32    scram-sha-256
 ```

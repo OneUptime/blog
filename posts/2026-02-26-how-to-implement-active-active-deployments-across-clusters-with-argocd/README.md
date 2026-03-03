@@ -134,7 +134,7 @@ spec:
 
 Use Kustomize overlays for cluster-specific settings:
 
-```
+```text
 deploy/
   base/
     deployment.yaml

@@ -85,7 +85,7 @@ spec:
 
 The timeline should be:
 
-```
+```text
 SIGTERM received (t=0)
   -> preStop hook runs (t=0 to t=5)
   -> Envoy starts draining (t=0 to t=45)

@@ -149,7 +149,7 @@ sudo cp /etc/fstab /mnt/etc/fstab
 sudo nano /mnt/etc/fstab
 ```
 
-```
+```text
 # /etc/fstab - ZFS root system
 # Note: ZFS datasets are managed by zfs-mount-generator, not fstab
 UUID=<efi-uuid>   /boot/efi  vfat  umask=0077  0  1

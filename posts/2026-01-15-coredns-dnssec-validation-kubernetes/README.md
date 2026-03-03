@@ -94,7 +94,7 @@ kubectl get configmap coredns -n kube-system -o yaml
 
 ### Default Corefile
 
-```
+```text
 .:53 {
     errors
     health {
@@ -275,7 +275,7 @@ data:
 
 #### DNSSEC Plugin Configuration Options
 
-```
+```text
 dnssec [ZONES...] {
     cache_capacity CAPACITY
 }
@@ -1000,7 +1000,7 @@ kubectl logs -n kube-system -l k8s-app=kube-dns -f
 
 ### Optimize Cache Settings
 
-```
+```text
 cache 300 {
     success 9984 300    # Cache successful responses for 300s
     denial 9984 30      # Cache NXDOMAIN for 30s
@@ -1010,7 +1010,7 @@ cache 300 {
 
 ### Increase DNSSEC Cache
 
-```
+```text
 dnssec {
     cache_capacity 50000  # Increase for high-traffic clusters
 }
@@ -1043,7 +1043,7 @@ resources:
 
 Always encrypt DNS queries to upstream resolvers.
 
-```
+```text
 forward . tls://1.1.1.1 {
     tls_servername cloudflare-dns.com
 }
@@ -1125,7 +1125,7 @@ kubectl set image deployment/coredns coredns=coredns/coredns:1.11.1 -n kube-syst
 
 ### Minimal Production Corefile
 
-```
+```text
 .:53 {
     errors
     health { lameduck 5s }

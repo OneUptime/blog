@@ -14,7 +14,7 @@ A single `terraform validate` in your CI pipeline is not enough. Real Terraform 
 
 Just like application testing, Terraform testing follows a pyramid structure. Fast, cheap tests at the bottom catch most issues. Slower, more expensive tests at the top catch the rest.
 
-```
+```text
         /  E2E Tests  \          - Full deploy + verify + destroy
        /  Integration  \         - Real resources, API calls
       /  Contract Tests \        - Module interface checks

@@ -372,7 +372,7 @@ scrape_configs:
 
 Check discovered targets in the Prometheus UI:
 
-```
+```text
 # View all discovered targets
 http://prometheus:9090/targets
 

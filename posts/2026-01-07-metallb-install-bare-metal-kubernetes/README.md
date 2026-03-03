@@ -192,7 +192,7 @@ kubectl get daemonset -n metallb-system
 
 Expected output should show the controller deployment and speaker DaemonSet running:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-5f784dd8f9-xxxxx   1/1     Running   0          60s
 speaker-xxxxx                 1/1     Running   0          60s
@@ -625,7 +625,7 @@ kubectl get service nginx-lb -w
 
 Expected output:
 
-```
+```text
 NAME       TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)        AGE
 nginx-lb   LoadBalancer   10.96.123.456   192.168.1.240   80:31234/TCP   30s
 ```

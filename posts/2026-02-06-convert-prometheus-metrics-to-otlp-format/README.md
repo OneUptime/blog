@@ -97,7 +97,7 @@ Prometheus counters are monotonically increasing values. When the Collector conv
 
 Given this Prometheus output:
 
-```
+```text
 # HELP http_requests_total Total HTTP requests
 # TYPE http_requests_total counter
 http_requests_total{method="GET",status="200"} 15832
@@ -129,7 +129,7 @@ Be careful with this if you plan to export back to Prometheus later, since Prome
 
 Prometheus histograms are the most complex conversion. A Prometheus histogram consists of multiple series:
 
-```
+```text
 # HELP http_request_duration_seconds Request duration
 # TYPE http_request_duration_seconds histogram
 http_request_duration_seconds_bucket{le="0.005"} 24054
@@ -157,7 +157,7 @@ Notice that OTLP histogram bucket counts are delta counts (how many values fell 
 
 Gauges are the simplest conversion. A Prometheus gauge maps directly to an OTLP Gauge:
 
-```
+```text
 # HELP process_resident_memory_bytes Resident memory size in bytes
 # TYPE process_resident_memory_bytes gauge
 process_resident_memory_bytes 1.24813312e+08
@@ -244,7 +244,7 @@ Native histograms map cleanly to OTLP's ExponentialHistogram type, preserving hi
 
 Prometheus summaries calculate quantiles on the client side. OTLP does not have a direct summary type. The Collector converts Prometheus summaries into OTLP Summary data points, which are supported but considered a legacy type.
 
-```
+```text
 # HELP rpc_duration_seconds RPC duration
 # TYPE rpc_duration_seconds summary
 rpc_duration_seconds{quantile="0.5"} 0.042

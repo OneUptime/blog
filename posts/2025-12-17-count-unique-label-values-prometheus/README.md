@@ -175,7 +175,7 @@ label_values(kube_pod_info, namespace)
 
 Example variable configuration:
 
-```
+```text
 Name: instance
 Label: Instance
 Query: label_values(node_cpu_seconds_total, instance)

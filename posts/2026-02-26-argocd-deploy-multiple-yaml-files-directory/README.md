@@ -16,7 +16,7 @@ When you point an ArgoCD Application at a directory path, ArgoCD reads every `.y
 
 Here is a typical multi-file directory:
 
-```
+```text
 apps/payment-service/
   00-namespace.yaml
   01-serviceaccount.yaml
@@ -65,7 +65,7 @@ While ArgoCD does not care about file names (it reads everything), good naming h
 
 **Numbered prefixes** for visual ordering in editors:
 
-```
+```text
 00-namespace.yaml
 01-rbac.yaml
 02-configmap.yaml
@@ -75,7 +75,7 @@ While ArgoCD does not care about file names (it reads everything), good naming h
 
 **Resource-type names** for clarity:
 
-```
+```text
 namespace.yaml
 configmap.yaml
 deployment.yaml
@@ -85,7 +85,7 @@ ingress.yaml
 
 **Component-based names** for microservices:
 
-```
+```text
 api-deployment.yaml
 api-service.yaml
 worker-deployment.yaml
@@ -295,7 +295,7 @@ When your directory grows to dozens or hundreds of files, consider these strateg
 
 Group related resources:
 
-```
+```text
 apps/platform/
   core/
     namespace.yaml

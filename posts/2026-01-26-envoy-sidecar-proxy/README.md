@@ -74,7 +74,7 @@ Let's start with a fundamental Envoy sidecar configuration. This setup handles b
 
 ### Directory Structure
 
-```
+```text
 /app
 ├── envoy.yaml          # Envoy configuration
 ├── docker-compose.yaml # For local testing

@@ -12,13 +12,13 @@ When you try to run a playbook that references vault-encrypted files without pro
 
 ## The Error
 
-```
+```text
 ERROR! Attempting to decrypt but no vault secrets found
 ```
 
 Or:
 
-```
+```text
 fatal: [server1]: FAILED! => {"msg": "Attempting to decrypt but no vault secrets found"}
 ```
 

@@ -55,7 +55,7 @@ graph TD
 
 Each segment after a `/` is a key in the JSON object:
 
-```
+```text
 /spec/replicas              -> spec.replicas
 /metadata/name              -> metadata.name
 /spec/template/spec         -> spec.template.spec
@@ -65,7 +65,7 @@ Each segment after a `/` is a key in the JSON object:
 
 Use numeric indices to access array elements:
 
-```
+```text
 /spec/template/spec/containers/0         -> first container
 /spec/template/spec/containers/0/image   -> first container's image
 /spec/template/spec/containers/1/name    -> second container's name
@@ -80,7 +80,7 @@ JSON Pointer defines two escape sequences:
 
 This is critical for Kubernetes annotations and labels that contain slashes:
 
-```
+```text
 # Annotation key: sidecar.istio.io/inject
 # JSON Pointer: /metadata/annotations/sidecar.istio.io~1inject
 

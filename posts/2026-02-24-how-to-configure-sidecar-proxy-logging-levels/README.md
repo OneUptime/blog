@@ -57,7 +57,7 @@ istioctl proxy-config log deploy/my-app -n production
 
 This outputs each logger and its current level:
 
-```
+```text
 active loggers:
   admin: warning
   aws: warning
@@ -232,7 +232,7 @@ kubectl logs deploy/my-app -c istio-proxy -n production
 
 The default text format looks like:
 
-```
+```text
 [2026-02-24T10:15:30.123Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 15 14 "-" "curl/7.68.0" "abc-123" "api-service:8080" "10.1.2.3:8080" outbound|8080||api-service.production.svc.cluster.local 10.1.2.4:45678 10.96.1.1:8080 10.1.2.4:56789 - default
 ```
 

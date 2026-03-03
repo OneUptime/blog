@@ -42,7 +42,7 @@ expect uses **Tcl (Tool Command Language)** as its scripting language, which pro
 
 expect operates on a simple principle: pattern matching. When you spawn a process, expect monitors its output. When the output matches a pattern you have defined, expect executes the associated action, typically sending a response.
 
-```
+```text
 spawn program       # Start the interactive program
 expect "pattern"    # Wait for specific output
 send "response\r"   # Send a response (with carriage return)
@@ -88,7 +88,7 @@ expect -v
 
 You should see output similar to:
 
-```
+```text
 expect version 5.45.4
 ```
 

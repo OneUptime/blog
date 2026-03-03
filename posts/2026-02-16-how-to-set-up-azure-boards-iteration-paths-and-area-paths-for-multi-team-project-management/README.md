@@ -20,7 +20,7 @@ Area paths represent the product structure. They answer the question "what part 
 
 Example area path hierarchy:
 
-```
+```text
 MyProject
   /Frontend
     /Frontend/Dashboard
@@ -42,7 +42,7 @@ Iteration paths represent time periods. They answer the question "when is this w
 
 Example iteration path hierarchy:
 
-```
+```text
 MyProject
   /2026-Q1
     /2026-Q1/Sprint 1 (Jan 6 - Jan 17)
@@ -237,7 +237,7 @@ Under the same team settings, click "Iterations." Add the sprints that this team
 
 All teams might share the same sprint cadence:
 
-```
+```text
 Frontend Team iterations:
   - 2026-Q1\Sprint 1
   - 2026-Q1\Sprint 2
@@ -253,7 +253,7 @@ Backend Team iterations:
 
 Or teams might have different cadences. The Platform Team might use monthly iterations while the application teams use two-week sprints:
 
-```
+```text
 Platform Team iterations:
   - 2026-Q1\January
   - 2026-Q1\February
@@ -275,7 +275,7 @@ For cross-team visibility, create Epics at the root area path and Features at th
 
 ### Pattern 1: Team-Based Areas
 
-```
+```text
 MyProject
   /Team Alpha
   /Team Beta
@@ -286,7 +286,7 @@ Simple but does not tell you anything about the product structure. Best for smal
 
 ### Pattern 2: Component-Based Areas
 
-```
+```text
 MyProject
   /Frontend
   /Backend
@@ -298,7 +298,7 @@ Aligns with the technical architecture. Good when teams map to components. Can b
 
 ### Pattern 3: Feature-Based Areas
 
-```
+```text
 MyProject
   /User Management
   /Billing
@@ -310,7 +310,7 @@ Aligns with business capabilities. Good when teams are organized around features
 
 ### Pattern 4: Hybrid
 
-```
+```text
 MyProject
   /Product
     /Product/User Management
@@ -332,7 +332,7 @@ Combines product and platform concerns. This is the most common pattern in mediu
 
 To see work across all teams, create queries that look at the root area path:
 
-```
+```text
 Area Path: Under MyProject
 Iteration Path: Under MyProject\2026-Q1\Sprint 3
 State: Active
@@ -342,7 +342,7 @@ State: Active
 
 To see work for a specific team:
 
-```
+```text
 Area Path: Under MyProject\Frontend
 Iteration Path: = MyProject\2026-Q1\Sprint 3
 State: Active
@@ -352,7 +352,7 @@ State: Active
 
 For dashboards that show work distribution across teams:
 
-```
+```text
 Widget: Chart for Work Items
 Group by: Area Path (first level)
 Aggregation: Count

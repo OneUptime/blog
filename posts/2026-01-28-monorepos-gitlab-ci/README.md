@@ -14,7 +14,7 @@ Monorepos combine multiple projects into a single repository. They simplify depe
 
 A typical monorepo structure:
 
-```
+```text
 monorepo/
   services/
     api/

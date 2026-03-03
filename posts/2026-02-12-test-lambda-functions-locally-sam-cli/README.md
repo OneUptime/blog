@@ -38,7 +38,7 @@ Make sure Docker is running before you try to invoke functions locally.
 
 SAM uses a `template.yaml` file to define your serverless application. Here's a basic project structure:
 
-```
+```text
 my-api/
   template.yaml
   src/

@@ -76,7 +76,7 @@ Boot from the USB drive. memtest86 (the commercial variant) has a more modern in
 
 During testing, the screen shows:
 
-```
+```text
 Pass: X%  |  Test #Y  |  Testing: xxxxxxxx - xxxxxxxx
 Errors: 0
 ```
@@ -99,7 +99,7 @@ If memtest86+ runs through multiple passes with 0 errors, the RAM is almost cert
 
 When errors appear, the display shows:
 
-```
+```text
 ERROR: Failing address: 0x12345678 - 0x12345679
 Bit: 6
 Expected: 0x00000040
@@ -155,7 +155,7 @@ If a DIMM passes individually but the system fails with multiple DIMMs installed
 
 memtest86+ shows the current memory configuration at the top of the screen:
 
-```
+```text
 Memory Speed: 3200 MHz
 Memory Size:  32768 MB
 ...

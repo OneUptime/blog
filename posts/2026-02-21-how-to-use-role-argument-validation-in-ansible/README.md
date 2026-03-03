@@ -18,7 +18,7 @@ Argument specs are a formal way to define what variables your role accepts, thei
 
 Create a file called `meta/argument_specs.yml` in your role:
 
-```
+```text
 roles/
   webserver/
     meta/
@@ -73,7 +73,7 @@ argument_specs:
 
 Now if someone uses the role without specifying `webserver_server_name`, Ansible fails immediately:
 
-```
+```text
 ERROR! the role 'webserver' requires the following variables to be set: webserver_server_name
 ```
 
@@ -159,7 +159,7 @@ argument_specs:
 
 If someone passes `webserver_log_level: verbose`, Ansible rejects it immediately:
 
-```
+```text
 ERROR! value of webserver_log_level must be one of: debug, info, notice, warn, error, crit, got: verbose
 ```
 

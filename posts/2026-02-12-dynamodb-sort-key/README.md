@@ -48,7 +48,7 @@ Strings are the most versatile because you can build composite sort keys with pr
 
 The most common sort key pattern is a timestamp. It lets you query items in chronological order.
 
-```
+```text
 Table: UserActivity
 Partition key: userId
 Sort key: timestamp
@@ -80,7 +80,7 @@ Use ISO 8601 format for timestamps stored as strings. They sort correctly in lex
 
 When your data has a hierarchy, encode it in the sort key using a delimiter:
 
-```
+```text
 Table: Locations
 Partition key: orgId
 Sort key: location
@@ -115,7 +115,7 @@ This returns both "USA#California" and all cities within it.
 
 In single-table designs, the sort key often includes a type prefix to distinguish different entities stored under the same partition key:
 
-```
+```text
 Table: AppData
 Partition key: pk
 Sort key: sk
@@ -161,7 +161,7 @@ const allData = await docClient.query({
 
 When you need to keep a history of changes to an item, use a version number or timestamp as the sort key:
 
-```
+```text
 Table: DocumentVersions
 Partition key: documentId
 Sort key: version
@@ -191,7 +191,7 @@ const params = {
 
 Sometimes you need to sort by multiple attributes. Combine them into a single sort key:
 
-```
+```text
 Table: Products
 Partition key: category
 Sort key: price#productId
@@ -222,7 +222,7 @@ const params = {
 
 A random UUID as a sort key gives you uniqueness but loses all query power. You can only do exact lookups, never range queries:
 
-```
+```text
 Bad:  sort_key = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
       (Can't do begins_with, BETWEEN, or comparison queries)
 
@@ -234,7 +234,7 @@ Good: sort_key = "2026-02-12T10:30:00Z#f47ac10b"
 
 A sort key with only a few distinct values doesn't give you much:
 
-```
+```text
 Bad:  sort_key = "active" or "inactive"
       (Only two values, no real sorting benefit)
 
@@ -250,7 +250,7 @@ Don't try to cram everything into one sort key. If you need five different acces
 
 DynamoDB allows sort keys up to 1024 bytes. For strings, that's up to 1024 characters (ASCII) or fewer for multi-byte Unicode. In practice, keep sort keys concise:
 
-```
+```text
 Good: "ORDER#2026-02-12#ord-12345"  (34 bytes)
 Bad:  A sort key that includes a full description or long text
 ```
@@ -259,7 +259,7 @@ Bad:  A sort key that includes a full description or long text
 
 Sort keys in Global Secondary Indexes follow the same patterns. The GSI sort key lets you reorder data differently than the base table:
 
-```
+```text
 Base table:
   Partition key: userId
   Sort key: createdAt

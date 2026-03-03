@@ -115,7 +115,7 @@ gcloud app firewall-rules list --project=your-project-id
 
 The output looks something like this:
 
-```
+```text
 PRIORITY  ACTION  SOURCE_RANGE     DESCRIPTION
 100       ALLOW   203.0.113.0/24   Office network
 200       ALLOW   198.51.100.50/32 VPN server

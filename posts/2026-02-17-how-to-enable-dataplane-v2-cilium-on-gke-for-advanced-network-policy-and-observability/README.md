@@ -215,7 +215,7 @@ hubble observe --namespace default -o json | jq '.flow.verdict'
 
 Example output showing a denied connection:
 
-```
+```text
 TIMESTAMP             SOURCE                    DESTINATION               TYPE      VERDICT   SUMMARY
 Feb 17 10:15:23.456   default/untrusted-pod     default/database-pod      Policy    DROPPED   TCP Flags: SYN
                        Policy: default-deny-all

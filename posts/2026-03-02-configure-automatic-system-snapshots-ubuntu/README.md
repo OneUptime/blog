@@ -152,7 +152,7 @@ sudo nano /etc/apt/apt.conf.d/99timeshift-pre-upgrade
 
 Add the following:
 
-```
+```text
 DPkg::Pre-Invoke { "timeshift --create --comments 'Before apt upgrade' --tags O --scripted >> /var/log/timeshift-apt.log 2>&1 || true"; };
 ```
 
@@ -168,7 +168,7 @@ sudo timeshift --list
 
 Output shows something like:
 
-```
+```text
 Num     Name                 Tags  Comments
 ------------------------------------------------------------------------------
 0    >  2026-03-01_02-00-01  D     Daily auto-snapshot

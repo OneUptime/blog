@@ -27,7 +27,7 @@ EXPLAIN SELECT * FROM users WHERE email = 'user@example.com';
 
 Output:
 
-```
+```text
                         QUERY PLAN
 ----------------------------------------------------------
  Seq Scan on users  (cost=0.00..25.00 rows=1 width=100)
@@ -43,7 +43,7 @@ EXPLAIN ANALYZE SELECT * FROM users WHERE email = 'user@example.com';
 
 Output:
 
-```
+```text
                                              QUERY PLAN
 ----------------------------------------------------------------------------------------------------
  Seq Scan on users  (cost=0.00..25.00 rows=1 width=100) (actual time=0.015..0.234 rows=1 loops=1)
@@ -84,7 +84,7 @@ WHERE customer_id = 12345
 
 ### Reading Cost Estimates
 
-```
+```text
 Seq Scan on users  (cost=0.00..25.00 rows=1000 width=100)
                          |      |     |         |
                     startup  total  estimated  row width
@@ -98,7 +98,7 @@ Seq Scan on users  (cost=0.00..25.00 rows=1000 width=100)
 
 ### Reading Actual Times
 
-```
+```text
 Seq Scan on users  (actual time=0.015..0.234 rows=1 loops=1)
                               |       |      |       |
                          time to   time to  actual  iterations
@@ -114,7 +114,7 @@ SELECT * FROM large_table WHERE id < 1000;
 
 Output:
 
-```
+```text
 Seq Scan on large_table (actual time=0.012..45.678 rows=999 loops=1)
   Filter: (id < 1000)
   Rows Removed by Filter: 999001
@@ -136,7 +136,7 @@ EXPLAIN ANALYZE
 SELECT * FROM users WHERE status = 'active';
 ```
 
-```
+```text
 Seq Scan on users  (cost=0.00..1935.00 rows=50000 width=100)
   Filter: (status = 'active'::text)
 ```
@@ -154,7 +154,7 @@ EXPLAIN ANALYZE
 SELECT * FROM users WHERE id = 12345;
 ```
 
-```
+```text
 Index Scan using users_pkey on users (cost=0.42..8.44 rows=1 width=100)
   Index Cond: (id = 12345)
 ```
@@ -171,7 +171,7 @@ EXPLAIN ANALYZE
 SELECT id, email FROM users WHERE id = 12345;
 ```
 
-```
+```text
 Index Only Scan using users_id_email_idx on users (cost=0.42..4.44 rows=1 width=50)
   Index Cond: (id = 12345)
   Heap Fetches: 0
@@ -190,7 +190,7 @@ SELECT * FROM orders
 WHERE customer_id = 123 OR status = 'pending';
 ```
 
-```
+```text
 Bitmap Heap Scan on orders (cost=10.00..100.00 rows=500 width=100)
   Recheck Cond: ((customer_id = 123) OR (status = 'pending'::text))
   ->  BitmapOr (cost=10.00..10.00 rows=500 width=0)
@@ -216,7 +216,7 @@ JOIN orders o ON o.user_id = u.id
 WHERE u.id = 123;
 ```
 
-```
+```text
 Nested Loop (cost=0.85..16.90 rows=5 width=200)
   ->  Index Scan using users_pkey on users u (cost=0.42..8.44 rows=1 width=100)
         Index Cond: (id = 123)
@@ -235,7 +235,7 @@ FROM users u
 JOIN orders o ON o.user_id = u.id;
 ```
 
-```
+```text
 Hash Join (cost=2500.00..15000.00 rows=100000 width=200)
   Hash Cond: (o.user_id = u.id)
   ->  Seq Scan on orders o (cost=0.00..5000.00 rows=100000 width=100)
@@ -255,7 +255,7 @@ JOIN orders o ON o.user_id = u.id
 ORDER BY u.id;
 ```
 
-```
+```text
 Merge Join (cost=5000.00..10000.00 rows=100000 width=200)
   Merge Cond: (u.id = o.user_id)
   ->  Index Scan using users_pkey on users u
@@ -275,7 +275,7 @@ EXPLAIN ANALYZE
 SELECT status, COUNT(*) FROM orders GROUP BY status;
 ```
 
-```
+```text
 HashAggregate (cost=5500.00..5500.05 rows=5 width=16)
   Group Key: status
   ->  Seq Scan on orders (cost=0.00..5000.00 rows=100000 width=8)
@@ -291,7 +291,7 @@ GROUP BY customer_id
 ORDER BY customer_id;
 ```
 
-```
+```text
 GroupAggregate (cost=10000.00..12500.00 rows=10000 width=40)
   Group Key: customer_id
   ->  Sort (cost=10000.00..10250.00 rows=100000 width=16)
@@ -304,30 +304,30 @@ GroupAggregate (cost=10000.00..12500.00 rows=10000 width=40)
 ### Signs of Poor Performance
 
 1. **Sequential scans on large tables**
-```
+```text
 Seq Scan on orders  (actual time=0.012..1234.567 rows=1 loops=1)
   Filter: (id = 12345)
   Rows Removed by Filter: 9999999
 ```
 
 2. **High rows removed by filter**
-```
+```text
 Rows Removed by Filter: 9999999  -- Most rows discarded
 ```
 
 3. **Inaccurate row estimates**
-```
+```text
 (rows=100)       -- Estimated
 (actual rows=100000)  -- Actual - 1000x difference!
 ```
 
 4. **Sorts spilling to disk**
-```
+```text
 Sort Method: external merge  Disk: 102400kB
 ```
 
 5. **Nested loops with large outer tables**
-```
+```text
 Nested Loop (actual time=0.015..12345.678 rows=1000000 loops=1)
 ```
 
@@ -354,7 +354,7 @@ EXPLAIN ANALYZE
 SELECT * FROM orders WHERE customer_id = 12345;
 ```
 
-```
+```text
 Seq Scan on orders (actual time=0.012..456.789 rows=10 loops=1)
   Filter: (customer_id = 12345)
   Rows Removed by Filter: 999990
@@ -368,7 +368,7 @@ CREATE INDEX idx_orders_customer_id ON orders(customer_id);
 
 After:
 
-```
+```text
 Index Scan using idx_orders_customer_id on orders (actual time=0.015..0.123 rows=10 loops=1)
   Index Cond: (customer_id = 12345)
 ```
@@ -384,7 +384,7 @@ ORDER BY created_at DESC
 LIMIT 10;
 ```
 
-```
+```text
 Limit (actual time=234.567..234.678 rows=10 loops=1)
   ->  Sort (actual time=234.567..234.567 rows=10 loops=1)
         Sort Key: created_at DESC

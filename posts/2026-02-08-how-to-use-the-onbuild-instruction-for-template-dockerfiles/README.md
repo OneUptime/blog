@@ -105,7 +105,7 @@ docker build -t my-microservice:latest .
 
 The build output shows the ONBUILD triggers executing:
 
-```
+```text
 Step 1/1 : FROM myorg/node-base:20
 # Executing 4 build triggers
  ---> Running in abc123...

@@ -128,7 +128,7 @@ sudo mount -t nfs -o \
 
 And the corresponding fstab entry:
 
-```
+```text
 10.0.0.2:/vol1 /mnt/filestore nfs vers=3,rsize=1048576,wsize=1048576,hard,nointr,timeo=600,retrans=2,async,actimeo=30,_netdev 0 0
 ```
 

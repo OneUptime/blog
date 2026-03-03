@@ -118,7 +118,7 @@ Apply transformations using Power Query. You might filter out test records, merg
 
 When you save the dataflow, Power BI will write the output to your ADLS Gen2 container in CDM format. The folder structure looks like this:
 
-```
+```text
 powerbi-dataflows/
   <workspace-name>/
     <dataflow-name>/

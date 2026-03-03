@@ -221,7 +221,7 @@ exporters:
 
 This transforms metric names:
 
-```
+```text
 # Without namespace
 http_requests_total{method="GET"} 1523
 
@@ -251,7 +251,7 @@ exporters:
 
 Result:
 
-```
+```text
 http_requests_total{
   method="GET",
   cluster="us-west-2",

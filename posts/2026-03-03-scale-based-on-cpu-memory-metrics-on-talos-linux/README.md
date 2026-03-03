@@ -40,7 +40,7 @@ Kubernetes measures CPU in millicores (m). One core equals 1000 millicores. When
 
 The HPA calculates CPU utilization as:
 
-```
+```text
 utilization = (current CPU usage / CPU request) * 100
 ```
 
@@ -60,7 +60,7 @@ kubectl top pods -l app=webapp
 
 Memory is measured in bytes, typically expressed as Mi (mebibytes) or Gi (gibibytes). The utilization calculation is the same as CPU:
 
-```
+```text
 utilization = (current memory usage / memory request) * 100
 ```
 
@@ -331,7 +331,7 @@ This approach is useful when you know your application performs best at a specif
 **Setting requests too low.** If you request 50m but your app needs 500m at baseline, the HPA calculates 1000% utilization and scales to the maximum immediately.
 
 **Ignoring the scaling algorithm.** The HPA uses this formula:
-```
+```text
 desiredReplicas = ceil(currentReplicas * (currentMetricValue / desiredMetricValue))
 ```
 

@@ -14,7 +14,7 @@ Resource quotas are essential for multi-tenant Kubernetes clusters, but they cre
 
 During a rolling update with `maxSurge: 1`, Kubernetes temporarily runs more pods than the steady-state count. If your resource quota is set to match the steady-state exactly, the surge pods cannot be created:
 
-```
+```text
 Events:
   Type     Reason            Message
   ----     ------            -------
@@ -65,7 +65,7 @@ spec:
 
 The general formula is:
 
-```
+```text
 quota = (replicas * request) + (maxSurge * request) + buffer
 ```
 

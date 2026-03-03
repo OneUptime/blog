@@ -44,7 +44,7 @@ kubectl logs -n istio-system -l app=istiod --tail=100 -f
 
 Look for lines like:
 
-```
+```text
 info    ads    Push debounce stable 1 for config VirtualService/default/my-app-vs: 100.267794ms since last change, 100.267794ms since last push
 info    ads    XDS: Pushing:2023-01-01T00:00:00Z/1 Services:15 ConnectedEndpoints:42 Version:2023-01-01T00:00:00Z/1
 ```
@@ -65,7 +65,7 @@ istioctl proxy-status
 
 Output looks like:
 
-```
+```text
 NAME                          CDS        LDS        EDS        RDS        ECDS       ISTIOD
 my-app-xxxxx.default          SYNCED     SYNCED     SYNCED     SYNCED     IGNORED    istiod-xxxxx
 payment-xxxxx.default         STALE      SYNCED     SYNCED     SYNCED     IGNORED    istiod-xxxxx
@@ -156,7 +156,7 @@ When you specify a single proxy, it shows detailed diff information.
 
 Istiod tracks push errors in its metrics. If you have Prometheus set up:
 
-```
+```text
 pilot_xds_push_errors
 pilot_proxy_convergence_time_bucket
 pilot_xds_pushes

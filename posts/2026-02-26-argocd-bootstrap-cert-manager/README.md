@@ -213,7 +213,7 @@ spec:
 
 Your bootstrap directory structure would look like this:
 
-```
+```text
 bootstrap/
   cert-manager/
     application.yaml          # sync wave -3

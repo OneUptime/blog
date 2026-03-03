@@ -48,7 +48,7 @@ go mod init github.com/yourorg/mcp-server-go
 
 Create the following directory structure:
 
-```
+```text
 mcp-server-go/
 ├── cmd/
 │   └── server/

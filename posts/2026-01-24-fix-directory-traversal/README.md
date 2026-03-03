@@ -92,7 +92,7 @@ readfile($filepath);
 
 Attackers use various techniques to bypass simple filters:
 
-```
+```text
 Basic traversal:
 ../../../etc/passwd
 

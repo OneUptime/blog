@@ -444,7 +444,7 @@ module.exports = {
 
 Create `.prettierignore`:
 
-```
+```text
 node_modules/
 android/
 ios/
@@ -664,7 +664,7 @@ export const validateEnv = (): void => {
 
 Add `.env*` to `.gitignore`:
 
-```
+```text
 # Environment files
 .env
 .env.local
@@ -689,7 +689,7 @@ DEBUG_MODE=true
 
 A well-organized directory structure makes your codebase maintainable and scalable.
 
-```
+```text
 MyProductionApp/
 ├── src/
 │   ├── assets/

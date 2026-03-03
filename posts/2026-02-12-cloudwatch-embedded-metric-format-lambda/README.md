@@ -253,7 +253,7 @@ The main situation where you'd still want `PutMetricData` is when you're running
 
 One of the best things about EMF is that the full JSON structure ends up in CloudWatch Logs. This means you can query it with Logs Insights to find specific requests or analyze patterns that go beyond what metric aggregations can show:
 
-```
+```text
 # Find the slowest orders processed in the last hour
 fields @timestamp, OrderId, CustomerId, ProcessingTime
 | filter ProcessingTime > 1000

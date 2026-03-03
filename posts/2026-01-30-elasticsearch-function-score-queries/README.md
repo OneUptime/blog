@@ -168,7 +168,7 @@ This query boosts documents proportionally to their popularity score:
 
 The scoring formula is:
 
-```
+```text
 score = modifier(factor * field_value)
 ```
 

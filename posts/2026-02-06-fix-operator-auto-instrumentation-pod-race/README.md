@@ -12,7 +12,7 @@ The OpenTelemetry Operator uses a Kubernetes mutating webhook to inject auto-ins
 
 The sequence of events matters:
 
-```
+```text
 1. Cluster starts / Operator deploys
 2. Operator webhook server starts up
 3. Operator registers MutatingWebhookConfiguration

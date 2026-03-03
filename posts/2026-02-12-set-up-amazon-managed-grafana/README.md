@@ -178,7 +178,7 @@ Grafana has three roles:
 
 After creation, your workspace has a URL like:
 
-```
+```text
 https://g-abc123def456.grafana-workspace.us-east-1.amazonaws.com
 ```
 

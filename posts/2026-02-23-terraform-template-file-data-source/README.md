@@ -93,7 +93,7 @@ The template syntax is identical. The only difference is that `templatefile()` i
 
 Use `${variable_name}` to insert variable values:
 
-```
+```text
 server_name = ${server_name}
 listen_port = ${port}
 ```
@@ -102,7 +102,7 @@ listen_port = ${port}
 
 Templates support if/else directives:
 
-```
+```text
 %{ if environment == "production" }
 log_level = warn
 max_connections = 1000
@@ -116,7 +116,7 @@ max_connections = 100
 
 Templates support for loops:
 
-```
+```text
 %{ for host in upstream_hosts }
 server ${host}:8080;
 %{ endfor }
@@ -126,7 +126,7 @@ server ${host}:8080;
 
 Use `~` to strip trailing whitespace and newlines:
 
-```
+```text
 %{ for host in upstream_hosts ~}
 server ${host}:8080;
 %{ endfor ~}

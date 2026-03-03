@@ -170,7 +170,7 @@ Click the "Configuration" tab and then "General configuration." Here you can adj
 
 Click "Edit" to modify these settings:
 
-```
+```text
 Memory: 256 MB
 Timeout: 30 seconds
 Ephemeral storage: 512 MB
@@ -182,7 +182,7 @@ Still in the Configuration tab, click "Environment variables" and then "Edit."
 
 Add variables for your function's configuration:
 
-```
+```text
 ENVIRONMENT = production
 LOG_LEVEL = INFO
 MAX_ORDER_AMOUNT = 10000
@@ -218,7 +218,7 @@ Let's add an API Gateway trigger:
 
 Lambda creates an API Gateway endpoint automatically. You'll see the URL in the trigger configuration. Something like:
 
-```
+```text
 https://abc123.execute-api.us-east-1.amazonaws.com/default/process-order
 ```
 

@@ -39,7 +39,7 @@ graph TD
 
 Organize your Ansible project with a clean directory layout.
 
-```
+```text
 k8s-ansible/
   ansible.cfg
   inventory/

@@ -303,7 +303,7 @@ curl -X POST https://postal.yourdomain.com:5000/api/v1/send/message \
 
 Configure your application to use Postal as an SMTP relay.
 
-```
+```text
 SMTP Host: postal.yourdomain.com
 SMTP Port: 25 (or 587)
 Username: (from Postal credentials)

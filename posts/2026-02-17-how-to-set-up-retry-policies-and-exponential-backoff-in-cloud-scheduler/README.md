@@ -87,7 +87,7 @@ Total time from first attempt to last retry: about 70 seconds.
 
 Let me walk through how the backoff intervals are calculated in detail.
 
-```
+```text
 # Configuration:
 # min_backoff = 10s
 # max_backoff = 300s

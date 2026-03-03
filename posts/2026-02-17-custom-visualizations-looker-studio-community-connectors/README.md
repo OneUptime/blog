@@ -210,7 +210,7 @@ Community visualizations use the Looker Studio Visualization API with standard w
 
 A community visualization project has this structure:
 
-```
+```text
 my-viz/
   manifest.json    - Metadata and configuration
   myViz.js         - Visualization logic

@@ -14,7 +14,7 @@ Polling for changes is inefficient. Instead of repeatedly asking "did anything c
 
 The Watch API uses HTTP streaming to deliver a continuous stream of events. When you initiate a watch request, the API server keeps the HTTP connection open and sends JSON-encoded events as they occur:
 
-```
+```text
 GET /api/v1/namespaces/default/pods?watch=true
 ```
 

@@ -60,7 +60,7 @@ flowchart TB
 
 ### Project Structure
 
-```
+```text
 load-tests/
 ├── proto/
 │   └── user.proto

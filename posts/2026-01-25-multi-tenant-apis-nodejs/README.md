@@ -45,7 +45,7 @@ We will focus on the shared schema approach since it is the most common for SaaS
 
 ## Project Structure
 
-```
+```text
 multi-tenant-api/
   src/
     middleware/

@@ -257,7 +257,7 @@ BookStack has a role-based permission system. Default roles:
 
 Create custom roles in Settings > Roles:
 
-```
+```text
 1. Settings > Roles > New Role
 2. Name: "Engineering Team"
 3. Permissions:

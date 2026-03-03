@@ -292,7 +292,7 @@ One important detail: headers need to be propagated through the call chain for h
 
 Istio does not automatically propagate custom headers. Your application code needs to forward them. Common headers to propagate:
 
-```
+```text
 x-request-id
 x-b3-traceid
 x-b3-spanid

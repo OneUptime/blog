@@ -110,14 +110,14 @@ The per-session approach is particularly useful when you have a mix of simple OL
 
 Here is a practical formula. Take your available memory (total RAM minus shared_buffers minus OS overhead of about 1-2GB), then divide by the maximum number of concurrent connections you expect, then divide again by the average number of sort operations per query (usually 2-4).
 
-```
+```text
 available_for_work = total_ram - shared_buffers - 2GB
 work_mem = available_for_work / max_connections / avg_sorts_per_query
 ```
 
 For a 16GB instance with 6GB of shared_buffers, 100 max connections, and an average of 3 sorts per query:
 
-```
+```text
 available = 16GB - 6GB - 2GB = 8GB
 work_mem = 8GB / 100 / 3 = ~27MB
 ```

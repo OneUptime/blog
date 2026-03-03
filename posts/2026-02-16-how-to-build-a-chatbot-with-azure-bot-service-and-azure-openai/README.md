@@ -238,7 +238,7 @@ Download and install the Bot Framework Emulator. Open it, click "Open Bot," and 
 
 For production, deploy the bot to Azure App Service. Create a requirements.txt file:
 
-```
+```text
 botbuilder-core==4.16.1
 botbuilder-integration-aiohttp==4.16.1
 aiohttp==3.9.1
@@ -282,7 +282,7 @@ az webapp up \
 
 Back in the Azure portal, go to your Azure Bot resource and update the messaging endpoint to point to your deployed App Service:
 
-```
+```text
 https://support-chatbot-app.azurewebsites.net/api/messages
 ```
 

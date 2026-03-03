@@ -582,12 +582,12 @@ Follow these guidelines for effective retry configuration:
 
 Calculate optimal retry count:
 
-```
+```text
 Max retries = log(max_acceptable_latency / base_latency) / log(backoff_multiplier)
 ```
 
 Example: 30s max latency, 1s base, 2x backoff:
-```
+```text
 Max retries = log(30/1) / log(2) = 4.9 ≈ 5 retries
 ```
 

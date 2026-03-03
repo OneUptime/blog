@@ -225,7 +225,7 @@ Some teams put the environment first, others put it last. Each has advantages:
 
 ### Environment as Suffix (More Common)
 
-```
+```text
 myapp-api-dev
 myapp-api-staging
 myapp-api-prod
@@ -235,7 +235,7 @@ Resources group by component in alphabetical listings. Good when you browse by s
 
 ### Environment as Prefix
 
-```
+```text
 dev-myapp-api
 staging-myapp-api
 prod-myapp-api

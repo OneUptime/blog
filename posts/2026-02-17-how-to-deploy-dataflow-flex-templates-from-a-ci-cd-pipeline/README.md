@@ -33,7 +33,7 @@ Each stage builds on the previous one, and the pipeline stops if any stage fails
 
 Organize your project to support automated builds.
 
-```
+```text
 my-dataflow-pipeline/
   src/
     __init__.py

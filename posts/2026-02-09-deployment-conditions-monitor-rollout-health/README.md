@@ -47,7 +47,7 @@ kubectl describe deployment api-server | grep -A 10 "Conditions:"
 
 Example output:
 
-```
+```text
 Conditions:
   Type           Status  Reason
   ----           ------  ------

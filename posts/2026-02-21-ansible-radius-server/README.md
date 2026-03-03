@@ -131,7 +131,7 @@ radius_ldap_bind_password: "{{ vault_radius_ldap_password }}"
 
 ## Clients Configuration Template
 
-```
+```text
 # roles/freeradius/templates/clients.conf.j2 - RADIUS client definitions
 # Each entry represents a network device that authenticates via RADIUS
 {% for client in radius_clients %}
@@ -148,7 +148,7 @@ client {{ client.name }} {
 
 ## Users Configuration Template
 
-```
+```text
 # roles/freeradius/templates/users.j2 - Local user authentication database
 # Format: username  Auth-Type := Local, User-Password == "password"
 {% for user in radius_users %}

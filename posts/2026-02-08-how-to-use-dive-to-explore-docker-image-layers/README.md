@@ -60,7 +60,7 @@ The interface has several key sections:
 
 Navigate with these keyboard shortcuts:
 
-```
+```text
 Tab         - Switch between layers and file tree panels
 Up/Down     - Navigate within the current panel
 Space       - Collapse/expand directories in the file tree
@@ -98,7 +98,7 @@ dive nginx:latest --ci
 
 The `--ci` flag runs Dive in non-interactive mode and outputs a summary:
 
-```
+```text
 Image Source: docker://nginx:latest
 Fetching image... (this can take a while for large images)
 Analyzing image...

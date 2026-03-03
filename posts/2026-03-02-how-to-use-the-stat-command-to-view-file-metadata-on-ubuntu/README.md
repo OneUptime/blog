@@ -19,7 +19,7 @@ stat /etc/nginx/nginx.conf
 
 Output:
 
-```
+```text
   File: /etc/nginx/nginx.conf
   Size: 1490            Blocks: 8          IO Block: 4096   regular file
 Device: 801h/2049d      Inode: 131073      Links: 1
@@ -38,7 +38,7 @@ The filename and type. For symlinks, shows the link path (not the target). For f
 
 ### Size and Block Information
 
-```
+```text
 Size: 1490            Blocks: 8          IO Block: 4096   regular file
 ```
 
@@ -60,7 +60,7 @@ stat /tmp/sparse.dat
 
 ### Device and Inode
 
-```
+```text
 Device: 801h/2049d      Inode: 131073      Links: 1
 ```
 
@@ -91,7 +91,7 @@ find / -inum 131073 -ls 2>/dev/null
 
 ### Permissions
 
-```
+```text
 Access: (0644/-rw-r--r--)  Uid: (    0/    root)   Gid: (    0/    root)
 ```
 
@@ -105,7 +105,7 @@ The numeric forms are useful when usernames might not resolve (deleted users, cr
 
 ### The Three Timestamps
 
-```
+```text
 Access: 2026-03-02 08:45:00.123456789 +0000
 Modify: 2026-03-01 14:30:00.456789012 +0000
 Change: 2026-03-01 14:30:00.456789012 +0000
@@ -147,7 +147,7 @@ grep "noatime\|relatime" /etc/fstab
 stat /var/www/html/
 ```
 
-```
+```text
   File: /var/www/html/
   Size: 4096            Blocks: 8          IO Block: 4096   directory
 Device: 801h/2049d      Inode: 786433      Links: 3

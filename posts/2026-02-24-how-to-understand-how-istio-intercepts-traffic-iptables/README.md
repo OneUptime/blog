@@ -30,7 +30,7 @@ kubectl exec deploy/my-app -c istio-proxy -- iptables -t nat -S
 
 The output shows all the rules in the NAT table:
 
-```
+```text
 -N ISTIO_INBOUND
 -N ISTIO_IN_REDIRECT
 -N ISTIO_OUTPUT
@@ -59,13 +59,13 @@ Let me break down each chain.
 
 This chain handles all traffic arriving at the pod:
 
-```
+```text
 -A PREROUTING -p tcp -j ISTIO_INBOUND
 ```
 
 Every TCP packet entering the pod hits the PREROUTING chain first, which jumps to ISTIO_INBOUND.
 
-```
+```text
 -A ISTIO_INBOUND -p tcp --dport 15008 -j RETURN
 -A ISTIO_INBOUND -p tcp --dport 15090 -j RETURN
 -A ISTIO_INBOUND -p tcp --dport 15021 -j RETURN
@@ -78,7 +78,7 @@ These RETURN rules skip redirection for Istio's own ports:
 - 15021: Sidecar health check
 - 15020: Istio agent metrics
 
-```
+```text
 -A ISTIO_INBOUND -p tcp -j ISTIO_IN_REDIRECT
 -A ISTIO_IN_REDIRECT -p tcp -j REDIRECT --to-ports 15006
 ```
@@ -89,7 +89,7 @@ Everything else gets redirected to port 15006, where Envoy's inbound listener is
 
 This chain handles all traffic leaving the application:
 
-```
+```text
 -A OUTPUT -p tcp -j ISTIO_OUTPUT
 ```
 
@@ -97,38 +97,38 @@ Every outbound TCP packet from any process in the pod hits the OUTPUT chain, whi
 
 Now the tricky part - preventing loops:
 
-```
+```text
 -A ISTIO_OUTPUT -s 127.0.0.6/32 -o lo -j RETURN
 ```
 
 Traffic from 127.0.0.6 (Envoy's inbound to app forwarding) on loopback is allowed through.
 
-```
+```text
 -A ISTIO_OUTPUT ! -d 127.0.0.1/32 -o lo -m owner --uid-owner 1337 -j ISTIO_IN_REDIRECT
 ```
 
 Traffic from Envoy (UID 1337) going to a non-localhost destination on the loopback interface gets redirected to the inbound handler. This handles the case where Envoy sends traffic to the application.
 
-```
+```text
 -A ISTIO_OUTPUT -o lo -m owner ! --uid-owner 1337 -j RETURN
 ```
 
 Loopback traffic from the application (not UID 1337) passes through. This is for application-to-application communication within the pod.
 
-```
+```text
 -A ISTIO_OUTPUT -m owner --uid-owner 1337 -j RETURN
 -A ISTIO_OUTPUT -m owner --gid-owner 1337 -j RETURN
 ```
 
 Any traffic from Envoy (UID or GID 1337) passes through without redirection. This is the key loop prevention rule.
 
-```
+```text
 -A ISTIO_OUTPUT -d 127.0.0.1/32 -j RETURN
 ```
 
 Traffic to localhost passes through. No need to proxy local connections.
 
-```
+```text
 -A ISTIO_OUTPUT -j ISTIO_REDIRECT
 -A ISTIO_REDIRECT -p tcp -j REDIRECT --to-ports 15001
 ```

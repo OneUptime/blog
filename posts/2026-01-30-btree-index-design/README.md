@@ -87,7 +87,7 @@ EXPLAIN SELECT * FROM users WHERE email = 'user@example.com';
 
 Sample output showing an index scan:
 
-```
+```text
 Index Scan using idx_users_email on users  (cost=0.43..8.45 rows=1 width=72)
   Index Cond: (email = 'user@example.com'::text)
   Actual rows=1 loops=1

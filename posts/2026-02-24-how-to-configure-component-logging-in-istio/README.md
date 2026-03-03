@@ -62,7 +62,7 @@ istioctl admin log
 
 Output:
 
-```
+```text
 active scopes:
   ads                 info
   authorization       info

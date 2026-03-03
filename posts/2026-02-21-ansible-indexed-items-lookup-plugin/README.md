@@ -40,7 +40,7 @@ This playbook shows indexed iteration:
 
 Output:
 
-```
+```text
 Server #0: web-frontend
 Server #1: api-gateway
 Server #2: background-worker
@@ -83,7 +83,7 @@ One practical use is assigning sequential port numbers to services.
 
 Output:
 
-```
+```text
 frontend: port 8080
 api: port 8081
 admin: port 8082

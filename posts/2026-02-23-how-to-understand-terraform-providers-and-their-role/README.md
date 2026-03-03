@@ -102,7 +102,7 @@ terraform {
 
 Terraform downloads the provider binaries from the registry (or a mirror) and stores them in the `.terraform/providers` directory:
 
-```
+```text
 .terraform/
   providers/
     registry.terraform.io/

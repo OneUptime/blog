@@ -183,7 +183,7 @@ listen stats
 
 The timeouts are set high (600 seconds / 10 minutes) intentionally. Kubernetes operations like `kubectl exec`, `kubectl logs -f`, and watch operations create long-lived connections. Short timeouts would kill these connections prematurely.
 
-```
+```text
 timeout connect 10s     # Time to establish a connection to the backend
 timeout client  600s    # Time to wait for data from the client
 timeout server  600s    # Time to wait for data from the server
@@ -193,7 +193,7 @@ timeout server  600s    # Time to wait for data from the server
 
 `roundrobin` distributes connections evenly across all healthy servers. Other useful options:
 
-```
+```text
 balance roundrobin    # Even distribution (default)
 balance leastconn     # Send to server with fewest active connections
 balance source        # Stick client to same server based on source IP
@@ -205,7 +205,7 @@ For Kubernetes API traffic, `roundrobin` is the best general choice. `leastconn`
 
 The `check` keyword enables health checking. The parameters control behavior:
 
-```
+```text
 server cp1 192.168.1.101:6443 check fall 3 rise 2 inter 10s
 #                                     |       |        |
 #                     Fail after 3 bad checks  |        |
@@ -258,7 +258,7 @@ The color coding is intuitive: green means healthy, red means down, yellow means
 
 The basic TCP check verifies that a connection can be established. For a more thorough check, verify the API server responds correctly:
 
-```
+```text
 backend k8s_api_backend
     mode tcp
     balance roundrobin

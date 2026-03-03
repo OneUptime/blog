@@ -98,7 +98,7 @@ pip freeze > requirements.txt
 
 Make sure these packages are in your requirements.txt:
 
-```
+```text
 Django>=4.2
 psycopg2-binary>=2.9
 gunicorn>=21.2

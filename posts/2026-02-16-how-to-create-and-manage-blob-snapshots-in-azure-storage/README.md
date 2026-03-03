@@ -163,7 +163,7 @@ print(f"Snapshot content size: {len(content)} bytes")
 
 Via URL, you append `?snapshot=<timestamp>` to the blob URL:
 
-```
+```text
 https://mystorageaccount.blob.core.windows.net/mycontainer/important-data.json?snapshot=2026-02-16T14:30:00.0000000Z
 ```
 

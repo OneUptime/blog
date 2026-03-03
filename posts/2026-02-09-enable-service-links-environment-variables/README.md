@@ -16,7 +16,7 @@ Understanding enableServiceLinks helps you optimize pod startup time and reduce 
 
 By default, Kubernetes injects environment variables for each service into every pod in the same namespace. For a service named "database" on port 5432, Kubernetes creates:
 
-```
+```text
 DATABASE_SERVICE_HOST=10.96.0.10
 DATABASE_SERVICE_PORT=5432
 DATABASE_PORT=tcp://10.96.0.10:5432

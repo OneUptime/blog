@@ -53,7 +53,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 ecommerce-config/
   infrastructure/
     postgresql/

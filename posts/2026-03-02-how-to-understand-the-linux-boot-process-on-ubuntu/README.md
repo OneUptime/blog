@@ -188,7 +188,7 @@ systemd-analyze plot > /tmp/boot-timeline.svg
 ```
 
 Example output:
-```
+```text
 Startup finished in 3.682s (firmware) + 2.169s (loader) + 1.873s (kernel) + 8.241s (userspace) = 15.966s
 graphical.target reached after 8.189s in userspace
 ```

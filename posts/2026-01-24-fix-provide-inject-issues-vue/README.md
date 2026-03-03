@@ -52,7 +52,7 @@ const theme = inject('theme');
 The most common error is attempting to inject a value that was not provided.
 
 **Error Message:**
-```
+```text
 [Vue warn]: injection "theme" not found.
 ```
 

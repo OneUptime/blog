@@ -163,7 +163,7 @@ spec:
 
 The file generator excels at multi-environment setups where each environment has different settings:
 
-```
+```text
 config/
   production/
     api-gateway.json

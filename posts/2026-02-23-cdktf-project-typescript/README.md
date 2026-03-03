@@ -24,7 +24,7 @@ npm install @cdktf/provider-aws
 
 The generated project includes:
 
-```
+```text
 cdktf-typescript-demo/
   main.ts              # Entry point
   cdktf.json           # CDKTF configuration

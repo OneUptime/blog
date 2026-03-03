@@ -1718,7 +1718,7 @@ exporter.on('error', (error) => {
 
 Define SLOs for your mobile app:
 
-```
+```text
 App Startup: < 3 seconds (p95)
 Screen Render: < 500ms (p95)
 API Latency: < 1 second (p95)

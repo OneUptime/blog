@@ -16,7 +16,7 @@ SDK integrations changed that. Step Functions can now call over 200 AWS services
 
 SDK integrations use the resource ARN format:
 
-```
+```text
 arn:aws:states:::aws-sdk:SERVICE:API_ACTION
 ```
 

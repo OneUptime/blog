@@ -115,7 +115,7 @@ kubectl get secrets -n my-namespace
 
 If a ConfigMap or Secret referenced by the pod does not exist, the pod will fail to start. The `describe` output will show an event like:
 
-```
+```text
 Warning  Failed  configmap "my-config" not found
 ```
 

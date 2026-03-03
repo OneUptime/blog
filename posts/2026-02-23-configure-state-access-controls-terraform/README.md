@@ -347,7 +347,7 @@ The `state_versions = "read-outputs"` permission is particularly useful. It lets
 
 The principle of least privilege is especially important for state access. Here's a framework:
 
-```
+```text
 Developer workstation:
   - Read access to dev/staging state
   - No access to production state

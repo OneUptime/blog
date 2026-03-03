@@ -166,7 +166,7 @@ Think about the most natural conversation flow. For flights, asking the destinat
 
 After collecting all required slots, you can add a confirmation step:
 
-```
+```text
 "Just to confirm - you want to fly from {DepartureCity} to {ArrivalCity} on {TravelDate} in {SeatClass}. Is that correct?"
 ```
 

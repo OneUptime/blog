@@ -149,7 +149,7 @@ echo "Encrypted secrets written to $OUTPUT_FILE"
 
 The source file would look like:
 
-```
+```text
 # secrets_source.txt - plain text source (delete after migration)
 vault_db_password=SuperSecret123
 vault_api_key=sk-live-abc123def456

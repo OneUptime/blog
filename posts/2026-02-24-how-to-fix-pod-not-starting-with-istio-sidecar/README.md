@@ -45,7 +45,7 @@ kubectl logs <pod-name> -c istio-init -n production
 
 The `istio-init` container needs NET_ADMIN and NET_RAW capabilities to set up iptables rules:
 
-```
+```text
 iptables: Permission denied (you must be root)
 ```
 
@@ -106,7 +106,7 @@ kubectl logs <pod-name> -c istio-proxy -n production --previous
 
 **Cause 1: Cannot connect to istiod**
 
-```
+```text
 failed to fetch bootstrap config: connection refused
 ```
 

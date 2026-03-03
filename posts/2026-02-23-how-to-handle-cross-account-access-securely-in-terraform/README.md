@@ -16,7 +16,7 @@ This guide covers practical patterns for managing cross-account access with Terr
 
 The standard pattern is to run Terraform from a central management or CI/CD account and use IAM role assumption to reach target accounts. Terraform assumes a role in each target account, performs its work, and the temporary credentials expire.
 
-```
+```text
 CI/CD Account (111111111111)
     |
     |- Assumes role -> Production Account (222222222222)

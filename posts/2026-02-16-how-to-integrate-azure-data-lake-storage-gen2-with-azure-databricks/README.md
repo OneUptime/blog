@@ -172,7 +172,7 @@ For production workloads, it is better to configure the ADLS Gen2 access at the 
 
 In the Databricks cluster configuration, add these Spark configuration entries:
 
-```
+```text
 fs.azure.account.auth.type.mydatalakeaccount.dfs.core.windows.net OAuth
 fs.azure.account.oauth.provider.type.mydatalakeaccount.dfs.core.windows.net org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider
 fs.azure.account.oauth2.client.id.mydatalakeaccount.dfs.core.windows.net {{secrets/adls-secrets/client-id}}

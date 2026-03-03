@@ -21,7 +21,7 @@ talosctl services -n <node-ip>
 
 This gives you a table showing every service, its current state, and its health status. A healthy control plane node looks like this:
 
-```
+```text
 SERVICE          STATE     HEALTH   LAST CHANGE
 apid             Running   OK       5d2h ago
 containerd       Running   OK       5d2h ago

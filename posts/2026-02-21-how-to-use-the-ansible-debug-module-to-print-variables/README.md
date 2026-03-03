@@ -23,7 +23,7 @@ The most common use of the debug module is printing the value of a variable:
 
 The `var` parameter takes a variable name (without curly braces) and prints its value. The output looks like this:
 
-```
+```text
 ok: [web-01] => {
     "target_env": "production"
 }
@@ -42,7 +42,7 @@ If you want more context around the variable value, use the `msg` parameter inst
 
 Output:
 
-```
+```text
 ok: [web-01] => {
     "msg": "Deploying version 2.4.1 to production on web-01"
 }

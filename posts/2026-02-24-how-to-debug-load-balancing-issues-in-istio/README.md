@@ -81,7 +81,7 @@ kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/clusters | gre
 
 Look for lines like:
 
-```
+```text
 outbound|80||my-service.default.svc.cluster.local::10.0.1.5:8080::health_flags::/failed_outlier_check
 ```
 

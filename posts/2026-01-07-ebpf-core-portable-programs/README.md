@@ -157,7 +157,7 @@ libbpf provides essential macros for CO-RE. The following header shows the key m
 
 A typical CO-RE project has this recommended directory structure:
 
-```
+```text
 my-ebpf-project/
 ├── src/
 │   ├── vmlinux.h           # Generated kernel types

@@ -12,7 +12,7 @@ The LAMP stack (Linux, Apache, MySQL, PHP) remains one of the most popular web a
 
 ## Project Structure
 
-```
+```text
 lamp-stack/
 ├── inventories/
 │   └── production/

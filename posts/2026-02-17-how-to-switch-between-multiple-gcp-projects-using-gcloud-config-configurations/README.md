@@ -91,7 +91,7 @@ gcloud config configurations list
 
 The list command shows all configurations with the active one marked:
 
-```
+```text
 NAME      IS_ACTIVE  ACCOUNT              PROJECT              COMPUTE_DEFAULT_ZONE  COMPUTE_DEFAULT_REGION
 default   False      dev@example.com      default-project      us-central1-a         us-central1
 dev       False      dev@example.com      my-dev-project       us-central1-c         us-central1
@@ -170,7 +170,7 @@ PROMPT='%n@%m %~$(gcloud_prompt_info) %# '
 
 Now your terminal shows something like:
 
-```
+```text
 user@machine ~/projects [gcp:staging] $
 ```
 
@@ -292,7 +292,7 @@ gcloud config configurations delete old-name
 
 Configurations are stored in `~/.config/gcloud/configurations/`. Each configuration is a separate file:
 
-```
+```text
 ~/.config/gcloud/configurations/
   config_default
   config_prod

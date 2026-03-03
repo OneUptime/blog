@@ -21,7 +21,7 @@ ansible-vault encrypt group_vars/production/secrets.yml
 
 Ansible prompts for a password:
 
-```
+```text
 New Vault password:
 Confirm New Vault password:
 Encryption successful
@@ -29,7 +29,7 @@ Encryption successful
 
 The file is now encrypted on disk. The original content is gone, replaced with the encrypted version. If you open the file, you see:
 
-```
+```text
 $ANSIBLE_VAULT;1.1;AES256
 39643365323563666533333732303666326163653862303762613732336337636434633033393863
 ...
@@ -88,7 +88,7 @@ ansible-vault encrypt --vault-id staging@~/.vault_pass_staging.txt \
 
 The vault ID is stored in the file header:
 
-```
+```text
 $ANSIBLE_VAULT;1.2;AES256;production
 39643365323563666533333732303666...
 ```
@@ -193,7 +193,7 @@ Rotating secrets is almost always the better option. Purging Git history is mess
 
 ### Step 6: Update .gitignore
 
-```
+```text
 # .gitignore
 # Vault password files
 .vault_pass*

@@ -131,7 +131,7 @@ spec:
 
 Your Git repository structure:
 
-```
+```text
 production/my-app/
   deployment.yaml
   service.yaml

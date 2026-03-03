@@ -57,7 +57,7 @@ kubectl auth can-i --list --as=developer@company.com
 
 Output shows resources, verbs, and API groups.
 
-```
+```text
 Resources                                       Non-Resource URLs   Resource Names   Verbs
 deployments.apps                                []                  []               [get list watch create update patch]
 pods                                            []                  []               [get list watch]
@@ -140,7 +140,7 @@ rbac-lookup --output json > rbac-audit.json
 
 Output shows subjects and their bindings.
 
-```
+```text
 SUBJECT                           SCOPE       ROLE
 User/admin@company.com           cluster     ClusterRole/cluster-admin
 ServiceAccount/default:deployer  production  Role/deployment-manager

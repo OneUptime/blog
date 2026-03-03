@@ -155,7 +155,7 @@ Aurora charges per I/O request. Standard RDS with GP3 or IO1/IO2 provisioned IOP
 
 Here's a rough monthly cost comparison for a typical 500 GB database:
 
-```
+```text
 Standard RDS (db.r5.large, Multi-AZ, GP3):
   Instance: $245/mo (Multi-AZ)
   Storage:  $57.50/mo (500 GB GP3)

@@ -697,7 +697,7 @@ annotations:
 
 Store alert rules and templates in version control with your infrastructure code.
 
-```
+```text
 alerting/
   rules/
     service-alerts.yaml

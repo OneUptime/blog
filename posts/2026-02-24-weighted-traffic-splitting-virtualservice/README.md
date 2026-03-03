@@ -435,14 +435,14 @@ For production use, consider tools like Flagger or Argo Rollouts that automate t
 
 Track the actual traffic distribution:
 
-```
+```text
 # PromQL: Request rate by version
 sum(rate(istio_requests_total{destination_workload="my-service"}[5m])) by (destination_version)
 ```
 
 Compare error rates between versions:
 
-```
+```text
 # PromQL: Error rate by version
 sum(rate(istio_requests_total{destination_workload="my-service",response_code=~"5.*"}[5m])) by (destination_version)
 /
@@ -451,7 +451,7 @@ sum(rate(istio_requests_total{destination_workload="my-service"}[5m])) by (desti
 
 Compare latency:
 
-```
+```text
 # PromQL: P99 latency by version
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="my-service"}[5m])) by (le, destination_version))
 ```

@@ -171,13 +171,13 @@ spec:
 
 CoreDNS has a `loop` plugin that detects and stops forwarding loops. If you see this in the logs:
 
-```
+```text
 Loop (127.0.0.1:43051 -> :53) detected for zone ".", see https://coredns.io/plugins/loop
 ```
 
 This usually means CoreDNS is forwarding to itself. On Talos Linux, this can happen when the node's `/etc/resolv.conf` points to the CoreDNS service IP. Fix it by using explicit upstream forwarders instead of `/etc/resolv.conf`:
 
-```
+```text
 # Instead of this:
 forward . /etc/resolv.conf
 

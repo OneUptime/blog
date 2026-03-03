@@ -73,7 +73,7 @@ For administrators who want to control access:
 
 When you hit an error in the console, ask Q about it:
 
-```
+```text
 You: My Lambda function is returning "Task timed out after 3.00 seconds"
 
 Q: This error means your Lambda function didn't complete within its
@@ -102,7 +102,7 @@ your specific timeout?
 
 Ask Q about the current state of your resources:
 
-```
+```text
 You: How many EC2 instances are running in us-east-1?
 
 Q: Based on your account, you have 12 EC2 instances currently in the
@@ -122,7 +122,7 @@ for cost savings.
 
 Instead of looking up CLI syntax in documentation:
 
-```
+```text
 You: Give me the AWS CLI command to create an S3 bucket with
 versioning enabled and default encryption using KMS
 
@@ -153,7 +153,7 @@ aws s3api put-bucket-encryption \
 
 ### 4. Cost Analysis
 
-```
+```text
 You: What are my highest cost EC2 instances this month?
 
 Q: Based on your recent usage data, here are your highest-cost
@@ -176,7 +176,7 @@ Would you like recommendations for reducing these costs?
 
 ### 5. Security Guidance
 
-```
+```text
 You: Is my S3 bucket "company-reports" publicly accessible?
 
 Q: Let me check the configuration of your "company-reports" bucket.
@@ -200,7 +200,7 @@ Would you like guidance on enabling these security best practices?
 
 ### 6. Service Comparisons
 
-```
+```text
 You: Should I use SQS or SNS for my use case? I need to process
 orders asynchronously with multiple consumers.
 
@@ -233,7 +233,7 @@ This gives you the broadcast of SNS with the reliability of SQS.
 
 Amazon Q can help diagnose VPC and networking issues:
 
-```
+```text
 You: My EC2 instance i-abc123 cannot connect to the internet
 
 Q: Let me check the networking configuration for i-abc123.
@@ -260,7 +260,7 @@ assign an Elastic IP.
 
 When working with CloudFormation stacks:
 
-```
+```text
 You: My CloudFormation stack "web-app-stack" failed to create.
 What went wrong?
 

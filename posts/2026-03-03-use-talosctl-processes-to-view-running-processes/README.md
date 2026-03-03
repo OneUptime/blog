@@ -21,7 +21,7 @@ talosctl processes --nodes 192.168.1.10
 
 The output resembles a standard `ps` listing, showing process IDs, CPU usage, memory usage, command names, and other relevant information:
 
-```
+```text
 PID     STATE    THREADS   CPU-TIME    VIRT-MEM    RES-MEM     COMMAND
 1       S        1         0:05.23     4096        1024        /sbin/init
 234     S        12        2:15.67     524288      65536       /usr/local/bin/machined

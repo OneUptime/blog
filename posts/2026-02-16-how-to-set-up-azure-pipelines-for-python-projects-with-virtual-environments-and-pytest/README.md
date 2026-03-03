@@ -14,7 +14,7 @@ Setting up a CI/CD pipeline for Python projects sounds straightforward until you
 
 Let's assume you have a typical Python project that looks something like this:
 
-```
+```text
 my-python-project/
     src/
         myapp/

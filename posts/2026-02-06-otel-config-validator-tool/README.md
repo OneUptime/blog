@@ -38,7 +38,7 @@ The simplest usage validates a configuration file against the bundled schema:
 
 If the file is valid, you get a clean exit code 0. If there are problems, the tool prints structured error messages:
 
-```
+```text
 Error at $.tracer_provider.processors[0].batch.schedule_delay:
   Expected type "integer" but got "string"
   Value: "fast"

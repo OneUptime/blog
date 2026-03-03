@@ -89,7 +89,7 @@ Add computed fields to your data view:
 
 In the Discover tab:
 
-```
+```text
 # KQL Queries
 level: error
 service.name: "user-service" and level: error
@@ -100,7 +100,7 @@ response_time > 1000
 
 ### Lucene Queries
 
-```
+```text
 # Lucene syntax
 level:ERROR AND service.name:"user-service"
 message:"connection" AND message:"timeout"
@@ -145,7 +145,7 @@ Lens is the recommended way to create visualizations:
 
 1. Select "Metric" visualization
 2. Configure formula:
-   ```
+   ```text
    count(kql='level: error') / count() * 100
    ```
 3. Format as percentage
@@ -267,7 +267,7 @@ Add filter controls to your dashboard:
 
 Use URL parameters for dynamic dashboards:
 
-```
+```text
 /app/dashboards#/view/dashboard-id?
   _g=(filters:!(),time:(from:now-24h,to:now))&
   _a=(query:(language:kuery,query:'service.name: user-service'))
@@ -357,7 +357,7 @@ For geographic log data:
 
 Create pixel-perfect presentations:
 
-```
+```text
 # Canvas workpad elements
 - Metric elements for KPIs
 - Time series for trends

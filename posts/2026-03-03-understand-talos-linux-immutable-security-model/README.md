@@ -20,7 +20,7 @@ Immutability in Talos Linux operates at several levels.
 
 The base operating system is stored as a SquashFS image that is mounted read-only at boot. This image contains the kernel, system binaries, and Talos runtime. Nothing can modify these files at runtime.
 
-```
+```text
 /            -> SquashFS (read-only)
 /system      -> System binaries (read-only)
 /etc         -> Managed by Talos (not directly writable)

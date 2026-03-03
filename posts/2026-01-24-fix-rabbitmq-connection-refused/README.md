@@ -14,13 +14,13 @@ Description: Learn how to diagnose and fix RabbitMQ connection refused errors, i
 
 When you see a connection refused error, it typically looks like this:
 
-```
+```text
 pika.exceptions.AMQPConnectionError: Connection to localhost:5672 failed: [Errno 111] Connection refused
 ```
 
 Or in Node.js:
 
-```
+```text
 Error: connect ECONNREFUSED 127.0.0.1:5672
 ```
 

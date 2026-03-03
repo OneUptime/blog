@@ -464,7 +464,7 @@ console.log('Style Import Issues:', issues);
 
 Here is a complete example of proper CSS/SCSS setup:
 
-```
+```text
 project/
   styles/
     _variables.scss

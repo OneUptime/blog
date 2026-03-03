@@ -1734,7 +1734,7 @@ public class BulkMappingService {
 
 ### 1. Separate Mappers by Domain
 
-```
+```text
 mapper/
   user/
     UserMapper.java
@@ -1833,7 +1833,7 @@ public interface ImmutableMapper {
 ### Debugging Generated Code
 
 The generated implementation is in:
-```
+```text
 target/generated-sources/annotations/
 ```
 

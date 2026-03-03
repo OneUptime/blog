@@ -284,7 +284,7 @@ variable "database" {
 
 By convention, variable declarations go in `variables.tf`:
 
-```
+```text
 project/
   main.tf          # resources
   variables.tf     # variable declarations
@@ -294,7 +294,7 @@ project/
 
 For large projects, you might split variables by concern:
 
-```
+```text
 project/
   variables-networking.tf
   variables-compute.tf

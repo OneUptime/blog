@@ -87,7 +87,7 @@ Create the SASL password file. SendGrid uses "apikey" as the username regardless
 sudo nano /etc/postfix/sasl_passwd
 ```
 
-```
+```text
 # SendGrid SMTP relay
 # Username is always "apikey" - the actual key is the password
 [smtp.sendgrid.net]:587    apikey:SG.your-actual-api-key-here
@@ -125,7 +125,7 @@ sudo tail -f /var/log/mail.log
 
 A successful delivery in the log:
 
-```
+```text
 postfix/smtp[1234]: to=<recipient@example.com>,
   relay=smtp.sendgrid.net[167.89.x.x]:587,
   status=sent (250 Ok: queued as ...)
@@ -172,7 +172,7 @@ sender_canonical_maps = hash:/etc/postfix/sender_canonical
 sudo nano /etc/postfix/sender_canonical
 ```
 
-```
+```text
 # Map local senders to the verified SendGrid sender address
 root                    notifications@yourdomain.com
 www-data                app@yourdomain.com

@@ -153,7 +153,7 @@ When a JWT arrives, Istio matches the `iss` claim against the configured issuers
 
 Many identity providers support OpenID Connect Discovery, which publishes the JWKS URI at a well-known location:
 
-```
+```text
 https://<issuer>/.well-known/openid-configuration
 ```
 

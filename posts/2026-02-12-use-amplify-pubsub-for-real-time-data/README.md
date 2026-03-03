@@ -300,7 +300,7 @@ def handler(event, context):
 
 How you structure your topics matters for scalability and access control:
 
-```
+```text
 # Per-user notifications
 notifications/{userId}
 

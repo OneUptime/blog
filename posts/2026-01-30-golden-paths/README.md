@@ -90,7 +90,7 @@ Start with a Cookiecutter or Yeoman template that generates a complete project s
 
 The following template structure includes everything a new microservice needs: source code scaffolding, tests, CI configuration, Kubernetes manifests, and documentation.
 
-```
+```text
 golden-path-nodejs/
 ├── {{cookiecutter.service_name}}/
 │   ├── src/

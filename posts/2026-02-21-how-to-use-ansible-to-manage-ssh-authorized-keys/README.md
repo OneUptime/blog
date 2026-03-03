@@ -40,7 +40,7 @@ Instead of pasting key strings, you can load them from files in your Ansible pro
 
 Organize your keys in a directory structure.
 
-```
+```text
 roles/ssh-keys/files/
   ssh-keys/
     alice.pub

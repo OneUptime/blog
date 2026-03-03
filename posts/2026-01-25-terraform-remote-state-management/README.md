@@ -149,7 +149,7 @@ terraform init
 
 Organize state files by environment and component:
 
-```
+```text
 s3://mycompany-terraform-state/
 ├── dev/
 │   ├── networking/terraform.tfstate

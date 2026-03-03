@@ -143,7 +143,7 @@ sudo nano /etc/logrotate.d/rsyslog
 
 Add prerotate and postrotate scripts:
 
-```
+```text
 /var/log/syslog
 {
     rotate 7

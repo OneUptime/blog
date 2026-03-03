@@ -10,7 +10,7 @@ Description: Learn how to diagnose and fix the InsufficientInstanceCapacity erro
 
 If you've spent any time working with AWS EC2, you've probably run into this frustrating error at least once:
 
-```
+```text
 InsufficientInstanceCapacity: We currently do not have sufficient capacity in the Availability Zone you requested. Please try again with a reduced instance count or alternative Availability Zone.
 ```
 

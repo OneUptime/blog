@@ -29,7 +29,7 @@ npx prisma init
 
 ### Project Structure
 
-```
+```text
 src/
   generated/
     prisma-client/     # Prisma client (auto-generated)

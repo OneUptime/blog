@@ -12,7 +12,7 @@ Your traces break at the edge of your system. The frontend service creates a tra
 
 The W3C TraceContext standard uses two HTTP headers for propagation:
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 tracestate: vendor1=value1,vendor2=value2
 ```
@@ -79,7 +79,7 @@ A common mistake is using `proxy_set_header Host $host;` without including other
 
 HAProxy needs explicit configuration to forward trace headers:
 
-```
+```text
 frontend http-in
     bind *:80
     default_backend servers
@@ -97,7 +97,7 @@ backend servers
 
 If you are using HAProxy's built-in tracing:
 
-```
+```text
 # Make sure the trace context is not consumed by HAProxy
 # without being forwarded
 defaults

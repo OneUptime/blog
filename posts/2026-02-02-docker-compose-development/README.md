@@ -52,7 +52,7 @@ Docker Compose reads the `docker-compose.yml` file by default. If a `docker-comp
 
 A well-organized project structure is the foundation of maintainable Docker Compose configurations. Here is a recommended layout that scales from simple to complex projects.
 
-```
+```text
 myproject/
 ├── docker-compose.yml              # Base configuration
 ├── docker-compose.override.yml     # Development overrides (auto-loaded)

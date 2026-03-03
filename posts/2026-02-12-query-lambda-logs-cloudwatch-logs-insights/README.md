@@ -16,7 +16,7 @@ This combination of application logs and runtime metadata makes Lambda logs incr
 
 Each Lambda invocation produces several log lines in this order:
 
-```
+```text
 START RequestId: abc-123 Version: $LATEST
 [Application log output goes here]
 END RequestId: abc-123
@@ -31,7 +31,7 @@ The `REPORT` line is the most valuable for performance analysis. The `Init Durat
 
 Start here when you want a quick overview:
 
-```
+```text
 filter @type = "REPORT"
 | fields @timestamp, @duration, @billedDuration, @memorySize, @maxMemoryUsed
 | sort @timestamp desc
@@ -44,7 +44,7 @@ The `@type = "REPORT"` filter is a special built-in that catches Lambda REPORT l
 
 Find which invocations threw errors:
 
-```
+```text
 filter @message like /ERROR|Error|error/ or @message like /Task timed out/
 | fields @timestamp, @requestId, @message
 | sort @timestamp desc
@@ -55,7 +55,7 @@ filter @message like /ERROR|Error|error/ or @message like /Task timed out/
 
 Trace a specific invocation:
 
-```
+```text
 filter @requestId = "abc123-def456-ghi789"
 | fields @timestamp, @message
 | sort @timestamp asc
@@ -67,7 +67,7 @@ Cold starts are one of the most common Lambda performance concerns. Here's how t
 
 ### Count cold starts vs warm starts
 
-```
+```text
 filter @type = "REPORT"
 | stats sum(ispresent(@initDuration)) as coldStarts,
         sum(not ispresent(@initDuration)) as warmStarts,
@@ -76,7 +76,7 @@ filter @type = "REPORT"
 
 ### Cold start duration over time
 
-```
+```text
 filter @type = "REPORT" and ispresent(@initDuration)
 | stats avg(@initDuration) as avgInit, max(@initDuration) as maxInit, count(*) as coldStarts by bin(15m)
 ```
@@ -85,7 +85,7 @@ filter @type = "REPORT" and ispresent(@initDuration)
 
 If you're testing different memory sizes:
 
-```
+```text
 filter @type = "REPORT" and ispresent(@initDuration)
 | stats avg(@initDuration) as avgInit, avg(@duration) as avgDuration, count(*) as invocations by @memorySize
 | sort @memorySize asc
@@ -93,7 +93,7 @@ filter @type = "REPORT" and ispresent(@initDuration)
 
 ### Identify the worst cold starts
 
-```
+```text
 filter @type = "REPORT" and ispresent(@initDuration)
 | fields @timestamp, @initDuration, @duration, @memorySize, @maxMemoryUsed, @requestId
 | sort @initDuration desc
@@ -106,7 +106,7 @@ filter @type = "REPORT" and ispresent(@initDuration)
 
 Get a clear picture of your function's performance profile:
 
-```
+```text
 filter @type = "REPORT"
 | stats pct(@duration, 50) as p50,
         pct(@duration, 90) as p90,
@@ -120,7 +120,7 @@ filter @type = "REPORT"
 
 Track performance changes after deployments:
 
-```
+```text
 filter @type = "REPORT"
 | stats avg(@duration) as avgMs, pct(@duration, 95) as p95Ms, pct(@duration, 99) as p99Ms by bin(5m)
 ```
@@ -129,7 +129,7 @@ filter @type = "REPORT"
 
 Find out if you've over-provisioned or under-provisioned memory:
 
-```
+```text
 filter @type = "REPORT"
 | stats avg(@maxMemoryUsed / @memorySize * 100) as avgMemoryUtilPct,
         max(@maxMemoryUsed / @memorySize * 100) as maxMemoryUtilPct,
@@ -143,7 +143,7 @@ If `maxMemoryUtilPct` is consistently above 80%, consider increasing memory. If 
 
 Estimate your Lambda costs from the REPORT data:
 
-```
+```text
 filter @type = "REPORT"
 | stats sum(@billedDuration) / 1000 as totalBilledSeconds,
         count(*) as invocations,
@@ -158,7 +158,7 @@ To get a dollar estimate, multiply `totalBilledSeconds` by the per-GB-second pri
 
 Lambda timeouts show up as a specific message:
 
-```
+```text
 filter @message like /Task timed out after/
 | parse @message "Task timed out after * seconds" as timeoutDuration
 | fields @timestamp, @requestId, timeoutDuration
@@ -168,7 +168,7 @@ filter @message like /Task timed out after/
 
 ### Out of memory errors
 
-```
+```text
 filter @message like /Runtime.OutOfMemory/ or @message like /JavaScript heap out of memory/ or @message like /MemoryError/
 | fields @timestamp, @requestId, @message
 | sort @timestamp desc
@@ -177,7 +177,7 @@ filter @message like /Runtime.OutOfMemory/ or @message like /JavaScript heap out
 
 ### Unhandled exceptions
 
-```
+```text
 filter @message like /Runtime.UnhandledPromiseRejection/ or @message like /Runtime.HandlerNotFound/ or @message like /Traceback/
 | fields @timestamp, @requestId, @message
 | sort @timestamp desc
@@ -186,7 +186,7 @@ filter @message like /Runtime.UnhandledPromiseRejection/ or @message like /Runti
 
 ### Error rate over time
 
-```
+```text
 filter @type = "REPORT"
 | stats sum(@message like /Error/) as errors, count(*) as total,
         sum(@message like /Error/) / count(*) * 100 as errorRate by bin(5m)
@@ -200,7 +200,7 @@ These queries work with your application's log output, not just the Lambda runti
 
 If your Lambda logs JSON:
 
-```
+```text
 filter @message like /^\{/
 | parse @message '{"level":"*","service":"*","msg":"*"' as level, service, msg
 | filter level = "error"
@@ -211,7 +211,7 @@ filter @message like /^\{/
 
 Or if CloudWatch auto-discovers your JSON fields:
 
-```
+```text
 filter level = "error"
 | stats count(*) as errors by errorType, endpoint
 | sort errors desc
@@ -221,7 +221,7 @@ filter level = "error"
 
 When Lambda is behind API Gateway:
 
-```
+```text
 filter ispresent(httpMethod)
 | stats count(*) as requests, avg(duration) as avgLatency by httpMethod, path
 | sort requests desc
@@ -231,7 +231,7 @@ filter ispresent(httpMethod)
 
 For Lambda processing SQS messages:
 
-```
+```text
 filter @message like /Records/
 | parse @message '"messageId":"*"' as messageId
 | fields @timestamp, @requestId, messageId, @duration
@@ -243,7 +243,7 @@ filter @message like /Records/
 
 You can query multiple Lambda log groups at once. In the Logs Insights console, select multiple log groups, then run queries across them:
 
-```
+```text
 # Compare performance across Lambda functions (select multiple log groups)
 filter @type = "REPORT"
 | stats avg(@duration) as avgDuration,
@@ -257,7 +257,7 @@ by @logStream
 
 If you use provisioned concurrency to eliminate cold starts:
 
-```
+```text
 filter @type = "REPORT"
 | stats sum(ispresent(@initDuration)) as coldStarts, count(*) as total by bin(15m)
 ```

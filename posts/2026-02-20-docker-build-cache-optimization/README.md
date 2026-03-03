@@ -164,7 +164,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 Prevent unnecessary files from invalidating the cache:
 
-```
+```text
 # .dockerignore
 # Version control
 .git

@@ -16,7 +16,7 @@ These shortcuts work out of the box in Ubuntu GNOME Desktop.
 
 ### Window and Application Management
 
-```
+```text
 Super                     - Open Activities overview
 Super + A                 - Show all applications
 Super + Tab               - Switch between running applications
@@ -33,7 +33,7 @@ Super + D                 - Show desktop
 
 ### Within Applications
 
-```
+```text
 F10                       - Open application menu bar
 Alt + F                   - Open File menu (in most GTK apps)
 Alt + underlined letter   - Activate menu item with that letter
@@ -59,7 +59,7 @@ gsettings set org.gnome.desktop.a11y.keyboard mousekeys-enable true
 
 Once enabled:
 
-```
+```text
 Numpad 2/4/6/8    - Move cursor down/left/right/up
 Numpad 7/9/1/3    - Move cursor diagonally
 Numpad 5          - Click (left button)
@@ -123,7 +123,7 @@ gsettings set org.gnome.desktop.a11y.keyboard bouncekeys-delay 300
 
 ### Activities Overview Navigation
 
-```
+```text
 Super                     - Open Activities
 Type to search            - Filter applications and files
 Arrow keys                - Navigate search results
@@ -132,7 +132,7 @@ Enter                     - Launch selected application
 
 ### Workspace Navigation
 
-```
+```text
 Super + Page Up/Down      - Switch workspaces
 Super + Shift + Page Up/Down  - Move window to another workspace
 Super + End               - Switch to last workspace
@@ -140,7 +140,7 @@ Super + End               - Switch to last workspace
 
 ## File Manager (Nautilus) Keyboard Navigation
 
-```
+```text
 Enter                     - Open file or folder
 Alt + Left/Right          - Back/Forward
 Alt + Up                  - Go up one directory level
@@ -174,7 +174,7 @@ You can add any keyboard shortcut for any command.
 
 ### Via GNOME Settings
 
-```
+```text
 Settings > Keyboard > View and Customize Shortcuts > Custom Shortcuts
 Click + to add a new shortcut
 ```
@@ -211,7 +211,7 @@ dconf write ${SHORTCUT_PATH2}binding "'<Super>f'"
 
 Firefox has excellent keyboard navigation support.
 
-```
+```text
 F6                        - Cycle between browser components (address bar, tabs, content)
 Ctrl + L                  - Focus address bar
 Ctrl + T / W              - New tab / close tab

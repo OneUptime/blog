@@ -34,7 +34,7 @@ The mechanism that connects proxy spans to application spans is trace context pr
 
 The headers Istio uses:
 
-```
+```text
 traceparent: 00-<trace-id>-<span-id>-<flags>
 tracestate: <optional vendor info>
 x-request-id: <unique request identifier>
@@ -299,7 +299,7 @@ resource = Resource.create({
 
 In a properly configured system, a single trace shows both proxy and application spans. In Grafana Tempo or Jaeger, you will see:
 
-```
+```text
 [proxy] ingress -> order-service (2ms)
   [app] create_order (150ms)
     [app] validate_input (5ms)

@@ -40,7 +40,7 @@ go get github.com/kubernetes-csi/csi-lib-utils/rpc
 
 Create the following directory structure:
 
-```
+```text
 minimal-csi-driver/
 ├── cmd/
 │   └── driver/

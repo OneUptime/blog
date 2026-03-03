@@ -258,7 +258,7 @@ go test -bench=. -benchmem
 
 This produces output like:
 
-```
+```text
 BenchmarkConcatStrings-8    1000000    1052 ns/op    176 B/op    5 allocs/op
 ```
 
@@ -448,7 +448,7 @@ benchstat old.txt new.txt
 
 ### Understanding benchstat Output
 
-```
+```text
 name                 old time/op    new time/op    delta
 StringConcat-8       1.05us +/- 2%  0.52us +/- 1%  -50.48% (p=0.000 n=10+10)
 
@@ -1039,7 +1039,7 @@ go test -bench=BenchmarkParsing -benchmem
 
 Example output:
 
-```
+```text
 BenchmarkParsing/Naive-10-8       100000    15234 ns/op    4896 B/op    67 allocs/op
 BenchmarkParsing/Prealloc-10-8    100000    14567 ns/op    4512 B/op    62 allocs/op
 BenchmarkParsing/Decoder-10-8     100000    18234 ns/op    5120 B/op    77 allocs/op

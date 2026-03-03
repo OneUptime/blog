@@ -84,7 +84,7 @@ mkdir -p ~/node-red/mosquitto/config
 
 Write the Mosquitto configuration:
 
-```
+```text
 # mosquitto/config/mosquitto.conf
 # Listen on port 1883 for standard MQTT connections
 listener 1883

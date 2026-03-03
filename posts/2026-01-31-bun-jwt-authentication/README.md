@@ -18,7 +18,7 @@ Bun is a modern JavaScript runtime that excels at server-side applications. Its 
 
 JSON Web Tokens (JWT) are a compact, URL-safe way to represent claims between two parties. A JWT consists of three parts separated by dots:
 
-```
+```text
 Header.Payload.Signature
 
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.

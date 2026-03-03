@@ -71,7 +71,7 @@ flowchart TB
 
 Ansible looks for callback plugins in specific locations. For development, use a local directory structure:
 
-```
+```text
 my-project/
 ├── ansible.cfg
 ├── callback_plugins/

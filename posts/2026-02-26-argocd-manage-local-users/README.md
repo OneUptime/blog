@@ -162,7 +162,7 @@ argocd account list
 
 Output:
 
-```
+```text
 NAME           ENABLED  CAPABILITIES
 admin          true     login
 alice          true     login, apiKey

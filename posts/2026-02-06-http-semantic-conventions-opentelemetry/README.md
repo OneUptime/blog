@@ -38,7 +38,7 @@ The key insight is that client spans and server spans capture slightly different
 
 The convention for naming HTTP spans is straightforward. For HTTP server spans, use the HTTP method and the route pattern. For HTTP client spans, use just the HTTP method.
 
-```
+```text
 # Server span names
 GET /users/{id}
 POST /orders

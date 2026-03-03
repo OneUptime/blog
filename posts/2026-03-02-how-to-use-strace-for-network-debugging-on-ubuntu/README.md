@@ -50,7 +50,7 @@ strace -r command
 
 The key to using strace for network debugging is filtering to show only the relevant calls. Network operations use these system calls:
 
-```
+```text
 socket      - Create a socket
 bind        - Bind to an address/port
 listen      - Mark socket as passive (server)
@@ -216,7 +216,7 @@ sudo strace -f -e trace=connect \
 
 Sample annotated strace output for an HTTP request:
 
-```
+```text
 # Create a TCP socket (AF_INET=IPv4, SOCK_STREAM=TCP)
 socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) = 3
 

@@ -16,7 +16,7 @@ This guide covers the SideroLink network architecture in detail and shows you ho
 
 SideroLink creates an overlay network using IPv6 addresses from the `fdae::/16` range. Each Omni instance gets a unique prefix, and each node gets a unique address within that prefix:
 
-```
+```text
 Omni Instance Prefix: fdae:41e4:649b:9303::/64
 
 Address Assignments:
@@ -38,7 +38,7 @@ Production traffic (pod-to-pod communication, service traffic, ingress) does NOT
 
 When you boot a Talos node with an Omni-generated image, the SideroLink configuration is embedded in the kernel arguments:
 
-```
+```text
 # Default kernel arguments for SideroLink
 siderolink.api=grpc://omni.example.com:8099?jointoken=TOKEN
 talos.events.sink=[fdae:41e4:649b:9303::1]:8090
@@ -107,7 +107,7 @@ machine:
 
 Some corporate networks block UDP traffic on non-standard ports. Here are strategies:
 
-```
+```text
 Strategy 1: Use standard WireGuard port (51820/UDP)
   - Many firewalls allow common VPN ports
   - Configure Omni to listen on 51820
@@ -126,7 +126,7 @@ Strategy 3: Use a TURN relay
 
 The WireGuard tunnel adds overhead to each packet (60 bytes for WireGuard + 40 bytes for IPv6). The effective MTU inside the tunnel is lower than the physical MTU:
 
-```
+```text
 Physical MTU:    1500
 WireGuard overhead: -60
 IPv6 header:     -40
@@ -135,7 +135,7 @@ SideroLink MTU:  1400
 
 If your physical network uses jumbo frames:
 
-```
+```text
 Physical MTU:    9000
 WireGuard overhead: -60
 IPv6 header:     -40
@@ -217,7 +217,7 @@ The SideroLink interface does not interfere with your regular networking. It use
 
 SideroLink traffic is lightweight under normal conditions. Here is what to expect:
 
-```
+```text
 Traffic Type              Approximate Bandwidth
 -------------------------------------------------
 Heartbeat keepalive       ~100 bytes/s
@@ -231,7 +231,7 @@ Under normal operations, SideroLink uses less than 20 KB/s per node. This is neg
 
 However, if you stream full logs or run frequent talosctl commands across many nodes simultaneously, the traffic on the Omni server can add up:
 
-```
+```text
 100 nodes x 20 KB/s = 2 MB/s on the Omni endpoint
 1000 nodes x 20 KB/s = 20 MB/s on the Omni endpoint
 ```
@@ -256,7 +256,7 @@ SideroLink handles NAT gracefully because WireGuard connections are initiated fr
 
 For double NAT or carrier-grade NAT scenarios:
 
-```
+```text
 Node (192.168.1.100) -> Home NAT (100.64.x.x) -> ISP CGNAT -> Internet -> Omni
 
 This works because:
@@ -285,7 +285,7 @@ talosctl dmesg --nodes 10.0.0.1 | grep -i wireguard
 
 ### Common Issues
 
-```
+```text
 Issue: Node not connecting to Omni
 Check: DNS resolution of Omni endpoint
 Check: Firewall allowing outbound UDP to Omni port

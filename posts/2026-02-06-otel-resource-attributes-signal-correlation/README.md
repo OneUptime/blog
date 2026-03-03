@@ -291,12 +291,12 @@ sum(rate(http_server_request_duration_seconds_count{
 }[5m]))
 ```
 
-```
+```text
 # TraceQL: traces for checkout-service in production
 { resource.service.name = "checkout-service" && resource.deployment.environment.name = "production" }
 ```
 
-```
+```text
 # LogQL: logs for checkout-service in production
 {service_name="checkout-service", deployment_environment_name="production"}
 ```

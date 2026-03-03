@@ -14,7 +14,7 @@ High-cardinality metrics are one of the sneakiest performance killers in any Pro
 
 Cardinality in metrics refers to the number of unique time series. Each unique combination of metric name and label values creates a new time series. For `istio_requests_total`, a single time series looks like:
 
-```
+```text
 istio_requests_total{
   source_workload="frontend",
   source_workload_namespace="default",

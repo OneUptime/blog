@@ -23,7 +23,7 @@ There are several layers of certificates in Istio, each with different monitorin
 
 Istiod exposes several Prometheus metrics related to certificate health:
 
-```
+```text
 # Root certificate expiry timestamp (Unix epoch)
 citadel_server_root_cert_expiry_timestamp
 
@@ -142,7 +142,7 @@ groups:
 
 Each Envoy sidecar exposes certificate-related metrics:
 
-```
+```text
 # Days until the first certificate in the chain expires
 envoy_server_days_until_first_cert_expiring
 
@@ -165,7 +165,7 @@ Here are the key panels for a certificate health dashboard:
 
 ### Panel 1: Root CA Expiry Countdown
 
-```
+```text
 (citadel_server_root_cert_expiry_timestamp - time()) / 86400
 ```
 
@@ -173,7 +173,7 @@ This shows days until root CA expiry. Display as a gauge with thresholds at 90, 
 
 ### Panel 2: CSR Processing Rate
 
-```
+```text
 rate(citadel_server_csr_count[5m])
 ```
 
@@ -181,7 +181,7 @@ Shows the rate of certificate signing requests. A sudden drop might indicate ist
 
 ### Panel 3: Certificate Signing Errors
 
-```
+```text
 rate(citadel_server_csr_sign_err_count[5m])
 ```
 
@@ -189,7 +189,7 @@ Should be zero in healthy operation. Any non-zero value needs investigation.
 
 ### Panel 4: Workload Certificate Expiry Across Pods
 
-```
+```text
 min(envoy_server_days_until_first_cert_expiring) by (pod_name, namespace)
 ```
 
@@ -197,7 +197,7 @@ Shows which pods have the soonest expiring certificates. Useful for spotting rot
 
 ### Panel 5: TLS Handshake Success Rate
 
-```
+```text
 sum(rate(envoy_listener_ssl_handshake[5m])) by (namespace) /
 (sum(rate(envoy_listener_ssl_handshake[5m])) by (namespace) +
  sum(rate(envoy_listener_ssl_connection_error[5m])) by (namespace))

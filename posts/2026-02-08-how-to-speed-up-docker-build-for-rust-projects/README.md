@@ -277,7 +277,7 @@ CMD ["myapp-server"]
 
 ## Technique 8: Use a .dockerignore File
 
-```
+```text
 # .dockerignore - exclude build artifacts and unnecessary files
 target
 .git

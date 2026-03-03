@@ -53,7 +53,7 @@ sudo nano /etc/clamav/clamd.conf
 
 Key settings to review and configure:
 
-```
+```text
 # Log file location
 LogFile /var/log/clamav/clamav.log
 LogFileMaxSize 100M
@@ -102,7 +102,7 @@ sudo nano /etc/clamav/clamav-milter.conf
 
 Important configuration options:
 
-```
+```text
 # Socket that Postfix connects to
 MilterSocket /var/spool/postfix/clamav/clamav.sock
 MilterSocketMode 666
@@ -154,7 +154,7 @@ sudo nano /etc/clamav/clamav-milter.conf
 
 Change the MilterSocket line:
 
-```
+```text
 MilterSocket /var/spool/postfix/clamav/clamav.sock
 ```
 
@@ -182,7 +182,7 @@ sudo nano /etc/postfix/main.cf
 
 Add the clamav-milter to the smtpd_milters list:
 
-```
+```text
 # If you only have clamav-milter:
 smtpd_milters = unix:/clamav/clamav.sock
 non_smtpd_milters = unix:/clamav/clamav.sock
@@ -254,7 +254,7 @@ sudo tail -f /var/log/mail.log
 
 A virus detection entry in the mail log looks like:
 
-```
+```text
 postfix/smtpd[1234]: NOQUEUE: milter-reject: CONNECT from...: 5.7.1 Virus/malware detected in your message. Message rejected.
 ```
 
@@ -281,7 +281,7 @@ The default freshclam update frequency is reasonable, but you can customize it:
 sudo nano /etc/clamav/freshclam.conf
 ```
 
-```
+```text
 # Check for updates this many times per day (default is 12 = every 2 hours)
 Checks 24
 
@@ -336,7 +336,7 @@ ClamAV scanning adds latency to mail delivery. For high-volume mail servers:
 sudo nano /etc/clamav/clamd.conf
 ```
 
-```
+```text
 # Number of threads for scanning (default is 12)
 # Increase for high-volume servers
 MaxThreads 20

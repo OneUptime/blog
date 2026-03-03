@@ -42,7 +42,7 @@ In trunk-based development with ArgoCD, you typically use two repositories:
 1. **Application repo** - Contains source code, merged to main frequently
 2. **Manifest repo** - Contains Kubernetes manifests, updated by CI pipeline
 
-```
+```text
 # Manifest repo structure
 k8s-manifests/
   base/

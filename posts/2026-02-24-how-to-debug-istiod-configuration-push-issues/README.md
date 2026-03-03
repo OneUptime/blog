@@ -31,7 +31,7 @@ istioctl proxy-status
 
 Example output:
 
-```
+```text
 NAME                                 CLUSTER        CDS     LDS     EDS     RDS     ECDS
 productpage-v1-abc123.default        Kubernetes     SYNCED  SYNCED  SYNCED  SYNCED  NOT SENT
 reviews-v1-def456.default            Kubernetes     SYNCED  STALE   SYNCED  STALE   NOT SENT
@@ -56,7 +56,7 @@ kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | 
 
 Key metrics:
 
-```
+```text
 # Total pushes
 pilot_xds_pushes{type="cds"} 1523
 pilot_xds_pushes{type="eds"} 8234
@@ -178,7 +178,7 @@ Check debounce behavior:
 kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_debounce
 ```
 
-```
+```text
 pilot_debounce_send 523
 pilot_debounce_max 12
 ```
@@ -193,7 +193,7 @@ If istiod is running out of CPU or memory, push latency increases and eventually
 kubectl top pod -n istio-system -l app=istiod
 ```
 
-```
+```text
 NAME                      CPU(cores)   MEMORY(bytes)
 istiod-abc123-xyz789      950m         1800Mi
 ```

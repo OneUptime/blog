@@ -212,7 +212,7 @@ terraform apply -var-file="secrets.tfvars"
 
 For projects that target a single environment, `terraform.tfvars` is all you need:
 
-```
+```text
 project/
   main.tf
   variables.tf
@@ -224,7 +224,7 @@ project/
 
 For multi-environment setups, use named tfvars files:
 
-```
+```text
 project/
   main.tf
   variables.tf
@@ -246,7 +246,7 @@ terraform apply -var-file="production.tfvars"
 
 Keep sensitive values in a separate file that is excluded from version control:
 
-```
+```text
 project/
   main.tf
   variables.tf

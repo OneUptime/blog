@@ -302,7 +302,7 @@ ansible solaris_servers -m ping --become --become-method=pfexec -vvvv
 
 Common errors:
 
-```
+```text
 # "pfexec: not found"
 # pfexec is not in PATH or the system is not Solaris/illumos
 # Fix: Verify the system type and pfexec location (/usr/bin/pfexec)

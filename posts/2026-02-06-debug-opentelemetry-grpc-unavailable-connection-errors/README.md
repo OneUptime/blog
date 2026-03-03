@@ -18,7 +18,7 @@ The gRPC "Unavailable" status code (code 14) is a catch-all that means the clien
 
 A typical error message looks like this in your application logs:
 
-```
+```text
 Export trace span failed: rpc error: code = Unavailable desc = connection error:
 desc = "transport: Error while dialing: dial tcp 127.0.0.1:4317: connect: connection refused"
 ```

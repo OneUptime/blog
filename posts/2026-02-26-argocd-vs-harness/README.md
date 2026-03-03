@@ -128,7 +128,7 @@ This is where the decision often comes down to.
 
 ArgoCD itself is free. Your costs are:
 
-```
+```text
 Infrastructure:
 - Kubernetes resources for ArgoCD (~1-2 vCPU, 2-4 GB RAM)
 - Estimated cloud cost: $50-150/month
@@ -143,7 +143,7 @@ Operational costs:
 
 Harness uses a tiered pricing model:
 
-```
+```text
 Free Tier:
 - Limited to 5 services
 - Basic features
@@ -166,7 +166,7 @@ Enterprise Tier (custom pricing):
 
 For a team of 20 engineers managing 50 services:
 
-```
+```text
 ArgoCD (self-managed):
   Infrastructure: $150/month
   Engineering time (20%): 1 FTE = ~$10,000/month

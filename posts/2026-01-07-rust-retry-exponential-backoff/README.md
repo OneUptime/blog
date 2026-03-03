@@ -18,7 +18,7 @@ This guide covers retry strategies from simple loops to production-ready impleme
 
 Fixed-interval retries can overwhelm recovering services:
 
-```
+```text
 Retry 1: wait 1s → Service still down
 Retry 2: wait 1s → Service still down
 Retry 3: wait 1s → Service recovering but flooded
@@ -26,7 +26,7 @@ Retry 3: wait 1s → Service recovering but flooded
 
 Exponential backoff gives services time to recover:
 
-```
+```text
 Retry 1: wait 1s  → Service still down
 Retry 2: wait 2s  → Service still down
 Retry 3: wait 4s  → Service recovered, request succeeds

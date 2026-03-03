@@ -21,7 +21,7 @@ You need to route this telemetry to the correct geographic region automatically.
 
 ## Architecture
 
-```
+```text
 Services (any region) -> Regional Collector -> Routing Gateway
                                                   |
                             +---------------------+------------------+

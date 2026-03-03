@@ -129,12 +129,12 @@ Istio implements mTLS through its sidecar proxies (Envoy). When mTLS is enabled:
 
 Istio uses SPIFFE (Secure Production Identity Framework for Everyone) to create workload identities:
 
-```
+```text
 spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 
 For example:
-```
+```text
 spiffe://cluster.local/ns/production/sa/payment-service
 ```
 
@@ -762,7 +762,7 @@ kubectl exec -it test-no-sidecar -- curl -v http://my-service.production.svc.clu
 
 Expected output when STRICT mode is properly enforced:
 
-```
+```text
 # Connection should fail with:
 # curl: (56) Recv failure: Connection reset by peer
 # This confirms mTLS is enforced

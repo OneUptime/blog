@@ -27,7 +27,7 @@ aws logs filter-log-events \
 
 The `REPORT` line in Lambda logs includes `Init Duration` only for cold starts:
 
-```
+```text
 REPORT RequestId: abc-123 Duration: 45.12 ms Billed Duration: 46 ms
 Memory Size: 256 MB Max Memory Used: 89 MB Init Duration: 543.21 ms
 ```

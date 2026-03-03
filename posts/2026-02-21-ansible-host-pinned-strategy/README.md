@@ -16,7 +16,7 @@ In the `free` strategy, worker allocation is dynamic. A fork finishes task 1 on 
 
 In the `host_pinned` strategy, a fork finishes task 1 on host A, then runs task 2 on host A, then task 3 on host A. Only after all tasks for host A complete does that fork pick up a new host.
 
-```
+```text
 free strategy (forks=2):
   Fork 1: [host-A task1] [host-C task1] [host-A task2] [host-B task3]
   Fork 2: [host-B task1] [host-A task3] [host-B task2] [host-C task2]
@@ -159,21 +159,21 @@ Here is how the three strategies compare:
 ```
 
 **linear** (synchronized):
-```
+```text
 Round 1 - Task 1: host-A and host-B (parallel), then host-C and host-D
 Round 2 - Task 2: host-A and host-B (parallel), then host-C and host-D
 Round 3 - Task 3: host-A and host-B (parallel), then host-C and host-D
 ```
 
 **free** (unsynchronized, worker-optimized):
-```
+```text
 Fork 1: host-A/task1, host-A/task2, host-C/task1, host-A/task3, host-C/task2 ...
 Fork 2: host-B/task1, host-B/task2, host-B/task3, host-D/task1 ...
 (Workers grab whatever work is available)
 ```
 
 **host_pinned** (unsynchronized, host-optimized):
-```
+```text
 Fork 1: host-A/task1, host-A/task2, host-A/task3, host-C/task1, host-C/task2, host-C/task3
 Fork 2: host-B/task1, host-B/task2, host-B/task3, host-D/task1, host-D/task2, host-D/task3
 (Each fork completes all tasks for a host before moving on)

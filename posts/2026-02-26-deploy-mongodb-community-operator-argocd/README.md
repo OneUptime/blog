@@ -288,7 +288,7 @@ graph TD
 
 Once the replica set is running, applications connect through the generated connection string:
 
-```
+```text
 mongodb://app-user:<password>@production-mongodb-0.production-mongodb-svc.databases.svc.cluster.local:27017,production-mongodb-1.production-mongodb-svc.databases.svc.cluster.local:27017,production-mongodb-2.production-mongodb-svc.databases.svc.cluster.local:27017/application?replicaSet=production-mongodb&authSource=admin
 ```
 

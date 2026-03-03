@@ -15,13 +15,13 @@ A full disk on your Cloud SQL instance is one of those emergencies that can take
 You will see errors like these in your application:
 
 For MySQL:
-```
+```text
 ERROR 1114 (HY000): The table 'my_table' is full
 ERROR 3 (HY000): Error writing file '/tmp/...' (Errcode: 28 - No space left on device)
 ```
 
 For PostgreSQL:
-```
+```text
 ERROR: could not extend file "base/16384/123456": No space left on device
 PANIC: could not write to file "pg_wal/...": No space left on device
 ```

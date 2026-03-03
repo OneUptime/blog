@@ -1256,7 +1256,7 @@ data:
     - Use POSIX file locking (flock, fcntl)
     - Implement application-level locking
     - Consider using leader election for write coordination
-```
+```text
 
 ## Best Practices for Shared CephFS Access
 

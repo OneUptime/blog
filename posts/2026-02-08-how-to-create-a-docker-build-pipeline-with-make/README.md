@@ -20,7 +20,7 @@ Make gives you several advantages over shell scripts and ad-hoc commands. First,
 
 Here is a typical project layout with a Makefile managing the Docker pipeline.
 
-```
+```text
 my-project/
   Dockerfile
   Dockerfile.test

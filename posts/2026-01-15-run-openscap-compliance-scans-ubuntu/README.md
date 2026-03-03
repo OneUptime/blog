@@ -53,7 +53,7 @@ oscap --version
 
 You should see output similar to:
 
-```
+```text
 OpenSCAP command line tool (oscap) 1.3.x
 Copyright 2009--2021 Red Hat Inc., Durham, North Carolina.
 ```

@@ -226,7 +226,7 @@ docker exec pihole pihole -a addcustomdns 192.168.1.52 homeassistant.local
 
 Or add them to a dnsmasq configuration file:
 
-```
+```text
 # custom-dns.conf - mount this in /etc/dnsmasq.d/
 address=/nas.local/192.168.1.50
 address=/plex.local/192.168.1.51

@@ -14,7 +14,7 @@ This post walks through setting up a complete observability-as-code pipeline for
 
 Organize the repository so that each environment and each team has a clear place for their configurations.
 
-```
+```text
 otel-configs/
   base/                          # Shared base configurations
     receivers.yaml

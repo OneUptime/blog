@@ -269,7 +269,7 @@ SHOW ENGINE INNODB STATUS\G
 
 Look for the "LATEST FOREIGN KEY ERROR" section:
 
-```
+```text
 ------------------------
 LATEST FOREIGN KEY ERROR
 ------------------------

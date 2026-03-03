@@ -151,7 +151,7 @@ The report organizes findings by service, with each finding showing:
 
 ### S3 Bucket Misconfigurations
 
-```
+```text
 Finding: s3-bucket-world-readable-acl
 Severity: Critical
 Description: S3 bucket has a public ACL allowing anyone to read its contents
@@ -170,7 +170,7 @@ aws s3api put-public-access-block \
 
 ### IAM Issues
 
-```
+```text
 Finding: iam-root-account-no-mfa
 Severity: Critical
 Description: Root account does not have MFA enabled
@@ -189,7 +189,7 @@ aws iam get-credential-report --output text --query Content | base64 -d | \
 
 ### Security Group Issues
 
-```
+```text
 Finding: ec2-security-group-opens-ssh-to-world
 Severity: High
 Description: Security group allows SSH (port 22) from 0.0.0.0/0

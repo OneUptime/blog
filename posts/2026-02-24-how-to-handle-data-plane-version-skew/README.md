@@ -26,7 +26,7 @@ istioctl proxy-status
 
 The `istioctl proxy-status` output shows the proxy version for each pod. You will see something like:
 
-```
+```text
 NAME                              CDS    LDS    EDS    RDS    ISTIOD                    VERSION
 my-app-abc.default                SYNCED SYNCED SYNCED SYNCED istiod-7f8b9c6d4-x2k9p   1.20.2
 my-app-def.default                SYNCED SYNCED SYNCED SYNCED istiod-7f8b9c6d4-x2k9p   1.19.6

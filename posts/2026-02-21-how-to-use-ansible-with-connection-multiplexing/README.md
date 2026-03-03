@@ -117,7 +117,7 @@ ansible-playbook site.yml -vvv 2>&1 | grep -i "controlmaster\|controlpath\|mux"
 
 You should see messages like:
 
-```
+```text
 ssh: mux_client_request_session: master session id: 2
 ```
 

@@ -1376,7 +1376,7 @@ graph TD
 
 Organize your project to group related files and keep type definitions easily discoverable.
 
-```
+```text
 src/
   components/           # Reusable UI components
     common/

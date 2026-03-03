@@ -149,7 +149,7 @@ sudo nano /etc/opensearch/jvm.options
 
 Set the heap to half of available RAM, max 32 GB:
 
-```
+```text
 # For an 8GB server
 -Xms4g
 -Xmx4g

@@ -12,7 +12,7 @@ Log rotation is one of the trickiest aspects of file-based log collection. When 
 
 Instead of tracking files by name (which changes during rotation), the filelog receiver reads the first N bytes of each file and creates a fingerprint hash. This fingerprint stays the same even if the file is renamed. The receiver stores the fingerprint along with the current read offset, so it knows exactly where it left off in each file.
 
-```
+```text
 Before rotation:
   /var/log/app.log (fingerprint: abc123, offset: 50000)
 

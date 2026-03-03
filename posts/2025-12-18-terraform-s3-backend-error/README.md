@@ -14,7 +14,7 @@ The "Error configuring Terraform S3 Backend" message appears when Terraform cann
 
 The full error typically looks like one of these:
 
-```
+```text
 Error: Error configuring Terraform S3 Backend: Error creating AWS session: NoCredentialProviders
 
 Error: Error configuring the backend "s3": No valid credential sources for S3 Backend found.

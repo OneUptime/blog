@@ -18,7 +18,7 @@ Traditionally, Linux divides processes into two categories: privileged (running 
 
 There are currently about 40 capabilities defined in Linux. Here are the ones you are most likely to encounter with Kubernetes workloads:
 
-```
+```text
 CAP_NET_BIND_SERVICE  - Bind to ports below 1024
 CAP_NET_RAW           - Use raw sockets (for ping, etc.)
 CAP_SYS_PTRACE        - Trace processes (for debuggers)
@@ -41,7 +41,7 @@ CAP_SETFCAP           - Set file capabilities
 
 By default, containers in Kubernetes run with a set of capabilities defined by the container runtime. For containerd (which Talos Linux uses), the default capabilities include:
 
-```
+```text
 CAP_CHOWN
 CAP_DAC_OVERRIDE
 CAP_FSETID

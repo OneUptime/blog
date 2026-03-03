@@ -27,7 +27,7 @@ flowchart TD
 
 ## Common Error Messages
 
-```
+```text
 ERROR 1286 (42000): Unknown storage engine 'InnoDB'
 ERROR 1286 (42000): Unknown storage engine 'MyISAM'
 ERROR 1286 (42000): Unknown storage engine 'MEMORY'
@@ -87,7 +87,7 @@ cat /var/lib/mysql/*.err
 ```
 
 Look for messages like:
-```
+```text
 [ERROR] InnoDB: Unable to lock ./ibdata1
 [ERROR] Plugin 'InnoDB' init function returned error
 [ERROR] Plugin 'InnoDB' registration as a STORAGE ENGINE failed

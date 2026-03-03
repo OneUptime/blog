@@ -33,7 +33,7 @@ graph LR
 
 ## Repository Structure
 
-```
+```text
 security/
   gatekeeper/
     Chart.yaml

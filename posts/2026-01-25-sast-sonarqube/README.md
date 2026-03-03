@@ -322,7 +322,7 @@ Quality gates define the conditions code must meet to pass. Create a custom gate
 2. Create a new gate or copy the default
 3. Add conditions:
 
-```
+```text
 # Example quality gate conditions
 - Coverage on new code >= 80%
 - Duplicated lines on new code <= 3%

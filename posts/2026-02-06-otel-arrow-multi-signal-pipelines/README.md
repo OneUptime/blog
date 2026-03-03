@@ -12,7 +12,7 @@ Standard OTLP uses separate gRPC service definitions for traces, metrics, and lo
 
 When traces, metrics, and logs flow over separate streams, each stream builds its own dictionary. But these signals share many of the same attribute values: `service.name`, `host.name`, `k8s.pod.name`, `deployment.environment`. When all signals share a single dictionary, common values are encoded once and referenced by all three signal types.
 
-```
+```text
 Separate streams:
   Traces dictionary:  {service.name, http.method, http.url, ...}
   Metrics dictionary:  {service.name, metric.name, k8s.pod.name, ...}
@@ -126,7 +126,7 @@ The `otelarrow` receiver demultiplexes the incoming Arrow stream and routes each
 
 Each Arrow batch includes a schema that describes its contents. The schema contains metadata indicating the signal type (traces, metrics, or logs). The receiver reads this metadata and routes the decoded records to the correct pipeline.
 
-```
+```text
 Arrow Stream:
   Batch 1: [traces schema]  -> 500 spans
   Batch 2: [metrics schema] -> 1000 data points

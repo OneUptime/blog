@@ -226,7 +226,7 @@ istioctl dashboard prometheus
 
 Query for error rates:
 
-```
+```text
 sum(rate(istio_requests_total{destination_service="product-catalog.default.svc.cluster.local",response_code!~"5.*"}[5m])) by (destination_version)
 /
 sum(rate(istio_requests_total{destination_service="product-catalog.default.svc.cluster.local"}[5m])) by (destination_version)
@@ -234,7 +234,7 @@ sum(rate(istio_requests_total{destination_service="product-catalog.default.svc.c
 
 **Latency comparison:**
 
-```
+```text
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="product-catalog.default.svc.cluster.local"}[5m])) by (le, destination_version))
 ```
 

@@ -161,7 +161,7 @@ flowchart TD
 
 Here is an example master HLS manifest that references multiple quality levels:
 
-```
+```text
 #EXTM3U
 #EXT-X-VERSION:3
 

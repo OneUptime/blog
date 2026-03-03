@@ -114,7 +114,7 @@ Windows are evaluated in order. First matching window applies.
 
 Sync windows use cron expressions:
 
-```
+```text
 ┌───────────── minute (0 - 59)
 │ ┌───────────── hour (0 - 23)
 │ │ ┌───────────── day of month (1 - 31)

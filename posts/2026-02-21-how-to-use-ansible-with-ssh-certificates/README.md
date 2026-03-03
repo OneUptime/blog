@@ -86,7 +86,7 @@ ssh-keygen -L -f ~/.ssh/ansible_key-cert.pub
 
 Output shows the certificate details:
 
-```
+```text
 /home/user/.ssh/ansible_key-cert.pub:
         Type: ssh-ed25519-cert-v01@openssh.com user certificate
         Public key: ED25519-CERT SHA256:...

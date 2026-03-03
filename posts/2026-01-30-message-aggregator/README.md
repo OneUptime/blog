@@ -1718,7 +1718,7 @@ npx ts-node example-order-aggregator.ts
 
 Expected output:
 
-```
+```text
 --- Simulating event stream ---
 
 [NEW] Started aggregation for: order-12345

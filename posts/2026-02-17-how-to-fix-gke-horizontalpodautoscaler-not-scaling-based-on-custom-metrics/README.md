@@ -263,7 +263,7 @@ gcloud projects add-iam-policy-binding your-project-id \
 
 If the HPA fetches the metric but does not scale as expected, check the scaling algorithm. The HPA uses this formula:
 
-```
+```text
 desiredReplicas = ceil(currentReplicas * (currentMetricValue / desiredMetricValue))
 ```
 

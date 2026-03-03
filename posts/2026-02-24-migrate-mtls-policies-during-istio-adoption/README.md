@@ -95,7 +95,7 @@ In Kiali, look at the traffic graph and check for connections shown as non-mTLS.
 
 You can also check using Prometheus:
 
-```
+```text
 # Count mTLS vs plaintext connections
 istio_requests_total{connection_security_policy="mutual_tls"}
 istio_requests_total{connection_security_policy="none"}

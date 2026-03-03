@@ -133,7 +133,7 @@ Note the `mtu` of 8500. Transit VIFs support jumbo frames, which can improve thr
 
 Set up BGP peering with the transit VIF:
 
-```
+```text
 ! Cisco IOS configuration
 interface GigabitEthernet0/0.300
   description Transit VIF to AWS
@@ -225,7 +225,7 @@ aws directconnect create-transit-virtual-interface \
 
 Use BGP LOCAL_PREF to prefer one connection over the other:
 
-```
+```text
 ! On your router, prefer the primary connection
 route-map PRIMARY-IN permit 10
   set local-preference 200

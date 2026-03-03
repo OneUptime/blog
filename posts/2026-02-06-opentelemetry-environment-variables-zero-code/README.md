@@ -633,14 +633,14 @@ export OTEL_TRACES_EXPORTER=otlp
 
 Look for log messages like:
 
-```
+```text
 [OTLP Trace Exporter] Sending 42 spans to https://oneuptime.com/otlp/v1/traces
 [OTLP Trace Exporter] Export succeeded (HTTP 200)
 ```
 
 Or errors:
 
-```
+```text
 [OTLP Trace Exporter] Export failed: HTTP 401 Unauthorized
 ```
 

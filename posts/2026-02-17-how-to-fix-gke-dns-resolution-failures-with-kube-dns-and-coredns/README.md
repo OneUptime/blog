@@ -61,7 +61,7 @@ cat /etc/resolv.conf
 
 The resolv.conf should look something like:
 
-```
+```text
 nameserver 10.48.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5

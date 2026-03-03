@@ -100,7 +100,7 @@ For deeper analysis, send ADF logs to Log Analytics.
 
 Once logs are flowing, you can query them with KQL (Kusto Query Language).
 
-```
+```text
 // KQL query to find failed pipeline runs in the last 24 hours
 ADFPipelineRun
 | where Status == "Failed"
@@ -109,7 +109,7 @@ ADFPipelineRun
 | order by TimeGenerated desc
 ```
 
-```
+```text
 // KQL query to find the most frequently failing activities
 ADFActivityRun
 | where Status == "Failed"

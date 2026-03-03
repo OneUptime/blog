@@ -43,7 +43,7 @@ npm install @reduxjs/toolkit react-redux
 
 A well-organized Redux Toolkit project follows this structure:
 
-```
+```text
 src/
   app/
     store.ts          # Store configuration

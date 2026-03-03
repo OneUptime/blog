@@ -103,7 +103,7 @@ cProfile.run('main()')
 
 Output shows function call counts and time:
 
-```
+```text
          1000005 function calls in 0.234 seconds
 
    Ordered by: standard name
@@ -195,7 +195,7 @@ kernprof -l -v script.py
 
 Output shows time per line:
 
-```
+```text
 Line #      Hits         Time  Per Hit   % Time  Line Contents
 ==============================================================
      2                                           @profile

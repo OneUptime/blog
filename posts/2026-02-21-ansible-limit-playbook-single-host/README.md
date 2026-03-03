@@ -136,7 +136,7 @@ ansible-playbook -i inventory.ini site.yml --limit db01
 
 You will see this warning:
 
-```
+```text
 [WARNING]: Could not match supplied host pattern, ignoring: db01
 ```
 

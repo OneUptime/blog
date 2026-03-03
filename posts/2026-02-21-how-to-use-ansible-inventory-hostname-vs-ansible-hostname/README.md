@@ -87,7 +87,7 @@ Here is a playbook that shows both values for clarity:
 
 Typical output for a cloud instance:
 
-```
+```text
 inventory_hostname: web-prod-01
 inventory_hostname_short: web-prod-01
 ansible_hostname: ip-10-0-1-50

@@ -30,7 +30,7 @@ Here is the sequence from a Kubernetes event to Envoy having the new configurati
 
 Istiod watches the Kubernetes API server for changes to Services, Endpoints, and all Istio CRDs. When a watch event arrives:
 
-```
+```text
 Event: VirtualService "reviews-route" updated in namespace "default"
 ```
 
@@ -128,7 +128,7 @@ Check which type of push is happening:
 kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | grep pilot_xds_pushes
 ```
 
-```
+```text
 pilot_xds_pushes{type="cds"} 523
 pilot_xds_pushes{type="eds"} 8921
 pilot_xds_pushes{type="lds"} 523

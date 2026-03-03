@@ -124,7 +124,7 @@ velero backup describe my-backup
 
 The output shows when each backup will expire:
 
-```
+```text
 Name:         daily-production-backup-20260209
 Namespace:    velero
 Labels:       velero.io/schedule-name=daily-production-backup

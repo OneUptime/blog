@@ -39,7 +39,7 @@ ansible all -a "uptime"
 
 Typical output looks like this:
 
-```
+```text
 web01 | CHANGED | rc=0 >>
  14:23:45 up 45 days,  3:12,  2 users,  load average: 0.15, 0.10, 0.05
 
@@ -166,7 +166,7 @@ The default is 5 forks, which is conservative. For a read-only operation like ch
 
 Sometimes hosts are down or unreachable. Ansible will report these separately:
 
-```
+```text
 web03 | UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: ssh: connect to host 192.168.1.12 port 22: Connection timed out",

@@ -27,7 +27,7 @@ The kernel tries these in order and uses the first scheme that produces a valid 
 
 The names encode physical information about the adapter:
 
-```
+```text
 enp3s0f0
  |  | | |
  |  | | +-- function number (for multi-port NICs)
@@ -168,7 +168,7 @@ deviceSelector:
 The names you get depend on the hardware and virtualization platform:
 
 ### Bare Metal (Intel NICs)
-```
+```text
 eno1        # First onboard port
 eno2        # Second onboard port
 enp3s0f0    # Add-in card, first port
@@ -176,24 +176,24 @@ enp3s0f1    # Add-in card, second port
 ```
 
 ### VMware
-```
+```text
 ens192      # First virtual NIC
 ens224      # Second virtual NIC
 ```
 
 ### KVM/QEMU
-```
+```text
 enp0s3      # First VirtIO NIC
 enp0s8      # Second VirtIO NIC
 ```
 
 ### Hyper-V
-```
+```text
 eth0        # Hyper-V often uses traditional names
 ```
 
 ### AWS EC2
-```
+```text
 ens5        # Primary ENI
 ens6        # Second ENI
 ```

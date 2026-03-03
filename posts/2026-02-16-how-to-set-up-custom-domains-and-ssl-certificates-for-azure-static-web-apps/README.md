@@ -210,7 +210,7 @@ curl -I http://app.example.com
 
 The response should include:
 
-```
+```text
 HTTP/1.1 301 Moved Permanently
 Location: https://app.example.com/
 ```

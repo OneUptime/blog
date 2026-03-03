@@ -31,7 +31,7 @@ sudo nano /etc/ssh/sshd_config
 
 These settings cause the server to probe idle clients and disconnect them if they do not respond:
 
-```
+```text
 # Send a keep-alive message to the client every 300 seconds (5 minutes)
 ClientAliveInterval 300
 
@@ -43,7 +43,7 @@ With these settings, if a client is silent for 15 minutes (300 seconds * 3 attem
 
 To disconnect idle sessions more aggressively:
 
-```
+```text
 # More aggressive: disconnect after 10 minutes of silence
 ClientAliveInterval 120
 ClientAliveCountMax 3
@@ -51,7 +51,7 @@ ClientAliveCountMax 3
 
 To keep sessions alive indefinitely (useful for automated scripts):
 
-```
+```text
 # Keep sessions alive regardless of inactivity
 ClientAliveInterval 60
 ClientAliveCountMax 0
@@ -76,7 +76,7 @@ sudo systemctl status ssh
 
 The client side controls what happens when you're connecting to a remote server that drops idle connections. Configure this in `~/.ssh/config`:
 
-```
+```text
 # Apply to all hosts
 Host *
     # Send keep-alive messages to the server every 60 seconds
@@ -87,7 +87,7 @@ Host *
 
 For a specific server that is known to drop connections:
 
-```
+```text
 Host flaky-server
     HostName 10.0.0.50
     User ubuntu
@@ -180,7 +180,7 @@ sudo nano /etc/ssh/ssh_config
 
 Add or modify:
 
-```
+```text
 Host *
     ServerAliveInterval 60
     ServerAliveCountMax 3

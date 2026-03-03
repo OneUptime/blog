@@ -42,7 +42,7 @@ pip install fastapi uvicorn redis websockets pydantic
 
 Create a basic project structure:
 
-```
+```text
 websocket_server/
     __init__.py
     main.py

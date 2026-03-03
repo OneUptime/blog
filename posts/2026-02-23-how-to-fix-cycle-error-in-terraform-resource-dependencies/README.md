@@ -10,14 +10,14 @@ Description: How to identify and break circular dependency cycles in Terraform t
 
 You run `terraform plan` and get:
 
-```
+```text
 Error: Cycle: aws_security_group.app, aws_security_group.db,
 aws_security_group_rule.app_to_db, aws_security_group_rule.db_to_app
 ```
 
 Or a simpler version:
 
-```
+```text
 Error: Cycle: module.a, module.b
 ```
 

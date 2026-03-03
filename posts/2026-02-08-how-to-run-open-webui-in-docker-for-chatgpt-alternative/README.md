@@ -250,7 +250,7 @@ volumes:
 
 Create the Caddyfile:
 
-```
+```text
 # Caddyfile - Caddy reverse proxy configuration
 # Replace chat.yourdomain.com with your actual domain
 chat.yourdomain.com {

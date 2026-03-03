@@ -247,7 +247,7 @@ For most API-style functions, "CPU during request" is the right choice. Use "CPU
 
 Understanding how autoscaling works with concurrency is important for capacity planning:
 
-```
+```text
 Total capacity = max_instances * concurrency
 
 Example: max_instances=50, concurrency=80

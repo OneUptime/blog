@@ -59,7 +59,7 @@ Key options explained:
 
 ## Project Structure
 
-```
+```text
 my-project/
   src/
     index.ts

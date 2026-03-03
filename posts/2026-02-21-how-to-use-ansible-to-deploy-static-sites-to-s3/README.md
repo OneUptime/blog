@@ -44,7 +44,7 @@ pip install boto3 botocore
 
 ## Project Structure
 
-```
+```text
 s3-static-deploy/
   inventory/
     hosts.yml

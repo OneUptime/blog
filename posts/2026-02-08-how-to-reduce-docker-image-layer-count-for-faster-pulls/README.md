@@ -101,7 +101,7 @@ COPY . .
 
 The single `COPY . .` approach works well when combined with a thorough `.dockerignore`:
 
-```
+```text
 # .dockerignore
 node_modules
 .git

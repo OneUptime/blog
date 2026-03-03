@@ -233,7 +233,7 @@ If you get an error like "Service X is not allowed under the current organizatio
 
 Attempting to create resources outside of US regions will fail:
 
-```
+```text
 ERROR: (gcloud.compute.instances.create) Could not fetch resource:
 - Constraint 'constraints/gcp.resourceLocations' violated for resource
 ```

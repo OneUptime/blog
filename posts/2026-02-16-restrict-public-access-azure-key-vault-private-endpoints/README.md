@@ -282,7 +282,7 @@ az monitor diagnostic-settings create \
 
 Query access logs to see which IPs are accessing Key Vault.
 
-```
+```text
 // Key Vault access patterns showing source IPs
 AzureDiagnostics
 | where ResourceType == "VAULTS"

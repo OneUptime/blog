@@ -227,7 +227,7 @@ Remove `@EnableEurekaClient` and Eureka configuration from `application.yml`.
 
 With Consul or Eureka, services in different namespaces were all in one flat registry. With Kubernetes DNS, you need the full DNS name for cross-namespace calls:
 
-```
+```text
 # Same namespace
 http://payment-service:8080
 

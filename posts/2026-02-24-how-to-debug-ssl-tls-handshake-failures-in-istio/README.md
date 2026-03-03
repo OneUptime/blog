@@ -32,7 +32,7 @@ kubectl exec my-app-xxxxx -c istio-proxy -- curl -s localhost:15000/stats | grep
 
 Key metrics to look at:
 
-```
+```text
 listener.0.0.0.0_15006.ssl.connection_error: 15
 listener.0.0.0.0_15006.ssl.handshake: 1024
 listener.0.0.0.0_15006.ssl.no_certificate: 3
@@ -67,7 +67,7 @@ istioctl x describe pod my-service-xxxxx -n default
 
 Output shows the effective mTLS mode:
 
-```
+```text
 Pod is STRICT and target is PERMISSIVE
    Peer Authentication: default/strict-mtls
 ```
@@ -108,7 +108,7 @@ istioctl proxy-config secret my-app-xxxxx.default
 
 Output shows the certificate details:
 
-```
+```text
 RESOURCE NAME     TYPE           STATUS     VALID CERT     SERIAL NUMBER     NOT AFTER               NOT BEFORE
 default           Cert Chain     ACTIVE     true           abc123            2026-02-25T10:00:00Z    2026-02-24T10:00:00Z
 ROOTCA            CA             ACTIVE     true           def456            2036-02-22T10:00:00Z    2026-02-24T10:00:00Z

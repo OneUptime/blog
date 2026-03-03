@@ -102,7 +102,7 @@ kubectl get pods --namespace cert-manager
 
 Expected output:
 
-```
+```text
 NAME                                       READY   STATUS    RESTARTS   AGE
 cert-manager-5c6866597-zw7kh              1/1     Running   0          2m
 cert-manager-cainjector-577f6d9fd7-tr77l  1/1     Running   0          2m
@@ -237,7 +237,7 @@ kubectl -n cattle-system get pods
 
 Expected output:
 
-```
+```text
 NAME                                    READY   STATUS    RESTARTS   AGE
 cattle-cluster-agent-64d4f9d74b-28xtz   1/1     Running   0          5m
 ```

@@ -1113,7 +1113,7 @@ func BenchmarkJSONWithPool(b *testing.B) {
 
 When you run these benchmarks, you'll typically see results like:
 
-```
+```text
 BenchmarkWithoutPool-8     5000000    320 ns/op    4224 B/op    2 allocs/op
 BenchmarkWithPool-8       20000000     85 ns/op       0 B/op    0 allocs/op
 

@@ -163,7 +163,7 @@ istioctl x workload entry configure \
 
 This generates several files:
 
-```
+```text
 vm-bootstrap-files/
   cluster.env         # Environment variables for the sidecar
   istio-token         # JWT token for initial authentication

@@ -171,7 +171,7 @@ psql -h db-primary-01.prod.internal -U admin -d postgres -c \
 ```
 
 **Expected Output (Healthy):**
-```
+```text
  client_addr  |   state   | replication_lag_bytes
 --------------+-----------+----------------------
  10.0.1.52    | streaming |                 1024
@@ -179,7 +179,7 @@ psql -h db-primary-01.prod.internal -U admin -d postgres -c \
 ```
 
 **Expected Output (Problem):**
-```
+```text
  client_addr  |   state    | replication_lag_bytes
 --------------+------------+----------------------
  10.0.1.52    | catchup    |            104857600
@@ -206,7 +206,7 @@ psql -h db-primary-01.prod.internal -U admin -d postgres -c \
 ```
 
 **Expected Output:**
-```
+```text
 ALTER SYSTEM
  pg_reload_conf
 ----------------
@@ -230,7 +230,7 @@ sudo -u postgres pg_ctl promote -D /var/lib/postgresql/14/main
 ```
 
 **Expected Output:**
-```
+```text
 waiting for server to promote.... done
 server promoted
 ```
@@ -243,7 +243,7 @@ psql -c "SELECT pg_is_in_recovery();"
 ```
 
 Returns `f` for primary, `t` for standby.
-```
+```text
 
 ### Verification Steps
 
@@ -283,7 +283,7 @@ Check Grafana dashboard: https://grafana.example.com/d/database-health
 - [ ] Replication established to remaining standbys
 - [ ] Application error rate returned to baseline
 - [ ] No customer reports of data issues
-```
+```text
 
 ### Escalation Paths
 
@@ -352,7 +352,7 @@ psql -h db-primary-01.prod.internal -U admin -c "SELECT 1;"
 ```
 
 4. Update DNS or load balancer to point to original primary.
-```
+```text
 
 ## Writing Clear and Actionable Steps
 
@@ -373,7 +373,7 @@ Check the application logs for errors. Run:
 ```bash
 kubectl logs -l app=api-server --tail=100 --since=15m
 ```
-```
+```text
 
 ### Include Expected Outputs
 
@@ -387,14 +387,14 @@ systemctl status nginx
 ```
 
 **Expected output (healthy):**
-```
+```text
 nginx.service - A high performance web server
    Loaded: loaded (/lib/systemd/system/nginx.service; enabled)
    Active: active (running) since Mon 2026-01-28 10:00:00 UTC
 ```
 
 **Expected output (problem):**
-```
+```text
 nginx.service - A high performance web server
    Loaded: loaded (/lib/systemd/system/nginx.service; enabled)
    Active: failed (Result: exit-code) since Mon 2026-01-28 10:00:00 UTC
@@ -422,7 +422,7 @@ tail -50 /var/log/nginx/error.log
 | "Address already in use" | Port 80 occupied | `sudo lsof -i :80` and stop conflicting process |
 | "could not open error log file" | Permission issue | `sudo chown -R www-data:www-data /var/log/nginx` |
 | "unknown directive" | Config syntax error | `nginx -t` to identify line number |
-```
+```text
 
 ### Make Commands Copy-Paste Ready
 
@@ -446,7 +446,7 @@ export REGION="us-east-1"
 # Then use them in commands
 kubectl --context=${REGION}-${ENV} get pods -l app=api
 ```
-```
+```text
 
 ## Creating Runbooks for Common Scenarios
 
@@ -530,7 +530,7 @@ Verify service health:
 ```bash
 systemctl status ${SERVICE_NAME}
 ```
-```
+```text
 
 ### Service Deployment Runbook Template
 
@@ -603,7 +603,7 @@ kubectl rollout status deployment/api-server --timeout=300s
 ```
 
 **Expected output:**
-```
+```text
 deployment "api-server" successfully rolled out
 ```
 
@@ -637,7 +637,7 @@ If issues are detected:
 kubectl rollout undo deployment/api-server
 kubectl rollout status deployment/api-server --timeout=300s
 ```
-```
+```text
 
 ### Certificate Rotation Runbook Template
 
@@ -726,7 +726,7 @@ If issues occur:
 kubectl apply -f tls-certificate-backup-$(date +%Y%m%d).yaml
 kubectl rollout restart deployment/ingress-nginx-controller -n ingress-nginx
 ```
-```
+```text
 
 ## Automating Runbook Execution
 
@@ -1077,7 +1077,7 @@ As your runbook collection grows, organization becomes critical.
 
 Use consistent naming that sorts logically and indicates purpose.
 
-```
+```text
 {service}-{action}-{scope}.md
 
 Examples:
@@ -1093,7 +1093,7 @@ security-rotate-certificates.md
 
 Organize runbooks by service or function.
 
-```
+```text
 runbooks/
   database/
     RB-DB-001-primary-failover.md

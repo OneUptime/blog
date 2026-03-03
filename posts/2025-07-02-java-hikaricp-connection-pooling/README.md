@@ -269,7 +269,7 @@ Getting the pool size right is critical. Too small and requests queue up; too la
 
 A good starting point for pool size:
 
-```
+```text
 connections = ((core_count * 2) + effective_spindle_count)
 ```
 
@@ -782,7 +782,7 @@ flowchart TB
 
 ### Prometheus Metrics Reference
 
-```
+```text
 # HELP hikaricp_connections Total connections
 # TYPE hikaricp_connections gauge
 hikaricp_connections{pool="MyAppPool"} 10
@@ -906,7 +906,7 @@ spring:
 
 When a leak is detected, HikariCP logs a stack trace showing where the connection was borrowed:
 
-```
+```text
 [HikariPool-1 housekeeper] WARN com.zaxxer.hikari.pool.ProxyLeakTask - 
 Connection leak detection triggered for connection org.postgresql.jdbc.PgConnection@12345,
 stack trace follows:

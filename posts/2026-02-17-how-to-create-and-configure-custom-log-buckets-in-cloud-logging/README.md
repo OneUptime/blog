@@ -72,7 +72,7 @@ gcloud logging buckets create analytics-logs \
 
 After creating a bucket, you need a sink to route logs into it. The destination format for a log bucket is:
 
-```
+```text
 logging.googleapis.com/projects/PROJECT_ID/locations/LOCATION/buckets/BUCKET_NAME
 ```
 

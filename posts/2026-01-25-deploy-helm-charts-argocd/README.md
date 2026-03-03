@@ -109,7 +109,7 @@ Store your Helm charts in Git for full GitOps traceability.
 
 ### Repository Structure
 
-```
+```text
 my-app/
 ├── Chart.yaml
 ├── values.yaml

@@ -49,7 +49,7 @@ Key global settings to configure:
 sudo nano /etc/monit/monitrc
 ```
 
-```
+```text
 # Check interval (default: 120 seconds)
 set daemon 60
 
@@ -81,7 +81,7 @@ set httpd port 2812 and
 sudo nano /etc/monit/conf.d/nginx
 ```
 
-```
+```text
 # Monitor nginx
 check process nginx
     with pidfile /var/run/nginx.pid
@@ -101,7 +101,7 @@ check process nginx
 sudo nano /etc/monit/conf.d/application
 ```
 
-```
+```text
 # Monitor a custom application
 check process myapp with pidfile /var/run/myapp/myapp.pid
     start program = "/bin/systemctl start myapp"
@@ -128,7 +128,7 @@ Many modern services don't use PID files. Use the matching syntax instead:
 sudo nano /etc/monit/conf.d/redis
 ```
 
-```
+```text
 # Match by process name from the process table
 check process redis matching "redis-server"
     start program = "/bin/systemctl start redis-server"
@@ -141,7 +141,7 @@ check process redis matching "redis-server"
 
 ### MySQL/MariaDB
 
-```
+```text
 check process mysql with pidfile /var/run/mysqld/mysqld.pid
     start program = "/bin/systemctl start mysql"
     stop program  = "/bin/systemctl stop mysql"
@@ -151,7 +151,7 @@ check process mysql with pidfile /var/run/mysqld/mysqld.pid
 
 ### PostgreSQL
 
-```
+```text
 check process postgresql with pidfile /var/run/postgresql/15-main.pid
     start program = "/bin/systemctl start postgresql"
     stop program  = "/bin/systemctl stop postgresql"
@@ -161,7 +161,7 @@ check process postgresql with pidfile /var/run/postgresql/15-main.pid
 
 ### SSH
 
-```
+```text
 check process sshd with pidfile /var/run/sshd.pid
     start program = "/bin/systemctl start ssh"
     stop program  = "/bin/systemctl stop ssh"
@@ -171,7 +171,7 @@ check process sshd with pidfile /var/run/sshd.pid
 
 ### Elasticsearch
 
-```
+```text
 check process elasticsearch matching "elasticsearch"
     start program = "/bin/systemctl start elasticsearch"
     stop program  = "/bin/systemctl stop elasticsearch"
@@ -191,7 +191,7 @@ Monit can watch files for changes - useful for detecting configuration tampering
 sudo nano /etc/monit/conf.d/files
 ```
 
-```
+```text
 # Alert if /etc/passwd is modified
 check file passwd with path /etc/passwd
     if changed checksum then alert
@@ -223,7 +223,7 @@ check file nginx-access-log with path /var/log/nginx/access.log
 sudo nano /etc/monit/conf.d/system
 ```
 
-```
+```text
 # Monitor the system itself
 check system myhostname
     if memory usage > 85% for 5 cycles then alert
@@ -244,7 +244,7 @@ check device data-disk with path /data
 
 ## Network/Port Monitoring
 
-```
+```text
 # Monitor an external service (without a local process)
 check host google-dns with address 8.8.8.8
     if failed icmp type echo count 5 with timeout 10 seconds then alert
@@ -324,7 +324,7 @@ Common false-positive causes:
 
 Fix by adding a startup delay:
 
-```
+```text
 check process nginx with pidfile /var/run/nginx.pid
     start program = "/bin/systemctl start nginx"
         with timeout 60 seconds   # Wait up to 60s for startup
@@ -334,7 +334,7 @@ check process nginx with pidfile /var/run/nginx.pid
 
 ## Alerting Configuration Examples
 
-```
+```text
 # Global alert settings
 set alert admin@example.com
     not on { nonexist, pid, ppid, size }   # Don't alert for these specific conditions

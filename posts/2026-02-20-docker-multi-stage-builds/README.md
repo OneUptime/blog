@@ -308,7 +308,7 @@ FROM scratch           # 0 MB base
 3. **Combine RUN commands** to reduce layer count
 4. **Clean up in the same layer** where you install packages
 
-```
+```text
 # .dockerignore
 node_modules
 .git

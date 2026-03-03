@@ -24,7 +24,7 @@ A typical Sentinel deployment consists of:
 
 Here is the architecture diagram:
 
-```
+```text
                     +-------------------+
                     |   Application     |
                     +--------+----------+
@@ -348,7 +348,7 @@ The quorum value determines how many Sentinels must agree that the master is unr
 
 ### Failover Process Step by Step
 
-```
+```text
 1. Master fails or becomes unreachable
            |
            v
@@ -818,7 +818,7 @@ Always set quorum to at least (N/2) + 1 where N is the number of Sentinels.
 
 Deploy Sentinels across different failure domains:
 
-```
+```text
 Availability Zone A          Availability Zone B          Availability Zone C
 +------------------+        +------------------+        +------------------+
 | Redis Master     |        | Redis Replica 1  |        | Redis Replica 2  |

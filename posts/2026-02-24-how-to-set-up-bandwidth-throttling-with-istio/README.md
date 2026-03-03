@@ -260,7 +260,7 @@ kubectl exec my-service-pod -c istio-proxy -- \
 
 You will see metrics like:
 
-```
+```text
 bandwidth_limiter.request_enabled: 1000
 bandwidth_limiter.response_enabled: 1000
 bandwidth_limiter.request_enforced: 500

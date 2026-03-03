@@ -48,7 +48,7 @@ The biggest constraint is storage accounts: 24 characters, lowercase letters and
 
 The Microsoft Cloud Adoption Framework recommends this pattern:
 
-```
+```text
 {resource-type}-{workload}-{environment}-{region}-{instance}
 ```
 

@@ -29,7 +29,7 @@ Before creating custom roles, you need to understand how permissions work in GCP
 
 Every permission has a format like `service.resource.action`:
 
-```
+```text
 compute.instances.get        # View a VM instance
 compute.instances.start      # Start a VM instance
 compute.instances.delete     # Delete a VM instance

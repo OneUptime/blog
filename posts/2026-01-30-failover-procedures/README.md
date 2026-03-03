@@ -1118,7 +1118,7 @@ aws route53 change-resource-record-sets \
 - Primary On-Call: Check PagerDuty
 - Database Team: #db-oncall
 - Platform Team: #platform-oncall
-```
+```text
 
 ### Database Failover Runbook
 
@@ -1240,7 +1240,7 @@ systemctl restart patroni
 # Monitor rejoin progress
 journalctl -u patroni -f
 ```
-```
+```text
 
 ## Failover Testing Strategy
 

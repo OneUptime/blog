@@ -12,7 +12,7 @@ YAML syntax errors are among the most frustrating Ansible errors because YAML is
 
 ## The Error
 
-```
+```text
 ERROR! We were unable to read either as JSON nor YAML, these are the errors we got from each:
 YAML: mapping values are not allowed here
   in "playbook.yml", line 5, column 15

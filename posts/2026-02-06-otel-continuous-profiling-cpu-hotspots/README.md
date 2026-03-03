@@ -163,7 +163,7 @@ if __name__ == "__main__":
 
 In Grafana, you can build a dashboard that shows traces and their associated profiles side by side:
 
-```
+```text
 Panel 1: Slow Spans Table (Tempo data source)
   Query: {resource.service.name="order-service" && duration>500ms}
   Columns: traceID, spanID, name, duration, status

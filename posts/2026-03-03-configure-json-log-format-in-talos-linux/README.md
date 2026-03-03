@@ -18,7 +18,7 @@ Plain text logs are fine when you are reading them manually. But in a cluster wi
 
 Consider the difference between these two log lines:
 
-```
+```text
 # Plain text - requires regex to parse
 2026-03-03T10:15:32Z INFO kubelet: Successfully pulled image "nginx:1.25"
 

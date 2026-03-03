@@ -16,7 +16,7 @@ This guide covers different approaches to scheduling pods on control plane nodes
 
 Control plane nodes in Kubernetes have a taint that repels pods without matching tolerations:
 
-```
+```text
 node-role.kubernetes.io/control-plane:NoSchedule
 ```
 

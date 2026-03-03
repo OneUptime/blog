@@ -104,7 +104,7 @@ Configure the gauge thresholds:
 
 **Panel 4: CPU Usage Over Time (Time Series)**
 
-```
+```text
 Data source: Azure Monitor
 Service: Metrics
 Subscription: $subscription
@@ -118,7 +118,7 @@ Configure the time series panel to show both average and max as separate lines. 
 
 **Panel 5: Available Memory (Time Series)**
 
-```
+```text
 Metric: Available Memory Bytes
 Aggregation: Average
 ```
@@ -139,7 +139,7 @@ InsightsMetrics
 
 **Panel 6: Disk Read/Write IOPS (Time Series)**
 
-```
+```text
 Metric: OS Disk Read Operations/Sec, OS Disk Write Operations/Sec
 Aggregation: Average
 ```
@@ -148,7 +148,7 @@ Display both metrics on the same time series chart using different colors.
 
 **Panel 7: Disk Queue Length (Time Series)**
 
-```
+```text
 Metric: OS Disk Queue Depth
 Aggregation: Average
 ```
@@ -159,7 +159,7 @@ Set a threshold on the Y-axis - anything consistently above 2 usually indicates 
 
 **Panel 8: Network In/Out (Time Series)**
 
-```
+```text
 Metric: Network In Total, Network Out Total
 Aggregation: Average
 Unit: bytes/sec
@@ -195,7 +195,7 @@ Storage accounts have different monitoring needs. Here are key panels.
 
 ### Transaction Rate
 
-```
+```text
 Metric: Transactions
 Aggregation: Total
 Split by: API name
@@ -205,12 +205,12 @@ This shows you which storage operations are most frequent and helps identify une
 
 ### Latency Percentiles
 
-```
+```text
 Metric: Success E2E Latency
 Aggregation: Average
 ```
 
-```
+```text
 Metric: Success Server Latency
 Aggregation: Average
 ```
@@ -234,7 +234,7 @@ AzureNetworkAnalytics_CL
 
 ### Virtual Network Gateway Throughput
 
-```
+```text
 Resource type: Virtual Network Gateways
 Metric: Gateway S2S Bandwidth
 Aggregation: Average

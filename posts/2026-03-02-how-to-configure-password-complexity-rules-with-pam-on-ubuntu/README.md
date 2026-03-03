@@ -113,13 +113,13 @@ cat /etc/pam.d/common-password
 
 Locate the line containing `pam_pwquality.so`. It should look similar to:
 
-```
+```text
 password  requisite  pam_pwquality.so retry=3
 ```
 
 The `requisite` control flag means if this module fails, the password change is rejected immediately without trying further modules. Change it to include retry and ensure pwquality is invoked:
 
-```
+```text
 password  requisite  pam_pwquality.so retry=3 local_users_only
 ```
 
@@ -135,7 +135,7 @@ sudo nano /etc/pam.d/common-password
 
 Add the history module before the password update module:
 
-```
+```text
 # Enforce password quality requirements
 password  requisite   pam_pwquality.so retry=3 local_users_only
 

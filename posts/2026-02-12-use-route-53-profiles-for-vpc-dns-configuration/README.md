@@ -214,7 +214,7 @@ aws route53profiles list-profile-associations \
 
 The simplest approach - one profile with everything:
 
-```
+```text
 Profile: company-standard
   - Private HZ: internal.company.com
   - Private HZ: shared-services.internal.company.com
@@ -226,7 +226,7 @@ Profile: company-standard
 
 Different profiles for production and non-production:
 
-```
+```text
 Profile: production-dns
   - Private HZ: internal.company.com
   - Private HZ: prod.internal.company.com
@@ -243,7 +243,7 @@ Profile: nonprod-dns
 
 Base profile for all VPCs plus overlay profiles for specific needs:
 
-```
+```text
 Profile: base-dns (applied to all VPCs)
   - DNS Firewall: Block malicious domains
   - Resolver Rule: Forward *.onprem.company.com

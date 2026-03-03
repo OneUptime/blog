@@ -12,7 +12,7 @@ In Java multi-module projects (Maven or Gradle), it is common for different modu
 
 A typical multi-module project:
 
-```
+```text
 my-project/
   module-api/        -> depends on opentelemetry-api:1.30.0
   module-service/    -> depends on opentelemetry-api:1.34.0
@@ -43,7 +43,7 @@ mvn dependency:tree -Dincludes=io.opentelemetry
 
 The error typically looks like:
 
-```
+```text
 java.lang.NoSuchMethodError:
   'io.opentelemetry.api.trace.SpanBuilder
    io.opentelemetry.api.trace.SpanBuilder.setAttribute(

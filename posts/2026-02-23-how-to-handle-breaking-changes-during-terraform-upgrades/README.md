@@ -61,7 +61,7 @@ grep -E "must be replaced|will be destroyed" plan-output.log
 
 Providers sometimes rename resource types. This appears as a destroy-and-create in your plan:
 
-```
+```text
 # aws_s3_bucket_object.file will be destroyed
 - resource "aws_s3_bucket_object" "file" { ... }
 
@@ -137,7 +137,7 @@ resource "aws_s3_bucket_versioning" "data" {
 
 When a provider changes default values, existing resources may show unexpected changes:
 
-```
+```text
 # aws_instance.web will be updated in-place
 ~ resource "aws_instance" "web" {
     ~ metadata_options {

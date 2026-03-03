@@ -18,7 +18,7 @@ Docker and Docker Compose must be installed. Basic TypeScript and React knowledg
 
 Here is the layout for our monorepo:
 
-```
+```text
 fullstack-ts/
   frontend/         # React + TypeScript
   backend/          # Express + TypeScript

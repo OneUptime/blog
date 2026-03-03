@@ -41,7 +41,7 @@ resource "aws_cognito_user_pool_domain" "main" {
 
 The hosted UI URL format:
 
-```
+```text
 https://{domain}/login?client_id={clientId}&response_type=code&scope=openid+email+profile&redirect_uri={redirectUri}
 ```
 

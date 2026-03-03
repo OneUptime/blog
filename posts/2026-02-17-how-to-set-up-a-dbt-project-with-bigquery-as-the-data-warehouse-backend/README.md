@@ -130,7 +130,7 @@ For OAuth, make sure you have run `gcloud auth application-default login` first.
 
 After initialization, your project looks like this:
 
-```
+```text
 my_analytics/
   dbt_project.yml        # Project configuration
   models/                # SQL models go here

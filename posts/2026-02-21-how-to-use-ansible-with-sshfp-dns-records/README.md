@@ -32,7 +32,7 @@ sequenceDiagram
 
 An SSHFP record has three components:
 
-```
+```text
 server.example.com. IN SSHFP <algorithm> <fingerprint-type> <fingerprint>
 ```
 
@@ -48,7 +48,7 @@ Fingerprint type:
 
 Example record:
 
-```
+```text
 web01.example.com. IN SSHFP 4 2 a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
 ```
 
@@ -67,7 +67,7 @@ ssh-keygen -r $(hostname -f)
 
 Output:
 
-```
+```text
 web01.example.com IN SSHFP 1 1 abc123...
 web01.example.com IN SSHFP 1 2 def456...
 web01.example.com IN SSHFP 3 1 ghi789...
@@ -119,7 +119,7 @@ Gather SSHFP data from all your hosts:
 
 Add the records to your DNS zone file:
 
-```
+```text
 ; /etc/bind/zones/example.com.zone
 $TTL 3600
 @   IN  SOA ns1.example.com. admin.example.com. (

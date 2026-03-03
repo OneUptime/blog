@@ -53,7 +53,7 @@ argocd login localhost:8080 --insecure
 
 Organize your Istio configuration repository for Argo CD:
 
-```
+```text
 istio-gitops/
   apps/
     istio-base.yaml

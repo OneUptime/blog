@@ -20,25 +20,25 @@ The istiod process exposes metrics at port 15014. These tell you whether the con
 
 **pilot_xds_pushes** - The number of configuration pushes to sidecar proxies. During an upgrade, you should see a spike as proxies reconnect to the new control plane and receive updated configuration. If pushes stop entirely, the control plane may be stuck.
 
-```
+```text
 sum(rate(pilot_xds_pushes{type="cds"}[1m]))
 ```
 
 **pilot_proxy_convergence_time** - How long it takes for a config change to reach all proxies. This should stay under a few seconds. If it spikes during the upgrade, proxies are having trouble syncing.
 
-```
+```text
 histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
 ```
 
 **pilot_xds_push_errors** - Push errors indicate the control plane failed to send configuration to one or more proxies. Any non-zero value during an upgrade needs investigation.
 
-```
+```text
 sum(rate(pilot_xds_push_errors[5m]))
 ```
 
 **pilot_conflict_inbound_listener** and **pilot_conflict_outbound_listener_tcp_over_current_tcp** - Configuration conflicts between resources. If these appear during an upgrade, a resource incompatibility was introduced.
 
-```
+```text
 pilot_conflict_inbound_listener
 pilot_conflict_outbound_listener_tcp_over_current_tcp
 ```
@@ -55,26 +55,26 @@ These metrics come from the sidecar proxies and tell you whether application tra
 
 **istio_requests_total** - The total number of requests, broken down by response code. Watch for increases in 5xx responses:
 
-```
+```text
 sum(rate(istio_requests_total{response_code=~"5.*"}[5m])) by (destination_workload, destination_workload_namespace)
 ```
 
 **istio_request_duration_milliseconds** - Request latency. Watch for latency increases at the p99 level:
 
-```
+```text
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le, destination_workload))
 ```
 
 **istio_tcp_connections_opened_total** and **istio_tcp_connections_closed_total** - TCP connection churn. A spike in closed connections without a corresponding spike in opened connections indicates connection drops:
 
-```
+```text
 sum(rate(istio_tcp_connections_opened_total[5m])) by (destination_workload)
 sum(rate(istio_tcp_connections_closed_total[5m])) by (destination_workload)
 ```
 
 **envoy_cluster_upstream_cx_connect_fail** - Failed connection attempts from the proxy to upstream services:
 
-```
+```text
 sum(rate(envoy_cluster_upstream_cx_connect_fail[5m])) by (cluster_name)
 ```
 
@@ -105,7 +105,7 @@ Create a Grafana dashboard specifically for Istio upgrades. Here is a layout tha
 
 For the proxy version distribution, use this PromQL:
 
-```
+```text
 count(istio_build{component="proxy"}) by (tag)
 ```
 

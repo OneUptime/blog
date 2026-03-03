@@ -68,7 +68,7 @@ npx @grafana/create-plugin@latest
 
 A typical backend plugin follows this structure:
 
-```
+```text
 my-datasource-plugin/
 ├── pkg/
 │   ├── main.go              # Plugin entry point

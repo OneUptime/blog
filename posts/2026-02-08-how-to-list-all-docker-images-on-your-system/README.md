@@ -135,7 +135,7 @@ docker images --no-trunc --format "{{.ID}}"
 
 Available template fields include:
 
-```
+```text
 .Repository    - Image repository name
 .Tag           - Image tag
 .ID            - Image ID

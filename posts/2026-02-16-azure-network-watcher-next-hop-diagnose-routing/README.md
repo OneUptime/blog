@@ -140,7 +140,7 @@ This shows every route that applies to the NIC, including system routes, UDRs, a
 
 The output might look like this:
 
-```
+```text
 Source    State    Address Prefix    Next Hop Type       Next Hop IP
 ------    -----    ---------------   ----------------    -----------
 Default   Active   10.0.0.0/16       VirtualNetwork

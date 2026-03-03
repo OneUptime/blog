@@ -74,7 +74,7 @@ The ON DELETE CASCADE means that when a Customer is deleted, all their Orders ar
 
 To understand why interleaving matters, think about how Spanner stores data. In a non-interleaved setup:
 
-```
+```text
 -- Physical storage (simplified): data is sorted by primary key within each table
 Customers:
   [Customer-A, "Alice", "alice@example.com"]
@@ -88,7 +88,7 @@ Orders:
 
 With interleaving, the storage layout changes to this:
 
-```
+```text
 -- Interleaved storage: child rows are stored next to their parent
   [Customer-A, "Alice", "alice@example.com"]
     [Customer-A, Order-001, "2026-01-15", 99.99]

@@ -69,7 +69,7 @@ Cloudflare provides one of the simplest DNSSEC implementations with one-click en
 
 Cloudflare will display the DS record information:
 
-```
+```text
 DS Record:
 example.com. 3600 IN DS 2371 13 2 1F987CC6583E92DF0890718C42A5B6B4B8A6F8B74E2C350E6F7E6D2F8E9A0B1C
 
@@ -134,7 +134,6 @@ curl -X GET "https://api.cloudflare.com/client/v4/zones/{zone_id}/dnssec" \
 
 Route 53 supports DNSSEC for both domain registration and DNS hosting.
 
-### Option 1: Domains Registered with Route 53
 
 ### Step 1: Enable DNSSEC Signing
 
@@ -246,7 +245,6 @@ echo "DNSSEC enabled successfully!"
 
 GoDaddy supports DNSSEC for domains using GoDaddy DNS.
 
-### For Domains Using GoDaddy DNS
 
 ### Step 1: Access DNS Management
 
@@ -283,7 +281,7 @@ Your DNS provider will give you:
 4. Click **Add**
 5. Enter DS record details:
 
-```
+```text
 Key Tag: 2371
 Algorithm: 13 (ECDSAP256SHA256)
 Digest Type: 2 (SHA-256)
@@ -307,7 +305,6 @@ curl -X POST "https://api.godaddy.com/v1/domains/example.com/records/DS" \
 
 Namecheap offers DNSSEC support for domains using Namecheap DNS or external providers.
 
-### For Domains Using Namecheap DNS
 
 ### Step 1: Access Domain Settings
 
@@ -330,7 +327,6 @@ flowchart LR
     E --> F[DNSSEC Active]
 ```
 
-### For External DNS Providers
 
 ### Step 1: Get DS Record Details
 
@@ -357,7 +353,7 @@ From your DNS provider, obtain:
 
 ### Namecheap DS Record Form
 
-```
+```text
 ┌─────────────────────────────────────────────┐
 │ Add DS Record                               │
 ├─────────────────────────────────────────────┤
@@ -377,7 +373,6 @@ From your DNS provider, obtain:
 
 Note: Google Domains has been acquired by Squarespace, but the DNSSEC functionality remains similar.
 
-### For Domains Using Google DNS
 
 ### Step 1: Access DNS Settings
 
@@ -393,7 +388,6 @@ Note: Google Domains has been acquired by Squarespace, but the DNSSEC functional
 
 Google/Squarespace handles key generation and zone signing automatically.
 
-### For External DNS
 
 ### Step 1: Prepare DS Record
 

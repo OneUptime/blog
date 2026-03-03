@@ -24,7 +24,7 @@ cat /etc/subgid
 
 A typical entry looks like:
 
-```
+```text
 dockremap:100000:65536
 ```
 

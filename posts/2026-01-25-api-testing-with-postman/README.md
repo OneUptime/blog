@@ -14,7 +14,7 @@ API testing is essential for ensuring your backend services work correctly. Post
 
 A collection is a group of related API requests. Create one for your project:
 
-```
+```text
 1. Open Postman
 2. Click "Collections" in the sidebar
 3. Click "+" to create a new collection
@@ -23,7 +23,7 @@ A collection is a group of related API requests. Create one for your project:
 
 Add your first request:
 
-```
+```text
 Method: GET
 URL: {{baseUrl}}/api/users
 ```

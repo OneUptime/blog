@@ -27,7 +27,7 @@ The debug output is verbose. Here is what to look for:
 
 ### Successful Startup
 
-```
+```text
 [otel.javaagent] INFO - opentelemetry-javaagent 1.32.0
 [otel.javaagent] INFO - Runtime configuration:
   otel.exporter.otlp.endpoint = http://localhost:4317
@@ -53,7 +53,7 @@ ls -la /path/to/opentelemetry-javaagent.jar
 
 ### Common Failure: Exporter Cannot Connect
 
-```
+```text
 [otel.javaagent] WARN - Failed to export spans.
   Server responded with UNAVAILABLE.
   Make sure your Collector is running and reachable.
@@ -71,7 +71,7 @@ curl http://localhost:4318/v1/traces -d '{}' -H "Content-Type: application/json"
 
 ### Common Failure: No Instrumentations Applied
 
-```
+```text
 [otel.javaagent] INFO - Installed 0 instrumentations
 ```
 
@@ -79,7 +79,7 @@ This means no supported libraries were detected. Check that your application act
 
 ### Common Failure: Class Transformation Error
 
-```
+```text
 [otel.javaagent] ERROR - Failed to transform class com/mycompany/MyClass
 java.lang.IllegalStateException: Cannot resolve type description for ...
 ```
@@ -94,7 +94,7 @@ java.lang.IllegalStateException: Cannot resolve type description for ...
 
 The debug output shows all resolved configuration. Verify these values:
 
-```
+```text
 otel.service.name = my-service           # Not "unknown_service"
 otel.exporter.otlp.endpoint = http://..  # Points to your Collector
 otel.traces.exporter = otlp              # Not "none"

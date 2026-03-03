@@ -45,7 +45,7 @@ istioctl proxy-status
 
 This shows every sidecar and its sync status with the control plane. Look for the `PROXY-VERSION` column:
 
-```
+```text
 NAME                                    CLUSTER        CDS    LDS    EDS    RDS    ECDS   ISTIOD                     PROXY-VERSION
 frontend-7b9d8c5f66-abc12.production    Kubernetes     SYNCED SYNCED SYNCED SYNCED        istiod-5d4f8b6c99-xyz.     1.24.0
 backend-6c7d9e4f55-def34.production     Kubernetes     SYNCED SYNCED SYNCED SYNCED        istiod-5d4f8b6c99-xyz.     1.23.2

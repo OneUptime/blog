@@ -20,7 +20,7 @@ The core benefit is consistency. When every team member develops inside the same
 
 A typical Dev Container setup lives in the `.devcontainer` directory at your project root:
 
-```
+```text
 project/
 ├── .devcontainer/
 │   ├── devcontainer.json    # Main configuration file

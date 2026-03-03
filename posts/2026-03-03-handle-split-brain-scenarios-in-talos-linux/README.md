@@ -28,7 +28,7 @@ In a 3-node control plane cluster, a partition might split nodes into groups of 
 
 etcd's Raft consensus algorithm is specifically designed to prevent split-brain. Here is how it works:
 
-```
+```text
 Scenario: 3-node cluster partitioned into 2+1
 
 Group A (2 nodes): Has quorum (2 >= 2)
@@ -76,7 +76,7 @@ kubectl describe node <node-name> | grep -A 5 "Conditions"
 
 While etcd prevents control-plane split-brain, applications can still experience split-brain at the data level. Consider this scenario:
 
-```
+```text
 Before partition:
   - PostgreSQL primary on Node A (Zone 1)
   - PostgreSQL replica on Node B (Zone 2)

@@ -180,7 +180,7 @@ df -hT /data
 
 Output should show the filesystem type and available space:
 
-```
+```text
 Filesystem     Type  Size  Used Avail Use% Mounted on
 /dev/sdb1      ext4  196G   60M  186G   1% /data
 ```

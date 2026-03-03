@@ -16,7 +16,7 @@ Docker captures stdout and stderr from containers and routes them through a logg
 
 Here is how the logging flow works:
 
-```
+```text
 Container Process -> stdout/stderr -> Docker Daemon -> Logging Driver -> Destination
 ```
 

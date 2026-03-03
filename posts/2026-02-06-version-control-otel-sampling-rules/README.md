@@ -20,7 +20,7 @@ Everything related to your OpenTelemetry pipeline should live in a Git repositor
 
 ## Repository Structure
 
-```
+```text
 otel-config/
   README.md
   sampling/

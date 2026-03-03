@@ -36,7 +36,7 @@ When you run `terraform plan` or `terraform apply`, Terraform:
 3. Performs the operation
 4. Releases the lock when complete
 
-```
+```text
                     +------------------+
                     |  terraform apply |
                     +--------+---------+

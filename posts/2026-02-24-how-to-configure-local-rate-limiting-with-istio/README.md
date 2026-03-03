@@ -283,7 +283,7 @@ kubectl exec my-service-pod -c istio-proxy -- \
 
 You will see counters like:
 
-```
+```text
 http_local_rate_limiter.http_local_rate_limit.enabled: 1500
 http_local_rate_limiter.http_local_rate_limit.enforced: 1500
 http_local_rate_limiter.http_local_rate_limit.ok: 1400

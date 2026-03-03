@@ -232,7 +232,7 @@ kubectl top pods -n my-app --containers | grep istio-proxy
 
 For more detailed metrics, query Prometheus:
 
-```
+```text
 # Average CPU usage of sidecar proxies
 avg(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])) by (pod)
 

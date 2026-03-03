@@ -10,13 +10,13 @@ Description: Resolve the gRPC Unavailable error in ArgoCD caused by server conne
 
 The `rpc error: code = Unavailable` message in ArgoCD is a gRPC-level error indicating that the client could not establish a connection to the server. You will typically see this when using the ArgoCD CLI, but it can also surface in the API server logs or the application controller logs. The error looks something like this:
 
-```
+```text
 rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.96.x.x:8083: connect: connection refused"
 ```
 
 Or sometimes more cryptically:
 
-```
+```text
 rpc error: code = Unavailable desc = transport is closing
 ```
 

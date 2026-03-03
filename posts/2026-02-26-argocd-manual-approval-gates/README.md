@@ -157,7 +157,7 @@ spec:
 
 Configure GitHub branch protection on `release/production`:
 
-```
+```text
 Required reviewers: 2
 Required review from: @sre-team
 Require status checks to pass:

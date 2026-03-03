@@ -166,7 +166,7 @@ if __name__ == "__main__":
 
 Running this produces:
 
-```
+```text
 Found PERSON: 'John Smith' (confidence: 0.85)
 Found EMAIL_ADDRESS: 'john.smith@example.com' (confidence: 1.00)
 Found PHONE_NUMBER: '555-123-4567' (confidence: 0.75)

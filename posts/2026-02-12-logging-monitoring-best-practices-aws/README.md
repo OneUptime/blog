@@ -168,7 +168,7 @@ Structured logs let you use CloudWatch Logs Insights to query across millions of
 
 Here's how you'd query these structured logs in CloudWatch Logs Insights.
 
-```
+```text
 # Find slow requests
 fields @timestamp, request_id, duration_ms, message
 | filter duration_ms > 1000

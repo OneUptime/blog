@@ -41,7 +41,7 @@ sbt new playframework/play-scala-seed.g8
 
 This creates the following project structure:
 
-```
+```text
 user-api/
 ├── app/
 │   ├── controllers/
@@ -78,7 +78,7 @@ libraryDependencies ++= Seq(
 
 Play uses a DSL-based routing system defined in the `conf/routes` file. Each route maps an HTTP method and URL pattern to a controller action.
 
-```
+```text
 # conf/routes
 # Format: HTTP_METHOD    URL_PATTERN    CONTROLLER.ACTION
 

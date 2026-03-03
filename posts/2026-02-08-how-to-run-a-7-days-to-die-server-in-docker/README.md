@@ -161,7 +161,7 @@ docker exec -it 7dtd-server bash -c "telnet localhost 8081"
 
 Common console commands.
 
-```
+```text
 # List connected players
 listplayers
 

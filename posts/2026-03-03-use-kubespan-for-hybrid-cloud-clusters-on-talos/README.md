@@ -14,7 +14,7 @@ Hybrid cloud clusters are one of the strongest use cases for KubeSpan in Talos L
 
 A typical hybrid cloud setup with Talos Linux and KubeSpan looks like this:
 
-```
+```text
 On-Premises Data Center
   - 3 control plane nodes (bare metal)
   - 5 worker nodes (bare metal)

@@ -185,7 +185,7 @@ for item in sorted(spark.sparkContext.getConf().getAll()):
 When you specify a `--bucket` during cluster creation, notebooks are automatically saved to GCS. This means your work persists even if the cluster is deleted.
 
 The notebooks are stored at:
-```
+```text
 gs://my-notebooks-bucket/notebooks/jupyter/
 ```
 

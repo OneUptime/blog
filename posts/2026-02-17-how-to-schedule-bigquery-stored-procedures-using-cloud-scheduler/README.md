@@ -119,7 +119,7 @@ def trigger_daily_etl(request):
 
 The requirements file for the Cloud Function.
 
-```
+```text
 # requirements.txt
 functions-framework==3.*
 google-cloud-bigquery>=3.0.0

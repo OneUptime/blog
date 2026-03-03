@@ -53,7 +53,7 @@ server = {
 
 If someone passes the wrong type, Terraform catches it immediately:
 
-```
+```text
 Error: Invalid value for variable
 
   on variables.tf line 1:

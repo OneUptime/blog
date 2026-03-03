@@ -100,7 +100,7 @@ APT doesn't automatically read the `http_proxy` environment variable in all situ
 sudo nano /etc/apt/apt.conf.d/95proxy
 ```
 
-```
+```text
 # APT proxy configuration
 Acquire::http::Proxy "http://proxy.example.com:3128/";
 Acquire::https::Proxy "http://proxy.example.com:3128/";
@@ -243,7 +243,7 @@ sudo visudo
 
 Add this line to preserve proxy variables:
 
-```
+```text
 Defaults env_keep += "http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY"
 ```
 

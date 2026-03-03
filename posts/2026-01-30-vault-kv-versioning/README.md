@@ -85,7 +85,7 @@ vault read secret/config
 
 Output:
 
-```
+```text
 Key                     Value
 ---                     -----
 cas_required            false
@@ -165,7 +165,7 @@ vault kv metadata get secret/myapp/config
 
 Output:
 
-```
+```text
 ========== Metadata ==========
 Key                     Value
 ---                     -----

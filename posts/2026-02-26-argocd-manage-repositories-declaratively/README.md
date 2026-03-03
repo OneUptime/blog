@@ -304,7 +304,7 @@ spec:
 
 ## Organizing Repository Manifests
 
-```
+```text
 argocd-config/
   repositories/
     credential-templates/

@@ -142,7 +142,7 @@ flowchart TB
 
 dbt (data build tool) is the standard for ELT transformations. Here is a production-ready project structure:
 
-```
+```text
 your_project/
 ├── dbt_project.yml          # Project configuration
 ├── profiles.yml             # Connection settings (keep out of git!)

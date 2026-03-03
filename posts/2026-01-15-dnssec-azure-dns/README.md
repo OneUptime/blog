@@ -75,7 +75,7 @@ You need one of these Azure RBAC roles:
 
 Or a custom role with the following permissions:
 
-```
+```text
 Microsoft.Network/dnszones/read
 Microsoft.Network/dnszones/write
 Microsoft.Network/dnszones/dnssecConfigs/read
@@ -296,7 +296,7 @@ az network dns dnssec-config show \
 
 This outputs the DS records in the format required by most registrars:
 
-```
+```text
 12345 13 2 AB12CD34EF56789012345678901234567890ABCDEF12345678901234
 ```
 
@@ -512,7 +512,7 @@ dig example.com DNSKEY +dnssec +short
 
 Expected output shows the public keys:
 
-```
+```text
 257 3 13 mdsswUyr3DPW132mOi8V9xESWE8jTo0d...
 256 3 13 oJMRESz5E4gYzS/q6XDrvU1qMPYIjCWz...
 ```
@@ -525,7 +525,7 @@ dig example.com A +dnssec
 
 Look for RRSIG records in the response:
 
-```
+```text
 ;; ANSWER SECTION:
 example.com.    300    IN    A    203.0.113.50
 example.com.    300    IN    RRSIG    A 13 2 300 20260215000000 20260115000000 12345 example.com. ...
@@ -564,14 +564,14 @@ delv example.com A +rtrace
 
 A successful validation shows:
 
-```
+```text
 ; fully validated
 example.com.    300    IN    A    203.0.113.50
 ```
 
 An unsigned or invalid response shows:
 
-```
+```text
 ; unsigned answer
 example.com.    300    IN    A    203.0.113.50
 ```

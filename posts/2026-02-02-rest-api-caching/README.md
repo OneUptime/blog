@@ -28,7 +28,7 @@ HTTP caching relies on response headers that tell clients and intermediaries how
 
 The `Cache-Control` header is where you define caching behavior. Here is what each directive means:
 
-```
+```text
 Cache-Control: public, max-age=3600, s-maxage=7200, must-revalidate
 ```
 

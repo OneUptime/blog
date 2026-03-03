@@ -47,7 +47,7 @@ At the top is a scale bar showing bandwidth increments. The scale adjusts automa
 
 The middle section shows individual connections in this format:
 
-```
+```text
 host1.example.com    =>    remote.server.com      1.5Mb   2.3Mb   2.1Mb
                      <=                           512Kb   890Kb   780Kb
 ```
@@ -60,7 +60,7 @@ host1.example.com    =>    remote.server.com      1.5Mb   2.3Mb   2.1Mb
 
 The bottom shows aggregate totals:
 
-```
+```text
 TX:  cumulative  15.2GB   peak  4.5Mb   rates  3.2Mb  4.1Mb  3.8Mb
 RX:  cumulative  82.1GB   peak  12.3Mb  rates  8.9Mb  11.2Mb  10.5Mb
 TOTAL:           97.3GB   peak  15.1Mb         12.1Mb 15.3Mb  14.3Mb

@@ -20,7 +20,7 @@ kubectl get crds | grep istio
 
 The output will include resources like:
 
-```
+```text
 authorizationpolicies.security.istio.io
 destinationrules.networking.istio.io
 envoyfilters.networking.istio.io

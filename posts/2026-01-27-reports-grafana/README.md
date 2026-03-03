@@ -64,7 +64,7 @@ max_concurrent_screenshots = 5
 ### Verify Installation
 
 Test rendering by accessing:
-```
+```text
 https://grafana.example.com/render/d-solo/abc123/dashboard?panelId=1&width=1000&height=500
 ```
 

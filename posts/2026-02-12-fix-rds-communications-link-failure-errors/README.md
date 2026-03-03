@@ -10,20 +10,20 @@ Description: Diagnose and fix RDS Communications Link Failure errors caused by c
 
 Your application suddenly starts throwing errors like:
 
-```
+```text
 com.mysql.cj.jdbc.exceptions.CommunicationsException:
 Communications link failure
 ```
 
 or in Python:
 
-```
+```text
 OperationalError: (2013, 'Lost connection to MySQL server during query')
 ```
 
 or in PostgreSQL:
 
-```
+```text
 org.postgresql.util.PSQLException: An I/O error occurred while sending to the backend
 ```
 

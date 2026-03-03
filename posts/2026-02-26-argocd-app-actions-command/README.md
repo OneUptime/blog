@@ -36,7 +36,7 @@ argocd app actions list my-app --kind Rollout --group argoproj.io --resource-nam
 
 The output shows available actions:
 
-```
+```text
 ACTION    DISABLED
 restart   false
 ```

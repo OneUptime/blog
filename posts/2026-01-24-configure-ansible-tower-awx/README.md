@@ -525,7 +525,7 @@ curl -k -X POST https://awx.example.com/api/v2/schedules/ \
 
 Common schedule patterns:
 
-```
+```text
 # Every day at 2 AM UTC
 DTSTART:20240101T020000Z RRULE:FREQ=DAILY;INTERVAL=1
 

@@ -26,7 +26,7 @@ A well-designed multi-master architecture follows these principles:
 
 The resources needed for each control plane node depend on your cluster size:
 
-```
+```text
 Cluster Size     | CPU    | Memory | etcd Disk
 (total nodes)    |        |        |
 -----------------+--------+--------+-----------
@@ -44,7 +44,7 @@ etcd performance is heavily dependent on disk I/O. Use SSDs at minimum, and NVMe
 
 For a single data center or cloud region:
 
-```
+```text
                     ┌─────────────────┐
                     │  Load Balancer  │
                     │  192.168.1.100  │
@@ -70,7 +70,7 @@ Distribute masters across different racks or power domains to protect against lo
 
 For cloud deployments across availability zones:
 
-```
+```text
 Zone A              Zone B              Zone C
 ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
 │    CP-1      │   │    CP-2      │   │    CP-3      │
@@ -120,7 +120,7 @@ machine:
 
 For an external HAProxy setup:
 
-```
+```text
 # haproxy.cfg
 global
     maxconn 2048

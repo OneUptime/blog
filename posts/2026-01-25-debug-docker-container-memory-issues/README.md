@@ -51,7 +51,7 @@ docker stats mycontainer --no-stream
 
 Output shows current memory usage versus the limit:
 
-```
+```text
 CONTAINER ID   NAME         CPU %     MEM USAGE / LIMIT     MEM %
 a1b2c3d4e5f6   mycontainer  2.34%     456MiB / 512MiB       89.06%
 ```
@@ -235,7 +235,7 @@ journalctl -k | grep -i "out of memory"
 
 The kernel log shows which process was killed and why:
 
-```
+```text
 [12345.678901] Memory cgroup out of memory: Killed process 1234 (node)
 total-vm:1234567kB, anon-rss:456789kB, file-rss:12345kB
 ```

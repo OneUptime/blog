@@ -175,7 +175,7 @@ Proper data organization is critical for query performance and data governance. 
 
 ### Folder Structure
 
-```
+```text
 s3://datalake-prod-raw-zone/
 ├── source=salesforce/
 │   └── entity=contacts/

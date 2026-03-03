@@ -16,7 +16,7 @@ In this guide, we will cover how to implement comprehensive Terraform standards 
 
 Standards enforcement should happen at multiple levels, creating layers of defense:
 
-```
+```text
 Level 1: IDE/Editor     - Immediate feedback while writing code
 Level 2: Pre-commit     - Catches issues before they enter version control
 Level 3: CI Pipeline    - Validates against organizational policies

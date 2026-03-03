@@ -191,7 +191,7 @@ kubectl exec -n kube-system ipmi-watchdog-xxxxx -- ipmitool mc watchdog get
 
 The watchdog timeout should be long enough to avoid false positives but short enough to provide timely recovery:
 
-```
+```text
 Use case                          Recommended timeout
 -------------------------------------------------
 High availability (HA) cluster    30-60 seconds
@@ -206,7 +206,7 @@ For HA clusters where fast failover is critical, a shorter timeout gets the node
 
 Some servers require the watchdog to be enabled in the BIOS/UEFI before the OS can use it. Common settings to check:
 
-```
+```text
 BIOS Setting                  Required Value
 -------------------------------------------------
 OS Watchdog Timer            Enabled
@@ -222,7 +222,7 @@ If the watchdog module loads but the device does not appear functional, check th
 
 The hardware watchdog works in conjunction with Kubernetes node health monitoring. Here is how the layers interact:
 
-```
+```text
 1. Pod health check fails
    -> Kubernetes restarts the pod (seconds)
 

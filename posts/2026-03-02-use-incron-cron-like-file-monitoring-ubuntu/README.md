@@ -35,7 +35,7 @@ sudo systemctl status incrond
 
 The incron table format is:
 
-```
+```text
 <path> <event_mask> <command>
 ```
 
@@ -93,7 +93,7 @@ The editor opens (defaults to nano or whatever $EDITOR is set to).
 
 ### Reload nginx When Config Changes
 
-```
+```text
 /etc/nginx/nginx.conf IN_CLOSE_WRITE /usr/bin/systemctl reload nginx
 ```
 
@@ -101,7 +101,7 @@ This runs `systemctl reload nginx` every time nginx.conf is saved.
 
 ### Watch a Directory for New Files
 
-```
+```text
 /var/incoming IN_CREATE /usr/local/bin/process-upload.sh $@/$#
 ```
 
@@ -109,7 +109,7 @@ This runs `process-upload.sh` with the full path of any new file created in `/va
 
 ### Log All Changes to a Directory
 
-```
+```text
 /etc IN_ALL_EVENTS logger -t incron "$@ $# $%"
 ```
 
@@ -117,13 +117,13 @@ This logs every event in `/etc` to syslog using the `logger` command.
 
 ### Sync Files to Backup on Change
 
-```
+```text
 /home/webmaster/public_html IN_CLOSE_WRITE rsync -azq /home/webmaster/public_html/ backup@backupserver:/backups/www/
 ```
 
 ### Monitor Configuration File and Restart Service
 
-```
+```text
 /etc/myapp/config.yaml IN_CLOSE_WRITE /bin/bash -c "myapp --validate-config && systemctl restart myapp"
 ```
 
@@ -137,7 +137,7 @@ sudo nano /etc/incron.allow
 
 Add usernames, one per line:
 
-```
+```text
 deploy
 webmaster
 backup
@@ -184,7 +184,7 @@ sudo chmod +x /usr/local/bin/process-image.sh
 
 Add to root's incrontab:
 
-```
+```text
 /var/www/uploads IN_CLOSE_WRITE /usr/local/bin/process-image.sh $@/$#
 ```
 
@@ -222,7 +222,7 @@ sudo chmod +x /usr/local/bin/trigger-build.sh
 
 incrontab entry:
 
-```
+```text
 /var/build-triggers IN_CREATE /usr/local/bin/trigger-build.sh $@/$#
 ```
 
@@ -247,7 +247,7 @@ echo "$MSG" | mail -s "File system alert" admin@example.com
 
 incrontab entry:
 
-```
+```text
 /etc/passwd IN_ATTRIB,IN_CLOSE_WRITE /usr/local/bin/file-change-alert.sh $@/$# $%
 /etc/shadow IN_ATTRIB,IN_CLOSE_WRITE /usr/local/bin/file-change-alert.sh $@/$# $%
 /etc/sudoers IN_ATTRIB,IN_CLOSE_WRITE /usr/local/bin/file-change-alert.sh $@/$# $%
@@ -259,7 +259,7 @@ incrontab entry:
 
 If your command modifies the watched file, it will trigger itself infinitely. For example:
 
-```
+```text
 # BAD - creates infinite loop
 /var/myfile.txt IN_CLOSE_WRITE echo "changed" >> /var/myfile.txt
 ```
@@ -270,7 +270,7 @@ Avoid modifying the watched path in the triggered command.
 
 `IN_MODIFY` fires on every write syscall during a save operation. A single file save can trigger dozens of events. `IN_CLOSE_WRITE` fires once when the file is closed after writing - much more suitable for triggering actions.
 
-```
+```text
 # Better
 /etc/myconfig IN_CLOSE_WRITE /usr/local/bin/reload-service.sh
 
@@ -282,7 +282,7 @@ Avoid modifying the watched path in the triggered command.
 
 Commands in incrontab are executed by `/bin/sh`. Shell special characters need escaping or quoting:
 
-```
+```text
 # Use quotes around variables
 /var/watch IN_CREATE /usr/bin/logger "File created: $@/$#"
 ```

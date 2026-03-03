@@ -604,7 +604,7 @@ Combine static and dynamic inventory sources.
 
 ### Directory-Based Inventory
 
-```
+```text
 inventory/
 ├── 01-static.yml           # Static hosts
 ├── 02-aws_ec2.yml          # AWS dynamic

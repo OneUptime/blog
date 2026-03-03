@@ -621,7 +621,7 @@ def profile_script(redis_client, script, keys, args, runs=100):
 
 ### 1. Script Organization
 
-```
+```text
 project/
 ├── lua_scripts/
 │   ├── rate_limiting/

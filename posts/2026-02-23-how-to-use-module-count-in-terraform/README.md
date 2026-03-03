@@ -194,7 +194,7 @@ module "worker_pool" {
 
 Resources inside a `count` module have numeric indices in their state addresses:
 
-```
+```text
 module.worker_pool[0].aws_ecs_service.this
 module.worker_pool[1].aws_ecs_service.this
 module.worker_pool[2].aws_ecs_service.this

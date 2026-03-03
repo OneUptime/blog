@@ -89,7 +89,7 @@ sequenceDiagram
 
 ### Project Structure
 
-```
+```text
 my-extension/
 ├── extensions/
 │   └── my-extension          # Executable (must match directory name)

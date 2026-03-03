@@ -240,7 +240,7 @@ az monitor diagnostic-settings create \
 
 Query the logs for Kerberos-specific events:
 
-```
+```text
 // KQL query for Bastion Kerberos authentication events
 MicrosoftAzureBastionAuditLogs
 | where OperationName == "BastionSessionEstablished"

@@ -189,7 +189,7 @@ npm install --omit=dev
 
 Create a `.gcloudignore` file:
 
-```
+```text
 # .gcloudignore - files to exclude from deployment
 node_modules/
 tests/

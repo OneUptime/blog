@@ -125,7 +125,7 @@ kubectl logs -n istio-system $ZTUNNEL | grep -i "rbac\|denied\|policy"
 
 You should see messages like:
 
-```
+```text
 WARN ztunnel::proxy::inbound: RBAC: access denied, policy=ns[my-app]-policy[deny-all]-rule[0], source=10.244.1.5, destination=10.244.2.3:8080
 ```
 
@@ -179,7 +179,7 @@ kubectl exec -n istio-system $ZTUNNEL -- \
 
 Look for the SPIFFE ID in the certificate, which should be:
 
-```
+```text
 spiffe://cluster.local/ns/my-app/sa/frontend
 ```
 

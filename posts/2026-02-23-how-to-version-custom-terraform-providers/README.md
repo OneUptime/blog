@@ -30,7 +30,7 @@ Terraform providers follow semantic versioning (SemVer), which uses the format `
 
 Bump the major version when you make breaking changes:
 
-```
+```text
 v1.0.0 -> v2.0.0
 ```
 
@@ -46,7 +46,7 @@ Examples of breaking changes:
 
 Bump the minor version when you add new functionality:
 
-```
+```text
 v1.0.0 -> v1.1.0
 ```
 
@@ -61,7 +61,7 @@ Examples of minor changes:
 
 Bump the patch version for bug fixes:
 
-```
+```text
 v1.0.0 -> v1.0.1
 ```
 
@@ -212,7 +212,7 @@ terraform {
 
 When you release a major version, you may need to maintain the previous version for users who cannot upgrade immediately:
 
-```
+```text
 main branch     -> v2.x development
 release/v1      -> v1.x maintenance
 ```

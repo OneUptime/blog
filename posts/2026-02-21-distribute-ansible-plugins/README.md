@@ -25,7 +25,7 @@ All of these work through the Ansible collections packaging format.
 
 Before distributing, your plugins must be packaged as a collection. Make sure your directory structure is correct:
 
-```
+```text
 myorg/myutils/
   galaxy.yml
   plugins/

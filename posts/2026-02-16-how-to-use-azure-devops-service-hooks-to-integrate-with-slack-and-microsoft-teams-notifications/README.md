@@ -37,14 +37,14 @@ The simplest approach is the official Azure DevOps app for Slack:
 
 Once connected, you can subscribe to specific events:
 
-```
+```text
 /azdevops subscribe https://dev.azure.com/myorg/myproject/_git/my-repo
 /azdevops subscribe https://dev.azure.com/myorg/myproject/_build?definitionId=42
 ```
 
 The app provides default subscriptions for common events, but you can customize them:
 
-```
+```text
 # List current subscriptions
 /azdevops subscriptions
 
@@ -75,7 +75,7 @@ Then in Azure DevOps:
 
 Here is what the service hook configuration looks like for a build completion event:
 
-```
+```text
 Service: Slack
 Event: Build completed
 Filter:
@@ -96,14 +96,14 @@ Similar to Slack, there is an official Azure DevOps app for Microsoft Teams:
 3. Add the app to your desired team and channel
 4. In the channel, type `@Azure DevOps subscribe` followed by the project URL
 
-```
+```text
 @Azure DevOps subscribe https://dev.azure.com/myorg/myproject
 @Azure DevOps subscribe https://dev.azure.com/myorg/myproject/_build?definitionId=42
 ```
 
 You can manage subscriptions with:
 
-```
+```text
 @Azure DevOps subscriptions
 @Azure DevOps unsubscribe --id <subscription-id>
 ```
@@ -203,7 +203,7 @@ Subscribe to:
 
 Service hooks support filters to narrow down which events trigger notifications. Use them aggressively:
 
-```
+```text
 Event: Build completed
 Filters:
   Build definition: my-critical-pipeline  (not all pipelines)
@@ -213,7 +213,7 @@ Filters:
 
 For work item events:
 
-```
+```text
 Event: Work item updated
 Filters:
   Area path: MyProject\Backend            (only backend team items)

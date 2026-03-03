@@ -14,7 +14,7 @@ The "Failed to resolve directive" error is a common issue in Vue applications th
 
 When you see this warning in your console:
 
-```
+```text
 [Vue warn]: Failed to resolve directive: focus
 ```
 

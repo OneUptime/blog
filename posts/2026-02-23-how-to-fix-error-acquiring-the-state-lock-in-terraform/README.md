@@ -10,7 +10,7 @@ Description: How to diagnose and resolve the Error Acquiring the State Lock mess
 
 You run a Terraform command and get this error:
 
-```
+```text
 Error: Error acquiring the state lock
 
 Error message: ConditionalCheckFailedException: The conditional request failed
@@ -91,7 +91,7 @@ terraform force-unlock a1b2c3d4-5678-90ab-cdef-1234567890ab
 
 Terraform will ask you to confirm:
 
-```
+```text
 Do you really want to force-unlock?
   Terraform will remove the lock on the remote state.
   This will allow local Terraform commands to modify this state, even though it

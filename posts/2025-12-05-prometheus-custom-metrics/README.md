@@ -46,7 +46,7 @@ graph TB
 
 Follow these patterns for clear, consistent metrics:
 
-```
+```text
 <namespace>_<subsystem>_<name>_<unit>
 ```
 

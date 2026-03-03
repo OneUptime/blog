@@ -198,7 +198,7 @@ sudo pdnsutil show-zone example.com
 
 Example output:
 
-```
+```text
 Zone is signed with NSEC3 narrow mode
 keys:
 ID = 1 (KSK), flags = 257, tag = 12345, algo = 13, bits = 256    Active    Published  ( ECDSAP256SHA256 )
@@ -214,7 +214,7 @@ sudo pdnsutil show-zone example.com
 
 You'll see output like:
 
-```
+```text
 DS records for example.com:
 example.com. IN DS 12345 13 2 49a9d6b2e2d8912f66de24c925a9a846d8b8b22e...
 example.com. IN DS 12345 13 4 c7ce43f8b9d99d17f8c9c2f9f8e9f7a6b5c4d3e2...

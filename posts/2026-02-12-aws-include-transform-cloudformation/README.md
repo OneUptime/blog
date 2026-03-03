@@ -264,7 +264,7 @@ aws s3 ls s3://123456789012-cfn-snippets/snippets/ --recursive
 
 A good directory structure helps:
 
-```
+```text
 snippets/
   policies/
     lambda-base-policy.yaml

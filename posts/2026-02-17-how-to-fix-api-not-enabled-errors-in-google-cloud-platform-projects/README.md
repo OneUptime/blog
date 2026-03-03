@@ -10,7 +10,7 @@ Description: A complete guide to fixing API not enabled errors in Google Cloud P
 
 If you have worked with GCP for more than a few minutes, you have seen this error:
 
-```
+```text
 ERROR: (gcloud.compute.instances.list) PERMISSION_DENIED:
 Compute Engine API has not been used in project 123456789 before or it is disabled.
 Enable it by visiting https://console.developers.google.com/apis/api/compute.googleapis.com/overview?project=123456789
@@ -116,7 +116,7 @@ Sometimes enabling an API fails. Here are the common reasons.
 
 Most APIs require an active billing account linked to the project:
 
-```
+```text
 ERROR: (gcloud.services.enable) FAILED_PRECONDITION:
 Billing must be enabled for activation of service 'compute.googleapis.com' in project 'my-project'
 ```

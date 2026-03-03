@@ -302,7 +302,7 @@ Resources:
 
 Let's do the math. Assume you have 15 spoke accounts, each needing endpoints for S3, ECR (api + dkr), STS, and CloudWatch Logs (5 endpoints total) across 2 AZs.
 
-```
+```text
 Without sharing:
 - 15 accounts x 5 endpoints x 2 AZs = 150 endpoint interfaces
 - 150 x $7.20/month = $1,080/month

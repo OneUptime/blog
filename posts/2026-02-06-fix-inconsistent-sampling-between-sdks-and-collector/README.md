@@ -292,7 +292,7 @@ export OTEL_TRACES_SAMPLER_ARG=0.25
 
 Second, inspect the `tracestate` and sampling flag on spans arriving at the Collector. The W3C trace context carries sampling information in the `traceparent` header. A sampled trace has the flag set to `01`:
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
                                                                     ^^
                                                               01 = sampled

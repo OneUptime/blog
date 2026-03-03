@@ -175,7 +175,7 @@ spec:
 
 The `requestPrincipal` that Istio sets after successful JWT validation follows this format:
 
-```
+```text
 <issuer>/<subject>
 ```
 

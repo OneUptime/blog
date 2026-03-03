@@ -98,7 +98,7 @@ The flags here are:
 
 Save the output. You will see something like:
 
-```
+```text
 Ended after 60.001s : 145234 calls. qps=2420.5
 Sockets used: 16 (for perfect keepalive, would be 16)
 All done 145234 calls (plus 16 warmup) 6.608 ms avg, 2420.5 qps

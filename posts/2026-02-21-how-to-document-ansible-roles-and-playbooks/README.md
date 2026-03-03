@@ -63,7 +63,7 @@ Installs and configures Nginx as a reverse proxy with SSL termination.
 - `nginx` - All nginx tasks
 - `nginx_config` - Configuration tasks only
 - `nginx_install` - Installation tasks only
-```
+```text
 
 ## Documenting Variables Inline
 

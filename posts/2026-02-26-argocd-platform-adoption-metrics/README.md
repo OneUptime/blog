@@ -378,7 +378,7 @@ Monitor these platform health metrics with [OneUptime](https://oneuptime.com) to
 
 Translate technical metrics into business impact:
 
-```
+```text
 Platform Engineering Monthly Report
 ------------------------------------
 Active Teams: 12 (+2 from last month)

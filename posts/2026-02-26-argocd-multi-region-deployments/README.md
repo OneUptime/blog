@@ -218,7 +218,7 @@ This rolls out to one region at a time. If the deployment fails in US-East, it s
 
 Use Kustomize overlays for region-specific configuration:
 
-```
+```text
 deploy/
   base/
     kustomization.yaml

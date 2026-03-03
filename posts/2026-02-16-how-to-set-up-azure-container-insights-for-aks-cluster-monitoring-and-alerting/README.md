@@ -134,7 +134,7 @@ The real power of Container Insights is in the Log Analytics workspace. Here are
 
 Find pods with high restart counts in the last 24 hours.
 
-```
+```text
 // Pods that restarted more than 3 times in the last 24 hours
 // High restart counts often indicate crash loops or OOM kills
 KubePodInventory
@@ -146,7 +146,7 @@ KubePodInventory
 
 Find nodes approaching memory pressure.
 
-```
+```text
 // Nodes using more than 80% of their allocatable memory
 // Helps catch memory pressure before pods get evicted
 Perf
@@ -164,7 +164,7 @@ Perf
 
 Identify containers that were OOM killed.
 
-```
+```text
 // Find containers terminated due to OOM (Out of Memory)
 // These need memory limit adjustments
 ContainerInventory

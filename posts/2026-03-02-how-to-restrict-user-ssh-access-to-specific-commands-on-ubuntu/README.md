@@ -136,7 +136,7 @@ sudo nano /etc/ssh/sshd_config
 
 ### Restricting Specific Users to Specific Hosts
 
-```
+```text
 # /etc/ssh/sshd_config
 
 # Allow only specific users
@@ -149,7 +149,7 @@ AllowUsers alice bob@192.168.1.0/24 deployuser
 
 `Match` blocks apply settings only when the user, group, or source IP matches:
 
-```
+```text
 # Restrict the 'readonly' user to sftp only
 Match User readonly
     ForceCommand internal-sftp
@@ -191,7 +191,7 @@ sudo chmod 700 /srv/sftp-users/alice/uploads
 
 Configure sshd_config:
 
-```
+```text
 # SFTP-only with chroot
 Match User alice
     ForceCommand internal-sftp -l INFO

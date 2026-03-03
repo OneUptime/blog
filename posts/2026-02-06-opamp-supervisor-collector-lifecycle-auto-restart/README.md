@@ -163,7 +163,7 @@ Now you have two layers of restart protection. Systemd restarts the supervisor i
 
 When the collector crashes, the supervisor logs the event and initiates a restart:
 
-```
+```text
 2026-02-06T10:15:32Z INFO Agent process exited unexpectedly, exit code: 2
 2026-02-06T10:15:32Z INFO Restarting agent process...
 2026-02-06T10:15:33Z INFO Agent process started, PID: 48291

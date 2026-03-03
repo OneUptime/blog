@@ -40,13 +40,13 @@ sudo journalctl -u kea-dhcp4-server --since "1 hour ago"
 
 Common failure messages and their meanings:
 
-```
+```text
 No subnet declaration for eth0 (192.168.2.50)
 ```
 
 This means DHCP is running on an interface, but there's no subnet in the configuration that includes that interface's IP address. Either add a subnet declaration or restrict which interfaces DHCP listens on.
 
-```
+```text
 Can't create PID file /var/run/dhcp-server/dhcpd.pid: Permission denied.
 ```
 
@@ -56,7 +56,7 @@ A permissions problem on the PID file directory. Fix with:
 sudo chown dhcpd:dhcpd /var/run/dhcp-server/
 ```
 
-```
+```text
 Not configured to listen on any interfaces!
 ```
 

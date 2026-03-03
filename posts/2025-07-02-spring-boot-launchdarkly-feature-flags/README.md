@@ -1438,7 +1438,7 @@ class FeatureFlagIntegrationTest {
 
 ### Flag Naming Conventions
 
-```
+```text
 # Boolean flags: Use clear yes/no naming
 enable-dark-mode           # Good
 dark-mode                  # Good

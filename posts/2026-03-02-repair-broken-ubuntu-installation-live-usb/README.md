@@ -164,7 +164,7 @@ nano /etc/fstab
 
 A minimal fstab for a single-disk system looks like:
 
-```
+```text
 # <file system>  <mount point>  <type>  <options>        <dump>  <pass>
 UUID=xxxx-xxxx   /              ext4    errors=remount-ro  0       1
 UUID=xxxx-xxxx   /boot/efi      vfat    umask=0077         0       1

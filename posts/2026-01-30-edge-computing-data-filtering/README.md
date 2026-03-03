@@ -289,7 +289,7 @@ if __name__ == "__main__":
 ```
 
 **Output:**
-```
+```text
 Processing sensor readings...
 --------------------------------------------------
 Value:   22.3 -> PASS
@@ -2144,7 +2144,7 @@ Edge devices often have limited memory. Use these strategies:
 
 ### Bandwidth Estimation
 
-```
+```text
 Raw bandwidth = sensors x readings_per_second x bytes_per_reading
 
 With filtering:

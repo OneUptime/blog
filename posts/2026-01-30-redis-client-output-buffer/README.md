@@ -78,7 +78,7 @@ Pub/Sub clients are connections that have subscribed to one or more channels or 
 
 Redis provides the `client-output-buffer-limit` directive to control buffer behavior. The syntax is:
 
-```
+```text
 client-output-buffer-limit <class> <hard limit> <soft limit> <soft seconds>
 ```
 
@@ -198,7 +198,7 @@ CLIENT LIST
 
 Example output:
 
-```
+```text
 id=5 addr=127.0.0.1:52342 fd=8 name= age=120 idle=0 flags=N db=0 sub=0 psub=0 multi=-1 qbuf=26 qbuf-free=32742 obl=0 oll=0 omem=0 events=r cmd=client
 ```
 
@@ -256,7 +256,7 @@ INFO clients
 
 Output includes:
 
-```
+```text
 # Clients
 connected_clients:10
 client_recent_max_input_buffer:2

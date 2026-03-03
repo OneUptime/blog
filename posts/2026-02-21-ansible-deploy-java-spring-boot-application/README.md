@@ -18,7 +18,7 @@ The approach here is straightforward: build the JAR in your CI pipeline, upload 
 
 ## Project Structure
 
-```
+```text
 springboot-deploy/
   inventory/
     hosts.yml

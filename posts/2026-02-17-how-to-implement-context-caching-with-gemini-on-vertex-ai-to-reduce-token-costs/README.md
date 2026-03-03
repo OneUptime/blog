@@ -288,13 +288,13 @@ print(f"Answer: {result['answer']}")
 Let us calculate the actual savings for a realistic scenario. Say you have a 200-page document (roughly 100,000 tokens) and you ask 20 questions about it.
 
 Without caching:
-```
+```text
 20 requests x 100,000 input tokens = 2,000,000 input tokens
 At $0.00125 per 1K tokens (Gemini 1.5 Pro) = $2.50
 ```
 
 With caching:
-```
+```text
 1 cache creation: 100,000 tokens stored
 20 requests x ~200 query tokens = 4,000 new input tokens
 Cache storage: 100,000 tokens x 1 hour x $0.000315/1K/hr = $0.0315

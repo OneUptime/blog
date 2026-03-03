@@ -83,7 +83,7 @@ GRANT SELECT ON sensitive_data TO auditor;
 
 ## Log Output
 
-```
+```text
 AUDIT: SESSION,1,1,DDL,CREATE TABLE,TABLE,public.test,CREATE TABLE test (id int);
 AUDIT: SESSION,2,1,WRITE,INSERT,TABLE,public.users,INSERT INTO users VALUES (1, 'test');
 ```

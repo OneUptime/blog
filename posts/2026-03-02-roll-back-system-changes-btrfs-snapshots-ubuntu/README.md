@@ -32,7 +32,7 @@ sudo btrfs subvolume list /
 
 A typical Ubuntu Btrfs layout looks like:
 
-```
+```text
 ID 256 gen 12345 top level 5 path @
 ID 257 gen 12340 top level 5 path @home
 ```
@@ -116,7 +116,7 @@ cat /etc/fstab
 
 Find the root entry, which might look like:
 
-```
+```text
 UUID=abc123 / btrfs defaults,subvol=@ 0 1
 ```
 
@@ -126,7 +126,7 @@ To test booting into a snapshot temporarily, add a custom GRUB menu entry. Edit 
 sudo nano /etc/grub.d/40_custom
 ```
 
-```
+```text
 menuentry 'Ubuntu - Rollback Snapshot' {
     insmod btrfs
     search --no-floppy --fs-uuid --set=root abc123
@@ -184,7 +184,7 @@ The most useful automation is snapshotting before every apt upgrade:
 sudo nano /etc/apt/apt.conf.d/80btrfs-snapshot
 ```
 
-```
+```text
 DPkg::Pre-Invoke {
     "if [ -x /usr/bin/timeshift ]; then timeshift --create --comments 'Pre-dpkg snapshot' --tags O --scripted; fi"
 };

@@ -142,7 +142,7 @@ echo 'export ANSIBLE_COLLECTIONS_PATH="./collections:~/.ansible/collections"' >>
 
 Here is a recommended project structure incorporating collections:
 
-```
+```text
 project/
 ├── ansible.cfg
 ├── requirements.yml
@@ -239,7 +239,7 @@ build_ignore:
 
 ### Adding Content to Collection
 
-```
+```text
 mycompany/myapp/
 ├── galaxy.yml
 ├── README.md

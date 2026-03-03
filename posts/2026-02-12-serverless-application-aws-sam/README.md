@@ -35,7 +35,7 @@ sam --version
 
 A typical SAM project looks like this:
 
-```
+```text
 my-app/
   template.yaml          # SAM template (infrastructure definition)
   samconfig.toml         # Deployment configuration

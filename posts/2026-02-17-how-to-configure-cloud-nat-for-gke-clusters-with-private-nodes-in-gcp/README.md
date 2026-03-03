@@ -158,13 +158,13 @@ gcloud compute routers nats update gke-nat-gateway \
 
 When GKE autoscaler adds new nodes, those nodes automatically use the existing Cloud NAT gateway. No configuration changes are needed. However, you should plan your NAT capacity for the maximum number of nodes your cluster might scale to:
 
-```
+```text
 Required ports = Max nodes x Max pods per node x Avg connections per pod
 Required NAT IPs = Required ports / 64,512
 ```
 
 For example, with 50 max nodes, 30 pods per node, and 50 connections per pod:
-```
+```text
 50 x 30 x 50 = 75,000 ports needed
 75,000 / 64,512 = 2 NAT IPs minimum (round up for headroom)
 ```

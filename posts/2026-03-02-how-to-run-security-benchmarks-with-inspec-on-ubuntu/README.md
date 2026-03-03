@@ -322,7 +322,7 @@ compliance-check:
 
 InSpec output categorizes controls by status:
 
-```
+```text
 Profile: My Company Baseline (my-company-baseline)
 Version: 1.0.0
 Target OS: ubuntu 22.04

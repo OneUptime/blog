@@ -72,7 +72,7 @@ Cognito publishes its public keys at a well-known URL. You'll use these keys to 
 
 The JWKS URL follows this pattern:
 
-```
+```text
 https://cognito-idp.{region}.amazonaws.com/{userPoolId}/.well-known/jwks.json
 ```
 

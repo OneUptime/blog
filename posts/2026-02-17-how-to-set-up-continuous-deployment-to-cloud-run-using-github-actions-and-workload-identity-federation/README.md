@@ -150,7 +150,7 @@ gcloud iam workload-identity-pools providers describe github-provider \
 ```
 
 This outputs something like:
-```
+```text
 projects/123456789/locations/global/workloadIdentityPools/github-pool/providers/github-provider
 ```
 

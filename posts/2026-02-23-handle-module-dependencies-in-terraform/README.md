@@ -57,7 +57,7 @@ module "ec2" {
 
 Terraform's dependency graph looks like:
 
-```
+```text
 vpc --> security_group --> ec2
   \________________________/
 ```
@@ -129,7 +129,7 @@ Dependency injection is better because:
 
 Circular dependencies happen when module A depends on module B and module B depends on module A. Terraform will throw an error:
 
-```
+```text
 Error: Cycle: module.a, module.b
 ```
 

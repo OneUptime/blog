@@ -64,7 +64,7 @@ flowchart TB
 
 The recommended formula for calculating the total number of PGs for a pool is:
 
-```
+```text
 Total PGs = (Target PGs per OSD * Total OSDs * Pool Data Percentage) / Replication Factor
 ```
 
@@ -111,7 +111,7 @@ echo "Recommended PG count (nearest power of 2): $RECOMMENDED_PGS"
 ```
 
 Output:
-```
+```text
 Raw PG calculation: 256
 Recommended PG count (nearest power of 2): 256
 ```

@@ -20,7 +20,7 @@ The script walks through several prompts. Here is what each one does and the rec
 
 ### VALIDATE PASSWORD Component
 
-```
+```text
 VALIDATE PASSWORD COMPONENT can be used to test passwords
 and improve security. It checks the strength of password
 and allows the users to set only those passwords which are
@@ -31,7 +31,7 @@ Would you like to setup VALIDATE PASSWORD component? [Y/n]
 
 Answer **Y**. This enforces password strength for new user creation.
 
-```
+```text
 There are three levels of password validation policy:
 LOW    Length >= 8
 MEDIUM Length >= 8, numeric, mixed case, and special characters
@@ -44,7 +44,7 @@ Use **2 (STRONG)** for production servers.
 
 ### Change Root Password
 
-```
+```text
 Change the password for root? [Y/n]
 ```
 
@@ -52,7 +52,7 @@ If root uses `auth_socket` (the default on Ubuntu), you might answer N and keep 
 
 ### Remove Anonymous Users
 
-```
+```text
 Remove anonymous users? [Y/n]
 ```
 
@@ -60,7 +60,7 @@ Always answer **Y**. Anonymous users allow anyone to log into MySQL without a pa
 
 ### Disallow Root Login Remotely
 
-```
+```text
 Disallow root login remotely? [Y/n]
 ```
 
@@ -68,7 +68,7 @@ Always answer **Y**. The root account should never be accessible over the networ
 
 ### Remove Test Database
 
-```
+```text
 Remove test database and access to it? [Y/n]
 ```
 
@@ -76,7 +76,7 @@ Answer **Y**. The test database is accessible to anonymous users by default and 
 
 ### Reload Privilege Tables
 
-```
+```text
 Reload privilege tables now? [Y/n]
 ```
 

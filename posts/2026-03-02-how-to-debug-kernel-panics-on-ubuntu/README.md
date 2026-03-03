@@ -14,7 +14,7 @@ A kernel panic is the Linux equivalent of a Windows blue screen of death. The ke
 
 When a kernel panic occurs, the kernel prints a diagnostic message before halting. This message contains crucial information:
 
-```
+```text
 Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)
 CPU: 0 PID: 1 Comm: swapper/0 Not tainted 6.8.0-51-generic #52-Ubuntu
 Hardware name: ...
@@ -117,7 +117,7 @@ journalctl -b -2  # Two boots ago
 
 The call trace is the most important part of a panic message. It shows the sequence of function calls:
 
-```
+```text
 Call Trace:
  <TASK>
  dump_stack_lvl+0x4a/0x80
@@ -209,7 +209,7 @@ crash> quit
 
 ### NULL Pointer Dereference
 
-```
+```text
 BUG: kernel NULL pointer dereference, address: 0000000000000000
 ```
 
@@ -227,7 +227,7 @@ modinfo <module_name>
 
 ### Out of Memory Killer (OOM)
 
-```
+```text
 Out of memory: Kill process 12345 (some-process) score 850 or sacrifice child
 ```
 
@@ -250,7 +250,7 @@ vmstat -s
 
 ### Hung Task
 
-```
+```text
 INFO: task kworker:0:2 blocked for more than 120 seconds
 ```
 
@@ -269,7 +269,7 @@ dmesg | grep -i "EXT4-fs error\|XFS.*error"
 
 ### Stack Overflow
 
-```
+```text
 Kernel stack overflow detected
 ```
 
@@ -277,7 +277,7 @@ A kernel thread exhausted its stack. Usually caused by deep recursion in a drive
 
 ### Hardware Errors (MCE)
 
-```
+```text
 EDAC PCI: ECC disabled in the BIOS
 mce: Hardware Error: Machine check events logged
 ```

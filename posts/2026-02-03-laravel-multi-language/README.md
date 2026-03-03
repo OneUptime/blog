@@ -35,7 +35,7 @@ Laravel supports two formats for language files: PHP arrays and JSON. PHP files 
 
 Create your language directories under `lang`:
 
-```
+```text
 lang/
 ├── en/
 │   ├── messages.php

@@ -176,7 +176,7 @@ If you're not using Route 53, you'll need CNAME records. Note that CNAMEs can't 
 
 For most external DNS providers, add these records:
 
-```
+```text
 www.example.com    CNAME    www.example.com.s3-website-us-east-1.amazonaws.com
 ```
 

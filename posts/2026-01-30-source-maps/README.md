@@ -351,7 +351,7 @@ flowchart TB
 
 Deploy source maps alongside your JavaScript files:
 
-```
+```text
 dist/
   main.abc123.js
   main.abc123.js.map
@@ -573,7 +573,7 @@ module.exports = {
 
 This allows error tracking services to show original file names and line numbers without exposing actual code:
 
-```
+```text
 Error: User authentication failed
     at validateToken (src/auth/validator.ts:47:12)
     at authenticateUser (src/auth/service.ts:23:5)

@@ -36,7 +36,7 @@ Kiali offers four graph types, each showing dependencies from a different angle:
 
 ### App Graph
 
-```
+```text
 Graph Type: App
 ```
 
@@ -44,7 +44,7 @@ This groups all workloads by their `app` label. If you have `reviews-v1`, `revie
 
 ### Versioned App Graph
 
-```
+```text
 Graph Type: Versioned App
 ```
 
@@ -52,7 +52,7 @@ Same as the app graph, but it splits out different versions. You'll see `reviews
 
 ### Workload Graph
 
-```
+```text
 Graph Type: Workload
 ```
 
@@ -60,7 +60,7 @@ Shows individual workloads (Deployments, StatefulSets, etc.) as separate nodes. 
 
 ### Service Graph
 
-```
+```text
 Graph Type: Service
 ```
 
@@ -106,13 +106,13 @@ With large meshes, the full graph can be overwhelming. Kiali provides several wa
 
 Use the "Find" box to highlight specific services:
 
-```
+```text
 node = "reviews"
 ```
 
 Or hide nodes that clutter the graph:
 
-```
+```text
 node = "istio-ingressgateway"
 ```
 

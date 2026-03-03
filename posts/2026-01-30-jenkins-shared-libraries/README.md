@@ -16,7 +16,7 @@ This guide builds on basic shared library knowledge and dives into sophisticated
 
 While the basic structure includes `vars/`, `src/`, and `resources/`, production libraries benefit from additional organization.
 
-```
+```text
 (root)
 +-- src/
 |   +-- org/

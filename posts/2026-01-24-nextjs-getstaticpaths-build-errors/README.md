@@ -31,7 +31,7 @@ flowchart TD
 
 ### The Error
 
-```
+```text
 Error: getStaticPaths is required for dynamic SSG pages and is missing
 for '/posts/[slug]'.
 ```
@@ -100,7 +100,7 @@ export const getStaticProps: GetStaticProps<PostPageProps> = async ({ params }) 
 
 ### The Error
 
-```
+```text
 Error: Additional keys were returned from `getStaticPaths` in page "/posts/[slug]".
 URL Parameters intended for this dynamic route must be nested under `params`.
 ```
@@ -141,7 +141,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
 
 ### The Error
 
-```
+```text
 Error: A required parameter (id) was not provided as a string in getStaticPaths
 for /products/[id]
 ```
@@ -196,7 +196,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
 
 ### The Error
 
-```
+```text
 Error: A required parameter (category) was not provided as a string in
 getStaticPaths for /shop/[category]/[productId]
 ```
@@ -244,7 +244,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
 
 ### The Error
 
-```
+```text
 Error: A required parameter (slug) was not provided as an array in
 getStaticPaths for /docs/[...slug]
 ```
@@ -346,7 +346,7 @@ export const getStaticProps: GetStaticProps = async ({ params }) => {
 
 ### The Error
 
-```
+```text
 Error: getStaticPaths for /posts/[slug] returned an empty paths array.
 ```
 
@@ -467,7 +467,7 @@ export const getStaticProps: GetStaticProps = async ({ params }) => {
 
 ### The Error
 
-```
+```text
 Error: fetch failed
     at getStaticPaths (/pages/posts/[slug].tsx:25:20)
 ```
@@ -518,7 +518,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
 
 ### The Error
 
-```
+```text
 Error: getStaticPaths locales mismatch
 ```
 

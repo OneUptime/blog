@@ -61,7 +61,7 @@ graph TD
 
 Restructure your Kustomize layout:
 
-```
+```text
 platform/
   crds/
     base/

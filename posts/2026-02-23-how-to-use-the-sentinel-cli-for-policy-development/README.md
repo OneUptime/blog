@@ -73,7 +73,7 @@ sentinel test -config sentinel.hcl
 
 Normal output:
 
-```
+```text
 $ sentinel test
 PASS - enforce-tags.sentinel
 PASS - restrict-instance-types.sentinel
@@ -82,7 +82,7 @@ FAIL - enforce-encryption.sentinel
 
 Verbose output:
 
-```
+```text
 $ sentinel test -verbose
 PASS - enforce-tags.sentinel
   PASS - test/enforce-tags/pass-tagged.hcl
@@ -117,7 +117,7 @@ sentinel apply -trace -config test/enforce-tags/pass.hcl enforce-tags.sentinel
 
 The `-trace` flag shows the evaluation of each rule:
 
-```
+```text
 $ sentinel apply -trace -config test/enforce-tags/pass.hcl enforce-tags.sentinel
 Pass - enforce-tags.sentinel
 

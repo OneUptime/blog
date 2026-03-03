@@ -73,7 +73,7 @@ sequenceDiagram
 
 The interface identifier is derived from the MAC address:
 
-```
+```text
 MAC Address: 00:1A:2B:3C:4D:5E
 
 Step 1: Insert FFFE in middle

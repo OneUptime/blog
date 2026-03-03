@@ -86,7 +86,7 @@ Get the HCX Connector OVA from the HCX Cloud Manager URL. You can find this URL 
 
 Deploy the OVA in your on-premises vCenter.
 
-```
+```text
 In vCenter:
 1. Right-click your cluster > Deploy OVF Template
 2. Select the downloaded HCX Connector OVA
@@ -131,7 +131,7 @@ Network profiles define the IP pools and networks that HCX appliances use. You n
 - **vMotion** - For live migration traffic.
 - **Uplink** - For external connectivity.
 
-```
+```text
 In HCX Manager:
 1. Go to Interconnect > Network Profiles
 2. Create Management profile:

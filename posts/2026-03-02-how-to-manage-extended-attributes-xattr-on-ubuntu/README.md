@@ -68,7 +68,7 @@ getfattr -n user.comment /etc/nginx/nginx.conf
 
 Output:
 
-```
+```text
 # file: etc/nginx/nginx.conf
 user.comment="This file was reviewed on 2026-03-02"
 ```

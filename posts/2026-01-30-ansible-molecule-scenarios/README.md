@@ -96,7 +96,7 @@ molecule init scenario --driver-name docker
 
 This creates the default scenario structure:
 
-```
+```text
 my_role/
 ├── defaults/
 ├── handlers/
@@ -283,7 +283,7 @@ Real roles need testing across multiple configurations. Create separate scenario
 
 ### Scenario Structure
 
-```
+```text
 molecule/
 ├── default/
 │   ├── converge.yml
@@ -640,7 +640,7 @@ molecule list
 
 Output:
 
-```
+```text
 Instance Name    Driver Name    Provisioner Name    Scenario Name    Created    Converged
 ---------------  -------------  ------------------  ---------------  ---------  -----------
 ubuntu-jammy     docker         ansible             default          true       true

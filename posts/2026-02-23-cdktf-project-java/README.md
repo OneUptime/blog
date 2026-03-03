@@ -37,7 +37,7 @@ cdktf init --template=java --local
 
 This creates a Maven project with the following structure:
 
-```
+```text
 cdktf-java-demo/
   src/
     main/

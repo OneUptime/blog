@@ -16,7 +16,7 @@ Should each microservice get its own ArgoCD Application, or should you bundle re
 
 Each microservice or component has its own ArgoCD Application.
 
-```
+```text
 ArgoCD Applications:
   - user-service
   - order-service
@@ -30,7 +30,7 @@ ArgoCD Applications:
 
 Related services are grouped into a single ArgoCD Application that deploys them together.
 
-```
+```text
 ArgoCD Applications:
   - platform (contains: user-service, order-service, payment-service,
               notification-service, frontend, api-gateway)
@@ -38,7 +38,7 @@ ArgoCD Applications:
 
 Or a middle ground with logical groupings:
 
-```
+```text
 ArgoCD Applications:
   - backend (user-service, order-service, payment-service)
   - frontend (frontend, api-gateway)

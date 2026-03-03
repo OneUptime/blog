@@ -46,7 +46,7 @@ cat /etc/anacrontab
 
 The default content looks like:
 
-```
+```text
 # /etc/anacrontab: configuration file for anacron
 
 # See anacron(8) and anacrontab(5) for details.
@@ -64,7 +64,7 @@ LOGNAME=root
 
 The format of each job line:
 
-```
+```text
 period  delay  job-identifier  command
 ```
 
@@ -81,7 +81,7 @@ Edit `/etc/anacrontab` to add jobs:
 sudo nano /etc/anacrontab
 ```
 
-```
+```text
 # Run a backup every day, with a 10-minute delay after boot
 1       10      daily-backup    /usr/local/bin/backup.sh
 

@@ -63,7 +63,7 @@ infracost breakdown --path plan.json
 
 The output shows a detailed breakdown:
 
-```
+```text
 Project: main
 
  Name                                     Monthly Qty  Unit   Monthly Cost
@@ -103,7 +103,7 @@ infracost diff --path . --compare-to infracost-base.json
 
 The diff output highlights cost changes:
 
-```
+```text
 Project: main
 
 + aws_instance.web
@@ -227,7 +227,7 @@ jobs:
 
 This posts a comment like:
 
-```
+```text
 ## Infracost Cost Estimate
 
 | Project | Monthly Cost | Diff |

@@ -252,7 +252,7 @@ ip route show
 
 Output of `ip -d link show eth0.100`:
 
-```
+```text
 3: eth0.100@eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default qlen 1000
     link/ether 52:54:00:ab:cd:01 brd ff:ff:ff:ff:ff:ff promiscuity 0 minmtu 0 maxmtu 65535
     vlan protocol 802.1Q id 100 <REORDER_HDR> addrgenmode eui64 numtxqueues 1 numrxqueues 1 gso_max_size 65536 gso_max_segs 65535
@@ -270,7 +270,7 @@ For VLAN traffic to work, the switch port connected to your Ubuntu server must b
 
 For Cisco-style switches:
 
-```
+```text
 interface GigabitEthernet0/1
  switchport mode trunk
  switchport trunk allowed vlan 10,20,30,40,100
@@ -278,7 +278,7 @@ interface GigabitEthernet0/1
 
 For Juniper-style switches:
 
-```
+```text
 set interfaces ge-0/0/0 unit 0 family ethernet-switching interface-mode trunk
 set interfaces ge-0/0/0 unit 0 family ethernet-switching vlan members [VLAN-10 VLAN-20 VLAN-30]
 ```

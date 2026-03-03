@@ -196,7 +196,7 @@ kubectl describe endpointslice api-service-abc123
 
 Look for messages like:
 
-```
+```text
 Normal  TopologyAwareHintsEnabled  Topology aware hints have been added
 Warning TopologyAwareHintsDisabled Unable to allocate minimum required endpoints to each zone
 ```

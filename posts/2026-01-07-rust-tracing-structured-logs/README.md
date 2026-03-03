@@ -18,7 +18,7 @@ The `tracing` crate has become Rust's standard for instrumentation, providing bo
 
 Traditional logging produces output like this:
 
-```
+```text
 2026-01-07 10:15:23 ERROR User login failed for user@example.com
 2026-01-07 10:15:24 INFO Order processed
 ```

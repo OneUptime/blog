@@ -65,7 +65,7 @@ If your workflows execute thousands of times per day, the per-execution cost of 
 
 Here is a rough break-even calculation:
 
-```
+```text
 Consumption cost per action: $0.000025 (standard connector)
 Standard WS1 monthly cost: ~$150
 

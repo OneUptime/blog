@@ -158,7 +158,7 @@ if __name__ == "__main__":
 
 And the requirements file:
 
-```
+```text
 # requirements.txt
 flask==3.0.0
 gunicorn==21.2.0
@@ -339,7 +339,7 @@ pip-compile requirements.in --output-file=requirements.txt
 
 **Use .dockerignore.** Prevent unnecessary files from being copied into the build context:
 
-```
+```text
 # .dockerignore
 .git
 .github

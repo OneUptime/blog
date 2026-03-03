@@ -362,7 +362,7 @@ spec:
 
 Each team gets a directory in the platform config repository:
 
-```
+```text
 teams/
   frontend/
     config.json        # {"team": "frontend", "tier": "standard"}

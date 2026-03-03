@@ -301,7 +301,7 @@ spec:
 
 Create a clear developer guide in your internal documentation:
 
-```
+```text
 # Deploying with ArgoCD - Developer Guide
 
 ## Adding a New Application

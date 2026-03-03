@@ -46,7 +46,7 @@ cron.schedule('0 9 * * 1', () => {
 
 ### Cron Expression Format
 
-```
+```text
  ┌────────────── second (optional, 0-59)
  │ ┌──────────── minute (0-59)
  │ │ ┌────────── hour (0-23)

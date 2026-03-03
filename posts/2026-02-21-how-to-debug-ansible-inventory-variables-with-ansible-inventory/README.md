@@ -51,7 +51,7 @@ ansible-inventory -i inventory.ini --host web1.example.com -vvv
 
 The verbose output shows which files were loaded, in what order, and which variables were set from each file. Look for lines like:
 
-```
+```text
 Loading data from /path/to/group_vars/webservers.yml
 Loading data from /path/to/host_vars/web1.example.com.yml
 ```

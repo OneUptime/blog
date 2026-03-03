@@ -90,7 +90,7 @@ brew install poppler
 
 Organize your extraction system with clear separation of concerns:
 
-```
+```text
 text_extraction/
     __init__.py
     extractors/

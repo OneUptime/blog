@@ -360,7 +360,7 @@ kubectl logs -n reloader -l app=reloader --tail=50
 
 You'll see Reloader detect the change and trigger the update:
 
-```
+```text
 time="2026-02-09T10:30:00Z" level=info msg="Changes detected in configmap: production/frontend-config"
 time="2026-02-09T10:30:00Z" level=info msg="Updating deployment: production/frontend"
 ```

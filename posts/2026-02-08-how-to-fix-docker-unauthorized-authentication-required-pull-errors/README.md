@@ -10,13 +10,13 @@ Description: Fix Docker unauthorized and authentication required errors when pul
 
 You run `docker pull` and instead of your image, you get:
 
-```
+```text
 Error response from daemon: pull access denied for myapp, repository does not exist or may require 'docker login'
 ```
 
 Or:
 
-```
+```text
 Error response from daemon: Head "https://registry.example.com/v2/myapp/manifests/latest": unauthorized: authentication required
 ```
 

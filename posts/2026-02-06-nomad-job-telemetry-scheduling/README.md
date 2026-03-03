@@ -215,7 +215,7 @@ service:
 
 Set up alerts for Nomad scheduling problems:
 
-```
+```text
 # Critical: No Raft leader
 # nomad_raft_leader == 0 on all servers
 

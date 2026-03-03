@@ -12,7 +12,7 @@ When deploying AWS Lambda functions inside a VPC using Terraform, you might enco
 
 The error typically appears during `terraform apply`:
 
-```
+```text
 Error: error creating Lambda Function: InvalidParameterValueException:
 The provided execution role does not have permissions to call
 DescribeNetworkInterfaces on EC2

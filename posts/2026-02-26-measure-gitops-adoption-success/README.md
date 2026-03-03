@@ -172,7 +172,7 @@ After GitOps adoption, the same activities should take significantly less time b
 
 Track the number of on-call pages caused by deployment issues before and after GitOps:
 
-```
+```text
 Before GitOps: 8 deployment-related pages/month
 After GitOps (Month 1): 6 deployment-related pages/month
 After GitOps (Month 3): 3 deployment-related pages/month

@@ -20,7 +20,7 @@ Exponential backoff is a retry strategy where the wait time between consecutive 
 
 The basic formula for exponential backoff is:
 
-```
+```text
 wait_time = base_delay * (2 ^ attempt_number)
 ```
 

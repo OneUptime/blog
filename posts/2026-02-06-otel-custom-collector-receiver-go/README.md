@@ -12,7 +12,7 @@ The OpenTelemetry Collector has dozens of built-in receivers, but sometimes you 
 
 A collector receiver is a Go module with a specific structure:
 
-```
+```text
 myreceiver/
     factory.go      # Creates receiver instances from config
     config.go       # Configuration struct

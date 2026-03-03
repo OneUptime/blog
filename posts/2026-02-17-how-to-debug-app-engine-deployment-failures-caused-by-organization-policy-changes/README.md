@@ -16,19 +16,19 @@ Organization policies in Google Cloud are guardrails that administrators set at 
 
 Organization policy violations typically show up as vague errors during deployment. Here are some you might encounter:
 
-```
+```text
 ERROR: (gcloud.app.deploy) Error Response: [7] The constraints/compute.vmExternalIpAccess organization policy prevents creation of the resource.
 ```
 
-```
+```text
 ERROR: (gcloud.app.deploy) Error Response: [9] Constraint constraints/gcp.resourceLocations violated for project your-project-id.
 ```
 
-```
+```text
 ERROR: (gcloud.app.deploy) Error Response: [7] PERMISSION_DENIED: Organization policy constraint 'constraints/iam.allowedPolicyMemberDomains' violated.
 ```
 
-```
+```text
 ERROR: (gcloud.app.deploy) Cloud build failed. Check the Cloud Build log for details.
 ```
 

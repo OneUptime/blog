@@ -31,19 +31,19 @@ sudo nano /etc/ssh/sshd_config
 
 Find the Port directive. It may be commented out (meaning it defaults to 22):
 
-```
+```text
 # Port 22
 ```
 
 Change it to your chosen port:
 
-```
+```text
 Port 2222
 ```
 
 If you want SSH to listen on multiple ports simultaneously during a transition period, add a second Port line:
 
-```
+```text
 Port 22
 Port 2222
 ```
@@ -123,7 +123,7 @@ If it works, you can now safely remove port 22 from the firewall and from `sshd_
 
 Update your local `~/.ssh/config` so you do not have to type `-p 2222` every time:
 
-```
+```text
 # ~/.ssh/config
 
 Host myserver

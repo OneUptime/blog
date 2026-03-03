@@ -464,7 +464,7 @@ echo "Found $VIOLATIONS expected violations"
 
 Organize test files:
 
-```
+```text
 policies/
 ├── templates/
 │   ├── require-labels.yaml

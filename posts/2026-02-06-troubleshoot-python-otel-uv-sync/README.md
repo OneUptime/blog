@@ -19,7 +19,7 @@ $ opentelemetry-instrument python app.py
 
 Or you see errors like:
 
-```
+```text
 ModuleNotFoundError: No module named 'opentelemetry.instrumentation.flask'
 ```
 
@@ -69,7 +69,7 @@ opentelemetry-bootstrap --action=requirements
 
 This outputs something like:
 
-```
+```text
 opentelemetry-instrumentation-flask==0.42b0
 opentelemetry-instrumentation-requests==0.42b0
 opentelemetry-instrumentation-sqlalchemy==0.42b0

@@ -329,7 +329,7 @@ go test -race ./...
 
 Example race detection output:
 
-```
+```text
 ==================
 WARNING: DATA RACE
 Write at 0x00c000090090 by goroutine 7:

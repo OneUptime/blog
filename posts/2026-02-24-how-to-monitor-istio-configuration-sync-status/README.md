@@ -31,7 +31,7 @@ istioctl proxy-status
 
 The output looks something like this:
 
-```
+```text
 NAME                          CDS        LDS        EDS        RDS        ECDS       ISTIOD
 my-app-7b8d4f-abc12.default  SYNCED     SYNCED     SYNCED     SYNCED     IGNORED    istiod-6b8c5d-xyz
 my-app-7b8d4f-def34.default  STALE      SYNCED     SYNCED     SYNCED     IGNORED    istiod-6b8c5d-xyz

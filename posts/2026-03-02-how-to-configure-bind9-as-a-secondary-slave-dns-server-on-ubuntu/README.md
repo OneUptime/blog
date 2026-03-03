@@ -52,7 +52,7 @@ sudo systemctl status bind9
 sudo nano /etc/bind/named.conf.options
 ```
 
-```
+```text
 options {
     directory "/var/cache/bind";
 
@@ -87,7 +87,7 @@ This is the key difference from a primary configuration. The zone type is `slave
 sudo nano /etc/bind/named.conf.local
 ```
 
-```
+```text
 // Secondary zone for example.com
 zone "example.com" {
     type slave;
@@ -114,7 +114,7 @@ Note that the zone files for a secondary are stored in `/var/cache/bind/` rather
 
 On the primary server, ensure the secondary is allowed to receive zone transfers. Check `/etc/bind/named.conf.local` on the primary:
 
-```
+```text
 zone "example.com" {
     type master;
     file "/etc/bind/zones/db.example.com";
@@ -134,7 +134,7 @@ tsig-keygen -a hmac-sha256 secondary-key
 
 This outputs something like:
 
-```
+```text
 key "secondary-key" {
     algorithm hmac-sha256;
     secret "base64encodedkeyvalue==";
@@ -169,7 +169,7 @@ sudo journalctl -u bind9 -f
 ```
 
 You should see log entries like:
-```
+```text
 transfer of 'example.com/IN' from 192.168.1.10#53: Transfer started.
 transfer of 'example.com/IN' from 192.168.1.10#53: connected using 192.168.1.20#43521
 transfer of 'example.com/IN' from 192.168.1.10#53: Transfer completed: 1 messages, 15 records, 752 bytes, 0.001 secs

@@ -53,13 +53,13 @@ This command checks for:
 
 Example output:
 
-```
+```text
 ✔ No issues found when checking the cluster. Istio is safe to install or upgrade!
 ```
 
 Or with warnings:
 
-```
+```text
 Warning [IST0152] (DestinationRule default/my-rule) This resource is using a deprecated API version.
 Warning [IST0135] (Gateway default/my-gateway) This resource has a conflict with another Gateway resource.
 Error [IST0101] (VirtualService default/my-vs) Referenced host "unknown-service" not found.
@@ -151,7 +151,7 @@ istioctl proxy-status -o json | jq -r '.[] | .proxy.istioVersion' | sort | uniq 
 
 If you already have proxies running mixed versions, make sure the upgrade will not push the version skew beyond one minor version:
 
-```
+```text
 Current: CP 1.20, DP 1.19-1.20
 After upgrade: CP 1.21, DP 1.19-1.21
 Problem: 1.19 is now two minor versions behind
@@ -252,7 +252,7 @@ Verify the Istio ports have not changed in the new version. Common Istio ports:
 
 Document your findings in a report before proceeding:
 
-```
+```text
 ## Istio Upgrade Compatibility Report
 ## Current: 1.20.5 -> Target: 1.21.0
 

@@ -18,7 +18,7 @@ Before debugging failures, let's review what should happen when propagation is w
 
 When Service A makes an HTTP request to Service B, the OpenTelemetry SDK in Service A injects two headers into the outgoing request:
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 tracestate: oneuptime=t61rcWVjZw
 ```

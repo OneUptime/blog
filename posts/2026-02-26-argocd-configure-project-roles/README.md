@@ -23,7 +23,7 @@ A project role is defined within an AppProject and has:
 
 Project role policies follow the same Casbin format as global RBAC, but are scoped to the project:
 
-```
+```text
 p, proj:<project>:<role>, <resource>, <action>, <project>/<object>, <effect>
 ```
 

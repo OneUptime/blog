@@ -27,12 +27,12 @@ go generate ./...
 ```
 
 **Output:**
-```
+```text
 Hello from go generate
 ```
 
 The directive syntax:
-```
+```text
 //go:generate command arguments...
 ```
 

@@ -59,7 +59,7 @@ This is the most common conflict. It happens when:
 - You migrated from Helm to Kustomize but forgot to remove `Chart.yaml`
 - A generator or tool created both files
 
-```
+```text
 my-app/
   Chart.yaml            # ArgoCD picks Helm (higher priority)
   kustomization.yaml    # Kustomize is ignored
@@ -99,7 +99,7 @@ spec:
 
 When both `kustomization.yaml` and `.jsonnet` files exist, Kustomize wins:
 
-```
+```text
 monitoring/
   kustomization.yaml    # Kustomize wins
   main.jsonnet          # Ignored by ArgoCD
@@ -115,7 +115,7 @@ If you want Jsonnet, remove or rename the kustomization file. If you want Kustom
 
 CMP plugins are always checked after built-in tools. If your plugin matches a directory that also has `Chart.yaml`:
 
-```
+```text
 my-app/
   Chart.yaml          # Helm wins over CMP plugin
   *.cue               # CUE plugin discovery ignored
@@ -136,7 +136,7 @@ spec:
 
 When two or more CMP plugins have discovery rules that match the same directory:
 
-```
+```text
 my-app/
   secrets.yaml          # Matches sops-decrypt plugin
   kustomization.yaml    # Matches sops-kustomize plugin
@@ -175,7 +175,7 @@ discover:
 
 The simplest approach - structure your repositories so each directory only contains files for one tool:
 
-```
+```text
 # Good structure - no conflicts possible
 apps/
   my-app-helm/           # Only Helm files

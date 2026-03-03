@@ -46,7 +46,7 @@ Two public subnets across two availability zones for the load balancer and NAT g
 
 Good subnet design starts with CIDR planning. Here's a practical allocation for a `/16` VPC:
 
-```
+```text
 VPC:              10.0.0.0/16  (65,536 addresses)
 
 Public subnets:

@@ -63,7 +63,7 @@ kubectl get pods -n istio-system -l app=istiod
 
 You should see something like:
 
-```
+```text
 NAME                             READY   STATUS    RESTARTS   AGE
 istiod-6b4c4d8f9b-xyz12         1/1     Running   0          30d
 istiod-canary-7c5d6e9f1a-abc34  1/1     Running   0          2m

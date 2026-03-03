@@ -117,7 +117,7 @@ flowchart LR
 
 Raw logs:
 
-```
+```text
 Connection failed to postgres-primary-1: timeout after 5000ms
 Connection failed to postgres-primary-2: timeout after 5000ms
 Connection failed to postgres-replica-1: timeout after 3000ms
@@ -126,7 +126,7 @@ Connection failed to postgres-primary-1: timeout after 5000ms
 
 After pattern detection:
 
-```
+```text
 Template: "Connection failed to <HOST>: timeout after <NUM>ms"
 Count: 4
 Affected hosts: [postgres-primary-1, postgres-primary-2, postgres-replica-1]
@@ -493,7 +493,7 @@ Here is how pattern detection catches a common issue before it escalates.
 
 **Pattern library match:**
 
-```
+```text
 Pattern: "Database Connection Pool Exhaustion"
 Confidence: 0.87
 Past occurrences: 3
@@ -506,7 +506,7 @@ Remediation:
 
 **Single alert generated:**
 
-```
+```text
 [HIGH] Database Connection Pool Exhaustion Detected
 
 Affected services: checkout-service, inventory-service

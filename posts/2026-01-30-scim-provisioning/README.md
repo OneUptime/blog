@@ -78,7 +78,7 @@ npm install express body-parser uuid
 
 ### Project Structure
 
-```
+```text
 scim-server/
 ├── src/
 │   ├── server.js           # Express server setup

@@ -510,7 +510,7 @@ sequenceDiagram
 
 TraceQL is Tempo's query language for searching traces. Here are common query patterns:
 
-```
+```text
 # Find all traces from a specific service
 { resource.service.name = "order-service" }
 

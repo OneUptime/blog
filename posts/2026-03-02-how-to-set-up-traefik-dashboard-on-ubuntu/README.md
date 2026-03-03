@@ -92,7 +92,7 @@ htpasswd -nB admin
 ```
 
 The output will look like:
-```
+```text
 admin:$2y$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
@@ -233,7 +233,7 @@ middlewares:
 
 With the secure configuration in place, navigate to:
 
-```
+```text
 https://traefik.example.com/dashboard/
 ```
 

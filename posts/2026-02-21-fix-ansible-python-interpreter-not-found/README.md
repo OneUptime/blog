@@ -12,7 +12,7 @@ Ansible modules are Python scripts that run on the target host. If Python is not
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "ansible-core requires a minimum of Python version 3.8. Current version: None"
 }
@@ -20,7 +20,7 @@ fatal: [server1]: FAILED! => {
 
 Or:
 
-```
+```text
 [WARNING]: No python interpreters found for host server1
 ```
 

@@ -93,7 +93,7 @@ Before activating the new certificate in Entra ID, you need to give the service 
 
 **Option B: Update the federation metadata URL.** Some service providers can pull metadata automatically from Entra ID's federation metadata endpoint. The URL is:
 
-```
+```text
 https://login.microsoftonline.com/<tenant-id>/federationmetadata/2007-06/federationmetadata.xml?appid=<app-id>
 ```
 

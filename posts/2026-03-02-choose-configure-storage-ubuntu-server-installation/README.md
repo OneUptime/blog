@@ -38,7 +38,7 @@ Benefits of LVM:
 
 When you select "Use an entire disk with LVM", the installer creates:
 
-```
+```text
 Partition table: GPT (on UEFI) or MBR (on BIOS)
 /dev/sda1  1 MB    BIOS boot (BIOS systems) or EFI partition (UEFI)
 /dev/sda2  1 GB    ext4  -> /boot
@@ -61,7 +61,7 @@ Before touching the installer, know your workload:
 
 Separate `/var/log` and `/var/www` to prevent logs from filling the OS disk:
 
-```
+```text
 /boot/efi   512 MB  fat32
 /boot       1 GB    ext4
 /           20 GB   ext4  (LV: lv-root)
@@ -76,7 +76,7 @@ swap        4 GB    swap
 
 Databases benefit from separate partitions on different physical spindles (or NVMe devices):
 
-```
+```text
 /boot/efi   512 MB  fat32  (sda)
 /boot       1 GB    ext4   (sda)
 /           20 GB   ext4   (sda, LV)
@@ -88,7 +88,7 @@ swap        8 GB    swap
 
 Docker stores container data in `/var/lib/docker`. Give it its own volume:
 
-```
+```text
 /boot/efi   512 MB  fat32
 /boot       1 GB    ext4
 /           30 GB   ext4  (LV)
@@ -132,7 +132,7 @@ After marking the partition as LVM PV, click "Create volume group". Name it (e.g
 
 Click on the volume group and create logical volumes:
 
-```
+```text
 # Root filesystem
 Name: lv-root
 Size: 30 GB

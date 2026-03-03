@@ -330,7 +330,7 @@ spec:
 
 Update the Corefile to use the custom hosts file:
 
-```
+```text
 hosts /etc/coredns/custom/custom.hosts {
    fallthrough
 }

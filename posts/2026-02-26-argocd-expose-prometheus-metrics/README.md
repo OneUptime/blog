@@ -56,7 +56,7 @@ curl localhost:8084/metrics | head -20
 
 You should see Prometheus-formatted metrics output with lines like:
 
-```
+```text
 # HELP argocd_app_info Information about application.
 # TYPE argocd_app_info gauge
 argocd_app_info{dest_namespace="default",dest_server="https://kubernetes.default.svc",...} 1

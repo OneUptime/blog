@@ -45,7 +45,7 @@ systemctl status vector
 
 Vector uses TOML (or YAML) for configuration. The structure is:
 
-```
+```text
 [sources.<name>]     - where data comes from
 [transforms.<name>]  - how to process data
 [sinks.<name>]       - where data goes

@@ -305,7 +305,7 @@ provisioner:
 
 This outputs timing information for each task, making it obvious which tasks need optimization.
 
-```
+```text
 Wednesday 21 February 2026  10:30:00 +0000 (0:00:45.123)     0:02:30.456 *****
 ===============================================================================
 Install packages -------------------------------------------- 45.12s

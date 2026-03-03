@@ -74,7 +74,7 @@ sudo blkid
 ```
 
 If fstab has entries like:
-```
+```text
 /dev/sda1  /boot  ext4  defaults  0  2
 /dev/sda2  /      ext4  defaults  0  1
 ```

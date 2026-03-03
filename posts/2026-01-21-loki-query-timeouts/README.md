@@ -14,7 +14,7 @@ Query timeouts in Grafana Loki occur when queries take longer than the configure
 
 ### Error Messages
 
-```
+```text
 context deadline exceeded
 query timeout reached
 rpc error: code = DeadlineExceeded

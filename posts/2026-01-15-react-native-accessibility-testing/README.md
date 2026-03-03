@@ -118,7 +118,7 @@ VoiceOver is Apple's built-in screen reader for iOS devices. Manual testing with
 
 ### Essential VoiceOver Gestures
 
-```
+```text
 | Gesture                  | Action                              |
 |--------------------------|-------------------------------------|
 | Single tap               | Select and speak item               |
@@ -236,7 +236,7 @@ TalkBack is Android's built-in screen reader. While similar to VoiceOver, it has
 
 ### Essential TalkBack Gestures
 
-```
+```text
 | Gesture                    | Action                           |
 |----------------------------|----------------------------------|
 | Single tap                 | Speak item                       |
@@ -360,7 +360,7 @@ The Accessibility Inspector is a powerful tool included with Xcode for auditing 
 
 #### Key Features
 
-```
+```text
 | Feature              | Description                                    |
 |----------------------|------------------------------------------------|
 | Inspection           | View accessibility properties of any element   |

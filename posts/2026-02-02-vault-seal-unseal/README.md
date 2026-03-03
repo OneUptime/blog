@@ -55,7 +55,7 @@ vault operator init -key-shares=5 -key-threshold=3
 
 Sample output from initialization:
 
-```
+```text
 Unseal Key 1: 4jYbl2CBIv6SpkKj6Hos9iD32k5RfGkLzlosrrq/JgOm
 Unseal Key 2: B05G1DRtfYckFV5BbdBvXq0wkK5HFqB9g2jcDmNfTQiS
 Unseal Key 3: Arig0N9rN9ezkTRo7qTB7gsIZDaonOcc53EHo83F5chA
@@ -95,7 +95,7 @@ vault status
 
 Expected output when unsealed:
 
-```
+```text
 Key             Value
 ---             -----
 Seal Type       shamir

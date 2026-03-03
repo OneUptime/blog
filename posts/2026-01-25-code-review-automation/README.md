@@ -30,7 +30,7 @@ Automation addresses these by:
 
 Use CODEOWNERS to assign reviewers based on file paths:
 
-```
+```text
 # .github/CODEOWNERS
 # Each line defines owners for a path pattern
 # Last matching pattern takes precedence

@@ -78,17 +78,17 @@ OpenTelemetry supports several propagation formats. The two most common are:
 
 Jaeger uses the `uber-trace-id` header with a colon-separated format:
 
-```
+```text
 uber-trace-id: {trace-id}:{span-id}:{parent-span-id}:{flags}
 ```
 
 Example:
-```
+```text
 uber-trace-id: 4bf92f3577b34da6a3ce929d0e0e4736:00f067aa0ba902b7:0:1
 ```
 
 It also supports baggage via `uberctx-{key}` headers:
-```
+```text
 uberctx-user-id: 12345
 uberctx-tenant: acme-corp
 ```
@@ -97,13 +97,13 @@ uberctx-tenant: acme-corp
 
 The W3C standard uses two headers:
 
-```
+```text
 traceparent: {version}-{trace-id}-{span-id}-{flags}
 tracestate: {vendor-specific data}
 ```
 
 Example:
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 tracestate: congo=t61rcWkgMzE
 ```

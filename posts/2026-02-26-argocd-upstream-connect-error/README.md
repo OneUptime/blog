@@ -16,7 +16,7 @@ The error originates from the Envoy proxy (used by Istio) or the ingress control
 
 The full error usually looks like:
 
-```
+```text
 upstream connect error or disconnect/reset before headers.
 reset reason: connection failure, transport failure reason:
 delayed connect error: 111

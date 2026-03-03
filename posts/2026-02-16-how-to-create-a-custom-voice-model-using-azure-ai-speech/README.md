@@ -52,7 +52,7 @@ The quality of your custom voice depends heavily on the quality of your training
 **Transcript format:**
 Create a text file where each line has the audio file name and the spoken text, separated by a pipe character:
 
-```
+```text
 recording_001.wav|Welcome to OneUptime monitoring. Your systems are in good hands.
 recording_002.wav|An incident has been detected on the payment service.
 recording_003.wav|All monitors are currently reporting healthy status.

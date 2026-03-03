@@ -80,7 +80,7 @@ helm dependency list ./myapp
 
 The output of `helm dependency list` shows:
 
-```
+```text
 NAME          VERSION   REPOSITORY                                      STATUS
 postgresql    15.5.0    https://charts.bitnami.com/bitnami              ok
 redis         19.0.0    https://charts.bitnami.com/bitnami              ok
@@ -248,7 +248,7 @@ dependencies:
     repository: "file://../common-lib"
 ```
 
-```
+```text
 project/
   myapp/
     Chart.yaml

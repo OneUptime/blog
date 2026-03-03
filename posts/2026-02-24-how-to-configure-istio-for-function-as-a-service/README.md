@@ -224,13 +224,13 @@ istioctl x describe pod <your-function-pod-name>
 
 Istio automatically collects metrics for all traffic flowing through the mesh, including your serverless functions. If you have Prometheus and Grafana set up, you can query metrics like:
 
-```
+```text
 istio_requests_total{destination_service="hello-function.default.svc.cluster.local"}
 ```
 
 Or check latency percentiles:
 
-```
+```text
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="hello-function.default.svc.cluster.local"}[5m])) by (le))
 ```
 

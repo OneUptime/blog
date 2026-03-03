@@ -27,7 +27,7 @@ Without good organization, you end up with duplicated policies, inconsistent enf
 
 The foundation of good organization is a clear repository structure. Here is a pattern that scales well:
 
-```
+```text
 sentinel-policies/
   global/
     enforce-tags.sentinel
@@ -206,7 +206,7 @@ Treat your policy repository like a software project:
 
 ### Branching Strategy
 
-```
+```text
 main          - Production policies (applied to workspaces)
 develop       - Integration branch for testing
 feature/*     - Individual policy development
@@ -317,7 +317,7 @@ print("===")
 
 ### Pattern 1: Tiered Enforcement
 
-```
+```text
 Tier 1 (All workspaces):
   - Basic tagging
   - Region restrictions

@@ -185,7 +185,7 @@ flux bootstrap git \
 
 After bootstrapping, your repository will have:
 
-```
+```text
 clusters/my-cluster/
 ├── flux-system/
 │   ├── gotk-components.yaml    # Flux controllers and CRDs
@@ -680,7 +680,7 @@ flowchart TB
 
 ### Recommended Directory Layout
 
-```
+```text
 fleet-repo/
 ├── clusters/
 │   ├── production/

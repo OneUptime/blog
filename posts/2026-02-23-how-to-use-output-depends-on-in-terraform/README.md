@@ -94,7 +94,7 @@ When you add `depends_on` to an output, Terraform treats it as an explicit depen
 
 The key thing to understand is that `depends_on` on outputs does not change the output value itself. It changes the timing of when consumers can use that value.
 
-```
+```text
 Without depends_on:
   VPC created -> subnet ID available -> consumer starts immediately
   (routes may not be ready)

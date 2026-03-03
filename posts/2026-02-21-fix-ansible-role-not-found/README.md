@@ -12,7 +12,7 @@ The "Could not find or access" role error means Ansible cannot locate a role you
 
 ## The Error
 
-```
+```text
 ERROR! the role 'common' was not found in /home/user/playbook/roles:/etc/ansible/roles
 
 The error appears to be in '/home/user/playbook/playbook.yml': line 5, column 7
@@ -47,7 +47,7 @@ collections:
 
 A role needs the correct directory structure:
 
-```
+```text
 roles/
   common/
     tasks/

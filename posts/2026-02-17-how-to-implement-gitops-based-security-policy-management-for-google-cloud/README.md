@@ -39,7 +39,7 @@ The workflow:
 
 Organize your security policy repository clearly:
 
-```
+```text
 security-policies/
   org-policies/
     resource-location.yaml

@@ -339,13 +339,13 @@ upscmd -u admin -p password myups beeper.enable  # if supported
 For a setup where one server is directly connected to the UPS and others need to shut down first:
 
 On the **NUT server** (connected to UPS), add to `upsd.conf`:
-```
+```text
 LISTEN 0.0.0.0 3493
 ```
 
 On **client servers**, set `nut.conf` to `MODE=netclient` and configure `upsmon.conf`:
 
-```
+```text
 MONITOR myups@192.168.1.10 0 upsmon_remote secure-remote-password slave
 ```
 

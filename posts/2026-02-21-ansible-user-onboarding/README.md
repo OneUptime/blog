@@ -132,7 +132,7 @@ onboarding_users:
 
 ## Git Configuration Template
 
-```
+```text
 # roles/onboarding/templates/gitconfig.j2 - Per-user Git configuration
 [user]
     name = {{ item.fullname }}

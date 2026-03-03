@@ -303,7 +303,7 @@ ansible-playbook deploy.yml 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tee /var/log/ansi
 
 When you are writing logs to files regularly, you need rotation to prevent disk space issues.
 
-```
+```text
 # /etc/logrotate.d/ansible - Logrotate configuration for Ansible logs
 /var/log/ansible/*.log /var/log/ansible/*.jsonl {
     daily

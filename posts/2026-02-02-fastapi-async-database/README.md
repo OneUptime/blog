@@ -97,7 +97,7 @@ pip install aiosqlite
 
 Organize your project for maintainability and clear separation of concerns.
 
-```
+```text
 project/
 ├── app/
 │   ├── __init__.py

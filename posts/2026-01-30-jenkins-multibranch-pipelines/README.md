@@ -844,7 +844,7 @@ Configure orphaned item strategy to remove stale pipelines:
 
 Organize related multibranch pipelines:
 
-```
+```text
 Jenkins/
 ├── frontend/
 │   ├── web-app (multibranch)

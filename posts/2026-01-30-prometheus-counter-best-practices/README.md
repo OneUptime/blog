@@ -97,7 +97,7 @@ Good counter names follow these rules:
 
 All counters MUST end with `_total`. This is a Prometheus convention that makes metric types immediately recognizable.
 
-```
+```text
 # Good
 http_requests_total
 errors_total
@@ -113,7 +113,7 @@ processed_bytes
 
 Prometheus metrics use `snake_case` - lowercase letters with underscores separating words.
 
-```
+```text
 # Good
 http_server_requests_total
 database_queries_total
@@ -127,7 +127,7 @@ DatabaseQueries_total
 
 Start with a namespace (usually your application or subsystem name) to avoid collisions.
 
-```
+```text
 # Good - clear ownership
 myapp_http_requests_total
 checkout_orders_total
@@ -143,7 +143,7 @@ calls_total
 
 The name should clearly indicate what entity is being counted.
 
-```
+```text
 # Good - clear what is counted
 http_requests_total          # requests
 login_attempts_total         # attempts
@@ -157,7 +157,7 @@ login_total                  # total what?
 
 ### Complete Naming Pattern
 
-```
+```text
 <namespace>_<subsystem>_<name>_total
 ```
 
@@ -194,7 +194,7 @@ flowchart TD
     style A fill:#e1f5fe
 ```
 
-```
+```text
 # Good - bounded cardinality
 http_requests_total{method="GET", status="200"}
 http_requests_total{method="GET", status="404"}
@@ -213,7 +213,7 @@ Only add labels if you need to:
 - Aggregate across that dimension
 - Alert on specific label values
 
-```
+```text
 # Useful labels - you will filter/aggregate by these
 http_requests_total{method="GET", status="200", endpoint="/api/users"}
 
@@ -225,7 +225,7 @@ http_requests_total{request_id="abc-123"}
 
 Keep label values consistent and predictable.
 
-```
+```text
 # Good - consistent casing and format
 http_requests_total{status="2xx"}
 http_requests_total{status="4xx"}
@@ -254,7 +254,7 @@ http_requests_total{status="success"}
 
 Raw counter values are cumulative since process start. Comparing raw values across time or instances is meaningless.
 
-```
+```text
 Instance A (running 30 days): http_requests_total = 5,000,000
 Instance B (running 1 hour):  http_requests_total = 1,000
 ```
@@ -292,7 +292,7 @@ When Prometheus detects a reset (new value < previous value), it assumes:
 
 Prometheus adds the post-reset value to the increase calculation.
 
-```
+```text
 t0: 1000
 t1: 1200   # +200
 t2: 0      # reset detected

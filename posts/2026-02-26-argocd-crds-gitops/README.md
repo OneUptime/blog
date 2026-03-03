@@ -22,7 +22,7 @@ Consider deploying cert-manager with ArgoCD. You need to:
 
 If ArgoCD tries to apply a Certificate resource before the CRD exists, the API server rejects it with an error like:
 
-```
+```text
 error: unable to recognize "certificate.yaml": no matches for kind "Certificate" in version "cert-manager.io/v1"
 ```
 
@@ -173,7 +173,7 @@ spec:
 
 Without ServerSideApply, you may see errors like:
 
-```
+```text
 metadata.annotations: Too long: must have at most 262144 bytes
 ```
 

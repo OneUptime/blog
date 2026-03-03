@@ -153,14 +153,14 @@ stdout_callback = yaml
 
 Compare the default output:
 
-```
+```text
 TASK [Show hostname] ****
 ok: [web01] => {"msg": "web01.example.com"}
 ```
 
 With the YAML callback:
 
-```
+```text
 TASK [Show hostname] ****
 ok: [web01] =>
   msg: web01.example.com

@@ -12,7 +12,7 @@ Terraform reads files from disk during planning for templates, configuration fil
 
 ## The Error
 
-```
+```text
 Error: Error in function call
 
   on main.tf line 5, in resource "aws_instance" "web":
@@ -25,7 +25,7 @@ the configuration.
 
 Or with `templatefile()`:
 
-```
+```text
 Error: Error in function call
 
   on main.tf line 3, in resource "aws_instance" "web":
@@ -45,7 +45,7 @@ Terraform has three path references:
 
 These can all be different:
 
-```
+```text
 /project/               <- path.cwd (if you run terraform from here)
 /project/               <- path.root (root module)
 /project/modules/vpc/   <- path.module (inside a child module)
@@ -198,7 +198,7 @@ resource "aws_ssm_parameter" "configs" {
 
 When using Terraform Cloud or remote backends, only files within the working directory are uploaded:
 
-```
+```text
 Error: Error in function call
 
 Call to function "file" failed: no file exists at "/home/user/certs/ca.pem"
@@ -208,7 +208,7 @@ Absolute paths to local files do not work in remote execution because the file i
 
 **Fix:** Keep all referenced files within the Terraform working directory:
 
-```
+```text
 project/
   main.tf
   certs/          # Include certs in the project

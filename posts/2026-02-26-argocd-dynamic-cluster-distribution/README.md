@@ -139,7 +139,7 @@ You should see log entries indicating which clusters have been assigned to each 
 
 ArgoCD uses a hash-based algorithm to distribute clusters. Each cluster's server URL is hashed, and the hash is mapped to a shard number using modulo arithmetic:
 
-```
+```text
 shard = hash(cluster.server) % replicas
 ```
 

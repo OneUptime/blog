@@ -14,7 +14,7 @@ Managing Windows instances with Terraform provisioners requires WinRM (Windows R
 
 WinRM connection errors in Terraform typically look like:
 
-```
+```text
 Error: timeout - last error: unknown error Post
 "https://54.123.45.67:5986/wsman": dial tcp 54.123.45.67:5986: i/o timeout
 
@@ -24,7 +24,7 @@ Error: timeout - last error: unknown error Post
 
 Or authentication failures:
 
-```
+```text
 Error: timeout - last error: unknown error Post
 "http://54.123.45.67:5985/wsman": 401 Unauthorized
 ```

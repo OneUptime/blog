@@ -89,7 +89,7 @@ vcenter_validate_certs: "{{ vault_vcenter_validate_certs }}"
 
 Organize your VMware automation project with a clear structure.
 
-```
+```text
 vmware-automation/
 ├── ansible.cfg
 ├── inventory/

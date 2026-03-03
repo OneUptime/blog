@@ -36,14 +36,14 @@ For a simple daily schedule, select "Every 1 day" and set the start time. For ex
 
 For more complex schedules, switch to the custom cron option. Cloud Data Fusion uses standard 5-field cron syntax:
 
-```
+```text
 # Cron expression format
 # minute  hour  day-of-month  month  day-of-week
 ```
 
 Here are some common cron expressions for data pipeline scheduling:
 
-```
+```text
 # Run every day at 3 AM UTC
 0 3 * * *
 
@@ -145,7 +145,7 @@ You can pass runtime arguments to scheduled pipeline runs. This is useful for pa
 
 In the schedule configuration, expand the "Runtime Arguments" section and add key-value pairs:
 
-```
+```text
 # Common runtime arguments for scheduled pipelines
 logical.start.time = ${logicalStartTime(yyyy-MM-dd)}
 processing.date = ${logicalStartTime(yyyy-MM-dd,0d,UTC)}

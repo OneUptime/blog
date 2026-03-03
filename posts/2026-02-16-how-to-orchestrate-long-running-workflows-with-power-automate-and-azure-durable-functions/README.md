@@ -352,7 +352,7 @@ await context.CallActivityWithRetryAsync<BatchResult>(
 
 In the polling loop, check for failure status:
 
-```
+```text
 @or(
     equals(variables('orchestrationStatus'), 'Failed'),
     equals(variables('orchestrationStatus'), 'Terminated')

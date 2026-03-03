@@ -556,7 +556,7 @@ template {
 
 Template file:
 
-```
+```text
 {{/* consul-token.tpl */}}
 {{ with secret "consul/creds/app-service" }}
 {{ .Data.token }}

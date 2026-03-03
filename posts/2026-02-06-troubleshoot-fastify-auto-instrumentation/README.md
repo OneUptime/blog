@@ -19,7 +19,7 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
 Look for these messages:
 
-```
+```text
 # Good - instrumentation is being applied
 @opentelemetry/instrumentation-fastify Applying instrumentation patch for module fastify
 
@@ -145,14 +145,14 @@ Note that `FastifyInstrumentation` depends on `HttpInstrumentation`. If HTTP ins
 
 When working correctly, a request to your Fastify app produces:
 
-```
+```text
 GET /api/users                     [================] 12ms  (HTTP span)
   request handler - /api/users     [==============]   10ms  (Fastify handler span)
 ```
 
 Fastify middleware (hooks) also generate spans:
 
-```
+```text
 GET /api/users                     [================] 15ms
   middleware - onRequest           [=]                 1ms
   middleware - preValidation       [=]                 0.5ms

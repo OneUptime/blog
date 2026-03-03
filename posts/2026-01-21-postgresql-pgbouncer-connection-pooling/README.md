@@ -459,7 +459,7 @@ docker run -d --name pgbouncer-exporter \
 
 ### Key Prometheus Metrics
 
-```
+```text
 # Client connections waiting for server connection
 pgbouncer_pools_client_waiting
 
@@ -627,7 +627,7 @@ pgbouncer -v /etc/pgbouncer/pgbouncer.ini
 
 ### Sizing Guidelines
 
-```
+```text
 # Pool size calculation
 pool_size = (num_cores * 2) + effective_spindle_count
 

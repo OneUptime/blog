@@ -114,7 +114,7 @@ A bar gauge or horizontal bar chart works well here.
 
 For this panel, use Grafana's Tempo data source to show recent traces that contain errors. Create a TraceQL query:
 
-```
+```text
 { status = error } | select(resource.service.name, span.http.route)
 ```
 

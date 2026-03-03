@@ -66,7 +66,7 @@ To call the model from your application, you need the endpoint URL and an API ke
 
 You will see two keys (Key1 and Key2) and the endpoint URL. Copy these values. The endpoint looks something like:
 
-```
+```text
 https://your-resource-name.openai.azure.com/
 ```
 

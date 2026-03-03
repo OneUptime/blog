@@ -29,7 +29,7 @@ If your module needs 40+ variables, it probably should be split into smaller mod
 
 Every module should follow this layout:
 
-```
+```text
 modules/my-module/
   main.tf           # Primary resources
   variables.tf      # Input variables

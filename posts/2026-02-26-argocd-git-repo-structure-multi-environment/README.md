@@ -46,7 +46,7 @@ Why separate them? Because application code changes frequently (multiple times p
 
 Some organizations prefer a monorepo where all teams' configurations live together. This works well with a strong platform team that manages the overall structure.
 
-```
+```text
 cluster-config/
   argocd/
     applications/                # ArgoCD Application manifests
@@ -107,7 +107,7 @@ cluster-config/
 
 ### CODEOWNERS for Monorepo
 
-```
+```text
 # .github/CODEOWNERS
 /argocd/projects/       @platform-team
 /infrastructure/        @platform-team
@@ -119,7 +119,7 @@ cluster-config/
 
 Each team manages their own configuration repository. The platform team manages infrastructure and ArgoCD configuration in a separate repo.
 
-```
+```text
 # Platform team's repo: platform-config
 platform-config/
   argocd/
@@ -159,7 +159,7 @@ team-beta-config/
 
 The most popular directory layout for multi-environment uses Kustomize base and overlays.
 
-```
+```text
 payment-service/
   base/
     deployment.yaml
@@ -276,7 +276,7 @@ spec:
 
 For Helm-based deployments, use a values file per environment.
 
-```
+```text
 payment-service/
   Chart.yaml
   values.yaml              # Default values
@@ -337,7 +337,7 @@ podDisruptionBudget:
 
 When using the app-of-apps pattern, organize Application manifests by environment.
 
-```
+```text
 argocd-apps/
   bootstrap.yaml              # Root app that watches this directory
   environments/

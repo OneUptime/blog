@@ -168,7 +168,7 @@ helm create my-app
 
 This creates the following structure:
 
-```
+```text
 my-app/
   Chart.yaml          # Chart metadata
   values.yaml         # Default values

@@ -10,7 +10,7 @@ Description: How to fix Unsupported Block Type errors in Terraform caused by wro
 
 You write some Terraform configuration and get hit with:
 
-```
+```text
 Error: Unsupported block type
 
 on main.tf line 15, in resource "aws_instance" "web":

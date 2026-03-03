@@ -99,7 +99,7 @@ Benefits of using groups:
 
 ### Recommended Group Structure
 
-```
+```text
 org-admins@example.com          - Organization administrators
 security-team@example.com      - Security and compliance
 billing-admins@example.com     - Financial administrators

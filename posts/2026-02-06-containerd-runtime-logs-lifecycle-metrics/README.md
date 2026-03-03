@@ -22,7 +22,7 @@ ls -la /var/log/containerd.log
 
 The log format depends on your containerd configuration. Default logs look like:
 
-```
+```text
 time="2026-02-06T10:00:00.000000000Z" level=info msg="starting containerd" revision=abc123
 time="2026-02-06T10:00:01.000000000Z" level=info msg="loading plugin" type=io.containerd.grpc.v1
 ```
@@ -159,7 +159,7 @@ service:
 
 The metrics endpoint exposes several useful metrics:
 
-```
+```text
 # Container operations duration
 containerd_container_operations_duration_seconds_bucket
 containerd_container_operations_duration_seconds_sum

@@ -58,7 +58,7 @@ sudo nano /etc/freeradius/3.0/users
 
 Add authentication entries:
 
-```
+```text
 # Format: username  Cleartext-Password := "password"
 # Followed by optional reply attributes
 
@@ -84,7 +84,7 @@ sudo nano /etc/freeradius/3.0/clients.conf
 
 Add your switch as a client:
 
-```
+```text
 client core-switch-01 {
     # Switch IP address
     ipaddr          = 192.168.1.254
@@ -119,7 +119,7 @@ sudo nano /etc/freeradius/3.0/mods-enabled/eap
 
 Key settings in the eap module:
 
-```
+```text
 eap {
     # Default EAP method if client does not specify
     default_eap_type = peap
@@ -190,7 +190,7 @@ radtest alice alice_secure_password localhost 0 testing123
 
 A successful authentication returns:
 
-```
+```text
 Sent Access-Request Id 123 from 0.0.0.0:45678 to 127.0.0.1:1812 length 76
 Received Access-Accept Id 123 from 127.0.0.1:1812 to 0.0.0.0:45678 length 38
 ```
@@ -220,7 +220,7 @@ sudo nano /etc/wpa_supplicant/wpa_supplicant-eth0.conf
 
 For PEAP-MSCHAPv2 (most common for wired):
 
-```
+```text
 # /etc/wpa_supplicant/wpa_supplicant-eth0.conf
 
 ctrl_interface=/run/wpa_supplicant
@@ -253,7 +253,7 @@ network={
 
 For EAP-TLS (certificate-based, no password):
 
-```
+```text
 network={
     key_mgmt=IEEE8021X
     eap=TLS
@@ -294,7 +294,7 @@ journalctl -u wpa_supplicant@eth0 -f
 
 A successful authentication shows:
 
-```
+```text
 eth0: CTRL-EVENT-EAP-STARTED EAP authentication started
 eth0: CTRL-EVENT-EAP-PROPOSED-METHOD vendor=0 method=25
 eth0: CTRL-EVENT-EAP-METHOD EAP vendor 0 method 25 (PEAP) selected
@@ -306,7 +306,7 @@ eth0: CTRL-EVENT-CONNECTED - Connection to 02:00:00:00:01:00 completed
 
 The switch configuration varies by vendor, but the general approach for a Cisco switch:
 
-```
+```text
 ! Enable AAA
 aaa new-model
 aaa authentication dot1x default group radius

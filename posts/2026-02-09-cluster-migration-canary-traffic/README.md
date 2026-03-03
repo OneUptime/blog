@@ -22,7 +22,7 @@ The key components of a canary cluster migration include a global load balancer 
 
 A typical canary cluster migration setup looks like this:
 
-```
+```text
                     [Global Load Balancer]
                             |
                     (Weight-based routing)

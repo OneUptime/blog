@@ -21,7 +21,7 @@ The standard format for these headers is W3C Trace Context, which uses two heade
 - `traceparent`: Contains the trace ID, parent span ID, and trace flags
 - `tracestate`: Contains vendor-specific data (like the GCP project for Cloud Trace)
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 tracestate: gcp=project-id
 ```

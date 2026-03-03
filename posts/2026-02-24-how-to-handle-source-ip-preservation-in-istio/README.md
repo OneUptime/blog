@@ -66,7 +66,7 @@ For HTTP traffic, the standard approach is the `X-Forwarded-For` (XFF) header. E
 
 The XFF header is a comma-separated list of IPs. The leftmost IP is the original client. Each proxy that handles the request appends its own address:
 
-```
+```text
 X-Forwarded-For: <client>, <proxy1>, <proxy2>
 ```
 

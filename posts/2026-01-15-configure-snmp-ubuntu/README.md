@@ -631,7 +631,7 @@ Management Information Bases (MIBs) define the structure and meaning of SNMP dat
 
 ### Understanding OID Structure
 
-```
+```text
 OID: .1.3.6.1.2.1.1.1.0
      |  | | | | | | | |
      |  | | | | | | | +-- Instance (0 for scalar values)

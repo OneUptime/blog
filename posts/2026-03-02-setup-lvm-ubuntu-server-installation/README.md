@@ -18,7 +18,7 @@ Three layers:
 2. **Volume Groups (VG)**: A storage pool made from one or more PVs. This is where extents (usually 4 MB chunks) are allocated from
 3. **Logical Volumes (LV)**: Named, resizable chunks of the VG. Each LV gets a filesystem and a mount point
 
-```
+```text
 Physical Storage
 ├── /dev/sda3 (PV) ─┐
 ├── /dev/sdb   (PV) ─┤── ubuntu-vg (VG)
@@ -54,7 +54,7 @@ For production servers, use custom partitioning:
 2. Initialize your disk with GPT
 3. Create partitions:
 
-```
+```text
 /dev/sda1  512 MB  fat32   /boot/efi
 /dev/sda2  2 GB    ext4    /boot (not in LVM)
 /dev/sda3  rest    LVM PV  (no filesystem, marked as PV)
@@ -63,7 +63,7 @@ For production servers, use custom partitioning:
 4. Click "Create volume group" on the PV, name it `vg-main`
 5. Create logical volumes with explicit sizes:
 
-```
+```text
 Name: lv-root   Size: 30 GB   Format: ext4   Mount: /
 Name: lv-var    Size: 20 GB   Format: ext4   Mount: /var
 Name: lv-home   Size: 10 GB   Format: ext4   Mount: /home

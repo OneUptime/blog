@@ -770,7 +770,7 @@ sudo nano /etc/logrotate.d/dnsmasq
 
 Add:
 
-```
+```text
 /var/log/dnsmasq.log {
     daily
     rotate 7
@@ -927,7 +927,7 @@ done
 
 When running `sudo systemctl status dnsmasq`, you may see error messages like:
 
-```
+```text
 resolvconf[...]: Dropped protocol specifier '.dnsmasq' from 'lo.dnsmasq'. Using 'lo' (ifindex=1).
 resolvconf[...]: Failed to set DNS configuration: Unit dbus-org.freedesktop.network1.service not found.
 ```

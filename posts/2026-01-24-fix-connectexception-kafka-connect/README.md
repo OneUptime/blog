@@ -38,7 +38,7 @@ flowchart TB
 
 ### Common Error Messages
 
-```
+```text
 org.apache.kafka.connect.errors.ConnectException:
     java.sql.SQLException: Cannot create PoolableConnectionFactory
     (Connection refused)
@@ -111,7 +111,7 @@ dig database-host
 
 **JDBC Source/Sink ConnectException:**
 
-```
+```text
 org.apache.kafka.connect.errors.ConnectException:
     java.sql.SQLException: Cannot create PoolableConnectionFactory
     (Connection refused to host: db-server; port: 5432)
@@ -172,7 +172,7 @@ FLUSH PRIVILEGES;
 
 **Timeout Error:**
 
-```
+```text
 org.apache.kafka.connect.errors.ConnectException:
     java.net.SocketTimeoutException: connect timed out
 ```
@@ -229,7 +229,7 @@ org.apache.kafka.connect.errors.ConnectException:
 
 **SSL Error:**
 
-```
+```text
 org.apache.kafka.connect.errors.ConnectException:
     javax.net.ssl.SSLHandshakeException: PKIX path building failed
 ```
@@ -296,7 +296,7 @@ keytool -import -trustcacerts -alias db-server \
 
 **Auth Error:**
 
-```
+```text
 org.apache.kafka.connect.errors.ConnectException:
     Authentication failed: Invalid credentials
 ```
@@ -343,7 +343,7 @@ producer.sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModul
 
 **Broker Error:**
 
-```
+```text
 org.apache.kafka.connect.errors.ConnectException:
     Broker disconnected during offset fetch
 ```
@@ -378,7 +378,7 @@ consumer.max.poll.interval.ms=300000
 
 **Schema Registry Error:**
 
-```
+```text
 org.apache.kafka.connect.errors.ConnectException:
     Failed to connect to schema registry at http://schema-registry:8081
 ```
@@ -564,7 +564,7 @@ echo "=== Troubleshooting Complete ==="
 
 For Grafana dashboards:
 
-```
+```text
 # Failed tasks count
 sum(kafka_connect_connector_task_state{state="failed"}) by (connector)
 

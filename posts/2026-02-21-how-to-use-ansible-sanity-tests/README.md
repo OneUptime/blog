@@ -40,7 +40,7 @@ ansible-test --version
 
 Your collection needs to follow the standard directory structure:
 
-```
+```text
 ansible_collections/
   myorg/
     mycollection/
@@ -228,7 +228,7 @@ ansible-test sanity --test compile --docker
 
 Sometimes you need to suppress specific test failures. Ansible supports ignore files for each version:
 
-```
+```text
 # tests/sanity/ignore-2.16.txt
 # Format: path test-name [optional message]
 # Ignore a specific pylint warning for a specific file

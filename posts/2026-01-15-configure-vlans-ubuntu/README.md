@@ -24,7 +24,7 @@ A VLAN is a logical subdivision of a Layer 2 network. Devices on the same VLAN c
 
 ### Common VLAN Use Cases
 
-```
+```text
 VLAN 10  - Management network (switches, routers, IPMI)
 VLAN 20  - Production servers
 VLAN 30  - Development/staging
@@ -55,7 +55,7 @@ The switch port connected to your Ubuntu server must be configured as either a t
 
 Example Cisco trunk port configuration:
 
-```
+```text
 interface GigabitEthernet0/1
   switchport mode trunk
   switchport trunk allowed vlan 10,20,30,40
@@ -348,7 +348,7 @@ Understanding how VLAN tagging works helps with troubleshooting.
 
 When a frame is tagged, a 4-byte VLAN header is inserted after the source MAC address.
 
-```
+```text
 +------------------+------------------+------+------+------+
 | Dest MAC (6B)    | Src MAC (6B)     | TPID | TCI  | Type |
 +------------------+------------------+------+------+------+

@@ -12,7 +12,7 @@ Connection timeouts happen when Ansible cannot establish or maintain an SSH conn
 
 ## The Error
 
-```
+```text
 fatal: [remote-server]: UNREACHABLE! => {
     "msg": "Failed to connect to the host via ssh: ssh: connect to host 203.0.113.50 port 22: Connection timed out"
 }

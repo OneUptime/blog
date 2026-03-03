@@ -31,7 +31,7 @@ kubectl get workloadentries -n vm-namespace
 
 You should see entries corresponding to your VMs:
 
-```
+```text
 NAME              AGE    ADDRESS
 my-vm-10.0.1.5   2d     10.0.1.5
 ```
@@ -269,7 +269,7 @@ openssl x509 -in /var/run/secrets/workload-spiffe-credentials/cert-chain.pem -te
 
 Verify the SPIFFE identity matches what you expect:
 
-```
+```text
 Subject Alternative Name:
   URI:spiffe://cluster.local/ns/vm-namespace/sa/my-vm-sa
 ```

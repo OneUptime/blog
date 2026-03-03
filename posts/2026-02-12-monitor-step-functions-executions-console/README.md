@@ -174,7 +174,7 @@ Once logging is enabled, you can use CloudWatch Logs Insights to query execution
 
 This query finds the slowest executions in the last 24 hours:
 
-```
+```text
 fields @timestamp, execution_arn, type, details.name
 | filter type = "ExecutionSucceeded" or type = "ExecutionFailed"
 | stats count() as executions,
@@ -186,7 +186,7 @@ fields @timestamp, execution_arn, type, details.name
 
 And this one finds all failed states with their error messages:
 
-```
+```text
 fields @timestamp, execution_arn, details.name, details.error, details.cause
 | filter type = "TaskFailed" or type = "ExecutionFailed"
 | sort @timestamp desc

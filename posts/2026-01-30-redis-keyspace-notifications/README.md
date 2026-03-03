@@ -79,7 +79,7 @@ The parameter accepts a string of characters, where each character enables a spe
 
 Add this line to your redis.conf file to enable all events on both channel types:
 
-```
+```text
 notify-keyspace-events KEA
 ```
 
@@ -127,7 +127,7 @@ redis-cli CONFIG GET notify-keyspace-events
 
 Example output when notifications are enabled:
 
-```
+```text
 1) "notify-keyspace-events"
 2) "KEA"
 ```
@@ -155,7 +155,7 @@ redis-cli DEL user:1001
 
 You will see output similar to:
 
-```
+```text
 1) "pmessage"
 2) "__keyspace@0__:*"
 3) "__keyspace@0__:user:1001"
@@ -1015,7 +1015,7 @@ redis-cli CLIENT LIST
 
 Configure buffer limits in redis.conf:
 
-```
+```text
 client-output-buffer-limit pubsub 32mb 8mb 60
 ```
 

@@ -14,7 +14,7 @@ The "Invalid Hook Call" error is one of the most frustrating errors React develo
 
 When you see this error, React is telling you that hooks are being called in a way that violates the Rules of Hooks:
 
-```
+```text
 Error: Invalid hook call. Hooks can only be called inside of the body of a function component.
 This could happen for one of the following reasons:
 1. You might have mismatching versions of React and the renderer (such as React DOM)

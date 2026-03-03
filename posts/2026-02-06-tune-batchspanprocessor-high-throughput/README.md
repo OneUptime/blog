@@ -22,7 +22,7 @@ Think of it as a pipeline: spans enter the queue, and every `scheduledDelayMilli
 
 The throughput formula is roughly:
 
-```
+```text
 max_throughput = maxQueueSize / scheduledDelayMillis * 1000
 ```
 
@@ -128,7 +128,7 @@ public class MonitoringSpanProcessor implements SpanProcessor {
 
 In Python, watch for log messages like:
 
-```
+```text
 WARNING: Dropping span because queue is full. Consider increasing maxQueueSize.
 ```
 

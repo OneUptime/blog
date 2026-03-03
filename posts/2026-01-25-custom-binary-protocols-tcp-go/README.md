@@ -29,7 +29,7 @@ Every binary protocol needs a way to frame messages. Without framing, the receiv
 
 The most common approach is a length-prefixed format:
 
-```
+```text
 +----------------+----------------+
 | Length (4 bytes) | Payload       |
 +----------------+----------------+
@@ -37,7 +37,7 @@ The most common approach is a length-prefixed format:
 
 Here is a more complete header for a real protocol:
 
-```
+```text
 +----------+----------+----------+------------------+
 | Magic (2) | Version (1) | Type (1) | Length (4)    | Payload |
 +----------+----------+----------+------------------+---------+

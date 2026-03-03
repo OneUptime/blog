@@ -151,7 +151,7 @@ syncPolicy:
 
 Resources that are created, updated, and deleted together should be in the same application:
 
-```
+```text
 # Good: These are always deployed together
 user-service/
   deployment.yaml

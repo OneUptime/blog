@@ -92,7 +92,7 @@ This means every change to the module affects all environments simultaneously. T
 
 Extract shared modules into their own repository:
 
-```
+```text
 # Two repositories:
 terraform-modules/          # Shared modules with version tags
   networking/vpc/
@@ -110,7 +110,7 @@ infrastructure/             # Terragrunt configuration
 
 Keep versioned copies of modules in directories:
 
-```
+```text
 modules/
   vpc/
     v1/                    # Original version

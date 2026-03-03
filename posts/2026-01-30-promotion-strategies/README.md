@@ -87,7 +87,7 @@ GitOps provides an excellent foundation for promotion strategies. Each environme
 
 The following directory structure separates base configuration from environment-specific overlays.
 
-```
+```text
 infrastructure/
 ├── base/
 │   ├── kustomization.yaml

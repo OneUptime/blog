@@ -12,7 +12,7 @@ Monitoring Kafka is essential for maintaining healthy clusters and detecting iss
 
 ## Monitoring Architecture
 
-```
+```text
 Kafka Broker (JMX) -> JMX Exporter -> Prometheus -> Grafana
                                          |
                                    Alertmanager

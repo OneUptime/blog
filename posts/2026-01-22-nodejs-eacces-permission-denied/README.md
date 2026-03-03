@@ -14,20 +14,20 @@ The EACCES error occurs when Node.js or npm tries to access a file or directory 
 
 ### Global npm Install
 
-```
+```text
 npm ERR! Error: EACCES: permission denied, access '/usr/local/lib/node_modules'
 ```
 
 ### File Operations
 
-```
+```text
 Error: EACCES: permission denied, open '/etc/config.json'
     at Object.openSync (fs.js:476:3)
 ```
 
 ### Port Binding
 
-```
+```text
 Error: listen EACCES: permission denied 0.0.0.0:80
 ```
 

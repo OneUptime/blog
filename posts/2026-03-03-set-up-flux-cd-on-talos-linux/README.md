@@ -87,7 +87,7 @@ flux get sources git
 
 A well-structured repository makes multi-environment management easier:
 
-```
+```text
 talos-fleet/
   /clusters/
     /production/

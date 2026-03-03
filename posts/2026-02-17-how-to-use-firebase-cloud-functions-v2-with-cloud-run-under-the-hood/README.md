@@ -170,7 +170,7 @@ Concurrency is the biggest behavioral change. Here is how to think about it:
 
 ### v1 Behavior (Concurrency = 1)
 
-```
+```text
 Request 1 --> [Instance 1] (processing...)
 Request 2 --> [Instance 2] (new instance, cold start)
 Request 3 --> [Instance 3] (new instance, cold start)
@@ -178,7 +178,7 @@ Request 3 --> [Instance 3] (new instance, cold start)
 
 ### v2 Behavior (Concurrency = 80)
 
-```
+```text
 Request 1 --> [Instance 1] (processing...)
 Request 2 --> [Instance 1] (same instance, no cold start)
 Request 3 --> [Instance 1] (same instance, no cold start)

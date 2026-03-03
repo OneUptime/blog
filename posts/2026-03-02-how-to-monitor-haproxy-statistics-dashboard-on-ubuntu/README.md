@@ -20,7 +20,7 @@ sudo nano /etc/haproxy/haproxy.cfg
 
 Add a stats frontend section:
 
-```
+```text
 # HAProxy Stats Configuration
 frontend stats
     # Listen on a dedicated port for stats
@@ -160,7 +160,7 @@ Use carefully in production - disabling a server from the stats page is immediat
 
 HAProxy exposes a Unix socket for programmatic monitoring and control. Enable it in the global section:
 
-```
+```text
 global
     # Enable the admin socket
     stats socket /var/run/haproxy/admin.sock mode 660 level admin
@@ -231,7 +231,7 @@ curl -s http://localhost:9101/metrics | grep haproxy_backend_current_sessions
 
 Recent versions of HAProxy (2.0+) include a native Prometheus endpoint without needing an external exporter:
 
-```
+```text
 # In haproxy.cfg
 frontend prometheus
     bind *:8405
@@ -263,7 +263,7 @@ The stats page shouldn't be publicly accessible. Options:
 
 ### Bind to Localhost Only
 
-```
+```text
 frontend stats
     # Only listen on localhost
     bind 127.0.0.1:8404
@@ -280,7 +280,7 @@ ssh -L 8404:localhost:8404 user@haproxy-server.com
 
 ### IP-Based Access Control
 
-```
+```text
 frontend stats
     bind *:8404
     stats enable

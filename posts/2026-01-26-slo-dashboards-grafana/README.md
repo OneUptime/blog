@@ -61,7 +61,7 @@ slos:
 
 Error budget is the acceptable amount of unreliability:
 
-```
+```text
 Error Budget = 100% - SLO Target
 For 99.9% availability: Error Budget = 0.1%
 Over 30 days: 0.1% * 30 * 24 * 60 = 43.2 minutes of allowed downtime

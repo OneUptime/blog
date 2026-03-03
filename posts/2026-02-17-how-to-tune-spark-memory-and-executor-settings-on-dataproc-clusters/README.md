@@ -16,7 +16,7 @@ This article covers how Spark memory management works, how to calculate the righ
 
 Before tuning anything, you need to understand how Spark uses memory. Each executor has a fixed amount of memory divided into several regions:
 
-```
+```text
 Total Executor Memory
 |
 +-- spark.executor.memory (JVM heap)
@@ -40,7 +40,7 @@ The right executor settings depend on the machine type of your worker nodes. Her
 
 Start with the total available resources per node, reserving some for YARN and the OS:
 
-```
+```text
 Machine: n2-standard-8
 Total RAM: 32 GB
 Total vCPUs: 8
@@ -51,7 +51,7 @@ Available for executors: ~31 GB RAM, 7 vCPUs
 
 Now decide how many executors to run per node. A common approach is to leave 1 core for overhead:
 
-```
+```text
 Option A: 1 executor per node (fat executors)
   - spark.executor.cores = 7
   - spark.executor.memory = 27g

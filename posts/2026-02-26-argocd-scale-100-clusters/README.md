@@ -160,7 +160,7 @@ stringData:
 
 With multiple ArgoCD instances, your Git repository structure needs to support multi-instance consumption. A monorepo approach works well:
 
-```
+```text
 gitops-repo/
   base/
     monitoring/

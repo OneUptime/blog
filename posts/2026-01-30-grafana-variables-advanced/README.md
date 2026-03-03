@@ -51,13 +51,13 @@ SHOW TAG VALUES FROM "cpu" WITH KEY = "host"
 
 Custom variables let you define a static list of options:
 
-```
+```text
 production,staging,development
 ```
 
 Or with display labels:
 
-```
+```text
 prod : production, stg : staging, dev : development
 ```
 
@@ -65,7 +65,7 @@ prod : production, stg : staging, dev : development
 
 Interval variables are essential for time-based aggregations:
 
-```
+```text
 1m,5m,10m,30m,1h,6h,12h,1d,7d
 ```
 
@@ -140,7 +140,7 @@ label_values(up, instance)
 ```
 
 **Regex:**
-```
+```text
 /^([^.]+)/
 ```
 
@@ -153,7 +153,7 @@ Extract specific parts using capture groups:
 **Original values:** `app-payment-service-v2.3.1`, `app-user-service-v1.0.0`
 
 **Regex to extract service name:**
-```
+```text
 /app-(.+)-v[\d.]+/
 ```
 
@@ -164,7 +164,7 @@ Extract specific parts using capture groups:
 **Original values:** `myapp-prod-us-east-1`, `myapp-staging-eu-west-1`
 
 **Regex:**
-```
+```text
 /myapp-(\w+)-/
 ```
 
@@ -192,12 +192,12 @@ In the variable configuration:
 2. **Custom all value:** Define what "All" translates to in queries
 
 For Prometheus, set Custom all value to:
-```
+```text
 .*
 ```
 
 For SQL-based sources:
-```
+```text
 %
 ```
 
@@ -223,7 +223,7 @@ Configure which value loads by default:
 ### URL Parameters for Defaults
 
 Override defaults via URL:
-```
+```text
 https://grafana.example.com/d/abc123?var-environment=staging&var-region=us-west-2
 ```
 
@@ -420,7 +420,7 @@ up{environment="$environment"} * ($environment == "production")
 
 Reference variables in panel titles for dynamic naming:
 
-```
+```text
 CPU Usage - $namespace / $deployment
 ```
 
@@ -429,7 +429,7 @@ CPU Usage - $namespace / $deployment
 Create complex variable dependencies:
 
 **Variable: metric_prefix**
-```
+```text
 node_,container_,kube_
 ```
 

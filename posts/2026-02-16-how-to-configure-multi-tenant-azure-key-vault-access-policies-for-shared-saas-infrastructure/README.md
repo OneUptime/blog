@@ -46,7 +46,7 @@ The `--enable-rbac-authorization true` flag switches Key Vault from the legacy a
 
 Establish a consistent naming convention that encodes the tenant ID into the secret name:
 
-```
+```text
 {tenantId}--{secretType}--{secretName}
 ```
 

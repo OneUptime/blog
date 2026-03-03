@@ -14,7 +14,7 @@ Running an email service or sending emails from applications in an Istio-enabled
 
 When a client connects to an SMTP server, the server immediately sends a greeting banner like:
 
-```
+```text
 220 mail.example.com ESMTP Postfix
 ```
 

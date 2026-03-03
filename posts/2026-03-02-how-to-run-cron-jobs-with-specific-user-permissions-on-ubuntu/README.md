@@ -22,7 +22,7 @@ There are two fundamentally different ways to schedule cron jobs:
 
 The system crontab format adds a user field:
 
-```
+```text
 # /etc/crontab format:
 # Minute Hour Day Month Weekday User Command
 
@@ -96,7 +96,7 @@ sudo visudo -f /etc/sudoers.d/cron-permissions
 
 Add rules like:
 
-```
+```text
 # Allow www-data to restart nginx without a password
 www-data ALL=(root) NOPASSWD: /usr/sbin/service nginx restart
 www-data ALL=(root) NOPASSWD: /usr/sbin/service php8.1-fpm restart
@@ -143,7 +143,7 @@ Add the necessary sudo rule:
 sudo visudo -f /etc/sudoers.d/myuser-cron
 ```
 
-```
+```text
 # Allow myuser to run specific scripts as other users without password
 myuser ALL=(www-data) NOPASSWD: /var/www/html/cleanup.sh
 myuser ALL=(postgres) NOPASSWD: /usr/local/bin/db-vacuum.sh

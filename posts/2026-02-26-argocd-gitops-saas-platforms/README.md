@@ -50,7 +50,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 saas-platform-config/
   platform/
     shared-services/

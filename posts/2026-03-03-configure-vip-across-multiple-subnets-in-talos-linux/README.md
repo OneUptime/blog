@@ -18,7 +18,7 @@ Talos Linux VIP works by assigning a shared IP address to one control plane node
 
 The problem is that ARP operates at Layer 2 (the data link layer). ARP packets are broadcast frames that do not cross router boundaries. A router connecting two subnets will not forward ARP broadcasts from one subnet to the other.
 
-```
+```text
 Subnet A: 192.168.1.0/24          Subnet B: 192.168.2.0/24
 +----------+  +----------+         +----------+
 | CP Node 1|  | CP Node 2|         | CP Node 3|
@@ -60,7 +60,7 @@ If you configure the same VIP on nodes in different subnets, several things can 
 
 The most robust solution for multi-subnet control planes is an external load balancer that sits in front of all control plane nodes:
 
-```
+```text
                      Clients
                         |
                   [Load Balancer]
@@ -75,7 +75,7 @@ Options for external load balancers:
 
 ### HAProxy
 
-```
+```text
 # haproxy.cfg
 frontend kubernetes-api
     bind *:6443
@@ -93,7 +93,7 @@ backend kubernetes-cp
 
 ### Nginx Stream
 
-```
+```text
 # nginx.conf
 stream {
     upstream kubernetes_api {
@@ -122,7 +122,7 @@ cluster:
 
 Use DNS round-robin to distribute traffic across control plane nodes on different subnets:
 
-```
+```text
 # DNS records
 k8s-api.example.com  A  192.168.1.10
 k8s-api.example.com  A  192.168.2.10
@@ -206,7 +206,7 @@ As long as VLAN 100 is trunked across all racks, the VIP will work because all n
 
 For advanced deployments, you can use BGP anycast. Each control plane node announces the same IP address via BGP, and the network routes traffic to the nearest healthy node:
 
-```
+```text
 # Each node announces the same /32 route
 Node 1 (AS 65000) -> Router: announces 10.0.0.100/32
 Node 2 (AS 65000) -> Router: announces 10.0.0.100/32

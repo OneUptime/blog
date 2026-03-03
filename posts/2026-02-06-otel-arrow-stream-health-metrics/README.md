@@ -61,7 +61,7 @@ rate(otelcol_otelarrow_exporter_stream_reconnections_total[5m])
 ```
 
 Expected behavior:
-```
+```text
 reconnections_per_minute = num_streams / max_stream_lifetime_minutes
 
 # Example: 4 streams with 10-minute lifetime

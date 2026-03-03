@@ -697,7 +697,7 @@ spec:
 
 Create a complete RED metrics dashboard:
 
-```
+```text
 # Request Rate (Rate)
 sum(rate(http.server.request.count[5m])) by (service.name)
 
@@ -714,7 +714,7 @@ histogram_quantile(0.95, sum(rate(http.server.request.duration_bucket[5m])) by (
 
 Monitor individual service performance:
 
-```
+```text
 # Requests per second by service and route
 sum(rate(http.server.request.count[5m])) by (service.name, http.route)
 
@@ -731,7 +731,7 @@ sum(rate(http.server.request.count[5m])) by (service.name, http.status_code)
 
 Track database operation performance:
 
-```
+```text
 # Database operations per second
 sum(rate(db.client.operation.count[5m])) by (service.name, db.system, db.operation)
 

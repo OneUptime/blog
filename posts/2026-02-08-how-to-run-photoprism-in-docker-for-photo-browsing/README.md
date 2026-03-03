@@ -167,7 +167,7 @@ You can merge face clusters if the same person was split into multiple groups. S
 
 The search bar understands natural language queries:
 
-```
+```text
 # Example search queries
 sunset beach               # Photos with both sunset and beach tags
 face:John                  # Photos containing John's face

@@ -14,7 +14,7 @@ Solid Start is the full-stack framework for SolidJS. It uses Vinxi as its server
 
 Solid Start uses Vinxi under the hood. When you run `npm run build`, it produces a `.output/` directory containing:
 
-```
+```text
 .output/
   server/
     index.mjs       # Server entry point
@@ -119,7 +119,7 @@ CMD ["node", ".output/server/index.mjs"]
 
 ## The .dockerignore File
 
-```
+```text
 # .dockerignore
 node_modules
 .output

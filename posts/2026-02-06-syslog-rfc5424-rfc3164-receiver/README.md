@@ -11,12 +11,12 @@ Syslog is the oldest and most widely deployed logging protocol. Networking equip
 ## RFC 3164 vs RFC 5424
 
 **RFC 3164** (the older format):
-```
+```text
 <34>Oct  6 14:23:45 myhost sshd[12345]: Accepted publickey for user from 192.168.1.100 port 22 ssh2
 ```
 
 **RFC 5424** (the modern format):
-```
+```text
 <165>1 2026-02-06T14:23:45.123456+00:00 myhost appname 12345 ID47 [exampleSDID@32473 iut="3" eventSource="Application" eventID="1011"] An application event has occurred
 ```
 

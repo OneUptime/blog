@@ -31,7 +31,7 @@ flowchart LR
 
 ## Project Structure
 
-```
+```text
 nginx-caching/
   inventory/
     hosts.yml

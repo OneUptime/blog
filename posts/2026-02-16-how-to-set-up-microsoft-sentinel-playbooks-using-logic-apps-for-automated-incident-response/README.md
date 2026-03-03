@@ -73,7 +73,7 @@ In the Logic App designer:
 
 The message body can include dynamic content from the incident:
 
-```
+```text
 High Severity Incident Created
 
 Title: @{triggerBody()?['object']?['properties']?['title']}

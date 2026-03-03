@@ -101,7 +101,7 @@ Let us build a practical example of a HATEOAS-compliant API for managing orders.
 
 ### Project Structure
 
-```
+```text
 src/
 ├── controllers/
 │   └── orderController.js

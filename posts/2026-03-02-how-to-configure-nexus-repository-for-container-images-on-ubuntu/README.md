@@ -54,7 +54,7 @@ Adjust JVM memory settings based on your server's RAM:
 sudo nano /opt/nexus/bin/nexus.vmoptions
 ```
 
-```
+```text
 # /opt/nexus/bin/nexus.vmoptions - JVM settings
 -Xms2g
 -Xmx2g

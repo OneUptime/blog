@@ -126,7 +126,7 @@ One of the most useful features of `include_role` is the ability to run a specif
 
 This requires corresponding task files in the role:
 
-```
+```text
 roles/database/tasks/
   main.yml         <-- default entry point
   backup.yml       <-- alternate entry point
@@ -165,7 +165,7 @@ You can also load specific default and variable files:
 
 This requires:
 
-```
+```text
 roles/webserver/defaults/
   main.yml
   high_traffic.yml    <-- alternate defaults

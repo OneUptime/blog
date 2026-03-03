@@ -70,7 +70,7 @@ spec:
 
 Organize policies in a hierarchical structure:
 
-```
+```text
 network-policies/
   base/
     kustomization.yaml

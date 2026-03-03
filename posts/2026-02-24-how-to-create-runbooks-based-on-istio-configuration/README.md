@@ -258,7 +258,7 @@ kubectl exec deploy/{name} -n {ns} -c istio-proxy -- \\
 
     return runbook
 
-# Generate runbooks for all services
+## Generate runbooks for all services
 vs_list = kubectl_get_json("virtualservices")
 dr_list = kubectl_get_json("destinationrules")
 
@@ -280,7 +280,7 @@ for vs in vs_list.get("items", []):
     with open(filename, "w") as f:
         f.write(runbook)
     print(f"Generated: {filename}")
-```
+```text
 
 ## Runbook: Gateway Connection Failures
 
@@ -341,7 +341,7 @@ kubectl run test --rm -it --image=curlimages/curl -- \
 
 Keep runbooks in the same git repository as your Istio configuration:
 
-```
+```text
 k8s/
   production/
     istio/

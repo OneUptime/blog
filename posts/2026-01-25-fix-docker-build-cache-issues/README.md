@@ -121,7 +121,7 @@ docker build --progress=plain -t myapp .
 
 Look for these indicators in the output:
 
-```
+```text
 #5 [2/6] WORKDIR /app
 #5 CACHED
 
@@ -302,7 +302,7 @@ When cache invalidates unexpectedly:
 
 2. **Review .dockerignore**: Missing entries cause cache invalidation:
 
-```
+```text
 # .dockerignore
 .git
 node_modules
@@ -316,7 +316,7 @@ dist/
 
 4. **Check for hidden files**: Files like `.DS_Store` or editor backups can invalidate cache:
 
-```
+```text
 # Add to .dockerignore
 .DS_Store
 *.swp

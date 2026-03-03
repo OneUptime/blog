@@ -468,7 +468,7 @@ Windows includes a built-in RDP client:
 
 For better security, save connection settings to an `.rdp` file:
 
-```
+```text
 full address:s:your-server-ip
 username:s:your-username
 authentication level:i:2
@@ -597,7 +597,7 @@ sudo nano /etc/security/limits.conf
 
 Add limits:
 
-```
+```text
 # Limit maximum number of XRDP sessions per user
 # Prevents a single user from consuming all resources
 *               hard    maxlogins       2
@@ -709,7 +709,7 @@ sudo nano /etc/fuse.conf
 
 Uncomment or add:
 
-```
+```text
 # Allow non-root users to mount FUSE filesystems
 user_allow_other
 ```
@@ -797,7 +797,7 @@ sudo nano /etc/security/limits.d/xrdp-users.conf
 
 Add limits:
 
-```
+```text
 # /etc/security/limits.d/xrdp-users.conf
 # Resource limits for XRDP users
 

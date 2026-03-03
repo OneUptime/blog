@@ -41,7 +41,7 @@ TF_LOG_CORE=TRACE terraform plan
 
 This means you're referencing a resource that doesn't exist in your configuration.
 
-```
+```text
 Error: Reference to undeclared resource
   on main.tf line 15:
   15:   vpc_id = aws_vpc.main.id
@@ -60,7 +60,7 @@ Fix: Check your resource names, module references, and whether you need a `moved
 
 Terraform found a circular dependency between resources.
 
-```
+```text
 Error: Cycle: aws_security_group.app, aws_security_group_rule.app_to_db,
 aws_security_group.db, aws_security_group_rule.db_from_app
 ```
@@ -103,7 +103,7 @@ resource "aws_security_group_rule" "db_from_app" {
 
 `count` and `for_each` values must be known at plan time. They can't depend on resources that haven't been created yet.
 
-```
+```text
 Error: Invalid count argument
   count = length(aws_subnet.private[*].id)
 
@@ -125,7 +125,7 @@ count = length(var.private_subnet_ids)  # Works
 
 This usually happens when a resource references a provider alias that isn't configured:
 
-```
+```text
 Error: Provider configuration not present
 
 provider["registry.terraform.io/hashicorp/aws"].us_east_1 is not configured.
@@ -151,7 +151,7 @@ resource "aws_acm_certificate" "cloudfront" {
 
 The resource already exists in AWS but isn't in your Terraform state.
 
-```
+```text
 Error: Error creating IAM Role (my-role): EntityAlreadyExists:
 Role with name my-role already exists.
 ```
@@ -168,7 +168,7 @@ Then run `terraform plan` to verify the configuration matches.
 
 You're trying to set a combination of parameters that AWS doesn't allow.
 
-```
+```text
 Error: Error modifying DB Instance: InvalidParameterCombination:
 Cannot upgrade postgres from 15.4 to 16.2.
 ```
@@ -179,7 +179,7 @@ Fix: Check the AWS documentation for valid parameter combinations. For RDS upgra
 
 Terraform waited for a resource to reach a certain state but gave up. This happens with resources that take a long time to provision (RDS instances, CloudFront distributions, etc.).
 
-```
+```text
 Error: Error waiting for DB Instance (mydb) to be created:
 timeout while waiting for state to become 'available'
 ```
@@ -202,7 +202,7 @@ resource "aws_db_instance" "production" {
 
 Your AWS credentials don't have permission to perform the operation.
 
-```
+```text
 Error: Error creating S3 bucket: AccessDenied:
 Access Denied
 ```
@@ -221,7 +221,7 @@ aws sts get-caller-identity
 
 AWS API rate limits can cause intermittent failures during large applies:
 
-```
+```text
 Error: Error creating Security Group Rule: RequestLimitExceeded:
 Request limit exceeded.
 ```

@@ -316,7 +316,7 @@ channel.queue_bind(exchange='events', queue='north_atlantic', routing_key='order
 
 Design routing keys with a consistent hierarchy for maximum flexibility:
 
-```
+```text
 # Format: entity.action.region.priority
 order.created.us.high
 order.shipped.eu.normal

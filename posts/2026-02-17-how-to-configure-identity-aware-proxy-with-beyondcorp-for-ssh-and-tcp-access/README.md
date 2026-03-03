@@ -186,7 +186,7 @@ gcloud compute start-iap-tunnel my-windows-vm 3389 \
 
 You can set up your SSH config to automatically use IAP tunneling.
 
-```
+```text
 # ~/.ssh/config
 # SSH config for GCP VMs through IAP
 Host gcp-*
@@ -261,7 +261,7 @@ graph LR
 
 **Tunnel drops frequently**: IAP tunnels have an idle timeout. For long-running sessions, configure SSH keepalives in your SSH config.
 
-```
+```text
 # Add to ~/.ssh/config to prevent idle disconnects
 Host gcp-*
   ServerAliveInterval 30

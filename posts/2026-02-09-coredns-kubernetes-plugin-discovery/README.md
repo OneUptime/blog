@@ -97,7 +97,7 @@ kubernetes cluster.local {
 
 Pod DNS naming patterns:
 
-```
+```text
 # Format: pod-ip-address.namespace.pod.cluster.local
 10-244-1-5.default.pod.cluster.local
 
@@ -153,7 +153,7 @@ dig SRV _metrics._tcp.web-service.default.svc.cluster.local
 
 Response includes:
 
-```
+```text
 _http._tcp.web-service.default.svc.cluster.local. 30 IN SRV 0 100 80 web-service.default.svc.cluster.local.
 ```
 
@@ -222,7 +222,7 @@ spec:
 
 Each pod gets a stable DNS name:
 
-```
+```text
 postgres-0.database.default.svc.cluster.local
 postgres-1.database.default.svc.cluster.local
 postgres-2.database.default.svc.cluster.local
@@ -260,7 +260,7 @@ kubernetes cluster-b.fed.local {
 
 Services in Cluster B accessible as:
 
-```
+```text
 service-name.namespace.svc.cluster-b.fed.local
 ```
 

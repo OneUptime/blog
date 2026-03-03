@@ -423,7 +423,7 @@ spec:
 
 Version your templates so teams can upgrade at their own pace:
 
-```
+```text
 platform-app v1.x - Legacy, security patches only
 platform-app v2.x - Current, all new features
 platform-app v3.x - Next, breaking changes

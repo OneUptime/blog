@@ -58,7 +58,7 @@ dpkg -l openssh-server | grep openssh
 
 Both files use the same format:
 
-```
+```text
 daemon_list : client_list [: shell_command]
 ```
 

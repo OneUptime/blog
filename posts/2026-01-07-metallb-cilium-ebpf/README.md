@@ -473,7 +473,7 @@ kubectl get svc nginx-demo-lb
 
 Expected output showing the assigned external IP:
 
-```
+```text
 NAME            TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)        AGE
 nginx-demo-lb   LoadBalancer   10.96.123.45    192.168.1.100   80:30123/TCP   30s
 ```
@@ -490,7 +490,7 @@ kubectl -n kube-system exec ds/cilium -- cilium service list
 
 You should see the LoadBalancer service with its backends:
 
-```
+```text
 ID   Frontend               Service Type   Backend
 1    192.168.1.100:80       LoadBalancer   1 => 10.0.1.10:80 (active)
                                            2 => 10.0.1.11:80 (active)

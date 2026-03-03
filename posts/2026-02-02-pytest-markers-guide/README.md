@@ -41,7 +41,7 @@ graph TD
 
 Before diving into markers, here is a typical project structure for a Python application with organized tests.
 
-```
+```text
 myproject/
 ├── src/
 │   └── myapp/

@@ -19,7 +19,7 @@ The PROXY protocol is a simple text-based or binary protocol that prefixes TCP c
 There are two versions:
 
 **PROXY v1** uses a human-readable text format:
-```
+```text
 PROXY TCP4 192.168.1.100 10.0.0.5 54321 443\r\n
 ```
 

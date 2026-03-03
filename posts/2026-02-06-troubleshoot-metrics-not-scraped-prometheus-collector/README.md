@@ -10,7 +10,7 @@ You configure the OpenTelemetry Collector to expose a Prometheus endpoint so tha
 
 ## How the Flow Works
 
-```
+```text
 Applications -> OTLP -> Collector -> Prometheus Exporter -> :8889/metrics -> Prometheus scrapes
 ```
 

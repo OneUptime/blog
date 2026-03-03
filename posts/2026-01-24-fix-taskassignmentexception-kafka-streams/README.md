@@ -35,7 +35,7 @@ flowchart TB
 
 ### Common Error Messages
 
-```
+```text
 org.apache.kafka.streams.errors.TaskAssignmentException:
     Task assignment failed due to following errors:
     - assigned partitions [topic-0, topic-1] have mismatched task ids

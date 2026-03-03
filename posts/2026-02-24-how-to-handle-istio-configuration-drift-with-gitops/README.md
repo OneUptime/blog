@@ -75,7 +75,7 @@ argocd app get istio-config
 
 The output shows whether the application is Synced or OutOfSync. If it is OutOfSync, Argo CD lists exactly which resources have drifted:
 
-```
+```text
 Name:               istio-config
 Sync Status:        OutOfSync
 Health Status:      Healthy

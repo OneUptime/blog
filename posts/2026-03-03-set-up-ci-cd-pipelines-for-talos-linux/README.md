@@ -23,7 +23,7 @@ We will cover both, starting with the infrastructure pipeline.
 
 ### Pipeline Structure
 
-```
+```text
 .github/
   workflows/
     validate-talos-config.yaml     # PR validation

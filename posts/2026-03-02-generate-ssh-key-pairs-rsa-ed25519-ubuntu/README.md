@@ -33,7 +33,7 @@ The tool will prompt you for a file location. The default is `~/.ssh/id_ed25519`
 
 Next, you'll be asked for a passphrase. A passphrase encrypts the private key on disk. If someone gets your private key file, they still can't use it without the passphrase. Use a strong passphrase for any key that will have access to production systems.
 
-```
+```text
 Generating public/private ed25519 key pair.
 Enter file in which to save the key (/home/user/.ssh/id_ed25519):
 Enter passphrase (empty for no passphrase):
@@ -136,7 +136,7 @@ fi
 
 When you have multiple keys for different hosts, the `~/.ssh/config` file keeps things organized:
 
-```
+```text
 # Default identity for general use
 Host *
     IdentityFile ~/.ssh/id_ed25519

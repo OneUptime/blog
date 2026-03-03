@@ -33,7 +33,7 @@ graph TB
 
 A well-organized dbt project follows a layered approach:
 
-```
+```text
 my_dbt_project/
 ├── dbt_project.yml
 ├── models/

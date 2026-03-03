@@ -368,7 +368,7 @@ quantile(0.05, sum(container_memory_working_set_bytes))
 
 Split your capacity into three tiers for optimal cost savings: reserved instances for steady-state load, on-demand for regular buffer, and spot instances for burst capacity that can tolerate interruptions.
 
-```
+```text
 Total Capacity Needed: 100 CPU, 400GB memory
 
 Reserved (steady state):    60 CPU, 240GB memory  (60%)  # Always-on baseline

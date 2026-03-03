@@ -14,7 +14,7 @@ The `baseEjectionTime` field in Istio's outlier detection controls how long an u
 
 When a pod gets ejected because it exceeded the error threshold, it stays out for:
 
-```
+```text
 ejection_duration = baseEjectionTime * number_of_times_ejected
 ```
 

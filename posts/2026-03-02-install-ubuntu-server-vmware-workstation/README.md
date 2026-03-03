@@ -79,7 +79,7 @@ For a server VM you want to SSH into from your host, any mode works, but Bridged
 
 Click "Customize Hardware" before finishing:
 
-```
+```text
 # Recommended hardware settings:
 Memory: 2048 MB
 Processors: 2 cores
@@ -197,7 +197,7 @@ One of VMware Workstation's best features for testing. Take a snapshot before an
 ```
 
 To revert to a snapshot if something breaks:
-```
+```text
 VM - Snapshot - Snapshot Manager - select snapshot - Go To
 ```
 

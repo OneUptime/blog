@@ -104,7 +104,7 @@ sudo systemctl start nginx
 
 Certificates are stored in:
 
-```
+```text
 /etc/letsencrypt/live/example.com/
 ├── cert.pem       # Domain certificate
 ├── chain.pem      # Intermediate certificates

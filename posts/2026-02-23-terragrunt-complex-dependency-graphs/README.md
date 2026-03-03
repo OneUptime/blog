@@ -65,7 +65,7 @@ This gives you a clear picture of which modules depend on which, and where poten
 
 A diamond dependency occurs when module D depends on both B and C, which both depend on A:
 
-```
+```text
     A (VPC)
    / \
   B   C (ECS, RDS)
@@ -125,7 +125,7 @@ Sometimes you have long chains: Network -> Security Groups -> Load Balancer -> E
 
 Long chains are a performance bottleneck because nothing runs in parallel. Break them up where possible:
 
-```
+```text
 # Before (linear):
 network -> security-groups -> alb -> ecs -> app -> monitoring
 
@@ -164,7 +164,7 @@ terragrunt run-all plan --terragrunt-ignore-external-dependencies
 
 Cycles are the most common dependency graph problem. Terragrunt will fail with an error if it detects a cycle:
 
-```
+```text
 ERRO[0000] Found a dependency cycle between modules:
   infrastructure/dev/ecs -> infrastructure/dev/rds -> infrastructure/dev/ecs
 ```
@@ -176,7 +176,7 @@ Common causes of cycles:
 
 ### Solution: Extract the Shared Resource
 
-```
+```text
 # Before (cycle):
 ecs <-> rds
 

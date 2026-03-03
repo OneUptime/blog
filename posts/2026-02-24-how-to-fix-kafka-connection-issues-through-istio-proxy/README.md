@@ -48,7 +48,7 @@ This is the biggest issue with Kafka in Istio. Kafka brokers advertise their `ad
 
 For a Kafka StatefulSet, the advertised listeners are typically the pod DNS names:
 
-```
+```text
 kafka-0.kafka-headless.kafka.svc.cluster.local:9092
 kafka-1.kafka-headless.kafka.svc.cluster.local:9092
 kafka-2.kafka-headless.kafka.svc.cluster.local:9092

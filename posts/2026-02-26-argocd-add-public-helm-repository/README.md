@@ -16,7 +16,7 @@ A Helm repository is an HTTP server that hosts an `index.yaml` file listing avai
 
 Common public Helm repositories:
 
-```
+```text
 # Bitnami
 https://charts.bitnami.com/bitnami
 

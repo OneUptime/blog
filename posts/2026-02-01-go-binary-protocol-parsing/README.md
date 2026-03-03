@@ -19,7 +19,7 @@ Before touching any code, you need to understand endianness. When a multi-byte v
 
 The number `0x12345678` stored in 4 bytes looks different depending on endianness:
 
-```
+```text
 Big Endian:    [0x12] [0x34] [0x56] [0x78]
 Little Endian: [0x78] [0x56] [0x34] [0x12]
 ```

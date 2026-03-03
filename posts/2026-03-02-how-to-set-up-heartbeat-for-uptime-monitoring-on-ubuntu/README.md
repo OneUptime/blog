@@ -340,7 +340,7 @@ openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt /path/to/cert.pem
 
 When monitoring dozens or hundreds of endpoints, organize monitors logically:
 
-```
+```text
 /etc/heartbeat/monitors.d/
   production-web.yml     # Production web servers
   production-api.yml     # Production APIs

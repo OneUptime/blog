@@ -34,12 +34,12 @@ gcloud auth application-default login
 This opens a browser window where you authenticate with your Google account. After authentication, a credential file is saved locally.
 
 On macOS and Linux, the file is saved to:
-```
+```text
 ~/.config/gcloud/application_default_credentials.json
 ```
 
 On Windows:
-```
+```text
 %APPDATA%\gcloud\application_default_credentials.json
 ```
 

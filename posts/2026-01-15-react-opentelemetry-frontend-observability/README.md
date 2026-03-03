@@ -227,7 +227,7 @@ Captures page load performance metrics as spans:
 
 The resulting trace shows exactly where time was spent loading your page.
 
-```
+```text
 documentLoad
 ├── resourceFetch (main.js)
 ├── resourceFetch (styles.css)
@@ -396,7 +396,7 @@ Trace context propagation connects frontend spans to backend spans, creating end
 
 When the fetch instrumentation is configured with `propagateTraceHeaderCorsUrls`, it automatically injects W3C Trace Context headers into outgoing requests:
 
-```
+```text
 traceparent: 00-{trace_id}-{span_id}-{flags}
 tracestate: {vendor-specific-data}
 ```
@@ -479,7 +479,7 @@ function sendWebSocketMessage(socket: WebSocket, message: any) {
 
 Here is what an end-to-end trace looks like:
 
-```
+```text
 [Frontend] user-click (150ms)
 ├── [Frontend] checkout.process (140ms)
 │   ├── [Frontend] HTTP POST /api/checkout (120ms)

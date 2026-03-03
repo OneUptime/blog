@@ -35,7 +35,7 @@ terraform workspace select staging
 
 With a GCS backend, workspaces store state at different paths:
 
-```
+```text
 gs://terraform-state-bucket/
   env:/staging/terraform.tfstate
   env:/production/terraform.tfstate
@@ -321,7 +321,7 @@ Workspaces work well when environments are structurally identical and differ onl
 
 For those cases, separate directories per environment with their own state files and configurations are safer:
 
-```
+```text
 infrastructure/
   modules/          # Shared modules
   environments/

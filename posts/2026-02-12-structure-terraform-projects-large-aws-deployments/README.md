@@ -27,7 +27,7 @@ The solution is splitting your Terraform into smaller, independent state files. 
 
 Here's a structure that scales well for large AWS deployments:
 
-```
+```text
 terraform/
   modules/             # Reusable module definitions
     vpc/
@@ -70,7 +70,7 @@ terraform/
 
 The most important decision is how to split your Terraform into separate state files. Split by blast radius and ownership:
 
-```
+```text
 # Each of these gets its own state file
 environments/prod/us-east-1/
   networking/          # VPC, subnets, NAT gateways
@@ -293,7 +293,7 @@ inputs = {
 
 A consistent naming convention for state files keeps things manageable:
 
-```
+```text
 s3://mycompany-terraform-state/
   global/iam/terraform.tfstate
   global/route53/terraform.tfstate
@@ -309,7 +309,7 @@ s3://mycompany-terraform-state/
 
 In large organizations, different teams own different components. Structure your code to match team boundaries:
 
-```
+```text
 terraform/
   platform-team/       # VPC, shared infrastructure
     modules/

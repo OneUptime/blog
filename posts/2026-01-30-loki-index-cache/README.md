@@ -467,7 +467,7 @@ chunk_store_config:
 
 Estimate cache size based on active index and query patterns:
 
-```
+```text
 Index Cache Size = (Active Series Count) x (Avg Labels per Series) x 200 bytes x 2
 Chunk Cache Size = (Queries per Second) x (Avg Chunks per Query) x (Avg Chunk Size) x (TTL in seconds)
 ```
@@ -478,7 +478,7 @@ Chunk Cache Size = (Queries per Second) x (Avg Chunks per Query) x (Avg Chunk Si
 - 8 labels per series average
 - 10 QPS, 50 chunks per query, 256 KB chunks, 1 hour TTL
 
-```
+```text
 Index Cache = 500,000 x 8 x 200 x 2 = 1.6 GB
 Chunk Cache = 10 x 50 x 256 KB x 3600 = 460 GB (use external cache or reduce TTL)
 ```

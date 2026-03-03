@@ -24,7 +24,7 @@ ab -V
 
 ## Basic Usage
 
-```
+```text
 ab [options] URL
 ```
 
@@ -68,7 +68,7 @@ ab -n 1000 -c 50 -k http://localhost/
 
 Sample output:
 
-```
+```text
 Server Software:        nginx/1.24.0
 Server Hostname:        localhost
 Server Port:            80

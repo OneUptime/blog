@@ -66,7 +66,7 @@ argocd cluster list
 
 Output:
 
-```
+```text
 SERVER                          NAME        VERSION  STATUS      MESSAGE
 https://kubernetes.default.svc  in-cluster  1.28     Successful
 https://10.0.1.100:6443        cluster-1   1.28     Successful
@@ -185,7 +185,7 @@ Only cluster-1 and cluster-2 receive the monitoring stack.
 
 Deploy based on Git repository structure:
 
-```
+```text
 git-repo/
 ├── environments/
 │   ├── production/

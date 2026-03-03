@@ -51,7 +51,7 @@ pip install fastapi uvicorn motor pydantic python-dotenv
 
 Organize your project for maintainability and scalability:
 
-```
+```text
 project/
     app/
         __init__.py

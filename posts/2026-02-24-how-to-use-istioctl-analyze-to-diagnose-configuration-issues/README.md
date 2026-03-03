@@ -32,7 +32,7 @@ istioctl analyze --all-namespaces
 
 Output looks like:
 
-```
+```text
 Warning [IST0101] (VirtualService reviews-route.default) Referenced host not found: "reviews-v2"
 Warning [IST0108] (DestinationRule reviews-dr.default) This destination rule is not used by any virtual service
 Error [IST0145] (Gateway my-gateway.istio-system) Conflict with other gateway: gateway-2
@@ -71,7 +71,7 @@ This is perfect for CI/CD pipelines where you might not have cluster access.
 
 This is probably the most common warning:
 
-```
+```text
 Warning [IST0101] (VirtualService reviews-route.default) Referenced host not found: "reviews"
 ```
 
@@ -97,7 +97,7 @@ Common causes: typos in the service name, the service is in a different namespac
 
 ### IST0108: Unused Destination Rule
 
-```
+```text
 Warning [IST0108] (DestinationRule reviews-dr.default) This destination rule is not used
 ```
 
@@ -105,7 +105,7 @@ A DestinationRule exists but no VirtualService or traffic policy references it. 
 
 ### IST0102: Namespace Not Injected
 
-```
+```text
 Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection
 ```
 
@@ -117,7 +117,7 @@ kubectl label namespace default istio-injection=enabled
 
 ### IST0106: Schema Validation Failure
 
-```
+```text
 Error [IST0106] (VirtualService bad-vs.default) Schema validation error: timeout must be > 0
 ```
 
@@ -125,7 +125,7 @@ Your YAML has an invalid value that doesn't match the Istio API schema. This is 
 
 ### IST0145: Conflicting Gateways
 
-```
+```text
 Error [IST0145] (Gateway my-gateway.istio-system) Conflict with gateway-2: both select the same workload on port 443
 ```
 
@@ -133,7 +133,7 @@ Two Gateways are trying to bind to the same port on the same ingress gateway pod
 
 ### IST0128: Missing Destination Rule for Subset
 
-```
+```text
 Warning [IST0128] (VirtualService reviews-route.default) This host has no DestinationRule with subset "v3"
 ```
 

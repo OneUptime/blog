@@ -217,7 +217,7 @@ spec:
 
 User authentication (authorization code flow):
 
-```
+```text
 https://login.microsoftonline.com/abcdef01-2345-6789-abcd-ef0123456789/oauth2/v2.0/authorize?
   client_id=12345678-abcd-efgh-ijkl-123456789012&
   response_type=code&

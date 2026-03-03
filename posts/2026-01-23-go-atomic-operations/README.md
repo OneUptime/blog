@@ -551,7 +551,7 @@ func BenchmarkMutex(b *testing.B) {
 ```
 
 **Typical Results:**
-```
+```text
 BenchmarkAtomic-8    100000000    10 ns/op    0 B/op    0 allocs/op
 BenchmarkMutex-8      20000000    60 ns/op    0 B/op    0 allocs/op
 ```

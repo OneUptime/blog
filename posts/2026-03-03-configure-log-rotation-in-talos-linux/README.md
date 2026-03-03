@@ -20,7 +20,7 @@ The kubelet is responsible for rotating these log files based on two settings: t
 
 By default, the kubelet uses these values:
 
-```
+```text
 containerLogMaxSize: 10Mi
 containerLogMaxFiles: 5
 ```
@@ -57,7 +57,7 @@ Choose your values based on your logging volume and disk capacity. Nodes with la
 
 To plan your log rotation settings, estimate how much disk space logs will consume per node. Here is a rough calculation:
 
-```
+```text
 # Disk usage calculation
 # pods_per_node * containers_per_pod * max_log_size * max_log_files = total_log_disk
 

@@ -46,7 +46,7 @@ aws cloudformation get-template \
 
 Create a mapping between CloudFormation resource types and Terraform resource types:
 
-```
+```text
 CloudFormation                          Terraform
 --------------                          ---------
 AWS::EC2::Instance                  ->  aws_instance

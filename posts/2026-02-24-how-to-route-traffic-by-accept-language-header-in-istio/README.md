@@ -14,7 +14,7 @@ If you run a service that supports multiple languages, you might have different 
 
 Browsers and API clients send the `Accept-Language` header to indicate which languages the user prefers. A typical header looks like:
 
-```
+```text
 Accept-Language: fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7
 ```
 

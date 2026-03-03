@@ -33,7 +33,7 @@ status:
 
 An exporter transforms this into metrics:
 
-```
+```text
 backup_phase{name="daily-backup",namespace="default",phase="Completed"} 1
 backup_duration_seconds{name="daily-backup",namespace="default"} 900
 backup_size_bytes{name="daily-backup",namespace="default"} 1073741824

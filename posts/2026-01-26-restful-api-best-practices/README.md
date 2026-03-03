@@ -78,7 +78,7 @@ Resources represent entities, not actions. The HTTP method defines the action.
 
 Keep it consistent by always using plural forms:
 
-```
+```text
 GET    /users           # List all users
 GET    /users/123       # Get specific user
 POST   /users           # Create a user
@@ -89,7 +89,7 @@ DELETE /users/123       # Delete a user
 
 ### Use Hyphens for Multi-Word Resources
 
-```
+```text
 GET /user-profiles      # Correct
 GET /user_profiles      # Avoid underscores
 GET /userProfiles       # Avoid camelCase
@@ -106,7 +106,7 @@ graph LR
 
 Example endpoints:
 
-```
+```text
 GET /users/123/orders           # All orders for user 123
 GET /users/123/orders/456       # Specific order
 GET /users/123/orders/456/items # Items in that order
@@ -928,7 +928,7 @@ def get_orders():
 
 ### Request Headers
 
-```
+```text
 Content-Type: application/json
 Accept: application/json
 Authorization: Bearer <token>

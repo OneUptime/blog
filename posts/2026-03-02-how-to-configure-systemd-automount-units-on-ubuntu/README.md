@@ -132,7 +132,7 @@ sudo mkdir -p /etc/samba
 sudo nano /etc/samba/nas-credentials
 ```
 
-```
+```text
 username=shareuser
 password=secretpassword
 domain=WORKGROUP

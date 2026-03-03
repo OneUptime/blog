@@ -186,7 +186,7 @@ kustomize build "$TEMP_DIR"
 
 Organize your kustomize patches by environment.
 
-```
+```text
 kustomize/
 ├── patches/
 │   ├── production/

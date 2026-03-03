@@ -46,7 +46,7 @@ istioctl authn tls-check deploy/my-app.default
 
 Note the format: `deploy/<deployment-name>.<namespace>`. The output shows:
 
-```
+```text
 HOST:PORT                                        STATUS   SERVER       CLIENT     AUTHN POLICY        DESTINATION RULE
 api-server.backend.svc.cluster.local:8080        OK       STRICT       mTLS       default/istio-sys   -
 frontend.default.svc.cluster.local:80            OK       STRICT       mTLS       default/istio-sys   -
@@ -104,7 +104,7 @@ istioctl proxy-config secret deploy/my-app -n default
 
 This shows the certificates loaded in the Envoy proxy:
 
-```
+```text
 RESOURCE NAME          TYPE           STATUS   VALID CERT   SERIAL NUMBER   NOT AFTER           NOT BEFORE
 default                Cert Chain     ACTIVE   true         abc123...       2024-03-15T00:00    2024-03-14T00:00
 ROOTCA                 CA             ACTIVE   true         def456...       2034-03-12T00:00    2024-03-12T00:00
@@ -159,7 +159,7 @@ kubectl exec deploy/my-app -n default -c istio-proxy -- \
 
 Key stats to look for:
 
-```
+```text
 ssl.handshake: 42          # Successful TLS handshakes
 ssl.connection_error: 0    # Failed TLS connections
 ssl.no_certificate: 0      # Connections without client cert
@@ -181,7 +181,7 @@ MODE:.spec.mtls.mode
 
 Output:
 
-```
+```text
 NAMESPACE      NAME      MODE
 istio-system   default   STRICT
 backend        special   PERMISSIVE

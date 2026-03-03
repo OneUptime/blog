@@ -12,7 +12,7 @@ HTTP Basic Authentication is one of the simplest and most widely-supported authe
 
 HTTP Basic Authentication, defined in RFC 7617, works by encoding a username and password combination in Base64 and including it in the Authorization header of HTTP requests. The header format looks like this:
 
-```
+```text
 Authorization: Basic <base64-encoded-credentials>
 ```
 

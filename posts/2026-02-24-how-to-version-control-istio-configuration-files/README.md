@@ -43,7 +43,7 @@ There are two main approaches to organizing Istio configuration in Git:
 
 All Istio configuration lives in a single repository:
 
-```
+```text
 istio-config/
   README.md
   mesh/
@@ -81,7 +81,7 @@ This works well when a dedicated platform team manages the mesh configuration.
 
 Each application repository contains its own Istio configuration:
 
-```
+```text
 payment-service/
   src/
   Dockerfile
@@ -100,7 +100,7 @@ This works well when development teams own their service mesh configuration. The
 
 Use a central repository for mesh-wide configuration and let each team manage their service-specific configuration:
 
-```
+```text
 # Central repo: istio-platform-config
 mesh/
   istio-operator.yaml
@@ -121,7 +121,7 @@ This is the most common pattern in practice. The platform team controls the mesh
 
 Be consistent with naming. Here is a convention that works:
 
-```
+```text
 # Resource type as the filename
 virtual-service.yaml
 destination-rule.yaml
@@ -218,7 +218,7 @@ patches:
 
 Use a standard Git branching strategy:
 
-```
+```text
 main (production)
   |
   |--- feature/add-canary-routing

@@ -224,7 +224,7 @@ Three TTL values work together with your origin's `Cache-Control` headers:
 - **DefaultTTL** - Used when the origin doesn't send `Cache-Control` or `Expires` headers
 - **MaxTTL** - The maximum cache duration, overriding any longer TTL from the origin
 
-```
+```text
 Origin says: Cache-Control: max-age=600 (10 minutes)
 
 MinTTL=0, DefaultTTL=86400, MaxTTL=31536000

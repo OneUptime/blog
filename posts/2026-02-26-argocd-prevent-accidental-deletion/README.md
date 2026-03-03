@@ -214,7 +214,7 @@ Since ArgoCD applications are defined in Git, protecting the Git repository adds
 
 Create a CODEOWNERS file in your ArgoCD config repo:
 
-```
+```text
 # ArgoCD config repo CODEOWNERS
 # Production application changes require platform team approval
 apps/prod-* @platform-team

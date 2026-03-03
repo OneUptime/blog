@@ -48,7 +48,7 @@ The most common use case is constructing URLs with query parameters:
 
 Without `urlencode`, the space in "server error 500" and the `&` in "logs & events" would break the URL structure. The encoded URL becomes:
 
-```
+```text
 https://api.example.com/v1/search?q=server%20error%20500&category=logs%20%26%20events
 ```
 
@@ -183,7 +183,7 @@ Some protocols accept credentials embedded in URLs. While this is not recommende
 
 Without encoding, the `@` in the password would be interpreted as the separator between credentials and hostname. After encoding:
 
-```
+```text
 postgresql://myapp:p%40ss%2Fw0rd%23123@db.internal:5432/production
 ```
 

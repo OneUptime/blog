@@ -95,7 +95,7 @@ sudo nano /etc/default/grub
 
 Find the `GRUB_CMDLINE_LINUX_DEFAULT` line and add `ipv6.disable=1`:
 
-```
+```text
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash ipv6.disable=1"
 ```
 

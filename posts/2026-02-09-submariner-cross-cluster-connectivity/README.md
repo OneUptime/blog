@@ -98,7 +98,7 @@ subctl show all --context cluster-1
 
 Output shows:
 
-```
+```text
 CLUSTER ID    ENDPOINT IP     CABLE DRIVER    TYPE
 cluster-1     10.0.1.100      libreswan       local
 cluster-2     10.0.2.100      libreswan       remote

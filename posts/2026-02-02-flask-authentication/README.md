@@ -22,7 +22,7 @@ pip install flask flask-login flask-sqlalchemy werkzeug
 
 Here's our basic project structure:
 
-```
+```text
 myapp/
 ├── app.py
 ├── models.py

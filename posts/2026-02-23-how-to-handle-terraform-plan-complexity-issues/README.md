@@ -239,7 +239,7 @@ This immediately tells you the scope of changes without reading through hundreds
 
 Deeply nested modules increase plan complexity because each layer adds to the dependency graph:
 
-```
+```text
 # Deep nesting - each layer adds overhead
 module "app" ->
   module "service" ->
@@ -250,7 +250,7 @@ module "app" ->
 
 Flatten to reduce depth:
 
-```
+```text
 # Flatter structure - faster planning
 module "app_service"
 module "app_container"

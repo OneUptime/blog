@@ -60,13 +60,13 @@ az cosmosdb keys list \
 
 The connection string format changes from:
 
-```
+```text
 DefaultEndpointsProtocol=https;AccountName=mystorageaccount;AccountKey=xxx;EndpointSuffix=core.windows.net
 ```
 
 To:
 
-```
+```text
 DefaultEndpointsProtocol=https;AccountName=myTableAccount;AccountKey=xxx;TableEndpoint=https://myTableAccount.table.cosmos.azure.com:443/
 ```
 
@@ -285,7 +285,7 @@ Rough RU costs for Table API operations:
 
 To estimate your needed throughput:
 
-```
+```text
 Total RU/s = (reads/second * 1) + (writes/second * 5) + (queries/second * avg_results * 3)
 ```
 

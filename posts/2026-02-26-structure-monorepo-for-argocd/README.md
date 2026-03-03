@@ -25,7 +25,7 @@ The tradeoffs are that large repos can be slow to clone, and different teams mig
 
 Here is a proven directory layout that scales well:
 
-```
+```text
 gitops-repo/
 ├── apps/                          # ArgoCD Application definitions
 │   ├── base/                      # Base application templates

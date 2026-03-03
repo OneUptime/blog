@@ -8,7 +8,7 @@ Description: Fix the OpenTelemetry Collector startup failure caused by component
 
 You write your Collector configuration, start the Collector, and immediately get an error like:
 
-```
+```text
 Error: failed to get config: component "processor/attributes" is not used in any pipeline
 ```
 

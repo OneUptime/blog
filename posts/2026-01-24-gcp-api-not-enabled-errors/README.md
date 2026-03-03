@@ -46,7 +46,7 @@ Every GCP service is accessed through its API. Before using a service, you must 
 
 You might see these errors in various forms:
 
-```
+```text
 ERROR: (gcloud.compute.instances.create) PERMISSION_DENIED: Compute Engine API has not been used in project 123456789 before or it is disabled.
 ```
 
@@ -64,7 +64,7 @@ From API responses:
 
 Or from Terraform:
 
-```
+```text
 Error: Error creating Instance: googleapi: Error 403: Compute Engine API has not been used in project 123456789 before or it is disabled.
 ```
 

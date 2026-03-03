@@ -217,7 +217,7 @@ annotations:
 
 ExternalDNS creates TXT records alongside your A/CNAME records to track ownership. This prevents it from modifying records it didn't create. The TXT records look like:
 
-```
+```text
 _externaldns.app.example.com  TXT  "heritage=external-dns,external-dns/owner=my-cluster,external-dns/resource=ingress/default/my-app"
 ```
 

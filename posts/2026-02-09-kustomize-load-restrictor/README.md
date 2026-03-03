@@ -128,7 +128,7 @@ The strict mode prevents malicious commits from accessing sensitive files outsid
 
 Many projects organize bases in parent directories. Structure your project to work with restrictions:
 
-```
+```text
 project/
 ├── base/
 │   ├── kustomization.yaml
@@ -263,7 +263,7 @@ kustomize build --load-restrictor LoadRestrictionsRootOnly consumer/
 
 When restrictions block legitimate access, the error message indicates the problem:
 
-```
+```text
 Error: security; file '/etc/config.yaml' is not in or below '/home/user/project'
 ```
 
@@ -273,7 +273,7 @@ To fix, either restructure your project to keep files within the kustomization r
 
 For monorepos with multiple projects, structure directories to work with restrictions:
 
-```
+```text
 monorepo/
 ├── shared/
 │   └── bases/
@@ -413,7 +413,7 @@ Investigate violations promptly as they may indicate security issues.
 
 Structure projects to work with the strictest restrictions by default:
 
-```
+```text
 project/
 ├── kustomization.yaml
 ├── base/

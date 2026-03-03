@@ -225,7 +225,7 @@ This progressive approach lets developers work freely in development while enfor
 
 When a pod violates the enforced profile, Kubernetes rejects it:
 
-```
+```text
 Error from server (Forbidden): error when creating "pod.yaml": pods "app" is forbidden:
 violates PodSecurity "baseline:latest": allowPrivilegeEscalation != false
 (container "app" must set securityContext.allowPrivilegeEscalation=false)

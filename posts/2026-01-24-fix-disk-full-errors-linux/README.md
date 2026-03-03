@@ -56,7 +56,7 @@ df -hT
 
 **Sample output**:
 
-```
+```text
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/sda1        50G   48G  2.0G  96% /
 /dev/sda2       200G  180G   20G  90% /home

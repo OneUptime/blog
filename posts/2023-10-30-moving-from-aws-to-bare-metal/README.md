@@ -15,7 +15,7 @@ While the cost savings and technological benefits were significant factors in ou
 By moving to a bare-metal solution in a colocation facility, we’ve been able to achieve this independence. This move has not only resulted in substantial cost savings but also enhanced our service reliability and customer communication, further demonstrating the multifaceted benefits of considering alternative infrastructure solutions.
 
 
-### Our Initial Setup: Kubernetes on AWS
+## Our Initial Setup: Kubernetes on AWS
 
 In the early stages of our technological journey, we adopted a Kubernetes cluster on Amazon Web Services (AWS), utilizing their managed Elastic Kubernetes Service (EKS) offering.
 

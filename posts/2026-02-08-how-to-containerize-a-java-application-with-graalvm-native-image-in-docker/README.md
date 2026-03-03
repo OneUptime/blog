@@ -162,7 +162,7 @@ docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep myapp
 
 Typical results:
 
-```
+```text
 myapp-native    1.0    78MB
 myapp-jvm       1.0    310MB
 ```

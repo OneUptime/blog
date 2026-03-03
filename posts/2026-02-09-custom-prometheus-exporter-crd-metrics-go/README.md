@@ -393,7 +393,7 @@ curl http://localhost:8080/metrics | grep backup_
 
 You should see metrics like:
 
-```
+```text
 backup_status{namespace="default",name="test-backup",target="s3://my-bucket"} 1
 backup_size_bytes{namespace="default",name="test-backup",target="s3://my-bucket"} 1048576
 backup_duration_seconds{namespace="default",name="test-backup",target="s3://my-bucket"} 300

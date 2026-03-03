@@ -133,7 +133,7 @@ Let me walk through a real debugging scenario. Suppose you have this playbook:
 
 When the template task fails (maybe the template has a variable typo), you see:
 
-```
+```text
 TASK [Deploy application configuration] ***
 fatal: [web01]: FAILED! => {"changed": false, "msg": "AnsibleUndefinedVariable: 'max_conections' is undefined"}
 [web01] TASK: Deploy application configuration (debug)>
@@ -141,7 +141,7 @@ fatal: [web01]: FAILED! => {"changed": false, "msg": "AnsibleUndefinedVariable: 
 
 Now you are in the debugger. Here is what you can do:
 
-```
+```text
 # Print the current task details
 [web01] TASK: Deploy application configuration (debug)> p task.args
 {'src': 'templates/app.conf.j2', 'dest': '/etc/myapp/app.conf', 'owner': 'myapp', 'group': 'myapp', 'mode': '0644'}
@@ -162,7 +162,7 @@ Now you are in the debugger. Here is what you can do:
 
 The `print` command is your most useful tool in the debugger:
 
-```
+```text
 # Print all task arguments
 (debug)> p task.args
 
@@ -189,7 +189,7 @@ The `print` command is your most useful tool in the debugger:
 
 You can change task parameters on the fly:
 
-```
+```text
 # Change the source template path
 (debug)> task.args['src'] = 'templates/app.conf.v2.j2'
 

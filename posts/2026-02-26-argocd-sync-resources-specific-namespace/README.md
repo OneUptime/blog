@@ -248,7 +248,7 @@ With separate applications, syncing a single namespace is as simple as syncing t
 
 This approach works well with Kustomize overlays, where each overlay directory contains the configuration specific to one namespace or environment.
 
-```
+```text
 app-repo/
   base/
     deployment.yaml

@@ -178,7 +178,7 @@ Options for symbol resolution:
 
 Let me walk through a real scenario. Your application throws NullReferenceException in the payment processing code. The stack trace shows:
 
-```
+```text
 System.NullReferenceException: Object reference not set to an instance of an object.
    at PaymentService.ProcessPayment(Order order) in PaymentService.cs:line 42
    at OrderController.Checkout(CheckoutRequest request) in OrderController.cs:line 78

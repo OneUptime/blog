@@ -76,7 +76,7 @@ kubectl describe limitrange basic-limits -n development
 
 The output shows the applied constraints:
 
-```
+```text
 Name:       basic-limits
 Namespace:  development
 Type        Resource  Min  Max  Default Request  Default Limit  Max Limit/Request Ratio
@@ -194,7 +194,7 @@ Attempting to create this pod produces an error:
 kubectl apply -f violation-pod.yaml
 ```
 
-```
+```text
 Error from server (Forbidden): error when creating "violation-pod.yaml":
 pods "memory-hog" is forbidden: maximum memory usage per Container is 4Gi,
 but limit is 8Gi
@@ -368,7 +368,7 @@ spec:
 
 Error message:
 
-```
+```text
 Error from server (Forbidden): pods "ratio-violator" is forbidden:
 cpu max limit to request ratio per Container is 2, but provided ratio is 5.000000
 ```

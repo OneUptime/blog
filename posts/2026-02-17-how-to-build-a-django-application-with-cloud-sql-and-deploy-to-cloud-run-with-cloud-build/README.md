@@ -158,7 +158,7 @@ CMD exec gunicorn myproject.wsgi:application \
 
 The requirements file should include everything your application needs.
 
-```
+```text
 # requirements.txt
 Django==5.0.1
 psycopg2-binary==2.9.9

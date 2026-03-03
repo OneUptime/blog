@@ -51,7 +51,7 @@ syft registry.example.com/myapp:latest -o table | head -30
 
 Output looks like:
 
-```
+```text
 NAME                  VERSION       TYPE
 alpine-baselayout     3.4.3-r1      apk
 busybox               1.36.1-r5     apk

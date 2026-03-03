@@ -213,7 +213,7 @@ The `logger.exception()` call produces output with the full stack trace included
 
 Structured logs really shine when you need to query them. Here are queries that become possible with Powertools Logger.
 
-```
+```text
 # Find all errors for a specific order
 fields @timestamp, level, message, order_id
 | filter order_id = "ORD-12345"

@@ -16,7 +16,7 @@ Both `istio_request_bytes` and `istio_response_bytes` are Prometheus histograms.
 
 Like all Prometheus histograms, each creates three underlying time series:
 
-```
+```text
 istio_request_bytes_bucket{le="..."} - count of requests per size bucket
 istio_request_bytes_sum              - total bytes across all requests
 istio_request_bytes_count            - total number of requests
@@ -28,7 +28,7 @@ istio_response_bytes_count            - total number of responses
 
 The default bucket boundaries are:
 
-```
+```text
 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, +Inf
 ```
 
@@ -38,7 +38,7 @@ These are in bytes, ranging from 1 byte to 10MB. Most API responses fall somewhe
 
 These metrics carry the same labels as `istio_requests_total`:
 
-```
+```text
 istio_request_bytes_bucket{
   reporter="destination",
   source_workload="frontend",

@@ -59,7 +59,7 @@ Before diving into implementation details, let us understand why code splitting 
 
 Consider a typical React application structure:
 
-```
+```text
 src/
   components/
     Dashboard/

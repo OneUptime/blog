@@ -42,7 +42,7 @@ ssh user@remote-server.example.com
 
 Configure SSH hosts in `~/.ssh/config`:
 
-```
+```text
 # ~/.ssh/config
 Host dev-server
     HostName remote-server.example.com

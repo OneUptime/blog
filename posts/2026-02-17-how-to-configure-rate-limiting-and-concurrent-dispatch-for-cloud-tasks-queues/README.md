@@ -237,7 +237,7 @@ To determine the right rate limit settings, consider these factors:
 
 Here is a formula for estimating throughput:
 
-```
+```text
 Effective throughput = min(
   max_dispatches_per_second,
   max_concurrent_dispatches / average_task_duration_seconds

@@ -137,7 +137,7 @@ ceph osd pool autoscale-status
 
 Example output:
 
-```
+```text
 POOL                     SIZE  TARGET SIZE  RATE  RAW CAPACITY   RATIO  TARGET RATIO  PG_NUM  NEW PG_NUM  AUTOSCALE
 device_health_metrics      0                 3.0        19.5T  0.0000                     1              on
 .rgw.root               1245                 3.0        19.5T  0.0000                     1              on
@@ -190,7 +190,7 @@ ceph osd pool autoscale-status | grep $POOL_NAME
 
 When autoscaler is in `warn` mode, you'll see health warnings like:
 
-```
+```text
 HEALTH_WARN 1 pool(s) have pg_num > pgp_num
             1 pools have too few placement groups
 ```

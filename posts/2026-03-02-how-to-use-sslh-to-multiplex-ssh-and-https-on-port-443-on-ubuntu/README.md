@@ -36,7 +36,7 @@ sudo apt install sslh
 
 The key constraint is that sslh must own port 443, which means your existing HTTPS server (nginx, Apache) needs to move to a different port (typically 4443) that's only accessible locally:
 
-```
+```text
 Internet -> Port 443 -> sslh -> Port 22 (SSH daemon)
                              -> Port 4443 (HTTPS/nginx)
                              -> Port 1194 (OpenVPN)
@@ -89,7 +89,7 @@ sudo nano /etc/sslh/sslh.cfg
 
 Here's a complete configuration that multiplexes SSH, HTTPS, and OpenVPN:
 
-```
+```text
 # sslh configuration file
 # /etc/sslh/sslh.cfg
 
@@ -178,7 +178,7 @@ sudo nano /etc/default/sslh
 
 Set the `DAEMON_OPTS` variable:
 
-```
+```text
 # Set to "yes" to start sslh on boot
 RUN=yes
 
@@ -235,7 +235,7 @@ sudo iptables -t mangle -A PREROUTING -i lo -p tcp -m multiport \
 
 Then in `/etc/sslh/sslh.cfg`, add to each protocol block:
 
-```
+```text
 protocols:
 (
     {
@@ -303,7 +303,7 @@ sudo systemctl restart sslh
 
 On the client side, configure SSH to use port 443 for specific hosts:
 
-```
+```text
 # In ~/.ssh/config on the client machine
 Host my-server
     HostName your-server.com

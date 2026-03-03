@@ -272,7 +272,7 @@ ansible web1.example.com -m shell -a "which sudo"
 
 Common errors and their fixes:
 
-```
+```text
 # Error: "Missing sudo password"
 # Fix: Use --ask-become-pass or configure NOPASSWD in sudoers
 

@@ -32,13 +32,13 @@ The most common mistake is setting pool size based on intuition. "We have 8 CPU 
 
 PostgreSQL's documentation and community testing have produced a formula that works well for most OLTP workloads:
 
-```
+```text
 connections = ((core_count * 2) + effective_spindle_count)
 ```
 
 For a machine with 4 cores and SSD storage (treat as 1 spindle):
 
-```
+```text
 connections = ((4 * 2) + 1) = 9
 ```
 

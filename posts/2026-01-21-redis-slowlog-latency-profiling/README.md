@@ -383,7 +383,7 @@ if __name__ == '__main__':
 
 ### Grafana Dashboard Queries
 
-```
+```text
 # Slow commands per second
 rate(redis_slowlog_commands_total[5m])
 

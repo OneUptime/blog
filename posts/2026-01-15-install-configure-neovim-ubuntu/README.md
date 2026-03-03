@@ -1580,7 +1580,7 @@ Here's how to organize your Neovim configuration for maintainability:
 
 ### Directory Structure
 
-```
+```text
 ~/.config/nvim/
 ├── init.lua                 # Main entry point
 ├── lua/

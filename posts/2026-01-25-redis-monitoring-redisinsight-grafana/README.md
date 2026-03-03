@@ -61,7 +61,7 @@ Once RedisInsight is running, add your Redis instances:
 
 The Browser tab lets you explore your data:
 
-```
+```text
 # View keys matching a pattern
 # Use the search bar with patterns like:
 user:*

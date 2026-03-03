@@ -16,7 +16,7 @@ This guide covers the standard file layout, what goes in each file, and why cert
 
 A typical Terraform module looks like this:
 
-```
+```text
 my-module/
   main.tf          # Primary resource definitions
   variables.tf     # Input variable declarations
@@ -29,7 +29,7 @@ my-module/
 
 For more complex modules, you might also see:
 
-```
+```text
 my-module/
   main.tf
   variables.tf
@@ -337,7 +337,7 @@ resource "aws_lb_target_group" "this" {
 
 Good modules include usage examples. These serve as both documentation and test fixtures:
 
-```
+```text
 examples/
   basic/
     main.tf       # Minimal configuration

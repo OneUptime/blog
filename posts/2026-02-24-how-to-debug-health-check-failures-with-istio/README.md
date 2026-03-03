@@ -26,13 +26,13 @@ kubectl describe pod <pod-name> | tail -30
 
 You will see events like:
 
-```
+```text
 Warning  Unhealthy  2s (x3 over 12s)  kubelet  Liveness probe failed: Get "http://10.244.1.5:15021/app-health/my-app/livez": dial tcp 10.244.1.5:15021: connect: connection refused
 ```
 
 Or:
 
-```
+```text
 Warning  Unhealthy  5s  kubelet  Readiness probe failed: HTTP probe failed with statuscode: 503
 ```
 

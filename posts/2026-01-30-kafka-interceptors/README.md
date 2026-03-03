@@ -478,7 +478,7 @@ When you configure multiple interceptors, they execute in order. Understanding t
 
 ### Producer Interceptor Chain
 
-```
+```text
 Record Created
      |
      v

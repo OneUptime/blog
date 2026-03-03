@@ -10,7 +10,7 @@ Raw telemetry data is useful, but pre-computed analytics are what teams actually
 
 ## Architecture
 
-```
+```text
 OTel Collector -> Kafka -> Flink (stream processing) -> ClickHouse
                                                      -> Alerting System
 ```

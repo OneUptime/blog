@@ -29,7 +29,7 @@ grep "^FROM" Dockerfile
 
 The output might look like this:
 
-```
+```text
 FROM node:20-alpine
 ```
 

@@ -38,7 +38,7 @@ branches:
 
 Assign reviewers based on file paths:
 
-```
+```text
 # .github/CODEOWNERS
 # Require platform team review for all infrastructure changes
 
@@ -266,7 +266,7 @@ graph TD
 
 Write constructive review comments:
 
-```
+```text
 # Instead of:
 "This is wrong."
 
@@ -279,7 +279,7 @@ every playbook execution. Example:
     creates: /opt/app/.initialized"
 ```
 
-```
+```text
 # Instead of:
 "You forgot become."
 

@@ -20,7 +20,7 @@ You need Go 1.21 or later installed on your machine, along with Terraform 1.5 or
 
 Every Terraform provider follows a standard directory layout.
 
-```
+```text
 terraform-provider-taskmanager/
   internal/
     provider/

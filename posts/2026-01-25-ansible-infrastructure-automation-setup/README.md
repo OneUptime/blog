@@ -292,7 +292,7 @@ ansible-playbook playbooks/setup-common.yml --limit web1.example.com
 
 Organize your Ansible project for maintainability as it grows.
 
-```
+```text
 ansible-project/
 ├── ansible.cfg              # Project configuration
 ├── inventory/

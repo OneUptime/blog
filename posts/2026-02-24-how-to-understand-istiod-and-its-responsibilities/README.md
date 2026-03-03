@@ -171,7 +171,7 @@ kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | 
 
 Important metrics:
 
-```
+```text
 # Number of connected proxies
 pilot_xds_pushes{type="cds"}
 

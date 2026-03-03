@@ -27,7 +27,7 @@ go get github.com/GoogleCloudPlatform/functions-framework-go
 
 Your project structure looks like this:
 
-```
+```text
 my-function/
     go.mod
     go.sum

@@ -37,7 +37,7 @@ Exponential backoff solves this by:
 
 The basic formula for exponential backoff is:
 
-```
+```text
 delay = baseDelay * (2 ^ attemptNumber)
 ```
 

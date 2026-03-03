@@ -12,7 +12,7 @@ When Terraform tries to delete an S3 bucket and gets the `BucketNotEmpty` error,
 
 ## What the Error Looks Like
 
-```
+```text
 Error: error deleting S3 Bucket (my-bucket): BucketNotEmpty:
 The bucket you tried to delete is not empty
     status code: 409, request id: abc123-def456

@@ -20,7 +20,7 @@ Unit tests are fast, free, and safe. They do not need cloud credentials, do not 
 
 Test files use the `.tftest.hcl` extension and live in a `tests` directory by default:
 
-```
+```text
 my-module/
   main.tf
   variables.tf
@@ -106,7 +106,7 @@ terraform test -filter=tests/unit.tftest.hcl
 
 Output looks like this:
 
-```
+```text
 tests/unit.tftest.hcl... in progress
   run "test_vpc_cidr_block"... pass
 tests/unit.tftest.hcl... tearing down

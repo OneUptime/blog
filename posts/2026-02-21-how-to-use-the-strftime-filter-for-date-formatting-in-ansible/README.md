@@ -28,7 +28,7 @@ The strftime filter takes a format string and an optional Unix timestamp. If no 
 ```
 
 Output (example):
-```
+```text
 ISO format:    2026-02-21T14:30:45
 Date only:     2026-02-21
 Time only:     14:30:45

@@ -135,7 +135,7 @@ machine:
 
 A good pattern is to organize your patches into categories. Here is a directory structure that works well for medium-to-large deployments:
 
-```
+```text
 configs/
   controlplane.yaml        # Base control plane config
   worker.yaml              # Base worker config

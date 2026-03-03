@@ -178,7 +178,7 @@ service:
 
 With the data flowing, you can calculate drop-off rates with straightforward queries. The formula for any step is:
 
-```
+```text
 drop_off_rate(step_N) = 1 - (checkout.step.entered{step=N+1} / checkout.step.entered{step=N})
 ```
 

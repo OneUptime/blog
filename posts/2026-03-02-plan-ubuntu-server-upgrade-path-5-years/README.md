@@ -59,7 +59,7 @@ done
 
 Output a simple summary:
 
-```
+```text
 web-prod-01: 22.04
 web-prod-02: 22.04
 db-prod-01: 22.04

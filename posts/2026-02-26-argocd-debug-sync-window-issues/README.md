@@ -81,7 +81,7 @@ Automated syncs are happening during a time when the deny window should be block
 
 The cron schedule defines when the window starts, and the duration defines how long it lasts. If the current time is past the start + duration, the window is not active.
 
-```
+```text
 Schedule: 0 9 * * 1-5 (Monday-Friday at 9 AM)
 Duration: 8h
 Active period: 9:00 to 17:00 on weekdays

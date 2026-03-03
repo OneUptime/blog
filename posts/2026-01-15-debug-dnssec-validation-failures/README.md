@@ -145,7 +145,7 @@ dig example.com @8.8.8.8 +dnssec
 
 Look at the flags in the response:
 
-```
+```text
 ;; flags: qr rd ra ad; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1
 ```
 
@@ -166,7 +166,7 @@ dig example.com +trace +dnssec
 
 This shows each step of the resolution:
 
-```
+```text
 .                       518400  IN      NS      a.root-servers.net.
 .                       518400  IN      RRSIG   NS 8 0 518400 ...
 ;; Received 1097 bytes from 192.168.1.1#53(192.168.1.1) in 24 ms
@@ -195,7 +195,7 @@ delv example.com +vtrace
 
 This provides more verbose output about validation:
 
-```
+```text
 ;; validating example.com/A: starting
 ;; validating example.com/A: attempting positive response validation
 ;; validating example.com/DNSKEY: starting
@@ -209,7 +209,7 @@ This provides more verbose output about validation:
 
 If validation fails, you'll see where it fails:
 
-```
+```text
 ;; validating example.com/DNSKEY: no valid signature found
 ;; RRSIG validity period has expired
 ```
@@ -228,7 +228,7 @@ dig example.com DNSKEY +dnssec +multi
 
 Output shows your domain's keys:
 
-```
+```text
 example.com.            3600 IN DNSKEY 256 3 13 (
                                 oJMRESz5E4gYzS/q6XDrvU1qMPYIjCWzJaOau8XNEZeq
                                 YmVfTgEmbWWQA0tHkbXb...
@@ -260,7 +260,7 @@ dig example.com DS +dnssec @a0.org.afilias-nst.info
 
 Output:
 
-```
+```text
 example.com.            86400   IN      DS      12345 13 2 49FD46E6C4B4...
 ```
 
@@ -295,7 +295,7 @@ dig example.com +dnssec +multi
 
 Look at the RRSIG records:
 
-```
+```text
 example.com.            3600 IN RRSIG A 13 2 3600 (
                                 20260215000000 20260115000000 34567 example.com.
                                 J5wxRq8ngBvHZj5xXXX... )
@@ -393,14 +393,14 @@ dig nonexistent.example.com +dnssec
 
 You should see NSEC or NSEC3 records proving the name doesn't exist:
 
-```
+```text
 example.com.            3600 IN NSEC www.example.com. A NS SOA MX RRSIG NSEC DNSKEY
 example.com.            3600 IN RRSIG NSEC ...
 ```
 
 Or for NSEC3:
 
-```
+```text
 abc123def456....example.com. 3600 IN NSEC3 1 0 10 AABB (
                                 ghi789jkl012... A RRSIG )
 ```
@@ -479,7 +479,7 @@ dig example.com ANY +dnssec +bufsize=4096
 
 Look at the response size:
 
-```
+```text
 ;; MSG SIZE  rcvd: 1847
 ```
 

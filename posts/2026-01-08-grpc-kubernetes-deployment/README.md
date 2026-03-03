@@ -48,7 +48,7 @@ Key differences include:
 
 Let's start with a sample gRPC service structure:
 
-```
+```text
 grpc-service/
 ├── Dockerfile
 ├── go.mod

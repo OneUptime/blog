@@ -57,14 +57,14 @@ az batch pool autoscale enable \
 
 The simplest formula scales based on pending tasks - one node per pending task.
 
-```
+```text
 // One dedicated node per pending task, between 0 and 20
 $TargetDedicatedNodes = min(20, max(0, $PendingTasks));
 ```
 
 This is often too aggressive. If you have 1000 pending tasks, you get 20 nodes (capped), but each node might be able to run multiple tasks. A better formula accounts for task slots per node.
 
-```
+```text
 // Scale based on pending tasks divided by task slots per node
 // Assumes 4 task slots per node
 $taskSlotsPerNode = 4;
@@ -75,7 +75,7 @@ $TargetDedicatedNodes = min(20, max(0, ceil($PendingTasks / $taskSlotsPerNode)))
 
 For more sophisticated scaling, use the `GetSample()` function to look at historical metrics. This provides smoother scaling based on trends rather than instantaneous values.
 
-```
+```text
 // Use the average pending tasks over the last 10 minutes
 $samples = $PendingTasks.GetSamplePercent(TimeInterval_Minute * 10);
 $tasks = ($samples < 70) ? max(0, $PendingTasks.GetSample(1)) : max(0, avg($PendingTasks.GetSample(TimeInterval_Minute * 10)));
@@ -89,7 +89,7 @@ The `GetSamplePercent()` check is important. If there are not enough samples ava
 
 For workloads with predictable patterns, scale based on time of day.
 
-```
+```text
 // Scale up during business hours (8 AM - 6 PM UTC), scale down at night
 $isBusinessHours = (time().hour >= 8 && time().hour < 18);
 $peakNodes = 10;
@@ -99,7 +99,7 @@ $TargetDedicatedNodes = $isBusinessHours ? $peakNodes : $offPeakNodes;
 
 You can combine time-based scaling with task-based scaling.
 
-```
+```text
 // Minimum nodes during business hours, plus task-based scaling
 $isBusinessHours = (time().hour >= 8 && time().hour < 18);
 $minNodes = $isBusinessHours ? 5 : 0;
@@ -111,7 +111,7 @@ $TargetDedicatedNodes = min(30, max($minNodes, $taskBasedNodes));
 
 Low-priority (spot) nodes are much cheaper but can be preempted. A good strategy uses a base of dedicated nodes with low-priority nodes for burst capacity.
 
-```
+```text
 // Base dedicated nodes + low-priority for burst
 $taskSlotsPerNode = 4;
 $totalNeeded = ceil($PendingTasks / $taskSlotsPerNode);
@@ -128,7 +128,7 @@ $TargetLowPriorityNodes = min(40, $overflow);
 
 Abruptly removing nodes can interrupt running tasks. A gradual scale-down formula prevents this.
 
-```
+```text
 // Scale up quickly but scale down slowly
 $taskSlotsPerNode = 4;
 $desiredNodes = ceil($PendingTasks / $taskSlotsPerNode);
@@ -184,7 +184,7 @@ Here is a quick reference for the formula syntax.
 
 **Dividing by zero:** If `$taskSlotsPerNode` is calculated dynamically and could be zero, add a guard.
 
-```
+```text
 $taskSlotsPerNode = max(1, $configuredSlots);
 ```
 

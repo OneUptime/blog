@@ -223,7 +223,7 @@ ingester:
 
 Use this formula to estimate ingester memory needs:
 
-```
+```text
 Memory = (active_streams * avg_chunk_size) + (flush_queue_size * avg_chunk_size) + WAL_buffer
 
 Where:
@@ -235,7 +235,7 @@ Where:
 
 For a cluster with 50,000 active streams:
 
-```
+```text
 Memory = (50000 * 1.5MB) + (64 * 1.5MB) + 20% overhead
        = 75GB + 96MB + 15GB
        = ~90GB across all ingesters

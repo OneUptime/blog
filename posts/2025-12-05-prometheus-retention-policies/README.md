@@ -154,7 +154,7 @@ prometheus_tsdb_head_series
 
 ### Estimation Formula
 
-```
+```text
 Storage (bytes) = samples_per_second * bytes_per_sample * retention_seconds
 ```
 

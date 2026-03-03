@@ -10,7 +10,7 @@ Description: Understand why RDS Multi-AZ failovers happen, minimize their impact
 
 Your application suddenly lost database connectivity for 15-30 seconds, and when you check the RDS events, you see:
 
-```
+```text
 Multi-AZ instance failover started
 Multi-AZ instance failover completed
 ```

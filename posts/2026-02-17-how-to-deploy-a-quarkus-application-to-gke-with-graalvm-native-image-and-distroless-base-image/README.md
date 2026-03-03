@@ -129,7 +129,7 @@ The `gcr.io/distroless/base-debian12` image contains only the runtime libraries 
 
 Compare the image sizes:
 
-```
+```text
 ubuntu:22.04        ~  77MB
 eclipse-temurin:17  ~ 300MB
 distroless/base     ~  20MB

@@ -26,7 +26,7 @@ kubectl exec my-pod -c istio-proxy -- iptables -t nat -L -n -v
 
 The output shows something like:
 
-```
+```text
 Chain PREROUTING (policy ACCEPT)
 target     prot opt source    destination
 ISTIO_INBOUND  tcp  --  0.0.0.0/0  0.0.0.0/0

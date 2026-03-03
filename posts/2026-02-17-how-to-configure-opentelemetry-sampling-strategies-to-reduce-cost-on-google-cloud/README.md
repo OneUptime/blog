@@ -249,7 +249,7 @@ for rate in [1.0, 0.5, 0.25, 0.10, 0.05, 0.01]:
 
 Running this shows the dramatic difference:
 
-```
+```text
   100% -> 2,400,000,000 spans/month ->   $480.00/month
    50% -> 1,200,000,000 spans/month ->   $240.00/month
    25% ->   600,000,000 spans/month ->   $120.00/month

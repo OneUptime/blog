@@ -120,7 +120,7 @@ This configuration tells Docker to allocate new networks from the `192.168.201.0
 
 Calculate how many networks you can support:
 
-```
+```text
 A /24 range contains 256 addresses
 A /28 subnet contains 16 addresses
 256 / 16 = 16 networks per pool
@@ -248,7 +248,7 @@ If IPv4 address space is extremely constrained, consider enabling IPv6 for Docke
 
 Document your Docker IP address allocation alongside your network infrastructure. Here is a simple planning approach:
 
-```
+```text
 Corporate network:   10.0.0.0/8, 172.16.0.0/12
 Local LAN:           192.168.1.0/24
 VPN:                 172.16.0.0/12

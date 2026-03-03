@@ -43,7 +43,7 @@ kubectl get pods -n istio-system -l istio=ingressgateway --show-labels
 
 Typical output:
 
-```
+```text
 NAME                                    READY   STATUS    LABELS
 istio-ingressgateway-5c4d9b7c8-xyz12   1/1     Running   app=istio-ingressgateway,istio=ingressgateway,...
 ```

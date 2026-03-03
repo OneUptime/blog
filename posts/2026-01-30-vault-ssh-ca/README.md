@@ -174,7 +174,7 @@ ssh-keygen -L -f ~/.ssh/id_ed25519-cert.pub
 
 ### Certificate Output Example
 
-```
+```text
 /home/user/.ssh/id_ed25519-cert.pub:
         Type: ssh-ed25519-cert-v01@openssh.com user certificate
         Public key: ED25519-CERT SHA256:ABC123...

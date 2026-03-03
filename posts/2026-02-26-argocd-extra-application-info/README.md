@@ -126,13 +126,13 @@ spec:
 
 In the ArgoCD UI, you can filter the application list by these labels. For example, to see all Tier 1 production applications:
 
-```
+```text
 tier=1,env=production
 ```
 
 Or all applications owned by the payments team:
 
-```
+```text
 team=payments
 ```
 

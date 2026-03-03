@@ -1293,7 +1293,7 @@ Follow these best practices for maintainable Ansible automation.
 
 Organize your Ansible project for scalability.
 
-```
+```text
 ansible-project/
 |-- ansible.cfg              # Project-specific configuration
 |-- inventories/

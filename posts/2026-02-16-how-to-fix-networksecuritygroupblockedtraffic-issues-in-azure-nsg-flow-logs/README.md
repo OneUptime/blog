@@ -55,13 +55,13 @@ Version 2 flow logs include additional information like bytes transferred and fl
 
 Flow logs are stored as JSON files in the storage account. Each file covers a one-hour period. The path structure is:
 
-```
+```text
 resourceId=/SUBSCRIPTIONS/{subId}/RESOURCEGROUPS/{rgName}/PROVIDERS/MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/{nsgName}/y={year}/m={month}/d={day}/h={hour}/m=00/macAddress={mac}/PT1H.json
 ```
 
 The flow tuple format for version 2 is:
 
-```
+```text
 timestamp,sourceIP,destIP,sourcePort,destPort,protocol,trafficFlow,trafficDecision,flowState,packetsStoD,bytesStoD,packetsDtoS,bytesDtoS
 ```
 

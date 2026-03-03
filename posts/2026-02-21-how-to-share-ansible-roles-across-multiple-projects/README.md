@@ -84,7 +84,7 @@ The `-p roles/` flag installs them into your project's `roles/` directory.
 
 ### Project Structure
 
-```
+```text
 my-project/
   ansible.cfg
   requirements.yml
@@ -195,7 +195,7 @@ This approach works well for enterprises that need access control and audit trai
 
 If all your projects live in a single large repository, you can share roles via a common directory and the `roles_path` configuration:
 
-```
+```text
 monorepo/
   shared-roles/
     common/
@@ -246,7 +246,7 @@ Cons:
 
 For more structured sharing, especially with custom modules and plugins, package your roles inside an Ansible collection:
 
-```
+```text
 collections/
   myorg/
     infrastructure/

@@ -575,7 +575,7 @@ deploy-prometheus-targets:
 
 Organize targets by environment using separate files and directories:
 
-```
+```text
 /etc/prometheus/
   prometheus.yml
   targets/

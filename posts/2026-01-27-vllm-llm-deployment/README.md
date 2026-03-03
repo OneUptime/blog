@@ -78,7 +78,7 @@ PagedAttention is the core innovation that makes vLLM fast. Traditional attentio
 
 ### How PagedAttention Works
 
-```
+```text
 Traditional Attention Memory:
 [Sequence 1 ████████░░░░░░░░]  <- Wasted space for max length
 [Sequence 2 ██████░░░░░░░░░░]  <- More wasted space

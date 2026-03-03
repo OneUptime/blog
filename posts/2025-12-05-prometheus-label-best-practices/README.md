@@ -45,7 +45,7 @@ graph TB
 
 **Cardinality** = Product of all unique label value combinations
 
-```
+```text
 http_requests_total{method="GET", status="200"} - 1 time series
 http_requests_total{method="GET", status="404"} - 1 time series
 http_requests_total{method="POST", status="200"} - 1 time series

@@ -187,7 +187,7 @@ Terraform Cloud handles state storage, locking, encryption, and access control. 
 
 A critical decision is how to split your state. Putting everything in one state file creates a blast radius problem: a mistake in any resource can block changes to all other resources. Here is a recommended structure for Kubernetes projects:
 
-```
+```text
 infrastructure/
   network/          # VPC, subnets, NAT gateways
     backend.tf      # key: "infra/network/terraform.tfstate"
@@ -229,7 +229,7 @@ resource "aws_eks_cluster" "main" {
 
 When a team member runs `terraform plan` or `terraform apply`, Terraform acquires a lock on the state. If someone else tries to run at the same time, they see an error:
 
-```
+```text
 Error: Error acquiring the state lock
 Lock Info:
   ID:        abcdef12-3456-7890-abcd-ef1234567890

@@ -155,7 +155,7 @@ resource "aws_instance" "web" {
 
 The template file can then use loops and conditionals:
 
-```
+```text
 # /etc/hosts additions
 %{ for ip in servers ~}
 ${ip} app-server
@@ -174,7 +174,7 @@ Both the provider and the built-in function use the same template syntax.
 
 ### Variable Interpolation
 
-```
+```text
 # Simple variable substitution
 server_name = ${hostname}
 database_url = postgresql://${db_host}:${db_port}/${db_name}
@@ -182,7 +182,7 @@ database_url = postgresql://${db_host}:${db_port}/${db_name}
 
 ### Conditionals
 
-```
+```text
 %{ if environment == "production" }
 log_level = warn
 replicas = 3
@@ -194,7 +194,7 @@ replicas = 1
 
 ### Loops
 
-```
+```text
 # Generate a list of upstream servers
 upstream backend {
 %{ for addr in backend_addresses ~}
@@ -207,7 +207,7 @@ upstream backend {
 
 The `~` character trims whitespace around directives.
 
-```
+```text
 # Without whitespace control (extra blank lines)
 %{ for ip in servers }
 ${ip}
@@ -244,7 +244,7 @@ resource "local_file" "nginx_config" {
 
 Template (`templates/nginx.conf.tftpl`):
 
-```
+```text
 upstream backend {
 %{ for ip in backend_servers ~}
     server ${ip}:${backend_port};
@@ -289,7 +289,7 @@ locals {
 
 Template:
 
-```
+```text
 [Unit]
 Description=${app_name} service
 After=network.target

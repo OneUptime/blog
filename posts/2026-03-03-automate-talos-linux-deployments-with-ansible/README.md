@@ -29,7 +29,7 @@ Before you start, make sure you have:
 
 Organize your Ansible project for Talos management:
 
-```
+```text
 talos-ansible/
   ansible.cfg
   inventory/

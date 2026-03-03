@@ -20,19 +20,19 @@ SPIFFE is an open standard for identifying and securing communications between w
 
 The SPIFFE ID format is:
 
-```
+```text
 spiffe://<trust-domain>/<workload-identifier>
 ```
 
 In Istio, the format is:
 
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
 For example, a pod running with the `payment-service` service account in the `production` namespace would have:
 
-```
+```text
 spiffe://cluster.local/ns/production/sa/payment-service
 ```
 
@@ -94,7 +94,7 @@ istioctl proxy-config secret deploy/payment -n production -o json | \
 
 In the output, look for the Subject Alternative Name:
 
-```
+```text
 X509v3 Subject Alternative Name: critical
     URI:spiffe://cluster.local/ns/production/sa/payment-service
 ```
@@ -105,7 +105,7 @@ This is the SPIFFE ID. Any service that receives a connection from this workload
 
 The trust domain is the root of the SPIFFE ID hierarchy. By default, Istio uses `cluster.local`:
 
-```
+```text
 spiffe://cluster.local/...
 ```
 
@@ -121,7 +121,7 @@ spec:
 
 This changes all identities to:
 
-```
+```text
 spiffe://my-organization.example.com/ns/<namespace>/sa/<service-account>
 ```
 
@@ -197,7 +197,7 @@ The trust bundle (root CA certificate) is distributed to every sidecar so they c
 istioctl proxy-config secret deploy/payment -n production
 ```
 
-```
+```text
 RESOURCE NAME   TYPE   STATUS   VALID CERT   SERIAL NUMBER
 default         Cert   ACTIVE   true         abc123...
 ROOTCA          CA     ACTIVE   true         def456...

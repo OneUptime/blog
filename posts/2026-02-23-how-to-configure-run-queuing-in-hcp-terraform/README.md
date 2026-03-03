@@ -14,7 +14,7 @@ Every workspace in HCP Terraform has a run queue. When multiple runs are trigger
 
 Each workspace maintains its own queue. Only one run can be in an active state (planning or applying) at any given time within a workspace. Additional runs wait in the queue in the order they were created.
 
-```
+```text
 Workspace "app-prod" queue:
   [Active]  Run #45 - Planning (triggered by VCS push)
   [Queued]  Run #46 - Pending (triggered by API)

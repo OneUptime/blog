@@ -152,7 +152,7 @@ flowchart TD
 
 In real-world infrastructure, you often have different keys for different environments or cloud providers.
 
-```
+```text
 ~/.ssh/
   production_key          # Production servers
   staging_key             # Staging servers
@@ -218,7 +218,7 @@ chmod 400 ~/.ssh/aws-keypair.pem
 
 If permissions are wrong, you will see an error like:
 
-```
+```text
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 @         WARNING: UNPROTECTED PRIVATE KEY FILE!          @
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -308,7 +308,7 @@ ansible-playbook -i inventory.ini site.yml -vvvv
 
 Look for lines like:
 
-```
+```text
 <192.168.1.10> SSH: EXEC ssh -C -o ControlMaster=auto -o ControlPersist=60s
   -i /home/deploy/.ssh/web_deploy_key
   -o KbdInteractiveAuthentication=no

@@ -41,7 +41,7 @@ kubectl describe node gke-your-cluster-default-pool-abc123
 
 Look for the Conditions section:
 
-```
+```text
 Conditions:
   Type             Status  Reason
   ----             ------  ------

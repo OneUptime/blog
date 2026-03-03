@@ -21,7 +21,7 @@ ansible-playbook --list-tags deploy.yml
 
 Output:
 
-```
+```text
 playbook: deploy.yml
 
   play #1 (webservers): Deploy web application	TAGS: []
@@ -111,7 +111,7 @@ Now list the tags:
 ansible-playbook --list-tags tagged-deploy.yml
 ```
 
-```
+```text
 playbook: tagged-deploy.yml
 
   play #1 (webservers): Deploy web application	TAGS: []
@@ -160,7 +160,7 @@ Combine `--list-tasks` with `--tags` to see exactly which tasks will run:
 ansible-playbook --list-tasks --tags config deploy.yml
 ```
 
-```
+```text
 playbook: deploy.yml
 
   play #1 (webservers): Deploy web application	TAGS: []
@@ -215,7 +215,7 @@ When you tag a role in a playbook, all tasks in that role inherit the tag:
 ansible-playbook --list-tags site.yml
 ```
 
-```
+```text
 playbook: site.yml
 
   play #1 (all): Configure servers	TAGS: []
@@ -269,7 +269,7 @@ You can tag entire plays:
 ansible-playbook --list-tags multi-play-tags.yml
 ```
 
-```
+```text
 playbook: multi-play-tags.yml
 
   play #1 (all): Setup infrastructure	TAGS: [infrastructure]
@@ -325,7 +325,7 @@ Ansible has two special tags:
 ansible-playbook --list-tags special-tags.yml
 ```
 
-```
+```text
 playbook: special-tags.yml
 
   play #1 (webservers): Deployment with special tags	TAGS: []

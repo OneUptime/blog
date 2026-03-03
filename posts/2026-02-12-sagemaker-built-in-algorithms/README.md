@@ -262,7 +262,7 @@ blazingtext.fit({
 
 BlazingText's supervised mode expects data in a specific format: each line has `__label__LABELNAME followed by the text`.
 
-```
+```text
 __label__positive This movie was fantastic and I loved every minute
 __label__negative Terrible film, waste of time
 ```

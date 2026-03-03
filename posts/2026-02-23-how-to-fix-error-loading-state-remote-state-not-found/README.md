@@ -10,7 +10,7 @@ Description: How to diagnose and fix the Error Loading State Remote State Not Fo
 
 You run `terraform plan` and get:
 
-```
+```text
 Error: Failed to load state: Remote state not found
 
 No state was found for the given workspace.
@@ -18,7 +18,7 @@ No state was found for the given workspace.
 
 Or a similar variant:
 
-```
+```text
 Error loading state: BlobNotFound
 Error loading state: NoSuchKey: The specified key does not exist.
 Error loading state: state not found
@@ -103,7 +103,7 @@ terraform workspace select prod
 
 For S3 backends with workspace support, the state file path includes the workspace name:
 
-```
+```text
 s3://my-terraform-state/env:/prod/terraform.tfstate
 ```
 

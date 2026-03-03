@@ -104,17 +104,17 @@ spec:
 
 Calculate the storage needed:
 
-```
+```text
 Total cache size = Sum of all repo sizes * 1.5 (overhead for git objects)
 ```
 
 For example, with 50 repositories averaging 200MB each:
-```
+```text
 50 * 200MB * 1.5 = 15GB
 ```
 
 Add a safety margin of 2x:
-```
+```text
 Recommended PV size = 30GB
 ```
 

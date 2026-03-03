@@ -69,7 +69,7 @@ vault secrets list
 
 Expected output:
 
-```
+```text
 Path          Type         Description
 ----          ----         -----------
 cubbyhole/    cubbyhole    per-token private secret storage
@@ -220,7 +220,7 @@ vault read database/creds/myapp-readonly
 
 Output:
 
-```
+```text
 Key                Value
 ---                -----
 lease_id           database/creds/myapp-readonly/abc123def456
@@ -314,7 +314,7 @@ vault read database/static-creds/myapp-service
 
 Output:
 
-```
+```text
 Key                    Value
 ---                    -----
 last_vault_rotation    2026-01-30T10:00:00.000000Z

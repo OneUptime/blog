@@ -91,7 +91,7 @@ spec:
 
 The `/etc/app-config` directory contains:
 
-```
+```text
 /etc/app-config/
 ├── username          (from Secret)
 ├── password          (from Secret)
@@ -160,7 +160,7 @@ spec:
 
 All secrets appear in `/etc/secrets`:
 
-```
+```text
 /etc/secrets/
 ├── db-password
 ├── db-host
@@ -202,7 +202,7 @@ volumes:
 
 Creates a structured directory:
 
-```
+```text
 /etc/app-config/
 ├── database/
 │   ├── password
@@ -298,7 +298,7 @@ spec:
 
 The combined directory:
 
-```
+```text
 /etc/config/
 ├── stripe-key          (from Secret)
 ├── config.yaml         (from ConfigMap)
@@ -476,7 +476,7 @@ spec:
 
 Directory structure:
 
-```
+```text
 /etc/app/
 ├── secrets/
 │   ├── credentials/

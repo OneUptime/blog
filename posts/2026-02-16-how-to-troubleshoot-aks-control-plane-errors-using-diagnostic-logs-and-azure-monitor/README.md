@@ -83,7 +83,7 @@ API server issues manifest as slow kubectl commands, timeouts, or HTTP 5xx error
 
 ### Find API Server Errors (5xx Responses)
 
-```
+```text
 // Query: Find all API server 5xx errors in the last hour
 AzureDiagnostics
 | where Category == "kube-apiserver"
@@ -95,7 +95,7 @@ AzureDiagnostics
 
 ### Identify Slow API Requests
 
-```
+```text
 // Query: Find API requests that took longer than 5 seconds
 AzureDiagnostics
 | where Category == "kube-apiserver"
@@ -108,7 +108,7 @@ AzureDiagnostics
 
 ### Check for Throttled Requests
 
-```
+```text
 // Query: Find API throttling events (429 responses)
 AzureDiagnostics
 | where Category == "kube-apiserver"
@@ -123,7 +123,7 @@ When pods are stuck in Pending state, the scheduler logs tell you why.
 
 ### Find Scheduling Failures
 
-```
+```text
 // Query: Find pods that could not be scheduled
 AzureDiagnostics
 | where Category == "kube-scheduler"
@@ -135,7 +135,7 @@ AzureDiagnostics
 
 ### Identify Resource Pressure
 
-```
+```text
 // Query: Find events related to resource pressure
 AzureDiagnostics
 | where Category == "kube-scheduler"
@@ -150,7 +150,7 @@ Authentication failures often come from expired tokens, misconfigured RBAC, or A
 
 ### Find Authentication Failures
 
-```
+```text
 // Query: Find authentication and authorization failures
 AzureDiagnostics
 | where Category == "kube-audit-admin"
@@ -162,7 +162,7 @@ AzureDiagnostics
 
 ### Check Azure AD Webhook Failures
 
-```
+```text
 // Query: Find Azure AD authentication webhook errors
 AzureDiagnostics
 | where Category == "guard"
@@ -178,7 +178,7 @@ When the autoscaler does not scale as expected, check its logs for decision-maki
 
 ### Find Scale-Up Failures
 
-```
+```text
 // Query: Find autoscaler scale-up events and failures
 AzureDiagnostics
 | where Category == "cluster-autoscaler"
@@ -190,7 +190,7 @@ AzureDiagnostics
 
 ### Find Why Autoscaler Did Not Scale Down
 
-```
+```text
 // Query: Find reasons autoscaler is not scaling down
 AzureDiagnostics
 | where Category == "cluster-autoscaler"
@@ -206,7 +206,7 @@ The cloud controller manager handles Azure resource operations (creating load ba
 
 ### Find Azure Resource Provisioning Errors
 
-```
+```text
 // Query: Find cloud controller errors
 AzureDiagnostics
 | where Category == "cloud-controller-manager"
@@ -218,7 +218,7 @@ AzureDiagnostics
 
 ### Track Load Balancer Operations
 
-```
+```text
 // Query: Find load balancer related events
 AzureDiagnostics
 | where Category == "cloud-controller-manager"

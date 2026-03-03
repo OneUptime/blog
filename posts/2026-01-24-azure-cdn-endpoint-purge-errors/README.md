@@ -59,7 +59,7 @@ The most frequent purge error is hitting rate limits.
 
 ### Error Message
 
-```
+```text
 {
   "error": {
     "code": "TooManyRequests",
@@ -190,7 +190,7 @@ Purge requests fail when paths are not formatted correctly.
 
 ### Error Message
 
-```
+```text
 {
   "error": {
     "code": "BadRequest",
@@ -280,7 +280,7 @@ Purge fails if the CDN endpoint is stopped or in a failed state.
 
 ### Error Message
 
-```
+```text
 {
   "error": {
     "code": "EndpointNotRunning",
@@ -331,7 +331,7 @@ Purge requests fail due to insufficient permissions.
 
 ### Error Message
 
-```
+```text
 {
   "error": {
     "code": "AuthorizationFailed",
@@ -382,7 +382,7 @@ Wildcard purges on large sites can timeout.
 
 ### Error Message
 
-```
+```text
 {
   "error": {
     "code": "GatewayTimeout",

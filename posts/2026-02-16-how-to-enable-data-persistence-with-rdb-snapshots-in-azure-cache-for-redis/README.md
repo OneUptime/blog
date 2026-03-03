@@ -207,7 +207,7 @@ redis-cli -h my-redis-persistent.redis.cache.windows.net \
   --tls
 ```
 
-```
+```text
 # Check when the last RDB save completed
 INFO persistence
 # Look for: rdb_last_save_time, rdb_last_bgsave_status
@@ -247,7 +247,7 @@ When the cache restarts with RDB persistence enabled:
 
 The restart process:
 
-```
+```text
 Cache Restart -> Load RDB from Storage -> Cache Available
 ```
 

@@ -130,7 +130,7 @@ The default endpoint URL (`mystorageaccount.z13.web.core.windows.net`) works but
 
 In your DNS provider, create a CNAME record pointing your domain to the Azure endpoint:
 
-```
+```text
 www.example.com  CNAME  mystorageaccount.z13.web.core.windows.net
 ```
 

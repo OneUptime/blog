@@ -29,7 +29,7 @@ graph TD
 
 ## Project Structure
 
-```
+```text
 ansible-multi-os/
   inventory/
     hosts.yml

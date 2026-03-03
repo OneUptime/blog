@@ -123,7 +123,7 @@ If you see no webhook entries at all, the request is not reaching ArgoCD. If you
 
 Common log entries and their meanings:
 
-```
+```text
 # Successful webhook
 level=info msg="Received push event repo: https://github.com/org/repo"
 

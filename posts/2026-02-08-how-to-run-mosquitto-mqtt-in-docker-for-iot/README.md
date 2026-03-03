@@ -44,7 +44,7 @@ cd ~/mosquitto
 
 Create the Mosquitto configuration file:
 
-```
+```text
 # config/mosquitto.conf - Mosquitto MQTT Broker Configuration
 
 # Listen on the standard MQTT port on all interfaces
@@ -169,7 +169,7 @@ The subscriber window should display the message immediately.
 
 Organize your MQTT topics in a hierarchical structure that makes sense for your environment:
 
-```
+```text
 # Recommended topic hierarchy for a home IoT setup
 home/living_room/temperature
 home/living_room/humidity
@@ -207,7 +207,7 @@ cp ca.pem ~/mosquitto/config/
 
 Update the Mosquitto configuration to add a TLS listener:
 
-```
+```text
 # Add TLS listener to mosquitto.conf
 listener 8883
 cafile /mosquitto/config/ca.pem
@@ -239,7 +239,7 @@ mosquitto_sub -h your-domain.com -p 8883 \
 
 Limit which users can publish or subscribe to specific topics by creating an ACL file:
 
-```
+```text
 # config/acl.conf - Access control rules
 
 # sensor_user can only publish to sensor topics
@@ -260,7 +260,7 @@ topic write devices/+/command
 
 Add the ACL file to the Mosquitto configuration:
 
-```
+```text
 # Add this line to mosquitto.conf
 acl_file /mosquitto/config/acl.conf
 ```

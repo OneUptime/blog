@@ -105,7 +105,7 @@ resource eventSubscription 'Microsoft.EventGrid/topics/eventSubscriptions@2022-0
 
 When an event is dead-lettered, Event Grid writes a JSON blob to the storage container. The blob path follows this structure:
 
-```
+```text
 deadletters/{topicname}/{eventsubscriptionname}/{year}/{month}/{day}/{hour}/{hash}.json
 ```
 

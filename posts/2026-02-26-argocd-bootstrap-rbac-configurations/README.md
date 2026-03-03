@@ -43,7 +43,7 @@ flowchart TD
 
 A clean directory structure makes RBAC manageable as it grows.
 
-```
+```text
 bootstrap/rbac/
   cluster-roles/
     developer.yaml

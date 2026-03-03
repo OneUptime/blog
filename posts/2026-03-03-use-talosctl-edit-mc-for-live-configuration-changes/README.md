@@ -154,13 +154,13 @@ After you save and close the editor, talosctl:
 
 If the changes can be applied live, they take effect immediately. If a reboot is needed, talosctl tells you:
 
-```
+```text
 Applied configuration with a reboot
 ```
 
 If there are validation errors, talosctl reports them and does not apply the changes:
 
-```
+```text
 Error: configuration validation failed: machine.network.interfaces[0].addresses: invalid CIDR
 ```
 

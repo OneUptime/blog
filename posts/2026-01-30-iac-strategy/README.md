@@ -91,7 +91,7 @@ Repository structure determines how teams collaborate and how changes flow throu
 
 **Monorepo**: All infrastructure code in one repository.
 
-```
+```text
 infrastructure/
 ├── modules/
 │   ├── networking/
@@ -108,7 +108,7 @@ infrastructure/
 
 **Polyrepo**: Separate repositories per team or domain.
 
-```
+```text
 # Team repos
 platform-infrastructure/
 application-team-a-infra/
@@ -129,7 +129,7 @@ terraform-modules/
 
 Organize modules for reusability and clarity.
 
-```
+```text
 modules/
 ├── networking/
 │   ├── vpc/
@@ -239,7 +239,7 @@ flowchart TD
 
 Use consistent, hierarchical keys.
 
-```
+```text
 s3://terraform-state/
 ├── environments/
 │   ├── dev/
@@ -278,7 +278,7 @@ flowchart LR
 
 **Directory-based** (Recommended): Separate directories per environment with shared modules.
 
-```
+```text
 environments/
 ├── dev/
 │   ├── main.tf
@@ -714,7 +714,7 @@ Create runbooks for common operations.
 - Verify resources in AWS Console
 - Run smoke tests
 - Update monitoring dashboards
-```
+```text
 
 ## Step 9: Implement Drift Detection
 

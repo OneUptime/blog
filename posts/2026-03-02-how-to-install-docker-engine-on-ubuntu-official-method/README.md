@@ -151,7 +151,7 @@ sudo docker info
 
 Expected output from `docker run hello-world`:
 
-```
+```text
 Hello from Docker!
 This message shows that your installation appears to be working correctly.
 

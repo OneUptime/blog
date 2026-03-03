@@ -37,7 +37,7 @@ Preconditions validate inputs before Terraform takes action. Postconditions vali
 
 ## Error Type 1: Precondition Failure
 
-```
+```text
 Error: Resource precondition failed
 
   on main.tf line 8, in resource "aws_instance" "web":
@@ -68,7 +68,7 @@ lifecycle {
 
 ## Error Type 2: Postcondition Failure
 
-```
+```text
 Error: Resource postcondition failed
 
   on main.tf line 14, in resource "aws_instance" "web":
@@ -162,7 +162,7 @@ resource "aws_instance" "web" {
 }
 ```
 
-```
+```text
 Error: Self reference in precondition
 
   on main.tf line 4, in resource "aws_instance" "web":

@@ -60,7 +60,7 @@ HTTP status codes provide the first layer of error information. Use them correct
 
 ### Common Mistakes
 
-```
+```text
 // Wrong: Using 200 for errors
 HTTP/1.1 200 OK
 { "success": false, "error": "User not found" }
@@ -143,7 +143,7 @@ HTTP status codes are coarse-grained. Error codes provide fine-grained categoriz
 
 ### Example Error Code Taxonomy
 
-```
+```text
 auth.invalid_credentials
 auth.token_expired
 auth.token_revoked
@@ -517,7 +517,7 @@ Error responses can leak sensitive information. Follow these guidelines:
 
 ### Bad vs Good Examples
 
-```
+```text
 // BAD: Leaks database structure
 {
   "error": "SQLSTATE[23000]: Integrity constraint violation:
@@ -534,7 +534,7 @@ Error responses can leak sensitive information. Follow these guidelines:
 }
 ```
 
-```
+```text
 // BAD: Leaks authentication logic
 {
   "error": "User 'admin' found but password hash

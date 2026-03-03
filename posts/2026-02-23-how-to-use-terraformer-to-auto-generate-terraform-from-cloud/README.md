@@ -137,7 +137,7 @@ terraformer import aws --resources=ec2_instance \
 
 After running Terraformer, examine the generated directory structure:
 
-```
+```text
 generated/
   aws/
     ec2_instance/

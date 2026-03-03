@@ -24,7 +24,7 @@ redis-cli CONFIG GET stop-writes-on-bgsave-error
 
 When `stop-writes-on-bgsave-error` is `yes` and a save fails, Redis rejects writes with:
 
-```
+```text
 MISCONF Redis is configured to save RDB snapshots, but it is currently not able to persist on disk.
 ```
 

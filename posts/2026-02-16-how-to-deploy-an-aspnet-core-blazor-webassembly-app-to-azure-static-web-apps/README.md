@@ -150,7 +150,7 @@ public class WeatherForecastFunction
 
 Your project should look like this:
 
-```
+```text
 BlazorStaticDemo/
   BlazorStaticDemo/     # Blazor WASM client
     Pages/

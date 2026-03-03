@@ -28,7 +28,7 @@ Services communicate with each other over HTTP, just like any microservices arch
 
 A typical microservices setup on App Engine looks like this:
 
-```
+```text
 my-app/
   frontend/
     app.yaml
@@ -242,7 +242,7 @@ The App Engine dashboard in the Cloud Console gives you a visual breakdown of tr
 
 Here is a quick reference for choosing scaling types:
 
-```
+```text
 Automatic Scaling - Use for user-facing services
   - Scales based on request rate and CPU usage
   - Can scale to zero (cost efficient)

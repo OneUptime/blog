@@ -56,7 +56,7 @@ cd my-rust-function
 
 This generates a project with the following structure:
 
-```
+```text
 my-rust-function/
 ├── Cargo.toml
 └── src/

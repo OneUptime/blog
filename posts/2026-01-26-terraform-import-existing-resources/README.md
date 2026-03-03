@@ -316,7 +316,7 @@ terraform import aws_iam_role_policy_attachment.app my-role/arn:aws:iam::aws:pol
 
 ### Resource Already Managed
 
-```
+```text
 Error: Resource already managed by Terraform
 ```
 
@@ -329,7 +329,7 @@ terraform state rm aws_instance.web
 
 ### Resource Not Found
 
-```
+```text
 Error: Cannot import non-existent resource
 ```
 
@@ -342,7 +342,7 @@ aws ec2 describe-instances --instance-ids i-1234567890abcdef0
 
 ### Configuration Mismatch
 
-```
+```text
 Error: Provider configuration not present
 ```
 

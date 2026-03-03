@@ -150,7 +150,7 @@ If your session hosts are Azure AD-joined and managed through Intune, you can de
 
 Create a custom configuration profile in Intune using OMA-URI settings:
 
-```
+```text
 OMA-URI: ./Device/Vendor/MSFT/Policy/Config/RemoteDesktopServices/EnableScreenCaptureProtection
 Data type: Integer
 Value: 2

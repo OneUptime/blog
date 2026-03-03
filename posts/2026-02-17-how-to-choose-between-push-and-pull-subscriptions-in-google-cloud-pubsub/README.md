@@ -18,7 +18,7 @@ With a pull subscription, your application actively reaches out to Pub/Sub and a
 
 The flow looks like this:
 
-```
+```text
 Subscriber -> Pub/Sub: "Give me messages"
 Pub/Sub -> Subscriber: "Here are 10 messages"
 Subscriber processes messages
@@ -66,7 +66,7 @@ With a push subscription, Pub/Sub takes the initiative. It sends messages as HTT
 
 The flow looks like this:
 
-```
+```text
 Pub/Sub -> Your Endpoint: POST /webhook with message body
 Your Endpoint processes the message
 Your Endpoint -> Pub/Sub: HTTP 200 (acknowledgement)

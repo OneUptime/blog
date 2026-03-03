@@ -52,7 +52,7 @@ sudo sysctl -p /etc/sysctl.d/99-proxy-arp.conf
 
 A common real-world setup: VPN clients get IPs from the same subnet as the LAN (192.168.1.0/24). Without proxy ARP, LAN hosts don't know how to reach VPN client addresses because their ARP requests won't cross the VPN boundary.
 
-```
+```text
 LAN: 192.168.1.0/24
   - LAN hosts: 192.168.1.1 to 192.168.1.100
   - Ubuntu VPN gateway: eth0=192.168.1.1

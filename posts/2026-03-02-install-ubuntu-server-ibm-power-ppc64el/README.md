@@ -98,7 +98,7 @@ The Ubuntu Server installer on ppc64el works the same as on x86_64 through the t
 
 On POWER systems using non-UEFI firmware, the bootloader requires a PReP (PowerPC Reference Platform) boot partition:
 
-```
+```text
 # Required partitions on a PowerVM LPAR disk:
 Device    Size    Type
 /dev/sda1 8 MB    PReP Boot partition (type 0x41)
@@ -185,7 +185,7 @@ Petitboot also supports network booting (PXE/PXELINUX) if you have a boot server
 
 PowerNV systems typically use GPT. With UEFI support:
 
-```
+```text
 /dev/sda1  512MB  FAT32     /boot/efi (EFI partition)
 /dev/sda2  1GB    ext4      /boot
 /dev/sda3  rest   LVM/ext4  /
@@ -193,7 +193,7 @@ PowerNV systems typically use GPT. With UEFI support:
 
 Without UEFI (pure OpenFirmware):
 
-```
+```text
 /dev/sda1  8MB    PReP      (bootloader)
 /dev/sda2  1GB    ext4      /boot
 /dev/sda3  rest   ext4      /

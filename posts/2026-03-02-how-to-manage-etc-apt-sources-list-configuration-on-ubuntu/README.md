@@ -14,7 +14,7 @@ The `/etc/apt/sources.list` file is the master list of package repositories that
 
 Each active line in `sources.list` follows this format:
 
-```
+```text
 deb [options] uri suite component1 component2 ...
 ```
 
@@ -53,7 +53,7 @@ On Ubuntu 22.04 and later, many systems come with `sources.list` nearly empty be
 
 A typical `sources.list` for Ubuntu 24.04 (Noble) looks like this:
 
-```
+```text
 # Main Ubuntu repos
 deb http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse
 deb http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse
@@ -70,7 +70,7 @@ deb-src http://archive.ubuntu.com/ubuntu noble main restricted
 
 Ubuntu 24.04 introduced the DEB822 format as the default. These files use a key-value structure and live in `/etc/apt/sources.list.d/`:
 
-```
+```text
 # /etc/apt/sources.list.d/ubuntu.sources
 Types: deb
 URIs: http://archive.ubuntu.com/ubuntu
@@ -191,7 +191,7 @@ sudo nano /etc/apt/sources.list
 
 Replace `archive.ubuntu.com` with a closer mirror, for example:
 
-```
+```text
 deb http://us.archive.ubuntu.com/ubuntu noble main restricted universe multiverse
 ```
 
@@ -206,7 +206,7 @@ APT's pinning system lets you control which repository a package comes from when
 sudo nano /etc/apt/preferences.d/docker-pin
 ```
 
-```
+```text
 Package: docker-ce docker-ce-cli containerd.io
 Pin: origin download.docker.com
 Pin-Priority: 1001

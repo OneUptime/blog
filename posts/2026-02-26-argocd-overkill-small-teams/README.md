@@ -95,7 +95,7 @@ spec:
 
 For small teams, plain YAML manifests with auto-sync are often enough. You do not need Kustomize overlays or Helm charts unless you have multiple environments with significantly different configurations.
 
-```
+```text
 my-api/
   k8s/
     production/

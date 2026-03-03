@@ -29,7 +29,7 @@ You need a way to express "same application, different parameters" cleanly in Gi
 
 The most common pattern uses Kustomize with a base and per-cluster overlays:
 
-```
+```text
 app/
   base/
     kustomization.yaml
@@ -198,7 +198,7 @@ spec:
 
 If you use Helm charts, you can provide different values files per cluster:
 
-```
+```text
 app/
   chart/
     Chart.yaml

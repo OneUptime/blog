@@ -132,7 +132,7 @@ TVIF_ID=$(aws directconnect create-transit-virtual-interface \
 
 Configure your router's BGP to peer with AWS. Here's a sample configuration for a Cisco router:
 
-```
+```text
 ! Cisco IOS configuration for Direct Connect
 interface GigabitEthernet0/0.100
   description Direct Connect Private VIF

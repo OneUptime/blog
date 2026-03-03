@@ -32,7 +32,7 @@ vmstat
 
 Sample output:
 
-```
+```text
 procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
  r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
  2  0      0 2048576  81920 4194304    0    0     5    12  523 1234  8  2 89  1  0
@@ -91,7 +91,7 @@ vmstat -s
 
 This shows totals and individual categories:
 
-```
+```text
      16384000 K total memory
       9437184 K used memory
       6291456 K active memory

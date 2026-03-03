@@ -211,7 +211,7 @@ ssh-keyscan -p 2222 git.internal.example.com 2>/dev/null
 
 The output format for non-standard ports uses square brackets:
 
-```
+```text
 [git.internal.example.com]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
 ```
 

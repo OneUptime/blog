@@ -728,7 +728,7 @@ params:
 
 Estimate memory requirements based on time series count. The following formula provides a rough estimate:
 
-```
+```text
 Memory (GB) = (time_series_count * 2KB * retention_chunks) / 1024^3
 
 Example for regional tier:

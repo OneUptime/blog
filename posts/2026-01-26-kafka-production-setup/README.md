@@ -218,7 +218,7 @@ echo "Cluster ID: $KAFKA_CLUSTER_ID"
 
 The output should look like:
 
-```
+```text
 Formatting /var/lib/kafka/data with metadata.version 3.6-IV2.
 ```
 
@@ -305,7 +305,7 @@ Once all nodes are running, verify the cluster is working correctly.
 
 Expected output for topic description:
 
-```
+```text
 Topic: test-topic	TopicId: abc123	PartitionCount: 6	ReplicationFactor: 3
 	Topic: test-topic	Partition: 0	Leader: 1	Replicas: 1,2,3	Isr: 1,2,3
 	Topic: test-topic	Partition: 1	Leader: 2	Replicas: 2,3,1	Isr: 2,3,1

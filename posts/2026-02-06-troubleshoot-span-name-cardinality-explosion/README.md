@@ -12,7 +12,7 @@ You open your tracing backend and see thousands of unique span names like `GET /
 
 HTTP auto-instrumentation libraries capture the URL path as the span name. If your URLs contain dynamic segments (user IDs, order IDs, UUIDs), each unique URL becomes a unique span name.
 
-```
+```text
 Expected:   GET /users/{userId}
 Actual:     GET /users/abc123
             GET /users/def456

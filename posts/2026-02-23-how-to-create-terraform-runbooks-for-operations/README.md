@@ -150,7 +150,7 @@ aws ecs describe-services \
 terraform plan -var-file=production.tfvars -out=rollback.tfplan
 terraform apply rollback.tfplan
 ```
-```
+```text
 
 ### Runbook: Database Failover
 
@@ -245,7 +245,7 @@ If the failover causes issues:
 1. Revert DNS to point to the old primary (if still available)
 2. Revert Terraform changes
 3. Restore from latest snapshot if both instances are compromised
-```
+```text
 
 ### Runbook: State Recovery
 
@@ -325,7 +325,7 @@ terraform plan
 # If plan shows unexpected changes, you may have the wrong version
 # Go back to Step 3 and try an earlier version
 ```
-```
+```text
 
 ## Keeping Runbooks Current
 

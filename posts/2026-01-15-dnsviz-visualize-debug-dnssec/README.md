@@ -41,7 +41,7 @@ Before diving into DNSViz, let's ensure we're on the same page about DNSSEC fund
 
 DNSSEC works through a hierarchical chain of trust:
 
-```
+```text
 Root Zone (.)
     |
     |-- Signs --> .com TLD
@@ -245,7 +245,7 @@ Understanding the visual output is crucial for effective debugging.
 
 #### Green (Secure/Valid)
 
-```
+```text
 GREEN SOLID LINE: Valid signature, complete trust chain
 GREEN DASHED LINE: Valid but with minor warnings
 GREEN BOX: Zone is properly signed and validates
@@ -257,7 +257,7 @@ GREEN BOX: Zone is properly signed and validates
 
 #### Yellow (Warning)
 
-```
+```text
 YELLOW LINE: Signature valid but has warnings
 YELLOW BOX: Zone has potential issues
 ```
@@ -269,7 +269,7 @@ Common warnings include:
 
 #### Red (Error)
 
-```
+```text
 RED LINE: Signature invalid or broken trust
 RED BOX: Zone has validation failures
 RED X: Broken chain of trust
@@ -283,7 +283,7 @@ Critical errors include:
 
 #### Gray (Insecure)
 
-```
+```text
 GRAY LINE: No DNSSEC protection
 GRAY BOX: Zone not signed
 ```
@@ -303,7 +303,7 @@ This isn't necessarily an error - many zones legitimately don't use DNSSEC.
 
 **What it looks like:**
 
-```
+```text
 com (green)
     |
     X-- No DS record

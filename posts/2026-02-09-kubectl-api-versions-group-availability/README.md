@@ -30,7 +30,7 @@ kubectl api-versions
 
 Output looks like this:
 
-```
+```text
 admissionregistration.k8s.io/v1
 admissionregistration.k8s.io/v1beta1
 apps/v1

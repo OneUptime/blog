@@ -45,7 +45,7 @@ flowchart TD
 
 Each namespace gets a directory containing the namespace manifest and its associated resources.
 
-```
+```text
 bootstrap/namespaces/
   team-alpha/
     namespace.yaml

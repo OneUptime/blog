@@ -18,7 +18,7 @@ For Python Lambda functions, you install dependencies into a local directory and
 
 Suppose your function uses the `requests` and `boto3` libraries:
 
-```
+```text
 # requirements.txt
 requests==2.31.0
 boto3>=1.28.0
@@ -101,7 +101,7 @@ Node.js packaging follows a similar pattern. Your function code and `node_module
 
 Start with your project structure:
 
-```
+```text
 my-function/
   - index.mjs
   - package.json
@@ -172,7 +172,7 @@ zip -r ../deployment.zip .
 
 Some libraries offer slim versions. For example, `boto3` is included in the Lambda runtime, so you don't need to bundle it (unless you need a specific newer version).
 
-```
+```text
 # requirements.txt - skip boto3 since Lambda includes it
 requests==2.31.0
 # boto3  <- already in Lambda runtime

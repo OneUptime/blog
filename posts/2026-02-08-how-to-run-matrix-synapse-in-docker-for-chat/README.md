@@ -34,7 +34,7 @@ docker compose version
 
 Matrix uses a special DNS convention. Your server should be reachable at `matrix.yourdomain.com`, but user IDs use the base domain (like `@user:yourdomain.com`).
 
-```
+```text
 # DNS records needed
 matrix.yourdomain.com    A    YOUR_SERVER_IP
 element.yourdomain.com   A    YOUR_SERVER_IP   (for the web client)

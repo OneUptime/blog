@@ -99,7 +99,7 @@ If you're already using collectd for metrics collection, the CloudWatch Agent ca
 
 Configure collectd to send to the CloudWatch Agent by adding this to your collectd config:
 
-```
+```text
 LoadPlugin network
 <Plugin network>
   Server "127.0.0.1" "25826"

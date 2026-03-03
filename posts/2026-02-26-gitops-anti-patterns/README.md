@@ -92,7 +92,7 @@ The key is making the Git path fast enough that it is not significantly slower t
 
 Teams sometimes put everything - application code, Kubernetes manifests, Helm charts, infrastructure configuration - in a single monorepo without clear structure:
 
-```
+```text
 # Anti-pattern: Unstructured monorepo
 repo/
   app1/
@@ -114,7 +114,7 @@ This causes multiple problems:
 
 **The fix**: Separate application code from deployment configuration:
 
-```
+```text
 # Application code repo (triggers CI)
 app-code-repo/
   src/
@@ -184,7 +184,7 @@ Document why each ignore rule exists. If you cannot explain why a difference sho
 
 Some teams deploy to all environments simultaneously from the same Git branch, or worse, manually cherry-pick changes between environment branches:
 
-```
+```text
 # Anti-pattern: Same branch for all environments
 main branch --> deploys to dev, staging, AND production simultaneously
 ```

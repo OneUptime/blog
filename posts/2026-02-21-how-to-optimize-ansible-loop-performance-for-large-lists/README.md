@@ -310,7 +310,7 @@ callbacks_enabled = timer, profile_tasks
 
 This shows execution time for each task, making it easy to spot which loops are the bottleneck.
 
-```
+```text
 TASK [Install packages one at a time] ******************************************
 Monday 21 February 2026  10:15:32 +0000 (0:00:45.123)
 

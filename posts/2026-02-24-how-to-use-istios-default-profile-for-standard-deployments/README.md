@@ -39,7 +39,7 @@ Check the result:
 kubectl get pods -n istio-system
 ```
 
-```
+```text
 NAME                                    READY   STATUS    RESTARTS   AGE
 istio-ingressgateway-5d6b8c5f5-abcde   1/1     Running   0          60s
 istiod-7f4c8d6b9-fghij                 1/1     Running   0          90s

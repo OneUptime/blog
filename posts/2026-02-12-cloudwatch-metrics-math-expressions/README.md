@@ -16,7 +16,7 @@ CloudWatch Metrics Math lets you create new time series by applying mathematical
 
 A Metrics Math expression references other metrics by ID and applies mathematical operations. Here's the general pattern:
 
-```
+```text
 # Metrics are referenced by their assigned IDs
 # m1, m2, m3... for raw metrics
 # e1, e2, e3... for expressions (convention, not required)
@@ -167,7 +167,7 @@ Metrics Math supports a solid set of functions:
 
 ### Arithmetic Functions
 
-```
+```text
 ABS(m1)           # Absolute value
 CEIL(m1)          # Round up
 FLOOR(m1)         # Round down
@@ -177,7 +177,7 @@ MIN(m1, m2)       # Minimum of two metrics at each data point
 
 ### Statistical Functions
 
-```
+```text
 AVG(m1)           # Average across the search expression results
 SUM(m1)           # Sum across search expression results
 MIN(m1)           # Minimum across search expression results
@@ -187,7 +187,7 @@ STDDEV(m1)        # Standard deviation
 
 ### Time Functions
 
-```
+```text
 PERIOD(m1)        # Returns the period in seconds
 RATE(m1)          # Rate of change per second
 DIFF(m1)          # Difference between consecutive data points
@@ -196,7 +196,7 @@ RUNNING_SUM(m1)   # Cumulative sum over time
 
 ### Conditional Functions
 
-```
+```text
 IF(condition, trueValue, falseValue)
 # Example: IF(m1 > 100, m1, 0)  -- only show values above 100
 ```
@@ -205,7 +205,7 @@ IF(condition, trueValue, falseValue)
 
 Search expressions let you dynamically find and aggregate metrics:
 
-```
+```text
 # Find all EC2 instance CPU metrics and average them
 SEARCH('{AWS/EC2, InstanceId} MetricName="CPUUtilization"', 'Average', 300)
 ```
@@ -363,7 +363,7 @@ Here's a dashboard source JSON that uses math expressions:
 
 Use `METRICS()` with time offsets to compare current metrics to the same time last week:
 
-```
+```text
 # Current week's requests
 m1 = RequestCount (current)
 
@@ -375,7 +375,7 @@ e1 = METRICS("m1") with period offset of 604800 seconds (7 days)
 
 Handle gaps in your metrics:
 
-```
+```text
 # Replace missing data points with zero
 FILL(m1, 0)
 
@@ -390,7 +390,7 @@ FILL(m1, LINEAR)
 
 Aggregate metrics across services:
 
-```
+```text
 # Total requests across all API endpoints
 SEARCH('{AWS/ApiGateway, ApiName} MetricName="Count"', 'Sum', 300)
 ```

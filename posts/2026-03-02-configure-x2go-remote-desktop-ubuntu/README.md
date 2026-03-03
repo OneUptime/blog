@@ -87,7 +87,7 @@ Add or ensure these lines exist:
 sudo nano /etc/ssh/sshd_config
 ```
 
-```
+```text
 # x2go requires X11 forwarding
 X11Forwarding yes
 AllowTcpForwarding yes

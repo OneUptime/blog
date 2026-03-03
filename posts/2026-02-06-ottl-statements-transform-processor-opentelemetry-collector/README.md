@@ -14,7 +14,7 @@ OTTL statements operate on telemetry contexts: spans, span events, metrics, data
 
 The basic structure of an OTTL statement:
 
-```
+```text
 function_name(arguments)
 ```
 

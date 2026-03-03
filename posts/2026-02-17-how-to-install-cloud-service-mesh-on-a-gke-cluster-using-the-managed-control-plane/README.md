@@ -140,7 +140,7 @@ gcloud container fleet mesh describe --project=YOUR_PROJECT_ID
 
 You are looking for the control plane state to show `ACTIVE`. The output will look something like this:
 
-```
+```text
 membershipStates:
   projects/YOUR_PROJECT_NUMBER/locations/us-central1-a/memberships/mesh-cluster:
     servicemesh:

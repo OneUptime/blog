@@ -229,7 +229,7 @@ kubectl --context=$CTX_CLUSTER1 run test-curl -n my-app --image=curlimages/curl 
 
 When a pod in cluster 1 calls a service in cluster 2, the traffic flow in ambient mode is:
 
-```
+```text
 Pod (cluster1) -> ztunnel (cluster1) -> East-West Gateway (cluster1)
     -> East-West Gateway (cluster2) -> ztunnel (cluster2) -> Pod (cluster2)
 ```

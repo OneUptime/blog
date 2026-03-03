@@ -26,7 +26,7 @@ ansible-galaxy collection build
 
 This produces a file like:
 
-```
+```text
 Created collection for my_namespace.my_collection at
 /path/to/my_namespace-my_collection-1.0.0.tar.gz
 ```
@@ -114,7 +114,7 @@ If you see test files, virtual environments, or other development artifacts in t
 
 Collection versions follow semantic versioning (semver):
 
-```
+```text
 MAJOR.MINOR.PATCH
 
 1.0.0 -> 1.0.1  (patch: bug fixes only)

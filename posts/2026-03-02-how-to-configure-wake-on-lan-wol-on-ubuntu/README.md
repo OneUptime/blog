@@ -47,7 +47,7 @@ sudo ethtool eth0 | grep -i wake
 
 Output:
 
-```
+```text
 Supports Wake-on: pumbg
 Wake-on: d
 ```

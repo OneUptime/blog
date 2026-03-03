@@ -34,7 +34,7 @@ flowchart TD
 
 Every cron job follows a specific format with five time fields followed by the command to execute.
 
-```
+```text
 # Cron time field format
 # ┌───────────── minute (0-59)
 # │ ┌───────────── hour (0-23)

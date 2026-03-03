@@ -24,7 +24,7 @@ flowchart LR
 
 ## Project Structure
 
-```
+```text
 elk-stack/
   inventory/
     hosts.yml
@@ -224,7 +224,7 @@ xpack.security.transport.ssl.enabled: false
 
 ### JVM Options Template
 
-```
+```text
 # roles/elasticsearch/templates/jvm.options.j2
 # JVM heap size - managed by Ansible
 -Xms{{ elasticsearch_heap_size }}
@@ -290,7 +290,7 @@ logstash_pipeline_batch_size: 125
 
 ### Pipeline Configuration Template
 
-```
+```text
 # roles/logstash/templates/pipeline.conf.j2
 # Logstash pipeline - managed by Ansible
 

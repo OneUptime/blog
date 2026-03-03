@@ -36,7 +36,7 @@ ansible-vault encrypt group_vars/production/secrets.yml
 
 The file now contains encrypted content that looks like this:
 
-```
+```text
 $ANSIBLE_VAULT;1.1;AES256
 33363431613738313336313765363033623033626137626334653439363835616437313863386638
 6232353564313961303963376130616631353363386330300a313165653863303865303930363564
@@ -89,7 +89,7 @@ echo "${ANSIBLE_VAULT_PASSWORD}"
 
 A recommended practice is to split your variables into two files: one for plain variables and one for encrypted secrets. This way you can view and edit non-sensitive variables without needing the vault password.
 
-```
+```text
 group_vars/
   production/
     vars.yml       # Plain variables (not encrypted)
@@ -176,7 +176,7 @@ ansible-playbook deploy.yml \
 
 Here is a complete directory structure for managing encrypted variables across environments:
 
-```
+```text
 project/
   ansible.cfg
   deploy.yml

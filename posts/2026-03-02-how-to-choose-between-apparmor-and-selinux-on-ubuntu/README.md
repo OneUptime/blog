@@ -35,7 +35,7 @@ cat /etc/apparmor.d/usr.sbin.nginx
 
 A typical nginx AppArmor profile looks like:
 
-```
+```text
 # /etc/apparmor.d/usr.sbin.nginx
 #include <tunables/global>
 

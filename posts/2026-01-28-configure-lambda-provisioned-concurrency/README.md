@@ -270,13 +270,13 @@ Determine the right amount of provisioned concurrency based on your traffic patt
 
 ### Formula
 
-```
+```text
 Provisioned Concurrency = (Requests per second) x (Average duration in seconds)
 ```
 
 ### Example Calculation
 
-```
+```text
 Traffic: 100 requests/second
 Average duration: 200ms (0.2 seconds)
 

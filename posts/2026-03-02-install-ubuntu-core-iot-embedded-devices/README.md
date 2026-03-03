@@ -269,7 +269,7 @@ screen /dev/ttyUSB0 115200
 
 For Raspberry Pi devices, enable UART in `/boot/firmware/config.txt` (though on Core, this is managed by the gadget snap):
 
-```
+```text
 # In the gadget snap's extra config:
 enable_uart=1
 ```

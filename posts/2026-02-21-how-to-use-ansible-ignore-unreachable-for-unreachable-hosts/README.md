@@ -16,7 +16,7 @@ When Ansible cannot connect to a host (SSH timeout, DNS resolution failure, netw
 
 Here is what a typical unreachable error looks like:
 
-```
+```text
 fatal: [web-03]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: ssh: connect to host web-03 port 22: Connection timed out",

@@ -76,7 +76,7 @@ resource "kubernetes_deployment" "app" {
 
 When you run `terraform plan`, you will see something like:
 
-```
+```text
 ~ resource "kubernetes_deployment" "app" {
     ~ spec {
         ~ replicas = 3 -> 5
@@ -133,7 +133,7 @@ resource "kubernetes_deployment" "app" {
 
 The plan output shows `-/+` indicating replacement:
 
-```
+```text
 -/+ resource "kubernetes_deployment" "app" {
       # forces replacement
     }

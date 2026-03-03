@@ -38,7 +38,7 @@ The current workspace name is available in your configuration via `terraform.wor
 
 When using remote backends, workspaces automatically get separate state files. For S3, the state paths look like this:
 
-```
+```text
 s3://myorg-terraform-state/env:/dev/kubernetes/terraform.tfstate
 s3://myorg-terraform-state/env:/staging/kubernetes/terraform.tfstate
 s3://myorg-terraform-state/env:/production/kubernetes/terraform.tfstate

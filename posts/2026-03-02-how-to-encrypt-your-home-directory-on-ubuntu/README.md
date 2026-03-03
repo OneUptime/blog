@@ -125,13 +125,13 @@ sudo nano /etc/pam.d/common-auth
 
 Add before the `pam_deny.so` line:
 
-```
+```text
 auth    optional        pam_ecryptfs.so unwrap
 ```
 
 In `/etc/pam.d/common-session`, add:
 
-```
+```text
 session optional        pam_ecryptfs.so unwrap
 ```
 

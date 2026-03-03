@@ -93,7 +93,7 @@ WHERE proc_name = 'policy_retention';
 
 The output shows the scheduled job details:
 
-```
+```text
  job_id |    application_name    | schedule_interval | max_runtime | max_retries | retry_period |     proc_schema      |    proc_name     |       owner
 --------+------------------------+-------------------+-------------+-------------+--------------+----------------------+------------------+-------------------
    1001 | Retention Policy [1001] | 1 day            | 00:05:00    | -1          | 00:05:00     | _timescaledb_internal | policy_retention | postgres

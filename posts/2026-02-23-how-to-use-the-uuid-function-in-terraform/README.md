@@ -27,7 +27,7 @@ Each call generates a different UUID. Running `terraform plan` twice produces di
 
 The UUID follows the standard v4 format: 8-4-4-4-12 hexadecimal characters separated by hyphens:
 
-```
+```text
 xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
 ```
 

@@ -475,7 +475,7 @@ type User {
   email: String!
   preferences: UserPreferences
 }
-```
+```text
 
 ## Version Evolution Timeline
 

@@ -72,7 +72,7 @@ service:
 
 ### RocksDB State Store (Default)
 
-```
+```text
 # State store operation latency
 kafka.streams.state.store.put.latency_avg     - Average put operation time
 kafka.streams.state.store.put.latency_max     - Max put operation time
@@ -95,7 +95,7 @@ kafka.streams.state.store.rocksdb.block_cache_hit_ratio - Block cache effectiven
 
 ### Commit Metrics
 
-```
+```text
 kafka.streams.task.commit.latency_avg    - Average commit time
 kafka.streams.task.commit.latency_max    - Maximum commit time
 kafka.streams.task.commit.rate           - Commits per second
@@ -104,7 +104,7 @@ kafka.streams.task.commit.total          - Total commits
 
 ### Processing Metrics
 
-```
+```text
 kafka.streams.task.process.latency_avg   - Average time to process a record
 kafka.streams.task.process.rate          - Records processed per second
 kafka.streams.task.process.total         - Total records processed

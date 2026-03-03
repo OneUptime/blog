@@ -552,7 +552,7 @@ spec:
 
 ### Chart Structure
 
-```
+```text
 knative-app/
 ├── Chart.yaml
 ├── values.yaml

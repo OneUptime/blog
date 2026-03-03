@@ -174,7 +174,7 @@ For static hosting without header control, use a meta tag. Note: Some directives
 
 Begin with the most restrictive policy and relax as needed:
 
-```
+```text
 Content-Security-Policy:
   default-src 'none';
   script-src 'self';
@@ -207,7 +207,7 @@ React libraries like styled-components, Emotion, and Material-UI inject inline s
 
 **Quick Fix (Less Secure):**
 
-```
+```text
 style-src 'self' 'unsafe-inline';
 ```
 
@@ -276,7 +276,7 @@ React's synthetic event system handles most events, but some legacy code might u
 
 Some third-party libraries dynamically inject scripts. Use `'strict-dynamic'` to allow scripts loaded by trusted scripts.
 
-```
+```text
 script-src 'self' 'nonce-${nonce}' 'strict-dynamic';
 ```
 
@@ -286,7 +286,7 @@ Some libraries use eval() for template parsing. This requires `'unsafe-eval'` wh
 
 **Instead of:**
 
-```
+```text
 script-src 'self' 'unsafe-eval';
 ```
 
@@ -433,7 +433,7 @@ export default function RootLayout({
 
 ### Google Analytics
 
-```
+```text
 script-src 'self' 'nonce-${nonce}' https://www.googletagmanager.com https://www.google-analytics.com;
 img-src 'self' https://www.google-analytics.com https://www.googletagmanager.com;
 connect-src 'self' https://www.google-analytics.com https://analytics.google.com;
@@ -455,7 +455,7 @@ connect-src 'self' https://www.google-analytics.com https://analytics.google.com
 
 ### Stripe
 
-```
+```text
 script-src 'self' 'nonce-${nonce}' https://js.stripe.com;
 frame-src https://js.stripe.com https://hooks.stripe.com;
 connect-src 'self' https://api.stripe.com;
@@ -463,14 +463,14 @@ connect-src 'self' https://api.stripe.com;
 
 ### Google Fonts
 
-```
+```text
 style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com;
 font-src 'self' https://fonts.gstatic.com;
 ```
 
 ### Intercom
 
-```
+```text
 script-src 'self' 'nonce-${nonce}' https://widget.intercom.io https://js.intercomcdn.com;
 connect-src 'self' https://api-iam.intercom.io wss://nexus-websocket-a.intercom.io;
 img-src 'self' https://static.intercomassets.com https://downloads.intercomcdn.com;
@@ -485,7 +485,7 @@ frame-src https://intercom-sheets.com;
 
 Start with report-only to identify violations without breaking functionality:
 
-```
+```text
 Content-Security-Policy-Report-Only:
   default-src 'self';
   script-src 'self';
@@ -525,7 +525,7 @@ app.post('/csp-violation-report', (req, res) => {
 
 ### Using the Reporting API (Modern Browsers)
 
-```
+```text
 Content-Security-Policy:
   default-src 'self';
   report-to csp-endpoint;
@@ -944,7 +944,7 @@ describe('CSP Headers', () => {
 
 **Solution:**
 
-```
+```text
 // Development only
 script-src 'self' 'unsafe-eval';
 connect-src 'self' ws://localhost:*;
@@ -973,7 +973,7 @@ const nonce = window.__CSP_NONCE__;
 
 **Solution:**
 
-```
+```text
 worker-src 'self' blob:;
 ```
 
@@ -983,7 +983,7 @@ worker-src 'self' blob:;
 
 **Solution:**
 
-```
+```text
 worker-src 'self';
 script-src 'self' 'nonce-xxx';
 ```
@@ -994,7 +994,7 @@ script-src 'self' 'nonce-xxx';
 
 **Solution:**
 
-```
+```text
 img-src 'self' data:;
 ```
 
@@ -1004,7 +1004,7 @@ img-src 'self' data:;
 
 **Solution:**
 
-```
+```text
 connect-src 'self' wss://ws.example.com;
 ```
 
@@ -1014,7 +1014,7 @@ connect-src 'self' wss://ws.example.com;
 
 **Solution:**
 
-```
+```text
 font-src 'self' https://fonts.gstatic.com;
 style-src 'self' 'nonce-xxx' https://fonts.googleapis.com;
 ```

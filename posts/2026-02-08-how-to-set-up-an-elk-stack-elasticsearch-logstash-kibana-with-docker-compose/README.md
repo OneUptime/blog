@@ -26,7 +26,7 @@ Applications send logs to Logstash (directly or via Filebeat). Logstash processe
 
 ## Directory Structure
 
-```
+```text
 elk-stack/
 ├── docker-compose.yml
 ├── logstash/

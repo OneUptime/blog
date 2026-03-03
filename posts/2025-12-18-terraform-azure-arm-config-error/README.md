@@ -14,7 +14,7 @@ The "Error building ARM Config" message in Terraform indicates a problem with Az
 
 The full error typically appears as:
 
-```
+```text
 Error: Error building ARM Config: obtain subscription() from Azure CLI:
 Error parsing json result from the Azure CLI: Error waiting for the Azure CLI: exit status 1
 

@@ -67,7 +67,7 @@ for message in chat_history.messages:
 
 The data structure in Firestore looks like this:
 
-```
+```text
 chat_sessions/
   user-123-session-001/
     messages/

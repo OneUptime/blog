@@ -10,7 +10,7 @@ The `ArgumentNullException` with the message "Value cannot be null" is one of th
 
 ## Understanding the Error
 
-```
+```text
 System.ArgumentNullException: Value cannot be null. (Parameter 'connectionString')
    at Microsoft.Extensions.Configuration.ConfigurationExtensions.GetConnectionString(...)
    at MyApp.Startup.ConfigureServices(...)

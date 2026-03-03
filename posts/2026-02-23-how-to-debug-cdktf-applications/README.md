@@ -160,7 +160,7 @@ gcloud auth list
 
 **Resource not found** (for data sources):
 
-```
+```text
 Error: Error describing VPC: VPCNotFound
 ```
 
@@ -168,7 +168,7 @@ This means the data source is looking for a resource that does not exist. Check 
 
 **Invalid attribute value**:
 
-```
+```text
 Error: expected cidr_block to be a valid CIDR
 ```
 

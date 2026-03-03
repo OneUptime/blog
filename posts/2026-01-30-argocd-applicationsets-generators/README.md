@@ -136,7 +136,7 @@ spec:
 
 Repository structure:
 
-```
+```text
 services/
 ├── user-api/
 │   ├── deployment.yaml

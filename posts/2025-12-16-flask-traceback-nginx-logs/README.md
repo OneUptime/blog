@@ -345,7 +345,7 @@ def trigger_error():
 
 ### Directory Structure
 
-```
+```text
 /var/www/app/
   app.py
   gunicorn.conf.py

@@ -55,7 +55,7 @@ Production deployments should use tags or commit SHAs for stability. Development
 
 Structure a repository to provide reusable bases:
 
-```
+```text
 k8s-configs/
 ├── README.md
 ├── bases/
@@ -314,7 +314,7 @@ See [examples/basic-usage](./examples/basic-usage) for a complete example.
 
 ### v1.1.0 (2026-01-15)
 - Added liveness and readiness probes
-```
+```text
 
 Good documentation reduces support burden and helps teams adopt your shared configurations.
 
@@ -329,7 +329,7 @@ k8s-configs/
 │   │   └── kustomization.yaml
 │   └── webapp-v2/  # New version with breaking changes
 │       └── kustomization.yaml
-```
+```text
 
 Consumers can migrate at their own pace:
 

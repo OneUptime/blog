@@ -205,7 +205,7 @@ foreach ($zone in $PrivateLinkZones) {
 
 For BIND DNS servers, add the following to your named.conf. These forward declarations send queries for Private Link zones to the Azure DNS resolver:
 
-```
+```text
 // Forward privatelink zones to Azure DNS Private Resolver
 zone "privatelink.blob.core.windows.net" {
     type forward;

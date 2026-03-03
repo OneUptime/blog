@@ -203,7 +203,7 @@ Get-Volume D
 
 Or use diskpart:
 
-```
+```text
 diskpart
 list volume
 select volume 1

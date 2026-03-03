@@ -180,7 +180,7 @@ Select a block of code and ask Q to explain it. This is great for understanding 
 
 Ask Q to generate unit tests for your functions:
 
-```
+```text
 You: Write pytest tests for the upload_file function
 
 Q generates:
@@ -220,7 +220,7 @@ def test_upload_file_failure(mock_s3):
 
 Ask Q to refactor or transform your code:
 
-```
+```text
 You: Convert this function to use async/await with aiobotocore
 
 Q provides the transformed async version
@@ -249,7 +249,7 @@ The scanner checks for:
 
 An important feature for enterprise use is reference tracking. When Q generates code that is similar to code in its training data, it tells you the source repository and license:
 
-```
+```text
 Suggestion reference:
 - Repository: aws/aws-sdk-go-v2
 - License: Apache-2.0

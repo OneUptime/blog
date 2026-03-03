@@ -25,7 +25,7 @@ openssl s_client -connect example.com:443 -servername example.com </dev/null
 
 The output contains a lot of information. Understanding the sections:
 
-```
+```text
 CONNECTED(00000003)            # TCP connection established
 depth=2 ...                    # Chain depth 2: root CA
 verify return:1                # Verification passed

@@ -49,7 +49,7 @@ pytest -x                 # Stop on first failure
 
 ### File and Function Naming
 
-```
+```text
 project/
     src/
         calculator.py

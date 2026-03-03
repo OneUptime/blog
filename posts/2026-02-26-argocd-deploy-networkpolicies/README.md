@@ -215,7 +215,7 @@ Enabling `selfHeal` is particularly important for NetworkPolicies. If someone ma
 
 Organize policies by namespace and application:
 
-```
+```text
 security/
   network-policies/
     production/

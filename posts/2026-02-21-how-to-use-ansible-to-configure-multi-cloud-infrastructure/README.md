@@ -53,7 +53,7 @@ pip install google-auth google-cloud-compute
 
 A well-organized project structure is essential for multi-cloud.
 
-```
+```text
 multi-cloud/
 ├── ansible.cfg
 ├── inventory/

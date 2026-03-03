@@ -24,7 +24,7 @@ graph LR
 
 The protocol is text-based and trivially simple:
 
-```
+```text
 metric.name:value|type|@sample_rate|#tag1:value1,tag2:value2
 ```
 
@@ -208,7 +208,7 @@ StatsD's daemon-side aggregation offloads the work from your application but add
 
 Original StatsD has no concept of tags or labels. Each unique metric name is a separate time series:
 
-```
+```text
 # Without tags, you create separate metric names
 orders.processed.us_east:1|c
 orders.processed.eu_west:1|c
@@ -217,7 +217,7 @@ orders.processed.ap_south:1|c
 
 DogStatsD (Datadog's extension) added tag support:
 
-```
+```text
 # DogStatsD adds tag support
 orders.processed:1|c|#region:us_east,service:orders
 ```

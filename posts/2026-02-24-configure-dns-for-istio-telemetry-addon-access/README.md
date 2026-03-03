@@ -52,7 +52,7 @@ export GATEWAY_HOSTNAME=$(kubectl get svc istio-ingressgateway -n istio-system \
 
 If your gateway has an IP address, create A records. The exact steps depend on your DNS provider, but the records should look like:
 
-```
+```text
 grafana.monitoring.example.com    A    <GATEWAY_IP>
 kiali.monitoring.example.com      A    <GATEWAY_IP>
 prometheus.monitoring.example.com A    <GATEWAY_IP>
@@ -61,7 +61,7 @@ jaeger.monitoring.example.com     A    <GATEWAY_IP>
 
 If you want to avoid creating separate records for each addon, use a wildcard:
 
-```
+```text
 *.monitoring.example.com    A    <GATEWAY_IP>
 ```
 
@@ -71,14 +71,14 @@ This routes all subdomains of `monitoring.example.com` to the gateway. The Istio
 
 If your gateway has a hostname (AWS), use CNAME records:
 
-```
+```text
 grafana.monitoring.example.com    CNAME    a1b2c3d4.us-east-1.elb.amazonaws.com
 kiali.monitoring.example.com      CNAME    a1b2c3d4.us-east-1.elb.amazonaws.com
 ```
 
 Or a wildcard CNAME:
 
-```
+```text
 *.monitoring.example.com    CNAME    a1b2c3d4.us-east-1.elb.amazonaws.com
 ```
 

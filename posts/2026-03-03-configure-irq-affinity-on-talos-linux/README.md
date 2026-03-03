@@ -120,7 +120,7 @@ This DaemonSet runs on every node, pins all NIC interrupts to cores 0-3, and re-
 
 The affinity mask is a hexadecimal bitmask where each bit represents a CPU core. Here is a quick reference:
 
-```
+```text
 # CPU bitmask reference
 # Cores 0-3:   0x0f  (binary: 00001111)
 # Cores 0-7:   0xff  (binary: 11111111)
@@ -210,7 +210,7 @@ machine:
 
 Then set IRQ affinity to cores 0-3:
 
-```
+```text
 IRQ handling:    Cores 0-3  (handle all hardware interrupts)
 System services: Cores 0-3  (kubelet, containerd, etc.)
 Application:     Cores 4-15 (CPU-pinned pods, no interrupts)

@@ -65,7 +65,7 @@ pnpm add zustand
 
 For a well-organized codebase, we recommend the following structure:
 
-```
+```text
 src/
 ├── stores/
 │   ├── index.ts

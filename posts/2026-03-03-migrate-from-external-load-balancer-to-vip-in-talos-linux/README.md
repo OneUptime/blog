@@ -62,7 +62,7 @@ dig lb.example.com
 
 Typical external load balancer setup:
 
-```
+```text
                     Clients / Workers
                          |
                    [Load Balancer]
@@ -75,7 +75,7 @@ Typical external load balancer setup:
 
 Target VIP setup:
 
-```
+```text
                     Clients / Workers
                          |
                    [VIP: 192.168.1.100]

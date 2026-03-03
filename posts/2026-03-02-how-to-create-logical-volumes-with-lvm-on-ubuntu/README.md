@@ -71,7 +71,7 @@ sudo pvcreate /dev/sdb
 ```
 
 Expected output:
-```
+```text
   Physical volume "/dev/sdb" successfully created.
 ```
 
@@ -81,7 +81,7 @@ Verify:
 sudo pvs
 ```
 
-```
+```text
   PV         VG Fmt  Attr PSize   PFree
   /dev/sdb      lvm2 ---  500.00g 500.00g
 ```
@@ -109,7 +109,7 @@ sudo vgcreate data_vg /dev/sdb
 ```
 
 Output:
-```
+```text
   Volume group "data_vg" successfully created
 ```
 
@@ -125,7 +125,7 @@ Verify the VG:
 sudo vgs data_vg
 ```
 
-```
+```text
   VG       #PV #LV #SN Attr   VSize    VFree
   data_vg    1   0   0 wz--n- 499.99g  499.99g
 ```
@@ -149,7 +149,7 @@ With a Volume Group in place, create Logical Volumes from it.
 sudo lvcreate -L 50G -n web_data data_vg
 ```
 
-```
+```text
   Logical volume "web_data" created.
 ```
 
@@ -185,7 +185,7 @@ Verify all LVs:
 sudo lvs
 ```
 
-```
+```text
   LV       VG       Attr       LSize   Pool Origin Data%
   web_data data_vg  -wi-a----- 100.00g
   db_data  data_vg  -wi-a----- 200.00g
@@ -254,7 +254,7 @@ Then add entries to `/etc/fstab`:
 sudo nano /etc/fstab
 ```
 
-```
+```text
 # LVM volumes
 /dev/data_vg/web_data    /var/www              ext4    defaults    0  2
 /dev/data_vg/db_data     /var/lib/postgresql   xfs     defaults    0  2

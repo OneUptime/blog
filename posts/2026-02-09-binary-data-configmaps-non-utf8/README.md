@@ -136,7 +136,7 @@ spec:
 
 The files are automatically decoded from base64 when mounted:
 
-```
+```text
 /usr/share/nginx/html/assets/
 ├── logo.png
 ├── favicon.ico

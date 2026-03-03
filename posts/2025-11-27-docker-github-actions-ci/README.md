@@ -12,7 +12,7 @@ GitHub Actions plus Docker gives you a portable CI pipeline-if you tame caching,
 
 ## 1. Reusable Workflow Layout
 
-```
+```text
 .github/workflows/
   docker-build.yml
   docker-release.yml

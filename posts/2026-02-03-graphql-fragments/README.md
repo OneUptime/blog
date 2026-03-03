@@ -460,7 +460,7 @@ As your app grows, fragment organization becomes critical. Here are approaches t
 
 **Option 1: Colocated with components** (recommended for most apps)
 
-```
+```text
 src/
   components/
     User/
@@ -477,7 +477,7 @@ Each component has a sibling fragment file. Import and compose as needed.
 
 **Option 2: Centralized fragments directory** (works for smaller apps)
 
-```
+```text
 src/
   graphql/
     fragments/
@@ -493,7 +493,7 @@ All fragments live together, organized by domain entity.
 
 **Option 3: Hybrid approach** (large apps with shared fragments)
 
-```
+```text
 src/
   graphql/
     fragments/

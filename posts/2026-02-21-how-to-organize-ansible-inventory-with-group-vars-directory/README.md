@@ -14,7 +14,7 @@ The `group_vars` directory is where Ansible looks for variables that apply to en
 
 Create a `group_vars` directory alongside your inventory file. Inside it, create a YAML file for each group.
 
-```
+```text
 project/
   ansible.cfg
   inventory.ini
@@ -113,7 +113,7 @@ inventory = ./inventory
 
 When a group has many variables, a single YAML file becomes hard to manage. Instead, create a directory named after the group and put multiple files inside it.
 
-```
+```text
 project/
   inventory.ini
   group_vars/
@@ -186,7 +186,7 @@ This approach makes it easy for different team members to work on different aspe
 
 The subdirectory approach pairs perfectly with Ansible Vault for secrets management. The convention is to have a `vault.yml` file for encrypted values and reference those from the regular files.
 
-```
+```text
 group_vars/
   databases/
     postgresql.yml      # Plain text, references vault variables
@@ -239,7 +239,7 @@ web_staging
 web_prod
 ```
 
-```
+```text
 group_vars/
   all.yml                # Applied to every host
   production.yml         # Applied to all production hosts
@@ -288,7 +288,7 @@ The variable precedence flows from general to specific: `all` < `production` < `
 
 Here is a complete directory structure for a multi-environment Ansible project:
 
-```
+```text
 ansible-project/
   ansible.cfg
   inventory/

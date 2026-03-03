@@ -93,7 +93,7 @@ time ansible all -m ping -f 100
 
 For a fleet of 60 servers running a simple ping:
 
-```
+```text
 # -f 5  (default):  ~24 seconds (12 rounds x ~2s each)
 # -f 10:            ~12 seconds (6 rounds x ~2s each)
 # -f 20:            ~6 seconds  (3 rounds x ~2s each)

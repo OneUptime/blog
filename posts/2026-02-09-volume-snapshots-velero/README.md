@@ -177,7 +177,7 @@ velero backup describe db-backup-20260209 --details
 
 The output shows the resources backed up and the volume snapshots taken:
 
-```
+```text
 Name:         db-backup-20260209
 Namespace:    velero
 Phase:        Completed

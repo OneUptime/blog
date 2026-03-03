@@ -170,7 +170,7 @@ Server: {{ server }}
 
 Output:
 
-```
+```text
 Server Inventory Report
 =======================
 

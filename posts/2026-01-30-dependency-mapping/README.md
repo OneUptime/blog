@@ -1356,7 +1356,7 @@ A complete dependency mapping system combines:
 
 ### Implementation Checklist
 
-```
+```text
 [ ] Instrument services with OpenTelemetry
 [ ] Deploy trace collector with dependency extraction
 [ ] Set up dependency database (PostgreSQL or graph DB)

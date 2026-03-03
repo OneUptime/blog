@@ -14,7 +14,7 @@ Connection issues are among the most common Redis problems in production. They c
 
 ### 1. Connection Refused
 
-```
+```text
 redis.exceptions.ConnectionError: Error 111 connecting to redis:6379. Connection refused.
 ```
 
@@ -26,7 +26,7 @@ redis.exceptions.ConnectionError: Error 111 connecting to redis:6379. Connection
 
 ### 2. Connection Timeout
 
-```
+```text
 redis.exceptions.TimeoutError: Timeout reading from socket
 ```
 
@@ -38,7 +38,7 @@ redis.exceptions.TimeoutError: Timeout reading from socket
 
 ### 3. Connection Reset
 
-```
+```text
 redis.exceptions.ConnectionError: Connection reset by peer
 ```
 
@@ -50,7 +50,7 @@ redis.exceptions.ConnectionError: Connection reset by peer
 
 ### 4. Authentication Failed
 
-```
+```text
 redis.exceptions.AuthenticationError: NOAUTH Authentication required
 ```
 

@@ -63,7 +63,7 @@ go get github.com/hashicorp/terraform-plugin-go
 
 ### Project Structure
 
-```
+```text
 terraform-provider-example/
 ├── internal/
 │   └── provider/

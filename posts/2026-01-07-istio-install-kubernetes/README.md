@@ -406,7 +406,7 @@ kubectl get pods -n istio-system
 
 Expected output for the default profile:
 
-```
+```text
 NAME                                    READY   STATUS    RESTARTS   AGE
 istio-ingressgateway-5d869f5bbf-7pmkt   1/1     Running   0          2m
 istiod-7f6d7c759c-vd9rp                 1/1     Running   0          2m

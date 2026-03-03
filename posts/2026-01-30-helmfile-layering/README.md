@@ -61,7 +61,7 @@ The values files are merged in order. Later files override earlier ones.
 
 Organize your Helmfile project with a clear hierarchy.
 
-```
+```text
 helmfile-project/
 ├── helmfile.yaml
 ├── environments/
@@ -585,7 +585,7 @@ ingress:
 
 Name files clearly to show their purpose.
 
-```
+```text
 values/
 ├── base.yaml              # Shared defaults
 ├── development.yaml       # Dev overrides

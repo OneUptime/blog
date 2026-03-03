@@ -14,7 +14,7 @@ This makes it particularly useful for machine learning workflows (large model ch
 
 ## Architecture
 
-```
+```text
 Applications (via POSIX mount at /mnt/juicefs)
           |
     [JuiceFS Client] (FUSE mount)

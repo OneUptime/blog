@@ -16,7 +16,7 @@ Proxy Protocol solves this by adding a small header to each connection that carr
 
 Proxy Protocol prepends a header line to each TCP connection before any application data:
 
-```
+```text
 PROXY TCP4 203.0.113.50 10.0.0.5 12345 80\r\n
 ```
 
@@ -68,7 +68,7 @@ networks:
 
 Configure HAProxy to send Proxy Protocol v2 to backends:
 
-```
+```text
 # haproxy.cfg - HAProxy configuration with Proxy Protocol v2
 global
     daemon
@@ -195,7 +195,7 @@ services:
 
 For HTTPS traffic, Proxy Protocol wraps the TLS connection:
 
-```
+```text
 # haproxy.cfg - HTTPS with Proxy Protocol v2
 frontend https_front
     bind *:443 ssl crt /etc/haproxy/certs/combined.pem
@@ -213,7 +213,7 @@ HAProxy terminates TLS and then sends the plaintext request to the backend with 
 
 In multi-layer proxy setups, each layer must forward the Proxy Protocol header:
 
-```
+```text
 # Layer 1: External load balancer (e.g., cloud provider) sends PP to HAProxy
 # Layer 2: HAProxy reads PP and forwards to Nginx with PP
 

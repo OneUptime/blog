@@ -80,7 +80,7 @@ kubectl patch configmap app-config-v1 --type merge \
 
 You will get an error like:
 
-```
+```text
 The ConfigMap "app-config-v1" is invalid: data: Forbidden: field is immutable when `immutable` is set
 ```
 

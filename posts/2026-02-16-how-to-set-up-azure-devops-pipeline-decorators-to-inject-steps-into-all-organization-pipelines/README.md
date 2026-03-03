@@ -38,7 +38,7 @@ npm install -g tfx-cli
 
 The extension structure looks like a normal Azure DevOps extension with a few special properties. Here is the directory layout you need.
 
-```
+```text
 my-decorator/
   vss-extension.json
   decorator.yml

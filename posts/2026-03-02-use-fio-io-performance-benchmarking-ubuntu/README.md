@@ -288,7 +288,7 @@ fio \
 ```
 
 The output shows latency at each percentile:
-```
+```text
 clat percentiles (usec):
  |  1.00th=[   81],  5.00th=[   97],
  | 10.00th=[  108], 20.00th=[  125],

@@ -125,13 +125,13 @@ heroku config:set OTEL_EXPORTER_OTLP_HEADERS="x-oneuptime-token=your-token-here"
 
 Modify your `Procfile` to load the tracing configuration before your application starts. The `--require` flag tells Node.js to load and execute the tracing module first.
 
-```
+```text
 web: node --require ./tracing.js server.js
 ```
 
 If you're using a framework like Next.js or a build tool, adjust accordingly:
 
-```
+```text
 web: node --require ./tracing.js node_modules/.bin/next start
 ```
 

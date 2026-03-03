@@ -10,7 +10,7 @@ Description: How to fix the Missing Required Argument error in Terraform when yo
 
 You write a resource block, run `terraform plan`, and get:
 
-```
+```text
 Error: Missing required argument
 
 on main.tf line 5, in resource "aws_instance" "web":

@@ -129,7 +129,7 @@ SUPERSET_WEBSERVER_TIMEOUT = 300
 2. Select ClickHouse from the list
 3. Configure the connection:
 
-```
+```text
 # Connection String Format
 clickhousedb+connect://user:password@host:port/database
 

@@ -73,7 +73,7 @@ The key setting is `enable_x_ratelimit_headers: DRAFT_VERSION_03`. This tells En
 
 With `DRAFT_VERSION_03` enabled, a normal response includes:
 
-```
+```text
 HTTP/1.1 200 OK
 x-ratelimit-limit: 100, 100;w=60
 x-ratelimit-remaining: 87
@@ -82,7 +82,7 @@ x-ratelimit-reset: 42
 
 And a rate-limited response:
 
-```
+```text
 HTTP/1.1 429 Too Many Requests
 x-ratelimit-limit: 100, 100;w=60
 x-ratelimit-remaining: 0

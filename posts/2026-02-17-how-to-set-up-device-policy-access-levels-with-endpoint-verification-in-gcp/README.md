@@ -52,7 +52,7 @@ Endpoint Verification needs to be enabled in your Google Workspace admin console
 
 You can also force-install the Endpoint Verification Chrome extension via policy:
 
-```
+```text
 Extension ID: callobklhcbilhphinckomhgkigmfocg
 ```
 

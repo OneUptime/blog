@@ -12,7 +12,7 @@ The `InvalidOffsetException` (and its subclass `OffsetOutOfRangeException`) occu
 
 ## Understanding the Error
 
-```
+```text
 org.apache.kafka.clients.consumer.OffsetOutOfRangeException:
 Offsets out of range with no configured reset policy for partitions: {my-topic-0=5000}
 ```

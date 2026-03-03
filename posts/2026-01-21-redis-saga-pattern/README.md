@@ -21,7 +21,7 @@ Redis offers key benefits for saga implementation:
 
 ## Saga Pattern Basics
 
-```
+```text
 Order Saga Example:
 1. Create Order     -> Compensate: Cancel Order
 2. Reserve Stock    -> Compensate: Release Stock

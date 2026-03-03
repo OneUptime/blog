@@ -128,7 +128,7 @@ iostat -x 1 3
 
 Example output:
 
-```
+```text
 Device  r/s    w/s   rkB/s   wkB/s  rrqm/s wrqm/s %rrqm %wrqm r_await w_await aqu-sz rareq-sz wareq-sz  svctm  %util
 sda    45.00  30.00  720.00  480.00   5.00  10.00 10.00 25.00    2.50    4.00   0.25    16.00    16.00   0.80  6.00
 nvme0n1 1200.00 800.00 48000.00 32000.00  0.00   0.00  0.00  0.00    0.15    0.20   0.30    40.00    40.00   0.05  10.00

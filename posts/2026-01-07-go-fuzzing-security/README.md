@@ -171,7 +171,7 @@ func FuzzJSONUnmarshal(f *testing.F) {
 
 Go also supports seed corpus files stored in the `testdata/fuzz/<FuzzTestName>` directory:
 
-```
+```text
 mypackage/
     parser.go
     parser_test.go
@@ -642,7 +642,7 @@ When the fuzzer finds a crash or failure, it saves the input to the corpus for d
 
 When a bug is found, the fuzzer outputs:
 
-```
+```text
 --- FAIL: FuzzParseConfig (0.15s)
     --- FAIL: FuzzParseConfig (0.00s)
         parser_fuzz_test.go:45: panic: runtime error: index out of range [5] with length 3

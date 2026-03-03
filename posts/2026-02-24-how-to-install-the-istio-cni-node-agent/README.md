@@ -119,7 +119,7 @@ kubectl get daemonset -n istio-system istio-cni-node
 
 You should see one pod per node in the `READY` column:
 
-```
+```text
 NAME             DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE
 istio-cni-node   3         3         3       3            3
 ```

@@ -140,7 +140,7 @@ Click "Submit" to start the creation.
 
 After clicking Submit, you're taken to the stack detail page. The "Events" tab is where the action is. You'll see events streaming in as CloudFormation creates each resource:
 
-```
+```text
 Timestamp           Logical ID          Status                  Reason
 12:00:01            demo-dev-stack      CREATE_IN_PROGRESS      User initiated
 12:00:05            DataBucket          CREATE_IN_PROGRESS

@@ -257,7 +257,7 @@ redis://default:yourpassword@redis:6379/0
 
 Create a users.acl file for granular permissions.
 
-```
+```text
 # users.acl
 user default off
 user admin on >adminpassword ~* &* +@all
@@ -315,7 +315,7 @@ networks:
 
 ### Connection Strings
 
-```
+```text
 # Basic
 redis://redis:6379
 

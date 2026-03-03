@@ -374,7 +374,7 @@ Bundle custom subcharts directly in your chart.
 
 ### Directory Structure
 
-```
+```text
 my-app/
 ├── Chart.yaml
 ├── values.yaml

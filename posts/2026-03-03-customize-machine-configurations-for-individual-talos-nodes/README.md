@@ -213,7 +213,7 @@ done
 
 For maintainability, organize your configuration files in a clear directory structure:
 
-```
+```text
 talos-config/
   secrets.enc.yaml           # Encrypted secrets
   patches/

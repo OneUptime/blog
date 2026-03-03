@@ -229,7 +229,7 @@ az monitor diagnostic-settings create \
 
 Query pull statistics:
 
-```
+```text
 // KQL query: Pull activity by repository over the last 7 days
 ContainerRegistryRepositoryEvents
 | where OperationName == "Pull"
@@ -238,7 +238,7 @@ ContainerRegistryRepositoryEvents
 | order by PullCount desc
 ```
 
-```
+```text
 // KQL query: Unique source IPs pulling images
 ContainerRegistryRepositoryEvents
 | where OperationName == "Pull"

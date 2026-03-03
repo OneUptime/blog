@@ -53,7 +53,7 @@ df -h /
 
 You might see something like:
 
-```
+```text
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/sda1       9.8G  7.2G  2.1G  78% /
 ```
@@ -91,7 +91,7 @@ sudo lsblk
 
 Output:
 
-```
+```text
 NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
 sda      8:0    0   50G  0 disk
 |-sda1   8:1    0  9.9G  0 part /
@@ -132,7 +132,7 @@ df -h /
 
 Expected output:
 
-```
+```text
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/sda1        49G  7.2G   40G  16% /
 ```

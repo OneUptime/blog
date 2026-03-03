@@ -94,7 +94,7 @@ spec:
 
 Now if a developer tries to create a VirtualService without a timeout, they get a clear error:
 
-```
+```text
 Error from server: admission webhook "validation.gatekeeper.sh" denied the request:
 VirtualService 'my-service' must have an explicit timeout on all HTTP routes
 ```

@@ -23,7 +23,7 @@ terraform version
 
 Output:
 
-```
+```text
 Terraform v1.7.4
 on darwin_arm64
 
@@ -120,7 +120,7 @@ The `~>` (pessimistic constraint) operator is particularly useful:
 
 When someone on your team has the wrong version, they get a clear error:
 
-```
+```text
 Error: Unsupported Terraform Core version
 
   on versions.tf line 3, in terraform:

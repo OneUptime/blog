@@ -54,7 +54,7 @@ terragrunt --version
 
 A typical Terragrunt project separates reusable Terraform modules from environment-specific configurations. Here is the structure we will build:
 
-```
+```text
 my-project/
   modules/
     s3-bucket/
@@ -280,7 +280,7 @@ ls .terragrunt-cache/*/
 
 The `.terragrunt-cache` directory should be added to your `.gitignore`:
 
-```
+```text
 # .gitignore
 .terragrunt-cache
 .terraform

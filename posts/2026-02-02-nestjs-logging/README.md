@@ -40,7 +40,7 @@ export class UserService {
 
 The built-in logger outputs colored logs in development:
 
-```
+```text
 [Nest] 12345  - 02/02/2026, 10:30:15 AM     LOG [UserService] Finding user with ID: abc123
 [Nest] 12345  - 02/02/2026, 10:30:15 AM   DEBUG [UserService] User found: john@example.com
 ```

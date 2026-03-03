@@ -12,7 +12,7 @@ AnsibleFilterError occurs when a Jinja2 filter is used incorrectly, applied to a
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "AnsibleFilterError: |ipaddr: 'NoneType' is not a valid IP address or network"
 }
@@ -64,7 +64,7 @@ value: "{{ items | selectattr('active') | map(attribute='name') | list | join(',
 
 ### Fix 5: Custom Filter Not Found
 
-```
+```text
 AnsibleFilterError: No filter named 'my_custom_filter'
 ```
 

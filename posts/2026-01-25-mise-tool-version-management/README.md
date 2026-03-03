@@ -300,7 +300,7 @@ MISE_ENV=production mise run deploy
 
 Here is how mise integrates into a typical project:
 
-```
+```text
 project/
 ├── .mise.toml           # Main configuration
 ├── .mise.local.toml     # Local overrides (gitignored)

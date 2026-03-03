@@ -157,7 +157,7 @@ State file path convention:
 
 Store ADRs alongside the code they document:
 
-```
+```text
 infrastructure/
   adr/
     0001-initial-terraform-adoption.md

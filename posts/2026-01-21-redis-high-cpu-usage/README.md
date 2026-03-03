@@ -36,7 +36,7 @@ redis-cli INFO cpu
 
 Key metrics from INFO cpu:
 
-```
+```text
 used_cpu_sys:1234.56
 used_cpu_user:5678.90
 used_cpu_sys_children:12.34

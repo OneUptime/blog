@@ -104,7 +104,7 @@ sudo usermod -aG audio $USER
 sudo nano /etc/security/limits.d/audio.conf
 ```
 
-```
+```text
 @audio   -  rtprio  95
 @audio   -  memlock unlimited
 @audio   -  nice    -19

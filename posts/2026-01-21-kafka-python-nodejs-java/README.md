@@ -481,7 +481,7 @@ async function consumeOrders(): Promise<void> {
 
 Java has the official Apache Kafka client library with full feature support.
 
-#### Maven Dependency
+### Maven Dependency
 
 ```xml
 <dependency>

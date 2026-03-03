@@ -173,7 +173,7 @@ output "private_ip" {
 
 A cleaner approach separates provider implementations into submodules:
 
-```
+```text
 modules/
   database/
     main.tf          # Entry point with provider selection

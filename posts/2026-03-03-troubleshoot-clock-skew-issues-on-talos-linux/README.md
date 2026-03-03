@@ -24,7 +24,7 @@ Before you start troubleshooting, recognize the patterns that point to clock ske
 
 ### Certificate Errors
 
-```
+```text
 error: x509: certificate has expired or is not yet valid:
   current time 2026-03-03T10:30:00Z is after 2026-03-03T10:25:00Z
 ```
@@ -49,7 +49,7 @@ etcd uses time-based leases for leader election. If clocks are skewed, nodes may
 
 When viewing aggregated logs, events appear out of order:
 
-```
+```text
 Node A 10:30:01 - Received request
 Node B 10:29:58 - Sent request        # This should appear BEFORE Node A's log
 Node A 10:30:02 - Processed request
@@ -99,7 +99,7 @@ talosctl -n 192.168.1.10 logs timed
 
 Common log messages that indicate problems:
 
-```
+```text
 # NTP server unreachable
 timed: failed to query time.cloudflare.com: i/o timeout
 

@@ -235,7 +235,7 @@ Also, `ansible-vault view` does not work on files containing inline encrypted st
 
 Keep your encrypted variables organized. A common pattern is to split each environment's variables into two files:
 
-```
+```text
 group_vars/
   production/
     vars.yml        # plaintext config (app ports, feature flags, etc.)

@@ -172,7 +172,7 @@ checksec --file=/usr/sbin/sshd
 
 Output from checksec:
 
-```
+```text
 RELRO           STACK CANARY    NX          PIE         RPATH     RUNPATH
 Full RELRO      Canary found    NX enabled  PIE enabled  No RPATH  No RUNPATH
 ```

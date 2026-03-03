@@ -259,7 +259,7 @@ For data sources without offset support, use Grafana's relative time override:
 2. Expand query options
 3. Set "Relative time" field
 
-```
+```text
 Query A: (no relative time - uses dashboard range)
 Query B: Relative time: now-1d/d  (yesterday)
 Query C: Relative time: now-7d/d  (last week)

@@ -203,7 +203,7 @@ sudo rpi-eeprom-config --edit
 
 Set `BOOT_ORDER=0xf416` to try NVMe first, then SD, then USB, then network:
 
-```
+```text
 BOOT_ORDER=0xf416
 PCIE_PROBE=1
 ```

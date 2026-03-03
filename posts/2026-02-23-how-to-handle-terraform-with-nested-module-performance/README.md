@@ -24,7 +24,7 @@ When Terraform encounters a module call, it must:
 
 For a single level of nesting, this overhead is negligible. But each additional level multiplies the work:
 
-```
+```text
 Root module
   -> Module A (10 resources)
     -> Module B (8 resources)
@@ -77,7 +77,7 @@ Even though only the VPC resource matters, the entire networking module (subnets
 
 ### Visualizing the Impact
 
-```
+```text
 Without nesting:
   VPC -> 5 compute resources (parallel)
   20 other networking resources (parallel with compute after VPC)
@@ -95,7 +95,7 @@ The most effective fix is to reduce nesting depth. Here is a systematic approach
 
 ### Before: Deeply Nested
 
-```
+```text
 modules/
   app/
     main.tf          # Calls service module
@@ -112,7 +112,7 @@ modules/
 
 ### After: Flattened
 
-```
+```text
 modules/
   app-service/       # Combined app + service logic
     main.tf

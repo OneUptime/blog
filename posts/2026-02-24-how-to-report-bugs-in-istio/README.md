@@ -94,7 +94,7 @@ Be specific. Not "VirtualService not working" but "VirtualService with header-ba
 
 ### Version Information
 
-```
+```text
 istioctl version:
   client: 1.22.0
   control plane: 1.22.0
@@ -108,7 +108,7 @@ Cloud provider: AWS EKS
 
 Explain what you expected to happen and what actually happened:
 
-```
+```text
 Expected behavior:
 Requests to my-service without the x-version header should be routed
 to the v1 subset (default route).
@@ -122,7 +122,7 @@ Requests without the x-version header return HTTP 404 with
 
 This is the most important section. Write step-by-step instructions that someone can follow from scratch:
 
-```
+```text
 1. Create a namespace with Istio injection enabled:
    kubectl create namespace test
    kubectl label namespace test istio-injection=enabled
@@ -202,7 +202,7 @@ Attach the YAML for any resources involved:
 
 Attach relevant log snippets. Trim them to the relevant entries:
 
-```
+```text
 # From istio-proxy on the affected pod
 [2025-01-15T10:23:45.123Z] "GET /get HTTP/1.1" 404 NR route_not_found - "-" 0 0 0 - "10.244.0.15" "curl/8.1.2" "abc-123" "httpbin.test:8000" "-" - - 10.244.0.20:80 10.244.0.15:40234 - -
 ```
@@ -237,7 +237,7 @@ kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/cluster
 
 Include load testing results showing the performance difference:
 
-```
+```text
 Without Istio: p50=2ms, p99=15ms
 With Istio: p50=25ms, p99=200ms
 ```

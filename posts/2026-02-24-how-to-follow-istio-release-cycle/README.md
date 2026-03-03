@@ -18,7 +18,7 @@ Istio releases a new minor version approximately every quarter (roughly every 3-
 
 The typical timeline looks like:
 
-```
+```text
 1.20.0 -> 1.20.1 -> 1.20.2 -> ... (patch releases)
   |
   +-- ~3 months later --> 1.21.0 -> 1.21.1 -> ...
@@ -91,7 +91,7 @@ For production environments, here is a practical upgrade strategy:
 ### Skip Zero-Day Releases
 Wait at least 2-4 weeks after a new minor release before upgrading. Let other organizations find the early bugs:
 
-```
+```text
 1.22.0 released (Day 0) -> Wait
 1.22.1 released (Day 14) -> Evaluate
 1.22.2 released (Day 28) -> Plan upgrade
@@ -100,7 +100,7 @@ Wait at least 2-4 weeks after a new minor release before upgrading. Let other or
 ### Follow the N-1 Strategy
 Run one minor version behind the latest. This gives you a stable, well-tested version while still receiving security patches:
 
-```
+```text
 Latest available: 1.22.3
 Production target: 1.21.x (latest patch)
 ```
@@ -136,7 +136,7 @@ Pay attention to:
 
 Istio has compatibility requirements with Kubernetes:
 
-```
+```text
 Istio 1.22: Kubernetes 1.27, 1.28, 1.29, 1.30
 Istio 1.21: Kubernetes 1.26, 1.27, 1.28, 1.29
 Istio 1.20: Kubernetes 1.25, 1.26, 1.27, 1.28
@@ -156,7 +156,7 @@ If you need to upgrade both Kubernetes and Istio, do them separately. Changing t
 
 Map out your upgrades for the year:
 
-```
+```text
 Q1: Evaluate Istio 1.22, upgrade staging to 1.22.2+
 Q2: Upgrade production to 1.22.x, evaluate 1.23
 Q3: Upgrade staging to 1.23.2+

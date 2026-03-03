@@ -21,13 +21,13 @@ from . import helper  # This causes the error when running: python my_module.py
 
 The error message:
 
-```
+```text
 ImportError: attempted relative import with no known parent package
 ```
 
 Or in older Python versions:
 
-```
+```text
 ImportError: attempted relative import in non-package
 ```
 
@@ -58,7 +58,7 @@ print(f"__package__: {__package__}")
 
 Let's use this project structure for examples:
 
-```
+```text
 myproject/
     __init__.py
     main.py
@@ -125,7 +125,7 @@ from myproject.utils import helper
 
 Create a proper package structure with `setup.py` or `pyproject.toml`.
 
-```
+```text
 myproject/
     pyproject.toml
     src/
@@ -216,7 +216,7 @@ This approach has drawbacks and is not recommended for production code, but it c
 
 ### Scenario 1: Running Tests
 
-```
+```text
 myproject/
     mypackage/
         __init__.py
@@ -246,7 +246,7 @@ pytest tests/
 
 ### Scenario 2: Scripts in Package
 
-```
+```text
 myproject/
     mypackage/
         __init__.py

@@ -50,7 +50,7 @@ The instance type determines how much CPU, memory, and network bandwidth your se
 
 Here's a quick look at the instance naming convention:
 
-```
+```text
 t3.micro
 │ │  │
 │ │  └── Size (nano, micro, small, medium, large, xlarge, 2xlarge...)

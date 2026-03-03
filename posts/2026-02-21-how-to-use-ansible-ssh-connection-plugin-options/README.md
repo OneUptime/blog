@@ -293,7 +293,7 @@ ansible all -m ping -vvvv
 
 Example debug output:
 
-```
+```text
 <web01> SSH: EXEC ssh -o ControlMaster=auto -o ControlPersist=60s -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no -o 'IdentityFile="~/.ssh/ansible_key"' -o KbdInteractiveAuthentication=no -o PreferredAuthentications=gssapi-with-mic,gssapi-keyex,hostbased,publickey -o PasswordAuthentication=no -o 'User="deploy"' -o ConnectTimeout=10 -o 'ControlPath="/home/user/.ansible/cp/abc123"' 10.0.1.10 '/bin/sh -c '"'"'echo ~deploy && sleep 0'"'"''
 ```
 

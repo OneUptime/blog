@@ -191,7 +191,7 @@ The `fieldMappings` section handles the raw source data, while `outputFieldMappi
 
 Once created, the indexer will start running automatically. You can check its status with a GET request.
 
-```
+```text
 GET https://<search-service>.search.windows.net/indexers/my-enriched-indexer/status?api-version=2024-07-01
 ```
 

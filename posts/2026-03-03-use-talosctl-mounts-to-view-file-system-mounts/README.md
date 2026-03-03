@@ -21,7 +21,7 @@ talosctl mounts --nodes 192.168.1.10
 
 The output shows each mounted filesystem with its source, target, filesystem type, and mount options:
 
-```
+```text
 FILESYSTEM    SIZE       USED       AVAILABLE  PERCENT    MOUNTED ON
 /dev/sda6     50.0 GB    12.3 GB    37.7 GB    24%        /
 /dev/sda5     1.0 GB     200 MB     800 MB     20%        /system
@@ -122,7 +122,7 @@ talosctl mounts --nodes 192.168.1.20
 
 You might see entries like:
 
-```
+```text
 /dev/sdb1     100 GB     45 GB      55 GB      45%        /var/mnt/data
 ```
 

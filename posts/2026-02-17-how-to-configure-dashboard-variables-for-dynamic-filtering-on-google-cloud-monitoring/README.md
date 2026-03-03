@@ -153,7 +153,7 @@ For Kubernetes workloads, filter by namespace:
 
 Dashboard variables automatically filter charts that use matching labels. But you can also reference variables explicitly in MQL queries for more control:
 
-```
+```text
 # Request rate filtered by the service_name variable
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_count'
@@ -162,7 +162,7 @@ fetch cloud_run_revision
 | group_by [resource.service_name], [rps: aggregate(val())]
 ```
 
-```
+```text
 # Latency filtered by multiple variables
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_latencies'

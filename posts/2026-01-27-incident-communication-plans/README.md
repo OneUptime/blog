@@ -152,7 +152,7 @@ Your status page is the cornerstone of external incident communication. Treat it
 ### Status Update Examples
 
 **Initial Acknowledgment (Investigating)**
-```
+```text
 Status: Investigating
 Time: 2026-01-27 14:32 UTC
 
@@ -165,7 +165,7 @@ an update within 30 minutes.
 ```
 
 **Root Cause Identified**
-```
+```text
 Status: Identified
 Time: 2026-01-27 15:05 UTC
 
@@ -180,7 +180,7 @@ Next update: 15:35 UTC or sooner if status changes.
 ```
 
 **Monitoring After Fix**
-```
+```text
 Status: Monitoring
 Time: 2026-01-27 15:28 UTC
 
@@ -193,7 +193,7 @@ We will provide a final update in 30 minutes to confirm resolution.
 ```
 
 **Resolved**
-```
+```text
 Status: Resolved
 Time: 2026-01-27 16:02 UTC
 
@@ -228,7 +228,7 @@ Internal and external communications serve different purposes and require differ
 - Action-oriented language
 
 **Example Internal Update:**
-```
+```text
 [Incident #2847] 14:45 UTC Update
 
 Current status: Database primary is experiencing lock contention.
@@ -257,7 +257,7 @@ Next sync: 15:00 UTC in #incident-2847
 - Empathetic and professional tone
 
 **Example External Update:**
-```
+```text
 We are aware of an issue affecting access to the Dashboard.
 Our team identified the cause and is actively implementing a fix.
 

@@ -47,7 +47,7 @@ flowchart LR
 
 ### Error 1: Connection Refused
 
-```
+```text
 Error: failed to export traces: connection refused
 Export failed: dial tcp 127.0.0.1:4317: connect: connection refused
 ```
@@ -85,7 +85,7 @@ receivers:
 
 ### Error 2: Deadline Exceeded / Timeout
 
-```
+```text
 Error: failed to export: context deadline exceeded
 Error: rpc error: code = DeadlineExceeded desc = context deadline exceeded
 ```
@@ -133,7 +133,7 @@ exporters:
 
 ### Error 3: Authentication Failed
 
-```
+```text
 Error: failed to export: Unauthenticated
 Error: rpc error: code = Unauthenticated desc = invalid or missing API key
 ```
@@ -185,7 +185,7 @@ exporters:
 
 ### Error 4: TLS/SSL Certificate Errors
 
-```
+```text
 Error: failed to export: certificate signed by unknown authority
 Error: x509: certificate verify failed
 ```
@@ -236,7 +236,7 @@ exporters:
 
 ### Error 5: Resource Exhausted
 
-```
+```text
 Error: failed to export: ResourceExhausted
 Error: rpc error: code = ResourceExhausted desc = received message larger than max
 ```
@@ -274,7 +274,7 @@ const processor = new BatchSpanProcessor(exporter, {
 
 ### Error 6: Invalid Endpoint Format
 
-```
+```text
 Error: failed to create exporter: invalid endpoint
 Error: parse error: invalid URL
 ```

@@ -18,7 +18,7 @@ In this guide, I will set up an HL7v2 store, configure message parsing, ingest m
 
 HL7v2 messages are pipe-delimited text (not JSON or XML). Here is what an ADT (Admit, Discharge, Transfer) message looks like:
 
-```
+```text
 MSH|^~\&|EPIC|HOSPITAL|CLOUD|GCP|20260217120000||ADT^A01|MSG00001|P|2.5.1
 EVN|A01|20260217120000
 PID|1||MRN12345^^^HOSPITAL||Smith^John^J||19850315|M

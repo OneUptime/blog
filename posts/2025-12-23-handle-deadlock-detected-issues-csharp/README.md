@@ -182,7 +182,7 @@ public class CacheService
 
 Database deadlocks are different - SQL Server detects and resolves them by killing one transaction:
 
-```
+```text
 Microsoft.Data.SqlClient.SqlException: Transaction (Process ID 52) was deadlocked
 on lock resources with another process and has been chosen as the deadlock victim.
 ```

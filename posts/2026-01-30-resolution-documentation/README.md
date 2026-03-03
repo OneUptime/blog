@@ -90,7 +90,7 @@ Write:
 Users unable to login. Error in application logs:
 ```
 ERROR: SQLSTATE[HY000] [2002] Connection refused
-```
+```text
 ```
 
 **Quantify the Impact**
@@ -734,7 +734,7 @@ Here's a comprehensive template you can use for your resolution documentation:
 - Error messages observed:
   ```
   [Exact error message from logs]
-  ```
+  ```text
 
 ## Root Cause
 ### Analysis
@@ -770,7 +770,7 @@ Here's a comprehensive template you can use for your resolution documentation:
 - [ ] [Check 2]
 
 ### Monitoring Queries
-```
+```text
 [Query to verify fix]
 ```
 
@@ -791,7 +791,7 @@ Here's a comprehensive template you can use for your resolution documentation:
 
 ## Tags
 `tag1` `tag2` `tag3`
-```
+```text
 
 ## Conclusion
 
@@ -808,3 +808,5 @@ The key principles to remember:
 7. **Track prevention actions** - Close the loop on systemic improvements
 
 Start with a simple template and evolve it as your team's needs grow. The best resolution documentation is the one your team actually uses.
+
+```

@@ -102,7 +102,7 @@ data:
 ```
 
 Make sure the redirect URI in your identity provider is set to exactly:
-```
+```text
 https://argocd.example.com/auth/callback
 ```
 

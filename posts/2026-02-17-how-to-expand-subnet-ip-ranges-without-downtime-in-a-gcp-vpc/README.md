@@ -206,7 +206,7 @@ To avoid repeatedly expanding subnets, consider these strategies:
 
 A well-planned IP scheme:
 
-```
+```text
 10.10.0.0/20   - Production workloads (expandable to /18)
 10.10.64.0/20  - GKE pods (expandable to /16)
 10.10.128.0/20 - GKE services (expandable to /18)

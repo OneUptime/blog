@@ -14,7 +14,7 @@ Envoy is the data plane of Istio. Every feature Istio provides - traffic routing
 
 When Istio injects a sidecar into your pod, it adds two things: the Envoy proxy container (called istio-proxy) and an init container (istio-init) that sets up iptables rules. These iptables rules redirect all inbound and outbound traffic through Envoy. Your application never talks directly to the network - every connection passes through Envoy.
 
-```
+```text
 [App Container] <-> [Envoy Proxy] <-> [Network] <-> [Envoy Proxy] <-> [App Container]
      Pod A                                                                  Pod B
 ```
@@ -62,7 +62,7 @@ Envoy uses listeners to accept incoming connections. In an Istio sidecar, there 
 
 Each listener has a filter chain. The filter chain is a series of network filters that process each connection. For HTTP traffic, it typically looks like:
 
-```
+```text
 Connection -> TLS Inspector -> HTTP Connection Manager -> HTTP Filters -> Router
 ```
 
@@ -92,7 +92,7 @@ istioctl proxy-config clusters <pod-name> --fqdn my-service.default.svc.cluster.
 
 Output might show:
 
-```
+```text
 SERVICE FQDN                              PORT  SUBSET  DIRECTION  TYPE
 my-service.default.svc.cluster.local      8080  -       outbound   EDS
 my-service.default.svc.cluster.local      8080  v1      outbound   EDS

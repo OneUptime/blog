@@ -38,7 +38,7 @@ PostgreSQL workloads often benefit from gp3 storage, which lets you independentl
 
 Here's a reasonable starting configuration for different environments.
 
-```
+```text
 Environment  | Storage | Type | IOPS  | Throughput
 -------------|---------|------|-------|----------
 Dev/Test     | 20 GB   | gp3  | 3,000 | 125 MiB/s
@@ -59,7 +59,7 @@ The networking setup is the same as any RDS instance:
 
 This inbound rule allows PostgreSQL connections from your application's security group.
 
-```
+```text
 Type: PostgreSQL
 Protocol: TCP
 Port: 5432

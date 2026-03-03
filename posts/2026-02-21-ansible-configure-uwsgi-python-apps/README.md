@@ -23,7 +23,7 @@ We will cover both in this guide.
 
 ## Project Structure
 
-```
+```text
 uwsgi-setup/
   inventory/
     hosts.yml
@@ -331,7 +331,7 @@ WantedBy=multi-user.target
 
 ## Logrotate Configuration
 
-```
+```text
 # roles/uwsgi/templates/logrotate.conf.j2
 {{ uwsgi_log_dir }}/*.log {
     daily

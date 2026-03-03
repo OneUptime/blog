@@ -485,7 +485,7 @@ RUN apk add package2
 
 ### 2. Use .dockerignore
 
-```
+```text
 # .dockerignore
 .git
 .gitignore

@@ -26,7 +26,7 @@ At `-vvv`, you will see which host Ansible is actually connecting to for each ta
 
 Look for lines like:
 
-```
+```text
 TASK [Install package] *************************
 task path: /home/user/playbooks/site.yml:15
 <delegated_host> ESTABLISH SSH CONNECTION FOR USER: admin
@@ -74,7 +74,7 @@ To use the delegated host's variables, you need to explicitly reference them thr
 
 A very common error looks like this:
 
-```
+```text
 fatal: [web01 -> db01]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: Permission denied (publickey).",

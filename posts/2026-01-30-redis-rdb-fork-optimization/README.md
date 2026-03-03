@@ -73,7 +73,7 @@ redis-cli INFO persistence | grep -E "(rdb_|fork)"
 ```
 
 Example output:
-```
+```text
 rdb_changes_since_last_save:1523
 rdb_bgsave_in_progress:0
 rdb_last_save_time:1706640000

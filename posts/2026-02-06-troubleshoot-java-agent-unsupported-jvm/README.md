@@ -42,13 +42,13 @@ java -javaagent:opentelemetry-javaagent.jar \
 
 Look for messages like:
 
-```
+```text
 [otel.javaagent] WARN - Java version 1.7 is not supported. Agent will be disabled.
 ```
 
 Or:
 
-```
+```text
 [otel.javaagent] INFO - opentelemetry-javaagent 1.32.0
 ```
 
@@ -66,7 +66,7 @@ Some JVM flags can prevent the agent from loading:
 
 In Java 21+, dynamic agent loading produces a warning. This does not disable the agent but may cause confusion:
 
-```
+```text
 WARNING: A terminally deprecated method in java.lang.System has been called
 WARNING: System::setSecurityManager will be removed in a future release
 ```

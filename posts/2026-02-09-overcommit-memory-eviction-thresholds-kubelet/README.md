@@ -91,7 +91,7 @@ The kubelet monitors several signals for eviction decisions:
 
 For memory eviction, the kubelet uses this formula:
 
-```
+```text
 memory.available = node.status.capacity[memory] - node.stats.memory.workingSet
 ```
 
@@ -173,7 +173,7 @@ sudo journalctl -u kubelet -f | grep -i evict
 
 Set eviction thresholds based on your node size and workload characteristics. Here's a formula for memory.available hard threshold:
 
-```
+```text
 memory.available (hard) = max(500Mi, node_memory * 0.05)
 ```
 

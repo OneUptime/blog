@@ -114,7 +114,7 @@ For a more visual approach:
 
 Once created, log-based metrics appear in Cloud Monitoring like any other metric. You can add them to dashboards:
 
-```
+```text
 # Query a user-defined log-based metric in MQL
 fetch global
 | metric 'logging.googleapis.com/user/application-error-count'
@@ -124,7 +124,7 @@ fetch global
 
 For distribution metrics, you can query specific percentiles:
 
-```
+```text
 # P95 of the response time distribution metric
 fetch global
 | metric 'logging.googleapis.com/user/api-response-time'

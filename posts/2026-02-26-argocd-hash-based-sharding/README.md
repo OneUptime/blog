@@ -23,7 +23,7 @@ flowchart LR
 
 The formula is straightforward:
 
-```
+```text
 shard_id = fnv32a(cluster.server) % controller_replicas
 ```
 

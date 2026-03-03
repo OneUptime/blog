@@ -229,7 +229,7 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 
 ### Community ArgoCD Total Cost
 
-```
+```text
 Infrastructure costs (per month):
   3x controller pods (2 CPU, 4Gi): ~$150
   3x repo-server pods (1 CPU, 2Gi): ~$75
@@ -248,7 +248,7 @@ Total: ~$3,835/month
 
 ### Akuity Platform Cost
 
-```
+```text
 Akuity subscription: Varies by tier
   Starter: Free (limited features)
   Pro: Starting at ~$500/month

@@ -19,7 +19,7 @@ ansible-vault view group_vars/production/vault.yml
 
 Ansible prompts for the vault password:
 
-```
+```text
 Vault password:
 ```
 
@@ -79,12 +79,12 @@ head -1 group_vars/production/vault.yml
 ```
 
 For a file with a vault ID:
-```
+```text
 $ANSIBLE_VAULT;1.2;AES256;production
 ```
 
 For a file without a vault ID:
-```
+```text
 $ANSIBLE_VAULT;1.1;AES256
 ```
 
@@ -275,7 +275,7 @@ ansible localhost -m debug -a "var=vars" \
 
 ### "Decryption failed" Error
 
-```
+```text
 ERROR! Decryption failed (no vault secrets were found that could decrypt)
 ```
 
@@ -290,7 +290,7 @@ If you are using multiple vault IDs, make sure you provide the right one.
 
 ### "input is not vault encrypted data" Error
 
-```
+```text
 ERROR! input is not vault encrypted data for group_vars/production/vars.yml
 ```
 
@@ -303,7 +303,7 @@ cat group_vars/production/vars.yml
 
 ### File Not Found
 
-```
+```text
 ERROR! The file secrets.yml does not exist
 ```
 

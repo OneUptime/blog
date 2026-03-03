@@ -87,7 +87,7 @@ exporters:
 
 Example output:
 
-```
+```text
 2026-02-06T10:15:30.123Z info TracesExporter {"kind": "exporter", "data_type": "traces", "name": "debug", "resource spans": 1, "spans": 5}
 2026-02-06T10:15:31.456Z info MetricsExporter {"kind": "exporter", "data_type": "metrics", "name": "debug", "resource metrics": 1, "metrics": 12, "data points": 48}
 ```
@@ -106,7 +106,7 @@ exporters:
 
 Example output for traces:
 
-```
+```text
 ResourceSpans #0
 Resource SchemaURL: https://opentelemetry.io/schemas/1.17.0
 Resource attributes:
@@ -146,7 +146,7 @@ exporters:
 
 Example output includes everything from normal plus:
 
-```
+```text
 Events:
 SpanEvent #0
      -> Name: exception

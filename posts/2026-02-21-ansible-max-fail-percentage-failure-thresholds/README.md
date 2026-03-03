@@ -46,7 +46,7 @@ With 20 hosts and `max_fail_percentage: 25`, the play aborts if more than 5 host
 
 Ansible evaluates the failure percentage after each task completes across all hosts. If the cumulative failure count exceeds the threshold, the play stops immediately. Hosts that have already succeeded keep their changes, but no further tasks run on any host.
 
-```
+```text
 20 hosts, max_fail_percentage: 25 (threshold: 5 hosts)
 
 Task 1: Install packages

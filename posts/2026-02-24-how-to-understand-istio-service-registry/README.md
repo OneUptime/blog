@@ -62,7 +62,7 @@ istioctl proxy-config clusters deploy/my-app -n default
 
 Output:
 
-```
+```text
 SERVICE FQDN                                PORT   SUBSET   DIRECTION    TYPE
 kubernetes.default.svc.cluster.local        443    -        outbound     EDS
 payment-service.default.svc.cluster.local   8080   -        outbound     EDS
@@ -76,7 +76,7 @@ istioctl proxy-config endpoints deploy/my-app -n default \
     --cluster "outbound|8080||payment-service.default.svc.cluster.local"
 ```
 
-```
+```text
 ENDPOINT            STATUS   OUTLIER CHECK   CLUSTER
 10.244.1.5:8080     HEALTHY  OK              outbound|8080||payment-service...
 10.244.2.8:8080     HEALTHY  OK              outbound|8080||payment-service...
@@ -186,13 +186,13 @@ The service registry is global across the cluster. Every sidecar (by default) kn
 
 The fully qualified service name follows this pattern:
 
-```
+```text
 <service-name>.<namespace>.svc.cluster.local
 ```
 
 So `payment-service` in the `default` namespace is:
 
-```
+```text
 payment-service.default.svc.cluster.local
 ```
 

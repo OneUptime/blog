@@ -79,7 +79,7 @@ Services represent the systems or components that can trigger incidents. Create 
 2. Click **New Service**
 3. Fill in the details:
 
-```
+```text
 Name: Payment Processing API
 Description: Handles all payment transactions for the e-commerce platform
 ```

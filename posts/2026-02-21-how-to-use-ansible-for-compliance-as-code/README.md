@@ -59,7 +59,7 @@ Compliance as code means expressing regulatory and security requirements as exec
 
 Structure your compliance role by benchmark sections:
 
-```
+```text
 roles/cis_benchmark/
 ├── tasks/
 │   ├── main.yml

@@ -456,7 +456,7 @@ The `index.html` file contains references to your JavaScript and CSS bundles wit
 
 Modern React build tools (Create React App, Vite, Next.js) automatically add content hashes to filenames:
 
-```
+```text
 main.abc123.js
 styles.def456.css
 logo.789ghi.png

@@ -16,7 +16,7 @@ This guide shows you how to implement error rate calculation from scratch. You w
 
 Error rate is the ratio of failed requests to total requests over a time window. The formula is straightforward.
 
-```
+```text
 Error Rate = (Failed Requests / Total Requests) * 100
 ```
 

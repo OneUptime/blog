@@ -41,7 +41,7 @@ Modules are the foundation of scalable Terraform. Think of them as reusable, tes
 
 ### Directory Structure for Modules
 
-```
+```text
 terraform/
 ├── modules/                    # Reusable infrastructure components
 │   ├── networking/
@@ -929,7 +929,7 @@ jobs:
 
 ### CODEOWNERS for Review Requirements
 
-```
+```text
 # .github/CODEOWNERS
 # Require platform team review for module changes
 /terraform/modules/                    @company/platform-team

@@ -153,7 +153,7 @@ sudo ipmitool sel clear
 ```
 
 Example sensor output:
-```
+```text
 CPU Temp         | 45.000     | degrees C  | ok    | 0.000     | 0.000     | 0.000     | 85.000    | 90.000    | 95.000
 Fan1A RPM        | 3300.000   | RPM        | ok    | 300.000   | 500.000   | 600.000   | na        | na        | na
 ```

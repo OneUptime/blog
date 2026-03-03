@@ -53,7 +53,7 @@ Cloud Monitoring collects CPU, memory, and disk metrics for all your VMs. You ca
 
 Here is a Monitoring Query Language (MQL) query to find VMs with average CPU utilization below 20% over the past 30 days:
 
-```
+```text
 fetch gce_instance
 | metric 'compute.googleapis.com/instance/cpu/utilization'
 | group_by [resource.instance_id], 30d, [avg_utilization: mean(val())]

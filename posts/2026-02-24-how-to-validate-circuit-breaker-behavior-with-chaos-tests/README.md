@@ -241,7 +241,7 @@ kubectl exec -n cb-test $FORTIO_POD -c istio-proxy -- \
 
 Look for:
 
-```
+```text
 cluster.outbound|8000||httpbin.cb-test.svc.cluster.local.outlier_detection.ejections_active: 1
 cluster.outbound|8000||httpbin.cb-test.svc.cluster.local.outlier_detection.ejections_total: 1
 cluster.outbound|8000||httpbin.cb-test.svc.cluster.local.outlier_detection.ejections_consecutive_5xx: 1

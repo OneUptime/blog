@@ -165,7 +165,7 @@ Vercel provides its own tracing integration that works with both runtimes at the
 
 If tracing is critical for your application, consider this architecture:
 
-```
+```text
 Client -> Edge Runtime (middleware, auth, redirects) -> Node.js Runtime (API routes, SSR)
 ```
 

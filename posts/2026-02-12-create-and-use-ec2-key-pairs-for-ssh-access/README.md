@@ -115,7 +115,7 @@ ssh -i ~/.ssh/dev-team-2026.pem ec2-user@54.123.45.67
 
 Or set up your SSH config for easier access:
 
-```
+```text
 # ~/.ssh/config entry
 Host prod-server
     HostName 54.123.45.67

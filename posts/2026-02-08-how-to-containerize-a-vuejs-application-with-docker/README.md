@@ -43,7 +43,7 @@ The output lands in the `dist` directory. These are plain static files that any 
 
 A typical Vue.js project after scaffolding looks like this:
 
-```
+```text
 my-vue-app/
   src/
     components/
@@ -143,7 +143,7 @@ Keep your build context lean. A bloated context means slower builds.
 
 This file excludes everything Docker does not need:
 
-```
+```text
 node_modules
 dist
 .git

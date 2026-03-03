@@ -19,7 +19,7 @@ terraform workspace show
 
 Output:
 
-```
+```text
 staging
 ```
 
@@ -177,7 +177,7 @@ export PS1='\u@\h:\w $(tf_workspace && echo "[tf:$(tf_workspace)]") \$ '
 
 With this configuration, your prompt looks like:
 
-```
+```text
 user@host:~/project [tf:staging] $
 ```
 
@@ -321,7 +321,7 @@ done
 
 Output:
 
-```
+```text
 Terraform Workspace Status:
 ===========================
 ./infra/networking                       prod

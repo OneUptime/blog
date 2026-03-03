@@ -346,7 +346,7 @@ done
 
 Check the response headers for rate limit information:
 
-```
+```text
 X-RateLimit-Limit-Minute: 5
 X-RateLimit-Remaining-Minute: 4
 X-RateLimit-Reset: 1612345678

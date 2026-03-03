@@ -469,7 +469,7 @@ bootstrap();
 
 When you make a request to your NestJS application, you'll see traces like this:
 
-```
+```text
 HTTP GET /api/users
 ├── express.middleware (Express)
 ├── nestjs.controller (NestJS Controller)
@@ -481,7 +481,7 @@ HTTP GET /api/users
 
 For Prisma:
 
-```
+```text
 HTTP GET /api/posts
 ├── express.middleware
 ├── nestjs.controller

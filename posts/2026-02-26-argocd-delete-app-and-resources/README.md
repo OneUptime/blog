@@ -199,7 +199,7 @@ Only use this as a last resort. You may need to manually clean up resources afte
 
 When using the app-of-apps pattern, deleting the parent application with cascade will delete the child Application resources, which in turn cascade-delete their managed resources:
 
-```
+```text
 Parent App (deleted)
   -> Child App 1 (cascade deleted)
     -> Deployment, Service, etc. (cascade deleted)

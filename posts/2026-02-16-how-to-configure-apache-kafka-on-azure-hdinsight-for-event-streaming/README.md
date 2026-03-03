@@ -100,7 +100,7 @@ curl -u admin:"YourStr0ngP@ssword!" -sS \
 ```
 
 This gives you a comma-separated list of broker addresses like:
-```
+```text
 wn0-mykafk.internal.cloudapp.net:9092,wn1-mykafk.internal.cloudapp.net:9092,...
 ```
 
@@ -242,7 +242,7 @@ Kafka topics have configurable retention policies that control how long messages
 
 Access the Ambari UI to modify broker-level settings:
 
-```
+```text
 https://my-kafka-cluster.azurehdinsight.net
 ```
 

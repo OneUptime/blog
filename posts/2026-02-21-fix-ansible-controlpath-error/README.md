@@ -12,7 +12,7 @@ The "Cannot write to ControlPath" error occurs when SSH cannot create the contro
 
 ## The Error
 
-```
+```text
 fatal: [very-long-hostname.subdomain.example.com]: UNREACHABLE! => {
     "msg": "Failed to connect to the host via ssh: Can't open /home/user/.ansible/cp/very-long-hostname.subdomain.example.com-22-user: No such file or directory"
 }

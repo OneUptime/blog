@@ -16,7 +16,7 @@ The "out of shared memory" error in PostgreSQL typically indicates that the data
 
 When PostgreSQL reports "out of shared memory," you might see messages like:
 
-```
+```text
 ERROR: out of shared memory
 HINT: You might need to increase max_locks_per_transaction.
 

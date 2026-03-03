@@ -86,7 +86,7 @@ kubectl exec my-app-xyz -c istio-proxy -- iptables -t nat -L -n -v
 
 The output looks something like this:
 
-```
+```text
 Chain PREROUTING (policy ACCEPT)
 target     prot opt source    destination
 ISTIO_INBOUND  tcp  --  0.0.0.0/0  0.0.0.0/0

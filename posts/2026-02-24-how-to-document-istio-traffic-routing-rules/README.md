@@ -195,7 +195,7 @@ A manually maintained diagram often communicates better:
                                 |Yes        |No
                                 v            v
                              [v1]      [95% stable / 5% canary]
-    ```
+    ```text
 ```
 
 ## Documenting Traffic Policies
@@ -298,7 +298,7 @@ Track routing changes over time. A simple approach is a changelog file:
 
 If you're using GitOps (ArgoCD, Flux), your routing configuration is already in git. Add a README.md alongside your Istio manifests:
 
-```
+```text
 k8s/
   production/
     istio/

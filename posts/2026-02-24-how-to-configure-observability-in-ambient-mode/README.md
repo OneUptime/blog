@@ -122,31 +122,31 @@ Istio provides pre-built Grafana dashboards, but they're designed for the sideca
 
 **TCP connections per service:**
 
-```
+```text
 sum(rate(istio_tcp_connections_opened_total{reporter="destination"}[5m])) by (destination_workload, destination_workload_namespace)
 ```
 
 **Bytes transferred between services:**
 
-```
+```text
 sum(rate(istio_tcp_sent_bytes_total{reporter="source"}[5m])) by (source_workload, destination_workload)
 ```
 
 **HTTP request rate (requires waypoint):**
 
-```
+```text
 sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_workload, response_code)
 ```
 
 **P99 latency (requires waypoint):**
 
-```
+```text
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination"}[5m])) by (destination_workload, le))
 ```
 
 **Error rate:**
 
-```
+```text
 sum(rate(istio_requests_total{reporter="destination", response_code=~"5.."}[5m])) by (destination_workload) / sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_workload)
 ```
 

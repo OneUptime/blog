@@ -82,7 +82,7 @@ resource "aws_dynamodb_table" "terraform_locks" {
 
 Organize state files by environment and component to limit blast radius:
 
-```
+```text
 terraform-state-bucket/
     production/
         networking/terraform.tfstate    # VPC, subnets, security groups

@@ -178,7 +178,7 @@ infracost breakdown --path .
 
 The output shows something like:
 
-```
+```text
 Project: myapp-prod
 
  Name                                        Monthly Qty  Unit        Monthly Cost
@@ -221,7 +221,7 @@ infracost diff --path . --compare-to infracost-base.json
 
 The diff output highlights exactly what changed:
 
-```
+```text
 Monthly cost will increase by $352.97
 
 + azurerm_postgresql_flexible_server.main

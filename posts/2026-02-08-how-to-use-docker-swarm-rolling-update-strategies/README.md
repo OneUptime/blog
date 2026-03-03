@@ -91,7 +91,7 @@ docker service ps webapp
 
 You will see tasks transitioning from `Running` to `Shutdown` as old versions are replaced:
 
-```
+```text
 ID          NAME         IMAGE        NODE     DESIRED STATE   CURRENT STATE
 abc123      webapp.1     myapp:v2.0   node1    Running         Running 5 seconds ago
 def456      webapp.2     myapp:v2.0   node2    Running         Running 15 seconds ago

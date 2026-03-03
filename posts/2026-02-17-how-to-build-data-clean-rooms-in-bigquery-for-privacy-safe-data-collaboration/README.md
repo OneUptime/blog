@@ -27,7 +27,7 @@ The clean room involves at least two parties: Party A (for example, a retailer) 
 
 Here is the architecture:
 
-```
+```text
 Party A Project          Clean Room Project         Party B Project
 +-----------------+     +-------------------+     +-----------------+
 | customer_data   | --> | linked_dataset_a  |     | campaign_data   |

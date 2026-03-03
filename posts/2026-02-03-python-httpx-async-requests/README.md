@@ -173,7 +173,7 @@ asyncio.run(main())
 ```
 
 Output:
-```
+```text
 Sequential: 5.12s
 Concurrent: 1.08s
 Speedup: 4.7x

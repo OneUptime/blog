@@ -223,7 +223,7 @@ flowchart LR
 
 The formula is:
 
-```
+```text
 estimated_count = (previous_window_count * (1 - window_progress)) + current_window_count
 ```
 

@@ -179,7 +179,7 @@ services:
 
 BIND 9.10+ includes native GeoIP support:
 
-```
+```text
 // /etc/bind/named.conf
 options {
     geoip-directory "/usr/share/GeoIP";

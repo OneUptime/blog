@@ -65,7 +65,7 @@ Workspaces work best when environments share identical infrastructure structure:
 
 ### Simple Workspace Structure
 
-```
+```text
 terraform/
 ├── main.tf
 ├── variables.tf
@@ -80,7 +80,7 @@ terraform/
 
 ### Module-Based Workspace Structure
 
-```
+```text
 terraform/
 ├── environments/
 │   ├── dev.tfvars
@@ -254,7 +254,7 @@ Compare these two approaches:
 
 ### Approach 1: Workspaces (Single Configuration)
 
-```
+```text
 terraform/
 ├── main.tf
 ├── variables.tf
@@ -269,7 +269,7 @@ terraform apply -var-file=environments/dev.tfvars
 
 ### Approach 2: Directories (Separate Configurations)
 
-```
+```text
 terraform/
 ├── modules/
 │   └── app/

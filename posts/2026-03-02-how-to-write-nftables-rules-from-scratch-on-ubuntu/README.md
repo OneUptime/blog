@@ -112,7 +112,7 @@ The cleaner approach is to write rules in a configuration file. The nftables ser
 sudo nano /etc/nftables.conf
 ```
 
-```
+```text
 #!/usr/sbin/nft -f
 # nftables configuration
 # Ubuntu server baseline rules
@@ -225,7 +225,7 @@ sudo nft delete element inet filter blocked_ips \{ 203.0.113.100 \}
 
 ### Named Sets in Config File
 
-```
+```text
 table inet filter {
 
     # Blocked IP ranges (automatically matched by rules)
@@ -280,7 +280,7 @@ sudo nft add rule inet filter input \
 
 In a config file:
 
-```
+```text
 chain input {
     type filter hook input priority 0; policy drop;
 

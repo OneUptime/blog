@@ -94,7 +94,7 @@ go get github.com/hashicorp/vault/api@latest
 
 Project structure:
 
-```
+```text
 vault-secrets-myengine/
 ├── main.go              # Plugin entry point
 ├── backend.go           # Backend factory and setup

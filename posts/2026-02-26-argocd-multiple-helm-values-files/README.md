@@ -136,7 +136,7 @@ The final result merges all three: base defaults + production overrides + US Eas
 
 A well-organized repository for multi-file values:
 
-```
+```text
 charts/my-app/
   Chart.yaml
   templates/

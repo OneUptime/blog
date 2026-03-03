@@ -241,7 +241,7 @@ apply:
 
 Establish naming conventions that your pipeline can parse:
 
-```
+```text
 # Feature branches
 feature/add-rds-instance
 feature/update-vpc-cidr

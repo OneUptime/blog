@@ -8,7 +8,7 @@ Description: Learn to implement canary model deployment for gradual rollout of n
 
 ---
 
-# Overview
+## Overview
 
 Canary deployment is a progressive rollout strategy that allows you to safely deploy new machine learning models by gradually shifting traffic from the existing (baseline) model to the new (canary) model. This approach minimizes risk by exposing only a small percentage of users to the new model initially, then increasing traffic based on performance metrics.
 

@@ -10,7 +10,7 @@ As your infrastructure grows, running a single monolithic collector becomes a bo
 
 ## The Two-Tier Architecture
 
-```
+```text
 [Node 1: Agent] --\
 [Node 2: Agent] ---+--> [Gateway 1] --\
 [Node 3: Agent] --/                    +--> [Backend]

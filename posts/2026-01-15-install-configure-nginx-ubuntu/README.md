@@ -58,7 +58,7 @@ sudo nginx -t
 
 ## Understanding Nginx Directory Structure
 
-```
+```text
 /etc/nginx/
 ├── nginx.conf              # Main configuration
 ├── sites-available/        # Available site configs

@@ -49,13 +49,13 @@ The following processors have varying CPU impacts:
 
 A baseline formula for CPU estimation:
 
-```
+```text
 CPU cores = (throughput_per_second × processing_time_per_item) / 1000
 ```
 
 For example, processing 10,000 spans per second with an average processing time of 0.5ms:
 
-```
+```text
 CPU cores = (10,000 × 0.5) / 1000 = 5 cores
 ```
 
@@ -161,7 +161,7 @@ exporters:
 
 Memory estimation formula:
 
-```
+```text
 Memory (MB) = base_overhead + (queue_size × batch_size × avg_item_size × exporter_count) / 1024 / 1024
 ```
 
@@ -173,7 +173,7 @@ Example calculation for a typical deployment:
 - Average span size: 2 KB
 - Number of exporters: 2
 
-```
+```text
 Memory = 100 + (1000 × 1024 × 2048 × 2) / 1024 / 1024
 Memory = 100 + 4096 MB = 4196 MB (~4 GB)
 ```

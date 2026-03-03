@@ -793,7 +793,7 @@ public class LayeredResilience {
 
 ### Resilience Order Diagram
 
-```
+```text
 Request
    |
    v

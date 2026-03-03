@@ -185,7 +185,7 @@ cat /opt/rustdesk/id_ed25519.pub
 
 The public key is a base64 string that looks like:
 
-```
+```text
 AAAA...yourpublickey...AAAA=
 ```
 

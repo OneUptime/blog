@@ -43,7 +43,7 @@ OpenTelemetry uses two types of identifiers:
 
 Example IDs:
 
-```
+```text
 Trace ID: 4bf92f3577b34da6a3ce929d0e0e4736
 Span ID:  00f067aa0ba902b7
 ```
@@ -109,7 +109,7 @@ While the default generator works for most cases, custom ID generators become va
 
 During development, predictable or sequential IDs make debugging easier:
 
-```
+```text
 Sequential: 00000000000000000000000000000001
             00000000000000000000000000000002
             00000000000000000000000000000003
@@ -130,7 +130,7 @@ graph LR
 
 When integrating with legacy systems or third-party tools that have their own ID formats:
 
-```
+```text
 Legacy System ID: REQ-2024-001234
 OpenTelemetry ID: Custom generator that incorporates legacy reference
 ```
@@ -149,7 +149,7 @@ const generator = new SeededIdGenerator(42);
 
 Some regulatory environments require specific ID formats or the ability to trace ID generation:
 
-```
+```text
 Audit Trail ID: [datacenter]-[timestamp]-[sequence]-[random]
 ```
 

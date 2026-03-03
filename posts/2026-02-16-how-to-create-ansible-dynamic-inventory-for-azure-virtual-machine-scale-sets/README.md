@@ -183,7 +183,7 @@ ansible-inventory -i vmss-inventory.azure_rm.yml --host vmss_web_000001
 
 Sample output from `--graph`:
 
-```
+```text
 @all:
   |--@env_prod:
   |  |--vmss-web-prod_000000

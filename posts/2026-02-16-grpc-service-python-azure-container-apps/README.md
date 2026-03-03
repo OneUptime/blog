@@ -457,7 +457,7 @@ CMD ["python", "server.py"]
 
 Create `requirements.txt`:
 
-```
+```text
 grpcio==1.60.0
 grpcio-tools==1.60.0
 grpcio-reflection==1.60.0

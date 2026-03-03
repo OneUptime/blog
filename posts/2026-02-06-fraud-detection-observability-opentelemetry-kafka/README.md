@@ -12,7 +12,7 @@ OpenTelemetry is a natural fit here because fraud detection is inherently a dist
 
 ## The Pipeline Architecture
 
-```
+```text
 Order Event -> Kafka Topic (orders.new)
     -> Fraud Scoring Service (consumes, scores, produces)
         -> Kafka Topic (orders.fraud-scored)

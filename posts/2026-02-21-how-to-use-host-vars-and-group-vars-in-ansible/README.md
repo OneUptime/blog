@@ -14,7 +14,7 @@ As your Ansible project grows beyond a handful of hosts, managing variables beco
 
 The `host_vars` and `group_vars` directories can live alongside your inventory file or at the playbook level:
 
-```
+```text
 project/
   ansible.cfg
   inventory/
@@ -258,7 +258,7 @@ The beauty of `host_vars` and `group_vars` is that you do not need to reference 
 
 A common pattern is to have separate inventory directories per environment, each with their own `group_vars` and `host_vars`:
 
-```
+```text
 inventories/
   production/
     hosts.yml

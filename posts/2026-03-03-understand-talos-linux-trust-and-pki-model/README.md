@@ -18,7 +18,7 @@ When you create a Talos cluster, a Certificate Authority (CA) is generated. This
 
 The trust chain looks like this:
 
-```
+```text
 Cluster CA (Root of Trust)
     |
     +-- Control Plane Node Certificates

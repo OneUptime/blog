@@ -12,7 +12,7 @@ YAML indentation errors are the bane of every Ansible user's existence. YAML is 
 
 ## The Error
 
-```
+```text
 ERROR! Syntax Error while loading YAML.
   mapping values are not allowed in this context
   in "playbook.yml", line 8, column 10

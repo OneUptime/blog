@@ -165,7 +165,7 @@ Rules are evaluated in priority order (lowest number first). The first matching 
 
 Design your rules so that more specific rules have lower priority numbers:
 
-```
+```text
 Priority 50:  Health checks -> 1% sampling
 Priority 100: Payment endpoint -> 100% sampling
 Priority 200: Order service -> 25% sampling

@@ -20,7 +20,7 @@ sudo zpool status
 
 For a healthy system, every pool shows `ONLINE`:
 
-```
+```text
   pool: tank
  state: ONLINE
   scan: scrub repaired 0 in 02:14:22 with 0 errors on Sun Mar  1 03:00:00 2026
@@ -55,7 +55,7 @@ Any state other than ONLINE requires immediate attention.
 sudo zpool list
 ```
 
-```
+```text
 NAME    SIZE  ALLOC   FREE  FRAG    CAP  DEDUP  HEALTH
 tank    3.62T  1.82T  1.80T  12%    50%  1.00x  ONLINE
 backup  7.27T  5.14T  2.13T  28%    70%  1.00x  ONLINE
@@ -73,7 +73,7 @@ Key columns:
 sudo zfs list -r tank
 ```
 
-```
+```text
 NAME                   USED  AVAIL     REFER  MOUNTPOINT
 tank                  1.82T  1.80T       96K  /tank
 tank/web               450G  1.80T      450G  /var/www
@@ -98,7 +98,7 @@ sudo zpool status -v tank
 
 Focus on the READ, WRITE, and CKSUM columns:
 
-```
+```text
         NAME        STATE     READ WRITE CKSUM
         tank        ONLINE       0     0     0
           mirror-0  ONLINE       0     0     0
@@ -133,7 +133,7 @@ sudo zpool clear tank /dev/sdc
 sudo zpool iostat 2
 ```
 
-```
+```text
               capacity     operations     bandwidth
 pool        alloc   free   read  write   read  write
 ----------  -----  -----  -----  -----  -----  -----
@@ -146,7 +146,7 @@ backup      5.14T  2.13T      5     32   412K  2.12M
 sudo zpool iostat -v 2
 ```
 
-```
+```text
               capacity     operations     bandwidth
 pool        alloc   free   read  write   read  write
 ----------  -----  -----  -----  -----  -----  -----
@@ -301,7 +301,7 @@ curl http://localhost:9134/metrics | grep zfs_pool
 ```
 
 Sample metrics:
-```
+```text
 zfs_pool_health{pool="tank"} 1
 zfs_pool_allocated_bytes{pool="tank"} 1.96e+12
 zfs_pool_free_bytes{pool="tank"} 1.94e+12
@@ -327,7 +327,7 @@ The Adaptive Replacement Cache uses RAM for reads. Monitor its effectiveness:
 cat /proc/spl/kstat/zfs/arcstats | grep -E "^(hits|misses|size|c_max)"
 ```
 
-```
+```text
 hits                            4       82371029
 misses                          4       15892134
 size                            4    8589934592   # 8GB ARC

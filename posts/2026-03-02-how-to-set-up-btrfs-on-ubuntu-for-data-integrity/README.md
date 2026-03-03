@@ -118,7 +118,7 @@ Add to `/etc/fstab`:
 sudo nano /etc/fstab
 ```
 
-```
+```text
 # Btrfs data volume
 UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  /data  btrfs  compress=zstd:3,autodefrag,noatime  0  0
 ```
@@ -140,7 +140,7 @@ df -h /data
 sudo btrfs filesystem show /data
 ```
 
-```
+```text
 Label: 'data_storage'  uuid: xxxxxxxx-...
         Total devices 1 FS bytes used 1.23 GiB
         devid    1 size 500.00 GiB used 2.01 GiB path /dev/sdb
@@ -158,7 +158,7 @@ sudo btrfs scrub start /data
 sudo btrfs scrub status /data
 ```
 
-```
+```text
 UUID:             xxxxxxxx-...
 Scrub started:    Mon Mar  2 02:00:01 2026
 Status:           running
@@ -215,7 +215,7 @@ sudo compsize /data
 sudo apt install btrfs-compsize
 ```
 
-```
+```text
 Processed 15432 files, 21345 regular extents (21345 refs), 0 inline.
 Type       Perc     Disk Usage   Uncompressed Referenced
 TOTAL       62%      786M         1.23G        1.23G
@@ -231,7 +231,7 @@ zstd        48%      551M         999M         999M
 sudo btrfs filesystem df /data
 ```
 
-```
+```text
 Data, RAID1: total=30.00GiB, used=28.12GiB
 System, RAID1: total=32.00MiB, used=16.00KiB
 Metadata, RAID1: total=1.00GiB, used=756.57MiB
@@ -263,7 +263,7 @@ sudo btrfs device remove /dev/sdb /data
 sudo btrfs filesystem usage /data
 ```
 
-```
+```text
 Overall:
     Device size:                  500.00GiB
     Device allocated:              60.05GiB

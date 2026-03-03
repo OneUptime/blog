@@ -179,7 +179,7 @@ spec:
 
 After deployment, the secrets are available as files inside the container:
 
-```
+```text
 /secrets/db-password      - contains the database password
 /secrets/api-key          - contains the API key
 /secrets/tls/server.crt   - contains the TLS certificate

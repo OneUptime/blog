@@ -19,7 +19,7 @@ Rotate Istio certificates (root CA, intermediate CA, and workload certificates) 
 
 ### Understanding the Certificate Hierarchy
 
-```
+```text
 Root CA Certificate (10 year lifetime by default)
   └── Intermediate CA Certificate (signed by root, used by istiod)
         └── Workload Certificate (24 hour lifetime, auto-rotated)

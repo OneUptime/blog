@@ -42,7 +42,7 @@ The pod events section in `kubectl describe pod` is the most informative source.
 
 Azure Disks are ReadWriteOnce by default, meaning only one node can mount them at a time. If a pod is rescheduled to a different node while the disk is still attached to the old node, you get a multi-attach error.
 
-```
+```text
 Warning  FailedAttachVolume  Multi-Attach error for volume "pvc-xyz":
 Volume is already exclusively attached to one node and can't be attached to another
 ```
@@ -80,7 +80,7 @@ allowVolumeExpansion: true
 
 ### Issue 2: Disk Attach Timeout
 
-```
+```text
 Warning  FailedAttachVolume  AttachVolume.Attach failed:
 rpc error: code = DeadlineExceeded desc = context deadline exceeded
 ```
@@ -102,7 +102,7 @@ The fix depends on the cause. For throttling, reduce the number of simultaneous 
 
 ### Issue 3: Disk Size Mismatch
 
-```
+```text
 Warning  ProvisioningFailed  failed to provision volume:
 disk size 10 is smaller than the minimum size 4096 for Premium SSD
 ```
@@ -160,7 +160,7 @@ allowVolumeExpansion: true
 
 ### Issue 5: Permission Denied on Mount
 
-```
+```text
 Warning  FailedMount  MountVolume.MountDevice failed:
 rpc error: permission denied
 ```

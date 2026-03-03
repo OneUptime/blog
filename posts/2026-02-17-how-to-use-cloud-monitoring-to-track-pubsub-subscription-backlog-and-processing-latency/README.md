@@ -40,7 +40,7 @@ Pub/Sub reports several metrics to Cloud Monitoring. Here are the ones that matt
 
 The most important chart is the backlog - how many messages are waiting to be processed:
 
-```
+```text
 # Number of undelivered messages per subscription
 fetch pubsub_subscription
 | metric 'pubsub.googleapis.com/subscription/num_undelivered_messages'
@@ -52,7 +52,7 @@ fetch pubsub_subscription
 
 This metric is arguably more useful than backlog size. A backlog of 10,000 messages might be fine if they were all published in the last 5 seconds, but terrible if the oldest is 2 hours old:
 
-```
+```text
 # Age of the oldest unacknowledged message per subscription
 fetch pubsub_subscription
 | metric 'pubsub.googleapis.com/subscription/oldest_unacked_message_age'
@@ -65,7 +65,7 @@ fetch pubsub_subscription
 
 Track the rate of messages being published and acknowledged to understand your system's throughput:
 
-```
+```text
 # Message acknowledge rate per subscription
 fetch pubsub_subscription
 | metric 'pubsub.googleapis.com/subscription/ack_message_count'
@@ -76,7 +76,7 @@ fetch pubsub_subscription
 
 Compare this with the publish rate to see if your consumers are keeping up:
 
-```
+```text
 # Message publish rate per topic
 fetch pubsub_topic
 | metric 'pubsub.googleapis.com/topic/send_message_operation_count'

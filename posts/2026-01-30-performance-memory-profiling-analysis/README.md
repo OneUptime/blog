@@ -49,7 +49,7 @@ Heap memory is where dynamic allocations live. Objects, arrays, closures, and an
 
 The following diagram shows how stack and heap interact during program execution.
 
-```
+```text
 +------------------+     +----------------------------------+
 |     STACK        |     |              HEAP                |
 +------------------+     +----------------------------------+
@@ -362,7 +362,7 @@ Once you have a heap dump, you need to analyze it to find memory issues. The key
 
 A retention path shows the chain of references keeping an object alive. Understanding these paths is crucial for fixing memory leaks.
 
-```
+```text
 GC Root (Global variable 'cache')
   └── Map
       └── Object (key: 'user-123')

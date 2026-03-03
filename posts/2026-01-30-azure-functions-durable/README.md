@@ -87,7 +87,7 @@ Let's create a simple workflow that processes an order by validating it, chargin
 
 ### Project Structure
 
-```
+```text
 durable-functions-demo/
 ├── src/
 │   ├── functions/

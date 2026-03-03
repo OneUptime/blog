@@ -57,7 +57,7 @@ mix phx.new blog_app
 
 The generator creates this structure:
 
-```
+```text
 blog_app/
   lib/
     blog_app/           # Business logic (contexts)

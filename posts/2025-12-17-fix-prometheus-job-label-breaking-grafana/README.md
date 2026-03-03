@@ -49,7 +49,7 @@ scrape_configs:
 ```
 
 Resulting metrics:
-```
+```text
 http_requests_total{job="api-server", instance="api1:9090"}
 http_requests_total{job="api-server", instance="api2:9090"}
 ```
@@ -92,7 +92,7 @@ scrape_configs:
 
 A metric exposed by the target already has a `job` label, but Prometheus overwrites it:
 
-```
+```text
 # Application exposes:
 custom_metric{job="my-actual-service", type="important"}
 
@@ -137,7 +137,7 @@ rate(http_requests_total{job="api"}[5m])
 
 Create a job variable in Grafana:
 
-```
+```text
 # Variable query
 label_values(http_requests_total, job)
 ```
@@ -200,7 +200,7 @@ rate(http_backend_requests_total{job="api"}[5m])
 
 When federating or using remote write, job labels from different Prometheus servers conflict:
 
-```
+```text
 # From Prometheus A
 up{job="api", instance="server1:9090"}
 
@@ -261,7 +261,7 @@ scrape_configs:
 ```
 
 Verify with Prometheus targets page:
-```
+```text
 http://prometheus:9090/targets
 ```
 
@@ -311,7 +311,7 @@ metric_relabel_configs:
 
 ### Step 1: Check Prometheus Targets
 
-```
+```text
 http://prometheus:9090/targets
 ```
 

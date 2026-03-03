@@ -36,7 +36,7 @@ flowchart TD
 
 Jobs have the most immutable fields. Almost the entire spec is immutable after creation:
 
-```
+```text
 spec.template           - Pod template is immutable
 spec.selector           - Label selector is immutable
 spec.completions        - Cannot change after creation
@@ -45,13 +45,13 @@ spec.backoffLimit       - Cannot change after creation
 ```
 
 Error message:
-```
+```text
 The Job "my-job" is invalid: spec.template: Invalid value: ... field is immutable
 ```
 
 ### Services
 
-```
+```text
 spec.clusterIP          - Assigned by Kubernetes, cannot be changed
 spec.clusterIPs         - Same as above
 spec.ipFamilies         - Cannot change after creation
@@ -61,7 +61,7 @@ spec.type               - Can be changed, but ClusterIP allocation rules apply
 
 ### PersistentVolumeClaims
 
-```
+```text
 spec.accessModes        - Immutable after creation
 spec.storageClassName   - Immutable after creation
 spec.volumeMode         - Immutable after creation
@@ -70,7 +70,7 @@ spec.resources.requests.storage  - Can only increase, not decrease
 
 ### StatefulSets
 
-```
+```text
 spec.selector           - Immutable after creation
 spec.volumeClaimTemplates  - Immutable after creation
 spec.serviceName        - Immutable after creation
@@ -78,13 +78,13 @@ spec.serviceName        - Immutable after creation
 
 ### Deployments
 
-```
+```text
 spec.selector           - Immutable after creation
 ```
 
 ### ConfigMaps and Secrets (with immutable flag)
 
-```
+```text
 immutable               - Once set to true, cannot be changed back
 data/stringData         - Cannot be modified when immutable: true
 ```

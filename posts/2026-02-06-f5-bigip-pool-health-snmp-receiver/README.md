@@ -29,7 +29,7 @@ snmpwalk -v2c -c otel_read 10.0.0.1 1.3.6.1.4.1.3375
 
 F5 BIG-IP uses enterprise OID `1.3.6.1.4.1.3375`. Here are the important metrics:
 
-```
+```text
 # Virtual Server metrics
 1.3.6.1.4.1.3375.2.2.10.1.2.1.1   - VS name
 1.3.6.1.4.1.3375.2.2.10.1.2.1.9   - VS current connections

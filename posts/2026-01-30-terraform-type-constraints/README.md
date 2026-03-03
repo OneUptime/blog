@@ -614,7 +614,7 @@ variable "database_config" {
 When Terraform reports type errors, check these common issues.
 
 **Missing required attribute**
-```
+```text
 Error: Invalid value for variable
 
 The given value is not valid for variable "config": attribute "name" is required.
@@ -623,7 +623,7 @@ The given value is not valid for variable "config": attribute "name" is required
 Fix: Add the missing attribute or mark it as optional.
 
 **Wrong type**
-```
+```text
 Error: Invalid value for variable
 
 The given value is not valid for variable "count": a number is required.
@@ -632,7 +632,7 @@ The given value is not valid for variable "count": a number is required.
 Fix: Check that you are passing the correct type. Strings like "3" will not work where a number is expected.
 
 **Extra attributes in object**
-```
+```text
 Error: Invalid value for variable
 
 Unexpected attribute "extra_field" for variable "config".

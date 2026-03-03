@@ -40,7 +40,7 @@ The environment template defines the foundational infrastructure. Here's a templ
 
 First, create the directory structure:
 
-```
+```text
 environment-template/
   schema/
     schema.yaml

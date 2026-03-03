@@ -322,7 +322,7 @@ for i, chunk in enumerate(chunks, 1):
 
 Expected output groups related concepts together:
 
-```
+```text
 Document split into 3 semantic chunks:
 
 --- Chunk 1 (298 chars) ---

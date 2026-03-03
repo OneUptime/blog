@@ -235,7 +235,7 @@ trivy k8s deployment/web-app --namespace production --report summary
 
 Sample output structure:
 
-```
+```text
 Namespace: production
 Resource: deployment/web-app
 

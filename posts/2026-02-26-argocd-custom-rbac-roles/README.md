@@ -16,7 +16,7 @@ ArgoCD uses Casbin for its RBAC engine, which means policies are defined as simp
 
 Every RBAC rule in ArgoCD follows this pattern:
 
-```
+```text
 p, <subject>, <resource>, <action>, <object>, <effect>
 ```
 
@@ -30,7 +30,7 @@ Here is what each field means:
 
 Group mappings use a different prefix:
 
-```
+```text
 g, <user-or-group>, <role>
 ```
 

@@ -160,7 +160,7 @@ def internal_health():
 
 The connector's throughput depends on the machine type and number of instances:
 
-```
+```text
 e2-micro:  100 Mbps per instance (default)
 e2-standard-4: 2 Gbps per instance (high throughput)
 

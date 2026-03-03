@@ -100,7 +100,7 @@ nslookup kubernetes.default 10.96.0.10
 
 Expected output for successful resolution:
 
-```
+```text
 Server:         10.96.0.10
 Address:        10.96.0.10#53
 
@@ -138,7 +138,7 @@ dig +all kubernetes.default.svc.cluster.local
 
 Analyze dig output:
 
-```
+```text
 ; <<>> DiG 9.11.5 <<>> kubernetes.default.svc.cluster.local
 ;; QUESTION SECTION:
 ;kubernetes.default.svc.cluster.local. IN A
@@ -169,7 +169,7 @@ kubectl exec dnsutils -- cat /etc/resolv.conf
 
 Expected output:
 
-```
+```text
 nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5

@@ -85,7 +85,7 @@ For each API in Azure APIM, create an API proxy in Apigee. You can use the OpenA
 
 Apigee proxies are organized as bundles with this structure. Understanding this helps with the migration:
 
-```
+```text
 apiproxy/
   my-api.xml           # Proxy configuration
   proxies/

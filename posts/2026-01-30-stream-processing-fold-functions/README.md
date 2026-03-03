@@ -142,7 +142,7 @@ const emptySummary = [].reduce<Summary>(
 
 ### Visual Comparison
 
-```
+```text
 REDUCE (no initial value):
 [1, 2, 3, 4]
  |
@@ -310,7 +310,7 @@ stateDiagram-v2
 
 ### Step-by-Step Fold Execution
 
-```
+```text
 Computing running average of [10, 20, 30, 40]:
 
 Initial State: { sum: 0, count: 0 }

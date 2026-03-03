@@ -169,7 +169,7 @@ This configuration combines queue-based scaling with CPU-based scaling. KEDA eva
 
 KEDA's scaling algorithm is based on a simple formula.
 
-```
+```text
 desiredReplicas = ceil(currentQueueLength / messageCountTarget)
 ```
 

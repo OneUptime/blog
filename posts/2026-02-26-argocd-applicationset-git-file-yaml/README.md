@@ -33,7 +33,7 @@ The recommended approach is to use JSON files with the Git file generator. Here 
 
 Create a directory structure with config files:
 
-```
+```text
 apps/
   frontend/
     config.json
@@ -150,7 +150,7 @@ spec:
 
 Structure your config files to support multiple environments.
 
-```
+```text
 environments/
   dev/
     apps/
@@ -310,7 +310,7 @@ spec:
 
 The Git file generator pattern enables a self-service workflow where developers create a config file to onboard their application.
 
-```
+```text
 # Developer creates: apps/my-new-service/config.json
 {
   "app_name": "my-new-service",

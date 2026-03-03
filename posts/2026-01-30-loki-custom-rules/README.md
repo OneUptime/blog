@@ -88,7 +88,7 @@ Loki rules use a YAML format similar to Prometheus. Each rule file contains one 
 
 The directory structure follows this pattern:
 
-```
+```text
 /loki/rules/
   <tenant_id>/
     alerts.yaml

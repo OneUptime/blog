@@ -12,7 +12,7 @@ Under-replicated partitions (URP) indicate that some partition replicas are not 
 
 ## Understanding Under-Replicated Partitions
 
-```
+```text
 Partition 0 - Healthy:
 Leader: Broker 1, ISR: [1, 2, 3]
 Replicas: [1, 2, 3]

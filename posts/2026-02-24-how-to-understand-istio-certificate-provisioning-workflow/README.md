@@ -62,13 +62,13 @@ Once the pilot-agent process starts, it generates an RSA or EC private key (EC P
 
 The SPIFFE ID format for the SAN is:
 
-```
+```text
 spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 
 For example, if your trust domain is `cluster.local`, the namespace is `default`, and the service account is `httpbin`, the SAN would be:
 
-```
+```text
 spiffe://cluster.local/ns/default/sa/httpbin
 ```
 
@@ -136,7 +136,7 @@ istioctl proxy-config secret <pod-name> -n <namespace>
 
 Sample output:
 
-```
+```text
 RESOURCE NAME     TYPE           STATUS   VALID CERT   SERIAL NUMBER          NOT AFTER                NOT BEFORE
 default           Cert Chain     ACTIVE   true         c8e..                  2026-02-25T12:00:00Z     2026-02-24T12:00:00Z
 ROOTCA            CA             ACTIVE   true         f4a..                  2036-02-22T12:00:00Z     2026-02-24T12:00:00Z

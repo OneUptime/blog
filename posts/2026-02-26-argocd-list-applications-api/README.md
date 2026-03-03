@@ -157,7 +157,7 @@ echo "$APPS" | jq -r '.items[] | select(.status.health.status != "Healthy") | "\
 
 Sample output:
 
-```
+```text
 === Sync Status ===
   45 Synced
    3 OutOfSync

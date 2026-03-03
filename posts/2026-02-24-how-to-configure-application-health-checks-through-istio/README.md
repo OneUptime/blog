@@ -18,7 +18,7 @@ There are two distinct paths for health check traffic in an Istio-enabled pod:
 
 The kubelet sends the probe to port 15021 on the Istio agent. The agent forwards it to your application. This path is used when probe rewriting is enabled (the default).
 
-```
+```text
 kubelet -> port 15021 (istio-agent) -> port 8080 (your app)
 ```
 
@@ -26,7 +26,7 @@ kubelet -> port 15021 (istio-agent) -> port 8080 (your app)
 
 If probe rewriting is disabled, the probe goes through Envoy like any other inbound traffic. This is problematic with STRICT mTLS because the kubelet does not have certificates.
 
-```
+```text
 kubelet -> iptables -> Envoy (port 15006) -> port 8080 (your app)
 ```
 

@@ -21,7 +21,7 @@ socat -V  # verify installation and show version
 
 ## Basic Syntax
 
-```
+```text
 socat [options] <address1> <address2>
 ```
 
@@ -288,7 +288,7 @@ sudo systemctl status socat-forward
 
 Options modify how an address behaves. They're appended after the address with commas:
 
-```
+```text
 TCP-LISTEN:8080,reuseaddr,fork,bind=127.0.0.1
 ```
 

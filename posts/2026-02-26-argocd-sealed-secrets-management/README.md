@@ -145,7 +145,7 @@ kubectl create secret generic tls-secret \
 
 Organize your repository to include sealed secrets alongside your application manifests:
 
-```
+```text
 my-app/
   base/
     deployment.yaml

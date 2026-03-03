@@ -24,7 +24,7 @@ Directory-based promotion with Kustomize overlays is simpler and avoids the merg
 
 ## Pipeline Architecture
 
-```
+```text
 Git Repository
   |
   v
@@ -42,7 +42,7 @@ Git Repository
 
 ## Repository Structure for Promotion
 
-```
+```text
 istio-config/
   base/
     services/

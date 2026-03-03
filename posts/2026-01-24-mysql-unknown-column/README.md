@@ -28,7 +28,7 @@ flowchart TD
 
 The error message looks like this:
 
-```
+```text
 ERROR 1054 (42S22): Unknown column 'column_name' in 'field list'
 ```
 

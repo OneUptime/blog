@@ -166,7 +166,7 @@ az monitor metrics alert create \
 
 When a backend is unhealthy, use Log Analytics to dig into the details:
 
-```
+```text
 // KQL query to find backend health probe failures
 AzureDiagnostics
 | where ResourceType == "APPLICATIONGATEWAYS"
@@ -179,7 +179,7 @@ AzureDiagnostics
 
 For a summary of backend health over time:
 
-```
+```text
 // Backend health summary over the past 24 hours
 AzureMetrics
 | where ResourceProvider == "MICROSOFT.NETWORK"

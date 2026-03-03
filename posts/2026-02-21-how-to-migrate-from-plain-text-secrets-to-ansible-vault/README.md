@@ -38,7 +38,7 @@ The cleanest approach is to use a separate vault file alongside your existing va
 
 Here is the before and after structure:
 
-```
+```text
 # BEFORE - secrets in plain text
 group_vars/
   all/

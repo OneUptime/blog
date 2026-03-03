@@ -22,7 +22,7 @@ IAM Conditions are expressions that you attach to IAM policy bindings. The bindi
 
 Conditions use the Common Expression Language (CEL). Here is a simple example:
 
-```
+```text
 request.auth.claims.ip_address == "203.0.113.0"
 ```
 
@@ -103,7 +103,7 @@ gcloud projects add-iam-policy-binding my-project \
 
 Breaking down the condition expression:
 
-```
+```text
 request.auth.access_levels.exists(level, level == 'accessPolicies/POLICY_ID/accessLevels/corporate-network')
 ```
 

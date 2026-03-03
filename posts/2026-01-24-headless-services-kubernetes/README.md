@@ -134,7 +134,7 @@ spec:
 
 Each pod gets a predictable DNS name:
 
-```
+```text
 mysql-0.mysql.default.svc.cluster.local
 mysql-1.mysql.default.svc.cluster.local
 mysql-2.mysql.default.svc.cluster.local
@@ -334,7 +334,7 @@ dig SRV _http._tcp.my-headless-svc.default.svc.cluster.local
 
 SRV records are useful when pods expose multiple ports:
 
-```
+```text
 _http._tcp.my-headless-svc.default.svc.cluster.local. 30 IN SRV 0 50 80 10-244-0-5.my-headless-svc.default.svc.cluster.local.
 ```
 

@@ -45,7 +45,7 @@ The `TRACE` level generates a lot of output, but it shows you exactly what OpenT
 
 One of the most common issues is provider authentication failing. The error messages vary by provider, but they generally look like this:
 
-```
+```text
 Error: error configuring AWS client: no valid credential sources found
 ```
 
@@ -93,7 +93,7 @@ provider "aws" {
 
 Cycle errors mean two or more resources depend on each other, creating a circular dependency:
 
-```
+```text
 Error: Cycle: aws_security_group.web, aws_security_group.db
 ```
 
@@ -155,7 +155,7 @@ resource "aws_security_group_rule" "db_to_web" {
 
 State issues happen when the actual infrastructure drifts from what OpenTofu's state file records:
 
-```
+```text
 Error: Error reading instance: instance not found
 ```
 
@@ -194,7 +194,7 @@ with open('state.json') as f:
 
 Dynamic resource creation with `for_each` and `count` can produce confusing errors:
 
-```
+```text
 Error: Invalid for_each argument
 The given "for_each" argument value is unsuitable: the "for_each" argument
 must be a map or a set of strings.

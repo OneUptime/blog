@@ -20,7 +20,7 @@ kubectl get pods -n istio-system
 
 You should see something like:
 
-```
+```text
 NAME                      READY   STATUS    RESTARTS   AGE
 istiod-7f4b8c6d7c-abc12   1/1     Running   0          5m
 ```
@@ -159,7 +159,7 @@ istioctl proxy-status
 
 The output looks like:
 
-```
+```text
 NAME                            CLUSTER   CDS   LDS   EDS   RDS   ECDS   ISTIOD
 httpbin-abc123.mtls-test        K8s       SYNCED SYNCED SYNCED SYNCED        istiod-xyz
 sleep-def456.mtls-test          K8s       SYNCED SYNCED SYNCED SYNCED        istiod-xyz

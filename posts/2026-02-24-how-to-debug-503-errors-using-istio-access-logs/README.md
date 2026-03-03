@@ -23,7 +23,7 @@ kubectl logs deploy/my-service -c istio-proxy --tail=200 | grep '" 503 '
 
 You should see lines like:
 
-```
+```text
 [2026-02-24T14:00:00.123Z] "GET /api/data HTTP/1.1" 503 UF via_upstream - "-" 0 91 3005 - "-" "Go-http-client/2.0" "abc-123" "my-service.default.svc.cluster.local" "10.244.2.15:8080" outbound|8080||my-service.default.svc.cluster.local 10.244.1.12:44556 10.96.123.45:8080 10.244.1.12:33444 - default
 ```
 

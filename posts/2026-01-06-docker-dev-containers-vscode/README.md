@@ -231,7 +231,7 @@ Add these settings to your VS Code user settings to automatically clone and inst
 
 ### Dotfiles Repository Structure
 
-```
+```text
 dotfiles/
 ├── .bashrc
 ├── .zshrc

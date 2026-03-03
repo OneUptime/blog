@@ -129,7 +129,7 @@ machine:
 
 The `watchdog_thresh` parameter is central to soft lockup detection. It sets the threshold in seconds:
 
-```
+```text
 watchdog_thresh = 10
 
 Soft lockup detection:  2 * watchdog_thresh = 20 seconds

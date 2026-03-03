@@ -31,7 +31,7 @@ Let's start with what happens without `allow_duplicates`:
 
 Even though the role appears twice with different variables, Ansible sees it as the same role and skips the second execution. The output will show something like:
 
-```
+```text
 TASK [virtual_host : ...] ******
 ok: [web01]
 ...

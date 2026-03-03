@@ -526,7 +526,7 @@ kubectl exec -n $NAMESPACE $POD -- curl -s --max-time 5 https://api.github.com 2
 
 ### Organize Policies by Purpose
 
-```
+```text
 policies/
   base/
     default-deny.yaml

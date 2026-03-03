@@ -196,7 +196,7 @@ spec:
 
 Istio's mTLS provides strong mutual authentication between services using X.509 certificates. Each service has a unique SPIFFE identity:
 
-```
+```text
 spiffe://cluster.local/ns/payment-processing/sa/payment-gateway
 ```
 

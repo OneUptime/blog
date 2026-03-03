@@ -41,7 +41,7 @@ flowchart TD
 
 The most common method for HTTP traffic. Each proxy appends its upstream IP:
 
-```
+```text
 X-Forwarded-For: client, proxy1, proxy2
 ```
 

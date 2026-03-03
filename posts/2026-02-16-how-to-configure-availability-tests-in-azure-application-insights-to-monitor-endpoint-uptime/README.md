@@ -102,7 +102,7 @@ When you create an availability test, Application Insights automatically creates
 
 You can also create custom alert rules based on availability test results using this KQL query.
 
-```
+```text
 // Alert query: availability test failures in the last 15 minutes
 availabilityResults
 | where timestamp > ago(15m)

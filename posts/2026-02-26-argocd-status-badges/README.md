@@ -69,7 +69,7 @@ Then use the token in the badge URL as a query parameter.
 
 The badge URLs follow this pattern:
 
-```
+```text
 https://argocd.example.com/api/badge?name=<app-name>&revision=true
 ```
 
@@ -83,7 +83,7 @@ https://argocd.example.com/api/badge?name=<app-name>&revision=true
 
 ### Badge URL Examples
 
-```
+```text
 # Sync status badge for a specific application
 https://argocd.example.com/api/badge?name=payment-service
 

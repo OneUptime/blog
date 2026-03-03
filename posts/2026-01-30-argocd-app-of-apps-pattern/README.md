@@ -47,7 +47,7 @@ flowchart TB
 
 A well-organized repository is the foundation of the App of Apps pattern:
 
-```
+```text
 gitops-repo/
 ├── apps/
 │   ├── root/
@@ -280,7 +280,7 @@ The App of Apps pattern scales to multiple clusters by using cluster-specific di
 
 ### Cluster-Aware Repository Structure
 
-```
+```text
 gitops-repo/
 ├── apps/
 │   ├── clusters/

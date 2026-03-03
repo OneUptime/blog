@@ -12,7 +12,7 @@ When Terraform tries to create a Route53 record and finds one already exists wit
 
 ## What the Error Looks Like
 
-```
+```text
 Error: error creating Route53 Record: InvalidChangeBatch:
 [Tried to create resource record set [name='api.example.com.',
 type='A'] but it already exists]
@@ -21,7 +21,7 @@ type='A'] but it already exists]
 
 Or:
 
-```
+```text
 Error: error creating Route53 Record: InvalidChangeBatch:
 RRSet of type CNAME with DNS name api.example.com. is not
 permitted at apex of zone example.com.

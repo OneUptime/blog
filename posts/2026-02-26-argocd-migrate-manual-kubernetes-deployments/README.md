@@ -66,7 +66,7 @@ If you do not have `kubectl neat`, manually remove these fields:
 
 Create a clean repository structure:
 
-```
+```text
 k8s-manifests/
   apps/
     my-api/

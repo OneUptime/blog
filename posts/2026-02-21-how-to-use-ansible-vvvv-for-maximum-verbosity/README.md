@@ -45,7 +45,7 @@ ansible-playbook deploy.yml -v
 
 Output:
 
-```
+```text
 TASK [Install nginx] **********************************************************
 changed: [web-01] => {"cache_update_time": 1708534200, "cache_updated": false,
 "changed": true, "stderr": "", "stdout": "Reading package lists...\nBuilding dependency tree...\n..."}
@@ -63,7 +63,7 @@ ansible-playbook deploy.yml -vv
 
 Output:
 
-```
+```text
 TASK [Install nginx] **********************************************************
 task path: /home/deploy/playbooks/deploy.yml:15
 changed: [web-01] => {"cache_update_time": 1708534200, ...}
@@ -85,7 +85,7 @@ ansible-playbook deploy.yml -vvv
 
 Output:
 
-```
+```text
 TASK [Install nginx] **********************************************************
 task path: /home/deploy/playbooks/deploy.yml:15
 <web-01> ESTABLISH SSH CONNECTION FOR USER: deploy
@@ -110,7 +110,7 @@ ansible-playbook deploy.yml -vvvv
 
 Output includes things like:
 
-```
+```text
 <web-01> SSH: EXEC ssh -vvv -C -o ControlMaster=auto -o ControlPersist=60s
   -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
   -o 'IdentityFile="/home/deploy/.ssh/id_ed25519"'
@@ -139,7 +139,7 @@ ansible-playbook deploy.yml -vvvv --limit web-01 2>&1 | head -100
 
 Key lines to look for:
 
-```
+```text
 # Connection attempt
 <web-01> SSH: EXEC ssh -vvv ...
 
@@ -157,7 +157,7 @@ Permission denied (publickey).
 
 Look for the module being transferred and executed:
 
-```
+```text
 # Module being sent to the remote host
 <web-01> PUT /home/deploy/.ansible/tmp/ansible-local-12345/tmpABC123 TO
   /home/deploy/.ansible/tmp/ansible-tmp-1708534200/AnsiballZ_apt.py
@@ -175,7 +175,7 @@ Look for the module being transferred and executed:
 
 When `become: true` is set, look for sudo commands:
 
-```
+```text
 # sudo being invoked
 <web-01> SSH: EXEC ssh ... '/bin/sh -c '"'"'echo BECOME-SUCCESS-abc123;
   /usr/bin/sudo -H -S -n -u root /bin/sh -c '"'"'"'"'"'"'"'"'echo BECOME-SUCCESS-abc123;
@@ -241,7 +241,7 @@ When a module rejects arguments, -vv shows what was passed:
 ansible-playbook deploy.yml -vv
 ```
 
-```
+```text
 TASK [Install packages] *******************************************************
 task path: /home/deploy/playbooks/deploy.yml:10
 fatal: [web-01]: FAILED! => {"changed": false, "msg": "Unsupported parameters for
@@ -252,7 +252,7 @@ fatal: [web-01]: FAILED! => {"changed": false, "msg": "Unsupported parameters fo
 
 When a template fails, -vvv shows the template path and the exact error:
 
-```
+```text
 TASK [Deploy config] **********************************************************
 fatal: [web-01]: FAILED! => {"changed": false, "msg": "AnsibleUndefinedVariable:
   'app_port' is undefined. 'app_port' is undefined\n
@@ -272,7 +272,7 @@ ANSIBLE_CALLBACKS_ENABLED=timer ansible-playbook deploy.yml -vvv
 
 Here is my rule of thumb:
 
-```
+```text
 -v     First pass when something fails (see the error message with context)
 -vv    When you need to verify module parameters
 -vvv   SSH or connection issues, privilege escalation problems

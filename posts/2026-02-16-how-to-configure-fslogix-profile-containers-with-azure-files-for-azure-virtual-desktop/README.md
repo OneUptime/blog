@@ -239,7 +239,7 @@ Get-Content "C:\ProgramData\FSLogix\Logs\Profile*.log" -Tail 50
 
 On the Azure Files share, you should see a folder structure like:
 
-```
+```text
 \\avdprofilestorage.file.core.windows.net\fslogix-profiles\
   S-1-5-21-xxxx-user1\
     Profile_user1.VHDX

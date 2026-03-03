@@ -643,7 +643,7 @@ Only failback when:
 - Data has been synchronized
 - Maintenance window is scheduled
 - Team is prepared for potential issues
-```
+```text
 
 ## Best Practices
 
@@ -659,3 +659,5 @@ Only failback when:
 ---
 
 Disaster recovery is insurance you hope to never use. But when you need it, having a well-configured, well-tested DR plan is the difference between a bad day and a business-ending catastrophe. Invest the time now to configure it properly, and test it regularly.
+
+```

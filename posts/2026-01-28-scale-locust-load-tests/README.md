@@ -227,7 +227,7 @@ graph TB
 
 ### Capacity Planning Formula
 
-```
+```text
 Workers Needed = (Target RPS / RPS per Worker) * Safety Factor
 
 Where:
@@ -236,7 +236,7 @@ Where:
 ```
 
 Example: For 50,000 RPS with 1,000 RPS per worker:
-```
+```text
 Workers = (50,000 / 1,000) * 1.3 = 65 workers
 ```
 

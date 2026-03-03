@@ -73,7 +73,7 @@ nano /etc/network/interfaces
 
 Add the cluster interface:
 
-```
+```text
 # Dedicated cluster communication interface
 auto enp2s0
 iface enp2s0 inet static
@@ -101,7 +101,7 @@ pvecm status
 
 Expected output on `pve1`:
 
-```
+```text
 Cluster information
 -------------------
 Name:             homelab
@@ -255,7 +255,7 @@ For advanced cluster configuration, the Corosync config is at `/etc/pve/corosync
 cat /etc/pve/corosync.conf
 ```
 
-```
+```text
 logging {
   debug: off
   to_syslog: yes

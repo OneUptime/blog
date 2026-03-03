@@ -71,7 +71,7 @@ deno --version
 
 Create a well-organized project structure for maintainability:
 
-```
+```text
 deno-oak-api/
 ├── main.ts              # Application entry point
 ├── deno.json            # Deno configuration

@@ -54,7 +54,7 @@ strace --version
 
 You should see output similar to:
 
-```
+```text
 strace -- version 5.x
 ```
 

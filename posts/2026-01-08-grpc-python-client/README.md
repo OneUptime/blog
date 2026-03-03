@@ -43,7 +43,7 @@ pip install grpcio-status grpcio-health-checking
 
 Organize your project with a clear structure:
 
-```
+```text
 grpc-python-client/
 ├── protos/
 │   └── user_service.proto

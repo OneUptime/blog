@@ -21,7 +21,7 @@ terraform state list
 
 Output looks like this:
 
-```
+```text
 aws_instance.web
 aws_instance.worker[0]
 aws_instance.worker[1]

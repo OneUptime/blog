@@ -337,7 +337,7 @@ az sentinel automation-rule create \
 
 Build a Sentinel workbook that tracks the health of your SOAR integrations:
 
-```
+```text
 // Track playbook execution success and failures
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.LOGIC"

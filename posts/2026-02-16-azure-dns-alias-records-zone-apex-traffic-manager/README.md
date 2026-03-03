@@ -12,7 +12,7 @@ If you have ever tried to point your root domain (the zone apex, like `example.c
 
 This means you cannot do this:
 
-```
+```text
 example.com    CNAME    myapp.trafficmanager.net    # NOT ALLOWED at zone apex
 ```
 

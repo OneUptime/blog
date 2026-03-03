@@ -19,17 +19,17 @@ Microsoft renamed Azure Active Directory to Microsoft Entra ID in 2023. You'll s
 You'll need these values from your Cognito User Pool:
 
 The **Reply URL** (ACS endpoint):
-```
+```text
 https://your-domain.auth.us-east-1.amazoncognito.com/saml2/idpresponse
 ```
 
 The **Identifier** (Entity ID):
-```
+```text
 urn:amazon:cognito:sp:us-east-1_XXXXXXXXX
 ```
 
 The **Sign-on URL** (optional, for IdP-initiated SSO):
-```
+```text
 https://your-domain.auth.us-east-1.amazoncognito.com/saml2/idpresponse
 ```
 
@@ -46,7 +46,7 @@ After creating the application, go to "Single sign-on" and select "SAML."
 
 ### Basic SAML Configuration
 
-```
+```text
 Identifier (Entity ID): urn:amazon:cognito:sp:us-east-1_XXXXXXXXX
 Reply URL (ACS URL): https://your-domain.auth.us-east-1.amazoncognito.com/saml2/idpresponse
 Sign on URL: https://your-domain.auth.us-east-1.amazoncognito.com/saml2/idpresponse

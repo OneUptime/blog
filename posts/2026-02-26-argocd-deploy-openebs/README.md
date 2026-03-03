@@ -279,7 +279,7 @@ spec:
 
 ## Repository Structure
 
-```
+```text
 openebs-config/
   base/
     kustomization.yaml

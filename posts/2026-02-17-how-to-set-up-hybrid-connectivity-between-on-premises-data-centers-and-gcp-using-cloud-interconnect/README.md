@@ -155,7 +155,7 @@ gcloud compute routers add-bgp-peer hybrid-router-us \
 
 On your on-premises router, configure the corresponding BGP sessions. Here is an example for a Cisco IOS router:
 
-```
+```text
 ! On-premises Cisco router configuration
 router bgp 65001
   neighbor 169.254.0.1 remote-as 16550

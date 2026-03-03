@@ -89,7 +89,7 @@ aws route53 change-resource-record-sets \
 
 If you already have an SPF record, append `include:amazonses.com` to it rather than creating a new one. DNS only allows one SPF record per domain. For example:
 
-```
+```text
 "v=spf1 include:amazonses.com include:_spf.google.com ~all"
 ```
 

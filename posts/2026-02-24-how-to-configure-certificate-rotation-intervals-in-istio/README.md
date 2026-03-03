@@ -16,7 +16,7 @@ By default, Istio issues workload certificates with a 24-hour TTL. The sidecar p
 
 Here is the timeline:
 
-```
+```text
 T+0h    : Certificate issued, valid for 24 hours
 T+19.2h : Rotation triggered (80% of 24h)
 T+19.2h : New certificate issued, valid for 24 hours
@@ -106,7 +106,7 @@ kubectl logs <pod-name> -c istio-proxy -f | grep -i "SDS"
 
 You will see messages like:
 
-```
+```text
 info    sds    resource:default new connection
 info    sds    resource:default pushed key/cert pair to proxy
 ```

@@ -618,7 +618,7 @@ Shared libraries let you reuse pipeline code across projects.
 
 Directory structure:
 
-```
+```text
 jenkins-shared-library/
 ├── vars/
 │   ├── buildApp.groovy       # Global variables/functions

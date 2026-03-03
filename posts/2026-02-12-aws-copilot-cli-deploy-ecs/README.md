@@ -134,7 +134,7 @@ copilot svc deploy --name api --env production
 
 Copilot handles everything: building the Docker image, pushing it to ECR, updating the task definition, and rolling out the new version. It even shows you the deployment progress in real-time.
 
-```
+```text
 Building your container image: docker build -t api .
 Pushing to ECR...
 Deploying api to dev environment...

@@ -189,7 +189,7 @@ vault read aws/creds/my-app-role
 
 Output:
 
-```
+```text
 Key                Value
 ---                -----
 lease_id           aws/creds/my-app-role/abcd1234
@@ -241,7 +241,7 @@ vault read aws/creds/deploy-role
 
 Output includes a session token:
 
-```
+```text
 Key                Value
 ---                -----
 lease_id           aws/creds/deploy-role/xyz789

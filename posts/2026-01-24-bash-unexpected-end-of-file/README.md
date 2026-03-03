@@ -42,7 +42,7 @@ echo "Done"
 ```
 
 Error output:
-```
+```text
 script.sh: line 6: unexpected end of file
 ```
 
@@ -396,7 +396,7 @@ shellcheck script.sh
 ```
 
 ShellCheck output example:
-```
+```text
 In script.sh line 5:
 if [[ -f /etc/config ]]; then
                               ^-- SC1009: The mentioned syntax error was in this if expression.

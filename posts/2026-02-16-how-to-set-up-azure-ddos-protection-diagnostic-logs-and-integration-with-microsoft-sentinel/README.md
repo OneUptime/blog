@@ -112,7 +112,7 @@ After enabling diagnostic settings, test that data is flowing. DDoS notification
 
 Run this query in Log Analytics to check:
 
-```
+```text
 // Check if DDoS protection notification data is being ingested
 AzureDiagnostics
 | where Category == "DDoSProtectionNotifications"
@@ -132,7 +132,7 @@ If you see results, data is flowing. If not, check:
 
 Create detection rules that fire when a DDoS attack is detected:
 
-```
+```text
 // Sentinel Analytics Rule: DDoS Attack Detected
 // Trigger: When DDoS mitigation starts on any protected public IP
 AzureDiagnostics
@@ -158,7 +158,7 @@ Create this as a scheduled analytics rule in Sentinel:
 
 Create a second rule for when mitigation ends, so you can track attack duration:
 
-```
+```text
 // Sentinel Analytics Rule: DDoS Attack Mitigation Ended
 // Use this to correlate with the start event and calculate attack duration
 AzureDiagnostics
@@ -182,7 +182,7 @@ Sentinel workbooks give you visual dashboards. Create a workbook that shows:
 
 Here are KQL queries for key workbook panels:
 
-```
+```text
 // Panel 1: Attack Timeline
 // Shows when attacks started and stopped over the past 30 days
 AzureDiagnostics
@@ -193,7 +193,7 @@ AzureDiagnostics
 | order by TimeGenerated asc
 ```
 
-```
+```text
 // Panel 2: Top Source IPs During Attacks
 // Requires DDoSMitigationFlowLogs data from an actual attack
 AzureDiagnostics
@@ -208,7 +208,7 @@ AzureDiagnostics
 | take 20
 ```
 
-```
+```text
 // Panel 3: Attack Volume Metrics
 // Uses DDoS metric data for packets per second
 AzureMetrics

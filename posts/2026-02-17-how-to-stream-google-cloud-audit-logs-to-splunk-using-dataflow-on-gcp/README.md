@@ -154,7 +154,7 @@ In Splunk Web, go to Settings, then Data Inputs, then HTTP Event Collector.
 
 Create a new token with these settings.
 
-```
+```text
 Name: gcp-audit-logs
 Source Type: google:gcp:audit
 Index: gcp_audit

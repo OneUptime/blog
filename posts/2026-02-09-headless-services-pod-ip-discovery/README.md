@@ -114,7 +114,7 @@ dig my-headless-service.default.svc.cluster.local
 
 Expected output shows multiple A records:
 
-```
+```text
 Name:   my-headless-service.default.svc.cluster.local
 Address: 10.244.1.5
 Name:   my-headless-service.default.svc.cluster.local
@@ -176,7 +176,7 @@ spec:
 
 Each StatefulSet pod gets a stable DNS name:
 
-```
+```text
 cassandra-0.cassandra.database.svc.cluster.local
 cassandra-1.cassandra.database.svc.cluster.local
 cassandra-2.cassandra.database.svc.cluster.local

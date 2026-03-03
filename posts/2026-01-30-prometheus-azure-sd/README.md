@@ -590,7 +590,7 @@ Start Prometheus with debug logging:
 
 Look for Azure SD related messages:
 
-```
+```text
 level=debug ts=2026-01-30T10:00:00.000Z caller=azure.go:123 component="discovery manager scrape" discovery=azure msg="Discovering targets"
 ```
 

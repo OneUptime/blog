@@ -57,7 +57,7 @@ Every user who views this comment will have their cookies stolen.
 The malicious script is embedded in a URL or form submission and reflected back to the user. The payload is not stored but delivered through a crafted link.
 
 **Attack scenario:**
-```
+```text
 https://yourapp.com/search?q=<script>alert(document.cookie)</script>
 ```
 

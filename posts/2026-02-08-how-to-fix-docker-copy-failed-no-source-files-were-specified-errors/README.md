@@ -18,13 +18,13 @@ When you run `docker build .`, Docker does not give the Dockerfile direct access
 
 The error means Docker looked for the source files inside the build context tar archive and found nothing matching your specification.
 
-```
+```text
 COPY failed: no source files were specified
 ```
 
 Or the more detailed version:
 
-```
+```text
 COPY failed: file not found in build context or excluded by .dockerignore: stat src/app.js: file does not exist
 ```
 
@@ -41,7 +41,7 @@ cat .dockerignore
 
 Common problematic patterns:
 
-```
+```text
 # .dockerignore - patterns that accidentally exclude too much
 
 # This excludes EVERYTHING
@@ -56,7 +56,7 @@ src/
 
 If you use a wildcard exclusion pattern, you need explicit exceptions:
 
-```
+```text
 # .dockerignore - exclude everything then whitelist what you need
 *
 !src/
@@ -279,7 +279,7 @@ COPY src/ ./src/
 
 And keep your `.dockerignore` minimal and well-documented:
 
-```
+```text
 # .dockerignore - exclude non-essential files from build context
 .git
 .github

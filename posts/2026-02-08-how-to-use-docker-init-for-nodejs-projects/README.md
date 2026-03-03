@@ -83,7 +83,7 @@ docker init
 
 Docker init detects the package.json and identifies the project as Node.js. You will see prompts like:
 
-```
+```text
 ? What application platform does your project use? Node
 ? What version of Node do you want to use? 20
 ? Which package manager do you want to use? npm
@@ -302,7 +302,7 @@ volumes:
 
 The generated .dockerignore is a good start. Extend it for Node.js specifics:
 
-```
+```text
 # Dependencies (installed inside the container)
 node_modules
 

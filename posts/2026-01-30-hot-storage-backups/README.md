@@ -347,7 +347,7 @@ if __name__ == "__main__":
 ```
 
 Output:
-```
+```text
 Backup Cost Analysis (500GB, 2 restores/month, $5000/hr downtime)
 ======================================================================
 

@@ -14,7 +14,7 @@ Here is something that confuses a lot of developers when they first start with F
 
 When you enable Cloud Storage in Firebase, it creates a default bucket named after your project:
 
-```
+```text
 YOUR_PROJECT_ID.appspot.com
 ```
 
@@ -158,7 +158,7 @@ Firebase Security Rules control client-side access. Server-side access through t
 
 Here are comprehensive security rules for a multi-bucket setup:
 
-```
+```text
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {

@@ -14,7 +14,7 @@ The "Lock wait timeout exceeded" error occurs when a transaction waits too long 
 
 The full error message looks like this:
 
-```
+```text
 ERROR 1205 (HY000): Lock wait timeout exceeded; try restarting transaction
 ```
 

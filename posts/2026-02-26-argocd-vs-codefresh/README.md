@@ -211,7 +211,7 @@ Codefresh includes Argo Rollouts integration with enhanced visualization and man
 
 ### ArgoCD
 
-```
+```text
 Cost: $0 for the software
 Hidden costs:
   - Infrastructure to run ArgoCD
@@ -222,7 +222,7 @@ Hidden costs:
 
 ### Codefresh
 
-```
+```text
 Free tier:
   - Limited builds and deployments
   - 1 runtime

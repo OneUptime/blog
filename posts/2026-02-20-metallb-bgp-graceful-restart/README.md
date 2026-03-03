@@ -12,7 +12,7 @@ When a MetalLB speaker pod restarts, the BGP session with the upstream router go
 
 BGP graceful restart solves this by telling the upstream router to keep forwarding traffic to the previously advertised routes for a configurable window while the speaker comes back up. This guide shows you how to enable and tune graceful restart in MetalLB.
 
-### How Graceful Restart Works
+## How Graceful Restart Works
 
 ```mermaid
 sequenceDiagram
@@ -111,7 +111,7 @@ kubectl exec -n metallb-system "$SPEAKER_POD" -c frr -- \
 
 You should see output similar to:
 
-```
+```text
   Graceful restart information:
     Local GR Mode: Restart
     Remote GR Mode: Restart
@@ -151,7 +151,7 @@ write memory
 
 For Cisco IOS-XE, the equivalent is:
 
-```
+```text
 ! Enable graceful restart on a Cisco router
 router bgp 64512
   bgp graceful-restart

@@ -77,7 +77,7 @@ Once the egress gateway is running, route your external traffic through it (see 
 
 Istio automatically generates metrics for all traffic flowing through its proxies. The key metrics for outbound traffic monitoring are:
 
-```
+```text
 istio_tcp_connections_opened_total
 istio_tcp_connections_closed_total
 istio_tcp_sent_bytes_total

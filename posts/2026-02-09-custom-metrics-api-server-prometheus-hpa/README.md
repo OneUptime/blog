@@ -131,7 +131,7 @@ kubectl get apiservices | grep custom.metrics
 
 You should see:
 
-```
+```text
 v1beta1.custom.metrics.k8s.io    monitoring/prometheus-adapter    True    2m
 ```
 

@@ -612,7 +612,7 @@ echo "Database snapshot created for PR #${PR_NUMBER}"
 
 Configure your DNS provider with a wildcard record pointing to your preview infrastructure.
 
-```
+```text
 # DNS Records
 *.preview.example.com    A       203.0.113.10
 *.preview.example.com    AAAA    2001:db8::10

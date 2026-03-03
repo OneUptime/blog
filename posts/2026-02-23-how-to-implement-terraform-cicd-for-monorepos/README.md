@@ -12,7 +12,7 @@ Monorepos are increasingly popular for infrastructure code. Having all your Terr
 
 ## Typical Monorepo Structure
 
-```
+```text
 infrastructure/
   modules/
     vpc/

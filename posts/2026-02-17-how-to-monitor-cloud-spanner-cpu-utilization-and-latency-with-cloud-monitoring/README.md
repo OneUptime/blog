@@ -106,7 +106,7 @@ For ad-hoc investigation, use the Metrics Explorer in Cloud Monitoring. Here are
 
 Spanner splits CPU usage into "high priority" (user-facing queries) and "smoothed" (background tasks like compaction). High-priority CPU is the one to watch:
 
-```
+```text
 Resource type: spanner_instance
 Metric: instance/cpu/utilization_by_priority
 Filter: priority = "high"
@@ -116,7 +116,7 @@ Filter: priority = "high"
 
 Break down latency by read vs write operations:
 
-```
+```text
 Resource type: spanner_instance
 Metric: api/request_latencies
 Group by: method
@@ -127,7 +127,7 @@ Aligner: 99th percentile
 
 A high abort rate signals contention problems:
 
-```
+```text
 Resource type: spanner_instance
 Metric: api/request_count
 Filter: status != "OK"

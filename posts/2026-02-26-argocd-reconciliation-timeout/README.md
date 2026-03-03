@@ -211,7 +211,7 @@ curl -s http://localhost:8082/metrics | grep argocd_app_reconcile
 
 Key metrics to watch:
 
-```
+```text
 # Time spent on reconciliation per application
 argocd_app_reconcile_duration_seconds_bucket
 argocd_app_reconcile_duration_seconds_sum

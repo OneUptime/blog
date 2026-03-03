@@ -175,7 +175,7 @@ Store all Istio configuration in Git and use a GitOps tool to sync it. This prov
 
 Structure your repository by namespace:
 
-```
+```text
 istio-config/
   base/
     peer-authentication.yaml

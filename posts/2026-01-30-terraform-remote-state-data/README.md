@@ -555,7 +555,7 @@ Following these practices ensures reliable and maintainable remote state configu
 
 Structure your state file paths to reflect your infrastructure hierarchy:
 
-```
+```text
 terraform-state/
   shared/
     security/terraform.tfstate

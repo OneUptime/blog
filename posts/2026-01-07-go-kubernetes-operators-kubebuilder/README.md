@@ -79,7 +79,7 @@ kubebuilder init --domain example.com --repo github.com/example/webapp-operator
 
 This command generates the following structure:
 
-```
+```text
 webapp-operator/
 ├── Dockerfile
 ├── Makefile

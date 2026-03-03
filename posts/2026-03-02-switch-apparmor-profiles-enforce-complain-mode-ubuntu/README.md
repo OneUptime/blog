@@ -297,7 +297,7 @@ sudo journalctl -u apparmor --since "5 minutes ago"
 
 Complain mode can also be set directly in the profile file using flags:
 
-```
+```text
 # This profile starts in complain mode by default
 /usr/local/bin/myapp flags=(complain) {
     #include <abstractions/base>

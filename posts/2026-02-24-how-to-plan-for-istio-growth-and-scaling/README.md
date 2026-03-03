@@ -198,7 +198,7 @@ kubectl top pods --containers --all-namespaces | grep istio-proxy | \
 
 Growth formula for node capacity:
 
-```
+```text
 Additional_Nodes = (New_Pods x Sidecar_CPU_Request + New_Pods x App_CPU_Request) / Node_Allocatable_CPU
 
 Example: Adding 200 new microservices pods

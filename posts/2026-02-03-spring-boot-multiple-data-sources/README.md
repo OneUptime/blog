@@ -34,7 +34,7 @@ The key insight is that each data source needs its own complete JPA stack. Sprin
 
 Before diving into the code, here is how your project should be organized. Keeping entities and repositories in separate packages for each data source is essential - Spring uses these package paths to wire everything together correctly.
 
-```
+```text
 src/main/java/com/example/demo/
 ├── config/
 │   ├── PrimaryDataSourceConfig.java    # Primary database configuration

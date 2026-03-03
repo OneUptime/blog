@@ -36,7 +36,7 @@ kubectl get nodes
 
 Output will look like:
 
-```
+```text
 NAME          STATUS                     ROLES           AGE   VERSION
 talos-cp-1    Ready                      control-plane   30d   v1.29.0
 talos-cp-2    Ready                      control-plane   30d   v1.29.0
@@ -111,7 +111,7 @@ kubectl describe node <node-name> | grep -A5 "Taints"
 
 The unschedulable taint looks like:
 
-```
+```text
 Taints: node.kubernetes.io/unschedulable:NoSchedule
 ```
 

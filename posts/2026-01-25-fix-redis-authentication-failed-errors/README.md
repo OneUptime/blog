@@ -274,7 +274,7 @@ redis-cli ACL LOAD
 
 Create `/etc/redis/users.acl`:
 
-```
+```text
 # Admin user with full access
 user admin on >super-secret-admin-pass ~* &* +@all
 
@@ -290,7 +290,7 @@ user default off
 
 Then in `redis.conf`:
 
-```
+```text
 aclfile /etc/redis/users.acl
 ```
 
@@ -371,7 +371,7 @@ r = redis.Redis(
 
 URL format variations:
 
-```
+```text
 # Basic with password
 redis://:password@host:6379/0
 
@@ -388,7 +388,7 @@ redis://:p%40ssw0rd%23123@host:6379/0
 
 URL encoding reference for common special characters:
 
-```
+```text
 @ = %40
 # = %23
 ! = %21

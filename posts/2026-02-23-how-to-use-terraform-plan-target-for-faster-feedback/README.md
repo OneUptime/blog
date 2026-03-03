@@ -201,7 +201,7 @@ This is a rough approach and misses cases like variable changes that affect many
 
 Make `-target` part of your development loop, not your deployment loop:
 
-```
+```text
 Development:
   1. Make change
   2. terraform plan -target=<changed_resource>  (fast feedback)
@@ -217,7 +217,7 @@ CI/CD:
 
 Terraform prints a warning when you use `-target`:
 
-```
+```text
 Warning: Resource targeting is in effect
 
 You are creating a plan with the -target option, which means that the result

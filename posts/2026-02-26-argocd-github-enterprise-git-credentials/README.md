@@ -14,7 +14,7 @@ GitHub Enterprise Server (GHE) is the self-hosted version of GitHub that many or
 
 GitHub Enterprise Server uses your organization's domain instead of github.com. The URL patterns are different:
 
-```
+```text
 # GitHub.com
 https://github.com/org/repo.git
 

@@ -58,7 +58,7 @@ kafka-topics.sh --describe \
 
 Output shows leader and replica assignments:
 
-```
+```text
 Topic: orders   Partition: 0    Leader: 1    Replicas: 1,2,3    Isr: 1,2,3
 Topic: orders   Partition: 1    Leader: 2    Replicas: 2,3,1    Isr: 2,3,1
 Topic: orders   Partition: 2    Leader: 3    Replicas: 3,1,2    Isr: 3,1,2

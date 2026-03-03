@@ -101,7 +101,7 @@ groups:
 
 Create rules in `/loki/rules/<tenant_id>/`:
 
-```
+```text
 /loki/rules/
   fake/
     alerts.yaml

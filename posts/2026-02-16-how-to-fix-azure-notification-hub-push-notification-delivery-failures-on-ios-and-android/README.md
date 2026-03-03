@@ -74,7 +74,7 @@ Common APNs configuration mistakes:
 
 APNs has two environments: sandbox (for development builds) and production (for App Store and TestFlight builds). Using the wrong environment means notifications are sent to the wrong APNs server and silently dropped.
 
-```
+```text
 // Sandbox endpoint (for development)
 https://api.sandbox.push.apple.com
 

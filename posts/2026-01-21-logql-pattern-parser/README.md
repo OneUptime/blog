@@ -36,7 +36,7 @@ The pattern parser uses angle brackets to define capture groups:
 ### Basic Example
 
 For a log line:
-```
+```text
 192.168.1.100 - - [15/Jan/2024:10:30:00 +0000] "GET /api/users HTTP/1.1" 200 1234
 ```
 
@@ -57,7 +57,7 @@ Extracted labels:
 
 ### Apache/NGINX Combined Log Format
 
-```
+```text
 192.168.1.1 - john [10/Jan/2024:13:55:36 -0700] "GET /index.html HTTP/1.1" 200 2326 "http://example.com" "Mozilla/5.0"
 ```
 
@@ -69,7 +69,7 @@ Extracted labels:
 
 ### Syslog Format
 
-```
+```text
 Jan 15 10:30:00 server01 sshd[12345]: Failed password for root from 192.168.1.100
 ```
 
@@ -81,7 +81,7 @@ Jan 15 10:30:00 server01 sshd[12345]: Failed password for root from 192.168.1.10
 
 ### Application Log Format
 
-```
+```text
 2024-01-15T10:30:00.000Z INFO [main] OrderService - Order 12345 created for user john
 ```
 
@@ -93,7 +93,7 @@ Jan 15 10:30:00 server01 sshd[12345]: Failed password for root from 192.168.1.10
 
 ### Key-Value Logs
 
-```
+```text
 time=2024-01-15T10:30:00Z level=info msg="Request completed" status=200 duration=45ms
 ```
 
@@ -184,7 +184,7 @@ For logs with optional fields:
 
 ### Kubernetes Container Logs
 
-```
+```text
 2024-01-15T10:30:00.000Z stdout F {"level":"info","msg":"Request handled","duration":45}
 ```
 
@@ -197,7 +197,7 @@ For logs with optional fields:
 
 ### AWS Load Balancer Logs
 
-```
+```text
 http 2024-01-15T10:30:00.000000Z app/my-alb/abc123 192.168.1.100:12345 10.0.0.1:80 0.001 0.002 0.000 200 200 123 456 "GET http://example.com/api/users HTTP/1.1" "Mozilla/5.0"
 ```
 
@@ -209,7 +209,7 @@ http 2024-01-15T10:30:00.000000Z app/my-alb/abc123 192.168.1.100:12345 10.0.0.1:
 
 ### Docker Logs
 
-```
+```text
 2024-01-15 10:30:00 container_name | INFO: Application started on port 8080
 ```
 
@@ -221,7 +221,7 @@ http 2024-01-15T10:30:00.000000Z app/my-alb/abc123 192.168.1.100:12345 10.0.0.1:
 
 ### PostgreSQL Logs
 
-```
+```text
 2024-01-15 10:30:00.000 UTC [12345] user@database LOG:  duration: 125.234 ms  statement: SELECT * FROM users
 ```
 
@@ -233,7 +233,7 @@ http 2024-01-15T10:30:00.000000Z app/my-alb/abc123 192.168.1.100:12345 10.0.0.1:
 
 ### Envoy Access Logs
 
-```
+```text
 [2024-01-15T10:30:00.000Z] "GET /api/users HTTP/1.1" 200 - 0 1234 45 - "192.168.1.100" "curl/7.68.0" "abc123" "api.example.com" "10.0.0.1:8080"
 ```
 

@@ -54,7 +54,7 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
 
 ### Guidelines
 
-```
+```text
 Partitions = max(T/P, T/C)
 
 Where:

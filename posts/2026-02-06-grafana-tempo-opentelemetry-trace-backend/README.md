@@ -227,21 +227,21 @@ Tempo supports TraceQL, a query language specifically designed for traces. It is
 
 To find all traces from a specific service that took longer than 500 milliseconds:
 
-```
+```text
 # TraceQL query to find slow traces for a specific service
 { resource.service.name = "payment-service" && duration > 500ms }
 ```
 
 To find traces that contain an error span within a particular operation:
 
-```
+```text
 # Find traces where the checkout operation had an error
 { span.http.route = "/api/checkout" && status = error }
 ```
 
 To find traces that span multiple services (useful for debugging distributed issues):
 
-```
+```text
 # Find traces that involve both the API gateway and the database service
 { resource.service.name = "api-gateway" } && { resource.service.name = "database-service" }
 ```

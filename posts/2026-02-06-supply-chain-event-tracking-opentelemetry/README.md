@@ -14,7 +14,7 @@ Distributed tracing, the same concept that tracks requests across microservices,
 
 The key insight is that a shipment's lifecycle looks a lot like a distributed system call:
 
-```
+```text
 Factory Dispatch --> Freight Pickup --> Port Loading --> Customs Clearance --> Unloading --> Warehouse --> Last Mile --> Delivery
 ```
 

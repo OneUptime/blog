@@ -416,7 +416,7 @@ done
 
 ### Error: Unknown Field
 
-```
+```text
 Error: Rule uses unknown field 'container.mount.dest'
 ```
 
@@ -428,7 +428,7 @@ Error: Rule uses unknown field 'container.mount.dest'
 
 ### Error: Unexpected Exception Block
 
-```
+```text
 Error: Unexpected key 'exceptions' in rule definition
 ```
 
@@ -440,7 +440,7 @@ Error: Unexpected key 'exceptions' in rule definition
 
 ### Warning: Version Requirement Not Met
 
-```
+```text
 Warning: Rule file requires engine version 0.35.0, but current engine is 0.32.0
 ```
 

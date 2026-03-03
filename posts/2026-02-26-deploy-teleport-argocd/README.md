@@ -44,7 +44,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 access/
   teleport/
     Chart.yaml

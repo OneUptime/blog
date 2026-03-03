@@ -64,7 +64,7 @@ gcloud dataform workspaces create dev-workspace \
 
 A Dataform project follows a standard directory structure:
 
-```
+```text
 definitions/
   sources/
     raw_events.sqlx

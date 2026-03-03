@@ -43,7 +43,7 @@ grep "will be updated" plan-output.log
 
 For a successful migration, you want to see moves and zero creates or destroys:
 
-```
+```text
 Plan: 0 to add, 0 to change, 0 to destroy.
 # 5 resources moved
 ```

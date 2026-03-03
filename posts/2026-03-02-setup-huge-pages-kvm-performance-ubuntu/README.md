@@ -86,7 +86,7 @@ For 1 GB huge pages, allocate at boot time via GRUB (they cannot be reliably all
 sudo nano /etc/default/grub
 ```
 
-```
+```text
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash hugepagesz=1G hugepages=8"
 ```
 

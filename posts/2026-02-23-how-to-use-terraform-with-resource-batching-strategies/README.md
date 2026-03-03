@@ -29,7 +29,7 @@ Batching lets you apply changes in smaller, controlled groups.
 
 The most common batching strategy is to physically separate your Terraform code into independent configurations, each with its own state file:
 
-```
+```text
 infrastructure/
   batch-01-foundation/
     main.tf           # VPC, subnets, route tables

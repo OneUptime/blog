@@ -188,7 +188,7 @@ apply:
 
 If different parts of your infrastructure are independent, split them into separate state files to reduce contention:
 
-```
+```text
 infrastructure/
   networking/
     backend.tf     # State: networking/terraform.tfstate

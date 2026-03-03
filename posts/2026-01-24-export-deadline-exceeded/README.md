@@ -14,7 +14,7 @@ The "export deadline exceeded" error is one of the most common issues when worki
 
 When you see this error, it means the exporter gave up waiting for a response:
 
-```
+```text
 2024-01-15T10:30:45.123Z error exporterhelper/queued_retry.go:394
     Exporting failed. Dropping data.
     {"kind": "exporter", "data_type": "traces", "name": "otlp",

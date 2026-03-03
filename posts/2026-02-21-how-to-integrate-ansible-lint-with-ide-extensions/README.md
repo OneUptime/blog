@@ -185,7 +185,7 @@ JetBrains IDEs can integrate ansible-lint through the External Tools feature or 
 
 Navigate to Settings > Tools > External Tools and add a new tool.
 
-```
+```text
 Name: ansible-lint
 Program: ansible-lint
 Arguments: $FilePath$
@@ -196,7 +196,7 @@ Working Directory: $ProjectFileDir$
 
 For automatic linting on save, use File Watchers.
 
-```
+```text
 File type: YAML
 Scope: Project Files
 Program: ansible-lint

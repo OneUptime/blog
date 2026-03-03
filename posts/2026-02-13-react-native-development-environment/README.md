@@ -337,7 +337,7 @@ Create a `.vscode/settings.json` in your project:
 
 After creating a project, you will see this structure:
 
-```
+```text
 MyApp/
   android/          # Native Android project (Gradle-based)
   ios/              # Native iOS project (Xcode workspace)

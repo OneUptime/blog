@@ -153,7 +153,7 @@ Click the "+" button or use the keyboard shortcut `a` to open the add bookmark f
 - Description: optional notes about the link
 - Tags: comma-separated tags for organization
 
-```
+```text
 URL: https://docs.docker.com/compose/reference/
 Title: Docker Compose CLI Reference
 Description: Complete reference for docker compose commands

@@ -14,7 +14,7 @@ The Ansible service module is essential for managing system services, but errors
 
 ## Common Error Messages
 
-```
+```text
 FAILED! => {"changed": false, "msg": "Could not find the requested service nginx: host"}
 
 FAILED! => {"changed": false, "msg": "Unable to start service nginx: Job for nginx.service failed"}

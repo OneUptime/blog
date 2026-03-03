@@ -81,7 +81,7 @@ module "enterprise_scale" {
 
 This single module call creates the entire management group hierarchy:
 
-```
+```text
 Contoso (root)
   -> Platform
     -> Identity

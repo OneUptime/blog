@@ -327,7 +327,7 @@ class CallbackModule(CallbackBase):
 
 Once your logs are in Elasticsearch, you can build dashboards and alerts. Here are useful Kibana queries:
 
-```
+```text
 # Find all failed tasks in the last 24 hours
 ansible.ansible_result: "failed" AND @timestamp > now-24h
 

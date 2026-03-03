@@ -76,7 +76,7 @@ The `ServerSideApply` sync option is important here because the GPU operator cre
 
 A clean repository structure makes managing GPU workloads much easier. Here is a recommended layout:
 
-```
+```text
 gpu-workloads/
   base/
     kustomization.yaml

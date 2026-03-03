@@ -38,7 +38,7 @@ The `h1:` prefix indicates a hash of the provider's zip archive. The `zh:` prefi
 
 The most common CI/CD issue with lock files: you develop on macOS (darwin_arm64) but your CI runs on Linux (linux_amd64). If the lock file only has macOS hashes, CI will fail:
 
-```
+```text
 Error: Failed to install provider
 
 Could not verify the integrity of

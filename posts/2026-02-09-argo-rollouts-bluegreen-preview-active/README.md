@@ -127,7 +127,7 @@ kubectl argo rollouts get rollout api-server --watch
 
 You'll see output showing the blue-green progression:
 
-```
+```text
 Name:            api-server
 Namespace:       default
 Status:          ॥ Paused

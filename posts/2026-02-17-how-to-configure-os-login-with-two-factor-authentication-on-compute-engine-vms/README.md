@@ -123,7 +123,7 @@ The first time a user connects with OS Login, GCP automatically:
 
 With 2FA enabled, after the SSH key is verified, the user sees a prompt like:
 
-```
+```text
 Please verify your identity.
 You can use your phone or visit https://g.co/verifyaccount
 Verify:

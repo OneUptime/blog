@@ -16,7 +16,7 @@ This guide covers how to write NOPASSWD sudo rules that balance automation needs
 
 The simplest NOPASSWD sudoers entry looks like this:
 
-```
+```text
 # /etc/sudoers.d/ansible
 # Allow the deploy user to run any command as any user without a password
 deploy ALL=(ALL) NOPASSWD: ALL
@@ -24,7 +24,7 @@ deploy ALL=(ALL) NOPASSWD: ALL
 
 Breaking down the syntax:
 
-```
+```text
 deploy       ALL       =       (ALL)       NOPASSWD:       ALL
   |           |                  |             |             |
   user    hosts where      target users   no password    commands
@@ -37,7 +37,7 @@ This grants the deploy user full root access without a password. It works, but i
 
 For better security, limit which commands the Ansible user can run without a password.
 
-```
+```text
 # /etc/sudoers.d/ansible-restricted
 # Package management
 deploy ALL=(root) NOPASSWD: /usr/bin/apt-get update, /usr/bin/apt-get install *, /usr/bin/apt-get remove *
@@ -153,7 +153,7 @@ This is why restrictive command-based NOPASSWD rules can be tricky with Ansible.
 
 A practical middle ground is to limit which users the Ansible account can become, rather than which commands it can run.
 
-```
+```text
 # /etc/sudoers.d/ansible
 # Allow deploy to become root and specific service accounts only
 deploy ALL=(root) NOPASSWD: ALL
@@ -288,7 +288,7 @@ The `pipelining = true` setting is safe with NOPASSWD because pipelining conflic
 
 NOPASSWD access is powerful. Here are ways to limit the blast radius.
 
-```
+```text
 # /etc/sudoers.d/ansible-hardened
 # Disable requiretty
 Defaults:deploy !requiretty

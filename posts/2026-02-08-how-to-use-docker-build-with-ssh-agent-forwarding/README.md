@@ -151,7 +151,7 @@ CMD ["python", "app.py"]
 
 With a `requirements.txt` like:
 
-```
+```text
 flask==3.0.0
 git+ssh://git@github.com/myorg/private-package.git@v1.0.0
 git+ssh://git@github.com/myorg/shared-models.git@main

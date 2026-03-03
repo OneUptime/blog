@@ -429,7 +429,7 @@ function calculateOptimizationImpact(
 
 After running the algorithm, you might get output like:
 
-```
+```text
 Critical Path Analysis for trace: abc123
 Total Duration: 450ms
 
@@ -711,7 +711,7 @@ function aggregateByOperationType(
 
 ### Example Output: Operation Type Breakdown
 
-```
+```text
 Operation Type Latency Analysis (Last 1000 traces)
 ==================================================
 

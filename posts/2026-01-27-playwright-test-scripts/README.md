@@ -46,7 +46,7 @@ npx playwright install
 
 This creates a basic project structure:
 
-```
+```text
 project/
 ├── playwright.config.ts    # Configuration file
 ├── tests/                  # Test files go here
@@ -166,7 +166,7 @@ test.describe('Login Page', () => {
 
 Organize tests by feature or page:
 
-```
+```text
 tests/
 ├── auth/
 │   ├── login.spec.ts

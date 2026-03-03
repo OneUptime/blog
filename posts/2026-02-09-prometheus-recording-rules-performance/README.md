@@ -78,7 +78,7 @@ avg(instance:node_cpu:rate5m)
 
 Follow the Prometheus naming convention for recording rules:
 
-```
+```text
 level:metric:operations
 ```
 

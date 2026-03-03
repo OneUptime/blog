@@ -12,14 +12,14 @@ The "No matching host found" error occurs when Ansible cannot find any hosts tha
 
 ## The Error
 
-```
+```text
 [WARNING]: Could not match supplied host pattern, ignoring: web_servers
 [WARNING]: No hosts matched, nothing to do
 ```
 
 Or sometimes:
 
-```
+```text
 ERROR! Specified hosts and/or --limit does not match any hosts
 ```
 

@@ -32,7 +32,7 @@ sequenceDiagram
 
 The fully qualified service address for cross-namespace calls is:
 
-```
+```text
 <service-name>.<namespace>.svc.cluster.local
 ```
 

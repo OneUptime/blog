@@ -20,7 +20,7 @@ We use two Ubuntu hosts:
 
 We create a VXLAN tunnel between them so that VMs or containers on each host can communicate as if they are on the same layer-2 network, even though they are on different physical machines.
 
-```
+```text
 Host A                              Host B
 +------------------+                +------------------+
 |  VM1             |                |  VM2             |

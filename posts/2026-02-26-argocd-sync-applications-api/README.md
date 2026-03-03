@@ -14,7 +14,7 @@ Syncing applications is the core action in ArgoCD - it reconciles your live Kube
 
 The endpoint for triggering a sync is:
 
-```
+```text
 POST /api/v1/applications/{name}/sync
 ```
 

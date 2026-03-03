@@ -26,7 +26,7 @@ sudo nano /etc/snmp/snmp.conf
 
 Add or uncomment:
 
-```
+```text
 mibs +ALL
 ```
 
@@ -34,7 +34,7 @@ This tells the SNMP tools to load all downloaded MIB files, which translates num
 
 ## Basic snmpwalk Syntax
 
-```
+```text
 snmpwalk [options] AGENT [OID]
 ```
 

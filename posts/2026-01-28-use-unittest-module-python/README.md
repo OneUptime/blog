@@ -469,7 +469,7 @@ class TestSkipping(unittest.TestCase):
 
 ### Project Structure
 
-```
+```text
 project/
     src/
         calculator.py

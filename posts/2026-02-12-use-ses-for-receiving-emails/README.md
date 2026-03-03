@@ -29,7 +29,7 @@ One important limitation: SES email receiving is only available in specific AWS 
 
 First, you need to tell the world that SES handles email for your domain. This means adding an MX record to your DNS configuration.
 
-```
+```text
 # Add this MX record to your domain's DNS
 # The hostname depends on your AWS region
 

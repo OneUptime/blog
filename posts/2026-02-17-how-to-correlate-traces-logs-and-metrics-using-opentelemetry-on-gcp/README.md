@@ -210,13 +210,13 @@ Here are some practical queries you can run.
 
 In Cloud Logging, find all logs for a specific trace.
 
-```
+```text
 trace="projects/my-project/traces/abc123def456"
 ```
 
 Find error logs that have trace context attached.
 
-```
+```text
 severity>=ERROR
 jsonPayload.trace_id!=""
 ```

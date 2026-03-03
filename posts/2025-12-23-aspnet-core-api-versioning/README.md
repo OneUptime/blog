@@ -171,7 +171,7 @@ builder.Services.AddApiVersioning(options =>
 ```
 
 Requests include header:
-```
+```text
 GET /api/products
 X-API-Version: 2.0
 ```

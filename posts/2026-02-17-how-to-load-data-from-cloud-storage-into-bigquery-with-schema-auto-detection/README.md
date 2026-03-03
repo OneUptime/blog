@@ -226,7 +226,7 @@ bq load \
 
 If your Cloud Storage data is organized in Hive-style partitions, BigQuery can detect and use the partition structure.
 
-```
+```text
 gs://my-bucket/data/events/
   year=2026/month=01/day=15/data.parquet
   year=2026/month=01/day=16/data.parquet

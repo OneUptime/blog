@@ -16,7 +16,7 @@ IaC gives you version control, repeatability, peer review, and the ability to te
 
 How you organize your IaC code matters as much as the code itself. Here's a structure that scales.
 
-```
+```text
 infrastructure/
   modules/
     networking/

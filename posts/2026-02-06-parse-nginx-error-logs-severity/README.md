@@ -12,7 +12,7 @@ NGINX error logs have a different format from access logs and carry critical inf
 
 NGINX error log lines follow this structure:
 
-```
+```text
 2026/02/06 14:23:45 [error] 1234#5678: *9012 connect() failed (111: Connection refused) while connecting to upstream, client: 172.16.0.1, server: api.example.com, request: "GET /api/health HTTP/1.1", upstream: "http://127.0.0.1:8080/api/health", host: "api.example.com"
 ```
 

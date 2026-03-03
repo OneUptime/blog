@@ -34,7 +34,7 @@ A single Istio metric like `istio_requests_total` has these labels:
 
 With 100 source services, 100 destination services, 10 response codes, and other label variations, the math gets ugly fast:
 
-```
+```text
 100 * 100 * 10 * 2 * 2 = 400,000 time series for one metric
 ```
 

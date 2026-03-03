@@ -181,7 +181,7 @@ echo "  Memory Quota: $MEMORY_QUOTA"
 
 For a more robust and auditable approach, define namespace configurations in Git and use a GitOps tool to apply them.
 
-```
+```text
 # Repository structure
 namespaces/
   base/

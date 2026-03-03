@@ -82,7 +82,7 @@ on:
 
 Create separate workflows for each service in your monorepo:
 
-```
+```text
 .github/workflows/
   api-ci.yml
   web-ci.yml

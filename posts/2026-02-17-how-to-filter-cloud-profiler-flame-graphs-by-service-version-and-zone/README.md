@@ -226,7 +226,7 @@ A good versioning strategy makes Cloud Profiler filtering much more useful. Here
 
 Use major.minor.patch for releases. This works well for services with distinct release cycles.
 
-```
+```text
 v2.0.0, v2.1.0, v2.1.1, v2.2.0
 ```
 
@@ -234,7 +234,7 @@ v2.0.0, v2.1.0, v2.1.1, v2.2.0
 
 Use the short git commit hash. This gives you the finest granularity and maps directly to code changes.
 
-```
+```text
 abc123f, def456a, ghi789b
 ```
 
@@ -242,7 +242,7 @@ abc123f, def456a, ghi789b
 
 Use the deployment timestamp. Useful when you deploy frequently and do not tag releases.
 
-```
+```text
 2026-02-17-1430, 2026-02-17-1545, 2026-02-18-0900
 ```
 
@@ -250,7 +250,7 @@ Use the deployment timestamp. Useful when you deploy frequently and do not tag r
 
 Include the branch name for pre-release environments.
 
-```
+```text
 main-abc123, feature-xyz-def456, staging-ghi789
 ```
 

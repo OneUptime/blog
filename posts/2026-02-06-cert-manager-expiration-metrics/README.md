@@ -154,7 +154,7 @@ service:
 
 Set up these alerts for production safety:
 
-```
+```text
 # Critical: Certificate not ready
 # certmanager_certificate_ready_status{condition="True"} == 0
 

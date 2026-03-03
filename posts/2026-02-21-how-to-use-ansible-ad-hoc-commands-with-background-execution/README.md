@@ -38,7 +38,7 @@ ansible databases -m shell -a "pg_dump production | gzip > /backups/production_$
 
 Output:
 
-```
+```text
 db1 | CHANGED => {
     "ansible_job_id": "124587236789.5432",
     "changed": true,

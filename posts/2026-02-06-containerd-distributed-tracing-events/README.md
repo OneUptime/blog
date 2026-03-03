@@ -117,7 +117,7 @@ sudo ctr run --rm docker.io/library/alpine:latest test-container echo "hello"
 
 If you are using the logging exporter, you will see span data in the Collector output:
 
-```
+```text
 Span #0
     Trace ID       : abc123def456...
     Span ID        : 1234567890ab
@@ -181,7 +181,7 @@ This keeps all slow operations and errors while sampling routine operations at 1
 
 One practical use case is diagnosing slow container starts. The trace will show which phase takes the longest:
 
-```
+```text
 containerd.services.containers.v1.Create     [50ms]
   containerd.services.snapshots.v1.Prepare   [30ms]
   containerd.services.content.v1.Read        [15ms]

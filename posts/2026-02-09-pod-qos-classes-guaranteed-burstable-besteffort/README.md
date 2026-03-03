@@ -362,7 +362,7 @@ kubectl get pods -o custom-columns=NAME:.metadata.name,QOS:.status.qosClass
 ```
 
 Output:
-```
+```text
 NAME               QOS
 guaranteed-pod     Guaranteed
 burstable-pod      Burstable

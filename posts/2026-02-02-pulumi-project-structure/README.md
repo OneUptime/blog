@@ -61,7 +61,7 @@ A minimal Pulumi project contains these files.
 
 The following structure shows the essential files every Pulumi project needs:
 
-```
+```text
 my-infrastructure/
 ├── Pulumi.yaml           # Project metadata
 ├── Pulumi.dev.yaml       # Dev stack configuration
@@ -96,7 +96,7 @@ config:
 
 For real-world projects, a more comprehensive structure provides better organization. Here is a layout that scales well with team size and complexity:
 
-```
+```text
 infrastructure/
 ├── Pulumi.yaml
 ├── Pulumi.dev.yaml
@@ -446,7 +446,7 @@ flowchart TB
 
 A monorepo works well when teams need to make cross-cutting changes frequently:
 
-```
+```text
 infrastructure/
 ├── packages/
 │   ├── networking/
@@ -638,7 +638,7 @@ Choose an organization strategy based on how your teams operate.
 
 Organize by infrastructure layer when a central platform team manages all infrastructure:
 
-```
+```text
 infrastructure/
 ├── network/                 # All networking resources
 │   ├── vpc.ts
@@ -666,7 +666,7 @@ infrastructure/
 
 Organize by business domain when product teams own their infrastructure:
 
-```
+```text
 infrastructure/
 ├── user-service/
 │   ├── api-gateway.ts

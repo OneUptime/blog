@@ -56,7 +56,7 @@ resource "aws_s3_bucket" "data" {
 
 Running Checkov against this gives you findings like:
 
-```
+```text
 FAILED: CKV_AWS_18 - Ensure the S3 bucket has access logging enabled
 FAILED: CKV_AWS_19 - Ensure the S3 bucket has server-side encryption
 FAILED: CKV_AWS_21 - Ensure the S3 bucket has versioning enabled

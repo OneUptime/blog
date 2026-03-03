@@ -30,7 +30,7 @@ graph TD
 
 Here is a full role that installs and configures a web server on any distribution:
 
-```
+```text
 roles/webserver/
   defaults/
     main.yml

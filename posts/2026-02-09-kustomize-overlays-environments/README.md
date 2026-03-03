@@ -20,7 +20,7 @@ This pattern follows the DRY principle by avoiding duplication while still allow
 
 Here's a typical Kustomize overlay structure:
 
-```
+```text
 app/
 ├── base/
 │   ├── deployment.yaml

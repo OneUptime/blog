@@ -22,7 +22,7 @@ Polyrepo makes sense when:
 
 Here is a typical polyrepo layout:
 
-```
+```text
 GitHub Organization
 ├── ansible-shared-roles/        # Shared roles repository
 ├── ansible-inventories/         # Inventory and variables
@@ -83,7 +83,7 @@ roles:
 
 Package shared roles and plugins into an Ansible collection for cleaner distribution:
 
-```
+```text
 ansible-collection-internal/
 ├── galaxy.yml
 ├── roles/

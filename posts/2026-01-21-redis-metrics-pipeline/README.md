@@ -19,7 +19,7 @@ A typical Redis-based metrics pipeline consists of:
 3. **Storage Layer**: Persists metrics with appropriate retention
 4. **Query Layer**: Serves data to dashboards and alerting systems
 
-```
+```text
 Applications --> Collection --> Aggregation --> Storage --> Query API
                     |               |              |
                     v               v              v

@@ -36,7 +36,7 @@ Verify your CNI supports NetworkPolicies before deploying them.
 
 ## Repository Structure
 
-```
+```text
 network-policies/
   base/
     default-deny-all.yaml

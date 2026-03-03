@@ -12,7 +12,7 @@ Running OpenTelemetry auto-instrumentation alongside Istio creates a subtle orde
 
 Istio injects an init container (`istio-init`) that sets up iptables rules to redirect all traffic through the Envoy sidecar. It also injects the `istio-proxy` sidecar container. The problem is the ordering:
 
-```
+```text
 Init containers (run sequentially):
   1. istio-init           -> Sets up iptables rules
   2. opentelemetry-auto-instrumentation -> Needs network access!
@@ -95,7 +95,7 @@ istioctl install --set components.cni.enabled=true
 
 With the CNI plugin, the flow becomes:
 
-```
+```text
 CNI sets up iptables (before pod starts)
 Init containers:
   1. opentelemetry-auto-instrumentation -> Works because CNI handles routing

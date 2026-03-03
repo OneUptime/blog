@@ -147,7 +147,7 @@ helm template myapp ./mychart -f values.yaml
 
 Kustomize patches base manifests without templating:
 
-```
+```text
 myapp/
 ├── base/
 │   ├── kustomization.yaml

@@ -25,7 +25,7 @@ Here is how to implement each pillar.
 
 Istio automatically provisions X.509 certificates for every workload with a sidecar. The identity is derived from the Kubernetes service account:
 
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 

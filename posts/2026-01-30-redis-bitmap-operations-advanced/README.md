@@ -40,7 +40,7 @@ This guide covers the core bitmap commands with practical examples, performance 
 
 A bitmap is fundamentally a string where each bit position represents a boolean value. Think of it as a giant array of 0s and 1s.
 
-```
+```text
 Position:  0 1 2 3 4 5 6 7 8 9 10 11 12 ...
 Value:     1 0 1 1 0 0 1 0 0 1  0  1  0 ...
 ```

@@ -209,7 +209,7 @@ docker exec mysql-master mysql -uroot -pmasterpass -e "SHOW MASTER STATUS\G"
 
 The output will show something like:
 
-```
+```text
 File: mysql-bin.000003
 Position: 785
 ```

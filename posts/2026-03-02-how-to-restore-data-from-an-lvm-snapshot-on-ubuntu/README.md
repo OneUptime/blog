@@ -18,7 +18,7 @@ Check what snapshots are available:
 sudo lvs -o name,origin,snap_percent,lv_attr
 ```
 
-```
+```text
   LV           Origin  Snap%  Attr
   db_data      data_vg        owi-aos---
   db_data_snap db_data 23.45  swi-a-s---
@@ -61,13 +61,13 @@ sudo lvconvert --merge /dev/data_vg/db_data_snap
 ```
 
 If the volume is inactive, the merge happens immediately:
-```
+```text
   Merging of volume data_vg/db_data_snap started.
   data_vg/db_data: Merged: 100.00%
 ```
 
 If the LV is active (mounted), the merge is scheduled for the next activation:
-```
+```text
   Merging of snapshot data_vg/db_data_snap will occur on next activation of data_vg/db_data.
 ```
 

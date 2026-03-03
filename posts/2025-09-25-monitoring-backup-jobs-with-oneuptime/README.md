@@ -84,7 +84,7 @@ flowchart LR
 2. Click **Create Monitor**
 3. Select **Incoming Request** as the monitor type
 4. Enter monitor details:
-   ```
+   ```text
    Monitor Name: Daily Database Backup
    Description: Monitors completion of nightly PostgreSQL backup job
    ```
@@ -93,7 +93,7 @@ flowchart LR
 
 Set up criteria for healthy backup behavior:
 
-```
+```text
 Monitor Criteria:
 - Incoming request received within last 24 hours (for daily backups)
 - Request method: POST (to send backup metadata)
@@ -104,7 +104,7 @@ Monitor Criteria:
 
 After creating the monitor, OneUptime provides a unique URL:
 
-```
+```text
 https://oneuptime.com.com/heartbeat/db_backup_abc123
 ```
 
@@ -362,7 +362,7 @@ def backup_to_s3(bucket, source_dir, prefix):
 
 Different backup types need different monitoring approaches:
 
-```
+```text
 Critical Database Backups:
 ├── Frequency: Every 4-6 hours
 ├── Alert threshold: 1 hour overdue
@@ -388,7 +388,7 @@ Incremental Backups:
 
 For complex backup workflows:
 
-```
+```text
 Pre-backup:
 ├── Send "preparing" heartbeat
 ├── Validate source availability
@@ -414,7 +414,7 @@ Post-backup:
 
 Set up cascading alerts based on severity:
 
-```
+```text
 Backup delayed (1 hour): Information alert
 Backup failed: Critical alert (immediate)
 Backup verification failed: Emergency alert
@@ -580,7 +580,7 @@ Track what each backup protects:
 For large organizations:
 
 **Centralized Dashboard:**
-```
+```text
 ├── Backup health overview
 ├── SLA compliance tracking
 ├── Failure trend analysis

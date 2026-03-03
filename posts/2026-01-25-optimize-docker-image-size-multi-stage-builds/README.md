@@ -267,7 +267,7 @@ dive myapp:latest
 
 A typical comparison shows dramatic improvements:
 
-```
+```text
 REPOSITORY    TAG           SIZE
 myapp         single-stage  1.2GB
 myapp         multi-stage   145MB

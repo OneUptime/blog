@@ -14,7 +14,7 @@ A well-designed key naming convention makes Redis data easier to understand, man
 
 The most widely adopted convention uses colons as separators, creating a hierarchical namespace:
 
-```
+```text
 object-type:id:field
 ```
 

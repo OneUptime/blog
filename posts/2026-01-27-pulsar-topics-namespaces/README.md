@@ -54,7 +54,7 @@ graph TD
 
 The full topic name follows this format:
 
-```
+```text
 {persistent|non-persistent}://tenant/namespace/topic
 ```
 
@@ -671,7 +671,7 @@ Consistent naming makes your Pulsar deployment easier to manage and monitor.
 
 ### Recommended Naming Patterns
 
-```
+```text
 Tenants:     {organization}-{environment}
              company-prod, company-staging, partner-a-prod
 

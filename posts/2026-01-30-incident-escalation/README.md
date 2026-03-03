@@ -735,7 +735,7 @@ const slackEscalationMessage = {
 
 Keep phone and SMS notifications brief but actionable:
 
-```
+```text
 SMS Template:
 [SEV-{{severity}}] {{incident_title}}
 Duration: {{duration}}

@@ -14,7 +14,7 @@ High-cardinality labels in Prometheus create performance problems. Each unique c
 
 Cardinality is the number of unique time series for a metric. A time series is defined by a metric name and its unique label combinations:
 
-```
+```text
 http_requests_total{method="GET", path="/api", status="200"}  # Series 1
 http_requests_total{method="POST", path="/api", status="200"} # Series 2
 http_requests_total{method="GET", path="/api", status="404"}  # Series 3
@@ -22,7 +22,7 @@ http_requests_total{method="GET", path="/api", status="404"}  # Series 3
 
 High cardinality occurs when label values have many unique combinations:
 
-```
+```text
 # Bad: user_id has millions of values
 http_requests_total{user_id="12345", method="GET"}
 http_requests_total{user_id="67890", method="GET"}

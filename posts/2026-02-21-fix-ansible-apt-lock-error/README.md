@@ -12,7 +12,7 @@ The "Failed to lock apt for exclusive operation" error means another process is 
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "Failed to lock apt for exclusive operation"
 }

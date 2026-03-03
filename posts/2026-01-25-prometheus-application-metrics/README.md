@@ -23,7 +23,7 @@ Choosing the right type depends on what you want to measure and how you want to 
 
 Follow Prometheus naming conventions for consistency:
 
-```
+```text
 # General format
 <namespace>_<subsystem>_<name>_<unit>
 

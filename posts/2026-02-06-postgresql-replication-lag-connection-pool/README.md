@@ -75,7 +75,7 @@ service:
 
 PostgreSQL streaming replication sends WAL (Write-Ahead Log) records from the primary to replicas. Replication lag is the delay between a write on the primary and when that write is visible on the replica.
 
-```
+```text
 postgresql.replication.data_delay - Replication lag in bytes
 ```
 
@@ -106,7 +106,7 @@ FROM pg_stat_replication;
 
 ### Active Connections
 
-```
+```text
 postgresql.backends - Number of active backend connections
 ```
 
@@ -149,7 +149,7 @@ receivers:
 ```
 
 Key PgBouncer metrics:
-```
+```text
 pgbouncer_pools_server_active   - Active server connections
 pgbouncer_pools_server_idle     - Idle server connections
 pgbouncer_pools_client_active   - Active client connections
@@ -160,7 +160,7 @@ pgbouncer_pools_client_waiting  - Clients waiting for a connection
 
 ### Deadlocks
 
-```
+```text
 postgresql.deadlocks - Total deadlocks detected (cumulative)
 deadlock_rate = rate(postgresql.deadlocks[5m])
 ```

@@ -33,7 +33,7 @@ docker version --format '{{.Server.Version}}'
 
 This happens when your Compose file declares a version that your installed Docker Compose does not understand.
 
-```
+```text
 ERROR: Version in "./docker-compose.yml" is unsupported. You might be seeing this error because you are using the wrong Compose file version.
 ```
 
@@ -103,7 +103,7 @@ docker ps --filter "label=com.docker.compose.service=webapp" --format "{{.Names}
 
 This happens when you use a configuration key that does not exist in your declared Compose file version.
 
-```
+```text
 ERROR: The Compose file './docker-compose.yml' is invalid because:
 Unsupported config option for services.webapp: 'deploy'
 ```

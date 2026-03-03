@@ -27,7 +27,7 @@ These reports are stored as Kubernetes custom resources, making them queryable w
 
 ## Repository Structure
 
-```
+```text
 security/
   trivy-operator/
     Chart.yaml

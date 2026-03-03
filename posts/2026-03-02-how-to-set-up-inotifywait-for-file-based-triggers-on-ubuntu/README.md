@@ -45,7 +45,7 @@ inotifywait -m -e modify,create /var/spool/uploads/
 
 ## Available Events
 
-```
+```text
 access      - File was read
 modify      - File was modified
 attrib      - Metadata changed (permissions, timestamps)

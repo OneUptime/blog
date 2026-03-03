@@ -12,7 +12,7 @@ Unauthorized errors from the Terraform Kubernetes provider mean that Terraform c
 
 ## What the Error Looks Like
 
-```
+```text
 Error: Unauthorized
 
 Error: the server has asked for the client to provide credentials
@@ -169,7 +169,7 @@ mapRoles: |
 
 Even if authentication succeeds, RBAC might deny the specific operation. The error will say "forbidden" rather than "unauthorized":
 
-```
+```text
 Error: deployments.apps is forbidden: User "terraform" cannot create
 resource "deployments" in API group "apps" in the namespace "production"
 ```
@@ -250,7 +250,7 @@ resource "kubernetes_role_binding" "terraform" {
 
 If Terraform shows up as `system:anonymous`, it means no valid credentials were presented at all:
 
-```
+```text
 User "system:anonymous" cannot create resource...
 ```
 

@@ -20,7 +20,7 @@ Handshake failures show up differently depending on which side you are looking a
 
 In the source pod's proxy logs, you will see entries like:
 
-```
+```text
 [2026-02-24T10:00:00.000Z] "- - -" 0 UF,URX upstream_reset_before_response_started{connection_failure,TLS_error:_268435581:SSL_routines:OPENSSL_internal:CERTIFICATE_VERIFY_FAILED} - "-" 0 0 5 - "-" "-" "-" "-" "10.244.1.15:8080" outbound|8080||my-service.production.svc.cluster.local - 10.244.1.15:8080 10.244.0.22:44100 - -
 ```
 
@@ -34,7 +34,7 @@ Key indicators:
 
 On the destination proxy, you might see:
 
-```
+```text
 [2026-02-24T10:00:00.000Z] "- - -" 0 - - - "-" 0 0 0 - "-" "-" "-" "-" "-" - - - - "-" - - - -
 ```
 
@@ -51,7 +51,7 @@ kubectl exec <dest-pod> -c istio-proxy -n <namespace> -- \
 
 This filters for non-zero SSL stats. The key counters:
 
-```
+```text
 listener.0.0.0.0_8080.ssl.connection_error: 15
 listener.0.0.0.0_8080.ssl.fail_verify_cert_hash: 0
 listener.0.0.0.0_8080.ssl.fail_verify_no_cert: 3

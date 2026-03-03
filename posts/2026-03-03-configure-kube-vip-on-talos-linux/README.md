@@ -239,7 +239,7 @@ For production Talos clusters, the defaults (5/3/1) provide a good balance. If y
 
 Both tools provide LoadBalancer service support. Here is when to choose each:
 
-```
+```text
 kube-vip:
 - Built-in control plane VIP (one tool for both needs)
 - Simpler setup (single DaemonSet)

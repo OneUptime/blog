@@ -219,7 +219,7 @@ images:
 
 The full project layout with components:
 
-```
+```text
 my-app/
   base/
     kustomization.yaml

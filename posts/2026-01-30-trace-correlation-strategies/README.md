@@ -37,13 +37,13 @@ Trace ID propagation is the foundation of all correlation. Without it, your span
 
 The industry has standardized on W3C Trace Context, which defines two HTTP headers:
 
-```
+```text
 traceparent: 00-{trace-id}-{parent-span-id}-{trace-flags}
 tracestate: vendor1=value1,vendor2=value2
 ```
 
 Example traceparent:
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 ```
 

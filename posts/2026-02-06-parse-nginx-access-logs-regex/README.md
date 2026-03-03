@@ -12,7 +12,7 @@ NGINX is the most widely deployed reverse proxy and web server. Parsing its acce
 
 NGINX ships with a default `combined` log format that looks like this:
 
-```
+```text
 172.16.0.1 - admin [06/Feb/2026:14:23:45 +0000] "POST /api/v2/orders HTTP/1.1" 201 892 "https://shop.example.com/checkout" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
 ```
 
@@ -47,7 +47,7 @@ log_format custom '$remote_addr - $remote_user [$time_local] '
 
 This produces log lines like:
 
-```
+```text
 172.16.0.1 - - [06/Feb/2026:14:23:45 +0000] "GET /api/users HTTP/1.1" 200 4521 "-" "curl/7.88.1" 0.042 0.039
 ```
 

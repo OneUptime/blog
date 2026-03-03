@@ -164,7 +164,7 @@ steps:
 
 A clean directory structure makes policies easier to manage and review:
 
-```
+```text
 project-root/
   policies/
     templates/          # Constraint templates (the schema)

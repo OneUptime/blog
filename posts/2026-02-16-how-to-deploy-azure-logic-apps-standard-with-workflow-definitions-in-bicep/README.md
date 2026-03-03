@@ -210,7 +210,7 @@ resource deployWorkflow 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
 
 In real-world projects, most teams keep workflow definitions as separate JSON files alongside their Bicep templates and deploy them using the Azure CLI in their CI/CD pipeline. Here is what that directory structure typically looks like:
 
-```
+```text
 infrastructure/
   main.bicep
   parameters.dev.json

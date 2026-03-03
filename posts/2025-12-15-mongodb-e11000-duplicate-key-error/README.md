@@ -14,7 +14,7 @@ The E11000 duplicate key error is one of the most common errors you will encount
 
 When MongoDB throws an E11000 error, it looks something like this:
 
-```
+```text
 MongoServerError: E11000 duplicate key error collection: mydb.users index: email_1 dup key: { email: "john@example.com" }
 ```
 

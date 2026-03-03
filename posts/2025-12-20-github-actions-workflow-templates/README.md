@@ -32,7 +32,7 @@ Workflow templates must be stored in an organization's `.github` repository. Eac
 
 ### Step 1: Set Up the Repository Structure
 
-```
+```text
 .github/
   workflow-templates/
     nodejs-ci.yml

@@ -174,7 +174,7 @@ rules:
 
 Span names are just as important as attributes. The semantic conventions specify patterns for span names based on the operation type:
 
-```
+```text
 HTTP spans:       "HTTP {method}"        -> "HTTP GET", "HTTP POST"
 Database spans:   "{operation} {target}" -> "SELECT users", "INSERT orders"
 Messaging spans:  "{destination} {op}"   -> "orders.queue send"

@@ -61,7 +61,7 @@ A playbook can now target either group:
 
 Instead of listing every file with `-i`, point Ansible at a directory. It will load every file inside that directory as an inventory source.
 
-```
+```text
 inventory/
   01-static-hosts.ini
   02-cloud-hosts.yml
@@ -135,7 +135,7 @@ With this setting, running `ansible-playbook site.yml` automatically loads every
 
 The most common pattern is separating inventories by environment.
 
-```
+```text
 inventories/
   production/
     hosts.ini
@@ -193,7 +193,7 @@ monitoring_enabled: false
 
 Another pattern splits inventory by team ownership.
 
-```
+```text
 inventory/
   platform-team/
     hosts.yml
@@ -287,7 +287,7 @@ This is important because editors often create backup files that could be accide
 
 You can mix static files and dynamic inventory scripts in the same directory:
 
-```
+```text
 inventory/
   01-static.ini           # Static hosts
   02-aws_ec2.yml          # AWS EC2 dynamic inventory plugin

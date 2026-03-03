@@ -359,7 +359,7 @@ import {
 
 Keep import blocks separate from your main configuration.
 
-```
+```text
 project/
   main.tf
   variables.tf

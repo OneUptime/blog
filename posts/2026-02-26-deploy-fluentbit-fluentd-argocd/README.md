@@ -30,7 +30,7 @@ For most Kubernetes deployments:
 
 ## Repository Structure
 
-```
+```text
 logging/
   fluent-bit/
     Chart.yaml

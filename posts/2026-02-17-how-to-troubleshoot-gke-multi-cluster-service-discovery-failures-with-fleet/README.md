@@ -34,7 +34,7 @@ flowchart LR
 ```
 
 The cross-cluster DNS name follows the format:
-```
+```text
 <service-name>.<namespace>.svc.clusterset.local
 ```
 

@@ -26,7 +26,7 @@ Each account needs its own Terraform state, its own provider configuration, and 
 
 Structure your repository so shared code lives in modules and account-specific configuration is minimal:
 
-```
+```text
 terraform/
   modules/
     vpc/

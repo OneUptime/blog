@@ -16,7 +16,7 @@ This guide covers concrete strategies for taming large Terraform configurations 
 
 The simplest first step is splitting your monolithic `main.tf` into multiple files. Terraform loads all `.tf` files in a directory as a single configuration, so splitting files is purely organizational with zero impact on behavior.
 
-```
+```text
 project/
   providers.tf      # Provider configuration
   variables.tf      # Input variables
@@ -120,7 +120,7 @@ resource "aws_instance" "app" {
 
 When a group of resources represents a logical component, extract it into a module:
 
-```
+```text
 project/
   main.tf
   modules/
@@ -175,7 +175,7 @@ The root module becomes a high-level description of your infrastructure. The det
 
 The single biggest performance improvement for large configurations is splitting into multiple state files. Instead of one Terraform workspace managing everything, split by lifecycle or team:
 
-```
+```text
 infrastructure/
   networking/         # VPC, subnets, transit gateways
     main.tf
@@ -223,7 +223,7 @@ Benefits of splitting state:
 
 When you have dozens of variables, organize them with `.tfvars` files:
 
-```
+```text
 project/
   variables.tf
   terraform.tfvars           # Common defaults

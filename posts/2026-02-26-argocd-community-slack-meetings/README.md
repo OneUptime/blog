@@ -25,7 +25,7 @@ The CNCF Slack workspace is open to everyone. Here is how to join:
 
 ### Key ArgoCD Channels
 
-```
+```text
 #argo-cd              - Main channel for ArgoCD questions and discussion
 #argo-cd-contributors - For people contributing code or docs to ArgoCD
 #argo-cd-dev          - Development discussions and PR reviews
@@ -45,7 +45,7 @@ To get the most helpful responses from the community, follow these practices:
 
 **Provide context upfront.** When asking for help, include your ArgoCD version, Kubernetes version, and relevant configuration.
 
-```
+```text
 Question: My application is stuck in "Progressing" state after sync.
 
 ArgoCD version: v2.10.2
@@ -60,7 +60,7 @@ status:
     status: Progressing
     message: "Waiting for rollout to finish: 0 of 3 updated replicas are available"
 ```
-```
+```text
 
 **Search before asking.** The channel has years of history. Many common questions have been answered multiple times. Use Slack's search functionality first.
 
@@ -96,7 +96,7 @@ A typical community meeting follows this structure:
    - Bug reports needing attention
    - User presentations
 4. Open discussion (15 minutes)
-```
+```text
 
 ### Presenting at a Community Meeting
 

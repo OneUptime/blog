@@ -317,7 +317,7 @@ spec:
 
 ## Repository Structure for Multi-Gateway Setup
 
-```
+```text
 api-gateway-config/
   base/
     kustomization.yaml

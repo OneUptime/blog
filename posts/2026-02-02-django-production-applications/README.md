@@ -18,7 +18,7 @@ A production-ready Django application handles errors gracefully, protects sensit
 
 A clean project structure makes your codebase easier to navigate and maintain. Here is a layout that works well for medium to large applications:
 
-```
+```text
 myproject/
 ├── config/
 │   ├── __init__.py

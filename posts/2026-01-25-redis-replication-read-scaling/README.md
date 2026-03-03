@@ -18,7 +18,7 @@ Redis replication is asynchronous by default, meaning replicas receive updates s
 
 A typical Redis replication setup consists of one master and multiple replicas:
 
-```
+```text
                     Writes
                       |
                       v

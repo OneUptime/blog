@@ -14,7 +14,7 @@ You deploy to Cloud Run and get hit with the dreaded "Container failed to start"
 
 The error shows up in the Cloud Run revision details:
 
-```
+```text
 Container failed to start. Failed to start and then listen on the port defined
 by the PORT environment variable when it is set, or on port 8080. Logs for
 this revision might contain more information.

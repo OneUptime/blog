@@ -63,7 +63,7 @@ The `path_relative_to_include()` function is the key piece here. It returns the 
 
 For example, if your directory structure looks like this:
 
-```
+```text
 infrastructure/
   terragrunt.hcl              # Root config with generate block
   dev/

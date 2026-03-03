@@ -294,7 +294,7 @@ A demand curve chart for individual products showing predicted demand at differe
 
 Create a DAX measure for the revenue impact of accepting all recommendations:
 
-```
+```text
 Total Revenue Impact =
 SUMX(
     PriceRecommendations,
@@ -304,7 +304,7 @@ SUMX(
 
 And a measure for the percentage of recommendations within safe bounds:
 
-```
+```text
 Safe Recommendations Pct =
 DIVIDE(
     COUNTROWS(FILTER(PriceRecommendations, ABS([Price Change Pct]) <= 10)),

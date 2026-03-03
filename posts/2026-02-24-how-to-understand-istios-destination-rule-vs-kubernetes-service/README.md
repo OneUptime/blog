@@ -327,7 +327,7 @@ Check what DestinationRule is applied to a service:
 istioctl proxy-config clusters deploy/frontend -n default | grep product-service
 ```
 
-```
+```text
 product-service.default.svc.cluster.local   8080   -     outbound   EDS
 product-service.default.svc.cluster.local   8080   v1    outbound   EDS
 product-service.default.svc.cluster.local   8080   v2    outbound   EDS

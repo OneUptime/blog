@@ -42,7 +42,7 @@ graph TD
 
 Organize your repo to support automated workflows:
 
-```
+```text
 ansible-gitops/
 ├── .github/
 │   └── workflows/

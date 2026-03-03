@@ -12,7 +12,7 @@ The `InvalidGroup.Duplicate` error occurs when Terraform tries to create a secur
 
 ## What the Error Looks Like
 
-```
+```text
 Error: error creating Security Group (my-security-group):
 InvalidGroup.Duplicate: The security group 'my-security-group'
 already exists for VPC 'vpc-0abc123def456789'

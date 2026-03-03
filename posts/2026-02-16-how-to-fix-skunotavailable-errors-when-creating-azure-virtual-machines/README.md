@@ -10,14 +10,14 @@ Description: Learn how to resolve SkuNotAvailable errors when creating Azure VMs
 
 You try to create a virtual machine in Azure, and the deployment fails with a SkuNotAvailable error. The full message typically looks like this:
 
-```
+```text
 The requested VM size Standard_D4s_v3 is not available in the current region.
 The following sizes are available in this region: Standard_D2s_v3, Standard_D8s_v3...
 ```
 
 Or sometimes:
 
-```
+```text
 The requested size for resource '/subscriptions/.../virtualMachines/myVM' is currently
 not available in location 'eastus' for subscription '<sub-id>'.
 Please try another size or deploy to a different location or zone.

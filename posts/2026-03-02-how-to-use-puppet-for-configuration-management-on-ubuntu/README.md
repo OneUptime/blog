@@ -40,7 +40,7 @@ sudo nano /etc/default/puppetserver
 
 Adjust the JVM heap size:
 
-```
+```text
 # For 4GB server, 1.5GB for Puppet is reasonable
 JAVA_ARGS="-Xms1536m -Xmx1536m -Xmn512m"
 ```
@@ -227,7 +227,7 @@ Puppet's EPP (Embedded Puppet) templates allow dynamic configurations:
 sudo nano /etc/puppetlabs/code/environments/production/modules/nginx/templates/vhost.epp
 ```
 
-```
+```text
 # Managed by Puppet - do not edit manually
 server {
     listen 80;

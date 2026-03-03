@@ -403,7 +403,7 @@ spec:
 
 Key metrics to watch:
 
-```
+```text
 # Request rate
 rate(nginx_ingress_controller_requests[5m])
 

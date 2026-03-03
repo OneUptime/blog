@@ -37,7 +37,7 @@ flowchart TB
 
 ### Chart Structure
 
-```
+```text
 common-lib/
 ├── Chart.yaml
 ├── values.yaml

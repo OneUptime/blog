@@ -118,7 +118,7 @@ sudo nano /opt/spark/conf/workers
 
 Add your worker hostnames:
 
-```
+```text
 spark-worker-01
 spark-worker-02
 ```
@@ -250,7 +250,7 @@ The history server lets you review completed job details after they finish:
 sudo nano /opt/spark/conf/spark-defaults.conf
 ```
 
-```
+```text
 # Enable event logging
 spark.eventLog.enabled           true
 spark.eventLog.dir               /var/log/spark/events

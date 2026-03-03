@@ -56,7 +56,7 @@ func main() {
 ```
 
 Output:
-```
+```text
 Size of Example: 24 bytes
 Alignment of Example: 8 bytes
 Offset of a: 0
@@ -114,7 +114,7 @@ func BenchmarkStringToBytesUnsafe(b *testing.B) {
 
 Typical results show significant performance differences:
 
-```
+```text
 BenchmarkStringToBytesSafe-8      20000000    60 ns/op    48 B/op    1 allocs/op
 BenchmarkStringToBytesUnsafe-8   500000000     2 ns/op     0 B/op    0 allocs/op
 ```
@@ -699,7 +699,7 @@ func (s *LockFreeStack) Pop() interface{} {
 
 Use this matrix to decide whether unsafe is appropriate:
 
-```
+```text
 | Factor                    | Safe Approach | Consider Unsafe |
 |---------------------------|---------------|-----------------|
 | Hot path (>1M calls/sec)  | No            | Yes             |

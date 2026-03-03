@@ -14,7 +14,7 @@ This post covers creating an Ansible role for MySQL configuration, including Inn
 
 ## Role Structure
 
-```
+```text
 roles/mysql_config/
   defaults/main.yml
   tasks/main.yml

@@ -98,7 +98,7 @@ Use Git branch protection as the approval gate. The production branch requires s
 
 Create a `CODEOWNERS` file:
 
-```
+```text
 # Production environment changes require platform team approval
 environments/production/** @org/platform-team @org/security-team
 

@@ -23,7 +23,7 @@ docker inspect --format '{{.LogPath}}' my-container
 
 This returns a path like:
 
-```
+```text
 /var/lib/docker/containers/a1b2c3d4.../a1b2c3d4...-json.log
 ```
 

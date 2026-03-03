@@ -520,7 +520,7 @@ docker buildx prune
 
 ### Without Caching
 
-```
+```text
 Build Time: 5m 30s
 - Pull base image: 45s
 - npm install: 3m 15s
@@ -529,7 +529,7 @@ Build Time: 5m 30s
 
 ### With Layer Caching
 
-```
+```text
 Build Time: 45s
 - Pull base image: CACHED
 - npm install: CACHED (package.json unchanged)

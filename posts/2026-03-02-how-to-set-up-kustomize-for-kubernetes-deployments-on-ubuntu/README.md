@@ -43,7 +43,7 @@ sudo mv kustomize /usr/local/bin/
 
 A typical Kustomize project separates base resources from environment-specific overlays:
 
-```
+```text
 k8s/
   base/
     kustomization.yaml

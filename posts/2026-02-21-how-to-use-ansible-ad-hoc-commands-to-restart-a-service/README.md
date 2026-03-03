@@ -21,7 +21,7 @@ ansible webservers -m service -a "name=nginx state=restarted" --become
 
 Output:
 
-```
+```text
 web1 | CHANGED => {
     "changed": true,
     "name": "nginx",

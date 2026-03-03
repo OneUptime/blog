@@ -150,7 +150,7 @@ The exact configuration depends on your router vendor, but the concept is the sa
 
 For routes advertised FROM your on-premises router TO GCP, set different MED values:
 
-```
+```text
 # On-premises router configuration (conceptual)
 # Active tunnel BGP session: advertise routes with MED 100
 # Passive tunnel BGP session: advertise routes with MED 200

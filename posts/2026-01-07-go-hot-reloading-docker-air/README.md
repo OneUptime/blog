@@ -42,7 +42,7 @@ Let's start by setting up our project structure. We'll create a simple Go web ap
 
 Here's the directory structure we'll create:
 
-```
+```text
 my-go-app/
 ├── .air.toml           # Air configuration file
 ├── Dockerfile          # Development Dockerfile
@@ -762,7 +762,7 @@ docker-compose logs -f app
 
 Once the services are running, you should see output like:
 
-```
+```text
 go-hot-reload-app  |
 go-hot-reload-app  |   __    _   ___
 go-hot-reload-app  |  / /\  | | | |_)
@@ -788,7 +788,7 @@ Now make a change to see hot reloading in action:
 
 The output will show something like:
 
-```
+```text
 go-hot-reload-app  | internal/handlers/handlers.go has changed
 go-hot-reload-app  | building...
 go-hot-reload-app  | running...

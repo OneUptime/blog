@@ -143,7 +143,7 @@ COPY . .
 CMD ["python", "app.py"]
 ```
 
-```
+```text
 # requirements.txt
 flask==3.0.0
 sentry-sdk[flask]==1.40.0

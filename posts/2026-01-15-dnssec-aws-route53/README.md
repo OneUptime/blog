@@ -292,7 +292,7 @@ aws route53 get-dnssec \
 
 This outputs something like:
 
-```
+```text
 12345 13 2 1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
 ```
 
@@ -385,7 +385,7 @@ dig +dnssec DNSKEY example.com
 
 You should see output containing DNSKEY records with the `ad` (authenticated data) flag set:
 
-```
+```text
 ;; flags: qr rd ra ad; QUERY: 1, ANSWER: 4, AUTHORITY: 0, ADDITIONAL: 1
 ```
 
@@ -397,7 +397,7 @@ dig +dnssec A example.com
 
 Look for RRSIG records in the response:
 
-```
+```text
 example.com.        300     IN      A       93.184.216.34
 example.com.        300     IN      RRSIG   A 13 2 300 20260215000000 20260115000000 12345 example.com. abc123...
 ```
@@ -412,7 +412,7 @@ delv @8.8.8.8 example.com A +rtrace
 
 Successful output shows:
 
-```
+```text
 ; fully validated
 example.com.        300     IN      A       93.184.216.34
 ```

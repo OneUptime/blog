@@ -132,7 +132,7 @@ When namespaces have different CAs, the trust boundary depends on whether they s
 
 If both namespace CAs are signed by the same root CA, workloads can still verify each other's certificates by trusting the root. This gives you separate signing authorities while maintaining mesh-wide communication:
 
-```
+```text
 Root CA (shared)
   ├── team-alpha Intermediate CA
   │     └── team-alpha workload certs

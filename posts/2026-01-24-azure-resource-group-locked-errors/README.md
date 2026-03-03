@@ -50,14 +50,14 @@ flowchart TB
 
 ## Common Error Messages
 
-```
+```text
 The scope '/subscriptions/.../resourceGroups/prod-rg' cannot perform
 delete operation because following scope(s) are locked:
 '/subscriptions/.../resourceGroups/prod-rg'.
 Please remove the lock and try again.
 ```
 
-```
+```text
 The resource 'myvm' cannot be modified because it or its parent
 is locked. Lock ID: '/subscriptions/.../providers/Microsoft.Authorization/locks/NoDelete'
 ```

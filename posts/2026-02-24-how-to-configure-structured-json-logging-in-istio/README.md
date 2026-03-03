@@ -166,7 +166,7 @@ spec:
 
 With this enabled, Istiod logs change from text format:
 
-```
+```text
 2026-02-24T10:00:00.000000Z	info	ads	Push debounce stable 5 for: 100ms
 ```
 
@@ -244,7 +244,7 @@ curl -s "http://elasticsearch:9200/istio-*/_search" -H 'Content-Type: applicatio
 }'
 ```
 
-```
+```text
 # Loki: Find slow requests
 {namespace="default"} | json | duration > 1000
 ```

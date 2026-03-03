@@ -136,7 +136,7 @@ end
 
 Organize your translation files for maintainability:
 
-```
+```text
 config/
   locales/
     en.yml              # English defaults (Rails provides this)

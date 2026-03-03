@@ -48,13 +48,13 @@ This shows you the full certificate chain, including the root CA cert, the workl
 
 Istio uses the SPIFFE (Secure Production Identity Framework for Everyone) standard for workload identities. Every workload gets a SPIFFE ID encoded in the SAN field of its certificate. The format is:
 
-```
+```text
 spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 
 For example, a pod running in the `default` namespace with the `my-api` service account in a cluster with the trust domain `cluster.local` gets:
 
-```
+```text
 spiffe://cluster.local/ns/default/sa/my-api
 ```
 
@@ -77,7 +77,7 @@ istioctl proxy-config secret <pod-name> -o json | \
 
 This will show you something like:
 
-```
+```text
 Certificate:
     Data:
         Version: 3 (0x2)
@@ -111,7 +111,7 @@ Notice a few things here:
 
 Istio uses a chain of trust:
 
-```
+```text
 Root CA Certificate
   └── Intermediate CA Certificate (istiod's CA)
        └── Workload Certificate (sidecar)

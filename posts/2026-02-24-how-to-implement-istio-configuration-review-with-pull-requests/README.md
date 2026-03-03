@@ -242,7 +242,7 @@ Create a PR template that guides reviewers:
 
 Route reviews to the right people:
 
-```
+```text
 # .github/CODEOWNERS
 
 # Platform changes need platform team review

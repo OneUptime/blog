@@ -253,7 +253,7 @@ kubectl describe canary podinfo
 
 You will see events like this as Flagger progresses through the rollout:
 
-```
+```text
 Starting canary analysis for podinfo.default
 Advance podinfo.default canary weight 10
 Advance podinfo.default canary weight 20
@@ -297,7 +297,7 @@ kubectl set image deployment/podinfo \
 
 Flagger will detect the drop in success rate and roll back.
 
-```
+```text
 Halt podinfo.default advancement success rate 82.33% < 99%
 Rolling back podinfo.default failed checks threshold reached 5
 Canary failed! Scaling down podinfo.default

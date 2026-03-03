@@ -271,7 +271,7 @@ rules:
 
 Cortex Query Language (CQL) lets you write custom rules for scorecards. Here are ArgoCD-specific CQL expressions:
 
-```
+```text
 # Check if service is managed by ArgoCD
 custom("argocd", "sync_status") != null
 

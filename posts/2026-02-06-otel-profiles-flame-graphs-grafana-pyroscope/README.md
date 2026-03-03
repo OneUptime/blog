@@ -66,13 +66,13 @@ In Pyroscope's UI, you can toggle between flame graph and icicle chart views wit
 
 Pyroscope supports label-based queries. If your OpenTelemetry profiling agent tags profiles with resource attributes, you can filter by them:
 
-```
+```text
 process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name="checkout-service"}
 ```
 
 This query fetches CPU profiles specifically for the checkout service. You can add more label filters:
 
-```
+```text
 process_cpu:cpu:nanoseconds:cpu:nanoseconds{
   service_name="checkout-service",
   deployment_environment="production"
@@ -100,7 +100,7 @@ Once connected, you can build dashboards that combine flame graphs with metrics 
 
 One of the most powerful features is the comparison view. Select two time ranges, say before and after a deployment, and Pyroscope renders a diff flame graph. Functions that got slower appear in red, and functions that got faster appear in green.
 
-```
+```text
 # In the Pyroscope UI:
 # 1. Select baseline time range (e.g., last Tuesday 14:00-15:00)
 # 2. Select comparison time range (e.g., today 14:00-15:00)

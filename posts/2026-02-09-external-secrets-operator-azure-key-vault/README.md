@@ -563,7 +563,7 @@ kubectl logs -n external-secrets-system -l app.kubernetes.io/name=external-secre
 
 Healthy ExternalSecret shows:
 
-```
+```text
 Status:
   Conditions:
     Last Transition Time:  2026-02-09T10:00:00Z

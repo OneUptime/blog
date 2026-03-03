@@ -33,7 +33,7 @@ These two charts give you the foundation of cluster health. If nodes are maxed o
 
 Here is how to configure a node CPU utilization chart using MQL:
 
-```
+```text
 # Node CPU utilization as a fraction across all nodes
 fetch k8s_node
 | metric 'kubernetes.io/node/cpu/allocatable_utilization'
@@ -43,7 +43,7 @@ fetch k8s_node
 
 For memory, use a similar query:
 
-```
+```text
 # Node memory utilization across all nodes
 fetch k8s_node
 | metric 'kubernetes.io/node/memory/allocatable_utilization'
@@ -57,7 +57,7 @@ Knowing how many pods are in each phase (Running, Pending, Failed, Succeeded) is
 
 This metric visualization uses the pod phase metric:
 
-```
+```text
 # Count of pods by phase
 fetch k8s_pod
 | metric 'kubernetes.io/pod/phase'
@@ -69,7 +69,7 @@ fetch k8s_pod
 
 Frequent container restarts signal crashlooping applications. This is one of the most important operational metrics to track:
 
-```
+```text
 # Container restart count by pod and container name
 fetch k8s_container
 | metric 'kubernetes.io/container/restart_count'
@@ -149,7 +149,7 @@ Based on running GKE in production, here are the metrics I always include on my 
 
 One of the biggest waste areas in Kubernetes is over-provisioning. Comparing what pods request versus what they actually use helps you right-size your workloads.
 
-```
+```text
 # CPU requested vs actually used per namespace
 fetch k8s_container
 | metric 'kubernetes.io/container/cpu/request_utilization'
@@ -163,7 +163,7 @@ If request utilization is consistently below 30 percent, your pods are requestin
 
 Network issues in GKE can be tricky to diagnose. Having throughput charts per node makes it easier to spot anomalies:
 
-```
+```text
 # Network bytes received per node
 fetch k8s_node
 | metric 'kubernetes.io/node/network/received_bytes_count'
@@ -175,7 +175,7 @@ fetch k8s_node
 
 If your workloads use persistent volumes, tracking usage prevents outages caused by full disks:
 
-```
+```text
 # PVC usage as a fraction of capacity
 fetch k8s_pod
 | metric 'kubernetes.io/pod/volume/utilization'

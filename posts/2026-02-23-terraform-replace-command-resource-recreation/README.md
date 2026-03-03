@@ -53,7 +53,7 @@ terraform plan -replace="aws_instance.web"
 
 The plan output will show the resource marked with `# forces replacement`:
 
-```
+```text
 # aws_instance.web must be replaced
 -/+ resource "aws_instance" "web" {
       ~ id            = "i-0abc123def456" -> (known after apply)
@@ -223,7 +223,7 @@ terraform apply -replace="aws_instance.web"
 
 When you run a replacement, the plan output uses specific symbols:
 
-```
+```text
 Terraform will perform the following actions:
 
   # aws_instance.web will be replaced, as requested

@@ -101,7 +101,7 @@ The installation takes 5-10 minutes. When complete, remove the USB drive and reb
 
 After reboot, Proxmox VE starts automatically. Access the web interface:
 
-```
+```text
 https://<your-proxmox-ip>:8006
 ```
 
@@ -137,7 +137,7 @@ cat /etc/network/interfaces
 
 A typical configuration looks like:
 
-```
+```text
 # Loopback interface
 auto lo
 iface lo inet loopback

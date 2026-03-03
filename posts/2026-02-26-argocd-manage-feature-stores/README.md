@@ -42,7 +42,7 @@ graph TB
 
 Organize your feature store Git repository:
 
-```
+```text
 feature-store/
   infrastructure/
     base/

@@ -40,7 +40,7 @@ The key configuration change is pointing your Kafka client at the Event Hubs end
 
 Your Event Hubs Kafka endpoint follows this format:
 
-```
+```text
 <namespace-name>.servicebus.windows.net:9093
 ```
 

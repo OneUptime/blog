@@ -229,7 +229,7 @@ tftp 192.168.1.10 -c put upload.txt
 
 ### Cisco Router Example
 
-```
+```text
 ! Save configuration to TFTP
 copy running-config tftp:
 ! Enter TFTP server IP: 192.168.1.10
@@ -243,7 +243,7 @@ copy tftp: running-config
 
 ### Cisco Switch Firmware Update
 
-```
+```text
 ! Download new firmware
 copy tftp: flash:
 ! Enter TFTP server IP: 192.168.1.10
@@ -259,7 +259,7 @@ sudo chown -R tftp:tftp /srv/tftp
 sudo chmod -R 755 /srv/tftp
 ```
 
-```
+```text
 /srv/tftp/
 ├── configs/
 │   ├── router/
@@ -301,7 +301,7 @@ sudo tail -f /var/log/syslog | grep tftp
 sudo nano /etc/rsyslog.d/tftpd.conf
 ```
 
-```
+```text
 # Log TFTP to separate file
 if $programname == 'tftpd' then /var/log/tftpd.log
 & stop
@@ -353,7 +353,7 @@ sudo apt install xinetd -y
 sudo nano /etc/xinetd.d/tftp
 ```
 
-```
+```text
 service tftp
 {
     socket_type     = dgram

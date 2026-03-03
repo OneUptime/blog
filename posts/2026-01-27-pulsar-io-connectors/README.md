@@ -403,7 +403,7 @@ When built-in connectors don't meet your needs, you can build custom connectors.
 
 ### Project Structure
 
-```
+```text
 pulsar-io-webhook/
 ├── pom.xml
 ├── src/

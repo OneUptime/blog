@@ -1261,7 +1261,7 @@ class VarsModule(BaseVarsPlugin):
 
 Organize your vars plugins following Ansible conventions:
 
-```
+```text
 project/
 |-- ansible.cfg
 |-- inventory/

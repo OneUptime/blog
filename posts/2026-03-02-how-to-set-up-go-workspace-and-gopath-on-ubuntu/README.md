@@ -32,7 +32,7 @@ go env GOROOT
 
 ## The Go Workspace Directory Structure
 
-```
+```text
 $HOME/go/                     <- GOPATH root
 ├── bin/                      <- Installed binaries (go install)
 │   ├── gopls
@@ -78,7 +78,7 @@ go mod init github.com/yourusername/myapp
 
 This creates `go.mod`:
 
-```
+```text
 module github.com/yourusername/myapp
 
 go 1.22
@@ -88,7 +88,7 @@ go 1.22
 
 A typical Go project:
 
-```
+```text
 myapp/
 ├── go.mod              <- Module definition and dependencies
 ├── go.sum              <- Checksums for dependency verification
@@ -127,7 +127,7 @@ go mod tidy
 
 After `go get`, the `go.mod` is updated:
 
-```
+```text
 module github.com/yourusername/myapp
 
 go 1.22
@@ -166,7 +166,7 @@ go work use ~/projects/myapp
 
 This creates a `go.work` file:
 
-```
+```text
 go 1.22
 
 use (

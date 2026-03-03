@@ -31,7 +31,7 @@ Before starting, ensure you have:
 
 ### Data Flow
 
-```
+```text
 Distributor -> Ingester (Memory + WAL) -> Object Storage
                     |
               Replication to N ingesters

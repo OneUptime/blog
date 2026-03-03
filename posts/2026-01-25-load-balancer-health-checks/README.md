@@ -547,7 +547,7 @@ flowchart TB
 
 ### Timing Configuration
 
-```
+```text
 # Recommended health check intervals
 
 ## High Traffic / Critical Services

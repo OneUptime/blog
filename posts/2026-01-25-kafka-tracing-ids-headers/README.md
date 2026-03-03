@@ -366,7 +366,7 @@ public class TracingTransformer implements
 
 With proper propagation, traces show the complete message flow in Jaeger, Zipkin, or your observability platform.
 
-```
+```text
 Trace: abc123
   |
   +-- [API Gateway] POST /orders (45ms)

@@ -14,7 +14,7 @@ Terraform frequently works with JSON data, whether you are parsing API responses
 
 JSON decode errors in Terraform look like this:
 
-```
+```text
 Error: Error in function call
 
   on main.tf line 5, in locals:
@@ -26,7 +26,7 @@ beginning of object key string.
 
 Or:
 
-```
+```text
 Error: Error in function call
 
 Call to function "jsondecode" failed: unexpected end of JSON input.

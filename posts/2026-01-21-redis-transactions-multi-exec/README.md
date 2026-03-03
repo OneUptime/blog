@@ -18,7 +18,7 @@ This guide covers Redis transaction fundamentals, practical patterns, error hand
 
 ### How MULTI/EXEC Works
 
-```
+```text
 Normal Execution (commands interleaved):
 ─────────────────────────────────────────────────────
 Client A: SET balance:A 100
@@ -168,7 +168,7 @@ func main() {
 
 WATCH provides optimistic locking - the transaction only executes if watched keys haven't changed since WATCH was called.
 
-```
+```text
 With WATCH (optimistic locking):
 ─────────────────────────────────────────────────────
 Client A: WATCH balance:A

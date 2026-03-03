@@ -14,7 +14,7 @@ The `http` data source in Terraform makes HTTP requests during the plan phase to
 
 HTTP data source timeout errors look like this:
 
-```
+```text
 Error: Error making request
 
   on main.tf line 1, in data "http" "api_config":
@@ -26,7 +26,7 @@ dial tcp 203.0.113.1:443: i/o timeout
 
 Or:
 
-```
+```text
 Error: Error making request
 
 Error making request: Get "https://api.example.com/config":
@@ -121,7 +121,7 @@ The `http` data source respects standard proxy environment variables.
 
 Certificate verification failures look like:
 
-```
+```text
 Error: Error making request
 
 Error making request: Get "https://api.example.com/config":
@@ -328,7 +328,7 @@ resource "null_resource" "wait_for_lb" {
 
 If you make too many HTTP requests (multiple data sources hitting the same API), you might get rate-limited:
 
-```
+```text
 Error: Error making request
 
 Error making request: Get "https://api.example.com/config":

@@ -24,7 +24,7 @@ flowchart TD
 
 Organize code for testability:
 
-```
+```text
 serverless-app/
     src/
         handlers/

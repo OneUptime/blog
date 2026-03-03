@@ -244,28 +244,28 @@ Rough pricing (varies by region): approximately $0.01-0.05 per GB per month for 
 Here are common retention patterns based on compliance requirements:
 
 **Minimal compliance (most applications)**:
-```
+```text
 Weekly: 4 weeks
 Monthly: 3 months
 Yearly: none
 ```
 
 **Standard compliance (financial services, healthcare)**:
-```
+```text
 Weekly: 5 weeks
 Monthly: 12 months
 Yearly: 7 years (week 1)
 ```
 
 **Maximum compliance (heavily regulated industries)**:
-```
+```text
 Weekly: 5 weeks
 Monthly: 12 months
 Yearly: 10 years (week 1)
 ```
 
 **Development/testing (minimal retention)**:
-```
+```text
 Weekly: 0
 Monthly: 1 month
 Yearly: none

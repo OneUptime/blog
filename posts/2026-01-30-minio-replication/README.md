@@ -132,7 +132,7 @@ mc admin bucket remote add source-minio/my-bucket \
 ```
 
 The command returns an ARN like:
-```
+```text
 arn:minio:replication::unique-id:my-bucket-replica
 ```
 

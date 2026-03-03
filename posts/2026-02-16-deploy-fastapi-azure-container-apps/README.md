@@ -152,7 +152,7 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", 
 
 And the requirements.txt.
 
-```
+```text
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
 pydantic>=2.5.0

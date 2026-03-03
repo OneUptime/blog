@@ -18,7 +18,7 @@ ZFS makes failed disks obvious in pool status:
 sudo zpool status -v
 ```
 
-```
+```text
   pool: tank
  state: DEGRADED
 status: One or more devices has been removed by the administrator.
@@ -75,7 +75,7 @@ sudo zpool status tank
 
 If the pool was created with by-id paths:
 
-```
+```text
           mirror-0          DEGRADED
             ata-WDC-disk1   ONLINE
             ata-WDC-disk2   FAULTED
@@ -101,7 +101,7 @@ Verify it's offline:
 sudo zpool status tank | grep sdc
 ```
 
-```
+```text
             sdc             OFFLINE
 ```
 
@@ -157,7 +157,7 @@ After the replace command, ZFS immediately starts resilvering - copying data fro
 sudo zpool status tank
 ```
 
-```
+```text
   pool: tank
  state: DEGRADED
 status: One or more devices is currently being resilvered.
@@ -187,7 +187,7 @@ The resilver time depends on pool size, disk speed, and system load. For a 4TB p
 watch -n 30 'sudo zpool status tank | grep -E "scan:|done"'
 ```
 
-```
+```text
   scan: resilver in progress since Mon Mar  2 14:00:00 2026
         3.21T scanned at 412M/s, 2.88T issued at 370M/s, 4.00T total
         0 repaired, 72.01% done, 00:52:07 to go
@@ -214,7 +214,7 @@ sudo zpool status tank
 
 After successful resilver:
 
-```
+```text
   pool: tank
  state: ONLINE
   scan: resilvered 4.00T in 04:12:33 with 0 errors on Mon Mar  2 18:12:33 2026
@@ -253,7 +253,7 @@ If you have a hot spare configured:
 sudo zpool status tank
 ```
 
-```
+```text
         spares
           sde    AVAIL
 ```
@@ -285,7 +285,7 @@ RAIDZ disk replacement follows the same process - the resilver will reconstruct 
 sudo zpool status raidz_pool
 ```
 
-```
+```text
           raidz2-0          DEGRADED
             sdb             ONLINE
             sdc             FAULTED    <- This disk failed

@@ -103,7 +103,7 @@ Since Darkstat is bound to localhost on port 667, you access it differently depe
 
 Open a browser and navigate to:
 
-```
+```text
 http://localhost:667
 ```
 
@@ -144,7 +144,7 @@ The Graphs section shows traffic over time using hourly and daily views. The dat
 
 You can export raw statistics via the built-in URL:
 
-```
+```text
 http://localhost:667/hosts.html?full=1
 ```
 

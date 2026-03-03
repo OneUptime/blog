@@ -318,7 +318,7 @@ This playbook deploys application-specific CSP configurations:
 
 The template for generating CSP snippets:
 
-```
+```text
 # templates/csp_snippet.j2 - CSP configuration for {{ item.key }}
 # Server: {{ item.value.server_name }}
 # Managed by Ansible

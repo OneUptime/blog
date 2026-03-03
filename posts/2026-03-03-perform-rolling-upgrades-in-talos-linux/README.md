@@ -31,7 +31,7 @@ The upgrade order matters. Control plane nodes should be upgraded before worker 
 - etcd quorum must be maintained throughout the upgrade
 - Worker node kubelets must be compatible with the control plane version
 
-```
+```text
 Recommended Order:
   1. Control plane node 1
   2. Control plane node 2

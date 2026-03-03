@@ -114,7 +114,7 @@ all:
 
 For larger infrastructures, split inventory into multiple files organized by concern.
 
-```
+```text
 inventory/
 ├── hosts.yml                    # Main host definitions
 ├── group_vars/
@@ -241,7 +241,7 @@ postgresql_effective_cache_size: 3GB
 
 Separate inventories per environment for safety.
 
-```
+```text
 inventory/
 ├── production/
 │   ├── hosts.yml

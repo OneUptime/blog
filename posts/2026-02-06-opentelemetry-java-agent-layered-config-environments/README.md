@@ -407,7 +407,7 @@ java -javaagent:/opt/opentelemetry-javaagent.jar -jar application.jar
 
 The agent logs will show configuration resolution:
 
-```
+```text
 [otel.javaagent] Resolving otel.service.name
 [otel.javaagent] - System property: null
 [otel.javaagent] - Environment variable OTEL_SERVICE_NAME: payment-service

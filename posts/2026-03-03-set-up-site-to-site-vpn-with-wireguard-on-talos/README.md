@@ -18,7 +18,7 @@ Before configuring anything, plan your network topology. A site-to-site VPN conn
 
 Here is a typical two-site setup:
 
-```
+```text
 Site A (Data Center)              Site B (Cloud)
   Node CIDR: 10.1.0.0/24           Node CIDR: 10.2.0.0/24
   Pod CIDR:  10.244.0.0/17         Pod CIDR:  10.244.128.0/17

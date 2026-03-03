@@ -229,7 +229,7 @@ istioctl analyze -n payments
 
 Once you have egress configured, you want visibility into it. Istio automatically generates metrics for all traffic, including egress. You can query Prometheus for external API call patterns:
 
-```
+```text
 istio_requests_total{destination_service="api.stripe.com", reporter="source"}
 ```
 

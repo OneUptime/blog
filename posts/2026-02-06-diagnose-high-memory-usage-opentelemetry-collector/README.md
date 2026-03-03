@@ -51,7 +51,7 @@ curl -s http://localhost:8888/metrics | grep "process_runtime"
 
 These metrics tell you how much memory the Go runtime has allocated and how much is actually in use:
 
-```
+```text
 # HELP process_runtime_total_alloc_bytes Cumulative bytes allocated for heap objects
 process_runtime_total_alloc_bytes 4.523e+10
 
@@ -75,7 +75,7 @@ curl -s http://localhost:8888/metrics | grep "exporter_queue"
 
 Look for these patterns:
 
-```
+```text
 # Queue size approaching capacity indicates the exporter cannot keep up
 otelcol_exporter_queue_size{exporter="otlp"} 950
 otelcol_exporter_queue_capacity{exporter="otlp"} 1000
@@ -86,7 +86,7 @@ otelcol_exporter_send_failed_spans{exporter="otlp"} 45000
 
 A full or nearly full queue means the backend is not consuming data fast enough. Every batch sitting in the queue consumes memory. To calculate the memory impact:
 
-```
+```text
 Queue memory = queue_size * average_batch_size * average_item_size
 ```
 
@@ -158,7 +158,7 @@ go tool pprof -top heap.prof
 
 The pprof output shows which functions allocated the most memory:
 
-```
+```text
 # Example pprof top output
 Type: inuse_space
 Showing top 10 nodes out of 150
@@ -194,7 +194,7 @@ service:
 
 Look for attributes with high cardinality in the debug output:
 
-```
+```text
 # High cardinality attributes that waste memory:
 # - request.id (unique per request)
 # - user.session_id (unique per session)
@@ -259,7 +259,7 @@ go tool pprof -base heap_baseline.prof -top heap_30min.prof
 
 The diff output shows allocations that grew between the two snapshots:
 
-```
+```text
 # Example diff output showing a potential leak
 Type: inuse_space
 Showing top nodes with growth
@@ -341,7 +341,7 @@ processors:
 
 Memory requirements scale with data throughput. You can estimate the needed memory based on your traffic:
 
-```
+```text
 Base memory (Go runtime + collector overhead): ~100 MB
 Receiver buffer: ~50-100 MB per 10K spans/sec
 Batch processor: batch_size * avg_span_size * num_pipelines
@@ -351,7 +351,7 @@ Tail sampling (if used): num_traces * avg_spans_per_trace * avg_span_size
 
 For a collector handling 50,000 spans per second with a batch size of 512, queue size of 500, and average span size of 2 KB:
 
-```
+```text
 Base:           100 MB
 Receivers:      500 MB  (50K spans/sec * buffer time)
 Batch proc:      1 MB   (512 * 2 KB)

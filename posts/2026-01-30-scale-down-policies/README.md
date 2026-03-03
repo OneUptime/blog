@@ -403,7 +403,7 @@ Consider these factors:
 
 **Example calculation:**
 
-```
+```text
 Minimum baseline traffic: 100 RPS
 Each pod handles: 50 RPS
 Pod startup time: 30 seconds

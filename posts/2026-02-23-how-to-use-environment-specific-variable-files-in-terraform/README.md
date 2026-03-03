@@ -16,7 +16,7 @@ This post covers the patterns for organizing tfvars files, selecting them at app
 
 Create a separate `.tfvars` file for each environment:
 
-```
+```text
 infrastructure/
   main.tf
   variables.tf
@@ -80,7 +80,7 @@ terraform apply -var-file="envs/production.tfvars"
 
 Some values are the same across all environments. Put those in a shared file:
 
-```
+```text
 infrastructure/
   main.tf
   variables.tf
@@ -194,7 +194,7 @@ terraform plan -var-file="envs/${WORKSPACE}.tfvars"
 
 Different environments should use different state files. Use backend configuration files alongside your variable files:
 
-```
+```text
 infrastructure/
   main.tf
   variables.tf
@@ -242,7 +242,7 @@ Secrets should not be in your tfvars files that get committed to version control
 
 ### Approach 1: Separate Secrets Files (gitignored)
 
-```
+```text
 infrastructure/
   .gitignore
   envs/

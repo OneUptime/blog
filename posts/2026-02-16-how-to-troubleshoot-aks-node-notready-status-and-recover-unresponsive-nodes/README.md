@@ -37,7 +37,7 @@ kubectl describe node <node-name>
 
 Look at the Conditions section in the describe output. Each condition tells you something specific.
 
-```
+```text
 Conditions:
   Type                 Status  Reason
   ----                 ------  ------

@@ -1153,7 +1153,7 @@ jobs:
     with:
       base64-subjects: "${{ needs.build.outputs.hashes }}"
       upload-assets: true
-```
+```text
 
 ## Security Best Practices
 
@@ -1234,7 +1234,7 @@ All signing events are recorded in the Rekor transparency log. You can search fo
 ```bash
 rekor-cli search --artifact myapp-linux-amd64
 ```
-```
+```text
 
 ## Conclusion
 
@@ -1252,3 +1252,5 @@ Key takeaways:
 The investment in proper code signing pays dividends in user trust, security incident prevention, and compliance requirements. As supply chain attacks continue to evolve, having cryptographic proof of authenticity becomes increasingly valuable.
 
 Start with the basics and gradually adopt more comprehensive measures. Even simple signature verification significantly raises the bar for attackers and demonstrates your commitment to security.
+
+```

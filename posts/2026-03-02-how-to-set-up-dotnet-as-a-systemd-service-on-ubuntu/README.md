@@ -144,7 +144,7 @@ Create the environment file for secrets:
 sudo nano /var/www/myapp/.env
 ```
 
-```
+```text
 ConnectionStrings__DefaultConnection=Server=localhost;Database=mydb;User Id=dbuser;Password=secretpassword;
 JWT__Secret=your-jwt-secret-here
 ExternalApi__Key=your-api-key

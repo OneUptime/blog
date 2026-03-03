@@ -219,7 +219,7 @@ const responseMergeDuration = meter.createHistogram('federation.response_merge.d
 
 A well-instrumented federated query produces a trace like this:
 
-```
+```text
 Router: POST /graphql                           [=====================================]
   Query Planning                                [===]
   Subgraph Fetch: users                         [==========]

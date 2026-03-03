@@ -98,7 +98,7 @@ Look for response flags in the log entries. The relevant flags for timeout issue
 
 A typical timeout log entry looks like:
 
-```
+```text
 [2026-02-24T10:30:45.123Z] "GET /api/data HTTP/1.1" 504 UT "-"
   upstream_service_time: "-" "my-service.default.svc.cluster.local:8080"
 ```

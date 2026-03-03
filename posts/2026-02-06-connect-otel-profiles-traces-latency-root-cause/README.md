@@ -193,7 +193,7 @@ Here is a practical example of using trace-profile correlation to find a latency
 3. The `calculateTax` span is the bottleneck. You click on it to see the associated profile data.
 
 4. The profile shows the CPU was spending most of its time in:
-   ```
+   ```text
    calculateTax (tax.go:45)
      -> lookupTaxRate (tax.go:112)
        -> json.Unmarshal (encoding/json/decode.go:96)

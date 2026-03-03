@@ -285,7 +285,7 @@ kubectl get pods -n production -o json | \
 
 ### Common Violation Messages
 
-```
+```text
 Error: pods "myapp" is forbidden: violates PodSecurity "restricted:latest":
   allowPrivilegeEscalation != false
   unrestricted capabilities

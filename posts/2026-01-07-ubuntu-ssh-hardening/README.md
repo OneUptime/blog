@@ -52,7 +52,7 @@ ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
 
 You will be prompted for a file location and passphrase:
 
-```
+```text
 Enter file in which to save the key (/home/user/.ssh/id_ed25519):
 Enter passphrase (empty for no passphrase):
 Enter same passphrase again:
@@ -543,7 +543,7 @@ google-authenticator
 
 Answer the prompts:
 
-```
+```text
 Do you want authentication tokens to be time-based (y/n) y
 
 # A QR code will be displayed - scan it with your authenticator app

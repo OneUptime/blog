@@ -30,7 +30,7 @@ Not every WireGuard peer needs keepalive. Here are the scenarios where you shoul
 
 This is the most common reason. If a Talos node sits behind a NAT device (a home router, a cloud NAT gateway, or a corporate firewall), you need keepalive to maintain the NAT mapping.
 
-```
+```text
 [Talos Node] --> [NAT Router] --> [Internet] --> [Remote Peer]
 
 Without keepalive:
@@ -216,7 +216,7 @@ Keepalive packets are tiny. Each keepalive is a WireGuard packet with no payload
 
 For a cluster with 10 nodes in a full mesh (each node has 9 peers), the keepalive overhead per node is about 3.6 KB per minute, or 216 KB per hour. This is negligible for any modern network.
 
-```
+```text
 Per peer keepalive overhead:
   Packet size: ~128 bytes
   Interval: 25 seconds

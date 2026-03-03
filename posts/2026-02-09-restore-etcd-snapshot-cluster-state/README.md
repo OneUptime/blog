@@ -464,8 +464,10 @@ systemctl start etcd
 ## Contacts
 - On-call: +1-555-0100
 - Slack: #incident-response
-```
+```text
 
 ## Conclusion
 
 Mastering etcd restoration ensures you can recover your Kubernetes cluster from catastrophic failures. Understand the restore process thoroughly, including stopping dependencies, performing the restore, and validating cluster state. Automate restoration procedures through scripts, test regularly in non-production environments, and maintain clear documentation for incident response. Combined with regular automated backups, a well-practiced restore process provides the confidence and capability to recover quickly from cluster failures, protecting your applications and maintaining service availability even during disasters.
+
+```

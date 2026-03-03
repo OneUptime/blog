@@ -18,7 +18,7 @@ This guide covers key naming patterns, common anti-patterns, and practical strat
 
 ### Basic Principles
 
-```
+```text
 Good key names are:
 - Descriptive: Clearly indicate what data they store
 - Consistent: Follow a predictable pattern
@@ -44,7 +44,7 @@ user_1000_profile
 
 ### Recommended Format
 
-```
+```text
 {object-type}:{identifier}:{sub-object}
 
 Examples:

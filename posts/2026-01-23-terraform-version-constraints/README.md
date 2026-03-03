@@ -359,7 +359,7 @@ terraform apply upgrade.plan
 
 When modules require different provider versions, you may see conflicts.
 
-```
+```text
 Error: Failed to query available provider packages
 
 Could not retrieve the list of available versions for provider

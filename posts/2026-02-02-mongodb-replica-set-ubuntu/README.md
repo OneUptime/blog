@@ -112,7 +112,7 @@ sudo nano /etc/hosts
 
 Add these lines to the file:
 
-```
+```text
 192.168.1.101 mongo1
 192.168.1.102 mongo2
 192.168.1.103 mongo3
@@ -933,7 +933,7 @@ Set up monitoring for these critical metrics:
 
 Use the proper connection string format for replica set connections:
 
-```
+```text
 mongodb://username:password@mongo1:27017,mongo2:27017,mongo3:27017/database?replicaSet=rs0&authSource=admin&w=majority&readPreference=secondaryPreferred&retryWrites=true&retryReads=true
 ```
 

@@ -146,7 +146,7 @@ return [
 
 Laravel supports two translation file formats. Organize your files based on your project needs.
 
-```
+```text
 resources/
   lang/
     en/

@@ -262,7 +262,7 @@ Key visuals to include:
 
 In Power BI, create a DAX measure to bucket loans into risk categories.
 
-```
+```text
 Risk Category =
 SWITCH(
     TRUE(),

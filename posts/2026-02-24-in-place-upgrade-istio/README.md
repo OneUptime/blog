@@ -40,7 +40,7 @@ istioctl version
 
 Output:
 
-```
+```text
 client version: 1.21.0
 control plane version: 1.20.5
 data plane version: 1.20.5 (35 proxies)
@@ -148,7 +148,7 @@ istioctl version
 
 The control plane version should now show the new version, while the data plane version still shows the old version (because sidecar proxies have not been restarted yet).
 
-```
+```text
 client version: 1.21.0
 control plane version: 1.21.0
 data plane version: 1.20.5 (35 proxies)

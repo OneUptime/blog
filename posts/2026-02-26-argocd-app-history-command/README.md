@@ -18,7 +18,7 @@ argocd app history my-app
 
 This produces a table showing the deployment history:
 
-```
+```text
 ID  DATE                           REVISION
 0   2026-02-20 10:30:00 +0000 UTC  a1b2c3d (HEAD)
 1   2026-02-18 14:15:00 +0000 UTC  d4e5f6a
@@ -32,7 +32,7 @@ Each entry represents a successful sync operation.
 
 History entries are numbered with the most recent entry having the highest ID. The ID is what you use when performing a rollback:
 
-```
+```text
 ID 3: oldest recorded deployment
 ID 2: next deployment
 ID 1: previous deployment

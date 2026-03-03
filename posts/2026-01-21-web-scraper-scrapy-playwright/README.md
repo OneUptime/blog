@@ -57,7 +57,7 @@ cd product_scraper
 
 Your project structure will look like this:
 
-```
+```text
 product_scraper/
     scrapy.cfg
     product_scraper/

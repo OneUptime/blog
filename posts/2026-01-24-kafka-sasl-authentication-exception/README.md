@@ -381,7 +381,7 @@ graph TB
 
 Create `/etc/kafka/kafka_server_jaas.conf`:
 
-```
+```text
 KafkaServer {
     com.sun.security.auth.module.Krb5LoginModule required
     useKeyTab=true
@@ -438,7 +438,7 @@ kafka-server-start.sh /etc/kafka/server.properties
 
 Create `kafka_client_jaas.conf`:
 
-```
+```text
 KafkaClient {
     com.sun.security.auth.module.Krb5LoginModule required
     useKeyTab=true

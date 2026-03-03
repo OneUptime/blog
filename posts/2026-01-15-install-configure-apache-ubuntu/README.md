@@ -58,7 +58,7 @@ sudo systemctl disable apache2
 
 ## Understanding Apache Directory Structure
 
-```
+```text
 /etc/apache2/
 ├── apache2.conf          # Main configuration file
 ├── ports.conf            # Port configuration

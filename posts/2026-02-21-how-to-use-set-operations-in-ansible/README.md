@@ -141,7 +141,7 @@ The `difference` filter returns elements in the first list that are NOT in the s
 
 Output:
 
-```
+```text
 need_to_install: ["postgresql", "certbot"]
 could_remove: ["vim", "curl"]
 ```

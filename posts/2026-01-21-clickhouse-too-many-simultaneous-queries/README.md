@@ -14,7 +14,7 @@ The "Too many simultaneous queries" error occurs when ClickHouse reaches its con
 
 ### Error Messages
 
-```
+```text
 DB::Exception: Too many simultaneous queries. Maximum: 100.
 
 DB::Exception: Too many simultaneous queries for user 'analyst'.
@@ -23,7 +23,7 @@ Maximum: 50, waiting queries: 25.
 
 ### Query Limit Hierarchy
 
-```
+```text
 Server Limit (max_concurrent_queries)
     └── User Limit (max_concurrent_queries_for_user)
         └── Priority Limits
@@ -479,7 +479,7 @@ CREATE USER adhoc_user SETTINGS
 
 ### Server Sizing Guidelines
 
-```
+```text
 Concurrent Queries | Recommended CPUs | Memory
 -------------------|------------------|--------
 < 50               | 8                | 32GB

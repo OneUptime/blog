@@ -39,7 +39,7 @@ output "instance_details" {
 
 During `terraform plan`, computed attributes show as `(known after apply)`:
 
-```
+```text
 # aws_instance.web will be created
 + resource "aws_instance" "web" {
     + ami                    = "ami-0c55b159cbfafe1f0"
@@ -135,7 +135,7 @@ resource "aws_db_instance" "main" {
 
 For most configurations, `(known after apply)` in your plan is normal and expected. Get comfortable reading plans with these placeholders:
 
-```
+```text
 # aws_route53_record.web will be created
 + resource "aws_route53_record" "web" {
     + fqdn    = (known after apply)

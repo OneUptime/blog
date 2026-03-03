@@ -16,13 +16,13 @@ Istio changes this by providing mutual TLS between all services, cryptographic i
 
 When Istio injects a sidecar into your pod, it also provisions a certificate for that workload. The certificate contains a SPIFFE identity that looks like:
 
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
 For example, a pod running with the `order-service` service account in the `production` namespace gets:
 
-```
+```text
 spiffe://cluster.local/ns/production/sa/order-service
 ```
 

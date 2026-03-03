@@ -18,13 +18,13 @@ Understanding why commands are not found and how to fix them is essential for re
 
 When Bash cannot locate a command, you see:
 
-```
+```text
 bash: command_name: command not found
 ```
 
 Or in scripts:
 
-```
+```text
 ./script.sh: line 5: command_name: command not found
 ```
 
@@ -227,7 +227,7 @@ log_file="/var/log/my_cron_script.log"
 
 Crontab entry:
 
-```
+```text
 # Set PATH in crontab directly
 PATH=/usr/local/bin:/usr/bin:/bin
 

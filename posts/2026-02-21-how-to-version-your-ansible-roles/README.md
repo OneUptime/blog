@@ -61,7 +61,7 @@ git push origin v1.1.0
 
 Use the `v` prefix consistently:
 
-```
+```text
 v1.0.0    # Good - consistent convention
 v1.0.1    # Good
 v1.1.0    # Good

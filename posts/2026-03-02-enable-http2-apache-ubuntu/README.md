@@ -274,7 +274,7 @@ sudo tail -20 /var/log/apache2/error.log
 
 ### "HTTP/2 not supported by mod_prefork" Error
 
-```
+```text
 AH02030: HTTP/2 is not supported by mod_prefork.c
 ```
 

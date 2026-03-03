@@ -294,7 +294,7 @@ After 100 requests, you should start seeing 429 status codes.
 
 When a request is rate limited, the response includes standard headers:
 
-```
+```text
 HTTP/1.1 429 Too Many Requests
 x-ratelimit-limit: 100
 x-ratelimit-remaining: 0

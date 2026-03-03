@@ -1533,7 +1533,7 @@ flowchart TB
 
 ### Application Structure
 
-```
+```text
 src/main/java/com/example/
     config/
         AsyncConfig.java

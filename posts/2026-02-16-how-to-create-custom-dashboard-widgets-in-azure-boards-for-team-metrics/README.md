@@ -74,7 +74,7 @@ The most flexible widgets are built on work item queries. Any saved query can be
 
 First, create a query that finds all bugs created in the current sprint.
 
-```
+```text
 Work Item Type = Bug
 AND Created Date >= @StartOfIteration
 ```
@@ -93,7 +93,7 @@ This gives you a chart showing how many bugs are being found each day, broken do
 
 Create a query for active sprint work.
 
-```
+```text
 Iteration Path = @CurrentIteration
 AND State NOT IN (Done, Closed, Removed)
 AND Work Item Type IN (User Story, Bug, Task)
@@ -110,7 +110,7 @@ This instantly shows if work is evenly distributed or if someone is overloaded.
 
 Items that have been "In Progress" for too long are a red flag. Create a query:
 
-```
+```text
 State = Active
 AND Changed Date < @Today - 7
 AND Work Item Type IN (User Story, Bug)
@@ -155,7 +155,7 @@ If your pipeline publishes test results, the **Test Results Trend** widget shows
 
 A good dashboard has a clear information hierarchy. Here is a layout that works well for sprint dashboards.
 
-```
+```text
 +----------------------------------+----------------------------------+
 |         Sprint Burndown          |        Velocity (6 sprints)      |
 |         (large widget)           |        (large widget)            |

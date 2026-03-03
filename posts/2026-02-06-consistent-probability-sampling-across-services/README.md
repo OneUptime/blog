@@ -198,7 +198,7 @@ With `ParentBasedSampler`, the ratio only matters at the entry point (the root s
 
 The sampling decision travels in the W3C Trace Context `traceparent` header. The `sampled` flag in the trace flags field tells downstream services whether the trace is sampled.
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
               ^                                                      ^
               version                                                flags (01 = sampled)

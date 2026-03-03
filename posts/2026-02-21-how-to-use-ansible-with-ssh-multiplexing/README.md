@@ -130,7 +130,7 @@ ls -la ~/.ansible/cp/
 
 You should see socket files:
 
-```
+```text
 srw------- 1 user user 0 Feb 21 10:30 abcdef1234567890
 srw------- 1 user user 0 Feb 21 10:30 fedcba0987654321
 ```
@@ -256,7 +256,7 @@ ls -la "$SOCKET_DIR/" 2>/dev/null || echo "No active sockets"
 
 Unix domain sockets have a maximum path length (usually 104-108 characters). If your control_path is too long:
 
-```
+```text
 ControlPath "/home/very-long-username/.ansible/cp/very-long-hostname-very-long-username-22" too long for Unix domain socket
 ```
 

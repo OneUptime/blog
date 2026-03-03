@@ -10,7 +10,7 @@ Description: Learn how to diagnose and fix Terraform module source not found err
 
 If you have spent any real time working with Terraform, you have almost certainly hit the dreaded "module source not found" error. It typically shows up when you run `terraform init` and looks something like this:
 
-```
+```text
 Error: Failed to download module
 
 Could not download module "vpc" (main.tf:10) source code from
@@ -21,7 +21,7 @@ error downloading 'https://github.com/myorg/terraform-modules.git':
 
 Or if you are working with the Terraform Registry:
 
-```
+```text
 Error: Module not installed
 
 Module "compute" is not yet installed. Run "terraform init" to install all

@@ -159,7 +159,7 @@ spec:
 
 Problem: Multiple DNS servers forward to each other
 
-```
+```text
 CoreDNS -> Upstream (10.0.1.53) -> Another DNS -> Back to CoreDNS
 ```
 

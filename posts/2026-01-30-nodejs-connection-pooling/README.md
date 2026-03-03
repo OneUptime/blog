@@ -143,13 +143,13 @@ Getting pool size right is critical. Too few connections and you create bottlene
 
 A good starting point comes from the PostgreSQL documentation:
 
-```
+```text
 connections = (core_count * 2) + effective_spindle_count
 ```
 
 For most cloud databases with SSD storage, this simplifies to:
 
-```
+```text
 connections = (cpu_cores * 2) + 1
 ```
 

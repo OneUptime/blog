@@ -16,7 +16,7 @@ This guide walks through the theory and practice of building ratio metrics that 
 
 A ratio metric expresses one quantity as a fraction of another. The general form is:
 
-```
+```text
 ratio = numerator / denominator
 ```
 

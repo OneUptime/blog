@@ -150,12 +150,12 @@ aws ec2 describe-route-tables \
 ```
 
 **For public subnets**, you should see a route like:
-```
+```text
 Destination: 0.0.0.0/0  ->  Target: igw-abc123 (Internet Gateway)
 ```
 
 **For private subnets**, you should see:
-```
+```text
 Destination: 0.0.0.0/0  ->  Target: nat-abc123 (NAT Gateway)
 ```
 

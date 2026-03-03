@@ -24,7 +24,7 @@ Before starting, ensure you have:
 ### Common Multi-Line Formats
 
 **Java Stack Trace:**
-```
+```text
 2024-01-15 10:30:00 ERROR - Exception in thread "main"
 java.lang.NullPointerException: Cannot invoke method on null object
     at com.example.service.UserService.getUser(UserService.java:45)
@@ -36,7 +36,7 @@ Caused by: java.sql.SQLException: Connection refused
 ```
 
 **Python Traceback:**
-```
+```text
 Traceback (most recent call last):
   File "/app/main.py", line 45, in process_request
     result = database.query(user_id)
@@ -46,7 +46,7 @@ ConnectionError: Database connection failed
 ```
 
 **Go Stack Trace:**
-```
+```text
 panic: runtime error: invalid memory address or nil pointer dereference
 [signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0x4a5f2c]
 

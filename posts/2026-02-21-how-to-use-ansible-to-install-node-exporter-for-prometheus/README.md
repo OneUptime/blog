@@ -35,7 +35,7 @@ flowchart LR
 
 ## Project Structure
 
-```
+```text
 node-exporter/
   inventory/
     hosts.yml

@@ -40,7 +40,7 @@ The biggest challenge with secret rotation is avoiding downtime. You cannot simp
 
 The dual-credential pattern solves this by maintaining two valid credentials during rotation:
 
-```
+```text
 Phase 1: Old credential active
   [App] --> [Old Password] --> [Database]
 
@@ -1154,7 +1154,7 @@ template {
 
 `db-credentials.ctmpl`
 
-```
+```text
 {{- with secret "database/creds/app-readwrite" -}}
 {
   "username": "{{ .Data.username }}",

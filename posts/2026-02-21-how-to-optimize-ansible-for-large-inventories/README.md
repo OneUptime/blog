@@ -60,7 +60,7 @@ The `--limit` flag reduces the number of hosts Ansible needs to process. For a t
 
 Instead of one monolithic inventory file, split by function or region:
 
-```
+```text
 inventories/
   production/
     us-east/
@@ -168,7 +168,7 @@ watch -n 2 "free -m && echo '---' && ps aux | grep ansible | wc -l"
 
 A formula that works well:
 
-```
+```text
 forks = min(host_count, available_ram_gb * 10, cpu_cores * 25)
 ```
 

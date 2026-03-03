@@ -177,7 +177,7 @@ For real-time debugging, you can complement the Application Map with the Live Me
 
 Currently, the Application Map cannot be exported as an image directly from the portal. However, you can query the underlying data using KQL to build your own dependency visualizations.
 
-```
+```text
 // Query to get dependency relationships between cloud role names
 dependencies
 | where timestamp > ago(1h)

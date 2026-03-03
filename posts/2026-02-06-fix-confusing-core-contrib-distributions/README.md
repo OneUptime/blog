@@ -45,7 +45,7 @@ service:
 
 Starting the Core distribution with this config produces:
 
-```
+```text
 Error: failed to build pipelines: unknown processor type: "tail_sampling"
 ```
 

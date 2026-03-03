@@ -283,7 +283,7 @@ chmod 600 ~/.davfs2/secrets
 
 In Windows Explorer, right-click "This PC" > "Map network drive" and enter:
 
-```
+```text
 https://webdav.example.com/webdav/
 ```
 

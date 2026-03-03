@@ -21,7 +21,7 @@ ansible-galaxy list
 
 Output looks like this:
 
-```
+```text
 # /home/user/.ansible/roles
 - geerlingguy.nginx, 3.1.0
 - geerlingguy.postgresql, 3.4.0
@@ -54,7 +54,7 @@ ansible-galaxy collection list
 
 Output:
 
-```
+```text
 # /home/user/.ansible/collections/ansible_collections
 Collection               Version
 ------------------------ -------
@@ -102,7 +102,7 @@ ansible-config dump | grep ROLES_PATH
 
 Output:
 
-```
+```text
 DEFAULT_ROLES_PATH(default) = ['/home/user/.ansible/roles', '/usr/share/ansible/roles', '/etc/ansible/roles']
 ```
 
@@ -132,7 +132,7 @@ ansible-config dump | grep COLLECTIONS_PATHS
 
 Output:
 
-```
+```text
 COLLECTIONS_PATHS(default) = ['/home/user/.ansible/collections', '/usr/share/ansible/collections']
 ```
 

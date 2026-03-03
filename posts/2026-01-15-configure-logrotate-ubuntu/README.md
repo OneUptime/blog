@@ -42,7 +42,7 @@ cat /etc/logrotate.conf
 
 Default content:
 
-```
+```text
 # Rotate logs weekly
 weekly
 
@@ -76,7 +76,7 @@ include /etc/logrotate.d
 sudo nano /etc/logrotate.d/myapp
 ```
 
-```
+```text
 # Log file path (supports wildcards)
 /var/log/myapp/*.log {
     # Rotation frequency
@@ -106,7 +106,7 @@ sudo nano /etc/logrotate.d/myapp
 
 ### Rotation Frequency
 
-```
+```text
 daily       # Rotate every day
 weekly      # Rotate every week
 monthly     # Rotate every month
@@ -116,14 +116,14 @@ size 100M   # Rotate when file reaches 100MB
 
 ### Rotation Count
 
-```
+```text
 rotate 4    # Keep 4 rotated files
 rotate 0    # Delete immediately after rotation
 ```
 
 ### File Handling
 
-```
+```text
 compress          # Compress rotated files (gzip)
 nocompress        # Don't compress
 delaycompress     # Compress on next rotation (keep 1 uncompressed)
@@ -133,7 +133,7 @@ compressoptions -9  # Maximum compression
 
 ### Naming Options
 
-```
+```text
 dateext                        # Use date in filename
 dateformat -%Y%m%d            # Custom date format
 dateyesterday                 # Use yesterday's date
@@ -142,7 +142,7 @@ extension .log                # Preserve file extension
 
 ### File Creation
 
-```
+```text
 create 640 root adm           # Create new file with mode owner group
 nocreate                      # Don't create new file
 copy                          # Copy file instead of moving
@@ -151,7 +151,7 @@ copytruncate                  # Truncate original file after copy
 
 ### Conditional Rotation
 
-```
+```text
 missingok         # Don't error if log is missing
 notifempty        # Don't rotate empty files
 ifempty           # Rotate even if empty
@@ -167,7 +167,7 @@ maxsize 500M      # Force rotate if larger than 500MB
 sudo nano /etc/logrotate.d/myapp
 ```
 
-```
+```text
 /var/log/myapp/*.log {
     daily
     rotate 14
@@ -190,7 +190,7 @@ sudo nano /etc/logrotate.d/myapp
 sudo nano /etc/logrotate.d/nginx-custom
 ```
 
-```
+```text
 /var/log/nginx/*.log {
     daily
     rotate 14
@@ -214,7 +214,7 @@ sudo nano /etc/logrotate.d/nginx-custom
 
 ### Size-Based Rotation
 
-```
+```text
 /var/log/bigapp/*.log {
     size 100M
     rotate 5
@@ -227,7 +227,7 @@ sudo nano /etc/logrotate.d/nginx-custom
 
 ### Docker Container Logs
 
-```
+```text
 /var/lib/docker/containers/*/*.log {
     daily
     rotate 7
@@ -241,7 +241,7 @@ sudo nano /etc/logrotate.d/nginx-custom
 
 ### Multi-Path Configuration
 
-```
+```text
 # Multiple log paths with same rules
 /var/log/app1/*.log
 /var/log/app2/*.log
@@ -258,7 +258,7 @@ sudo nano /etc/logrotate.d/nginx-custom
 
 ### Pre and Post Rotation Scripts
 
-```
+```text
 /var/log/myapp/*.log {
     daily
     rotate 7
@@ -395,7 +395,7 @@ grep myapp /var/lib/logrotate/status
 
 Add `missingok` to configuration:
 
-```
+```text
 /var/log/myapp/*.log {
     missingok
     ...
@@ -417,12 +417,12 @@ create 0640 www-data www-data
 App still writes to old file handle. Solutions:
 
 1. Use `copytruncate`:
-```
+```text
 copytruncate
 ```
 
 2. Send reload signal:
-```
+```text
 postrotate
     systemctl reload myapp
 endscript
@@ -441,7 +441,7 @@ file /var/log/myapp/app.log.1
 ```
 
 Reduce retention:
-```
+```text
 rotate 3  # Keep fewer files
 maxsize 50M  # Limit file size
 ```
@@ -450,7 +450,7 @@ maxsize 50M  # Limit file size
 
 ### Email on Rotation
 
-```
+```text
 /var/log/secure.log {
     weekly
     rotate 4
@@ -482,7 +482,7 @@ maxsize 50M  # Limit file size
 
 ### Conditional Scripts
 
-```
+```text
 /var/log/myapp/*.log {
     daily
     rotate 7

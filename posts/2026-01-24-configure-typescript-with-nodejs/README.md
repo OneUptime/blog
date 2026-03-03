@@ -514,7 +514,7 @@ npm install -D tsx
 
 Here is a recommended project structure:
 
-```
+```text
 my-node-app/
 ├── src/
 │   ├── index.ts           # Application entry point

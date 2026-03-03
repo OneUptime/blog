@@ -14,7 +14,7 @@ Ansible roles have two places to define variables: `defaults/` and `vars/`. Whil
 
 Role variables are defined in `vars/main.yml`:
 
-```
+```text
 roles/
   database/
     vars/
@@ -153,7 +153,7 @@ These depend on values from `defaults/main.yml` (like `myapp_version` and `myapp
 
 Just like with defaults, you can use a directory instead of a single file:
 
-```
+```text
 roles/postgresql/vars/
   main/
     paths.yml

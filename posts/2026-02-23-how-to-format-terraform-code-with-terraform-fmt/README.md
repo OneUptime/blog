@@ -21,7 +21,7 @@ terraform fmt
 
 When you run `terraform fmt`, it rewrites `.tf` files in place to match the canonical format. It prints the names of files it changed:
 
-```
+```text
 main.tf
 variables.tf
 ```

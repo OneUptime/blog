@@ -104,7 +104,7 @@ commonLabels:
 
 This fails because the Deployment's `spec.selector.matchLabels` changes from `version: v1` to `version: v2`, and Kubernetes does not allow selector changes on existing Deployments. You get an error:
 
-```
+```text
 The Deployment "my-api" is invalid: spec.selector:
 Invalid value: ... field is immutable
 ```

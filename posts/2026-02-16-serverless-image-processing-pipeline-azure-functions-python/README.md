@@ -40,7 +40,7 @@ cd image-pipeline
 
 Update requirements.txt with the image processing dependencies.
 
-```
+```text
 azure-functions
 Pillow>=10.0.0
 ```

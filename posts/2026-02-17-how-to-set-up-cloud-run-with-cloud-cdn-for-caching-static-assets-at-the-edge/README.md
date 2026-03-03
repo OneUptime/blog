@@ -157,7 +157,7 @@ gcloud compute forwarding-rules create cloud-run-http-rule \
 
 Point your domain to the static IP address. Add an A record:
 
-```
+```text
 app.yourdomain.com.  A  <YOUR_STATIC_IP>
 ```
 

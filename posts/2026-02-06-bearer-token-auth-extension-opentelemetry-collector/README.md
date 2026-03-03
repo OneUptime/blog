@@ -12,7 +12,7 @@ Bearer token authentication is a widely-used HTTP authentication scheme where cl
 
 Bearer token authentication follows the OAuth 2.0 specification (RFC 6750), where a token serves as a credential to access protected resources. The token is included in HTTP requests using the Authorization header with the "Bearer" scheme:
 
-```
+```text
 Authorization: Bearer <token>
 ```
 

@@ -25,7 +25,7 @@ ansible-galaxy search nginx
 
 This returns a table with the role name, description, and other metadata. The output looks something like this:
 
-```
+```text
 Found 85 roles matching your search:
 
  Name                                  Description
@@ -76,7 +76,7 @@ ansible-galaxy info geerlingguy.nginx
 
 This prints everything Galaxy knows about the role:
 
-```
+```text
 Role: geerlingguy.nginx
     description: Nginx installation role for Linux
     active: True

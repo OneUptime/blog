@@ -189,7 +189,7 @@ istioctl proxy-config secret httpbin-pod-name -n my-app
 
 The output should show certificates with SPIFFE URIs matching your SPIRE trust domain:
 
-```
+```text
 RESOURCE NAME   TYPE           STATUS   VALID CERT   SERIAL NUMBER   NOT AFTER   NOT BEFORE
 default         Cert Chain     ACTIVE   true         abc123...       2026-02-25  2026-02-24
 ROOTCA          CA             ACTIVE   true         def456...       2027-02-24  2026-02-24

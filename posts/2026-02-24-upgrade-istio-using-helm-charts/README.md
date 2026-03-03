@@ -235,7 +235,7 @@ One of the biggest advantages of Helm-based Istio management is that you can sto
 
 A typical repo structure looks like:
 
-```
+```text
 istio/
   base-values.yaml
   istiod-values.yaml

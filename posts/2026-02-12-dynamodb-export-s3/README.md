@@ -75,7 +75,7 @@ aws dynamodb describe-export \
 
 The export creates files in your S3 bucket under the specified prefix:
 
-```
+```text
 s3://my-exports-bucket/dynamodb-exports/orders/
   AWSDynamoDB/
     01234567890123-abcdef/

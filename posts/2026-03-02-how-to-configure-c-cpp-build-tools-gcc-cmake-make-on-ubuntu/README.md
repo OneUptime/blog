@@ -125,7 +125,7 @@ source ~/.bashrc
 
 A typical CMake project layout:
 
-```
+```text
 myproject/
   CMakeLists.txt
   src/

@@ -203,7 +203,7 @@ except Exception as e:
 
 ### Bug: Plugin not found
 
-```
+```text
 ERROR! The lookup plugin 'my_lookup' was not found
 ```
 

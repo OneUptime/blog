@@ -79,7 +79,7 @@ kubectx
 
 This displays all contexts with the current one highlighted:
 
-```
+```text
 minikube
 staging-us-west
 staging-eu-central
@@ -257,7 +257,7 @@ PROMPT='$(kube_context) %~ %# '
 
 Your prompt now shows:
 
-```
+```text
 [production-us-west:api] ~/projects $
 ```
 

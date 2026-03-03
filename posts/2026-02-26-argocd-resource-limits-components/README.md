@@ -57,13 +57,13 @@ kubectl top pod -n argocd -l app.kubernetes.io/name=argocd-application-controlle
 
 Sizing formula:
 
-```
+```text
 Controller Memory = Base (500MB) + (Number of Resources * 10KB) + Buffer (50%)
 ```
 
 For 500 applications averaging 20 resources each:
 
-```
+```text
 500MB + (10,000 * 10KB) + 50% buffer = 500MB + 100MB + 300MB = 900MB
 # Round up to 1Gi request, 4Gi limit for spikes
 ```
@@ -89,7 +89,7 @@ server:
 
 Sizing by concurrent users:
 
-```
+```text
 API Server Memory = Base (128MB) + (Concurrent Users * 5MB) + Buffer (50%)
 ```
 
@@ -117,7 +117,7 @@ repoServer:
 
 A large Helm chart with subcharts can use 500MB or more during rendering.
 
-```
+```text
 Repo Server Memory = Base (256MB) + (Parallel Renders * Avg Chart Size) + Buffer (50%)
 ```
 

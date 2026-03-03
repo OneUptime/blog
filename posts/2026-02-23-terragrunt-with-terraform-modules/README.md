@@ -335,7 +335,7 @@ terragrunt run-all plan
 
 A best practice is keeping Terraform modules focused on a single concern. Terragrunt makes this practical by handling the wiring between modules:
 
-```
+```text
 modules/
   vpc/               # Just VPC, subnets, route tables
   security-groups/   # Just security groups

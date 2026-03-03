@@ -158,7 +158,7 @@ RUN dnf install -y \
 
 Use a `requirements.txt` with exact versions:
 
-```
+```text
 # requirements.txt - all versions pinned
 flask==3.0.0
 gunicorn==21.2.0
@@ -178,7 +178,7 @@ pip-compile --generate-hashes requirements.in -o requirements.txt
 
 The `--generate-hashes` flag adds SHA-256 hashes for each package, ensuring even the package contents cannot change:
 
-```
+```text
 # requirements.txt (with hashes)
 flask==3.0.0 \
     --hash=sha256:21128f47e4e3b9d29ce213f5267b98b... \

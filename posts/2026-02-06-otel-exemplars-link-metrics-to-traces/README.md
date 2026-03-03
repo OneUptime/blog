@@ -174,7 +174,7 @@ storage:
 
 In Grafana, configure a Tempo data source for traces, then set up the exemplar link in your Prometheus/Mimir data source:
 
-```
+```text
 # Grafana Prometheus data source settings
 Exemplars:
   - Internal link: enabled

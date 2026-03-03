@@ -80,7 +80,7 @@ Configure storage settings:
 
 Here's how the storage options break down.
 
-```
+```text
 Storage Type     | IOPS         | Throughput      | Cost
 -----------------|--------------|-----------------|------------------
 gp3              | 3,000 base   | 125 MiB/s base  | $0.08/GB-month
@@ -105,7 +105,7 @@ This is where networking gets configured:
 
 If you're setting up a security group now, add an inbound rule like this.
 
-```
+```text
 Type: MySQL/Aurora
 Protocol: TCP
 Port: 3306

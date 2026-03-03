@@ -55,7 +55,7 @@ For common providers, the issuer URIs are:
 
 The `aud` (audience) claim in the token must match what the provider expects. By default, the workload identity pool provider expects the audience to be:
 
-```
+```text
 https://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID
 ```
 
@@ -127,7 +127,7 @@ gcloud iam workload-identity-pools providers describe your-provider \
 
 A common condition for GitHub Actions:
 
-```
+```text
 assertion.repository_owner == 'your-github-org'
 ```
 

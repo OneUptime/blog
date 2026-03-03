@@ -37,7 +37,7 @@ output "cwd_path" {
 
 If your project looks like this:
 
-```
+```text
 /home/user/infra/
   main.tf           <- root module
   modules/
@@ -190,7 +190,7 @@ Use `path.cwd` sparingly. In most configurations, `path.module` or `path.root` i
 
 ### Module with Embedded Files
 
-```
+```text
 modules/
   web-server/
     main.tf

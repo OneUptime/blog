@@ -412,7 +412,7 @@ velero install \
 
 Calculate savings using MinIO:
 
-```
+```text
 AWS S3 Standard:
 - Storage: $0.023/GB/month
 - PUT requests: $0.005 per 1,000

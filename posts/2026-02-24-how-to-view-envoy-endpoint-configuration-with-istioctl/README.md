@@ -25,7 +25,7 @@ istioctl pc endpoints productpage-v1-abc123.default \
   --cluster "outbound|9080||reviews.default.svc.cluster.local"
 ```
 
-```
+```text
 ENDPOINT             STATUS      OUTLIER CHECK   CLUSTER
 10.244.0.15:9080     HEALTHY     OK              outbound|9080||reviews.default.svc.cluster.local
 10.244.0.16:9080     HEALTHY     OK              outbound|9080||reviews.default.svc.cluster.local
@@ -39,7 +39,7 @@ istioctl pc endpoints productpage-v1-abc123.default \
   --cluster "outbound|9080|v1|reviews.default.svc.cluster.local"
 ```
 
-```
+```text
 ENDPOINT             STATUS      OUTLIER CHECK   CLUSTER
 10.244.0.15:9080     HEALTHY     OK              outbound|9080|v1|reviews.default.svc.cluster.local
 ```

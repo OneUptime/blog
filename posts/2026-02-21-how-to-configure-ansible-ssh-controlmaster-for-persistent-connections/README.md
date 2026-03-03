@@ -243,7 +243,7 @@ chmod 700 ~/.ansible/cp
 
 If you see errors about the socket path being too long:
 
-```
+```text
 ControlPath "/home/very-long-username/.ansible/cp/very-long-hostname-deploy-22" too long for Unix domain socket
 ```
 

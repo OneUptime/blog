@@ -45,7 +45,7 @@ Edit the Dovecot LDA (Local Delivery Agent) configuration to enable the Sieve pl
 sudo nano /etc/dovecot/conf.d/15-lda.conf
 ```
 
-```
+```text
 protocol lda {
     # Space-separated list of plugins to load during LDA
     mail_plugins = $mail_plugins sieve
@@ -58,7 +58,7 @@ If you use LMTP for delivery (recommended for Postfix integration):
 sudo nano /etc/dovecot/conf.d/20-lmtp.conf
 ```
 
-```
+```text
 protocol lmtp {
     mail_plugins = $mail_plugins sieve
 }
@@ -72,7 +72,7 @@ Create the Sieve plugin configuration:
 sudo nano /etc/dovecot/conf.d/90-sieve.conf
 ```
 
-```
+```text
 plugin {
     # Path to the user's personal Sieve script
     # %d = domain, %n = username, ~ = home directory
@@ -106,7 +106,7 @@ ManageSieve allows users to manage their Sieve scripts through email clients tha
 sudo nano /etc/dovecot/conf.d/20-managesieve.conf
 ```
 
-```
+```text
 # Enable the ManageSieve protocol
 protocols = $protocols sieve
 

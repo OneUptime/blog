@@ -60,7 +60,7 @@ graph TB
 
 ### Project Structure
 
-```
+```text
 llm-benchmarks/
 ├── benchmarks/
 │   ├── datasets/           # Test datasets

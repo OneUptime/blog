@@ -21,7 +21,7 @@ This guide walks through using Ansible to set up Let's Encrypt with Certbot for 
 
 ## Project Structure
 
-```
+```text
 letsencrypt-setup/
   inventory/
     hosts.yml

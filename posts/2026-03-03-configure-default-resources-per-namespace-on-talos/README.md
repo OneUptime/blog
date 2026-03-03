@@ -276,7 +276,7 @@ spec:
 
 Understanding how defaults interact with explicitly specified values is important.
 
-```
+```text
 Scenario 1: No resources specified
   -> Default requests and limits are applied
 

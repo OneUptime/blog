@@ -178,7 +178,7 @@ When a trigger fires, what happens to the accumulated state?
 
 After each trigger firing, clear the state. Each emission contains only elements since the last firing.
 
-```
+```text
 Elements: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 Trigger: AfterCount(5)
 Emissions: [1,2,3,4,5], [6,7,8,9,10]
@@ -188,7 +188,7 @@ Emissions: [1,2,3,4,5], [6,7,8,9,10]
 
 Keep the state after firing. Each emission contains all elements since the window started.
 
-```
+```text
 Elements: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 Trigger: AfterCount(5)
 Emissions: [1,2,3,4,5], [1,2,3,4,5,6,7,8,9,10]
@@ -198,7 +198,7 @@ Emissions: [1,2,3,4,5], [1,2,3,4,5,6,7,8,9,10]
 
 Emit the accumulated result AND a retraction of the previous result. Downstream consumers use retractions to update their state correctly.
 
-```
+```text
 Trigger fires at count 5:
   Emit: SUM=15
 Trigger fires at count 10:

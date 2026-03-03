@@ -54,7 +54,7 @@ sudo systemctl --failed
 
 Example output of a failed service:
 
-```
+```text
 ● nginx.service - A high performance web server
      Loaded: loaded (/lib/systemd/system/nginx.service; enabled)
      Active: failed (Result: exit-code) since Fri 2026-01-24 10:30:00 UTC

@@ -16,7 +16,7 @@ In Firestore, every document can contain subcollections. A subcollection is a co
 
 The path to a document in a subcollection looks like:
 
-```
+```text
 users/user-001/orders/order-001
 ```
 

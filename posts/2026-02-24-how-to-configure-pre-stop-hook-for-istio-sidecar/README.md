@@ -79,7 +79,7 @@ Note that you're setting the preStop on the application container here, not dire
 
 Here's how the timing works with preStop hooks configured:
 
-```
+```text
 Pod receives termination signal
     |
     v
@@ -140,7 +140,7 @@ spec:
 
 The sidecar gets its own global preStop hook (set through IstioOperator), and the application has its own. The key is the math:
 
-```
+```text
 terminationGracePeriodSeconds (30s)
   >= application preStop (5s)
      + application shutdown time (~5s)

@@ -39,7 +39,7 @@ Burp acts as a proxy between your browser and the target application.
 
 For Firefox:
 
-```
+```text
 1. Settings > Network Settings > Configure Proxy
 2. Manual proxy configuration
 3. HTTP Proxy: 127.0.0.1, Port: 8080
@@ -63,7 +63,7 @@ For HTTPS interception:
 
 Firefox:
 
-```
+```text
 Settings > Privacy & Security > Certificates > View Certificates
 Authorities > Import > Select downloaded certificate
 Trust for identifying websites
@@ -206,7 +206,7 @@ GET /api/users?PARAM=value HTTP/1.1
 
 Payload list for parameter names:
 
-```
+```text
 id
 user_id
 userId

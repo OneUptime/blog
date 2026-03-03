@@ -94,7 +94,7 @@ kong_declarative_config_path: /etc/kong/kong.yml
 
 ## Kong Configuration Template
 
-```
+```text
 # roles/kong/templates/kong.conf.j2
 # Kong Gateway configuration file
 

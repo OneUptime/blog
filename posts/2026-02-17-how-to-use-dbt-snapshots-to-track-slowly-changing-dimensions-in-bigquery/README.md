@@ -165,7 +165,7 @@ On subsequent runs, dbt compares the source to the snapshot. For any changed rec
 
 After a few snapshot runs, the data looks like this:
 
-```
+```text
 customer_id | region    | tier     | dbt_valid_from       | dbt_valid_to
 -----------+-----------+----------+---------------------+---------------------
 cust-001   | us-west   | silver   | 2026-01-01 00:00:00 | 2026-01-15 00:00:00

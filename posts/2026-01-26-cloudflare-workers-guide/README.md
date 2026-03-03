@@ -50,7 +50,7 @@ wrangler init my-worker
 
 This generates a project structure:
 
-```
+```text
 my-worker/
   src/
     index.ts       # Your Worker code

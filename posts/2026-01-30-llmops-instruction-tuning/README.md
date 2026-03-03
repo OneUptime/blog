@@ -8,7 +8,7 @@ Description: Learn to create instruction tuning for training LLMs to follow inst
 
 ---
 
-# Overview
+## Overview
 
 Instruction tuning is a technique for fine-tuning large language models (LLMs) to follow natural language instructions and produce helpful, accurate responses. Unlike standard pre-training, which focuses on predicting the next token, instruction tuning teaches models to understand and execute specific tasks described in plain language.
 
@@ -58,7 +58,6 @@ flowchart TB
     style Evaluation fill:#e8f5e9
 ```
 
-# Dataset Formats
 
 ## Standard Instruction Format
 
@@ -119,7 +118,6 @@ Popular for training chat models, this format is used by many open-source datase
 }
 ```
 
-# Data Pipeline
 
 ## Dataset Structure Diagram
 
@@ -585,7 +583,6 @@ if __name__ == "__main__":
         processor.save_jsonl(split_examples, f"data/{split_name}.jsonl")
 ```
 
-# Training Pipeline
 
 ## Training Architecture
 
@@ -1124,7 +1121,6 @@ if __name__ == "__main__":
     main()
 ```
 
-# Evaluation Framework
 
 ## Evaluation Workflow
 
@@ -1612,7 +1608,6 @@ if __name__ == "__main__":
     main()
 ```
 
-# Best Practices for Instruction Tuning
 
 ## Dataset Quality Guidelines
 
@@ -1671,7 +1666,6 @@ flowchart LR
 
 4. **Safety Regression**: Fine-tuning can reduce safety guardrails. Include safety-focused examples in training data.
 
-# Deployment Considerations
 
 ## Model Serving Architecture
 
@@ -1743,7 +1737,7 @@ for output in outputs:
     print(f"Response: {output.outputs[0].text}\n")
 ```
 
-# Conclusion
+## Conclusion
 
 Instruction tuning transforms pre-trained language models into helpful assistants that reliably follow user instructions. The key components for success are:
 

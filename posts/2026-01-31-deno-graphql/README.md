@@ -38,7 +38,7 @@ Let us create a new project directory and set up our GraphQL API structure.
 
 Create the following directory structure for your project:
 
-```
+```text
 graphql-api/
 ├── deps.ts
 ├── main.ts

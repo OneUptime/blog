@@ -45,7 +45,7 @@ mkdir -p ~/clouddrive/infrastructure/bicep/{modules,environments/{dev,staging,pr
 
 Your directory structure should look like this:
 
-```
+```text
 ~/clouddrive/infrastructure/
     terraform/
         modules/

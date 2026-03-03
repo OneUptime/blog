@@ -34,7 +34,7 @@ kubectl get nodes -L node.kubernetes.io/exclude-from-external-load-balancers
 
 Example output:
 
-```
+```text
 NAME            STATUS   ROLES           AGE   VERSION   EXCLUDE-FROM-EXTERNAL-LOAD-BALANCERS
 control-plane   Ready    control-plane   30d   v1.29.0   true
 worker-1        Ready    worker          30d   v1.29.0

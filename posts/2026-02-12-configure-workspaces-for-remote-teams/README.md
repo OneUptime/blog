@@ -114,7 +114,7 @@ aws workspaces modify-workspace-properties \
 
 WorkSpaces-level bandwidth settings are limited, but you can configure client-side settings. Provide users with a configuration guide.
 
-```
+```text
 # Windows client configuration (in registry or group policy)
 # Reduce maximum framerate for slower connections
 HKLM\SOFTWARE\Amazon\WorkSpaces\MaxFrameRate = 15

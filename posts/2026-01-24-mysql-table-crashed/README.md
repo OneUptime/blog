@@ -37,7 +37,7 @@ flowchart TD
 
 **Check the error message:**
 
-```
+```text
 ERROR 145 (HY000): Table './database/tablename' is marked as crashed and should be repaired
 ERROR 1194 (HY000): Table 'tablename' is marked as crashed and last (automatic?) repair failed
 ```

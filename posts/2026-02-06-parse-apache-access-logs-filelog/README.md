@@ -12,7 +12,7 @@ Apache's combined log format is one of the most common log formats you will enco
 
 A typical Apache combined access log line looks like this:
 
-```
+```text
 192.168.1.100 - frank [10/Oct/2024:13:55:36 -0700] "GET /api/users HTTP/1.1" 200 2326 "https://example.com/page" "Mozilla/5.0 (X11; Linux x86_64)"
 ```
 
@@ -137,7 +137,7 @@ Apache logs can have some tricky variations. Here are common edge cases and how 
 
 Sometimes the request path contains spaces or special characters:
 
-```
+```text
 192.168.1.100 - - [10/Oct/2024:13:55:36 -0700] "GET /path with spaces HTTP/1.1" 200 2326 "-" "-"
 ```
 
@@ -166,7 +166,7 @@ The `on_error: send` setting ensures that unparseable lines are still forwarded 
 
 If Apache is configured with `%v` (virtual host) at the beginning:
 
-```
+```text
 www.example.com 192.168.1.100 - frank [10/Oct/2024:13:55:36 -0700] "GET / HTTP/1.1" 200 2326 "-" "-"
 ```
 

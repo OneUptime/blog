@@ -110,7 +110,7 @@ CMD ["node", "dist/main.js"]
 
 Keep the build context clean and fast:
 
-```
+```text
 node_modules
 dist
 .git
@@ -216,7 +216,7 @@ services:
 
 Create `.env.production`:
 
-```
+```text
 DATABASE_HOST=postgres
 DATABASE_PORT=5432
 DATABASE_USER=myuser

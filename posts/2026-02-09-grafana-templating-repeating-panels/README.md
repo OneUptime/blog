@@ -26,7 +26,7 @@ Start by creating a template variable that queries all namespaces:
 2. Go to Variables and click "Add variable"
 3. Configure the variable:
 
-```
+```text
 Name: namespace
 Type: Query
 Label: Namespace
@@ -74,7 +74,7 @@ Save the dashboard. Grafana will now create one panel for each selected namespac
 
 Create variables that depend on each other for hierarchical filtering:
 
-```
+```text
 # Variable 1: Cluster
 Name: cluster
 Query: label_values(kube_node_info, cluster)
@@ -195,7 +195,7 @@ Each namespace gets a complete row with CPU, memory, and network panels.
 
 Use template variables in panel titles and legend formats for clarity:
 
-```
+```text
 Panel Title: Namespace $namespace - CPU Usage
 Legend Format: {{pod}} in $namespace
 ```
@@ -206,7 +206,7 @@ This makes each repeated panel clearly identify which namespace it represents.
 
 When you have many namespaces, repeated panels can make dashboards overwhelming:
 
-```
+```text
 # Limit namespaces with regex
 Regex: ^(production|staging|development).*$
 
@@ -243,7 +243,7 @@ Only the `$namespace` variable needs to be the repeat variable, but you can filt
 
 Repeating panels multiplies the number of queries Grafana executes:
 
-```
+```text
 # If you have:
 - 10 namespaces selected
 - 4 repeating panels per namespace
@@ -255,7 +255,7 @@ Repeating panels multiplies the number of queries Grafana executes:
 
 Optimize performance by:
 
-```
+```text
 # Use efficient queries
 - Increase scrape intervals for heavy queries
 - Use recording rules for complex calculations

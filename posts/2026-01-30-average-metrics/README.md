@@ -470,7 +470,7 @@ demonstrate_average_problem()
 ```
 
 Output:
-```
+```text
 Cache Performance Analysis
 ========================================
 Average latency:     54.5ms

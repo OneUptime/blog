@@ -241,7 +241,7 @@ docker exec -it redis-node-1 redis-cli -a your-strong-password -p 7001 cluster s
 
 Example output from `cluster nodes`:
 
-```
+```text
 a1b2c3d4... 172.28.0.11:7001@17001 myself,master - 0 0 1 connected 0-5460
 e5f6g7h8... 172.28.0.12:7002@17002 master - 0 1234567890 2 connected 5461-10922
 i9j0k1l2... 172.28.0.13:7003@17003 master - 0 1234567891 3 connected 10923-16383

@@ -122,7 +122,7 @@ Tell the Name Service Switch to use SSSD:
 sudo nano /etc/nsswitch.conf
 ```
 
-```
+```text
 passwd:         files systemd sss
 group:          files systemd sss
 shadow:         files sss
@@ -269,7 +269,7 @@ ssh_hash_known_hosts = true
 
 Update `/etc/ssh/sshd_config`:
 
-```
+```text
 AuthorizedKeysCommand /usr/bin/sss_ssh_authorizedkeys
 AuthorizedKeysCommandUser nobody
 ```

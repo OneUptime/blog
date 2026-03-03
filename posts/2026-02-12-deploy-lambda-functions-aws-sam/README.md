@@ -42,7 +42,7 @@ sam init \
 
 This generates a project structure:
 
-```
+```text
 my-serverless-app/
   - template.yaml        # SAM template (infrastructure definition)
   - hello_world/
@@ -223,7 +223,7 @@ def lambda_handler(event, context):
 
 And the requirements file:
 
-```
+```text
 # src/create_order/requirements.txt
 boto3>=1.28.0
 ```

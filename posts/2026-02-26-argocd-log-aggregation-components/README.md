@@ -274,7 +274,7 @@ Once logs are aggregated, here are queries for common debugging scenarios:
 
 ### Elasticsearch (KQL)
 
-```
+```text
 # Sync failures
 namespace: "argocd" AND component: "argocd-application-controller" AND msg: "sync failed"
 

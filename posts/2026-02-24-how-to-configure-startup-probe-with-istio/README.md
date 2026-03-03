@@ -129,7 +129,7 @@ kubectl get pod <pod-name> -o yaml | grep -B2 -A10 "startupProbe"
 
 The formula is simple:
 
-```
+```text
 max_startup_time = periodSeconds * failureThreshold
 ```
 

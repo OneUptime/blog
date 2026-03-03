@@ -34,7 +34,7 @@ The `now()` function returns the current timestamp. You can format it using the 
 
 Sample output:
 
-```
+```text
 Default: 2026-02-21 14:30:45.123456
 ISO format: 2026-02-21T14:30:45
 Date only: 2026-02-21

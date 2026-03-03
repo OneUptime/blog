@@ -14,7 +14,7 @@ Talos Linux automatically creates its own partition layout on the system disk du
 
 The system disk in Talos Linux always follows a fixed layout:
 
-```
+```text
 System Disk (managed by Talos):
   EFI/BIOS boot partition
   BOOT partition

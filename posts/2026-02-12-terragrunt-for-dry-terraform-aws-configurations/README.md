@@ -16,7 +16,7 @@ Think of Terragrunt as a thin orchestration layer on top of Terraform. It genera
 
 Without Terragrunt, a multi-environment setup looks like this.
 
-```
+```text
 environments/
   dev/
     backend.tf        # S3 bucket, DynamoDB table, key = "dev/..."
@@ -40,7 +40,7 @@ environments/
 
 That's a lot of duplicated files. With Terragrunt, it looks like this.
 
-```
+```text
 terragrunt.hcl          # Root config with shared backend and provider
 environments/
   dev/
@@ -201,7 +201,7 @@ terragrunt run-all apply
 
 Real infrastructure has multiple components - networking, database, compute. Terragrunt handles dependencies between them.
 
-```
+```text
 environments/
   dev/
     networking/

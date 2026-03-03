@@ -119,7 +119,7 @@ ip -s link show eth0
 
 A web server under light load shows intermittent spikes in outgoing traffic (serving requests) and small amounts of incoming traffic (receiving requests):
 
-```
+```text
 Device eth0 [192.168.1.100] (1 of 1):
 ==============================================================
 Incoming:

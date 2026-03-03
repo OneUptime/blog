@@ -246,7 +246,7 @@ Here are some of the most frequently requested kernel customizations for Talos:
 
 ### Enabling GPU Passthrough (VFIO)
 
-```
+```text
 CONFIG_VFIO=m
 CONFIG_VFIO_IOMMU_TYPE1=m
 CONFIG_VFIO_PCI=m
@@ -255,7 +255,7 @@ CONFIG_VFIO_VIRQFD=m
 
 ### Enabling Additional Filesystem Support
 
-```
+```text
 CONFIG_XFS_FS=m
 CONFIG_BTRFS_FS=m
 CONFIG_ZFS=m
@@ -263,7 +263,7 @@ CONFIG_ZFS=m
 
 ### Enabling Network Performance Features
 
-```
+```text
 CONFIG_TCP_CONG_BBR=m
 CONFIG_NET_SCH_FQ=m
 CONFIG_NET_SCH_FQ_CODEL=m
@@ -271,7 +271,7 @@ CONFIG_NET_SCH_FQ_CODEL=m
 
 ### Enabling Hardware Watchdog
 
-```
+```text
 CONFIG_WATCHDOG=y
 CONFIG_WATCHDOG_CORE=y
 CONFIG_SOFTDOG=m

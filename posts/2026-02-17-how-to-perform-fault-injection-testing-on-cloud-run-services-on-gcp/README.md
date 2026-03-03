@@ -265,7 +265,7 @@ gcloud run services describe order-service \
 
 After each fault injection test, document what you found. Use this template:
 
-```
+```text
 Test: [Description of the fault injected]
 Date: [Date of the test]
 Duration: [How long the test ran]

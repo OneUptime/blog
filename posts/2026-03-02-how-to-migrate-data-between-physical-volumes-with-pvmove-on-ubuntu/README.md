@@ -25,7 +25,7 @@ Confirm the Volume Group has enough free space on the destination PV(s) to accom
 sudo pvs
 ```
 
-```
+```text
   PV         VG       Fmt  Attr PSize    PFree
   /dev/sdb   data_vg  lvm2 a--  500.00g      0
   /dev/sdc   data_vg  lvm2 a--  500.00g  300.00g
@@ -43,7 +43,7 @@ sudo pvmove /dev/sdb
 
 LVM displays progress as it migrates:
 
-```
+```text
   /dev/sdb: Moved: 0.22%
   /dev/sdb: Moved: 1.47%
   /dev/sdb: Moved: 5.93%
@@ -112,7 +112,7 @@ pvmove exits and returns the shell prompt, while the migration continues. Monito
 watch -n 30 'sudo pvs'
 ```
 
-```
+```text
 Every 30.0s: sudo pvs
 
   PV         VG       Fmt  Attr PSize    PFree
@@ -164,7 +164,7 @@ sudo lvs -o lv_name,devices,seg_pe_ranges --noheadings
 sudo lvdisplay -m /dev/data_vg/web_data
 ```
 
-```
+```text
   --- Segments ---
   Logical extents 0 to 51199:
     Type                linear

@@ -25,7 +25,7 @@ This role manages:
 
 ## Role Structure
 
-```
+```text
 roles/user_management/
   defaults/main.yml
   tasks/
@@ -223,7 +223,7 @@ um_skeleton_dir: /etc/skel
 
 ## Sudoers Template
 
-```
+```text
 # roles/user_management/templates/sudoers.j2
 # Sudoers file for {{ item.name }} - managed by Ansible
 {% if item.sudo_nopasswd | default(false) %}

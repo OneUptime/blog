@@ -68,7 +68,7 @@ ansible-inventory -i inventory.ini --graph
 
 Output:
 
-```
+```text
 @all:
   |--@ungrouped:
   |--@webservers:
@@ -93,7 +93,7 @@ ansible-inventory -i inventory.ini --graph webservers
 
 Output:
 
-```
+```text
 @webservers:
   |--web1.example.com
   |--web2.example.com
@@ -110,7 +110,7 @@ ansible-inventory -i inventory.ini --graph --vars
 
 Output:
 
-```
+```text
 @all:
   |--@webservers:
   |  |--web1.example.com
@@ -206,7 +206,7 @@ ansible-playbook -i inventory.ini site.yml --list-hosts
 
 Output:
 
-```
+```text
 playbook: site.yml
 
   play #1 (webservers): Deploy web application    TAGS: []

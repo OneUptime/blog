@@ -142,7 +142,7 @@ roles:
 
 When Galaxy installs a role, it creates a standard directory structure:
 
-```
+```text
 ~/.ansible/roles/geerlingguy.nginx/
     defaults/
         main.yml          # Default variables (override these)

@@ -77,7 +77,7 @@ aws ec2 run-instances \
 
 The bastion's security group should allow SSH from your IP. The RDS security group should allow connections from the bastion's security group.
 
-```
+```text
 Bastion SG (inbound):
   SSH (22) from your-ip/32
 

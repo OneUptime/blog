@@ -47,7 +47,7 @@ Cron expressions provide a powerful and standardized way to define time-based sc
 
 A cron expression consists of five or six fields:
 
-```
+```text
 ┌───────────── minute (0 - 59)
 │ ┌───────────── hour (0 - 23)
 │ │ ┌───────────── day of month (1 - 31)

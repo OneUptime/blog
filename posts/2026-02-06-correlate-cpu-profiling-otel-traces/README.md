@@ -142,7 +142,7 @@ Once you have both trace and profile data linked by trace ID, the debugging work
 
 ### Step 1: Find the Slow Trace
 
-```
+```text
 # Find traces where calculate_totals takes more than 500ms
 {
   resource.service.name = "order-service"
@@ -166,7 +166,7 @@ format=flamegraph"
 
 The flame graph shows you exactly where CPU time is spent within the span's execution:
 
-```
+```text
 # Example flame graph output (simplified)
 # Width represents CPU time percentage
 

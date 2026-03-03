@@ -22,7 +22,7 @@ cat /proc/modules | head -10
 
 `lsmod` output:
 
-```
+```text
 Module                  Size  Used by
 overlay               139264  23
 br_netfilter           28672  0
@@ -59,7 +59,7 @@ modinfo --field=depends e1000e
 
 `modinfo` output:
 
-```
+```text
 filename:       /lib/modules/5.15.0-91-generic/kernel/fs/overlayfs/overlay.ko.zst
 author:         Miklos Szeredi <miklos@szeredi.hu>
 description:    Overlay filesystem
@@ -188,7 +188,7 @@ sudo nano /etc/modules
 
 Add module names, one per line:
 
-```
+```text
 # Load at boot
 br_netfilter
 overlay
@@ -204,7 +204,7 @@ More organized approach, separate file per module or group:
 sudo nano /etc/modules-load.d/network.conf
 ```
 
-```
+```text
 # Network modules
 br_netfilter
 8021q
@@ -216,7 +216,7 @@ bonding
 sudo nano /etc/modules-load.d/storage.conf
 ```
 
-```
+```text
 # Storage modules
 dm_crypt
 dm_multipath
@@ -231,7 +231,7 @@ Use `/etc/modprobe.d/` to set persistent parameters and options:
 sudo nano /etc/modprobe.d/network.conf
 ```
 
-```
+```text
 # Load e1000e with EEE disabled
 options e1000e EEE=0
 
@@ -253,7 +253,7 @@ Prevent a module from loading, even if the system tries to load it:
 sudo nano /etc/modprobe.d/blacklist-custom.conf
 ```
 
-```
+```text
 # Blacklist Bluetooth (if not used)
 blacklist bluetooth
 blacklist btusb
@@ -326,7 +326,7 @@ If a module must load before another:
 sudo nano /etc/modprobe.d/ordering.conf
 ```
 
-```
+```text
 # softdep: soft dependency (preferred order but not enforced)
 softdep bridge pre: stp
 

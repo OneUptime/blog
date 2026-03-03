@@ -78,7 +78,7 @@ span.setAttribute('search.query', req.query.q);
 
 The built-in HTTP instrumentations follow this pattern already. They use the HTTP method and route template as the span name:
 
-```
+```text
 GET /api/users/:id    (good - parameterized)
 GET /api/users/12345  (bad - specific ID in name)
 ```
@@ -108,7 +108,7 @@ Here is what high-cardinality span names do to popular tracing backends:
 
 Adopt a consistent naming scheme for your spans:
 
-```
+```text
 <verb>_<noun>           # process_order, validate_token
 <NOUN> <verb>           # HTTP GET, DB query (for infrastructure spans)
 <component>.<operation> # cache.get, queue.publish

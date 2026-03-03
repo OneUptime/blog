@@ -25,7 +25,7 @@ Let's build a module for an AWS application stack - a common pattern that create
 
 ## Directory Structure
 
-```
+```text
 terraform-aws-app-service/
   main.tf              # Core resources
   variables.tf         # Input variables

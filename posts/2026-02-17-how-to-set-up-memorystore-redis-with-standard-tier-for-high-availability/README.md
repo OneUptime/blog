@@ -279,7 +279,7 @@ When sizing a Standard Tier instance, remember that the replica consumes the sam
 
 Factor this into your cost calculations:
 
-```
+```text
 Standard Tier cost = 2 x (per-GB price) x (instance size in GB)
 ```
 

@@ -50,7 +50,7 @@ npx cypress open
 
 This creates the following structure in your project:
 
-```
+```text
 cypress/
   downloads/
   e2e/              # Your test files go here

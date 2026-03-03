@@ -118,7 +118,7 @@ This is controlled by two deployment configuration parameters:
 
 For a service with 4 desired tasks and default settings (min 100%, max 200%):
 
-```
+```text
 During deployment:
 - At least 4 tasks must be running (100% of 4)
 - Up to 8 tasks can be running (200% of 4)

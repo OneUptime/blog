@@ -12,7 +12,7 @@ Joins in Kafka Streams allow you to correlate and enrich data from multiple stre
 
 ## Join Types Overview
 
-```
+```text
 KStream-KStream Join:
 - Windowed join
 - Both sides are streams of events

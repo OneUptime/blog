@@ -211,7 +211,7 @@ AND created_at > '2026-01-01';
 
 Expected output showing index usage.
 
-```
+```text
 Index Scan using idx_orders_pending on orders
   Index Cond: (created_at > '2026-01-01')
   Rows Removed by Index Recheck: 0

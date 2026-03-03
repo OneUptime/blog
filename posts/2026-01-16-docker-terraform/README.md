@@ -538,7 +538,7 @@ env = [
 
 ### Module Structure
 
-```
+```text
 modules/
 ├── docker-app/
 │   ├── main.tf

@@ -12,13 +12,13 @@ Many applications still produce unstructured text logs. Apache access logs, appl
 
 An unstructured log line like this:
 
-```
+```text
 2026-02-06 10:30:15 ERROR [checkout-service] RequestID=abc123 User=user456 Payment failed: insufficient funds (amount=99.99, currency=USD)
 ```
 
 Needs to become structured attributes:
 
-```
+```text
 timestamp: 2026-02-06 10:30:15
 severity: ERROR
 service: checkout-service

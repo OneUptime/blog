@@ -134,7 +134,7 @@ kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/clusters | 
 
 Look for endpoints with `failed_outlier_check` in the health flags:
 
-```
+```text
 outbound|8080||service-b.default.svc.cluster.local::10.244.1.5:8080::health_flags::/failed_outlier_check
 ```
 

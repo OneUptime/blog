@@ -241,7 +241,7 @@ RabbitMQ maintains a separate sub-queue for each priority level. When a consumer
 3. Consuming scans from highest to lowest priority
 4. Empty priority levels add minimal overhead
 
-```
+```text
 Internal Structure:
 
 Priority 10: [msg] [msg]           <- Checked first

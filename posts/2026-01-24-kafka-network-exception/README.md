@@ -20,7 +20,7 @@ This guide covers the common causes of network exceptions, diagnostic approaches
 
 Kafka network exceptions appear in various forms:
 
-```
+```text
 org.apache.kafka.common.errors.NetworkException: The server disconnected before a response was received.
 
 org.apache.kafka.common.errors.TimeoutException: Failed to update metadata after 60000 ms.

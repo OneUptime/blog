@@ -14,7 +14,7 @@ Not every Talos Linux cluster needs a dedicated load balancer or VIP for the Kub
 
 The concept is straightforward: create multiple DNS A records pointing to the same hostname, with each record pointing to a different control plane node. When a client resolves the hostname, it gets back all the IP addresses and can try them in order.
 
-```
+```text
 k8s-api.example.com.  IN  A  192.168.1.101
 k8s-api.example.com.  IN  A  192.168.1.102
 k8s-api.example.com.  IN  A  192.168.1.103
@@ -40,7 +40,7 @@ The exact method depends on your DNS provider. Here are examples for common setu
 
 Add the following to your zone file:
 
-```
+```text
 ; Zone file for example.com
 $TTL 30
 
@@ -62,7 +62,7 @@ sudo rndc reload example.com
 
 If you run CoreDNS on your network:
 
-```
+```text
 # Corefile entry
 example.com {
     hosts {
@@ -78,7 +78,7 @@ example.com {
 
 Add entries to your dnsmasq configuration:
 
-```
+```text
 # /etc/dnsmasq.conf
 address=/k8s-api.example.com/192.168.1.101
 address=/k8s-api.example.com/192.168.1.102
@@ -263,7 +263,7 @@ aws route53 create-health-check --caller-reference cp1 \
 
 For the best of both worlds, combine DNS with VIP or a load balancer:
 
-```
+```text
 # DNS points to the VIP
 k8s-api.example.com.  IN  A  192.168.1.100   # VIP address
 

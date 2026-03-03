@@ -133,7 +133,7 @@ The `kadm5.acl` file controls who can administer the KDC remotely:
 sudo nano /etc/krb5kdc/kadm5.acl
 ```
 
-```
+```text
 # Grant full admin rights to principals ending in /admin
 */admin@EXAMPLE.COM    *
 ```
@@ -165,7 +165,7 @@ sudo kadmin.local
 
 In the kadmin prompt:
 
-```
+```text
 # Create the admin principal
 kadmin.local: addprinc admin/admin
 # Enter and confirm password

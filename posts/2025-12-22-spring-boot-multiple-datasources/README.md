@@ -185,7 +185,7 @@ public class SecondaryDataSourceConfig {
 
 ## Project Structure
 
-```
+```text
 src/main/java/com/example/
 ├── config/
 │   ├── PrimaryDataSourceConfig.java

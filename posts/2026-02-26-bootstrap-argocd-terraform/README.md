@@ -405,7 +405,7 @@ resource "argocd_application" "infra_apps" {
 
 Your GitOps repository should be organized to support this bootstrap:
 
-```
+```text
 gitops-repo/
   apps/
     api-service.yaml        # ArgoCD Application manifests

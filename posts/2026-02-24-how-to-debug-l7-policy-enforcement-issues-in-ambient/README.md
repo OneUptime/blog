@@ -156,13 +156,13 @@ kubectl logs -n my-app deploy/waypoint | grep -i "rbac\|enforced\|shadow"
 
 You should see entries like:
 
-```
+```text
 rbac_log: enforced denied, matched policy ns[my-app]-policy[restrict-api-access]-rule[0]
 ```
 
 or:
 
-```
+```text
 rbac_log: enforced allowed, matched policy ns[my-app]-policy[restrict-api-access]-rule[0]
 ```
 

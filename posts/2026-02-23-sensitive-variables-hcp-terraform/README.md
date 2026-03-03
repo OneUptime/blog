@@ -73,7 +73,7 @@ curl \
 
 During a plan or apply, sensitive variables are injected into the execution environment just like regular variables. The difference is in how they appear in output:
 
-```
+```text
 # Plan output
 Terraform will perform the following actions:
 

@@ -14,7 +14,7 @@ The default access log format in Istio includes a lot of information, but it mig
 
 When access logging is enabled with TEXT encoding, Istio uses this default format:
 
-```
+```text
 [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% "%UPSTREAM_TRANSPORT_FAILURE_REASON%" %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%" %UPSTREAM_CLUSTER% %UPSTREAM_LOCAL_ADDRESS% %DOWNSTREAM_LOCAL_ADDRESS% %DOWNSTREAM_REMOTE_ADDRESS% %REQUESTED_SERVER_NAME% %ROUTE_NAME%
 ```
 
@@ -100,7 +100,7 @@ meshConfig:
 ```
 
 Output:
-```
+```text
 [2026-02-24T10:15:30.123Z] GET /api/users 200 - 15ms 10.244.1.5:8080
 ```
 
@@ -117,7 +117,7 @@ meshConfig:
 ```
 
 Output:
-```
+```text
 [2026-02-24T10:15:30.123Z] "GET /api/users HTTP/1.1" src=10.244.1.3:45678 dst=10.244.1.5:8080 cluster=inbound|8080|| code=200 flags=- duration=15ms upstream_time=12ms req_bytes=0 resp_bytes=1234 request_id=abc-123
 ```
 

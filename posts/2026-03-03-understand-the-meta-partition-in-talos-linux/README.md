@@ -52,7 +52,7 @@ The META partition uses a simple binary format. It is not a standard filesystem 
 
 Here is what the partition layout typically looks like on a Talos disk:
 
-```
+```text
 Disk Layout:
   - EFI or BIOS boot partition
   - BOOT partition (contains kernel and initramfs)

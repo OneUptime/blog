@@ -14,7 +14,7 @@ The OpenTelemetry Collector loads TLS certificates at startup. When cert-manager
 
 The timeline looks like this:
 
-```
+```text
 T=0:  Collector starts, loads cert A (valid until T+90d)
 T=89d: cert-manager rotates, creates cert B in the Secret
 T=89d: Kubernetes updates the mounted volume with cert B

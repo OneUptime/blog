@@ -425,7 +425,7 @@ startTraceConsumer().catch(console.error);
 
 Running this consumer while publishing messages gives you output like this.
 
-```
+```text
 ============================================================
 [PUBLISH] 2026-01-30T10:15:23.456Z
 ============================================================

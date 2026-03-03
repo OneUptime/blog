@@ -433,7 +433,7 @@ Enable SASL authentication for security:
 
 `/opt/zookeeper/conf/jaas.conf`
 
-```
+```text
 Server {
     org.apache.zookeeper.server.auth.DigestLoginModule required
     user_admin="admin_password"

@@ -338,7 +338,7 @@ curl -v -H "x-api-key: key-ghi789" http://api-gateway.default:8080/api/data
 
 You should see headers like:
 
-```
+```text
 x-ratelimit-limit: 1000
 x-ratelimit-remaining: 985
 x-ratelimit-reset: 3600

@@ -382,7 +382,7 @@ public class DeadlockDemo {
 
 When you capture a thread dump with jstack, deadlocks are clearly reported:
 
-```
+```text
 Found one Java-level deadlock:
 =============================
 "Thread-Acquires-A-Then-B":

@@ -18,7 +18,7 @@ Logs Insights uses a pipe-based query syntax. You start with data, filter it, tr
 
 The basic structure looks like this:
 
-```
+```text
 fields @timestamp, srcAddr, dstAddr, dstPort, action
 | filter action = "REJECT"
 | sort @timestamp desc
@@ -33,7 +33,7 @@ VPC Flow Logs sent to CloudWatch are automatically parsed, so you can reference 
 
 This query identifies the top source IPs generating rejected traffic - potential attackers or misconfigured services:
 
-```
+```text
 # Top 20 source IPs with the most rejected connections
 fields srcAddr, dstAddr, dstPort, action
 | filter action = "REJECT"
@@ -46,7 +46,7 @@ fields srcAddr, dstAddr, dstPort, action
 
 A port scan typically shows up as a single source IP connecting to many different destination ports:
 
-```
+```text
 # Find IPs connecting to more than 20 different ports - possible port scan
 fields srcAddr, dstPort
 | filter action = "REJECT"
@@ -60,7 +60,7 @@ fields srcAddr, dstPort
 
 Monitor for unauthorized remote access attempts:
 
-```
+```text
 # Rejected SSH (22) and RDP (3389) attempts from external IPs
 fields @timestamp, srcAddr, dstAddr, dstPort, action
 | filter dstPort in [22, 3389] and action = "REJECT"
@@ -74,7 +74,7 @@ fields @timestamp, srcAddr, dstAddr, dstPort, action
 
 Large outbound data transfers could indicate data exfiltration:
 
-```
+```text
 # Top outbound data transfers by destination (external IPs only)
 fields dstAddr, bytes, packets
 | filter not isprivateaddr(dstAddr)
@@ -89,7 +89,7 @@ fields dstAddr, bytes, packets
 
 When an application can't connect to something, flow logs tell you if traffic is being blocked:
 
-```
+```text
 # All rejected traffic for a specific network interface
 fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, protocol, action
 | filter interfaceId = "eni-abc123def456"
@@ -102,7 +102,7 @@ fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, protocol, action
 
 If two services can't talk to each other, check the flow logs for both directions:
 
-```
+```text
 # Traffic between two specific IPs
 fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, protocol, action, packets, bytes
 | filter (srcAddr = "10.0.1.15" and dstAddr = "10.0.2.25")
@@ -115,7 +115,7 @@ fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, protocol, action, packets
 
 Useful when debugging whether a service is receiving traffic on the expected port:
 
-```
+```text
 # All traffic hitting port 443 on a specific IP
 fields @timestamp, srcAddr, dstAddr, dstPort, action, packets, bytes
 | filter dstAddr = "10.0.1.100" and dstPort = 443
@@ -129,7 +129,7 @@ fields @timestamp, srcAddr, dstAddr, dstPort, action, packets, bytes
 
 Find which connections are using the most bandwidth:
 
-```
+```text
 # Top bandwidth consumers
 fields srcAddr, dstAddr, bytes
 | stats sum(bytes) as totalBytes by srcAddr, dstAddr
@@ -141,7 +141,7 @@ fields srcAddr, dstAddr, bytes
 
 Create a time series of traffic volume:
 
-```
+```text
 # Traffic volume in 5-minute buckets
 fields bytes
 | stats sum(bytes) as totalBytes by bin(5m) as timeWindow
@@ -152,7 +152,7 @@ fields bytes
 
 See what protocols are in use across your VPC:
 
-```
+```text
 # Traffic breakdown by protocol number
 # 6 = TCP, 17 = UDP, 1 = ICMP
 fields protocol, bytes
@@ -164,7 +164,7 @@ fields protocol, bytes
 
 Identify which services are receiving the most traffic:
 
-```
+```text
 # Most popular destination ports
 fields dstPort, bytes, action
 | filter action = "ACCEPT"
@@ -179,7 +179,7 @@ fields dstPort, bytes, action
 
 A high rejection ratio from a single source is suspicious:
 
-```
+```text
 # Acceptance ratio by source IP
 fields srcAddr, action
 | stats count(*) as total,
@@ -196,7 +196,7 @@ fields srcAddr, action
 
 Find external traffic hitting your private resources:
 
-```
+```text
 # External IPs communicating with internal resources
 fields srcAddr, dstAddr, dstPort, action, bytes
 | filter not isprivateaddr(srcAddr) and isprivateaddr(dstAddr)
@@ -209,7 +209,7 @@ fields srcAddr, dstAddr, dstPort, action, bytes
 
 Detect traffic spikes outside business hours:
 
-```
+```text
 # Traffic between midnight and 5 AM
 fields @timestamp, srcAddr, dstAddr, bytes, action
 | filter dateTimePart(@timestamp, "HH") >= 0

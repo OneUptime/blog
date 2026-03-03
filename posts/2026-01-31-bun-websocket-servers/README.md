@@ -61,7 +61,7 @@ bun init -y
 
 This creates a minimal project structure. We will organize our code as follows:
 
-```
+```text
 bun-websocket-server/
 ├── index.ts
 ├── handlers/

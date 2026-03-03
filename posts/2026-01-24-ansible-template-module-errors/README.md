@@ -40,7 +40,7 @@ flowchart TD
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "AnsibleUndefinedVariable: 'database_host' is undefined"
@@ -131,7 +131,7 @@ cache_port = {{ cache_config.port | default(6379) }}
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "TemplateSyntaxError: unexpected '}'"
@@ -140,7 +140,7 @@ fatal: [webserver]: FAILED! => {
 
 Or:
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "TemplateSyntaxError: Encountered unknown tag 'endif'."
@@ -212,7 +212,7 @@ message = "Hello {{ user_name | default(\"Guest\") }}"
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "TemplateError: no filter named 'to_yaml'"
@@ -256,7 +256,7 @@ class FilterModule:
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "TemplateError: int() argument must be a string or a number, not 'list'"
@@ -302,7 +302,7 @@ feature_enabled = yes
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0"
@@ -345,7 +345,7 @@ description = {{ description | default('Default') }}
 
 Template produces unwanted blank lines or missing newlines:
 
-```
+```text
 # Expected output:
 server {
     listen 80;
@@ -411,7 +411,7 @@ ssl_certificate {{ ssl_cert_path }};
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "RecursionError: maximum recursion depth exceeded"
@@ -455,7 +455,7 @@ Custom content here
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "Could not find or access 'templates/{{ app_name }}.conf.j2'"
@@ -503,7 +503,7 @@ fatal: [webserver]: FAILED! => {
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "AnsibleError: template error while templating string: expected name or number"
@@ -553,7 +553,7 @@ first_item = {{ my_list[0] | default('none') }}
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "failed to validate: /usr/sbin/nginx -t -c /tmp/ansible.xxx.conf"

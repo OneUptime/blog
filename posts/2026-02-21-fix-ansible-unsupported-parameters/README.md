@@ -12,7 +12,7 @@ The "Unsupported parameters" error means you passed a parameter to an Ansible mo
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "Unsupported parameters for (apt) module: packages. Supported parameters include: name, state, ..."
 }

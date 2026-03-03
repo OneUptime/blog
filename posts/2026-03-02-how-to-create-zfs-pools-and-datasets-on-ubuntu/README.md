@@ -144,7 +144,7 @@ Get it wrong and you'll have poor performance. It cannot be changed after pool c
 sudo zpool status datapool
 ```
 
-```
+```text
   pool: datapool
  state: ONLINE
   scan: none requested
@@ -165,7 +165,7 @@ errors: No known data errors
 sudo zpool list
 ```
 
-```
+```text
 NAME       SIZE  ALLOC   FREE  FRAG    CAP  DEDUP  HEALTH  ALTROOT
 datapool  3.63T  1.13M  3.63T    0%     0%  1.00x  ONLINE  -
 ```
@@ -243,7 +243,7 @@ sudo zfs get all datapool/web
 sudo zfs get compression,quota,mountpoint,used,available datapool/web
 ```
 
-```
+```text
 NAME          PROPERTY    VALUE       SOURCE
 datapool/web  compression lz4         local
 datapool/web  quota       200G        local

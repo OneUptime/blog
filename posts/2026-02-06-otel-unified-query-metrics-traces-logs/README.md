@@ -12,7 +12,7 @@ The observability workflow everyone wants but few actually have: you see a metri
 
 For the jump from metrics to traces to logs to work, all three signals need to share identifiers. Here is what needs to be in place:
 
-```
+```text
 Metrics:
   - resource attributes: service.name, deployment.environment
   - exemplars: trace_id, span_id (linked to sampled traces)
@@ -98,7 +98,7 @@ If you have exemplars configured, the metric data points carry direct links to t
 
 If you do not have exemplars, use the time range and attributes to search for traces:
 
-```
+```text
 # TraceQL query in Tempo
 {
   resource.service.name = "checkout-service" &&
@@ -113,7 +113,7 @@ This finds all traces for the checkout endpoint that took longer than 2 seconds 
 
 You open a trace and see the span waterfall:
 
-```
+```text
 POST /api/checkout (3.2s)
   |-- validate_cart (50ms)
   |-- calculate_total (120ms)
@@ -128,14 +128,14 @@ The `check_inventory` span is responsible for the latency, and it is dominated b
 
 Copy the trace ID from the slow trace and query your log backend:
 
-```
+```text
 # LogQL in Loki
 {service_name="checkout-service"} | json | trace_id="abc123456789abcdef0123456789abcd"
 ```
 
 Or use the span ID for more precision:
 
-```
+```text
 {service_name="checkout-service"} | json | span_id="def456789abcdef0"
 ```
 

@@ -14,7 +14,7 @@ The first time you SSH into a new server, you see that familiar prompt: "The aut
 
 When Ansible tries to connect to a host it has never contacted before, SSH blocks the connection waiting for manual confirmation:
 
-```
+```text
 The authenticity of host '192.168.1.10 (192.168.1.10)' can't be established.
 ED25519 key fingerprint is SHA256:abc123def456...
 Are you sure you want to continue connecting (yes/no/[fingerprint])?
@@ -209,7 +209,7 @@ deploy:
 
 When a server is reprovisioned, its host key changes. You will see this error:
 
-```
+```text
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 @    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@

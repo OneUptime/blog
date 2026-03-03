@@ -20,7 +20,7 @@ The name of the file in `/etc/pam.d/` typically matches the service name. For ex
 
 Each line in a PAM configuration file follows this format:
 
-```
+```text
 type  control  module-path  [module-arguments]
 ```
 
@@ -60,7 +60,7 @@ ls /etc/pam.d/
 
 A typical `/etc/pam.d/sshd` on Ubuntu looks something like this:
 
-```
+```text
 # Standard Un*x authentication.
 @include common-auth
 
@@ -113,7 +113,7 @@ sudo nano /etc/pam.d/common-auth
 
 Add these lines at the top and bottom of the auth stack:
 
-```
+```text
 # At the very beginning of the auth stack
 auth    required                        pam_faillock.so preauth silent audit deny=5 unlock_time=900
 
@@ -169,7 +169,7 @@ sudo nano /etc/pam.d/sshd
 
 Add this line to the auth section:
 
-```
+```text
 auth required pam_google_authenticator.so nullok
 ```
 
@@ -182,7 +182,7 @@ Also update `/etc/ssh/sshd_config`:
 sudo nano /etc/ssh/sshd_config
 ```
 
-```
+```text
 ChallengeResponseAuthentication yes
 AuthenticationMethods keyboard-interactive
 ```
@@ -208,7 +208,7 @@ sudo nano /etc/pam.d/sshd
 
 Add to the account section:
 
-```
+```text
 account required pam_time.so
 ```
 
@@ -218,7 +218,7 @@ Configure the time restrictions in `/etc/security/time.conf`:
 sudo nano /etc/security/time.conf
 ```
 
-```
+```text
 # Format: services;ttys;users;times
 # Allow SSH logins only on weekdays from 8am to 6pm
 sshd;*;!root;Al0800-1800
@@ -261,7 +261,7 @@ sudo pamtester sshd username authenticate
 
 For detailed debugging, temporarily add debug output to a module:
 
-```
+```text
 auth required pam_unix.so debug
 ```
 

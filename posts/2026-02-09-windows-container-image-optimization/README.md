@@ -104,7 +104,7 @@ RUN powershell -Command \
 
 Exclude unnecessary files from build context:
 
-```
+```text
 # .dockerignore
 **/.git
 **/.gitignore

@@ -26,7 +26,7 @@ At its simplest, the sort filter orders a list in ascending order:
 
 Output:
 
-```
+```text
 apple
 banana
 cherry
@@ -110,7 +110,7 @@ Sort by the `uid` attribute:
 
 Output:
 
-```
+```text
 # User entries sorted by UID
 bob:x:1001:1001::/home/bob:/bin/bash
 diana:x:1002:1002::/home/diana:/bin/bash
@@ -131,7 +131,7 @@ Jinja2's sort filter supports sorting by multiple attributes using a comma-separ
 
 Output:
 
-```
+```text
 1 - bob (UID: 1001)
 1 - diana (UID: 1002)
 2 - alice (UID: 1003)
@@ -264,7 +264,7 @@ services:
 
 Output:
 
-```
+```text
 api: port 3000
 frontend: port 8080
 admin: port 9090

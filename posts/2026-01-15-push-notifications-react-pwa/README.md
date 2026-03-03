@@ -73,7 +73,7 @@ cd push-notification-pwa
 
 After creation, your project should have this structure:
 
-```
+```text
 push-notification-pwa/
 ├── public/
 │   ├── index.html
@@ -255,7 +255,7 @@ web-push generate-vapid-keys
 
 This will output something like:
 
-```
+```text
 =======================================
 
 Public Key:

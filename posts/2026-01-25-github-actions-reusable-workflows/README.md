@@ -352,7 +352,7 @@ jobs:
 
 Create starter templates for your organization:
 
-```
+```text
 your-org/.github/
   workflow-templates/
     ci-nodejs.yml

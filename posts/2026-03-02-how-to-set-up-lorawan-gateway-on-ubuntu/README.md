@@ -18,7 +18,7 @@ This guide covers running ChirpStack (an open-source LoRaWAN network server) on 
 
 ## Architecture Overview
 
-```
+```text
 [LoRa End Devices] --> [LoRaWAN Gateway] --> [ChirpStack Network Server (Ubuntu)]
                                                          |
                                                    [Your Application]

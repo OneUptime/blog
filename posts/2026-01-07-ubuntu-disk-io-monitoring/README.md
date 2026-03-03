@@ -111,7 +111,7 @@ iostat -x 1 1
 
 Here is a detailed breakdown of each column in the iostat output:
 
-```
+```text
 Device     r/s     w/s    rkB/s    wkB/s  rrqm/s  wrqm/s  %rrqm  %wrqm  r_await  w_await  aqu-sz  rareq-sz  wareq-sz  svctm  %util
 sda       12.50   45.30   512.00  1024.00    0.50    3.20   3.85   6.60     1.20     2.50    0.15     40.96     22.61   0.85   4.89
 ```
@@ -222,7 +222,7 @@ sudo iotop -oP -d 2
 
 ### Understanding iotop Output
 
-```
+```text
 Total DISK READ:       15.75 M/s | Total DISK WRITE:       25.50 M/s
 Actual DISK READ:      15.75 M/s | Actual DISK WRITE:       8.25 M/s
     TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND
@@ -371,7 +371,7 @@ vmstat -S M 2
 
 ### Understanding vmstat Output
 
-```
+```text
 procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
  r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
  2  1  10240 512000 128000 2048000   0    0   150   300 1500 3000  5  3 85  7  0

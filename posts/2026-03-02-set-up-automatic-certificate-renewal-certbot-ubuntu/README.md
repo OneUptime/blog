@@ -88,7 +88,7 @@ Renewal hooks are scripts that run before or after certificate renewal. The most
 
 Hook directories:
 
-```
+```text
 /etc/letsencrypt/renewal-hooks/
 ├── deploy/       # Runs after successful renewal
 ├── post/         # Runs after renewal attempt (success or failure)

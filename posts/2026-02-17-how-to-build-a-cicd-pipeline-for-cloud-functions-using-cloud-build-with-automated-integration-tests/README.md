@@ -16,7 +16,7 @@ In this post, I will show you how to build a Cloud Build pipeline for Cloud Func
 
 Start with a well-organized project structure:
 
-```
+```text
 my-functions/
   functions/
     process-orders/

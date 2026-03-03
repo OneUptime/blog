@@ -260,7 +260,7 @@ kubectl diff -k ./overlays/staging/
 
 Example directory structure:
 
-```
+```text
 kustomize/
   base/
     deployment.yaml

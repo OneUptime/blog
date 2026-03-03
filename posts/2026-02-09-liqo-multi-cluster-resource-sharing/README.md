@@ -106,7 +106,7 @@ kubectl get foreignclusters
 
 Output shows peering status:
 
-```
+```text
 NAME        TYPE        OUTGOING PEERING   INCOMING PEERING   AGE
 cluster-2   OutOfBand   Established        Established        2m
 ```
@@ -122,7 +122,7 @@ kubectl get nodes
 
 Output:
 
-```
+```text
 NAME                           STATUS   ROLES           AGE   VERSION
 node-1                         Ready    control-plane   10d   v1.28.0
 node-2                         Ready    worker          10d   v1.28.0

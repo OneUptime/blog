@@ -134,7 +134,7 @@ argocd app create web-app \
 
 Organize your GitOps repository:
 
-```
+```text
 k8s-manifests/
 ├── apps/
 │   ├── web-app/
@@ -237,7 +237,7 @@ spec:
 
 Repository structure for Kustomize:
 
-```
+```text
 apps/web-app/
 ├── base/
 │   ├── deployment.yaml

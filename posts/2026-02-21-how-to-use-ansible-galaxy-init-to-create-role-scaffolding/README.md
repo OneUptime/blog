@@ -21,7 +21,7 @@ ansible-galaxy init loadbalancer
 
 This produces the following tree:
 
-```
+```text
 loadbalancer/
   README.md
   defaults/
@@ -242,7 +242,7 @@ done
 
 This gives you a fully structured `roles/` directory in seconds:
 
-```
+```text
 roles/
   webserver/
   database/

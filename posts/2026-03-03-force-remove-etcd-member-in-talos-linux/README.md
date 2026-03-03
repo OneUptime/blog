@@ -70,7 +70,7 @@ talosctl etcd members --nodes <healthy-cp-ip>
 
 Output looks like:
 
-```
+```text
 NODE        MEMBERS
 10.0.0.1    10.0.0.1 (id: 7c2a7a1d4d1e2f3a), 10.0.0.2 (id: 8b3c9e4f5a6b7c8d), 10.0.0.3 (id: 9d4e0f1a2b3c4d5e)
 ```

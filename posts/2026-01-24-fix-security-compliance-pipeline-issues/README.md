@@ -227,7 +227,7 @@ git filter-repo --replace-text expressions.txt
 
 The expressions.txt file format:
 
-```
+```text
 regex:sk_live_[a-zA-Z0-9]{24}==>REDACTED
 regex:AKIA[0-9A-Z]{16}==>REDACTED
 ```

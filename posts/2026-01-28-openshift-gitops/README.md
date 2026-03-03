@@ -70,7 +70,7 @@ spec:
 
 A simple GitOps layout:
 
-```
+```text
 platform-configs/
   apps/
     api/

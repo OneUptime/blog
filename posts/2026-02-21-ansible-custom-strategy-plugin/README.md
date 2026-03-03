@@ -18,7 +18,7 @@ A strategy plugin inherits from `StrategyBase` and implements the `run()` method
 
 ## Project Layout
 
-```
+```text
 my_project/
   strategy_plugins/
     canary.py

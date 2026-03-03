@@ -36,7 +36,7 @@ Edit `/etc/apt/mirror.list` to specify what to mirror:
 sudo nano /etc/apt/mirror.list
 ```
 
-```
+```text
 # Default mirror configuration
 set base_path    /var/spool/apt-mirror
 
@@ -165,7 +165,7 @@ sudo crontab -e
 ```
 
 Add:
-```
+```text
 # Sync Ubuntu mirror daily at 2 AM
 0 2 * * * /usr/bin/apt-mirror >> /var/log/apt-mirror.log 2>&1
 ```

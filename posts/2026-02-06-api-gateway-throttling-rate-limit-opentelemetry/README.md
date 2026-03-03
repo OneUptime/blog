@@ -228,7 +228,7 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3)
 
 Build a rate limiting dashboard with these panels:
 
-```
+```text
 # Throttle rate by consumer
 sum(rate(api_rate_limit_throttled_total[5m])) by (api_consumer_id)
 

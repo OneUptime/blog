@@ -14,7 +14,7 @@ The "integer expression expected" error is a common issue in Bash scripts that o
 
 When you see an error like:
 
-```
+```text
 bash: [: abc: integer expression expected
 bash: [: : integer expression expected
 ```

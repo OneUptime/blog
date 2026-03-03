@@ -37,7 +37,7 @@ Spacelift handles all of these natively. The tradeoff is cost and vendor depende
 
 A stack in Spacelift is equivalent to a Terraform workspace or directory:
 
-```
+```text
 Settings:
   Name: production-infrastructure
   Repository: myorg/infrastructure
@@ -275,7 +275,7 @@ resource "spacelift_context_attachment" "prod_infra" {
 
 Spacelift provides built-in cost estimation for Terraform plans:
 
-```
+```text
 Plan Summary:
   Resources: +3, ~1, -0
   Estimated monthly cost: $142.50 (+$45.00 from current)

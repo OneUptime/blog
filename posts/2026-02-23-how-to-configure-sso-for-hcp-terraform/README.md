@@ -60,7 +60,7 @@ If you are using Okta as your identity provider:
    - **App logo**: Optional (you can use the Terraform logo)
 5. Configure the SAML settings:
 
-```
+```text
 Single Sign-On URL:    https://app.terraform.io/sso/saml/actions/your-org
 Audience URI (SP Entity ID):  https://app.terraform.io/sso/saml/metadata/your-org
 Name ID format:        EmailAddress
@@ -90,7 +90,7 @@ For Azure AD:
 4. Go to **Single sign-on** > **SAML**
 5. Edit the **Basic SAML Configuration**:
 
-```
+```text
 Identifier (Entity ID):     https://app.terraform.io/sso/saml/metadata/your-org
 Reply URL (ACS URL):        https://app.terraform.io/sso/saml/actions/your-org
 Sign on URL:                https://app.terraform.io
@@ -110,7 +110,7 @@ For OneLogin:
 2. Search for "SAML Custom Connector (Advanced)"
 3. Configure the connector:
 
-```
+```text
 Audience:                    https://app.terraform.io/sso/saml/metadata/your-org
 Recipient:                   https://app.terraform.io/sso/saml/actions/your-org
 ACS URL:                     https://app.terraform.io/sso/saml/actions/your-org

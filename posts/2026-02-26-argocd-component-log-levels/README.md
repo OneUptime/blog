@@ -148,7 +148,7 @@ spec:
 Here is what each format looks like:
 
 Text format:
-```
+```text
 time="2026-02-26T10:15:30Z" level=info msg="Syncing application" app=my-app
 ```
 

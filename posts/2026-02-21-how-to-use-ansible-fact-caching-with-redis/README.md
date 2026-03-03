@@ -256,7 +256,7 @@ esac
 
 Each host's fact set is roughly 30-50 KB in JSON format. Here is a quick calculation for sizing your Redis instance:
 
-```
+```text
 500 hosts * 50 KB per host = 25 MB
 1000 hosts * 50 KB per host = 50 MB
 5000 hosts * 50 KB per host = 250 MB
@@ -264,7 +264,7 @@ Each host's fact set is roughly 30-50 KB in JSON format. Here is a quick calcula
 
 Even with 5000 hosts, the cache fits comfortably in a small Redis instance. Set `maxmemory` and an eviction policy to prevent unbounded growth:
 
-```
+```text
 # redis.conf
 maxmemory 256mb
 maxmemory-policy allkeys-lru

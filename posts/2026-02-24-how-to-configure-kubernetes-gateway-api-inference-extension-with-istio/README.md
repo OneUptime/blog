@@ -321,7 +321,7 @@ sum(rate(istio_requests_total{
 
 For model-level metrics, your model serving framework (vLLM, Triton) typically exports Prometheus metrics:
 
-```
+```text
 # vLLM metrics
 vllm:num_requests_running
 vllm:num_requests_waiting

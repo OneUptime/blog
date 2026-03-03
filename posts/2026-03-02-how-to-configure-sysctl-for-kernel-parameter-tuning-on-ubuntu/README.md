@@ -298,7 +298,7 @@ sysctl -a | grep -E "swappiness|somaxconn|file-max"
 
 The `/etc/sysctl.d/` files are applied in alphabetical order. Files in `/etc/sysctl.d/` override `/etc/sysctl.conf`. Use numbered prefixes to control order:
 
-```
+```text
 /etc/sysctl.d/10-network.conf      # applied first
 /etc/sysctl.d/50-security.conf     # applied second
 /etc/sysctl.d/99-custom.conf       # applied last (wins if duplicated)

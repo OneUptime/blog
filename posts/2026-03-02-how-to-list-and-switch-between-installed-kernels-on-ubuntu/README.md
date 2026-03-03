@@ -41,7 +41,7 @@ dpkg --list | grep linux-image | awk '{print $2}'
 
 Example output:
 
-```
+```text
 linux-image-5.15.0-89-generic
 linux-image-5.15.0-91-generic
 linux-image-6.2.0-39-generic

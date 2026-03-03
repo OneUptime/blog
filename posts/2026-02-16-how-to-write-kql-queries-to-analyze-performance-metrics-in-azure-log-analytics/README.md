@@ -27,7 +27,7 @@ The table you query depends on how the data was collected. For this guide, we wi
 
 Every KQL query starts with a table name, followed by a series of operators separated by pipes. Here is a basic query that pulls CPU metrics from the last hour.
 
-```
+```text
 // Get average CPU usage per computer over the last hour
 Perf
 | where TimeGenerated > ago(1h)
@@ -42,7 +42,7 @@ The flow is: start with the `Perf` table, filter by time, filter by the specific
 
 To see how CPU usage trends over time, use the `bin()` function to bucket timestamps into intervals.
 
-```
+```text
 // CPU usage trend in 5-minute intervals for the past 6 hours
 Perf
 | where TimeGenerated > ago(6h)
@@ -57,7 +57,7 @@ The `render timechart` at the end tells Log Analytics to display the results as 
 
 Memory metrics have different counter names depending on the operating system. On Windows, you look at `Memory` with `% Committed Bytes In Use`. On Linux, it is `Memory` with `% Used Memory`.
 
-```
+```text
 // Memory usage across all Linux VMs in the past 24 hours
 Perf
 | where TimeGenerated > ago(24h)
@@ -68,7 +68,7 @@ Perf
 
 If you are using the newer `InsightsMetrics` table (from VM Insights), the query looks different because the schema is flattened.
 
-```
+```text
 // Memory usage from InsightsMetrics for the past 24 hours
 InsightsMetrics
 | where TimeGenerated > ago(24h)
@@ -83,7 +83,7 @@ InsightsMetrics
 
 Disk I/O and free space are critical metrics, especially for database servers. Here is how to check disk latency.
 
-```
+```text
 // Average disk read and write latency per computer
 Perf
 | where TimeGenerated > ago(4h)
@@ -96,7 +96,7 @@ We multiply by 1000 to convert from seconds to milliseconds, which is a more int
 
 For free disk space monitoring, use this query.
 
-```
+```text
 // Current free disk space percentage per drive
 Perf
 | where TimeGenerated > ago(1h)
@@ -113,7 +113,7 @@ The `arg_max` function grabs the most recent value for each combination of compu
 
 Network metrics help you identify bandwidth bottlenecks or unusual traffic patterns.
 
-```
+```text
 // Network bytes sent and received per computer in 10-minute buckets
 Perf
 | where TimeGenerated > ago(6h)
@@ -128,7 +128,7 @@ Perf
 
 Averages can be misleading. A server might average 40% CPU but spike to 95% every 5 minutes. Percentiles give you a better picture of the distribution.
 
-```
+```text
 // CPU usage percentiles per computer over the past 24 hours
 Perf
 | where TimeGenerated > ago(24h)
@@ -148,7 +148,7 @@ If P50 is 30% but P99 is 98%, you have a machine that is mostly idle but experie
 
 KQL has built-in time-series functions that can detect anomalies without any external tooling. The `make-series` operator creates a regular time series, and `series_decompose_anomalies` flags data points that deviate from the expected pattern.
 
-```
+```text
 // Detect CPU anomalies over the past 7 days using 1-hour buckets
 let targetComputer = "web-server-01";
 Perf
@@ -166,7 +166,7 @@ The second parameter to `series_decompose_anomalies` is the sensitivity threshol
 
 One of the strengths of Log Analytics is that you can correlate performance data with other signals. For example, you might want to see if high CPU correlates with application errors.
 
-```
+```text
 // Correlate high CPU events with application errors
 let HighCPU = Perf
 | where TimeGenerated > ago(24h)
@@ -186,7 +186,7 @@ HighCPU
 
 If you plan to turn a query into an alert rule, keep a few things in mind. Alert queries should return a numeric value and ideally run against a short time window to keep evaluation costs low.
 
-```
+```text
 // Alert-ready query: find any computer where CPU exceeded 90% for at least 80% of the last 30 minutes
 Perf
 | where TimeGenerated > ago(30m)

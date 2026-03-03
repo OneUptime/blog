@@ -29,7 +29,7 @@ resource "aws_instance" "web" {
 
 This creates three instances:
 
-```
+```text
 aws_instance.web[0]
 aws_instance.web[1]
 aws_instance.web[2]
@@ -246,7 +246,7 @@ resource "aws_instance" "web" {
 
 A common error is "Index out of range." This occurs when the index you specify exceeds the count value:
 
-```
+```text
 Error: Invalid resource instance key
 The resource aws_instance.web has 3 instances, but the given key 5 is out of range.
 ```

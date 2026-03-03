@@ -383,7 +383,7 @@ ssh node01 "sudo aa-logprof"
 
 Example denial message:
 
-```
+```text
 audit: type=1400 audit(1612345678.123:456): apparmor="DENIED" operation="open"
 profile="k8s-nginx-restricted" name="/etc/shadow" pid=1234 comm="nginx"
 requested_mask="r" denied_mask="r" fsuid=33 ouid=0

@@ -112,7 +112,7 @@ def static_assets(filename):
 
 The gold standard for static assets is to use content hashes or version numbers in filenames. When the content changes, the URL changes, and the cache issue disappears:
 
-```
+```text
 # Old version
 /js/app.v1.2.3.js
 /css/styles.abc123.css

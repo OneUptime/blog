@@ -89,7 +89,7 @@ istioctl proxy-config listener <pod-name>
 
 This shows all the listeners configured in Envoy. For a healthy pod, you should see at least:
 
-```
+```text
 ADDRESS      PORT  MATCH                                     DESTINATION
 0.0.0.0      15001 ALL                                       PassthroughCluster
 0.0.0.0      15006 ALL                                       Inline Route: /*
@@ -131,7 +131,7 @@ kubectl logs <pod-name> -c istio-proxy --tail=100
 
 A typical access log entry looks like:
 
-```
+```text
 [2024-01-15T10:30:45.123Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 15 14 "-" "curl/7.68.0" "abc-123" "users-service:8080" "10.244.1.5:8080" outbound|8080||users-service.default.svc.cluster.local 10.244.0.3:45678 10.96.5.10:8080 10.244.0.3:33456 - default
 ```
 

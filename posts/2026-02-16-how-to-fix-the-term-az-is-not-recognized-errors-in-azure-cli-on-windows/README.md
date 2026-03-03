@@ -10,7 +10,7 @@ Description: Step-by-step fixes for the common 'The term az is not recognized' e
 
 You install Azure CLI on Windows, open a terminal, type `az login`, and get hit with this:
 
-```
+```text
 az : The term 'az' is not recognized as the name of a cmdlet, function, script file, or operable program.
 ```
 
@@ -32,13 +32,13 @@ If you are using VS Code, you may need to completely restart VS Code, not just t
 
 Check whether Azure CLI actually got installed. The default installation directory on Windows is:
 
-```
+```text
 C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin
 ```
 
 Or for older versions:
 
-```
+```text
 C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin
 ```
 

@@ -308,7 +308,7 @@ A few things I've seen trip up Java developers specifically:
 
 **Missing .ebignore**: Without it, EB uploads your entire project directory including `.git`, `target/`, and IDE files.
 
-```
+```text
 # .ebignore - Exclude build artifacts and IDE files
 .git
 .idea

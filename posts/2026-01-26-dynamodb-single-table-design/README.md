@@ -109,7 +109,7 @@ Now design your keys to support these patterns.
 
 Use prefixes to distinguish entity types:
 
-```
+```text
 PK: USER#12345
 SK: PROFILE
 
@@ -124,7 +124,7 @@ SK: ITEM#001
 
 Pack multiple attributes into the sort key for flexible querying:
 
-```
+```text
 SK: ORDER#2024-01-15#98765
        ↑         ↑      ↑
     entity    date   order_id
@@ -801,7 +801,7 @@ Keep a living document that maps every query to its key structure:
 
 Establish naming conventions and stick to them:
 
-```
+```text
 USER#     - User entities
 ORDER#    - Order entities
 PRODUCT#  - Product entities

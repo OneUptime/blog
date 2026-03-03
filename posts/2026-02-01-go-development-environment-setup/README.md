@@ -270,7 +270,7 @@ There's no enforced project layout in Go, but the community has settled on commo
 
 For small applications or libraries:
 
-```
+```text
 myapp/
 ├── go.mod
 ├── go.sum
@@ -285,7 +285,7 @@ myapp/
 
 For larger applications, this structure scales well:
 
-```
+```text
 myapp/
 ├── cmd/
 │   └── myapp/

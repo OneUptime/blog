@@ -98,7 +98,7 @@ In the Grafana panel editor, select the CloudWatch data source and build a query
 
 You can also write the query in Metric Math mode, which supports the same expressions as CloudWatch:
 
-```
+```text
 # Grafana CloudWatch query using Metric Math
 SEARCH('{AWS/EC2, InstanceId} MetricName="CPUUtilization"', 'Average', 300)
 ```
@@ -123,7 +123,7 @@ Now in your panel queries, use `$instance` as the dimension value. Users can sel
 
 Here's a more advanced variable for selecting services:
 
-```
+```text
 # Variable query to list all ECS service names
 namespace: AWS/ECS, metric: CPUUtilization, dimensionKey: ServiceName
 ```
@@ -240,7 +240,7 @@ X-Ray data gives you trace analytics directly in Grafana:
    - Trace Statistics: aggregate trace data
    - Trace Map: show service dependencies
 
-```
+```text
 # X-Ray query to find slow traces
 filter expression: service("order-service") AND responsetime > 5
 ```

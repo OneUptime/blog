@@ -119,7 +119,7 @@ Let's build a complete training pipeline for a classification model. We will cre
 
 ### Project Structure
 
-```
+```text
 ml-pipeline/
 ├── components/
 │   ├── data_ingestion.py

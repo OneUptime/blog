@@ -14,7 +14,7 @@ Memory limit errors are one of the most common issues in ClickHouse. They occur 
 
 ### Common Error Messages
 
-```
+```text
 DB::Exception: Memory limit (for query) exceeded: would use 10.50 GiB
 (attempt to allocate chunk of 4194304 bytes), maximum: 10.00 GiB.
 
@@ -27,7 +27,7 @@ DB::Exception: Memory limit (for user) exceeded: would use 25.00 GiB
 
 ### Memory Limit Hierarchy
 
-```
+```text
 Server Memory (max_server_memory_usage)
     └── All Queries (max_memory_usage_for_all_queries)
         └── User Memory (max_memory_usage_for_user)

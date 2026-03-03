@@ -28,7 +28,7 @@ GitOps gives you:
 
 Organize your Istio configuration in a git repository. Here is a recommended structure:
 
-```
+```text
 istio-config/
   base/
     mesh-config/

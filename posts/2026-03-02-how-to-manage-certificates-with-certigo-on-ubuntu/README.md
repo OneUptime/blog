@@ -51,7 +51,7 @@ certigo dump /path/to/ca-chain.crt
 
 The output shows the certificate in a structured, readable format:
 
-```
+```text
 Subject:
     Common Name:  example.com
     Organization: Example Corp

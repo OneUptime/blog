@@ -94,7 +94,7 @@ cilium clustermesh status --context cluster-a
 
 You should see output like:
 
-```
+```text
 Cluster Connections:
   cluster-b:
     connected: true

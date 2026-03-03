@@ -150,7 +150,7 @@ If the plan shows no unexpected changes (or only the changes you expect), the do
 
 This is the hardest scenario. If you ran Terraform 1.7 and it updated the state format, then trying to use Terraform 1.5 might fail with an error like:
 
-```
+```text
 Error: state snapshot was created by Terraform v1.7.5, which is newer than
 current v1.5.7
 ```

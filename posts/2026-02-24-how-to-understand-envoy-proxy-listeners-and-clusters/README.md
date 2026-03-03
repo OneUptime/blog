@@ -31,7 +31,7 @@ istioctl proxy-config listener <pod-name> -n <namespace>
 
 This gives you a table showing all listeners. A typical output looks like:
 
-```
+```text
 ADDRESS       PORT  MATCH                        DESTINATION
 0.0.0.0       15001 ALL                          PassthroughCluster
 0.0.0.0       15001 Addr: *:15001                Non-HTTP/Non-TCP
@@ -111,7 +111,7 @@ istioctl proxy-config cluster <pod-name> -n <namespace>
 
 Output will look something like:
 
-```
+```text
 SERVICE FQDN                                PORT   SUBSET   DIRECTION    TYPE     DESTINATION RULE
 BlackHoleCluster                            -      -        -            STATIC
 InboundPassthroughCluster                   -      -        -            ORIGINAL_DST
@@ -154,7 +154,7 @@ To see which endpoints (pod IPs) a cluster actually routes to:
 istioctl proxy-config endpoint <pod-name> -n <namespace> --cluster "outbound|80||my-service.default.svc.cluster.local"
 ```
 
-```
+```text
 ENDPOINT            STATUS    OUTLIER CHECK   CLUSTER
 10.244.0.15:8080    HEALTHY   OK              outbound|80||my-service.default.svc.cluster.local
 10.244.0.16:8080    HEALTHY   OK              outbound|80||my-service.default.svc.cluster.local

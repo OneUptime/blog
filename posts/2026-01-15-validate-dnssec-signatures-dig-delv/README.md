@@ -90,7 +90,7 @@ dig +multi example.com DNSKEY
 
 Example output:
 
-```
+```text
 example.com.        3600    IN      DNSKEY  256 3 13 (
                                 oJMRESz5E4gYzS/q6XDrvU1qMPYIjCWzJaOau8XN
                                 EZeqCYKD5ar0IRd8KqXXFJkqmVfRvMGPmM1x8fGX
@@ -120,7 +120,7 @@ dig +dnssec example.com A
 
 Example RRSIG output:
 
-```
+```text
 example.com.        3600    IN      RRSIG   A 13 2 3600 (
                                 20260215000000 20260115000000 45620 example.com.
                                 KQP9dHjzJbV7i3pAzJSfSfG8gR0hIUF/MBqMQrk/

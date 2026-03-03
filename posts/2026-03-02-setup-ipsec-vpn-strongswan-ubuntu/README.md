@@ -140,7 +140,7 @@ conn roadwarrior
 sudo nano /etc/ipsec.secrets
 ```
 
-```
+```text
 # RSA private key for the server certificate
 : RSA server-key.pem
 

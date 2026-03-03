@@ -72,7 +72,7 @@ sudo nano /etc/postfix/main.cf
 
 Add or modify these lines:
 
-```
+```text
 # Rspamd milter configuration
 smtpd_milters = inet:localhost:11332
 non_smtpd_milters = inet:localhost:11332
@@ -133,7 +133,7 @@ sudo rspamadm dkim_keygen \
 sudo nano /etc/rspamd/local.d/dkim_signing.conf
 ```
 
-```
+```text
 # Enable DKIM signing
 enabled = true;
 
@@ -155,7 +155,7 @@ allow_hdrfrom_mismatch = false;
 
 After generating the key, add the DNS TXT record to your domain:
 
-```
+```text
 mail2026._domainkey.example.com  IN  TXT  "v=DKIM1; k=rsa; p=MIIBIjANBg..."
 ```
 
@@ -169,7 +169,7 @@ Greylisting temporarily rejects mail from unknown senders. Legitimate mail serve
 sudo nano /etc/rspamd/local.d/greylist.conf
 ```
 
-```
+```text
 # Greylist settings
 expire = 1d;     # Time before greylisted entry expires
 timeout = 5m;    # Delay before a new sender is whitelisted
@@ -189,7 +189,7 @@ Define what happens at different spam scores:
 sudo nano /etc/rspamd/local.d/actions.conf
 ```
 
-```
+```text
 # Score thresholds for actions
 reject = 15.0;      # Hard reject spam above this score
 add_header = 5.0;   # Add spam headers above this score
@@ -208,7 +208,7 @@ sudo apt install -y redis-server
 sudo nano /etc/rspamd/local.d/redis.conf
 ```
 
-```
+```text
 # Redis server configuration
 servers = "127.0.0.1:6379";
 
@@ -239,7 +239,7 @@ sudo rspamadm pw
 sudo nano /etc/rspamd/local.d/worker-controller.inc
 ```
 
-```
+```text
 # Web UI password
 password = "$2$your_hash_from_above";
 
@@ -301,7 +301,7 @@ sudo rspamc stat
 
 After setting up Rspamd, verify it is scoring messages correctly by checking the headers of received mail:
 
-```
+```text
 X-Spam-Status: No, score=1.4 required=15.0 tests=DKIM_SIGNED,DKIM_VALID,RCVD_IN_DNSWL_NONE autolearn=no
 X-Rspamd-Score: 1.40 / 15.00
 X-Rspamd-Action: no action

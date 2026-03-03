@@ -27,7 +27,7 @@ Getting NVIDIA GPUs working on Talos requires multiple extensions that work toge
 2. **NVIDIA Container Toolkit** - Tools that allow containers to access GPUs
 3. **NVIDIA device plugin** (Kubernetes level) - Exposes GPUs as schedulable resources
 
-```
+```text
 Hardware (GPU) --> NVIDIA Kernel Modules --> Container Toolkit --> Device Plugin --> Pod
 ```
 

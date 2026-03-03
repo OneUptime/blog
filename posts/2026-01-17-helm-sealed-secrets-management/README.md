@@ -433,7 +433,7 @@ kubeseal --fetch-cert \
 
 ### Directory Structure
 
-```
+```text
 gitops-repo/
 ├── apps/
 │   └── myapp/

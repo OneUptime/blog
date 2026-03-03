@@ -58,7 +58,7 @@ Document what you have:
 
 The Data Migration Tool requires TFS 2018 Update 2 or later. If you are on an older version, you need to upgrade TFS before migrating.
 
-```
+```text
 Supported source versions:
   TFS 2018 Update 2+
   TFS 2018 Update 3+

@@ -14,7 +14,7 @@ This post covers building a UFW-based firewall role for Ubuntu/Debian systems. U
 
 ## Role Structure
 
-```
+```text
 roles/firewall/
   defaults/main.yml
   handlers/main.yml

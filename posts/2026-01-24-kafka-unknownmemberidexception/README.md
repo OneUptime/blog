@@ -12,7 +12,7 @@ The `UnknownMemberIdException` is one of the most common errors encountered when
 
 ## Understanding the Error
 
-```
+```text
 org.apache.kafka.clients.consumer.CommitFailedException:
 Commit cannot be completed since the group has already rebalanced and assigned
 the partitions to another member. This means that the time between subsequent

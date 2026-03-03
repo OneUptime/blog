@@ -156,7 +156,7 @@ spec:
 
 The SPIFFE ID for this VM will be:
 
-```
+```text
 spiffe://cluster.local/ns/vm-apps/sa/legacy-db-sa
 ```
 

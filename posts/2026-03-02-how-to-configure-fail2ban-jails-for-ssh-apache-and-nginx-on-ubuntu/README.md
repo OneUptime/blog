@@ -22,7 +22,7 @@ sudo systemctl start fail2ban
 
 ## Configuration Structure
 
-```
+```text
 /etc/fail2ban/
 ├── fail2ban.conf        # Global daemon settings (don't edit)
 ├── fail2ban.local       # Your overrides to fail2ban.conf

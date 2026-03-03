@@ -26,7 +26,7 @@ log_filename = 'postgresql-%Y-%m-%d.log'
 
 This produces log lines like:
 
-```
+```text
 2026-02-06 14:23:45.123 UTC [12345]: [1-1] user=webapp,db=production,app=myapp,client=172.16.0.5 LOG:  duration: 2345.678 ms  statement: SELECT u.*, p.* FROM users u JOIN profiles p ON u.id = p.user_id WHERE u.email LIKE '%@example.com' ORDER BY u.created_at DESC LIMIT 100
 ```
 

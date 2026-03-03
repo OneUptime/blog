@@ -86,7 +86,7 @@ kubectl get deployments --all-namespaces -o json | jq '.items[] |
 
 FluxCD v1 typically watches a single repository with a flat or nested structure. ArgoCD can match this exactly.
 
-```
+```text
 # Typical FluxCD v1 repo structure
 flux-repo/
   namespaces/
@@ -109,7 +109,7 @@ flux-repo/
 
 You can keep this exact structure and point ArgoCD Applications at the same paths. Or, take this opportunity to reorganize into a more ArgoCD-friendly structure.
 
-```
+```text
 # Reorganized for ArgoCD
 gitops-repo/
   apps/

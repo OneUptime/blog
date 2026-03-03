@@ -500,7 +500,7 @@ MACSec on Cisco switches can operate in two modes: switch-to-switch (uplink) and
 
 #### Switch-to-Switch MACSec
 
-```
+```text
 ! Enable MACSec globally
 macsec network-link
 
@@ -529,7 +529,7 @@ interface TenGigabitEthernet1/0/1
 
 #### Switch-to-Host MACSec with 802.1X
 
-```
+```text
 ! Enable 802.1X globally
 dot1x system-auth-control
 aaa new-model
@@ -559,7 +559,7 @@ interface GigabitEthernet1/0/10
 
 ### Verification Commands
 
-```
+```text
 ! Show MACSec status
 show macsec summary
 show macsec interface TenGigabitEthernet1/0/1
@@ -582,7 +582,7 @@ Juniper supports MACSec on MX, QFX, and EX series devices.
 
 #### Static CAK/CKN Mode
 
-```
+```text
 # Configure connectivity association
 set security macsec connectivity-association CA-UPLINK
 set security macsec connectivity-association CA-UPLINK cipher-suite gcm-aes-256
@@ -601,7 +601,7 @@ set interfaces xe-0/0/0 ether-options 802.1ae connectivity-association CA-UPLINK
 
 #### MACSec with 802.1X
 
-```
+```text
 # Configure 802.1X authentication
 set protocols dot1x authenticator interface ge-0/0/10
 set protocols dot1x authenticator interface ge-0/0/10 mac-radius
@@ -622,7 +622,7 @@ set access profile DOT1X-PROFILE radius authentication-server 192.168.100.10
 
 ### Verification Commands
 
-```
+```text
 # Show MACSec connections
 show security macsec connections
 

@@ -12,7 +12,7 @@ Microservices architecture breaks down applications into small, independently de
 
 ## Basic Microservice Structure
 
-```
+```text
 project/
   services/
     user-service/

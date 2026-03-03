@@ -14,7 +14,7 @@ Data retention policies are essential for compliance, cost management, and syste
 
 ### Retention Policy Considerations
 
-```
+```text
 +------------------+------------------------------------------+
 | Factor           | Consideration                            |
 +------------------+------------------------------------------+
@@ -28,7 +28,7 @@ Data retention policies are essential for compliance, cost management, and syste
 
 ### Common Retention Periods
 
-```
+```text
 +----------------------+------------------+------------------------+
 | Data Type            | Typical Period   | Reason                 |
 +----------------------+------------------+------------------------+

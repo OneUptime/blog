@@ -263,7 +263,7 @@ This approach eliminates the scenario where multiple developers independently up
 
 Configure Git to use a specific merge strategy for lock files:
 
-```
+```text
 # .gitattributes
 .terraform.lock.hcl merge=ours
 ```

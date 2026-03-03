@@ -85,7 +85,7 @@ This deployment pulls from `registry.example.com/myapp:v1.2.0` because it combin
 
 The real power of globals shows when you have subcharts. Here is a typical umbrella chart structure:
 
-```
+```text
 my-platform/
 ├── Chart.yaml
 ├── values.yaml

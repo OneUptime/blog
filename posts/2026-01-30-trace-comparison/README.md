@@ -465,7 +465,7 @@ console.table(diff.matched.filter(m => m.delta > 10).map(m => ({
 
 Output:
 
-```
+```text
 | span              | baseline | current | delta   |
 |-------------------|----------|---------|---------|
 | db.query.orders   | 45ms     | 180ms   | +135ms  |

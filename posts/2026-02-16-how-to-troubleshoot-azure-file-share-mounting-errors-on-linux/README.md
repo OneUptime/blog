@@ -28,7 +28,7 @@ Now let us go through what goes wrong and how to fix each issue.
 
 This is the most common error. It looks like this:
 
-```
+```text
 mount error(13): Permission denied
 Refer to the mount.cifs(8) manual page (e.g. man mount.cifs)
 ```
@@ -96,7 +96,7 @@ az storage account network-rule add \
 
 ## Error: mount error(115) - Operation now in progress
 
-```
+```text
 mount error(115): Operation now in progress
 ```
 
@@ -138,7 +138,7 @@ az network private-endpoint create \
 
 ## Error: mount error(112) - Host is down
 
-```
+```text
 mount error(112): Host is down
 ```
 
@@ -170,7 +170,7 @@ If your kernel is too old for SMB 3.x, you need to upgrade your Linux distributi
 
 ## Error: mount(2) system call failed - No such file or directory
 
-```
+```text
 mount(2) system call failed: No such file or directory
 ```
 
@@ -207,7 +207,7 @@ az storage share list \
 
 ## Error: mount error(5) - I/O error
 
-```
+```text
 mount error(5): I/O error
 ```
 

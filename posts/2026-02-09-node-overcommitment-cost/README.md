@@ -231,7 +231,7 @@ During overcommitment, if high-priority pods need resources, Kubernetes evicts l
 
 Determine safe overcommitment ratios empirically. Start conservative and increase gradually:
 
-```
+```text
 Week 1: No overcommitment (baseline)
 Week 2: 10% overcommitment (1.1x node capacity)
 Week 3: 20% overcommitment (1.2x node capacity)
@@ -325,7 +325,7 @@ Critical production services avoid overcommitted nodes. Batch and development wo
 
 Quantify overcommitment savings by comparing cluster sizes:
 
-```
+```text
 Before overcommitment:
 - 100 nodes, 1600 cores, $32,000/month
 - 50% average utilization

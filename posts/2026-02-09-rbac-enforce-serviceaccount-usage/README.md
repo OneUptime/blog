@@ -364,7 +364,7 @@ spec:
 - Mount kubeconfig files as secrets
 - Share ServiceAccounts across teams
 - Use the `default` ServiceAccount for applications
-```
+```text
 
 ## Rotating ServiceAccount Tokens
 

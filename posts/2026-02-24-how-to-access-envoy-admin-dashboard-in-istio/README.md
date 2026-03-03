@@ -127,7 +127,7 @@ kubectl exec productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -- \
 
 Output includes:
 
-```
+```text
 outbound|9080||reviews.bookinfo.svc.cluster.local::10.244.0.17:9080::health_flags::healthy
 outbound|9080||reviews.bookinfo.svc.cluster.local::10.244.0.17:9080::weight::1
 outbound|9080||reviews.bookinfo.svc.cluster.local::10.244.0.17:9080::region::

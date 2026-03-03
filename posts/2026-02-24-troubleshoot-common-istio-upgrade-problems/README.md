@@ -26,7 +26,7 @@ kubectl logs -n istio-system -l app=istiod --tail=200
 
 If you see errors about invalid configuration fields:
 
-```
+```text
 fatal  Failed to create istiod: invalid config: unknown field "someOldField"
 ```
 
@@ -56,7 +56,7 @@ kubectl patch deployment istiod -n istio-system -p '{"spec":{"template":{"spec":
 
 If you see permission errors in the logs:
 
-```
+```text
 error  Failed to list *v1.ConfigMap: configmaps is forbidden
 ```
 
@@ -126,7 +126,7 @@ Symptoms: `istioctl proxy-status` shows some proxies as STALE.
 istioctl proxy-status
 ```
 
-```
+```text
 NAME                    CDS     LDS     EDS     RDS     ECDS    ISTIOD
 my-pod.my-namespace     STALE   SYNCED  SYNCED  SYNCED  -       istiod-xyz
 ```

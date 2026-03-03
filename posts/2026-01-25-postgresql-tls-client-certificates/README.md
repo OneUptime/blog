@@ -192,7 +192,7 @@ ssl_min_protocol_version = 'TLSv1.2'
 
 Configure host-based authentication to require client certificates.
 
-```
+```text
 # TYPE  DATABASE    USER        ADDRESS         METHOD
 
 # Local connections - no SSL needed
@@ -213,7 +213,7 @@ hostssl all         all         10.0.0.0/8      scram-sha-256
 
 If certificate CNs do not match PostgreSQL usernames, use `pg_ident.conf`.
 
-```
+```text
 # pg_ident.conf
 # MAPNAME       SYSTEM-USERNAME         PG-USERNAME
 
@@ -225,7 +225,7 @@ cert_map        /^(.*)@example\.com$    \1
 
 Update `pg_hba.conf` to use the map:
 
-```
+```text
 hostssl all  all  0.0.0.0/0  cert map=cert_map
 ```
 

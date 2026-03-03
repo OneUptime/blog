@@ -36,7 +36,7 @@ A single TCP connection can have multiple channels. Channels are lightweight and
 
 Occurs when you try to redeclare an exchange or queue with different parameters:
 
-```
+```text
 Channel closed by server: 406 PRECONDITION_FAILED -
 inequivalent arg 'durable' for queue 'orders' in vhost '/'
 ```
@@ -65,7 +65,7 @@ except pika.exceptions.ChannelClosedByBroker as e:
 
 The queue or exchange does not exist:
 
-```
+```text
 Channel closed by server: 404 NOT_FOUND -
 no queue 'missing_queue' in vhost '/'
 ```
@@ -103,7 +103,7 @@ def safe_consume(queue_name):
 
 Permission denied for the operation:
 
-```
+```text
 Channel closed by server: 403 ACCESS_REFUSED -
 access to queue 'admin_queue' in vhost '/' refused for user 'app_user'
 ```

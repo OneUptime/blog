@@ -10,7 +10,7 @@ Storing every trace in fast, expensive storage is wasteful. Your payment service
 
 ## The Storage Tier Architecture
 
-```
+```text
                               +--> [Hot Storage: SSD-backed, 7-day retention]
 [Collector] --> [Routing] ----|
                               +--> [Cold Storage: Object storage, 90-day retention]
@@ -194,7 +194,7 @@ Since routing rules are evaluated top to bottom, the error rule catches all erro
 
 Here is a rough example of the cost savings:
 
-```
+```text
 Before: 100% of traces to hot storage
   - 10TB/day * $0.50/GB = $5,000/day
 

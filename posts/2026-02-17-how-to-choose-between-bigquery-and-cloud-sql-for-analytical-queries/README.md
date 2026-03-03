@@ -157,7 +157,7 @@ BigQuery has a minimum query overhead of about 1-2 seconds due to its distribute
 
 BigQuery charges per query based on bytes scanned. Cloud SQL charges for the instance regardless of query volume.
 
-```
+```text
 Scenario: 10 GB dataset, 100 queries per day, each scanning 1 GB
 
 Cloud SQL (db-custom-4-16384):
@@ -171,7 +171,7 @@ BigQuery:
   Total: ~$15.20/month
 ```
 
-```
+```text
 Scenario: 1 TB dataset, 1000 queries per day, each scanning 100 GB
 
 Cloud SQL (db-custom-16-65536):

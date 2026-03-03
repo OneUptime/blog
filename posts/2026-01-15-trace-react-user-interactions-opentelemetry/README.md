@@ -1764,7 +1764,7 @@ const handleClick = () => {
 
 ### Project Structure
 
-```
+```text
 src/
   components/
     TrackedButton.tsx

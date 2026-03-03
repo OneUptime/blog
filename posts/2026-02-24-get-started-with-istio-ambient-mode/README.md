@@ -69,7 +69,7 @@ kubectl get pods -n istio-system
 
 You should see something like:
 
-```
+```text
 NAME                      READY   STATUS    RESTARTS   AGE
 istiod-5d4c75f8d-xxxxx   1/1     Running   0          1m
 ztunnel-xxxxx             1/1     Running   0          1m

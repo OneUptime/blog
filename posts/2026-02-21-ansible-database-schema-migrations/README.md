@@ -32,7 +32,7 @@ Tool-based migrations use a dedicated migration tool like Flyway or Alembic, and
 
 Let us start with the simpler approach where migration files are plain SQL:
 
-```
+```text
 migrations/
   V001__create_users_table.sql
   V002__add_email_to_users.sql

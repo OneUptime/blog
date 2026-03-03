@@ -241,7 +241,7 @@ if __name__ == "__main__":
 
 The cProfile output contains several columns that help identify bottlenecks:
 
-```
+```text
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
      1000    0.452    0.000    1.892    0.002 app.py:25(process_item)
    100000    1.234    0.000    1.234    0.000 app.py:45(transform)

@@ -389,7 +389,7 @@ Always-on sampling for even a single service can generate significant data volum
 
 ### Estimate Your Volume
 
-```
+```text
 Monthly spans = requests_per_second * seconds_per_month * avg_spans_per_trace
              = 100 * 2,592,000 * 6
              = 1,555,200,000 spans/month

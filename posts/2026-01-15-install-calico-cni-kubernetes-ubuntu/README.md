@@ -1453,7 +1453,7 @@ spec:
 
 Key queries for a Calico Grafana dashboard.
 
-```
+```text
 # Felix dataplane statistics
 felix_int_dataplane_apply_time_seconds
 felix_int_dataplane_failures_total

@@ -111,7 +111,7 @@ pipelines:
 
 For each Spinnaker application, create the equivalent GitOps structure.
 
-```
+```text
 gitops-repo/
   apps/
     api/

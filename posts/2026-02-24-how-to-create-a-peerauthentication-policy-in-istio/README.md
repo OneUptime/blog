@@ -98,7 +98,7 @@ kubectl get peerauthentication -n default
 
 You should see output like:
 
-```
+```text
 NAME             MODE     AGE
 default-strict   STRICT   30s
 ```

@@ -81,7 +81,7 @@ graph TB
 
 After adding your site, Cloudflare provides nameservers:
 
-```
+```text
 ns1.cloudflare.com
 ns2.cloudflare.com
 ```

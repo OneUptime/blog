@@ -18,7 +18,7 @@ SSE uses a simple text-based format over HTTP. The server responds with `Content
 
 Here is the basic event format:
 
-```
+```text
 event: message
 id: 1
 data: Hello, world!

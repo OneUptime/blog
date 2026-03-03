@@ -90,7 +90,7 @@ In the Amplify console, go to "Hosting" then "Environment variables." You can se
 
 **App-level variables** apply to all branches:
 
-```
+```text
 # These apply to every branch
 NEXT_PUBLIC_APP_NAME=MyApp
 NODE_ENV=production
@@ -98,7 +98,7 @@ NODE_ENV=production
 
 **Branch-level overrides** apply only to a specific branch:
 
-```
+```text
 # Override for the 'develop' branch
 API_URL=https://staging-api.example.com
 DATABASE_URL=postgresql://user:pass@staging-db:5432/myapp
@@ -146,7 +146,7 @@ Not every branch deployment should be publicly accessible. Amplify lets you add 
 
 This is especially useful for staging environments that should only be visible to your team and QA testers.
 
-```
+```text
 # Access control configuration
 main: Publicly accessible
 develop: Restricted (username: team, password: *****)
@@ -202,7 +202,7 @@ Here is a typical workflow using branch-based deployments:
 
 You can assign custom subdomains to specific branches. In the Amplify console under "Domain management":
 
-```
+```text
 main -> www.example.com
 develop -> staging.example.com
 feature/* -> *.preview.example.com

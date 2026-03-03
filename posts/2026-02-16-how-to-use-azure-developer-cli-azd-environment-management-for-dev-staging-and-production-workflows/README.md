@@ -87,7 +87,7 @@ azd env list
 
 The output of `azd env list` shows all environments and indicates which one is currently selected.
 
-```
+```text
 NAME        DEFAULT  LOCAL  REMOTE
 dev         true     true   true
 staging     false    true   true

@@ -33,7 +33,7 @@ Apache starts automatically after installation. Opening `http://your-server-ip` 
 
 Understanding the directory structure is essential for managing Apache on Ubuntu:
 
-```
+```text
 /etc/apache2/
 ├── apache2.conf          # Main configuration file
 ├── ports.conf            # Port configuration (Listen directives)

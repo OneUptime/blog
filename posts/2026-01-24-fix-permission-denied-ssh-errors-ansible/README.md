@@ -14,7 +14,7 @@ SSH "Permission Denied" errors are among the most common issues encountered when
 
 When Ansible encounters SSH permission issues, you typically see errors like:
 
-```
+```text
 fatal: [webserver01]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: Permission denied (publickey,password).",
@@ -24,7 +24,7 @@ fatal: [webserver01]: UNREACHABLE! => {
 
 Or more specific variants:
 
-```
+```text
 Permission denied (publickey).
 Permission denied (publickey,gssapi-keyex,gssapi-with-mic).
 Permission denied, please try again.

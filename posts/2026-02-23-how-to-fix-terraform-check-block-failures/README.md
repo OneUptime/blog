@@ -33,7 +33,7 @@ When the assertion fails, Terraform shows a warning but continues. When the chec
 
 The data source inside a check block can fail for various reasons:
 
-```
+```text
 Warning: Check block assertion failed
 
   on checks.tf line 8, in check "website_health":
@@ -44,7 +44,7 @@ Could not read from data source: connection refused
 
 Or worse:
 
-```
+```text
 Error: Error in check block
 
   on checks.tf line 2, in check "website_health":
@@ -201,7 +201,7 @@ check "website_health" {
 
 Check blocks can fail during `terraform destroy` because the resources they check are being deleted:
 
-```
+```text
 Warning: Check block assertion failed
 
   on checks.tf line 8, in check "website_health":

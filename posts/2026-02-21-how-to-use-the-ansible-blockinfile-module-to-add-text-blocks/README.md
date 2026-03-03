@@ -29,7 +29,7 @@ The simplest use inserts a block of text at the end of a file:
 
 After running this, the file will contain:
 
-```
+```text
 # (existing content...)
 # BEGIN ANSIBLE MANAGED BLOCK
 nameserver 10.0.0.2
@@ -151,7 +151,7 @@ If you need to insert multiple separate blocks into the same file, use the `mark
 
 This produces:
 
-```
+```text
 # BEGIN DATABASE SETTINGS
 db_host=localhost
 db_port=5432

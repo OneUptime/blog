@@ -44,7 +44,7 @@ Reference it in queries as `{TimeRange}` for the full time range clause, or use 
 
 ### Subscription Parameter
 
-```
+```text
 Parameter name: Subscription
 Parameter type: Subscription picker
 Allow multiple selection: Yes
@@ -53,7 +53,7 @@ Default value: All subscriptions
 
 ### Resource Group Parameter
 
-```
+```text
 Parameter name: ResourceGroup
 Parameter type: Resource group picker
 Subscriptions: {Subscription}

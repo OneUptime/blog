@@ -26,7 +26,7 @@ Beyond connection pooling, ProxySQL provides:
 
 In our deployment, ProxySQL runs as a Kubernetes Deployment with multiple replicas behind a ClusterIP Service. Applications connect to ProxySQL's service address instead of connecting directly to MySQL. ProxySQL maintains persistent connections to MySQL backends and manages the connection lifecycle.
 
-```
+```text
 [App Pod 1] ──┐
 [App Pod 2] ──┤──► [ProxySQL Service] ──► [ProxySQL Pod 1] ──┐
 [App Pod 3] ──┤                          [ProxySQL Pod 2] ──┤──► [MySQL Primary]

@@ -12,14 +12,14 @@ The "unknown revision" error in ArgoCD means the Git revision (branch, tag, or c
 
 The error typically looks like:
 
-```
+```text
 rpc error: code = Unknown desc = failed to checkout revision abc123def:
 unknown revision or path not in the working tree
 ```
 
 Or:
 
-```
+```text
 ComparisonError: unknown revision 'feature/my-branch'
 ```
 

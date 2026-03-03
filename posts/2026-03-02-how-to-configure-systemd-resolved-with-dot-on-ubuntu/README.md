@@ -120,7 +120,7 @@ resolvectl status
 
 Look for these lines in the output:
 
-```
+```text
 Global
          DNS Servers: 1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com
 DNS Over TLS setting: yes

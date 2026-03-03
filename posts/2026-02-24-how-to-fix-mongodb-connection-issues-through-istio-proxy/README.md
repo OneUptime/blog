@@ -48,7 +48,7 @@ The driver then connects to individual members. These addresses must be resolvab
 
 For a MongoDB StatefulSet, the members are typically:
 
-```
+```text
 mongodb-0.mongodb-headless.database.svc.cluster.local:27017
 mongodb-1.mongodb-headless.database.svc.cluster.local:27017
 mongodb-2.mongodb-headless.database.svc.cluster.local:27017
@@ -82,7 +82,7 @@ kubectl exec <client-pod> -c istio-proxy -n my-namespace -- nslookup mongodb-0.m
 
 Your MongoDB connection string needs to use the correct hostnames that are routable through the mesh:
 
-```
+```text
 mongodb://mongodb-0.mongodb-headless.database.svc.cluster.local:27017,mongodb-1.mongodb-headless.database.svc.cluster.local:27017,mongodb-2.mongodb-headless.database.svc.cluster.local:27017/mydb?replicaSet=rs0
 ```
 

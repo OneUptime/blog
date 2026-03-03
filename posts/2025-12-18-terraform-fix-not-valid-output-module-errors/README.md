@@ -12,7 +12,7 @@ The "not a valid output for module" error is one of the most common issues Terra
 
 The error typically looks like this:
 
-```
+```text
 Error: Unsupported attribute
 
   on main.tf line 15, in resource "aws_instance" "example":
@@ -24,7 +24,7 @@ This object has no argument, nested block, or exported attribute named
 
 Or:
 
-```
+```text
 Error: Invalid reference
 
   on main.tf line 20:

@@ -135,7 +135,7 @@ Here are several condition patterns you will likely need:
 
 **Restrict by container name:**
 
-```
+```text
 (
   !(ActionMatches{'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read'})
   OR
@@ -148,7 +148,7 @@ Here are several condition patterns you will likely need:
 
 **Restrict by blob path prefix:**
 
-```
+```text
 (
   !(ActionMatches{'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read'})
   OR
@@ -161,7 +161,7 @@ Here are several condition patterns you will likely need:
 
 **Combine multiple conditions (AND logic):**
 
-```
+```text
 (
   !(ActionMatches{'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read'})
   OR

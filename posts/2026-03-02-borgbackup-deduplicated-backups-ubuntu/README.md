@@ -104,7 +104,7 @@ borg info /mnt/backup/borg-repo::myserver-2026-03-02T14:30:00
 
 The `borg info` output shows you the real power of deduplication:
 
-```
+```text
 Original size      Compressed size    Deduplicated size
 This archive:   15.23 GB             8.12 GB            512.34 MB
 All archives:   152.3 GB             81.2 GB             9.87 GB

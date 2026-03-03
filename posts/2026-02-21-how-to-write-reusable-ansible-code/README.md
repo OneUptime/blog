@@ -265,7 +265,7 @@ graph TD
 
 For cross-project reuse, package roles into Ansible collections:
 
-```
+```text
 # Collection directory structure
 company/
   infrastructure/

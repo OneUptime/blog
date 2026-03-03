@@ -73,7 +73,7 @@ WHERE NAME = 'lock_deadlocks';
 
 When you run `SHOW ENGINE INNODB STATUS`, the deadlock section looks something like this:
 
-```
+```text
 ------------------------
 LATEST DETECTED DEADLOCK
 ------------------------

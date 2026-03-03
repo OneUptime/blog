@@ -193,7 +193,7 @@ twine upload --repository artifact-registry dist/*
 
 Your requirements.txt can mix public and private packages:
 
-```
+```text
 # requirements.txt
 # Public packages from PyPI
 requests==2.31.0

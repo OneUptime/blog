@@ -54,7 +54,7 @@ exit
 
 Using a Capistrano-style directory layout allows zero-downtime deployments:
 
-```
+```text
 /var/www/myapp/
   current -> releases/20260302120000/  (symlink to active release)
   releases/

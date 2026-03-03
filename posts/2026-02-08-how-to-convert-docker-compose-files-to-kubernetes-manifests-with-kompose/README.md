@@ -98,7 +98,7 @@ kompose convert
 
 This produces several files:
 
-```
+```text
 web-deployment.yaml
 web-service.yaml
 db-deployment.yaml

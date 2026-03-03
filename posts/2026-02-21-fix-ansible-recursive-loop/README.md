@@ -12,7 +12,7 @@ The "Recursive loop detected" error means Ansible found a circular reference in 
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "recursive loop detected in template string: {{ my_var }}"
 }

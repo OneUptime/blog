@@ -198,7 +198,7 @@ kubectl describe pod my-service-pod -n my-namespace | grep -A5 "Events:"
 
 Look for messages like:
 
-```
+```text
 Warning  Unhealthy  2m (x15 over 5m)  kubelet  Readiness probe failed: HTTP probe failed with statuscode: 503
 ```
 

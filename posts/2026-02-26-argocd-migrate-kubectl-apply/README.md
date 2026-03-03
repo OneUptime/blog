@@ -72,7 +72,7 @@ yq eval 'del(
 
 Create a repository structure that ArgoCD can work with.
 
-```
+```text
 gitops-repo/
   apps/
     production/

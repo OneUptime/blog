@@ -122,7 +122,7 @@ aws s3 cp s3://mlpipeline/artifacts/<run-id>/ ./debug-artifacts/ --recursive
 ### Pattern 1: Image Pull Failures
 
 **Symptoms:**
-```
+```text
 Error: ImagePullBackOff
 Error: ErrImagePull
 ```
@@ -171,7 +171,7 @@ kubectl patch serviceaccount default -n kubeflow-user \
 ### Pattern 2: Out of Memory (OOM)
 
 **Symptoms:**
-```
+```text
 OOMKilled
 Exit Code: 137
 ```
@@ -234,7 +234,7 @@ def process_large_data(input_path: str, output_path: str):
 ### Pattern 3: Timeout Failures
 
 **Symptoms:**
-```
+```text
 DeadlineExceeded
 context deadline exceeded
 ```
@@ -267,7 +267,7 @@ def my_pipeline():
 ### Pattern 4: Artifact Handling Failures
 
 **Symptoms:**
-```
+```text
 failed to download artifact
 failed to upload artifact
 artifact path not found
@@ -304,7 +304,7 @@ def write_artifact(output_data: Output[Dataset]):
 ### Pattern 5: Dependency Failures
 
 **Symptoms:**
-```
+```text
 ModuleNotFoundError
 ImportError
 pip install failed

@@ -203,7 +203,7 @@ This drops spans outside your target window, so you do not reprocess everything.
 
 Before setting a long retention period, estimate your Kafka storage needs:
 
-```
+```text
 Daily span volume: 1 billion spans
 Average span size (JSON + compression): ~200 bytes
 Daily storage: 1B * 200B = 200 GB

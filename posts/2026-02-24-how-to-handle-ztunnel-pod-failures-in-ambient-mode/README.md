@@ -110,7 +110,7 @@ spec:
 
 If ztunnel cannot obtain its workload certificate from istiod, it will log errors and potentially crash:
 
-```
+```text
 ERROR ztunnel::tls: failed to fetch certificate from CA: connection refused
 ```
 

@@ -190,7 +190,7 @@ After deploying the filter, verify it is dropping the expected data. The Collect
 
 Check these Prometheus metrics from the Collector's telemetry endpoint (default port 8888):
 
-```
+```text
 # Number of spans dropped by the filter processor
 otelcol_processor_filter_spans_filtered
 

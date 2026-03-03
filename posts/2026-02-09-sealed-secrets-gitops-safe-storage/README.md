@@ -183,7 +183,7 @@ kubeseal --scope cluster-wide < registry-creds.yaml > registry-creds-sealed.yaml
 
 Organize your Git repository:
 
-```
+```text
 my-k8s-repo/
 ├── base/
 │   ├── deployments/
@@ -371,7 +371,7 @@ kubeseal --cert pub-cert-staging.pem < secret.yaml > sealed-secret-staging.yaml
 
 Store cluster-specific sealed secrets in separate directories:
 
-```
+```text
 overlays/
 ├── production/
 │   └── sealed-secrets/

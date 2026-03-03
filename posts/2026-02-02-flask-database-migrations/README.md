@@ -116,7 +116,7 @@ pip install pymysql          # MySQL
 
 Organize your Flask application with a clear structure for migrations.
 
-```
+```text
 flask_app/
 ├── app/
 │   ├── __init__.py           # Application factory
@@ -363,7 +363,7 @@ flask db init
 
 This creates the following structure:
 
-```
+```text
 migrations/
 ├── alembic.ini          # Alembic configuration
 ├── env.py               # Migration environment setup

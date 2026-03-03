@@ -12,7 +12,7 @@ The "Unable to parse as inventory source" error means Ansible cannot read or und
 
 ## The Error
 
-```
+```text
 [WARNING]: Unable to parse /path/to/inventory as an inventory source
 [WARNING]: No inventory was parsed, only implicit localhost is available
 ```

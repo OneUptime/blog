@@ -170,7 +170,7 @@ export default function () {
 
 Output when thresholds fail:
 
-```
+```text
      ✗ http_req_duration..............: avg=342ms  min=89ms  p(95)=567ms
        ✗ p(95)<200
      ✓ http_req_failed................: 0.45%  ✓ 45  ✗ 9955

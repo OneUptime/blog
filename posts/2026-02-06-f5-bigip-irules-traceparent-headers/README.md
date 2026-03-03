@@ -12,7 +12,7 @@ F5 BIG-IP load balancers often sit at the edge of your network, handling traffic
 
 The W3C `traceparent` header format:
 
-```
+```text
 traceparent: {version}-{trace-id}-{parent-id}-{trace-flags}
 ```
 

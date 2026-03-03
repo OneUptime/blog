@@ -51,7 +51,7 @@ go test -bench=.
 ```
 
 **Output:**
-```
+```text
 BenchmarkSum-8    1000000    1050 ns/op
 ```
 
@@ -119,7 +119,7 @@ go test -bench=. -benchmem
 ```
 
 **Output:**
-```
+```text
 BenchmarkConcat-8     10000    110000 ns/op    5408 B/op    100 allocs/op
 BenchmarkBuilder-8   500000      3200 ns/op     512 B/op      4 allocs/op
 ```
@@ -158,7 +158,7 @@ func BenchmarkSort(b *testing.B) {
 ```
 
 **Output:**
-```
+```text
 BenchmarkSort/size=10-8       5000000     250 ns/op
 BenchmarkSort/size=100-8       500000    3500 ns/op
 BenchmarkSort/size=1000-8       30000   50000 ns/op
@@ -218,7 +218,7 @@ func BenchmarkCounterAtomic(b *testing.B) {
 ```
 
 **Output:**
-```
+```text
 BenchmarkCounterMutex-8     10000000    120 ns/op
 BenchmarkCounterAtomic-8    50000000     25 ns/op
 ```
@@ -309,7 +309,7 @@ func BenchmarkCustomMetrics(b *testing.B) {
 ```
 
 **Output:**
-```
+```text
 BenchmarkCustomMetrics-8    1000    1050000 ns/op    1000.00 MB/s
 ```
 
@@ -335,7 +335,7 @@ benchstat old.txt new.txt
 ```
 
 **Output:**
-```
+```text
 name        old time/op    new time/op    delta
 Sum-8       1.05µs ± 2%    0.85µs ± 1%   -19.05%  (p=0.000 n=10+10)
 

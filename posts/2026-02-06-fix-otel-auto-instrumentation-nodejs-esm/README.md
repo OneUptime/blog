@@ -155,7 +155,7 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
 Look for messages like:
 
-```
+```text
 @opentelemetry/instrumentation-http Applying instrumentation patch for module http
 ```
 

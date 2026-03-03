@@ -218,7 +218,7 @@ for binding in policy.get('bindings', []):
 
 Always specify a timezone in `getHours()` and `getDayOfWeek()`. If you omit it, the function uses UTC, which may not be what you want:
 
-```
+```text
 # Correct - explicit timezone
 request.time.getHours('America/New_York')
 

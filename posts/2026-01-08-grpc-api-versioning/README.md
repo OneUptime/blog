@@ -115,7 +115,7 @@ The most common approach is to version your API using package names.
 
 ### Directory Structure
 
-```
+```text
 proto/
 ├── api/
 │   ├── v1/

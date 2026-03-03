@@ -162,7 +162,7 @@ Alpine adds a few megabytes but gives you `sh`, `wget`, and other diagnostic too
 
 ## The .dockerignore File
 
-```
+```text
 .git
 .gitignore
 *.md

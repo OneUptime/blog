@@ -40,7 +40,7 @@ You only need to point it at one control plane node. The command discovers the r
 
 ### Healthy Output
 
-```
+```text
 discovered nodes: ["10.0.0.1" "10.0.0.2" "10.0.0.3" "10.0.0.4" "10.0.0.5"]
 waiting for etcd to be healthy: OK
 waiting for etcd members to be consistent across nodes: OK
@@ -147,7 +147,7 @@ talosctl health --nodes <cp-ip> --wait-timeout 15m
 
 ### etcd Not Healthy
 
-```
+```text
 waiting for etcd to be healthy: 1 error(s) occurred:
     10.0.0.2: etcd: rpc error: code = DeadlineExceeded
 ```
@@ -161,7 +161,7 @@ talosctl logs etcd --nodes 10.0.0.2
 
 ### etcd Members Inconsistent
 
-```
+```text
 waiting for etcd members to be consistent across nodes: FAILED
 ```
 
@@ -175,7 +175,7 @@ talosctl etcd members --nodes 10.0.0.3
 
 ### Nodes Not Ready
 
-```
+```text
 waiting for all k8s nodes to report ready: 1 error(s) occurred:
     node talos-w-2 not ready
 ```
@@ -189,7 +189,7 @@ talosctl logs kubelet --nodes <w2-ip>
 
 ### Static Pods Not Running
 
-```
+```text
 waiting for all control plane static pods to be running: FAILED
 ```
 

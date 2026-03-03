@@ -70,7 +70,7 @@ In a monorepo, services often share libraries or configuration files. Without mu
 
 Suppose your monorepo looks like this:
 
-```
+```text
 monorepo/
   shared/
     utils/
@@ -270,7 +270,7 @@ Multiple build contexts expand the attack surface of your builds. Each context i
 
 Create a `.dockerignore` file in each context directory to exclude sensitive files:
 
-```
+```text
 # .dockerignore in the shared config directory
 *.env
 secrets/

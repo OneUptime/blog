@@ -14,7 +14,7 @@ YAML is a popular format for configuration files, Kubernetes manifests, and Clou
 
 YAML decode errors in Terraform typically look like this:
 
-```
+```text
 Error: Error in function call
 
   on main.tf line 4, in locals:
@@ -26,7 +26,7 @@ expected key.
 
 Or:
 
-```
+```text
 Error: Error in function call
 
 Call to function "yamldecode" failed: cannot unmarshal !!str into map.
@@ -62,7 +62,7 @@ Golden rule: pick either 2 or 4 spaces for indentation and stick with it through
 
 YAML does not allow tabs for indentation. If your editor inserts tabs, the decode will fail:
 
-```
+```text
 Error: Error in function call
 
 Call to function "yamldecode" failed: found a tab character where an

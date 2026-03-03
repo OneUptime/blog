@@ -8,7 +8,7 @@ Description: Learn how to configure BGP community strings and aliases in MetalLB
 
 ---
 
-### What Are BGP Communities?
+## What Are BGP Communities?
 
 BGP communities are tags attached to route advertisements that signal intent to upstream routers. They let you influence how your routes are treated by peers, transit providers, and Internet exchanges without changing the routes themselves.
 

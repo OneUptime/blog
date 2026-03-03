@@ -48,7 +48,7 @@ graph TD
 
 First, let us organize our playbooks properly.
 
-```
+```text
 gcp-infrastructure/
   ansible.cfg
   group_vars/

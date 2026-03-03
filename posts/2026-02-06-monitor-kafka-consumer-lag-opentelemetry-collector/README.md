@@ -88,7 +88,7 @@ The `consumers` scraper is the one that provides consumer lag. The `topics` scra
 
 The Kafka metrics receiver produces several metrics. Here are the ones most relevant to consumer lag monitoring:
 
-```
+```text
 # Consumer lag per partition
 kafka.consumer_group.lag
   Attributes:

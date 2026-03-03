@@ -51,7 +51,7 @@ KSKs sign only the DNSKEY RRset and establish the chain of trust via DS records 
 
 The fundamental formula for calculating a safe signature validity period involves several factors:
 
-```
+```text
 Validity Period = Re-signing Interval + Maximum Propagation Time + Safety Buffer + Clock Skew Allowance
 ```
 
@@ -80,7 +80,7 @@ After re-signing, new signatures must propagate through:
 
 **Propagation time factors:**
 
-```
+```text
 Propagation Time = Zone Transfer Delay + Cache TTL + Network Latency Buffer
 ```
 
@@ -130,7 +130,7 @@ Let us work through several real-world scenarios.
 
 **Calculation:**
 
-```
+```text
 Re-signing Interval:        7 days
 + Propagation Time:
   - Zone transfer:          1 hour
@@ -164,7 +164,7 @@ sig-validity-interval 14 3;
 
 **Calculation:**
 
-```
+```text
 Re-signing Interval:        1 day
 + Propagation Time:
   - Zone transfer:          5 minutes
@@ -198,7 +198,7 @@ sig-validity-interval 3 1;
 
 **Calculation:**
 
-```
+```text
 Re-signing Interval:        14 days
 + Propagation Time:
   - Zone transfer:          4 hours
@@ -239,7 +239,7 @@ sig-validity-interval 14 3;  # 2 weeks for other records
 
 **Calculation for DNSKEY signatures:**
 
-```
+```text
 Base Validity:              14 days (same as zone)
 + KSK Rollover Buffer:      7 days
 + DS Propagation:           2-3 days (varies by registrar)
@@ -256,7 +256,7 @@ Signature validity directly impacts your rollover strategy. The validity period 
 
 ### ZSK Rollover (Pre-Publication Method)
 
-```
+```text
 Timeline:
 Day 0:      Publish new ZSK in DNSKEY RRset
 Day 1-7:    Wait for DNSKEY propagation (signature validity dependent)
@@ -272,7 +272,7 @@ Minimum Signature Validity Required:
 
 ### KSK Rollover (Double-Signature Method)
 
-```
+```text
 Timeline:
 Day 0:      Generate new KSK, sign DNSKEY with both keys
 Day 1-30:   Wait for old DS to be replaced in parent
@@ -544,7 +544,7 @@ if __name__ == '__main__':
 
 ### Mistake 1: Setting Validity Equal to Re-signing Interval
 
-```
+```text
 WRONG:
   Re-signing interval: 7 days
   Signature validity:  7 days
@@ -558,7 +558,7 @@ CORRECT:
 
 ### Mistake 2: Ignoring Propagation Time
 
-```
+```text
 WRONG:
   Validity calculation: Re-signing interval + 1 day buffer = 8 days
 
@@ -571,7 +571,7 @@ CORRECT:
 
 ### Mistake 3: Clock Skew Without Inception Offset
 
-```
+```text
 WRONG:
   Inception:  2026-01-15 12:00:00 UTC (exact signing time)
   Expiration: 2026-01-29 12:00:00 UTC
@@ -586,7 +586,7 @@ CORRECT:
 
 ### Mistake 4: Different Validity for Different Record Types
 
-```
+```text
 WRONG:
   DNSKEY RRSIG validity: 7 days
   Other RRSIG validity:  30 days
@@ -601,7 +601,7 @@ CORRECT:
 
 ### Mistake 5: Not Accounting for Weekends and Holidays
 
-```
+```text
 WRONG:
   Safety buffer: 1 day
   Ops team: Weekday coverage only
@@ -620,7 +620,7 @@ Different DNSSEC algorithms have varying computational costs, which affects how 
 
 ### RSA-Based Algorithms (RSASHA256, RSASHA512)
 
-```
+```text
 Signing speed:     Slower (especially with large keys)
 Verification:      Fast
 Recommendation:    Longer validity periods acceptable
@@ -633,7 +633,7 @@ Typical settings:
 
 ### ECDSA-Based Algorithms (ECDSAP256SHA256, ECDSAP384SHA384)
 
-```
+```text
 Signing speed:     Very fast
 Verification:      Fast
 Recommendation:    Can use shorter validity periods
@@ -646,7 +646,7 @@ Typical settings:
 
 ### EdDSA (ED25519, ED448)
 
-```
+```text
 Signing speed:     Extremely fast
 Verification:      Very fast
 Recommendation:    Shortest validity periods practical
@@ -663,7 +663,7 @@ Denial-of-existence records (NSEC/NSEC3) are also signed and follow the same val
 
 ### NSEC Chains
 
-```
+```text
 Consideration: NSEC records reveal zone contents (zone walking)
 Recommendation: Standard validity periods
                 Consider NSEC3 for zone enumeration protection
@@ -673,7 +673,7 @@ Settings: Same as other RRSIGs in the zone
 
 ### NSEC3 with Opt-Out
 
-```
+```text
 Consideration: Opt-out NSEC3 records cover delegations without DS records
                These need to remain valid during child zone DNSSEC deployment
 
@@ -749,7 +749,7 @@ dnssec-keygen -a ECDSAP256SHA256 -n ZONE example.com
 
 Use this worksheet to calculate your zone's optimal validity period:
 
-```
+```text
 DNSSEC Signature Validity Calculator
 ====================================
 

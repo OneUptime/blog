@@ -313,7 +313,7 @@ The `persistent_connection` settings are important for network devices. They con
 
 A well-organized project structure makes network automation much easier to maintain:
 
-```
+```text
 network-automation/
     ansible.cfg
     inventory/

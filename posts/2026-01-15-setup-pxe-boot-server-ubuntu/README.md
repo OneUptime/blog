@@ -158,7 +158,7 @@ sudo systemctl enable isc-dhcp-server
 sudo nano /srv/tftp/pxelinux.cfg/default
 ```
 
-```
+```text
 DEFAULT menu.c32
 PROMPT 0
 TIMEOUT 300
@@ -306,7 +306,7 @@ sudo cp /mnt/rocky/images/pxeboot/initrd.img /srv/tftp/images/rocky-9/
 
 Add to PXE menu:
 
-```
+```text
 LABEL rocky-9
     MENU LABEL Install Rocky Linux 9
     KERNEL images/rocky-9/vmlinuz

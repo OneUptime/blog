@@ -22,7 +22,7 @@ cat /etc/logrotate.conf
 
 A typical Ubuntu logrotate.conf:
 
-```
+```text
 # see "man logrotate" for details
 
 # rotate log files weekly
@@ -56,7 +56,7 @@ The directives in `logrotate.conf` set defaults that apply to all log files unle
 
 ### Rotation Schedule
 
-```
+```text
 daily       # Rotate every day
 weekly      # Rotate once a week (default)
 monthly     # Rotate once a month
@@ -68,14 +68,14 @@ maxsize 500M # Rotate if file exceeds 500MB even if not at schedule time
 
 ### Retention
 
-```
+```text
 rotate 7    # Keep 7 old log files before deleting (with weekly, this is 7 weeks)
 rotate 30   # Keep 30 old log files
 ```
 
 ### Compression
 
-```
+```text
 compress            # Compress old log files with gzip
 nocompress          # Don't compress
 delaycompress       # Compress on next rotation (not immediately) - useful for applications that keep files open
@@ -86,7 +86,7 @@ compressoptions -9       # Compression level/options passed to compresscmd
 
 ### File Creation
 
-```
+```text
 create              # Create new empty log file after rotation (with default owner/permissions)
 create 0644 root adm  # Create new file with specific permissions and owner
 nocreate            # Don't create new log file (for apps that create it themselves)
@@ -95,7 +95,7 @@ copytruncate        # Copy log to rotated name, then truncate original (for apps
 
 ### Missing Files
 
-```
+```text
 missingok    # Don't error if log file is missing
 nomissingok  # Error if log file is missing (default)
 ifempty      # Rotate even if file is empty (default)
@@ -116,7 +116,7 @@ cat /etc/logrotate.d/nginx
 
 A typical nginx configuration:
 
-```
+```text
 /var/log/nginx/*.log {
     daily
     missingok
@@ -142,7 +142,7 @@ A typical nginx configuration:
 sudo nano /etc/logrotate.d/myapp
 ```
 
-```
+```text
 /var/log/myapp/*.log {
     # Rotate daily
     daily
@@ -180,7 +180,7 @@ sudo nano /etc/logrotate.d/myapp
 
 Many Python web applications need a `copytruncate` approach because they don't support log file reopening:
 
-```
+```text
 /var/log/gunicorn/*.log {
     daily
     rotate 14
@@ -196,7 +196,7 @@ Many Python web applications need a `copytruncate` approach because they don't s
 
 ### Config With Size-Based Rotation and Date Extension
 
-```
+```text
 /var/log/highvolume-app/access.log {
     # Rotate when file hits 100MB
     size 100M
@@ -226,7 +226,7 @@ Many Python web applications need a `copytruncate` approach because they don't s
 
 ### Multiple Log Files in One Block
 
-```
+```text
 /var/log/myapp/error.log
 /var/log/myapp/debug.log
 /var/log/myapp/access.log {
@@ -252,7 +252,7 @@ Logrotate supports four script hooks:
 - `firstaction` / `endscript` - Runs once before any logs are rotated (requires `sharedscripts`)
 - `lastaction` / `endscript` - Runs once after all logs are rotated (requires `sharedscripts`)
 
-```
+```text
 /var/log/myapp/*.log {
     daily
     rotate 7
@@ -309,7 +309,7 @@ Add `ifempty` to force rotation, or check whether your application is actually w
 **Permission denied errors:**
 Make sure the `su` directive matches the file owner:
 
-```
+```text
 /var/log/myapp/*.log {
     su myapp myapp
     daily

@@ -181,7 +181,7 @@ For recurring scans, wrapping everything in a role makes sense. Here is the role
 
 The directory layout for a reusable compliance scanning role:
 
-```
+```text
 roles/compliance_scan/
   tasks/
     main.yml

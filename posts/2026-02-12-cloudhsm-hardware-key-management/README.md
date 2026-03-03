@@ -176,7 +176,7 @@ sudo start cloudhsm-client
 
 Inside the management utility:
 
-```
+```text
 # Login as the pre-crypto officer (PRECO)
 loginHSM PRECO admin password
 

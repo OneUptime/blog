@@ -169,7 +169,7 @@ kubectl logs deploy/my-app -c istio-proxy | grep "UO"
 
 A typical overflow log entry looks like:
 
-```
+```text
 [2024-01-15T10:30:45.123Z] "GET /api/data HTTP/1.1" 503 UO upstream_reset_before_response_started{overflow} - "-" 0 81 0 - "10.0.0.5" "curl/7.68.0" "abc-123" "my-service:8080" "-" - - 10.0.0.10:8080 10.0.0.5:45678 - -
 ```
 

@@ -135,7 +135,7 @@ spec:
 
 Structure your repository for preview deployments:
 
-```
+```text
 kubernetes/
 ├── base/
 │   ├── deployment.yaml

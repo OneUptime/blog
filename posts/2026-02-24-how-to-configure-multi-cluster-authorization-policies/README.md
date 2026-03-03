@@ -16,13 +16,13 @@ This post covers the practical aspects of writing authorization policies that wo
 
 Istio identifies workloads using SPIFFE IDs, which are embedded in the mTLS certificate's SAN field. The format is:
 
-```
+```text
 spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 
 In a multi-cluster mesh with a shared trust domain (`cluster.local` by default), a workload in cluster1 with service account `reviews` in namespace `bookinfo` has the identity:
 
-```
+```text
 spiffe://cluster.local/ns/bookinfo/sa/reviews
 ```
 

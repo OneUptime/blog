@@ -106,7 +106,7 @@ Users listed in `/etc/vsftpd.chroot_list` are **excluded** from chrooting. Add a
 sudo nano /etc/vsftpd.chroot_list
 ```
 
-```
+```text
 adminuser
 backupuser
 ```
@@ -181,7 +181,7 @@ sudo mount --bind /srv/ftp/shared /home/bob/shared
 sudo nano /etc/fstab
 ```
 
-```
+```text
 /srv/ftp/shared  /home/alice/shared  none  bind  0  0
 /srv/ftp/shared  /home/bob/shared    none  bind  0  0
 ```

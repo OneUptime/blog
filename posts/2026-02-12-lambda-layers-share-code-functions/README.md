@@ -42,7 +42,7 @@ cd layer && zip -r ../common-libs-layer.zip . && cd ..
 
 The final zip structure should look like:
 
-```
+```text
 common-libs-layer.zip
   python/
     requests/

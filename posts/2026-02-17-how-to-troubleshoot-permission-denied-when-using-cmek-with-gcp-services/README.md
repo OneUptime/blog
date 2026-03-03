@@ -18,13 +18,13 @@ When a GCP service uses CMEK, it does not use your user account or your applicat
 
 If the binding is missing, you get errors like:
 
-```
+```text
 PERMISSION_DENIED: Permission 'cloudkms.cryptoKeyVersions.useToEncrypt' denied on resource
 ```
 
 or
 
-```
+```text
 Request is prohibited by organization's policy. vpcServiceControlsUniqueIdentifier: ...
 ```
 

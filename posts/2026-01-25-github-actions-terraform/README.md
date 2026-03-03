@@ -251,7 +251,7 @@ jobs:
 
 ### Using Directory Structure
 
-```
+```text
 terraform/
   modules/
     vpc/

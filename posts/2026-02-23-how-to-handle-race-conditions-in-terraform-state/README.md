@@ -147,7 +147,7 @@ The `concurrency` block ensures only one workflow runs at a time. Setting `cance
 
 When Terraform cannot acquire the lock, you will see an error like this:
 
-```
+```text
 Error: Error acquiring the state lock
 Lock Info:
   ID:        a1b2c3d4-e5f6-7890-abcd-ef1234567890

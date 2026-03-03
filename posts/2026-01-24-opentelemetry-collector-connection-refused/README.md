@@ -14,7 +14,7 @@ The "connection refused" error is one of the most common issues when setting up 
 
 When you see a "connection refused" error, it typically looks like one of these:
 
-```
+```text
 Error: failed to export traces: connection refused
 Error: dial tcp 127.0.0.1:4317: connect: connection refused
 Error: UNAVAILABLE: Connection refused

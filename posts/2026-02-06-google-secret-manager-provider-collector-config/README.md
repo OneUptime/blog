@@ -116,7 +116,7 @@ gcloud secrets add-iam-policy-binding otel-backend-endpoint \
 
 Now update your Collector configuration to reference secrets using the `googlesecretmanager:` URI scheme. The format is:
 
-```
+```text
 ${googlesecretmanager:projects/PROJECT_ID/secrets/SECRET_NAME/versions/VERSION}
 ```
 

@@ -16,7 +16,7 @@ Debugging Sentinel policies is a skill that takes practice. Unlike application c
 
 When a Sentinel policy fails in Terraform Cloud, you see output like this:
 
-```
+```text
 Policy check:
   Organization Policy: require-encryption
     Result: false

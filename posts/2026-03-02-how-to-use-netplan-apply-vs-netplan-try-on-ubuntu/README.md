@@ -49,7 +49,7 @@ sudo netplan try
 
 You'll see output like:
 
-```
+```text
 Do you want to keep these settings?
 
 Press ENTER before the timeout to accept the new configuration

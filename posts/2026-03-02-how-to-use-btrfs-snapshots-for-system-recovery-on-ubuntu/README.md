@@ -56,7 +56,7 @@ Note: to create snapshots of subvolumes, you need to be working at the top-level
 
 A common layout separates snapshots from the live data:
 
-```
+```text
 Btrfs volume
   @               (live root, mounted at /)
   @home           (live home, mounted at /home)
@@ -87,7 +87,7 @@ sudo btrfs subvolume list /
 sudo btrfs subvolume list -r /
 ```
 
-```
+```text
 ID 259 gen 1456 top level 5 path @snapshots/root_20260302_020000
 ID 260 gen 1457 top level 5 path @snapshots/root_20260301_020000
 ID 261 gen 1458 top level 5 path @snapshots/home_20260302_020000
@@ -216,7 +216,7 @@ sudo snapper -c root create --description "before nginx upgrade" --cleanup-algor
 sudo snapper -c root list
 ```
 
-```
+```text
  # | Type   | Pre # | Date                     | User | Cleanup | Description
 ---+--------+-------+--------------------------+------+---------+------------------
 0  | single |       |                          | root |         | current
@@ -232,7 +232,7 @@ sudo snapper -c root list
 sudo snapper -c root diff 1 3
 ```
 
-```
+```text
 +..... /etc/nginx/nginx.conf
 c..... /etc/nginx/sites-enabled/default
 -c.... /var/log/nginx/access.log

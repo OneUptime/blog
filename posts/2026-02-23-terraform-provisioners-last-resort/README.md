@@ -49,7 +49,7 @@ The resource definition is declarative - Terraform ensures the instance exists w
 
 `terraform plan` shows you exactly what infrastructure changes will happen. Provisioners are invisible in the plan output.
 
-```
+```text
 # terraform plan output
 + resource "aws_instance" "web" {
     + ami           = "ami-0123456789"
@@ -83,7 +83,7 @@ Terraform state tracks the infrastructure it manages. Provisioners modify the wo
 
 Remote provisioners depend on network connectivity, SSH availability, and the remote operating system being ready. Any of these can fail, and the failure modes are hard to debug.
 
-```
+```text
 # Common failure: instance created but SSH not ready yet
 Error: timeout - last error: dial tcp 10.0.1.50:22: connection refused
 ```

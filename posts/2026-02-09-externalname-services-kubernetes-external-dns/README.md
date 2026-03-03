@@ -56,7 +56,7 @@ nslookup postgres-db.production.svc.cluster.local
 
 You'll see output showing the CNAME record:
 
-```
+```text
 Server:    10.96.0.10
 Address:   10.96.0.10#53
 

@@ -75,7 +75,7 @@ In an Istio pod, you will see several types of traffic:
 
 Use Wireshark display filters to focus on what matters:
 
-```
+```text
 # Only show HTTP traffic
 http
 
@@ -126,7 +126,7 @@ kubectl debug -it my-service-pod -n my-namespace \
 
 In Wireshark, filter for TLS:
 
-```
+```text
 tls.handshake.type == 1  # ClientHello
 tls.handshake.type == 2  # ServerHello
 tls.handshake.type == 11 # Certificate
@@ -177,7 +177,7 @@ Use the Wireshark "Expert Info" panel (Analyze > Expert Information) to quickly 
 
 Filter for problems:
 
-```
+```text
 tcp.analysis.flags
 ```
 
@@ -185,7 +185,7 @@ tcp.analysis.flags
 
 Filter for SYN packets to see how long TCP handshakes take:
 
-```
+```text
 tcp.flags.syn == 1 && tcp.flags.ack == 0
 ```
 
@@ -197,7 +197,7 @@ Use Wireshark's "Statistics > Flow Graph" to visualize the timing of requests an
 
 Or use the filter:
 
-```
+```text
 http.time > 1
 ```
 
@@ -207,7 +207,7 @@ This shows HTTP responses that took longer than 1 second.
 
 Look at TCP stream indices to see if connections are being reused:
 
-```
+```text
 # In Wireshark, check the tcp.stream value
 # If many requests share the same stream index, connections are being reused
 # If each request has a different stream index, new connections are created per request
@@ -231,7 +231,7 @@ Create a custom Wireshark profile for Istio analysis:
 
 Custom coloring rules:
 
-```
+```text
 # Red for TCP resets
 tcp.flags.reset == 1
 

@@ -73,7 +73,7 @@ This means the estimates are a baseline. Actual costs may be lower if you have c
 
 After a plan completes, the cost estimate appears before the apply:
 
-```
+```text
 Plan: 3 to add, 1 to change, 0 to destroy.
 
 --------

@@ -25,7 +25,7 @@ GitHub Actions offers several advantages for React projects:
 
 Before diving into workflows, here's the recommended structure:
 
-```
+```text
 your-react-app/
   .github/
     workflows/

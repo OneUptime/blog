@@ -204,7 +204,7 @@ gcloud logging read 'resource.type="cloud_dataproc_cluster" AND
 
 Key metrics to monitor in Cloud Monitoring:
 
-```
+```text
 cloud.google.com/dataproc/cluster/yarn/nodemanagers  # Current worker count
 cloud.google.com/dataproc/cluster/yarn/pending_memory_mb  # Pending memory
 cloud.google.com/dataproc/cluster/yarn/available_memory_mb  # Available memory

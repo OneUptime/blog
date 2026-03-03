@@ -140,7 +140,7 @@ kubectl get svc -n ingress-nginx ingress-nginx-controller
 
 Expected output:
 
-```
+```text
 NAME                       TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)
 ingress-nginx-controller   LoadBalancer   10.96.45.123   192.168.1.240   80:31080/TCP,443:31443/TCP
 ```
@@ -244,7 +244,7 @@ Before requesting certificates, your domain must resolve to the MetalLB-assigned
 
 Example DNS configuration:
 
-```
+```text
 app.example.com    A    192.168.1.240
 ```
 

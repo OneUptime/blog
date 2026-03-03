@@ -16,7 +16,7 @@ When building time-series applications, choosing the right database is crucial. 
 
 ClickHouse is a column-oriented OLAP database built from the ground up for analytical queries:
 
-```
+```text
 ClickHouse Architecture:
 - Columnar storage format
 - MergeTree engine family
@@ -35,7 +35,7 @@ Key characteristics:
 
 TimescaleDB is a time-series extension built on PostgreSQL:
 
-```
+```text
 TimescaleDB Architecture:
 - Row-oriented storage (PostgreSQL)
 - Hypertables with automatic partitioning

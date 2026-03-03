@@ -401,7 +401,7 @@ echo "PHNhbWxwOl..." | base64 --decode | xmllint --format -
 
 After configuration, test by navigating to:
 
-```
+```text
 https://awx.example.com/sso/login/saml/?idp=your_idp_name
 ```
 

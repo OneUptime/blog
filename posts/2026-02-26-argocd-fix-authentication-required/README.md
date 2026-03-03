@@ -12,14 +12,14 @@ The "authentication required" error in ArgoCD appears when the repo server tries
 
 The error typically looks like:
 
-```
+```text
 rpc error: code = Unknown desc = authentication required for
 https://github.com/org/private-repo
 ```
 
 Or when trying to create or refresh an application:
 
-```
+```text
 Unable to create application: authentication required
 ```
 

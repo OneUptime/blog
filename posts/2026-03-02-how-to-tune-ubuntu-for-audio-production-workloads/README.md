@@ -242,7 +242,7 @@ nano ~/.config/pipewire/pipewire.conf
 
 Add or modify in the context.properties section:
 
-```
+```text
 context.properties = {
     # Set default sample rate and buffer size
     default.clock.rate = 48000

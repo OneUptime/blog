@@ -78,14 +78,14 @@ kubectl logs -n metallb-system -l component=controller --tail=100 | grep -i "con
 
 Healthy output looks like:
 
-```
+```text
 {"level":"info","msg":"config changed","configFile":"IPAddressPool"}
 {"level":"info","msg":"config changed","configFile":"L2Advertisement"}
 ```
 
 Problematic output looks like:
 
-```
+```text
 {"level":"error","msg":"failed to parse config","error":"invalid CIDR"}
 {"level":"warn","msg":"configuration is stale"}
 ```

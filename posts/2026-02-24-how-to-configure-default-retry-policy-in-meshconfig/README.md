@@ -193,7 +193,7 @@ Key metrics:
 
 In Prometheus:
 
-```
+```text
 # Retry rate
 sum(rate(envoy_cluster_upstream_rq_retry{cluster_name="outbound|8080||my-service.default.svc.cluster.local"}[5m]))
 

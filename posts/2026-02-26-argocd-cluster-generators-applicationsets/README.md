@@ -232,7 +232,7 @@ spec:
 
 With values files per region:
 
-```
+```text
 chart/
   values.yaml
   values-us-east-1.yaml

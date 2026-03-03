@@ -94,7 +94,7 @@ The `LoggingInstrumentor` works by adding a logging filter that reads the curren
 
 The output will look something like this:
 
-```
+```text
 2026-02-06 10:15:30 INFO [trace_id=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4 span_id=1a2b3c4d5e6f7a8b] Processing order #12345
 ```
 

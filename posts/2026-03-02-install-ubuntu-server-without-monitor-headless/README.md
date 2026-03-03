@@ -40,13 +40,13 @@ The Ubuntu Server live installer does not automatically redirect to serial. You 
 
 At the GRUB menu (on the machine's physical video output), press `e` to edit the boot entry. Add to the `linux` line:
 
-```
+```text
 console=tty0 console=ttyS0,115200n8
 ```
 
 The full modified line looks like:
 
-```
+```text
 linux   /casper/vmlinuz  console=tty0 console=ttyS0,115200n8 quiet ---
 ```
 
@@ -160,7 +160,7 @@ sudo nano /tmp/ubuntu-iso/boot/grub/grub.cfg
 
 Find the default menu entry and add autoinstall parameters:
 
-```
+```text
 # In grub.cfg, find the linux line and add:
 linux /casper/vmlinuz autoinstall ds=nocloud-net\;s=http://192.168.1.10:8080/ quiet ---
 ```
@@ -169,7 +169,7 @@ The `\;` escapes the semicolon in GRUB syntax.
 
 Set the timeout to 0 for immediate boot:
 
-```
+```text
 set timeout=0
 ```
 

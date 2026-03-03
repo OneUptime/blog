@@ -29,7 +29,7 @@ If any of these sound familiar, your configuration needs refactoring.
 
 The most impactful change is splitting your configuration by how often things change. Resources that change daily should not live in the same state file as resources that change quarterly.
 
-```
+```text
 infrastructure/
   foundation/          # Changes rarely: VPC, subnets, DNS zones
     main.tf
@@ -209,7 +209,7 @@ locals {
 
 Deeply nested modules - modules calling modules calling modules - create a maze. Keep module nesting to two levels maximum:
 
-```
+```text
 # Good: two levels
 root configuration -> service module -> (resources)
 

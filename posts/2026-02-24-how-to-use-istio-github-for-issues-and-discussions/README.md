@@ -140,7 +140,7 @@ Istio uses a comprehensive labeling system. Understanding these labels helps you
 
 You can filter issues by label on GitHub:
 
-```
+```text
 https://github.com/istio/istio/issues?q=is:open+label:"good+first+issue"
 https://github.com/istio/istio/issues?q=is:open+label:area/networking+label:kind/bug
 ```

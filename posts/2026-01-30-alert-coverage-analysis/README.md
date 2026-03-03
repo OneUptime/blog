@@ -79,7 +79,7 @@ The matrix immediately reveals gaps. In this example, the User Service, a P0 cri
 
 Calculate a coverage score for each service tier:
 
-```
+```text
 Coverage Score = (Services with adequate alerts / Total services in tier) x 100
 ```
 
@@ -224,7 +224,7 @@ Once you have completed the assessment, you will have a list of gaps. Not all ga
 
 Calculate priority using this formula:
 
-```
+```text
 Priority = Service Tier + Failure Likelihood + User Impact
 ```
 

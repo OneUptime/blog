@@ -33,7 +33,7 @@ talosctl time --nodes 192.168.1.10
 
 The output shows the node's current time and information about its NTP synchronization status:
 
-```
+```text
 NTP-SERVER          NTP-OFFSET
 pool.ntp.org        +0.002s
 ```

@@ -258,7 +258,7 @@ This allows up to 10 requests in 1-second bursts, while maintaining 100 req/min 
 
 Tyk automatically adds rate limit headers:
 
-```
+```text
 X-RateLimit-Limit: 1000
 X-RateLimit-Remaining: 423
 X-RateLimit-Reset: 1672531200

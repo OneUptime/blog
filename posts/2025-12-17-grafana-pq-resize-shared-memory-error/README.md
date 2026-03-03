@@ -12,7 +12,7 @@ The error "pq: could not resize shared memory segment" occurs when Grafana's Pos
 
 The full error message usually looks like:
 
-```
+```text
 pq: could not resize shared memory segment "/PostgreSQL.xxxxxxxxxx" to xxxxxxxx bytes: No space left on device
 ```
 

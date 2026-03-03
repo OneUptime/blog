@@ -22,7 +22,7 @@ The Terraform Provider Network Mirror Protocol is a simple HTTP API that serves 
 
 Example request flow for `hashicorp/aws` version 5.30.0:
 
-```
+```text
 GET /registry.terraform.io/hashicorp/aws/index.json
 Response: {"versions": {"5.30.0": {}}}
 

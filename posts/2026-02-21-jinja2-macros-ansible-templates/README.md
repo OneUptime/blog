@@ -27,7 +27,7 @@ A macro is essentially a reusable template fragment. You define it with `{% macr
 
 This renders to:
 
-```
+```text
     server 10.0.1.10:8080 weight=1;
     server 10.0.1.11:8080 weight=3;
 ```

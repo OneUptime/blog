@@ -64,7 +64,7 @@ env:
 
 Check how often istiod is pushing configuration:
 
-```
+```text
 sum(rate(pilot_xds_pushes[5m])) by (type)
 ```
 
@@ -72,7 +72,7 @@ If you're seeing hundreds of pushes per second, the debounce interval might be t
 
 Check the push latency:
 
-```
+```text
 histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket[5m])) by (le))
 ```
 
@@ -227,7 +227,7 @@ In large meshes (thousands of services, tens of thousands of pods), refresh inte
 
 Monitor the relationship between push frequency and proxy CPU:
 
-```
+```text
 sum(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])) by (namespace)
 ```
 

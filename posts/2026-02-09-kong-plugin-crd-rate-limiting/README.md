@@ -480,7 +480,7 @@ done
 
 When rate limit is exceeded, Kong returns HTTP 429:
 
-```
+```text
 HTTP/1.1 429 Too Many Requests
 X-RateLimit-Limit-Minute: 5
 X-RateLimit-Remaining-Minute: 0

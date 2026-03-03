@@ -38,7 +38,7 @@ flowchart TD
 ### Error: Template Parse Error
 
 **Symptom:**
-```
+```text
 Error: parse error at (mychart/templates/deployment.yaml:15): unexpected "{" in command
 ```
 
@@ -72,7 +72,7 @@ helm template my-release ./mychart --debug
 ### Error: Nil Pointer Evaluating
 
 **Symptom:**
-```
+```text
 Error: template: mychart/templates/deployment.yaml:10:20: executing "mychart/templates/deployment.yaml" at <.Values.app.name>: nil pointer evaluating interface {}.name
 ```
 
@@ -101,7 +101,7 @@ name: {{ dig "app" "name" "default-name" .Values }}
 ### Error: Function Not Found
 
 **Symptom:**
-```
+```text
 Error: template: mychart/templates/deployment.yaml:5:10: executing "mychart/templates/deployment.yaml" at <unknownFunc>: function "unknownFunc" not defined
 ```
 
@@ -122,7 +122,7 @@ name: {{ .Values.name | quote }}
 ### Error: Required Value Not Set
 
 **Symptom:**
-```
+```text
 Error: execution error at (mychart/templates/secret.yaml:8:20): required value 'database.password' not set
 ```
 
@@ -143,7 +143,7 @@ helm install my-release ./mychart --set database.password=secret123
 ### Error: Cannot Re-use a Name
 
 **Symptom:**
-```
+```text
 Error: cannot re-use a name that is still in use
 ```
 
@@ -167,7 +167,7 @@ helm uninstall my-release
 ### Error: Release Not Found
 
 **Symptom:**
-```
+```text
 Error: release: not found
 ```
 
@@ -188,7 +188,7 @@ helm list -A | grep my-release
 ### Error: Another Operation in Progress
 
 **Symptom:**
-```
+```text
 Error: another operation (install/upgrade/rollback) is in progress
 ```
 
@@ -212,7 +212,7 @@ kubectl delete secret sh.helm.release.v1.my-release.v2
 ### Error: UPGRADE FAILED: has no deployed releases
 
 **Symptom:**
-```
+```text
 Error: UPGRADE FAILED: "my-release" has no deployed releases
 ```
 
@@ -235,7 +235,7 @@ helm install my-release ./mychart
 ### Error: Kubernetes Cluster Unreachable
 
 **Symptom:**
-```
+```text
 Error: Kubernetes cluster unreachable: Get "https://127.0.0.1:6443/version": dial tcp 127.0.0.1:6443: connect: connection refused
 ```
 
@@ -258,7 +258,7 @@ cat ~/.kube/config
 ### Error: Forbidden - User Cannot Access
 
 **Symptom:**
-```
+```text
 Error: release my-release failed: deployments.apps is forbidden: User "system:serviceaccount:default:default" cannot create resource "deployments" in API group "apps" in the namespace "production"
 ```
 
@@ -291,7 +291,7 @@ EOF
 ### Error: Repository Not Found
 
 **Symptom:**
-```
+```text
 Error: repo myrepo not found
 ```
 
@@ -310,7 +310,7 @@ helm repo update
 ### Error: Chart Not Found
 
 **Symptom:**
-```
+```text
 Error: chart "myrepo/mychart" not found in myrepo index
 ```
 
@@ -332,7 +332,7 @@ helm search repo myrepo/
 ### Error: Failed to Fetch Chart
 
 **Symptom:**
-```
+```text
 Error: failed to fetch https://charts.example.com/mychart-1.0.0.tgz : 404 Not Found
 ```
 
@@ -353,7 +353,7 @@ helm install my-release myrepo/mychart --version 0.9.0
 ### Error: Resource Already Exists
 
 **Symptom:**
-```
+```text
 Error: rendered manifests contain a resource that already exists. Unable to continue with install: Service "my-service" in namespace "default" exists and cannot be imported into the current release
 ```
 
@@ -372,7 +372,7 @@ helm install my-release ./mychart
 ### Error: Invalid Value for Field
 
 **Symptom:**
-```
+```text
 Error: INSTALLATION FAILED: unable to build kubernetes objects from release manifest: error validating "": error validating data: ValidationError(Deployment.spec.replicas): invalid type for io.k8s.api.apps.v1.DeploymentSpec.replicas: got "string", expected "integer"
 ```
 
@@ -394,7 +394,7 @@ spec:
 ### Error: Field is Immutable
 
 **Symptom:**
-```
+```text
 Error: UPGRADE FAILED: cannot patch "my-app" with kind Deployment: Deployment.apps "my-app" is invalid: spec.selector: Invalid value: v1.LabelSelector{...}: field is immutable
 ```
 
@@ -413,7 +413,7 @@ helm upgrade my-release ./mychart --force
 ### Error: Hook Failed
 
 **Symptom:**
-```
+```text
 Error: INSTALLATION FAILED: Job failed: BackoffLimitExceeded
 ```
 
@@ -435,7 +435,7 @@ helm install my-release ./mychart --timeout 10m
 ### Error: Hook Deletion Timeout
 
 **Symptom:**
-```
+```text
 Error: timed out waiting for the condition
 ```
 
@@ -458,7 +458,7 @@ metadata:
 ### Error: Chart.yaml Dependencies Not Satisfied
 
 **Symptom:**
-```
+```text
 Error: found in Chart.yaml, but missing in charts/ directory: postgresql
 ```
 
@@ -477,7 +477,7 @@ helm dependency list ./mychart
 ### Error: Dependency Version Mismatch
 
 **Symptom:**
-```
+```text
 Error: Chart requires version 13.x.x of postgresql but version 12.x.x is present
 ```
 
@@ -500,7 +500,7 @@ helm dependency update ./mychart
 ### Error: Namespace Not Found
 
 **Symptom:**
-```
+```text
 Error: create: failed to create: namespaces "myns" not found
 ```
 
@@ -518,7 +518,7 @@ helm install my-release ./mychart -n myns --create-namespace
 ### Error: Timed Out Waiting for Condition
 
 **Symptom:**
-```
+```text
 Error: timed out waiting for the condition
 ```
 

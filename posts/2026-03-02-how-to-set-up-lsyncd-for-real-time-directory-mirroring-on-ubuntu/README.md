@@ -285,7 +285,7 @@ sudo kill -USR1 $(pgrep lsyncd)
 
 The status file output looks like:
 
-```
+```text
 Lsyncd status report at Mon Mar  2 12:00:00 2026
 
 Sync1 source=/var/www/html

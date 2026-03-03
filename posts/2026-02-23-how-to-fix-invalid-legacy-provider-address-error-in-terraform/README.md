@@ -10,7 +10,7 @@ Description: How to fix the Invalid Legacy Provider Address error in Terraform t
 
 You upgrade Terraform or pull an older project, and when you run `terraform plan`, you see:
 
-```
+```text
 Error: Invalid legacy provider address
 
 This configuration or its associated state refers to the unqualified provider
@@ -59,7 +59,7 @@ terraform state replace-provider \
 
 Terraform will show you what it plans to change and ask for confirmation:
 
-```
+```text
 Terraform will perform the following actions:
 
   ~ Updating provider:

@@ -108,7 +108,7 @@ ldapsearch -x -H ldaps://dc01.corp.example.com:636 \
 
 Navigate to **Admin** > **LDAP** in the TFE interface.
 
-```
+```text
 LDAP Configuration:
   Hostname:            dc01.corp.example.com
   Port:                636
@@ -290,7 +290,7 @@ ldapwhoami -x -H ldaps://dc01.corp.example.com:636 \
 
 **Nested groups not working**: TFE performs a simple group lookup by default. If your groups are nested (group A is a member of group B), you may need to use Active Directory's `LDAP_MATCHING_RULE_IN_CHAIN` filter:
 
-```
+```text
 (member:1.2.840.113556.1.4.1941:={user-dn})
 ```
 

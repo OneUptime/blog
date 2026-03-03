@@ -67,7 +67,7 @@ terraform -version
 
 You should see output like:
 
-```
+```text
 Terraform v1.7.x
 on linux_amd64
 ```

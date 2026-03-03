@@ -87,7 +87,7 @@ create_release:
       ```
   rules:
     - if: '$CI_COMMIT_TAG'
-```
+```text
 
 ## Dynamic Release Description
 

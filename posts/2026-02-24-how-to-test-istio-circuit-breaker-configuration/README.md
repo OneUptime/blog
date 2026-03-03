@@ -85,7 +85,7 @@ kubectl exec -n circuit-test deploy/fortio -c fortio -- \
 
 With 3 concurrent connections and a limit of 1, you should see some 503 responses. The output will show something like:
 
-```
+```text
 Code 200 : 20 (66.7 %)
 Code 503 : 10 (33.3 %)
 ```
@@ -103,7 +103,7 @@ kubectl exec -n circuit-test deploy/fortio -c istio-proxy -- \
 
 Look for these key metrics:
 
-```
+```text
 cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local.upstream_rq_pending_overflow: 10
 cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local.upstream_rq_pending_total: 30
 ```
@@ -156,7 +156,7 @@ kubectl exec -n circuit-test deploy/fortio -c istio-proxy -- \
 
 Look for:
 
-```
+```text
 cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local.outlier_detection.ejections_active: 1
 cluster.outbound|8000||httpbin.circuit-test.svc.cluster.local.outlier_detection.ejections_total: 1
 ```

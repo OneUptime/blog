@@ -202,7 +202,7 @@ time docker build -t test-link -f Dockerfile.link .
 
 Typical results for a project with 500MB of copied files:
 
-```
+```text
 Without --link (after RUN change): 45 seconds
 With --link (after RUN change):     3 seconds
 ```

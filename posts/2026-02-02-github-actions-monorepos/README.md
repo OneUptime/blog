@@ -46,7 +46,7 @@ flowchart TB
 
 Before diving into configuration, here is a typical monorepo structure that we will reference throughout the examples.
 
-```
+```text
 my-monorepo/
 ├── .github/
 │   └── workflows/

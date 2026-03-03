@@ -61,7 +61,7 @@ info:
 
     ```
     x-api-key: YOUR_API_KEY
-    ```
+    ```text
 
     ## Rate Limits
 

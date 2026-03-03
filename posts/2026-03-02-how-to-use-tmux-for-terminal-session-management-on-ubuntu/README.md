@@ -48,14 +48,14 @@ tmux new -s deploy 'bash deploy.sh'
 
 All tmux commands start with a prefix key combination: `Ctrl+b` by default. Press `Ctrl+b`, release both, then press the command key.
 
-```
+```text
 Ctrl+b ?    - Show all key bindings (help)
 Ctrl+b :    - Enter tmux command prompt
 ```
 
 ## Session Management
 
-```
+```text
 Ctrl+b d    - Detach from current session (leaves it running)
 Ctrl+b $    - Rename current session
 Ctrl+b s    - List and switch between sessions
@@ -88,7 +88,7 @@ tmux kill-server
 
 ## Window Management
 
-```
+```text
 Ctrl+b c    - Create new window
 Ctrl+b ,    - Rename current window
 Ctrl+b w    - List all windows (interactive selector)
@@ -102,7 +102,7 @@ Ctrl+b .    - Move window to a different number
 
 ## Pane Management
 
-```
+```text
 Ctrl+b %    - Split pane vertically (left and right)
 Ctrl+b "    - Split pane horizontally (top and bottom)
 Ctrl+b arrow keys  - Move between panes
@@ -115,14 +115,14 @@ Ctrl+b !    - Move current pane to a new window
 
 Resize panes:
 
-```
+```text
 Ctrl+b Ctrl+arrow  - Resize pane in arrow direction (hold Ctrl+b, tap arrow)
 Ctrl+b Alt+arrow   - Resize in larger steps
 ```
 
 Or use the command prompt:
 
-```
+```text
 Ctrl+b :resize-pane -D 5    - Resize down 5 rows
 Ctrl+b :resize-pane -R 10   - Resize right 10 columns
 ```
@@ -208,7 +208,7 @@ tail -f /var/log/nginx/access.log
 
 tmux lets you scroll up through output history:
 
-```
+```text
 Ctrl+b [    - Enter copy mode (scroll with arrow keys or Page Up/Down)
 q           - Exit copy mode
 Space       - Start selection in copy mode
@@ -227,7 +227,7 @@ set-option -g history-limit 50000
 
 Synchronize input across all panes in a window:
 
-```
+```text
 Ctrl+b :setw synchronize-panes on    - Type in all panes simultaneously
 Ctrl+b :setw synchronize-panes off   - Stop synchronization
 ```
@@ -238,7 +238,7 @@ This is useful for running the same command on multiple servers displayed in dif
 
 Naming things makes navigation much easier:
 
-```
+```text
 Ctrl+b ,    - Rename current window (type name, press Enter)
 Ctrl+b $    - Rename current session
 
@@ -269,7 +269,7 @@ tmux attach -t "frontend"
 nano ~/.tmux.conf
 ```
 
-```
+```text
 # ~/.tmux.conf - minimal useful settings
 
 # Increase history limit

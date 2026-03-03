@@ -118,7 +118,7 @@ This logs INSERT, UPDATE, DELETE, and TRUNCATE operations.
 
 Sample log output:
 
-```
+```text
 AUDIT: SESSION,1,1,WRITE,INSERT,TABLE,public.users,
        "INSERT INTO users (email, name) VALUES ('john@example.com', 'John Doe')"
 ```
@@ -210,7 +210,7 @@ ALTER ROLE reporter SET pgaudit.log = 'DDL';
 
 pgAudit logs follow this format:
 
-```
+```text
 AUDIT: TYPE,STATEMENT_ID,SUBSTATEMENT_ID,CLASS,COMMAND,OBJECT_TYPE,OBJECT_NAME,STATEMENT
 ```
 
@@ -227,7 +227,7 @@ AUDIT: TYPE,STATEMENT_ID,SUBSTATEMENT_ID,CLASS,COMMAND,OBJECT_TYPE,OBJECT_NAME,S
 
 ### Sample Log Entries
 
-```
+```text
 # INSERT operation
 AUDIT: SESSION,1,1,WRITE,INSERT,TABLE,public.orders,
        "INSERT INTO orders (customer_id, amount) VALUES (42, 99.99)"

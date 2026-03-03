@@ -14,7 +14,7 @@ Connection timeout errors in MongoDB can bring your application to a halt. These
 
 MongoDB connection timeouts typically appear as:
 
-```
+```text
 MongoNetworkError: connection timed out
 MongoServerSelectionError: connection timed out
 MongoTimeoutError: Server selection timed out after 30000 ms

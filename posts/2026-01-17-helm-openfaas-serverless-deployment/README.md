@@ -563,7 +563,7 @@ queueWorker:
 
 ### Custom Chart Structure
 
-```
+```text
 openfaas-functions/
 ├── Chart.yaml
 ├── values.yaml

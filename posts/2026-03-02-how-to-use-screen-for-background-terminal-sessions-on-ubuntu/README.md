@@ -44,7 +44,7 @@ All screen commands use a prefix key: `Ctrl+a` (written as `C-a`).
 
 Press `Ctrl+a`, release, then press the command key. This differs from tmux's default `Ctrl+b`.
 
-```
+```text
 Ctrl+a ?    - Show help (list of all commands)
 Ctrl+a :    - Enter command mode
 ```
@@ -53,7 +53,7 @@ Ctrl+a :    - Enter command mode
 
 ### Detaching and Reattaching
 
-```
+```text
 Ctrl+a d    - Detach from session (session keeps running)
 ```
 
@@ -83,7 +83,7 @@ screen -r
 
 ### Killing Sessions
 
-```
+```text
 Ctrl+a k    - Kill current window (asks confirmation)
 Ctrl+a \    - Kill all windows and exit screen
 ```
@@ -102,7 +102,7 @@ kill 12345
 
 screen calls its tabs "windows" (equivalent to tmux's windows):
 
-```
+```text
 Ctrl+a c    - Create new window
 Ctrl+a n    - Next window
 Ctrl+a p    - Previous window
@@ -118,7 +118,7 @@ Ctrl+a k    - Kill current window
 
 screen supports split panes (called "regions"):
 
-```
+```text
 Ctrl+a S    - Split horizontally (top/bottom)
 Ctrl+a |    - Split vertically (left/right)
 Ctrl+a Tab  - Move focus to next region
@@ -130,7 +130,7 @@ After splitting, use `Ctrl+a Tab` to move to the new region, then `Ctrl+a n` or 
 
 ## Copy and Scroll Mode
 
-```
+```text
 Ctrl+a [    - Enter copy mode (for scrolling)
 Space       - Start marking text (in copy mode)
 Space       - End marking (copies to buffer)
@@ -203,7 +203,7 @@ The `-X stuff` command sends keystrokes to a window. The `\n` at the end simulat
 nano ~/.screenrc
 ```
 
-```
+```text
 # ~/.screenrc
 
 # Increase scrollback buffer
@@ -238,7 +238,7 @@ defscrollback 5000
 
 ## Simpler Status Bar
 
-```
+```text
 # ~/.screenrc - minimal status bar
 hardstatus alwayslastline "%{=b}%{G} %H | %{W}%w %=%{G} %D %d %M %c "
 ```
@@ -247,7 +247,7 @@ hardstatus alwayslastline "%{=b}%{G} %H | %{W}%w %=%{G} %D %d %M %c "
 
 screen can alert you when a window goes quiet or produces output:
 
-```
+```text
 Ctrl+a M    - Toggle monitoring for activity in current window
 Ctrl+a _    - Toggle monitoring for silence in current window
 ```
@@ -256,13 +256,13 @@ When the monitored condition occurs, screen will flash the window in the status 
 
 ## Logging to a File
 
-```
+```text
 Ctrl+a H    - Toggle logging of current window to screenlog.N file
 ```
 
 Or specify the file in `~/.screenrc`:
 
-```
+```text
 logfile /var/log/screen_%Y%m%d_%n.log
 ```
 

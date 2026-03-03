@@ -37,7 +37,7 @@ flowchart TD
 
 For a cluster of N nodes, the quorum requirement is:
 
-```
+```text
 Quorum = floor(N/2) + 1
 ```
 

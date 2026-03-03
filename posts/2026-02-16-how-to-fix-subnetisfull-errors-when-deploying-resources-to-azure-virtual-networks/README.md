@@ -10,7 +10,7 @@ Description: Fix SubnetIsFull errors in Azure by understanding IP address exhaus
 
 You try to deploy a new VM, App Service integration, or AKS node pool, and Azure gives you this:
 
-```
+```text
 SubnetIsFull - Subnet 'my-subnet' does not have enough IP addresses available to deploy the requested resources.
 ```
 

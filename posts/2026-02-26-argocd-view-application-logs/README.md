@@ -45,7 +45,7 @@ You can also access logs from:
 
 If your Pod has multiple containers (including init containers and sidecars), you will see a dropdown to select which container's logs to view:
 
-```
+```text
 Container: [app-container ▾]
 
 Options:
@@ -70,7 +70,7 @@ You can toggle streaming on/off using the follow button. When streaming is off, 
 
 The ArgoCD log viewer includes a filter/search box at the top. Type a keyword to filter log lines:
 
-```
+```text
 Filter: "ERROR"
 
 # Only shows lines containing "ERROR"
@@ -115,7 +115,7 @@ Click on any running Pod under the current ReplicaSet to see active logs. You ca
 
 StatefulSet Pods have stable identities, so you can reliably find the same Pod by its ordinal name:
 
-```
+```text
 my-db-0  (primary)
 my-db-1  (replica)
 my-db-2  (replica)
@@ -156,7 +156,7 @@ p, role:viewer, logs, get, */*, deny
 
 The RBAC policy format for logs:
 
-```
+```text
 p, <role>, logs, get, <project>/<application>, <allow|deny>
 ```
 

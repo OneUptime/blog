@@ -299,7 +299,7 @@ spec:
 
 ## Repository Structure
 
-```
+```text
 my-app/
   base/
     deployment.yaml

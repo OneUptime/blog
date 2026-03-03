@@ -33,7 +33,7 @@ sentinel version
 
 Sentinel expects a specific directory structure for tests. Here is the standard layout:
 
-```
+```text
 my-policies/
   enforce-tags.sentinel
   restrict-instance-types.sentinel

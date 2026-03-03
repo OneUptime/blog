@@ -46,7 +46,7 @@ Extensions can provide different types of functionality:
 
 These add a new service that runs alongside Talos system services:
 
-```
+```text
 /usr/local/etc/containers/my-service.yaml    # Service definition
 /usr/local/bin/my-service                      # Binary
 ```
@@ -55,7 +55,7 @@ These add a new service that runs alongside Talos system services:
 
 These add kernel modules:
 
-```
+```text
 /lib/modules/<kernel-version>/extras/my-module.ko
 ```
 
@@ -63,7 +63,7 @@ These add kernel modules:
 
 These add shared libraries or utility binaries:
 
-```
+```text
 /usr/local/lib/my-library.so
 /usr/local/bin/my-tool
 ```
@@ -72,7 +72,7 @@ These add shared libraries or utility binaries:
 
 These add hardware firmware files:
 
-```
+```text
 /lib/firmware/my-hardware/firmware.bin
 ```
 

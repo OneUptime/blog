@@ -88,7 +88,7 @@ For more complex configurations, use Jinja2 templates:
 
 With a template file for IOS (`templates/baseline-ios.j2`):
 
-```
+```text
 ! NTP Configuration
 {% for server in ntp_servers %}
 ntp server {{ server }}

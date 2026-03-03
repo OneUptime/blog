@@ -68,7 +68,7 @@ This shows you exactly what Terragrunt sees after processing all `include` block
 
 ## Common Error: "Could Not Find a terragrunt.hcl"
 
-```
+```text
 ERRO[0000] Could not find a terragrunt.hcl file
 ```
 
@@ -98,7 +98,7 @@ include "root" {
 
 ## Common Error: Dependency Cycle
 
-```
+```text
 ERRO[0000] Found a dependency cycle between modules
 ```
 
@@ -116,7 +116,7 @@ To fix cycles, you usually need to restructure your modules. A common pattern is
 
 ## Common Error: "Error reading file"
 
-```
+```text
 ERRO[0000] Error reading file at path infrastructure/env.hcl
 ```
 
@@ -154,7 +154,7 @@ locals {
 
 ## Common Error: "Locals Block Not Allowed"
 
-```
+```text
 ERRO[0000] Error: Unsupported block type "locals"
 ```
 

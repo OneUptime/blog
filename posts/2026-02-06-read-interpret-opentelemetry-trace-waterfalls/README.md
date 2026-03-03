@@ -59,7 +59,7 @@ If you see spans that violate this rule (child ending after parent), you have cl
 
 Child spans that don't overlap ran sequentially. Span B starts after Span A ends.
 
-```
+```text
 Parent Span         [================================]
   Child A           [=======]
   Child B                   [========]
@@ -72,7 +72,7 @@ This pattern suggests blocking operations. The parent waited for each child befo
 
 Child spans that overlap ran concurrently. Span B and Span C both start while Span A is still running.
 
-```
+```text
 Parent Span         [================================]
   Child A           [============]
   Child B             [==========]
@@ -85,7 +85,7 @@ This pattern suggests async operations. The parent fired off multiple tasks and 
 
 Grandchild spans are children of child spans. Hierarchies can be arbitrarily deep.
 
-```
+```text
 Parent Span         [================================]
   Child A           [============]
     Grandchild 1    [====]
@@ -103,7 +103,7 @@ The point of a waterfall is to find where time went. Here's how to spot common i
 
 One span dominates the trace duration. Everything else is fast.
 
-```
+```text
 Root                [====================================] 500ms
   Database          [================================]    480ms
   Business logic    [=]                                   10ms
@@ -116,7 +116,7 @@ Root                [====================================] 500ms
 
 Lots of small spans add up to significant time.
 
-```
+```text
 Root                [====================================] 500ms
   API call 1        [==]                                  20ms
   API call 2          [==]                                20ms
@@ -130,7 +130,7 @@ Root                [====================================] 500ms
 
 Time passes between parent starting and child starting.
 
-```
+```text
 Parent              [====================================] 500ms
   Child                        [==============]           200ms
                     ^^^^^^^^^^^
@@ -143,7 +143,7 @@ Parent              [====================================] 500ms
 
 Time passes between child ending and parent ending, with no other children.
 
-```
+```text
 Parent              [====================================] 500ms
   Child             [==============]                      200ms
                                   ^^^^^^^^^^^^^^^^^^^
@@ -156,7 +156,7 @@ Parent              [====================================] 500ms
 
 Parent span is much longer than the sum of its children.
 
-```
+```text
 Parent              [====================================] 500ms
   Child A           [=====]                               50ms
   Child B                 [=====]                         50ms
@@ -171,7 +171,7 @@ Parent              [====================================] 500ms
 
 Children's durations sum to more than the parent's duration (impossible unless they overlap).
 
-```
+```text
 Parent              [====================================] 500ms
   Child A           [===============]                    200ms
   Child B             [=============]                    180ms
@@ -189,7 +189,7 @@ Each span has metadata (attributes, events, status). Good observability tools le
 
 Which service or component created this span. Critical for distributed traces that cross multiple microservices.
 
-```
+```text
 span: "GET /orders"
 service.name: "order-api"
 ```
@@ -212,7 +212,7 @@ Span kind helps you distinguish between "this service received a request" vs "th
 
 For HTTP spans, you'll see:
 
-```
+```text
 http.method: "POST"
 http.target: "/api/orders"
 http.status_code: 200
@@ -226,7 +226,7 @@ Check status codes for errors. Check routes for cardinality explosions (UUIDs in
 
 For database spans:
 
-```
+```text
 db.system: "postgresql"
 db.name: "orders_db"
 db.statement: "SELECT * FROM orders WHERE user_id = $1"
@@ -239,7 +239,7 @@ The `db.statement` is gold. You can copy-paste it and run EXPLAIN ANALYZE to see
 
 Spans have a status: OK, ERROR, or UNSET.
 
-```
+```text
 status.code: ERROR
 status.message: "connection timeout after 5000ms"
 ```
@@ -250,7 +250,7 @@ Errors should stand out visually in your tool (red color, exclamation icon). Alw
 
 Events are timestamped logs attached to a span. They're useful for marking milestones within a long operation.
 
-```
+```text
 span: "process_payment"
   event @ 10ms: "authorization_started"
   event @ 150ms: "authorization_succeeded"
@@ -268,7 +268,7 @@ You'll see certain patterns repeatedly. Recognizing them speeds up diagnosis.
 
 One parent, many parallel children (all start around the same time).
 
-```
+```text
 Root                [====================================]
   Worker 1          [==========]
   Worker 2          [===========]
@@ -285,7 +285,7 @@ Root                [====================================]
 
 Each span waits for the previous one to complete before starting.
 
-```
+```text
 Root                [====================================]
   Step 1            [========]
   Step 2                    [=========]
@@ -301,7 +301,7 @@ Root                [====================================]
 
 The same operation appears multiple times, with gaps between.
 
-```
+```text
 Root                [====================================]
   API call          [===] FAIL
                        [===] FAIL
@@ -316,7 +316,7 @@ Root                [====================================]
 
 A parent span has many sequential child spans with similar names.
 
-```
+```text
 Root                [====================================]
   SELECT users      [==]
   SELECT orders     [=]
@@ -334,7 +334,7 @@ Root                [====================================]
 
 A parent span has no children, but takes significant time.
 
-```
+```text
 Root                [====================================] 500ms
   (no children)
 ```
@@ -351,7 +351,7 @@ Distributed traces rely on timestamps from multiple machines. If clocks are out 
 
 Impossible unless you have clock skew. Child's host clock is ahead of parent's host clock.
 
-```
+```text
 Parent              [====================================]
   Child           [=======]
               ^^^^^
@@ -364,7 +364,7 @@ Parent              [====================================]
 
 Impossible unless you have clock skew or a bug in instrumentation.
 
-```
+```text
 Parent              [====================================]
   Child                              [=============]
                                                   ^^^^^
@@ -377,7 +377,7 @@ Parent              [====================================]
 
 A span's end time is before its start time. This is a bug in your instrumentation or a severe clock issue.
 
-```
+```text
 span start: 1000ms
 span end: 900ms
 duration: -100ms (invalid)
@@ -427,7 +427,7 @@ Related reading: [Three Pillars of Observability: Logs, Metrics, Traces](https:/
 
 You get an alert: `GET /api/users/{id}/orders` is slow (p95 > 1000ms). You pull up a trace.
 
-```
+```text
 Root: GET /users/123/orders          [==================================] 1200ms
   Auth middleware                    [=]                                   10ms
   Load user from DB                    [====]                              40ms
@@ -445,7 +445,7 @@ Root: GET /users/123/orders          [==================================] 1200ms
 
 After the fix:
 
-```
+```text
 Root: GET /users/123/orders          [==============] 300ms
   Auth middleware                    [=]              10ms
   Load user from DB                    [====]         40ms

@@ -138,7 +138,7 @@ With custom claims in place, you can reference them directly in your Firestore s
 
 Here is an example set of rules for a content management system:
 
-```
+```text
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {

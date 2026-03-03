@@ -51,7 +51,7 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 
 Let's set up a well-organized project structure for our gRPC service.
 
-```
+```text
 grpc-go-demo/
 ├── proto/
 │   └── user/

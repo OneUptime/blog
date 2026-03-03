@@ -159,7 +159,7 @@ If you send audit logs to Log Analytics, you can query them using KQL. Here are 
 
 Find all failed login attempts in the last 24 hours:
 
-```
+```text
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.SQL"
 | where Category == "SQLSecurityAuditEvents"
@@ -171,7 +171,7 @@ AzureDiagnostics
 
 Find all schema changes:
 
-```
+```text
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.SQL"
 | where Category == "SQLSecurityAuditEvents"
@@ -183,7 +183,7 @@ AzureDiagnostics
 
 Find the most active users:
 
-```
+```text
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.SQL"
 | where Category == "SQLSecurityAuditEvents"

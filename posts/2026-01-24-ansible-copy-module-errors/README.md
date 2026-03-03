@@ -39,7 +39,7 @@ flowchart TD
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "Destination /etc/myapp not writable"
@@ -48,7 +48,7 @@ fatal: [webserver]: FAILED! => {
 
 Or:
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "Could not make backup of /etc/myapp/config.conf to /etc/myapp/config.conf.backup: [Errno 13] Permission denied"
@@ -137,7 +137,7 @@ fatal: [webserver]: FAILED! => {
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "Could not find or access 'files/config.conf'\nSearched in:\n\t/home/user/ansible/files/config.conf"
@@ -203,7 +203,7 @@ fatal: [webserver]: FAILED! => {
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "Destination directory /etc/myapp/conf.d does not exist"
@@ -243,7 +243,7 @@ fatal: [webserver]: FAILED! => {
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "Timeout (12s) waiting for privilege escalation prompt"
@@ -291,7 +291,7 @@ Or the task hangs during transfer of large files.
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "checksum mismatch: expected abc123, got def456"
@@ -345,7 +345,7 @@ fatal: [webserver]: FAILED! => {
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "[Errno 28] No space left on device"
@@ -380,7 +380,7 @@ fatal: [webserver]: FAILED! => {
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "refusing to convert from file to symlink for /etc/myapp/config.conf"
@@ -430,7 +430,7 @@ fatal: [webserver]: FAILED! => {
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "src and content are mutually exclusive"
@@ -485,7 +485,7 @@ fatal: [webserver]: FAILED! => {
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "If using a directory as source, dest must be a directory too"
@@ -526,7 +526,7 @@ fatal: [webserver]: FAILED! => {
 
 ### Symptoms
 
-```
+```text
 fatal: [webserver]: FAILED! => {
     "changed": false,
     "msg": "Failed to create temporary directory. In some cases, you may have been able to authenticate and did not have permissions on the target directory."

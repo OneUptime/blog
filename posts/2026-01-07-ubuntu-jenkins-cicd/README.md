@@ -233,13 +233,13 @@ sudo cat /var/lib/jenkins/secrets/initialAdminPassword
 
 Open your web browser and navigate to:
 
-```
+```text
 http://your-server-ip:8080
 ```
 
 Or if accessing locally:
 
-```
+```text
 http://localhost:8080
 ```
 

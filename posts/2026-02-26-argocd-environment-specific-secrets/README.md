@@ -77,7 +77,7 @@ kubectl create secret generic my-app-secrets \
 
 Your directory structure includes the sealed secrets per environment:
 
-```
+```text
 overlays/
   dev/
     kustomization.yaml

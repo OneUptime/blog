@@ -10,7 +10,7 @@ Many teams have existing Prometheus exporters and do not want to rewrite them. T
 
 ## The Pipeline
 
-```
+```text
 [Prometheus Endpoints] --> [Prometheus Receiver] --> [Processors] --> [ClickHouse Exporter]
 ```
 

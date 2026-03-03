@@ -158,7 +158,7 @@ kubectl get pods -n metallb-system
 
 You should see output similar to:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-7cf77c64b6-xk9m2  1/1     Running   0          45s
 speaker-abcde                 1/1     Running   0          45s

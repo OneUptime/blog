@@ -16,7 +16,7 @@ There are situations where upgrading a package would break something - a kernel 
 
 When a package is on hold, `apt upgrade` and `apt dist-upgrade` will skip it, printing a message like:
 
-```
+```text
 The following packages have been kept back:
   postgresql-14
 ```
@@ -37,7 +37,7 @@ sudo apt-mark hold postgresql-14 postgresql-client-14 postgresql-common
 
 After running this, you'll see confirmation:
 
-```
+```text
 postgresql-14 set on hold.
 postgresql-client-14 set on hold.
 postgresql-common set on hold.

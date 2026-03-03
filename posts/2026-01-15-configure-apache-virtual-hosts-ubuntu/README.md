@@ -75,7 +75,7 @@ Name-based virtual hosting is the most common and recommended approach. Multiple
 - Works well for most use cases
 
 **Example scenario:**
-```
+```text
 IP: 192.168.1.100
   - example.com
   - blog.example.com
@@ -92,7 +92,7 @@ IP-based virtual hosting assigns a unique IP address to each website. Apache det
 - Works with protocols that do not support host headers
 
 **Example scenario:**
-```
+```text
 IP: 192.168.1.100 -> example.com
 IP: 192.168.1.101 -> blog.example.com
 IP: 192.168.1.102 -> shop.example.com
@@ -134,7 +134,7 @@ echo "<html><head><title>Welcome to Blog</title></head><body><h1>Blog.example.co
 
 **Recommended directory structure:**
 
-```
+```text
 /var/www/
 ├── example.com/
 │   ├── public_html/      # Document root (web files)
@@ -823,7 +823,7 @@ Ubuntu uses `logrotate` to manage log files. Create a custom rotation config:
 sudo nano /etc/logrotate.d/apache2-vhosts
 ```
 
-```
+```text
 /var/www/*/logs/*.log {
     daily
     missingok

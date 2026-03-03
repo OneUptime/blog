@@ -30,7 +30,7 @@ Documentation as Code applies software engineering practices to documentation:
 
 Organize documentation within your repository:
 
-```
+```text
 project/
 ├── docs/
 │   ├── getting-started.md
@@ -474,7 +474,7 @@ print(result)
 
 - [Related Feature](./related-feature.md)
 - [API Reference](./api/reference.md)
-```
+```text
 
 ## Versioned Documentation
 

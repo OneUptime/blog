@@ -410,7 +410,7 @@ flowchart TB
 
 ### Directory Structure
 
-```
+```text
 /etc/grafana/provisioning/
   datasources/
     prometheus.yaml

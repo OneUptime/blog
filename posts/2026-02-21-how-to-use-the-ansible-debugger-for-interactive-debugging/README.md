@@ -85,7 +85,7 @@ The most useful setting is `on_failed`, which only interrupts execution when som
 
 When the debugger activates, you see a prompt like this:
 
-```
+```text
 TASK [Deploy application config] **********************************************
 fatal: [web-01]: FAILED! => {"changed": false, "msg": "Could not find or access '/home/deploy/templates/app.conf.j2'"}
 
@@ -94,7 +94,7 @@ fatal: [web-01]: FAILED! => {"changed": false, "msg": "Could not find or access 
 
 At this prompt, you can type several commands. Here is the complete list:
 
-```
+```text
 p <expression>    - Print a variable or expression
 task.args         - Show current task arguments
 task.vars         - Show task variables
@@ -109,7 +109,7 @@ u <key>=<value>   - Update a task argument or variable
 
 The `p` (print) command evaluates a Python expression and prints the result:
 
-```
+```text
 # Print a specific variable
 [web-01] TASK: Deploy application config (debug)> p task.args
 {'dest': '/etc/app/app.conf', 'src': 'app.conf.j2'}
@@ -131,7 +131,7 @@ The `p` (print) command evaluates a Python expression and prints the result:
 
 The real power of the debugger is the ability to fix issues and retry without restarting:
 
-```
+```text
 # The template path is wrong. Let's fix it.
 [web-01] TASK: Deploy application config (debug)> p task.args
 {'dest': '/etc/app/app.conf', 'src': 'app.conf.j2'}
@@ -183,7 +183,7 @@ Let me walk through a realistic debugging session. Say you have this playbook:
 
 When the template task fails, the debugger activates:
 
-```
+```text
 TASK [Configure monitoring port] **********************************************
 fatal: [web-01]: FAILED! => {"changed": false, "msg": "AnsibleUndefinedVariable: 'listen_address' is undefined"}
 
@@ -192,7 +192,7 @@ fatal: [web-01]: FAILED! => {"changed": false, "msg": "AnsibleUndefinedVariable:
 
 Now you can investigate:
 
-```
+```text
 # Check what variables are available
 [web-01] TASK: Configure monitoring port (debug)> p task_vars['monitoring_port']
 9090
@@ -251,7 +251,7 @@ ANSIBLE_STRATEGY=debug ansible-playbook deploy.yml
 
 The debugger gives you access to internal Ansible objects. Here are some useful ones:
 
-```
+```text
 # Show the task name
 [web-01] TASK: ...(debug)> p task.name
 'Configure monitoring port'

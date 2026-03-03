@@ -14,7 +14,7 @@ ZFS properties control how datasets store and access data. They're one of ZFS's 
 
 Properties can be set at the pool level, on a dataset, or inherited from parent datasets. The inheritance chain is:
 
-```
+```text
 Pool properties → Root dataset properties → Dataset properties → Child dataset properties
 ```
 
@@ -73,7 +73,7 @@ sudo zfs set compression=off tank/already_compressed_data
 sudo zfs get compressratio,compression tank/web
 ```
 
-```
+```text
 NAME      PROPERTY      VALUE     SOURCE
 tank/web  compressratio  2.31x    -
 tank/web  compression    lz4      local
@@ -124,7 +124,7 @@ sudo zfs set dedup=blake3 tank/vms
 sudo zpool list -o name,dedup tank
 ```
 
-```
+```text
 NAME   DEDUP
 tank   1.83x
 ```

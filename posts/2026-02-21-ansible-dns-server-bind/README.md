@@ -142,7 +142,7 @@ bind_zones:
 
 ## BIND Options Template
 
-```
+```text
 # roles/bind/templates/named.conf.options.j2 - BIND9 options configuration
 options {
     directory "/var/cache/bind";
@@ -197,7 +197,7 @@ logging {
 
 ## Local Zones Configuration Template
 
-```
+```text
 # roles/bind/templates/named.conf.local.j2 - Zone declarations
 {% for zone in bind_zones %}
 zone "{{ zone.name }}" {
@@ -213,7 +213,7 @@ zone "{{ zone.name }}" {
 
 ## Zone File Template
 
-```
+```text
 ; roles/bind/templates/zone.db.j2 - Zone file for {{ item.name }}
 $TTL    86400
 @       IN      SOA     ns1.{{ bind_zones[0].name }}. admin.{{ bind_zones[0].name }}. (

@@ -14,7 +14,7 @@ OpenTelemetry provides a way to monitor these data flows end-to-end, catching dr
 
 A simplified data flow looks like:
 
-```
+```text
 Smart Meters --> Meter Data Management --> EMS --> Grid Analytics
 Solar Inverters --> Aggregator --> EMS
 Battery Storage --> BMS Controller --> EMS

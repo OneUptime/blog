@@ -278,7 +278,7 @@ az monitor diagnostic-settings create \
 
 With audit logging enabled, you can monitor who is accessing the API server and from where.
 
-```
+```text
 // KQL query for Azure Monitor - API server access by source IP
 AzureDiagnostics
 | where Category == "kube-audit"

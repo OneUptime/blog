@@ -29,7 +29,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector.observability.svc.clus
 
 You would expect the exporter to bypass the proxy for the Collector since it matches `NO_PROXY`. But you see errors like:
 
-```
+```text
 failed to export: rpc error: code = Unavailable desc = connection error:
 desc = "transport: Error while dialing: proxy connect to corporate-proxy.internal:3128 failed"
 ```

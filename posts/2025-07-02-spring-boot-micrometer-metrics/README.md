@@ -1328,7 +1328,7 @@ management:
 
 The `/actuator/prometheus` endpoint will expose metrics in Prometheus format:
 
-```
+```text
 # HELP orders_placed_total Total number of orders placed successfully
 # TYPE orders_placed_total counter
 orders_placed_total{application="order-service",service="order-service"} 1523.0

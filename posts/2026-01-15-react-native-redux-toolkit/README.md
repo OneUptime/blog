@@ -1293,7 +1293,7 @@ export const apiErrorHandler: Middleware =
 
 ### Feature-Based Folder Structure
 
-```
+```text
 src/
 ├── store/
 │   ├── index.ts              # Store configuration

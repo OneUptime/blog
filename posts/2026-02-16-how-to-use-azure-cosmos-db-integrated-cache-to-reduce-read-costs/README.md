@@ -75,7 +75,7 @@ Choose the SKU based on how much data you want to cache. If your hot data set is
 
 The integrated cache only works when you connect through the dedicated gateway endpoint, not the standard endpoint. The gateway endpoint has a different URL format:
 
-```
+```text
 Standard endpoint: https://myCosmosAccount.documents.azure.com:443/
 Gateway endpoint:  https://myCosmosAccount.sqlx.cosmos.azure.com:443/
 ```
@@ -293,7 +293,7 @@ The dedicated gateway has a fixed hourly cost based on the SKU:
 
 For the cache to be cost-effective, the RU savings from cache hits must exceed the gateway cost. Calculate your breakeven:
 
-```
+```text
 Monthly RU savings needed = Gateway cost / RU price per million
 Example: $300 / $0.25 per million RU = 1.2 billion RUs saved per month
 ```

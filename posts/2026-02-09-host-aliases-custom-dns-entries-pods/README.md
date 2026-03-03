@@ -48,7 +48,7 @@ kubectl exec host-alias-pod -- cat /etc/hosts
 
 Output includes:
 
-```
+```text
 # Kubernetes-managed hosts file.
 127.0.0.1       localhost
 ::1             localhost ip6-localhost ip6-loopback

@@ -137,7 +137,7 @@ data:
 
 Define and document your repository structure before anyone starts creating repos:
 
-```
+```text
 Standard: one config repo per team or product area
 
 team-a-k8s-config/
@@ -237,7 +237,7 @@ Use this feedback to refine your process before scaling up.
 
 Now migrate services in batches. Group by team or by dependency chain:
 
-```
+```text
 Batch 1 (Week 5): Internal tools, dev environments
 Batch 2 (Week 6): Staging environments, non-critical APIs
 Batch 3 (Week 7): Production stateless services

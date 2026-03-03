@@ -12,7 +12,7 @@ Authentication errors with the Azure provider in Terraform are some of the most 
 
 ## What the Errors Look Like
 
-```
+```text
 Error: building AzureRM Client: obtain subscription() from Azure CLI:
 parsing json result from the Azure CLI: waiting for the Azure CLI:
 exit status 1

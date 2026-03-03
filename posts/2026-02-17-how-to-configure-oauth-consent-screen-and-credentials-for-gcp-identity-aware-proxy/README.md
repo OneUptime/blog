@@ -141,7 +141,7 @@ If you created the OAuth client manually through the Console (not through the IA
 
 The format is:
 
-```
+```text
 https://iap.googleapis.com/v1/oauth/clientIds/YOUR_CLIENT_ID:handleRedirect
 ```
 

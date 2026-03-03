@@ -36,7 +36,7 @@ resource "azurerm_mssql_database" "production" {
 
 When you try to run a plan that would destroy this resource, Terraform exits with an error.
 
-```
+```text
 Error: Instance cannot be destroyed
 
   on main.tf line 15:

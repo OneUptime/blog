@@ -92,7 +92,7 @@ Each component has a specific format:
 
 The `tracestate` header carries vendor-specific trace data. It is a comma-separated list of key-value pairs.
 
-```
+```text
 tracestate: vendor1=value1,vendor2=value2
 ```
 

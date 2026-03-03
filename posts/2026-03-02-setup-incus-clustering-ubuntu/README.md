@@ -50,7 +50,7 @@ sudo incus admin init
 
 When prompted, answer:
 
-```
+```text
 Would you like to use clustering? (yes/no) [default=no]: yes
 What IP address or DNS name should be used to reach this server? [default=192.168.1.10]: 192.168.1.10
 Are you joining an existing cluster? (yes/no) [default=no]: no
@@ -99,7 +99,7 @@ sudo incus admin init
 
 Answer the clustering questions:
 
-```
+```text
 Would you like to use clustering? (yes/no) [default=no]: yes
 What IP address or DNS name should be used to reach this server? [default=192.168.1.11]: 192.168.1.11
 Are you joining an existing cluster? (yes/no) [default=no]: yes
@@ -120,7 +120,7 @@ incus cluster list
 
 Expected output:
 
-```
+```text
 +-------+-----------------------------+------------------+--------------+----------------+--------+-------------------+
 | NAME  |             URL             |      ROLES       | ARCHITECTURE | FAILURE DOMAIN | STATE  |      MESSAGE      |
 +-------+-----------------------------+------------------+--------------+----------------+--------+-------------------+

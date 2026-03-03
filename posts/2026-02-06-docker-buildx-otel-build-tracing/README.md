@@ -74,7 +74,7 @@ docker run -d --name otel-collector \
 
 A Docker build trace looks like this:
 
-```
+```text
 docker.build                                    [total: 45s]
   moby.buildkit.v1.frontend.Solve              [2s]
     dockerfile.parse                            [100ms]

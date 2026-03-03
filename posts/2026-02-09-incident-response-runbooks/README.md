@@ -69,7 +69,7 @@ kubectl get pods --all-namespaces -o json | \
   jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name) CPU: \(.spec.containers[].resources.requests.cpu)"' | \
   sort -k3 -rn | head -20
 ```
-```
+```text
 
 Diagnosis steps build understanding through observation. Each command includes comments explaining what to look for in the output. This helps responders learn while resolving incidents.
 
@@ -184,7 +184,7 @@ curl https://api.example.com/health
 - Implement cluster autoscaling
 - Regular review of resource requests vs actual usage
 - Documentation of node labeling and taint strategy
-```
+```text
 
 This runbook provides a complete workflow from detection through resolution and prevention. Responders follow a clear path without needing to remember every kubectl command.
 
@@ -297,7 +297,7 @@ kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.status.containerStatuse
 # Application responding
 kubectl exec <pod-name> -n <namespace> -- wget -O- localhost:8080/health
 ```
-```
+```text
 
 This runbook methodically addresses the most common causes of crash loops, providing specific commands for each scenario.
 
@@ -408,7 +408,7 @@ kubectl run -it --rm test --image=curlimages/curl --restart=Never -- \
 # Check ingress status
 kubectl describe ingress <ingress-name> -n <namespace>
 ```
-```
+```text
 
 ## Maintaining and Improving Runbooks
 
@@ -419,3 +419,5 @@ Schedule quarterly runbook reviews with your team. Test each runbook by simulati
 Store runbooks in version control alongside your infrastructure code. This provides change history and enables collaborative improvement through pull requests. Include runbooks in your CI/CD pipeline documentation so they remain discoverable when needed.
 
 Effective incident response runbooks transform your team's ability to handle production issues. By documenting common failure modes and proven resolution steps, you reduce stress, minimize downtime, and build organizational resilience. The time invested in creating comprehensive runbooks pays dividends during every incident they help resolve quickly.
+
+```

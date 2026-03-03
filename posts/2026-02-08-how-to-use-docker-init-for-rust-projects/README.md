@@ -97,7 +97,7 @@ docker init
 
 Docker init detects the Cargo.toml and identifies the project as Rust:
 
-```
+```text
 ? What application platform does your project use? Rust
 ? What port does your server listen on? 8080
 ```
@@ -285,7 +285,7 @@ RUN cargo install cargo-watch
 
 Keep the build context clean for faster builds:
 
-```
+```text
 # Build artifacts (compiled inside the container)
 target
 

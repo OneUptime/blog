@@ -12,7 +12,7 @@ MetalLB's standard FRR mode runs an FRR sidecar inside each speaker pod. The exp
 
 This guide covers what FRR-K8s mode is, how it differs from standard FRR mode, and how to set it up end-to-end.
 
-### FRR Mode vs FRR-K8s Mode
+## FRR Mode vs FRR-K8s Mode
 
 Before diving into the setup, it helps to understand the architectural difference between the two modes:
 

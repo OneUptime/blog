@@ -329,7 +329,7 @@ This works with the node_exporter textfile collector to push metrics to Promethe
 sudo nano /etc/logrotate.d/cron-jobs
 ```
 
-```
+```text
 /var/log/cron-jobs/*.log {
     weekly
     rotate 12

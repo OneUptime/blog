@@ -48,7 +48,7 @@ The development server starts at `http://localhost:3000`. It has hot reload - ch
 
 ## Project Structure
 
-```
+```text
 my-docs/
 ├── blog/                    # Blog posts (optional, can be disabled)
 │   └── 2024-01-01-hello.md
@@ -245,7 +245,7 @@ brew install my-project
 
   </TabItem>
 </Tabs>
-```
+```text
 
 ## Adding Search
 

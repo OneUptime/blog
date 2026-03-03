@@ -146,7 +146,7 @@ How many ports does each VM actually need? That depends on your workload. Here a
 
 You can calculate the maximum number of backend instances supported by your configuration with this formula:
 
-```
+```text
 Max instances = (Number of public IPs x 64,512) / Ports per instance
 ```
 

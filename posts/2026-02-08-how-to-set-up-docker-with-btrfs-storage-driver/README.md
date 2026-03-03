@@ -145,7 +145,7 @@ docker info | grep "Storage Driver"
 
 Expected output:
 
-```
+```text
  Storage Driver: btrfs
 ```
 

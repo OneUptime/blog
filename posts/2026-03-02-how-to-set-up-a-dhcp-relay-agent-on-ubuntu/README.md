@@ -48,7 +48,7 @@ sudo nano /etc/sysctl.conf
 
 Uncomment or add:
 
-```
+```text
 net.ipv4.ip_forward=1
 ```
 
@@ -116,7 +116,7 @@ On the DHCP server, add a subnet declaration for the remote subnet. The key requ
 sudo nano /etc/dhcp/dhcpd.conf
 ```
 
-```
+```text
 # Local subnet (where the DHCP server lives)
 subnet 192.168.1.0 netmask 255.255.255.0 {
     range 192.168.1.100 192.168.1.200;

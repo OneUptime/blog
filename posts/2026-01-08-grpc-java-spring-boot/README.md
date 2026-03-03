@@ -283,7 +283,7 @@ tasks.named('test') {
 
 ### Project Structure
 
-```
+```text
 grpc-spring-boot-service/
 ├── src/
 │   ├── main/

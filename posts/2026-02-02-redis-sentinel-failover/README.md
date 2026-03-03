@@ -549,7 +549,7 @@ redis-cli -h $MASTER_IP -p $MASTER_PORT -a your_strong_redis_password info repli
 
 Expected output for a healthy cluster:
 
-```
+```text
 === Current Master Address ===
 1) "192.168.1.10"
 2) "6379"

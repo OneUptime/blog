@@ -123,7 +123,7 @@ Each trace shows up as a row with the service name, number of spans, and total d
 
 The trace view shows a timeline:
 
-```
+```text
 productpage (200ms total)
 ├── reviews (150ms)
 │   └── ratings (50ms)

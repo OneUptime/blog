@@ -40,7 +40,7 @@ Most organizations dramatically undercount their on-premises costs. Here is what
 
 Calculate the annualized cost of all physical infrastructure:
 
-```
+```text
 Server hardware (purchase price / expected lifespan)
 Storage arrays and SAN infrastructure
 Network equipment (switches, routers, firewalls)
@@ -53,7 +53,7 @@ Hardware maintenance contracts
 
 Data center costs are often allocated across the organization, making them invisible to individual teams:
 
-```
+```text
 Data center space (per rack unit or square foot)
 Power consumption (servers, cooling, lighting)
 Cooling infrastructure maintenance
@@ -66,7 +66,7 @@ Redundant power (UPS, generators, fuel)
 
 This is where things get tricky. Many enterprise licenses are bundled or negotiated at the org level:
 
-```
+```text
 Operating system licenses
 Database licenses (per core, per socket, or per user)
 Virtualization platform licenses
@@ -79,7 +79,7 @@ Security software (antivirus, IDS/IPS)
 
 The biggest hidden cost. Include fully loaded compensation for:
 
-```
+```text
 System administrators
 Network engineers
 Database administrators
@@ -116,7 +116,7 @@ This is the one-time investment to actually move to AWS. Underestimating this ki
 
 ### Assessment and Planning
 
-```
+```text
 AWS Migration Assessment Service or consultant fees
 Application portfolio analysis
 Dependency mapping tools and labor
@@ -127,7 +127,7 @@ Training for operations team
 
 ### Migration Execution
 
-```
+```text
 Migration tooling (CloudEndure, DMS, etc.)
 Temporary parallel running costs (on-prem + cloud)
 Additional bandwidth during migration
@@ -140,7 +140,7 @@ Database migration specialist time
 
 Do not underestimate testing. It regularly takes 30-40% of the total migration effort.
 
-```
+```text
 Functional testing cycles
 Performance testing and benchmarking
 Security testing and penetration testing
@@ -215,7 +215,7 @@ Factor in cost reductions you can realistically achieve:
 
 Cloud changes your operational model. Some costs go up, others go down:
 
-```
+```text
 Costs that typically decrease:
 - Hardware procurement and lifecycle management
 - Data center facility costs

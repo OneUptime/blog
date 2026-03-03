@@ -16,7 +16,7 @@ Given two lists, the Cartesian product is every possible pairing of one item fro
 
 For example, given `[a, b]` and `[1, 2, 3]`, the product is:
 
-```
+```text
 (a, 1), (a, 2), (a, 3), (b, 1), (b, 2), (b, 3)
 ```
 

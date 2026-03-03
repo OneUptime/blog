@@ -34,7 +34,7 @@ Locks can get stuck in several scenarios:
 
 When a lock is stuck, you will see an error like this:
 
-```
+```text
 Error: Error acquiring the state lock
 
 Error message: ConditionalCheckFailedException: The conditional request
@@ -65,7 +65,7 @@ terraform force-unlock a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 Terraform will ask for confirmation:
 
-```
+```text
 Do you really want to force-unlock?
   Terraform will remove the lock on the remote state.
   This will allow local Terraform commands to modify this state, even though it

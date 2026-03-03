@@ -76,7 +76,7 @@ systemctl enable fail2ban
 
 fail2ban uses multiple configuration files with a specific hierarchy:
 
-```
+```text
 /etc/fail2ban/
   ├── fail2ban.conf     # Main configuration (do not modify)
   ├── fail2ban.local    # Local overrides for fail2ban.conf

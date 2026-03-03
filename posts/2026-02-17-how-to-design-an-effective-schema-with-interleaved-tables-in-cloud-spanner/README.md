@@ -67,7 +67,7 @@ Notice two important changes. First, the child table's primary key starts with t
 
 To really understand interleaving, it helps to see how rows are laid out in storage. Here is how the data looks logically:
 
-```
+```text
 Artists(ArtistId="artist-1")          -- Parent row
   Albums(ArtistId="artist-1", AlbumId="album-1")  -- Child row
   Albums(ArtistId="artist-1", AlbumId="album-2")  -- Child row
@@ -114,7 +114,7 @@ Now an artist, their albums, and all tracks within those albums are stored toget
 
 The storage layout looks like this:
 
-```
+```text
 Artists("artist-1")
   Albums("artist-1", "album-1")
     Tracks("artist-1", "album-1", "track-1")

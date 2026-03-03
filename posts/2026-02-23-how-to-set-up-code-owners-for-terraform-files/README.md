@@ -26,7 +26,7 @@ Before writing your CODEOWNERS file, decide how you want to divide ownership. Co
 
 Assign ownership based on the type of infrastructure:
 
-```
+```text
 # Networking team owns all VPC, subnet, and routing configs
 /modules/networking/           @org/networking-team
 /environments/*/networking.tf  @org/networking-team
@@ -44,7 +44,7 @@ Assign ownership based on the type of infrastructure:
 
 Assign stricter ownership for production environments:
 
-```
+```text
 # Anyone on the platform team can review staging changes
 /environments/staging/    @org/platform-team
 
@@ -59,7 +59,7 @@ Assign stricter ownership for production environments:
 
 Separate ownership between module developers and environment operators:
 
-```
+```text
 # Module maintainers review module changes
 /modules/  @org/module-maintainers
 
@@ -71,7 +71,7 @@ Separate ownership between module developers and environment operators:
 
 Place the CODEOWNERS file in one of these locations (GitHub checks them in order):
 
-```
+```text
 # Option 1: Root of the repository
 /CODEOWNERS
 
@@ -84,7 +84,7 @@ Place the CODEOWNERS file in one of these locations (GitHub checks them in order
 
 Here is a comprehensive example for a Terraform repository:
 
-```
+```text
 # .github/CODEOWNERS
 
 # Default owners for everything in the repo
@@ -131,7 +131,7 @@ providers.tf       @org/platform-leads
 
 Understanding pattern syntax is essential for effective ownership rules:
 
-```
+```text
 # Exact file match
 Makefile  @org/devops-team
 
@@ -156,7 +156,7 @@ Makefile  @org/devops-team
 
 Rules are processed from top to bottom, and the last matching rule wins. Place more specific rules after general ones:
 
-```
+```text
 # General rule: platform team reviews all .tf files
 *.tf  @org/platform-team
 
@@ -169,7 +169,7 @@ Rules are processed from top to bottom, and the last matching rule wins. Place m
 
 The CODEOWNERS file is only useful when combined with branch protection rules that enforce reviews:
 
-```
+```text
 # GitHub branch protection settings for main branch:
 # - Require a pull request before merging: YES
 # - Require review from Code Owners: YES
@@ -183,7 +183,7 @@ Without the "Require review from Code Owners" setting, the CODEOWNERS file only 
 
 GitLab uses a similar but slightly different format:
 
-```
+```text
 # CODEOWNERS file for GitLab
 # Uses sections for different approval rules
 
@@ -205,7 +205,7 @@ versions.tf @platform-leads
 
 GitLab also supports optional code owners that are suggested but not required:
 
-```
+```text
 # Optional owner - suggested but not required
 ^[Documentation]
 /docs/ @technical-writers
@@ -215,7 +215,7 @@ GitLab also supports optional code owners that are suggested but not required:
 
 Some changes span multiple ownership boundaries. For example, adding a new service might require changes to networking, compute, and database configurations. In this case, multiple teams will be requested for review:
 
-```
+```text
 # A PR that touches these files will require reviews from all three teams:
 # /modules/networking/service_endpoints.tf  -> @org/networking-team
 # /modules/compute/ecs_service.tf           -> @org/compute-team
@@ -238,7 +238,7 @@ Set expectations for review turnaround time:
 
 The CODEOWNERS file itself should be owned and maintained:
 
-```
+```text
 # Meta: CODEOWNERS file is owned by platform leads
 /.github/CODEOWNERS  @org/platform-leads
 ```

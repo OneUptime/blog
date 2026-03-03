@@ -392,7 +392,7 @@ metric_relabel_configs:
 
 Access the Prometheus targets page:
 
-```
+```text
 http://prometheus:9090/targets
 ```
 

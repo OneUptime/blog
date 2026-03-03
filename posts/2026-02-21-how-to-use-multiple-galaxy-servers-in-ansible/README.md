@@ -14,7 +14,7 @@ Real-world Ansible deployments rarely source all their content from a single ser
 
 A typical enterprise setup involves three types of servers:
 
-```
+```text
 Developer Workstation
     |
     +---> Private Galaxy NG (internal collections, curated community content)

@@ -24,7 +24,7 @@ You could document naming conventions in a wiki and hope everyone follows them. 
 
 Before writing policies, define your naming convention. A common pattern for Azure resources is:
 
-```
+```text
 {resource-type}-{workload}-{environment}-{region}-{instance}
 ```
 

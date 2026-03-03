@@ -195,7 +195,7 @@ kubectl exec storage-app -n production -- env | grep AZURE
 
 You should see variables like:
 
-```
+```text
 AZURE_CLIENT_ID=<APP_ID>
 AZURE_TENANT_ID=<TENANT_ID>
 AZURE_FEDERATED_TOKEN_FILE=/var/run/secrets/azure/tokens/azure-identity-token

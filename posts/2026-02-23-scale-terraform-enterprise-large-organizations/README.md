@@ -43,7 +43,7 @@ The most impactful scaling move is going from a single TFE node to multiple node
 
 ### Architecture Overview
 
-```
+```text
                     Load Balancer
                    /      |       \
                   /       |        \
@@ -228,7 +228,7 @@ aws rds create-db-instance-read-replica \
 
 Scaling is not just about infrastructure. How you organize workspaces matters:
 
-```
+```text
 Organization Structure for Large Enterprises:
 
 my-company/

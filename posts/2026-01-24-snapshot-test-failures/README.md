@@ -183,7 +183,7 @@ expect.addSnapshotSerializer({
 
 When a snapshot fails, Jest shows a diff. Read it carefully:
 
-```
+```text
 - Snapshot  - 3
 + Received  + 3
 

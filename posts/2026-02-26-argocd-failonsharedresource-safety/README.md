@@ -36,7 +36,7 @@ spec:
 
 When this option is enabled and a conflict is detected, you will see an error like:
 
-```
+```text
 ComparisonError: shared resource found: apps/Deployment production/my-deployment is already
 managed by application other-app
 ```

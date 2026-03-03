@@ -48,7 +48,7 @@ graph TD
 
 The config repo is the entry point for ArgoCD. It contains Application definitions that point to other repos:
 
-```
+```text
 config-repo/
 ├── apps/
 │   ├── dev/
@@ -128,7 +128,7 @@ spec:
 
 Each service repo contains only the Kubernetes manifests for that service:
 
-```
+```text
 backend-api-deploy/
 ├── base/
 │   ├── kustomization.yaml

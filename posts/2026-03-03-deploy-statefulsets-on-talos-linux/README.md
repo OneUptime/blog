@@ -166,7 +166,7 @@ You will see `postgres-0` start first, and only after it is ready will `postgres
 
 The headless service creates DNS entries for each pod. The format is:
 
-```
+```text
 <pod-name>.<service-name>.<namespace>.svc.cluster.local
 ```
 

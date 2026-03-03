@@ -90,7 +90,7 @@ docker push registry.digitalocean.com/my-registry/myapp:latest
 
 The naming pattern is:
 
-```
+```text
 registry.digitalocean.com/REGISTRY_NAME/IMAGE_NAME:TAG
 ```
 

@@ -112,7 +112,7 @@ source .env
 
 Make sure `.env` files are in your `.gitignore`:
 
-```
+```text
 # .gitignore
 .env
 *.env
@@ -198,7 +198,7 @@ variable "api_key" {
 
 This prevents the value from appearing in `terraform plan` and `terraform apply` output:
 
-```
+```text
 # With sensitive = true
 ~ password = (sensitive value)
 

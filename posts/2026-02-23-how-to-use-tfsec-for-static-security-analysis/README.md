@@ -64,7 +64,7 @@ tfsec . --format json
 
 The output looks something like this:
 
-```
+```text
 Result #1 CRITICAL Security group rule allows ingress from public internet.
 ────────────────────────────────────────────────────────────────────
   main.tf:15-22

@@ -155,7 +155,7 @@ ansible-playbook site.yml --list-tasks
 
 Output:
 
-```
+```text
 playbook: site.yml
 
   play #1 (web_servers): Configure web servers
@@ -252,7 +252,7 @@ You can load handlers from a specific file:
 
 This requires:
 
-```
+```text
 roles/app_deploy/handlers/
   main.yml              <-- default handlers
   rolling_restart.yml   <-- alternate handlers

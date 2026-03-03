@@ -56,7 +56,7 @@ Before Hermes, React Native used JavaScriptCore (JSC) as its default JavaScript 
 
 ### Performance Comparison
 
-```
+```text
 Benchmark Results (typical improvements with Hermes):
 
 App Startup Time:
@@ -378,7 +378,7 @@ const measureFrameRate = () => {
 
 Here are typical improvements seen in production applications:
 
-```
+```text
 Performance Metrics Comparison:
 
 Time to Interactive (TTI):
@@ -427,7 +427,7 @@ ls -la bundle.hbc  # Hermes bytecode bundle
 
 ### Bundle Size Comparison Example
 
-```
+```text
 Bundle Size Analysis:
 
 Plain JavaScript Bundle:
@@ -468,7 +468,7 @@ Bytecode precompilation is the cornerstone of Hermes's performance improvements.
 
 ### How Bytecode Precompilation Works
 
-```
+```text
 Compilation Pipeline:
 
 1. Source Code (JavaScript)
@@ -717,7 +717,7 @@ Hermes provides significant memory optimizations that are crucial for mobile app
 
 ### Memory Model Differences
 
-```
+```text
 Memory Allocation Comparison:
 
 JavaScriptCore:

@@ -67,7 +67,7 @@ Looker Studio will read the view schema and present all columns as available fie
 
 After connecting, review the field configuration. Looker Studio often guesses correctly, but some fields need manual adjustment:
 
-```
+```text
 order_date       -> Date (auto-detected)
 product_category -> Text (dimension)
 region           -> Text (dimension with geo role)

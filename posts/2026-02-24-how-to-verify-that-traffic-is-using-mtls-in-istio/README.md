@@ -22,7 +22,7 @@ istioctl x describe pod <pod-name> -n <namespace>
 
 Sample output:
 
-```
+```text
 Pod: my-service-abc123
    Pod Revision: default
    Pod Ports: 8080 (my-service), 15090 (istio-proxy)
@@ -79,13 +79,13 @@ Istio adds a `connection_security_policy` label to request metrics. This is one 
 
 Check if all traffic to a service uses mTLS:
 
-```
+```text
 istio_requests_total{destination_service="my-service.production.svc.cluster.local", reporter="destination"}
 ```
 
 Group by security policy:
 
-```
+```text
 sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service, connection_security_policy)
 ```
 
@@ -100,7 +100,7 @@ If you see `none` for any service in strict mode, something is wrong.
 
 Create a Grafana panel with this query to track mTLS adoption across the mesh:
 
-```
+```text
 sum(rate(istio_requests_total{connection_security_policy="mutual_tls", reporter="destination"}[5m]))
 /
 sum(rate(istio_requests_total{reporter="destination"}[5m]))
@@ -143,7 +143,7 @@ kubectl exec <pod-name> -c istio-proxy -- pilot-agent request GET /stats | grep 
 
 Key stats to look for:
 
-```
+```text
 listener.0.0.0.0_8080.ssl.connection_error: 0
 listener.0.0.0.0_8080.ssl.handshake: 1523
 listener.0.0.0.0_8080.ssl.no_certificate: 0

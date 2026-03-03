@@ -135,7 +135,7 @@ terraform init \
 
 Here is a project structure that supports multiple environments with partial backend configuration.
 
-```
+```text
 infrastructure/
   modules/
     networking/
@@ -277,7 +277,7 @@ There are two common patterns for organizing state files across environments and
 
 Each environment has its own directory and its own state file. This is the approach shown in the project structure above.
 
-```
+```text
 State files:
   dev/terraform.tfstate       -> sttfstatedev001/tfstate/dev/terraform.tfstate
   staging/terraform.tfstate   -> sttfstatestg001/tfstate/staging/terraform.tfstate

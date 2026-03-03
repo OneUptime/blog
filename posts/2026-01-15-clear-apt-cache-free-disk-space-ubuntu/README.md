@@ -53,7 +53,7 @@ sudo apt autoclean
 sudo nano /etc/apt/apt.conf.d/10periodic
 ```
 
-```
+```text
 APT::Periodic::AutocleanInterval "7";
 ```
 

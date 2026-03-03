@@ -95,7 +95,7 @@ helm history istiod -n istio-system
 
 Output:
 
-```
+```text
 REVISION  UPDATED                   STATUS      CHART          APP VERSION  DESCRIPTION
 1         2024-01-15 10:00:00       superseded  istiod-1.20.5  1.20.5       Install complete
 2         2024-02-01 14:30:00       deployed    istiod-1.21.0  1.21.0       Upgrade complete

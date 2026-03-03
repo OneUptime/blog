@@ -109,7 +109,7 @@ sudo systemctl enable postgresql
 
 A well-organized project structure makes your codebase maintainable and scalable. Here's the recommended structure for a REST API project:
 
-```
+```text
 my-rest-api/
 ├── src/
 │   ├── config/

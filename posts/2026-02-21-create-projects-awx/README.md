@@ -271,7 +271,7 @@ With Ansible:
 
 Organize your Git repository so AWX can find everything it needs.
 
-```
+```text
 ansible-playbooks/
   playbooks/
     deploy-web.yml

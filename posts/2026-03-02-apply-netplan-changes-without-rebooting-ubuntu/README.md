@@ -39,7 +39,7 @@ When you run `netplan try`:
 3. If you press Enter before the timer expires, the changes are confirmed permanently
 4. If the timer expires without confirmation (because you lost SSH access due to a bad config), the old configuration is automatically restored
 
-```
+```text
 Do you want to keep these settings?
 
 Press ENTER before the timeout to accept the new configuration

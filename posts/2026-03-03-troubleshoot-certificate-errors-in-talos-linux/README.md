@@ -96,7 +96,7 @@ If the CAs do not match, you need to re-apply the correct configuration to the n
 
 The API server certificate must include SANs for every way clients connect to it. If the endpoint IP or hostname is not in the SAN list, clients will reject the certificate:
 
-```
+```text
 x509: certificate is valid for 10.0.0.1, not 10.0.0.100
 ```
 

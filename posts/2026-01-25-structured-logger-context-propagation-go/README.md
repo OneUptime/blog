@@ -18,7 +18,7 @@ If you have ever tried debugging a production issue with logs that just say "err
 
 Consider a typical HTTP request flowing through multiple service layers:
 
-```
+```text
 HTTP Handler -> Service Layer -> Repository -> External API
 ```
 

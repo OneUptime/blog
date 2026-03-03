@@ -22,7 +22,7 @@ From the ArgoCD main page, click on the application tile. This opens the applica
 
 The resource tree displays all Kubernetes resources managed by the application, organized hierarchically. For example, an Application might show:
 
-```
+```text
 Application
   - Deployment
     - ReplicaSet
@@ -141,7 +141,7 @@ Click on the resource and switch to the "Live Manifest" tab to see the current s
 
 The "Events" tab shows Kubernetes events for the resource. After a restart, you will see events like:
 
-```
+```text
 ScalingReplicaSet  Scaled up replica set my-app-7f8b6c to 3
 ScalingReplicaSet  Scaled down replica set my-app-6a5d4b to 0
 ```

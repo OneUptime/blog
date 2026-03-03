@@ -53,7 +53,7 @@ graph TB
 
 A well-organized project structure makes Docker Compose configuration cleaner and more maintainable:
 
-```
+```text
 project/
 ├── docker-compose.yml           # Base compose file
 ├── docker-compose.override.yml  # Local development overrides

@@ -196,7 +196,7 @@ This means the cache only needs one copy of each provider.
 
 Terraform downloads providers sequentially during init. If you need multiple large providers, this adds up:
 
-```
+```text
 AWS provider:     [====== 15s ======]
 Azure provider:            [====== 12s ======]
 Google provider:                     [====== 10s ======]

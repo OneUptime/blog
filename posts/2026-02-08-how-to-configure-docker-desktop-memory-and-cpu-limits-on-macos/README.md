@@ -42,7 +42,7 @@ Here are tested configurations for common macOS development scenarios.
 
 **16 GB Mac - Web Development** (app + database + cache):
 
-```
+```text
 CPUs: 4
 Memory: 6 GB
 Swap: 1.5 GB
@@ -51,7 +51,7 @@ Disk: 80 GB
 
 **16 GB Mac - Microservices** (5-8 containers):
 
-```
+```text
 CPUs: 6
 Memory: 8 GB
 Swap: 2 GB
@@ -60,7 +60,7 @@ Disk: 120 GB
 
 **32 GB Mac - Heavy Development** (Kubernetes, large builds):
 
-```
+```text
 CPUs: 8
 Memory: 16 GB
 Swap: 4 GB
@@ -69,7 +69,7 @@ Disk: 200 GB
 
 **8 GB Mac - Minimal** (single container):
 
-```
+```text
 CPUs: 2
 Memory: 3 GB
 Swap: 1 GB

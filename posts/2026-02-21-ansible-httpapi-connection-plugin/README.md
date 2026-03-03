@@ -42,7 +42,7 @@ Arista EOS exposes its API through eAPI. Here is how to set it up.
 
 First, make sure eAPI is enabled on the switch.
 
-```
+```text
 ! Enable eAPI on the Arista switch
 management api http-commands
    no shutdown
@@ -86,7 +86,7 @@ Cisco NX-OS supports NX-API, which works similarly.
 
 Enable NX-API on the Nexus switch.
 
-```
+```text
 ! Enable NX-API on the Nexus switch
 feature nxapi
 nxapi https port 443

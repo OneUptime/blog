@@ -12,7 +12,7 @@ The `InvalidOrigin` error when creating a CloudFront distribution means CloudFro
 
 ## What the Error Looks Like
 
-```
+```text
 Error: error creating CloudFront Distribution: InvalidOrigin:
 The specified origin server does not exist or is not valid.
     status code: 400, request id: abc123-def456

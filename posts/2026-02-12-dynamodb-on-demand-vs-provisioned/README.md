@@ -37,14 +37,14 @@ One WCU handles one 1KB write per second. One RCU handles one 4KB strongly consi
 Let's do the math with a real example. Say your app does 10 million writes and 50 million reads per month with a steady workload:
 
 **On-Demand cost:**
-```
+```text
 Writes: 10M x $1.25 / 1M = $12.50
 Reads:  50M x $0.25 / 1M = $12.50
 Total:  $25.00/month
 ```
 
 **Provisioned cost (steady workload, ~3.86 writes/sec, ~19.3 reads/sec):**
-```
+```text
 WCU needed: ~4 (rounding up)
 RCU needed: ~20
 
@@ -57,7 +57,7 @@ That's a 6.5x cost difference. Provisioned mode wins decisively for steady, pred
 
 But now consider a spiky workload - an e-commerce site with flash sales:
 
-```
+```text
 Normal: 5 writes/sec, 25 reads/sec
 Flash sale: 500 writes/sec, 2,500 reads/sec (10-minute spikes, 3x/month)
 ```
@@ -88,7 +88,7 @@ Provisioned mode makes sense when:
 
 With reserved capacity, the savings are even more dramatic:
 
-```
+```text
 1-year reserved: ~40% savings over regular provisioned pricing
 3-year reserved: ~60% savings over regular provisioned pricing
 ```
@@ -171,7 +171,7 @@ aws dynamodb update-table \
 
 To size your provisioned capacity correctly, look at these CloudWatch metrics:
 
-```
+```text
 ConsumedReadCapacityUnits  - actual reads consumed
 ConsumedWriteCapacityUnits - actual writes consumed
 ThrottledRequests          - requests that were rejected

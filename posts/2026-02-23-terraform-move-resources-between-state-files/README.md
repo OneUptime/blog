@@ -69,7 +69,7 @@ terraform state mv \
 ```
 
 The syntax is:
-```
+```text
 terraform state mv -state=SOURCE -state-out=DESTINATION SOURCE_ADDRESS DESTINATION_ADDRESS
 ```
 
@@ -195,7 +195,7 @@ Let's say you have a single Terraform configuration managing everything: VPC, da
 
 ### Original Structure
 
-```
+```text
 infrastructure/
   main.tf          # Everything in one file
   terraform.tfstate
@@ -203,7 +203,7 @@ infrastructure/
 
 ### Target Structure
 
-```
+```text
 networking/
   main.tf          # VPC, subnets, routes
   terraform.tfstate

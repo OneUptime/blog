@@ -90,7 +90,7 @@ ansible-navigator inventory -i inventory.yml
 
 You will see a list of groups. Navigate like this:
 
-```
+```text
 # The TUI shows:
 # 0 all
 # 1 production
@@ -146,7 +146,7 @@ ansible-navigator inventory -i inventory.yml --graph --mode stdout
 
 The `--graph` option shows the group hierarchy as a tree:
 
-```
+```text
 @all:
   |--@production:
   |  |--@appservers:

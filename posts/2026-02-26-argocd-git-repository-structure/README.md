@@ -27,7 +27,7 @@ A flat dump of YAML files might work for a single application, but it falls apar
 
 For a single application deployed to multiple environments, start with this structure:
 
-```
+```text
 my-app/
   base/
     deployment.yaml
@@ -74,7 +74,7 @@ spec:
 
 When you manage multiple applications from a single repo, add a top-level directory per application:
 
-```
+```text
 apps/
   frontend/
     base/
@@ -149,7 +149,7 @@ spec:
 
 If you prefer Helm over Kustomize, organize your repo like this:
 
-```
+```text
 apps/
   frontend/
     Chart.yaml
@@ -190,7 +190,7 @@ spec:
 
 Separate your platform infrastructure from application workloads:
 
-```
+```text
 platform/
   argocd/
     base/
@@ -229,7 +229,7 @@ This separation lets you give different teams different access levels. The platf
 
 At the root of your repo, create an app-of-apps pattern for bootstrapping:
 
-```
+```text
 bootstrap/
   dev-cluster/
     applications.yaml     # ArgoCD Application resources for dev
@@ -266,7 +266,7 @@ spec:
 
 Put shared resources like ConfigMaps, RBAC rules, and network policies in a common directory:
 
-```
+```text
 common/
   namespaces/
     dev-namespaces.yaml

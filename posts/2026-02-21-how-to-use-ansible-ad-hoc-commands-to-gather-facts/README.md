@@ -60,7 +60,7 @@ ansible all -m setup -a "filter=ansible_distribution*" --one-line
 
 Output:
 
-```
+```text
 web1 | SUCCESS => {"ansible_facts": {"ansible_distribution": "Ubuntu", "ansible_distribution_major_version": "22", "ansible_distribution_release": "jammy", "ansible_distribution_version": "22.04"}}
 web2 | SUCCESS => {"ansible_facts": {"ansible_distribution": "Ubuntu", "ansible_distribution_major_version": "22", "ansible_distribution_release": "jammy", "ansible_distribution_version": "22.04"}}
 db1 | SUCCESS => {"ansible_facts": {"ansible_distribution": "Rocky", "ansible_distribution_major_version": "9", "ansible_distribution_release": "Blue Onyx", "ansible_distribution_version": "9.3"}}
@@ -77,7 +77,7 @@ ansible all -m setup -a "filter=ansible_memtotal_mb"
 
 Output:
 
-```
+```text
 web1 | SUCCESS => {
     "ansible_facts": {
         "ansible_memtotal_mb": 7963
@@ -106,7 +106,7 @@ ansible all -m setup -a "filter=ansible_default_ipv4"
 
 Output:
 
-```
+```text
 web1 | SUCCESS => {
     "ansible_facts": {
         "ansible_default_ipv4": {

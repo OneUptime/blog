@@ -65,7 +65,7 @@ iperf3 -c SERVER_IP -p 5202
 
 Sample output:
 
-```
+```text
 Connecting to host 192.168.1.100, port 5201
 [  5] local 192.168.1.50 port 52432 connected to 192.168.1.100 port 5201
 [ ID] Interval           Transfer     Bitrate         Retr  Cwnd
@@ -127,7 +127,7 @@ iperf3 -c SERVER_IP -u -b 500M -t 30
 
 UDP output includes:
 
-```
+```text
 [ ID] Interval           Transfer     Bitrate         Jitter    Lost/Total Datagrams
 [  5]   0.00-10.00  sec   119 MBytes   100 Mbits/sec   0.098 ms  0/86088 (0%)
 ```

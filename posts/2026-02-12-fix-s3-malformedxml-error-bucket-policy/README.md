@@ -10,14 +10,14 @@ Description: Fix the MalformedXML error when applying S3 bucket policies, coveri
 
 You're trying to set a bucket policy on your S3 bucket and you get:
 
-```
+```text
 An error occurred (MalformedPolicy) when calling the PutBucketPolicy operation:
 This policy contains invalid Json
 ```
 
 Or sometimes:
 
-```
+```text
 MalformedXML: The XML you provided was not well-formed or did not validate
 against our published schema
 ```

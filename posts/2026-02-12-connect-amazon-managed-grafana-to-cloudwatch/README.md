@@ -140,7 +140,7 @@ You can add multiple queries to the same panel. Add a second query for Errors, a
 
 CloudWatch Metrics Insights lets you calculate derived metrics directly in Grafana.
 
-```
+```text
 # Error rate as a percentage
 # Query A: Errors (Sum)
 # Query B: Invocations (Sum)
@@ -173,7 +173,7 @@ Grafana can query CloudWatch Logs using CloudWatch Logs Insights syntax.
 
 Create a panel with the CloudWatch Logs data source:
 
-```
+```text
 # Find all Lambda errors in the last hour
 fields @timestamp, @message
 | filter @message like /ERROR/
@@ -183,7 +183,7 @@ fields @timestamp, @message
 
 ### Example: API Gateway Request Analysis
 
-```
+```text
 # Top 10 most called API paths
 fields @timestamp, httpMethod, resourcePath, status
 | stats count(*) as requestCount by resourcePath, httpMethod
@@ -193,7 +193,7 @@ fields @timestamp, httpMethod, resourcePath, status
 
 ### Example: Slow Lambda Invocations
 
-```
+```text
 # Find Lambda invocations that took more than 5 seconds
 filter @type = "REPORT"
 | fields @requestId, @duration, @billedDuration, @memorySize, @maxMemoryUsed
@@ -262,7 +262,7 @@ Set up alerts directly in Grafana panels.
 
 ### Example Alert: High Error Rate
 
-```
+```text
 Query A: CloudWatch - AWS/Lambda - Errors - Sum - 1m
 Query B: CloudWatch - AWS/Lambda - Invocations - Sum - 1m
 Expression C: A / B * 100

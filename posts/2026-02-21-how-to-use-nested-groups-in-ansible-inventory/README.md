@@ -135,7 +135,7 @@ ansible-inventory -i inventory.yml --graph
 
 Output:
 
-```
+```text
 @all:
   |--@production:
   |  |--@web_prod:

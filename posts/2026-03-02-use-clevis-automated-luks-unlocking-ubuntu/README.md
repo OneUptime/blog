@@ -44,7 +44,7 @@ sudo clevis luks list -d /dev/sda3
 
 Output shows bound pins and their key slot numbers:
 
-```
+```text
 1: tang '{"url":"http://tang.internal:7500"}'
 2: tpm2 '{"hash":"sha256","key":"ecc"}'
 ```

@@ -284,7 +284,7 @@ upstream {{ upstream_name }} {
 
 When using template inheritance in Ansible roles, organize your templates directory clearly:
 
-```
+```text
 roles/
   nginx/
     templates/

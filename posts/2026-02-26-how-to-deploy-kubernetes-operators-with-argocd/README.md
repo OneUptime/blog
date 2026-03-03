@@ -266,7 +266,7 @@ syncPolicy:
 
 A clean Git repository structure for managing operators looks like this:
 
-```
+```text
 operators/
   crds/
     prometheus/

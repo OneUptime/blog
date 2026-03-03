@@ -592,7 +592,7 @@ flowchart TB
 
 ### HAProxy Configuration
 
-```
+```text
 # /etc/haproxy/haproxy.cfg - Load balancing WebSocket connections
 
 global

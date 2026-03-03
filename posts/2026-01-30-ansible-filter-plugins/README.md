@@ -28,7 +28,7 @@ The `to_fqdn` filter takes the variable `server_name` and appends a domain suffi
 
 Ansible looks for filter plugins in several locations. For development, place filters in a `filter_plugins` directory alongside your playbook.
 
-```
+```text
 project/
 ├── ansible.cfg
 ├── playbook.yml
@@ -971,7 +971,7 @@ pytest tests/test_filters.py::TestNetworkFilters -v
 
 For reusable filters, package them in an Ansible collection. Here is the directory structure:
 
-```
+```text
 ansible_collections/
 └── mycompany/
     └── infrastructure/

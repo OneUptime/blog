@@ -120,7 +120,7 @@ LIMIT 10;
 
 A typical slow query log entry looks like this:
 
-```
+```text
 # Time: 2026-01-24T10:15:23.456789Z
 # User@Host: webapp[webapp] @ localhost []  Id: 12345
 # Query_time: 3.456789  Lock_time: 0.000123 Rows_sent: 1000  Rows_examined: 5000000
@@ -165,7 +165,7 @@ Common sorting options:
 
 Example output:
 
-```
+```text
 Count: 1523  Time=2.45s (3735s)  Lock=0.00s (0s)  Rows=1.0 (1523), webapp[webapp]@localhost
   SELECT * FROM orders WHERE customer_id = N AND status = 'S'
 ```
@@ -189,7 +189,7 @@ pt-query-digest --since '1h' /var/log/mysql/slow-query.log
 
 The output includes query fingerprints, execution statistics, and EXPLAIN plans:
 
-```
+```text
 # Profile
 # Rank Query ID           Response time  Calls  R/Call  V/M   Item
 # ==== ================== ============== ====== ======= ===== ====

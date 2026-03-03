@@ -726,7 +726,7 @@ public class SecondFilter : IActionFilter, IOrderedFilter
 
 Output when both filters are applied:
 
-```
+```text
 FirstFilter - OnActionExecuting
 SecondFilter - OnActionExecuting
 [Action executes]

@@ -222,7 +222,7 @@ Putting all these metrics together into a monitoring dashboard gives you a singl
 
 Here is a useful dashboard layout.
 
-```
+```text
 BI Engine Health Dashboard
 --------------------------
 Row 1: Full Acceleration Rate (%) over time | Query Count by Acceleration Mode

@@ -25,7 +25,7 @@ Before you begin, make sure you have:
 
 Organize your repository with a clear structure that separates the chart configuration from environment-specific overrides.
 
-```
+```text
 monitoring/
   kube-prometheus-stack/
     Chart.yaml

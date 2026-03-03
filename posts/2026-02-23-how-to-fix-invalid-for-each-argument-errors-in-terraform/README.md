@@ -10,7 +10,7 @@ Description: A practical guide to fixing Invalid for_each argument errors in Ter
 
 The `for_each` meta-argument is one of Terraform's most powerful features for creating multiple instances of a resource or module. But it is also one of the most common sources of confusing errors. If you have seen something like this, you are in the right place:
 
-```
+```text
 Error: Invalid for_each argument
 
 on main.tf line 15, in resource "aws_instance" "servers":
@@ -84,7 +84,7 @@ resource "aws_instance" "servers" {
 
 ## Error: for_each Value Must Be a Map or Set of Strings
 
-```
+```text
 Error: Invalid for_each argument
 
 on main.tf line 10, in resource "aws_iam_user" "users":
@@ -142,7 +142,7 @@ resource "aws_iam_user" "users" {
 
 ## Error: for_each Set Includes Values Derived from Resource Attributes
 
-```
+```text
 Error: Invalid for_each argument
 
 The "for_each" set includes values derived from resource attributes that
@@ -200,7 +200,7 @@ resource "aws_eip" "servers" {
 
 ## Error: for_each with Null or Empty Values
 
-```
+```text
 Error: Invalid for_each argument
 
 The given "for_each" argument value is unsuitable: "for_each" supports maps
@@ -242,7 +242,7 @@ resource "aws_security_group_rule" "ingress" {
 
 ## Error: for_each with Sensitive Values
 
-```
+```text
 Error: Invalid for_each argument
 
 Sensitive values, or values derived from sensitive values, cannot be used

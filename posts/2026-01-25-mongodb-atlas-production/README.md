@@ -203,7 +203,7 @@ const client = new MongoClient(uri, {
 
 Enable continuous backup for point-in-time recovery:
 
-```
+```text
 Cluster > Backup > Configure
 - Enable Cloud Backup
 - Choose backup frequency
@@ -305,7 +305,7 @@ const alerts = [
 
 Enable and review Performance Advisor recommendations:
 
-```
+```text
 Cluster > Performance Advisor
 - Review suggested indexes
 - Check slow query analysis

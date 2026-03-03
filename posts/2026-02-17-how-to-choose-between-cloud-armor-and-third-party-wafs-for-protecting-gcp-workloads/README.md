@@ -118,7 +118,7 @@ Choose a third-party WAF when:
 
 Some organizations run both. Cloud Armor provides the first layer of defense at Google's edge, handling DDoS mitigation and basic WAF rules. A third-party WAF (either as a proxy in front of the load balancer or as an additional layer) adds more sophisticated application-layer protection.
 
-```
+```text
 Internet --> Cloudflare (advanced bot mgmt, CDN) --> GCP LB + Cloud Armor (DDoS, basic WAF) --> Backend
 ```
 

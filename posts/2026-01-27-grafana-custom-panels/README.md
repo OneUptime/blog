@@ -18,7 +18,7 @@ Grafana panels are React components that receive data from configured data sourc
 
 A typical panel plugin project follows this structure:
 
-```
+```text
 my-panel-plugin/
 ├── src/
 │   ├── module.ts           # Plugin entry point

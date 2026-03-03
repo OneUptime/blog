@@ -53,7 +53,7 @@ sudo nano /etc/tor/torrc
 
 Replace the contents with a relay configuration:
 
-```
+```text
 # Basic relay settings
 Nickname MyRelayName          # Choose a unique name for your relay
 ContactInfo admin@example.com # Provide a real contact email
@@ -158,7 +158,7 @@ sudo nano /etc/tor/torrc
 
 Add these lines:
 
-```
+```text
 # Stop accepting traffic after 150 GB per calendar month
 AccountingMax 150 GB
 AccountingStart month 1 00:00  # Reset on the 1st of each month

@@ -253,7 +253,7 @@ releases:
 
 For larger setups, split your helmfile across multiple files:
 
-```
+```text
 helmfile.d/
   00-infrastructure.yaml
   10-storage.yaml

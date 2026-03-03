@@ -45,7 +45,7 @@ The storage implications differ significantly between the two approaches:
 
 ### Cumulative Temporality Storage
 
-```
+```text
 Metric: http_requests_total
 Values: [100, 250, 420, 650, 920, 1250, ...]
 
@@ -58,7 +58,7 @@ Storage characteristics:
 
 ### Delta Temporality Storage
 
-```
+```text
 Metric: http_requests_total
 Values: [100, 150, 170, 230, 270, 330, ...]
 

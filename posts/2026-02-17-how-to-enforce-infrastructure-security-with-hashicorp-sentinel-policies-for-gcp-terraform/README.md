@@ -34,7 +34,7 @@ Policies can be set to three enforcement levels:
 
 Organize your Sentinel policies by category. Here is a recommended structure:
 
-```
+```text
 sentinel/
   policies/
     gcp-networking.sentinel

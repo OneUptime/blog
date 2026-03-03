@@ -29,7 +29,7 @@ A Bicep module is just a Bicep file that gets referenced from another file. Ther
 
 Here is a typical project structure.
 
-```
+```text
 infrastructure/
   main.bicep              # Entry point that composes modules
   parameters.dev.json     # Parameters for dev environment

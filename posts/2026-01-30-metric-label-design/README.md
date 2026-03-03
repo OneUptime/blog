@@ -91,7 +91,7 @@ labels:
 
 Before deploying a metric, estimate total series count:
 
-```
+```text
 Total Series = product of (unique values per label)
 ```
 
@@ -148,7 +148,7 @@ REQUEST_COUNT.labels(
 
 Raw URLs with path parameters explode cardinality:
 
-```
+```text
 /api/users/123
 /api/users/456
 /api/users/789

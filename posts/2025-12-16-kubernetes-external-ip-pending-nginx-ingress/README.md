@@ -20,7 +20,7 @@ kubectl get svc -n ingress-nginx
 
 You see:
 
-```
+```text
 NAME                       TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)
 ingress-nginx-controller   LoadBalancer   10.96.145.123   <pending>     80:31456/TCP,443:32167/TCP
 ```

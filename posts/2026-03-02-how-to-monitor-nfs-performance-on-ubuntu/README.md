@@ -48,7 +48,7 @@ nfsstat -c
 ```
 
 Example output:
-```
+```text
 Client rpc stats:
 calls      retrans    authrefrsh
 1892736    42         12
@@ -94,7 +94,7 @@ mountstats --nfs /mnt/nfs/data
 
 The output includes:
 
-```
+```text
 Stats for /mnt/nfs/data mounted using NFSv4.1 on nfsclient:
   NFS byte counts:
     app read bytes: 512000000

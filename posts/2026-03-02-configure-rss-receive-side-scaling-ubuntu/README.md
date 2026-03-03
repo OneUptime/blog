@@ -34,7 +34,7 @@ ethtool -l eth0
 
 Output example:
 
-```
+```text
 Channel parameters for eth0:
 Pre-set maximums:
 RX:             16
@@ -223,7 +223,7 @@ ethtool -n eth0 rx-flow-hash tcp4
 
 Output:
 
-```
+```text
 TCP over IPV4 flows use these fields for computing Hash flow key:
 IP SA
 IP DA

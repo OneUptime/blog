@@ -154,7 +154,7 @@ LIMIT 10;
 
 Key things to look for in the output:
 
-```
+```text
 -- Look for these warning signs:
 -- 1. Sequential scans on large tables (Seq Scan)
 -- 2. Large difference between estimated and actual rows

@@ -61,7 +61,7 @@ sudo btrfs balance status /mnt/data
 
 Output shows progress as a percentage of chunks processed:
 
-```
+```text
 Balance on '/mnt/data' is running
 3 out of about 212 chunks balanced (9 considered),  98% left
 ```

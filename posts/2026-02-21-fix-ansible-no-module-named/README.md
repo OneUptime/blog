@@ -12,7 +12,7 @@ The "No module named" error means a Python library required by an Ansible module
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "No module named 'pymysql'"
 }
@@ -20,7 +20,7 @@ fatal: [server1]: FAILED! => {
 
 Or:
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "Failed to import the required Python library (docker) on server1's Python /usr/bin/python3"
 }

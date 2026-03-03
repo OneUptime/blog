@@ -254,7 +254,7 @@ helm uninstall my-app
 {{ template "chart.requirementsSection" . }}
 
 {{ template "helm-docs.versionFooter" . }}
-```
+```text
 
 ## Advanced Value Documentation
 
@@ -399,7 +399,7 @@ Verify database credentials:
 ```bash
 kubectl get secret {{ .Project.Name }}-db-secret -o yaml
 ```
-```
+```text
 
 ## Automating Documentation in CI/CD
 
@@ -502,7 +502,7 @@ template-files:
 
 Create an ignore file:
 
-```
+```text
 # .helmdocsignore
 charts/deprecated/*
 charts/experimental/*

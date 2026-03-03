@@ -24,7 +24,7 @@ It should not try to do everything. Keep it thin and opinionated about the basic
 
 Here is a practical structure for a Python shared library:
 
-```
+```text
 platform-otel/
     platform_otel/
         __init__.py          # Public API - init functions

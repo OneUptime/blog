@@ -73,7 +73,7 @@ job "api" {
 
 Consul provides DNS entries like:
 
-```
+```text
 api.service.consul
 ```
 

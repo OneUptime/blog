@@ -43,7 +43,7 @@ Common use cases:
 
 Debezium runs as a set of Kafka Connect connectors. The architecture has three main components:
 
-```
+```text
 +-------------+       +------------------+       +-------------+
 |  Database   | ----> | Kafka Connect    | ----> |    Kafka    |
 | (PostgreSQL |       | (Debezium        |       |   Topics    |

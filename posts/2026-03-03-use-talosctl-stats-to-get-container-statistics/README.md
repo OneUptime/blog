@@ -21,7 +21,7 @@ talosctl stats --nodes 192.168.1.20
 
 The output includes information like:
 
-```
+```text
 NAMESPACE   ID              MEM(MB)    CPU        DISK(MB)
 k8s.io      pause-abc123    1.2        0.00       0.0
 k8s.io      coredns-xyz     32.5       0.15       0.5

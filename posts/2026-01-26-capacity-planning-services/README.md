@@ -165,7 +165,7 @@ ORDER BY hour;
 
 Document your findings:
 
-```
+```text
 Service: API Gateway
 Baseline Period: January 1-14, 2026
 
@@ -247,7 +247,7 @@ A capacity model predicts how resources scale with load. Start simple and refine
 
 For most services, resource usage scales roughly linearly with load:
 
-```
+```text
 Resource_Usage = Base_Usage + (Load * Usage_Per_Unit)
 ```
 

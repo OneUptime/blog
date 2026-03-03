@@ -226,7 +226,7 @@ SELECT * FROM dbo.vw_SalesByCategory ORDER BY Revenue DESC;
 
 Since data changes invalidate the cache, time your ETL loads to happen during off-peak hours. This gives the cache the maximum useful lifetime during business hours when dashboard users are active.
 
-```
+```text
 Optimal schedule:
   2:00 AM - ETL load starts (cache invalidated)
   3:00 AM - ETL load completes

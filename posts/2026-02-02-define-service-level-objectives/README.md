@@ -57,22 +57,22 @@ A user does not care if your CPU is at 90%. They care if the page loads slowly o
 SLIs are the metrics that feed your SLOs. The most common categories are:
 
 **Availability**: Did the request succeed or fail?
-```
+```text
 availability = (successful_requests / total_requests) * 100
 ```
 
 **Latency**: How long did it take?
-```
+```text
 latency = time_at_percentile(requests, 99)
 ```
 
 **Throughput**: How many requests can we handle?
-```
+```text
 throughput = requests_per_second
 ```
 
 **Quality**: Did the response contain the right data?
-```
+```text
 quality = (correct_responses / total_responses) * 100
 ```
 
@@ -450,7 +450,7 @@ availability = (
     requests with status 2xx or 4xx
     / total requests
 ) * 100
-```
+```text
 
 ### Target
 - SLO: 99.9%

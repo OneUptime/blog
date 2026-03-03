@@ -6,7 +6,7 @@ Tags: OpenTelemetry
 
 Description: Learn how to collect internal metrics from the OpenTelemetry Collector to monitor its performance and troubleshoot issues effectively.
 
-### Why collect internal metrics from OpenTelemetry Collector?
+## Why collect internal metrics from OpenTelemetry Collector?
 
 Monitoring the performance of the OpenTelemetry Collector is crucial to ensure that it is functioning correctly and handling the data efficiently. By collecting internal metrics from the Collector, you can gain insights into its resource usage, throughput, latency, and other key performance indicators. This data can help you identify bottlenecks, troubleshoot issues, and optimize the configuration of the Collector.
 

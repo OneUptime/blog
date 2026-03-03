@@ -45,7 +45,7 @@ Look at the actual metric names and labels being produced.
 
 Open your broken Grafana panels and look at the PromQL queries:
 
-```
+```text
 # Old query (processor format)
 sum(rate(calls_total{service_name="my-service"}[5m])) by (span_name, status_code)
 
@@ -57,7 +57,7 @@ sum(rate(traces_spanmetrics_calls_total{service_name="my-service"}[5m])) by (spa
 
 Update all PromQL queries to use the new metric and label names:
 
-```
+```text
 # Old: request rate
 sum(rate(calls_total{service_name="$service"}[5m])) by (span_name, status_code)
 
@@ -65,7 +65,7 @@ sum(rate(calls_total{service_name="$service"}[5m])) by (span_name, status_code)
 sum(rate(traces_spanmetrics_calls_total{service_name="$service"}[5m])) by (span_name, status_code)
 ```
 
-```
+```text
 # Old: latency percentiles
 histogram_quantile(0.99, sum(rate(latency_bucket{service_name="$service"}[5m])) by (le, span_name))
 
@@ -166,7 +166,7 @@ processors:
 
 Before deploying dashboard changes, test queries in Grafana Explore:
 
-```
+```text
 # Verify the new metric exists
 traces_spanmetrics_calls_total
 

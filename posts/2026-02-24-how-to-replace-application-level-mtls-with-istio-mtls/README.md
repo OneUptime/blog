@@ -133,7 +133,7 @@ istioctl x describe pod my-service-xxxxx -n default
 
 You should see:
 
-```
+```text
 Pod is PERMISSIVE (allows mTLS and plaintext)
 ```
 
@@ -143,7 +143,7 @@ Check the certificate issued to the proxy:
 istioctl proxy-config secret my-service-xxxxx.default
 ```
 
-```
+```text
 RESOURCE NAME     TYPE           STATUS     VALID CERT     SERIAL NUMBER     NOT AFTER
 default           Cert Chain     ACTIVE     true           abc123            2026-02-25T10:00:00Z
 ROOTCA            CA             ACTIVE     true           def456            2036-02-22T10:00:00Z

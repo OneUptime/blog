@@ -16,7 +16,7 @@ SPIFFE (Secure Production Identity Framework for Everyone) is an open standard f
 
 A SPIFFE ID looks like this:
 
-```
+```text
 spiffe://trust-domain/path/to/workload
 ```
 

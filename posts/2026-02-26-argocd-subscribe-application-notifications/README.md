@@ -148,7 +148,7 @@ spec:
 
 The annotation format is:
 
-```
+```text
 notifications.argoproj.io/subscribe.<trigger-name>.<service-name>: <recipient>
 ```
 

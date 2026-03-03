@@ -38,7 +38,7 @@ When you check for an element:
 2. If all bits at those positions are 1, the element is "probably" present
 3. If any bit is 0, the element is definitely not present
 
-```
+```text
 Add "hello":
   hash1("hello") = 3  ->  [0,0,0,1,0,0,0,0,0,0]
   hash2("hello") = 7  ->  [0,0,0,1,0,0,0,1,0,0]

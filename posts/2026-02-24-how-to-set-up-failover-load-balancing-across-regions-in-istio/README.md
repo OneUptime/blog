@@ -199,7 +199,7 @@ istioctl proxy-config endpoint <pod-name>.default \
 
 Track when failover happens with Prometheus:
 
-```
+```text
 # Requests by destination locality
 sum(rate(istio_requests_total{
   destination_service="search-api.default.svc.cluster.local"

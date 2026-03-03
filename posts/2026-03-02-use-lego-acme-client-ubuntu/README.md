@@ -72,7 +72,7 @@ sudo systemctl start nginx
 
 Certificates are stored in `~/.lego/certificates/` (or `/root/.lego/` when run as root):
 
-```
+```text
 /root/.lego/certificates/
     example.com.crt         # Full certificate chain
     example.com.key         # Private key

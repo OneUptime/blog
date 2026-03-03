@@ -20,7 +20,7 @@ The real question is not whether to put them in Git, but how to organize them so
 
 Separate encrypted values from plaintext configuration. This is the single most important structural decision:
 
-```
+```text
 project/
   ansible.cfg
   site.yml

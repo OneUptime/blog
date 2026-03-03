@@ -14,7 +14,7 @@ Upgrades do not always go smoothly. Hardware incompatibilities, kernel regressio
 
 Talos Linux uses an A/B boot scheme that provides automatic rollback protection. When you upgrade a node, Talos writes the new version to the inactive boot slot while keeping the current working version in the active slot. After rebooting, the bootloader tries the new version. If the new version fails to boot successfully, the bootloader automatically reverts to the previous version on the next reboot.
 
-```
+```text
 Before Upgrade:
   Slot A: v1.6.0 (active - working)
   Slot B: v1.5.0 (inactive - previous)

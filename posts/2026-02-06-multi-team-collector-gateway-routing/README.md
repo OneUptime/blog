@@ -10,7 +10,7 @@ In large organizations, a single shared Collector instance is a recipe for troub
 
 ## Architecture
 
-```
+```text
 Team A namespace:
   Apps -> Agent Collector (team-a) -> |
                                        |

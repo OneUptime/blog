@@ -16,7 +16,7 @@ This guide covers everything from basic audit logging setup to advanced policy c
 
 Every interaction with the Kubernetes API generates an audit event. These events are classified into stages:
 
-```
+```text
 # Audit event stages
 RequestReceived  - The API server received the request
 ResponseStarted  - Response headers were sent (long-running requests only)
@@ -58,7 +58,7 @@ Each event captures details about the request:
 
 The audit policy determines which events get logged and at what detail level. There are four logging levels:
 
-```
+```text
 # Audit levels (from least to most detail)
 None      - Do not log
 Metadata  - Log request metadata (user, resource, verb) but not body
@@ -306,7 +306,7 @@ data:
 
 Once audit logs are in your log aggregation system, here are common queries for security monitoring:
 
-```
+```text
 # Find all secret access events
 objectRef.resource:"secrets" AND verb:("get" OR "list")
 

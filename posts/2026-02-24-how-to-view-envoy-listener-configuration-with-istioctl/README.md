@@ -25,7 +25,7 @@ In addition to these virtual listeners, Envoy creates per-port listeners for eac
 istioctl proxy-config listeners productpage-v1-abc123.default
 ```
 
-```
+```text
 ADDRESS       PORT  MATCH                                         DESTINATION
 0.0.0.0       15006 ALL                                           Inline Route: /*
 0.0.0.0       15006 Addr: *:15006                                 Non-HTTP/Non-TCP
@@ -71,7 +71,7 @@ Listeners on ports like 9080, 9090, and 443 handle traffic to specific services:
 istioctl pc listeners productpage-v1-abc123.default --port 9080
 ```
 
-```
+```text
 ADDRESS   PORT  MATCH                                     DESTINATION
 0.0.0.0   9080  Trans: raw_buffer; App: http/1.1,h2c      Route: 9080
 0.0.0.0   9080  ALL                                       PassthroughCluster

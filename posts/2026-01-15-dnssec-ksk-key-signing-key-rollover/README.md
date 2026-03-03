@@ -112,7 +112,7 @@ rndc sign example.com
 
 **Critical timing:** Wait for the new DNSKEY RRset to propagate and for cached copies of the old RRset to expire.
 
-```
+```text
 Wait = MAX(TTL of DNSKEY RRset, TTL of DS record) + propagation buffer
 ```
 
@@ -132,7 +132,7 @@ Submit this DS record to your registrar. **Keep the old DS record in place.** Yo
 
 Wait for the new DS record to propagate:
 
-```
+```text
 Wait = TTL of parent DS record + propagation buffer
 ```
 

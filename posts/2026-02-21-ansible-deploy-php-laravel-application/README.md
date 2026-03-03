@@ -24,7 +24,7 @@ This guide covers building a complete Ansible playbook for production Laravel de
 
 ## Project Structure
 
-```
+```text
 laravel-deploy/
   inventory/
     production.yml

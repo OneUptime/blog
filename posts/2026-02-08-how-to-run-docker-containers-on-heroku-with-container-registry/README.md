@@ -141,7 +141,7 @@ heroku container:release web worker --app myapp-docker
 
 Each process type needs its own Dockerfile. Use naming conventions:
 
-```
+```text
 Dockerfile.web     -> web process
 Dockerfile.worker  -> worker process
 ```

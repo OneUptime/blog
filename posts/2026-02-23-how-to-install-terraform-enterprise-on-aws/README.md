@@ -21,7 +21,7 @@ A production Terraform Enterprise deployment on AWS typically includes:
 - A VPC with public and private subnets
 - Security groups controlling network access
 
-```
+```text
 [Internet]
     |
 [ALB - HTTPS:443]

@@ -74,7 +74,7 @@ service:
 
 ### Worker Metrics
 
-```
+```text
 # Worker-level metrics
 kafka.connect.worker.connector_count       - Number of connectors on this worker
 kafka.connect.worker.task_count            - Number of running tasks
@@ -85,7 +85,7 @@ kafka.connect.worker.connector_startup_failure_total  - Failed startups
 
 ### Connector Metrics
 
-```
+```text
 # Per-connector metrics (JMX MBean)
 # kafka.connect:type=connector-metrics,connector={name}
 kafka.connect.connector.status             - Connector state (RUNNING, PAUSED, FAILED)
@@ -94,7 +94,7 @@ kafka.connect.connector.type               - Source or Sink
 
 ### Task Metrics (Source Connectors)
 
-```
+```text
 # Source task metrics
 kafka.connect.source.task.poll_batch_avg_time_ms  - Average time to poll a batch
 kafka.connect.source.task.poll_batch_max_time_ms  - Max poll batch time
@@ -105,7 +105,7 @@ kafka.connect.source.task.source_record_write_rate   - Write rate (records/sec)
 
 ### Task Metrics (Sink Connectors)
 
-```
+```text
 # Sink task metrics
 kafka.connect.sink.task.sink_record_read_total     - Records read from Kafka
 kafka.connect.sink.task.sink_record_read_rate      - Read rate (records/sec)

@@ -590,7 +590,7 @@ if __name__ == '__main__':
 
 Create `/opt/dnssec_monitor/requirements.txt`:
 
-```
+```text
 dnspython>=2.4.0
 prometheus-client>=0.17.0
 PyYAML>=6.0

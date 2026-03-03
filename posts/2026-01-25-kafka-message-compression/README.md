@@ -100,7 +100,7 @@ done
 
 Typical results:
 
-```
+```text
 Compression | Throughput (msg/s) | Storage (MB) | Ratio
 ------------|-------------------|--------------|-------
 none        | 850,000           | 476          | 1.0x

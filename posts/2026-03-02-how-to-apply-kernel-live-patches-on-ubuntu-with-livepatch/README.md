@@ -48,7 +48,7 @@ sudo pro attach <your-token>
 
 You'll see output confirming which services are available:
 
-```
+```text
 Attaching the machine...
 Enabling default service esm-apps
 Ubuntu Pro: ESM Apps enabled
@@ -66,7 +66,7 @@ sudo pro enable livepatch
 
 Output:
 
-```
+```text
 One moment, checking your subscription first
 Updating package lists
 Installing snap 'canonical-livepatch'
@@ -85,7 +85,7 @@ sudo canonical-livepatch status --verbose
 
 Status output:
 
-```
+```text
 last check: 2 minutes ago
 kernel: 5.15.0-91-generic
 server check-in: succeeded
@@ -94,7 +94,7 @@ patch state: nothing to apply
 
 When a patch is available and applied:
 
-```
+```text
 last check: 5 minutes ago
 kernel: 5.15.0-91-generic
 server check-in: succeeded

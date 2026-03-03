@@ -44,7 +44,7 @@ kubectl get events -n production --field-selector reason=FailedScheduling
 
 Common FailedScheduling messages:
 
-```
+```text
 0/5 nodes are available: 2 Insufficient cpu, 3 node(s) had taints that the pod didn't tolerate
 0/5 nodes are available: 5 node(s) didn't match Pod's node affinity/selector
 0/5 nodes are available: 3 node(s) had volume node affinity conflict

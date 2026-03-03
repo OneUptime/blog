@@ -35,7 +35,7 @@ The most common use case is preventing a package from being upgraded:
 
 After this runs, `apt-get upgrade` and `apt-get dist-upgrade` will output:
 
-```
+```text
 The following packages have been kept back:
   postgresql-15
 ```

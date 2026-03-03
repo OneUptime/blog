@@ -23,7 +23,7 @@ When you track a file with Git LFS, here is what happens behind the scenes:
 
 The pointer file looks like this:
 
-```
+```text
 version https://git-lfs.github.com/spec/v1
 oid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393
 size 12345678
@@ -98,7 +98,7 @@ git push
 
 Let's look at what the `.gitattributes` file contains after these commands:
 
-```
+```text
 *.psd filter=lfs diff=lfs merge=lfs -text
 *.png filter=lfs diff=lfs merge=lfs -text
 *.zip filter=lfs diff=lfs merge=lfs -text
@@ -245,7 +245,7 @@ git lfs unlock "designs/hero-banner.psd" --force
 
 You can also configure your repository to require locks for certain file types by adding the `lockable` attribute:
 
-```
+```text
 # .gitattributes - Make PSD files lockable
 *.psd filter=lfs diff=lfs merge=lfs -text lockable
 ```

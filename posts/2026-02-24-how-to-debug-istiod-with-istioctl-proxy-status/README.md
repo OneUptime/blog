@@ -20,7 +20,7 @@ istioctl proxy-status
 
 The output looks like this:
 
-```
+```text
 NAME                                  CLUSTER        CDS     LDS     EDS     RDS     ECDS    ISTIOD
 httpbin-74fb669cc6-abc12.default      Kubernetes     SYNCED  SYNCED  SYNCED  SYNCED  -       istiod-5d4f4f46d4-xyz89
 productpage-v1-6b746f74dc-def34.default  Kubernetes  SYNCED  SYNCED  SYNCED  SYNCED  -       istiod-5d4f4f46d4-xyz89
@@ -140,7 +140,7 @@ kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/
 
 Istiod exposes Prometheus metrics about config pushes. These are great for setting up alerts:
 
-```
+```text
 pilot_xds_pushes{type="cds"}       - Total CDS pushes
 pilot_xds_pushes{type="lds"}       - Total LDS pushes
 pilot_proxy_convergence_time       - Time for a config change to reach all proxies

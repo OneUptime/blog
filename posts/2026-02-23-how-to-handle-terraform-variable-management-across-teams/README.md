@@ -110,7 +110,7 @@ Marking outputs with `[CONTRACT]` signals that other teams depend on them and th
 
 For values that many teams need, maintain a shared variable repository:
 
-```
+```text
 # Repository structure
 terraform-shared-vars/
   production/
@@ -234,7 +234,7 @@ resource "tfe_workspace_variable_set" "app_team" {
 
 Establish a clear hierarchy for variable precedence:
 
-```
+```text
 Priority (highest to lowest):
 1. Environment-specific team variables (production.auto.tfvars)
 2. Team-level defaults (team.auto.tfvars)

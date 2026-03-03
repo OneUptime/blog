@@ -31,7 +31,7 @@ ANSIBLE_STDOUT_CALLBACK=dense ansible-playbook site.yml
 
 Here is the default callback against 5 hosts:
 
-```
+```text
 TASK [Install packages] ******************************************************
 ok: [web-01]
 ok: [web-02]
@@ -42,7 +42,7 @@ ok: [web-05]
 
 The same task with dense:
 
-```
+```text
 TASK 003 Install packages                    ok=4    changed=1    unreachable=0    failed=0
 ```
 
@@ -52,7 +52,7 @@ Each task gets a single summary line instead of one line per host. The task numb
 
 A complete playbook run with dense looks like:
 
-```
+```text
 PLAY 001 Configure web servers
   TASK 001 Gathering Facts                   ok=50   changed=0    unreachable=0    failed=0
   TASK 002 Install nginx                     ok=45   changed=5    unreachable=0    failed=0
@@ -76,7 +76,7 @@ The dense callback still shows the play recap at the end, so you get the per-hos
 
 One feature that sets dense apart from the minimal and oneline callbacks is real-time progress. During task execution, the dense callback updates the current task line in place. You see the counters incrementing as hosts complete:
 
-```
+```text
   TASK 002 Install nginx                     ok=23   changed=5    unreachable=0    failed=0
 ```
 
@@ -168,7 +168,7 @@ Here is a realistic deployment playbook output with the dense callback across 10
 
 Dense output during the first batch:
 
-```
+```text
 PLAY 001 Deploy application v2.5.1 (batch 1/4)
   TASK 001 Gathering Facts                   ok=25   changed=0    unreachable=0    failed=0
   TASK 002 Pull latest Docker image          ok=20   changed=5    unreachable=0    failed=0

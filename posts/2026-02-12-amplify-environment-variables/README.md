@@ -69,7 +69,7 @@ frontend:
 
 One of Amplify's nice features is branch-specific overrides. You might want different API endpoints for staging vs production:
 
-```
+```text
 Variable: API_ENDPOINT
 Default: https://api-staging.example.com
 Branch override (main): https://api.example.com

@@ -216,7 +216,7 @@ sudo systemctl disable --now systemd-timesyncd
 sudo nano /etc/chrony/chrony.conf
 ```
 
-```
+```text
 # /etc/chrony/chrony.conf
 # Use public NTP servers
 pool 2.ubuntu.pool.ntp.org iburst maxsources 4
@@ -261,7 +261,7 @@ sudo systemctl disable --now systemd-timesyncd
 sudo nano /etc/chrony/chrony.conf
 ```
 
-```
+```text
 # /etc/chrony/chrony.conf
 # Multiple NTP servers for redundancy and accuracy
 pool time.google.com iburst maxsources 4

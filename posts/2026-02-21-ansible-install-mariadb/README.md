@@ -18,7 +18,7 @@ The decision between MariaDB and MySQL often comes down to organizational prefer
 
 ## Role Structure
 
-```
+```text
 roles/mariadb_install/
   defaults/main.yml
   tasks/

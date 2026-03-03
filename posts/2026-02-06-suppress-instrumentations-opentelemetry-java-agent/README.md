@@ -436,7 +436,7 @@ grep "Instrumentation" /var/log/app/startup.log
 
 Example debug output:
 
-```
+```text
 [otel.javaagent 2026-02-06 10:15:30:123] Instrumentation [servlet] enabled: true
 [otel.javaagent 2026-02-06 10:15:30:124] Instrumentation [jaxrs] enabled: true
 [otel.javaagent 2026-02-06 10:15:30:125] Instrumentation [jdbc] enabled: false

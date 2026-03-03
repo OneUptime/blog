@@ -245,7 +245,7 @@ argocd_repo_server_active_operations
 
 Create a Grafana dashboard that shows:
 
-```
+```text
 # Cache hit ratio
 rate(argocd_redis_request_total{hit="true"}[5m]) /
 rate(argocd_redis_request_total[5m])

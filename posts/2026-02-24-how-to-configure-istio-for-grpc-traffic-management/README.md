@@ -391,7 +391,7 @@ grpcurl -d '{"order_id": "123"}' \
 
 Istio generates metrics specific to gRPC:
 
-```
+```text
 # gRPC request count by status
 istio_requests_total{grpc_response_status="0"}  # OK
 istio_requests_total{grpc_response_status="2"}  # UNKNOWN

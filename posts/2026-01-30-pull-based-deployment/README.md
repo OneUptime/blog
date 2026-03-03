@@ -105,7 +105,7 @@ argocd login localhost:8080 --insecure
 
 A well-organized config repo makes GitOps maintainable. Separate base manifests from environment-specific overlays using Kustomize.
 
-```
+```text
 config-repo/
 ├── base/
 │   ├── kustomization.yaml

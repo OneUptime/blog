@@ -32,7 +32,7 @@ sudo nano /etc/ssh/sshd_config
 
 Add the `AllowUsers` directive:
 
-```
+```text
 # Only these users can connect via SSH
 # Separate multiple usernames with spaces
 AllowUsers alice bob carol deploy-user
@@ -42,7 +42,7 @@ This is a whitelist. Any user not on this list will get "Permission denied" rega
 
 To restrict to specific users from specific hosts (useful for tighter controls):
 
-```
+```text
 # User can connect from any host
 AllowUsers alice
 
@@ -73,7 +73,7 @@ getent group sshusers
 
 Then configure `sshd_config` to only allow this group:
 
-```
+```text
 # Only members of the sshusers group can connect
 AllowGroups sshusers
 ```
@@ -96,7 +96,7 @@ No `sshd_config` changes needed.
 
 For blacklisting instead of whitelisting:
 
-```
+```text
 # These users can never log in via SSH
 DenyUsers www-data daemon postgres mysql
 
@@ -142,7 +142,7 @@ sudo grep "sshd" /var/log/auth.log | tail -20
 
 Match blocks let you apply different rules to different users, groups, or connection sources:
 
-```
+```text
 # Global settings apply to all connections
 AllowGroups sshusers admins
 
@@ -191,7 +191,7 @@ sudo visudo
 
 Root login should always be disabled on systems accessible from the internet:
 
-```
+```text
 # In /etc/ssh/sshd_config
 PermitRootLogin no
 ```

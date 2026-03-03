@@ -104,7 +104,7 @@ sudo nano /etc/hosts
 
 Add the following entries:
 
-```
+```text
 # /etc/hosts
 # Format: IP_ADDRESS    FQDN    SHORT_HOSTNAME
 

@@ -52,7 +52,7 @@ iperf3 -c 192.168.1.10 -t 30
 
 A basic test produces output like this:
 
-```
+```text
 Connecting to host 192.168.1.10, port 5201
 [  5] local 192.168.1.20 port 54321 connected to 192.168.1.10 port 5201
 [ ID] Interval           Transfer     Bitrate
@@ -98,7 +98,7 @@ iperf3 -c 192.168.1.10 -u -b 500M -l 1400
 
 UDP output includes additional jitter and packet loss statistics:
 
-```
+```text
 [ ID] Interval           Transfer     Bitrate         Jitter    Lost/Total Datagrams
 [  5]   0.00-10.00  sec   596 MBytes   500 Mbits/sec  0.025 ms  0/427225 (0%)
 ```

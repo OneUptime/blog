@@ -139,7 +139,7 @@ A priority above 1000 means "install this version even over an already-installed
 
 ### Pin Priority Values Explained
 
-```
+```text
 < 0        - Prevent installation
 0 - 99     - Never auto-install, only if explicitly requested
 100 - 499  - Install if no other source has higher priority

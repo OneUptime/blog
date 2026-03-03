@@ -29,7 +29,7 @@ Terragrunt addresses all of these. It gives you a hierarchy of configuration fil
 
 Here is the directory layout I recommend for managing multiple GCP projects with Terragrunt:
 
-```
+```text
 infrastructure/
   terragrunt.hcl              # Root config - provider, backend defaults
   modules/                     # Shared Terraform modules

@@ -34,7 +34,7 @@ istioctl proxy-config secret <pod-name> -n <namespace>
 
 The secret output should show:
 
-```
+```text
 RESOURCE NAME     TYPE           STATUS   VALID CERT   SERIAL NUMBER   NOT AFTER                NOT BEFORE
 default           Cert Chain     ACTIVE   true         ...             2026-02-25T12:00:00Z     2026-02-24T12:00:00Z
 ROOTCA            CA             ACTIVE   true         ...             2036-02-22T12:00:00Z     2026-02-24T12:00:00Z
@@ -221,7 +221,7 @@ Compare with the certificate's Not Before and Not After dates. Even a few minute
 
 ## Quick Reference Debugging Checklist
 
-```
+```text
 1. Is the sidecar running?                    kubectl get pod -o jsonpath='{.spec.containers[*].name}'
 2. Are certificates valid?                    istioctl proxy-config secret <pod>
 3. What PeerAuthentication applies?           istioctl x describe pod <pod>

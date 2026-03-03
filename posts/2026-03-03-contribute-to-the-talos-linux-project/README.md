@@ -36,7 +36,7 @@ ls -la
 
 ### Key Directories in the Main Repo
 
-```
+```text
 talos/
   cmd/           # Command-line tools (talosctl, installer)
   internal/      # Internal packages (machined, apid, etc.)

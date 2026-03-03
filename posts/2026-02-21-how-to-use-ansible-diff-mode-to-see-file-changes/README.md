@@ -40,7 +40,7 @@ When a template or file task changes a file, the diff output shows exactly what 
 
 With `--diff`, the output includes:
 
-```
+```text
 TASK [Deploy nginx configuration] *********************************************
 --- before: /etc/nginx/nginx.conf
 +++ after: /home/deploy/.ansible/tmp/ansible-local-12345/tmpabc123
@@ -159,7 +159,7 @@ ansible-playbook configure.yml --check --diff
 
 This is the go-to command for reviewing changes before applying them:
 
-```
+```text
 TASK [Deploy nginx configuration] *********************************************
 --- before: /etc/nginx/nginx.conf
 +++ after: /home/deploy/.ansible/tmp/ansible-local-12345/tmpdef456
@@ -198,7 +198,7 @@ The `copy` module shows diffs when using the `content` parameter:
 
 The diff shows the exact content differences:
 
-```
+```text
 --- before: /etc/hosts.app
 +++ after: /home/deploy/.ansible/tmp/ansible-local-12345/source
 @@ -3,3 +3,4 @@
@@ -223,7 +223,7 @@ These modules also produce useful diffs:
 
 Diff output:
 
-```
+```text
 --- before: /etc/security/limits.conf
 +++ after: /etc/security/limits.conf
 @@ -52,7 +52,7 @@
@@ -338,7 +338,7 @@ The JSON output includes a `diff` key for each task that produced a diff:
 
 When a file is being created for the first time, the diff shows the entire content as additions:
 
-```
+```text
 --- before
 +++ after: /home/deploy/.ansible/tmp/ansible-local-12345/source
 @@ -0,0 +1,15 @@

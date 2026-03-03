@@ -161,7 +161,7 @@ POST /search_index/_analyze
 ```
 
 **Edge NGram output:**
-```
+```text
 q, qu, qui, quic, quick, b, br, bro, brow, brown, f, fo, fox
 ```
 
@@ -174,7 +174,7 @@ POST /search_index/_analyze
 ```
 
 **Shingle output:**
-```
+```text
 quick, quick brown, quick brown fox, brown, brown fox, fox
 ```
 
@@ -187,7 +187,7 @@ POST /search_index/_analyze
 ```
 
 **Combined output:**
-```
+```text
 q, qu, qui, quic, quick,
 q, qu, qui, quic, quick, quick , quick b, quick br, quick bro, quick brow, quick brown,
 ... (many more combinations)

@@ -47,7 +47,7 @@ Let us set up a typical web application with:
 
 First, here is the project structure:
 
-```
+```text
 my-app/
   api/
     Dockerfile

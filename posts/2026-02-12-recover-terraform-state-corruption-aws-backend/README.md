@@ -132,7 +132,7 @@ The plan might show some drift if changes were made between the corrupted state 
 
 Sometimes the state isn't corrupted - it's locked by a process that crashed. You'll see an error like:
 
-```
+```text
 Error: Error locking state: Error acquiring the state lock
 Lock Info:
   ID:        a1b2c3d4-e5f6-7890-abcd-ef1234567890

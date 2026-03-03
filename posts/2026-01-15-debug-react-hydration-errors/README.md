@@ -85,7 +85,7 @@ React 18 introduced more descriptive hydration error messages. Understanding the
 
 ### Text Content Mismatch
 
-```
+```text
 Warning: Text content did not match. Server: "Hello World" Client: "Hello world"
 ```
 
@@ -93,7 +93,7 @@ This error shows exactly what differed between server and client text nodes.
 
 ### Extra Nodes on Server
 
-```
+```text
 Warning: Expected server HTML to contain a matching <div> in <div>.
 ```
 
@@ -101,7 +101,7 @@ This indicates the server rendered something the client didn't expect.
 
 ### Extra Nodes on Client
 
-```
+```text
 Warning: Did not expect server HTML to contain a <span> in <div>.
 ```
 

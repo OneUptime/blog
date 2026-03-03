@@ -43,7 +43,7 @@ If the requirements file is on the control node and you want to transfer it firs
 
 pip supports several formats in requirements files. Here is a well-structured example:
 
-```
+```text
 # requirements.txt - pinned production dependencies
 # Generated with: pip freeze > requirements.txt
 
@@ -71,7 +71,7 @@ gunicorn==21.2.0
 
 You can also use constraint operators:
 
-```
+```text
 # requirements.txt with version ranges
 Django>=4.2,<5.0
 celery>=5.3.0
@@ -101,7 +101,7 @@ Many projects split their requirements into multiple files:
 
 The production requirements file can reference the base file:
 
-```
+```text
 # requirements/production.txt
 -r base.txt
 
@@ -113,7 +113,7 @@ newrelic==9.4.0
 
 And you can have a separate development requirements file:
 
-```
+```text
 # requirements/dev.txt
 -r base.txt
 
@@ -212,7 +212,7 @@ pip supports constraints files that limit which versions can be installed withou
 
 The constraints file:
 
-```
+```text
 # constraints.txt - prevent problematic versions
 urllib3<2.0.0
 cryptography<42.0.0

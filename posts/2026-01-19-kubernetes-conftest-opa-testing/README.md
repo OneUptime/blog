@@ -54,7 +54,7 @@ docker run --rm -v $(pwd):/project openpolicyagent/conftest test deployment.yaml
 
 ### Project Structure
 
-```
+```text
 kubernetes/
 ├── manifests/
 │   ├── deployment.yaml

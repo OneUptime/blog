@@ -28,7 +28,7 @@ Telegraf acts as the agent, collecting metrics from multiple sources. It pushes 
 
 ## Directory Structure
 
-```
+```text
 tig-stack/
 ├── docker-compose.yml
 ├── telegraf/

@@ -21,7 +21,7 @@ ansible-vault decrypt group_vars/production/vault.yml
 
 Ansible prompts for the vault password:
 
-```
+```text
 Vault password:
 Decryption successful
 ```
@@ -101,13 +101,13 @@ head -1 group_vars/production/vault.yml
 
 Output for a file with a vault ID:
 
-```
+```text
 $ANSIBLE_VAULT;1.2;AES256;production
 ```
 
 Output for a file without a vault ID:
 
-```
+```text
 $ANSIBLE_VAULT;1.1;AES256
 ```
 
@@ -234,7 +234,7 @@ But this is risky. If your shell session crashes between decrypt and re-encrypt,
 
 ### Wrong Password
 
-```
+```text
 ERROR! Decryption failed (no vault secrets were found that could decrypt)
 ```
 
@@ -242,7 +242,7 @@ This means the password you provided does not match the one used to encrypt the 
 
 ### Corrupt File
 
-```
+```text
 ERROR! input is not vault encrypted data
 ```
 
@@ -250,7 +250,7 @@ The file does not start with the `$ANSIBLE_VAULT` header. It might have been par
 
 ### Wrong Vault ID
 
-```
+```text
 ERROR! Decryption failed on secrets.yml
 ```
 
@@ -267,7 +267,7 @@ ansible-vault decrypt --vault-id production@~/.vault_pass_prod.txt secrets.yml
 
 ### File Permission Issues
 
-```
+```text
 ERROR! The file secrets.yml does not exist
 ```
 

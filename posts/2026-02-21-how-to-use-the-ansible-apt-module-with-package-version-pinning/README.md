@@ -32,7 +32,7 @@ apt-cache policy redis-server
 
 The output shows something like:
 
-```
+```text
 redis-server:
   Installed: 5:7.0.12-1
   Candidate: 5:7.0.15-1

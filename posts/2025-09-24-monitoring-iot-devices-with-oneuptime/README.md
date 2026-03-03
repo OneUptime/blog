@@ -91,7 +91,7 @@ flowchart LR
 2. Click **Create Monitor**
 3. Select **Incoming Request** as the monitor type
 4. Enter monitor details:
-   ```
+   ```text
    Monitor Name: Factory Floor Sensor Network
    Description: Monitors heartbeat signals from industrial IoT sensors
    ```
@@ -100,7 +100,7 @@ flowchart LR
 
 Set up criteria for when the monitor should be considered healthy:
 
-```
+```text
 Monitor Criteria:
 - Incoming request received within last 5 minutes
 - Request method: GET or POST
@@ -111,7 +111,7 @@ Monitor Criteria:
 
 After creating the monitor, OneUptime provides a unique URL:
 
-```
+```text
 https://oneuptime.com/heartbeat/abc123def456
 ```
 
@@ -224,7 +224,7 @@ OneUptime stores this payload data, allowing you to:
 
 Different IoT devices need different monitoring frequencies:
 
-```
+```text
 Critical Infrastructure:
 ├── Medical devices: Every 1 minute
 ├── Industrial controls: Every 5 minutes
@@ -249,7 +249,7 @@ Low-Power Devices:
 
 Monitor entire fleets of devices:
 
-```
+```text
 Vehicle Fleet:
 ├── GPS trackers: Location + status
 ├── Engine sensors: Performance metrics
@@ -261,7 +261,7 @@ Vehicle Fleet:
 
 Critical manufacturing monitoring:
 
-```
+```text
 Production Line:
 ├── Machine status: Online/offline
 ├── Quality sensors: Defect rates
@@ -273,7 +273,7 @@ Production Line:
 
 Building automation monitoring:
 
-```
+```text
 HVAC Systems:
 ├── Thermostat status: Temperature control
 ├── Occupancy sensors: Space utilization
@@ -289,7 +289,7 @@ HVAC Systems:
 
 Set up progressive alerts based on severity:
 
-```
+```text
 5 minutes overdue: Information alert (check device)
 15 minutes overdue: Warning alert (investigate)
 1 hour overdue: Critical alert (dispatch technician)
@@ -367,7 +367,7 @@ Account for IoT network limitations:
 For large-scale IoT monitoring:
 
 **Hierarchical Monitoring:**
-```
+```text
 Global View (on OneUptime Status Page):
 ├── Regional aggregators
 ├── Fleet summaries

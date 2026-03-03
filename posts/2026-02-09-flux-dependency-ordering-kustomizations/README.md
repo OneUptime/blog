@@ -197,7 +197,7 @@ Let's deploy a realistic three-tier application with proper ordering.
 
 Repository structure:
 
-```
+```text
 clusters/production/
 ├── infrastructure/
 │   ├── namespace.yaml
@@ -316,7 +316,7 @@ spec:
 
 Flux detects circular dependencies and will fail reconciliation. If you see this error:
 
-```
+```text
 Kustomization reconciliation failed: circular dependency detected
 ```
 

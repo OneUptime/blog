@@ -12,7 +12,7 @@ This error occurs when you try to access a key on a dictionary that does not hav
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "The task includes an option with an undefined variable. The error was: 'dict object' has no attribute 'nonexistent_key'"
 }

@@ -161,7 +161,7 @@ argocd app get test-gpg -o json | jq '.status.sourceType'
 
 If the commit is not signed or signed by an untrusted key:
 
-```
+```text
 FATA[0001] rpc error: code = Unknown desc = application spec is invalid:
 InvalidSpecError: GnuPG verification required but commit is not signed
 ```

@@ -16,7 +16,7 @@ The good news is that migrating does not mean throwing away your existing loggin
 
 Before making any changes, it helps to understand what OpenTelemetry adds to a log record. A standard log line might look like this:
 
-```
+```text
 2024-03-15 14:23:45.123 ERROR [order-service] Failed to process order 12345: timeout
 ```
 

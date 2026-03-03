@@ -44,7 +44,7 @@ The `strict: false` setting tells the plugin to skip hosts where an expression f
 
 Place this file in your inventory directory alongside your other inventory sources:
 
-```
+```text
 inventory/
   01-static.ini
   02-aws_ec2.yml
@@ -208,7 +208,7 @@ Now playbooks can target `webservers` and get every web server from every source
 
 Here is a complete inventory directory for a multi-cloud setup:
 
-```
+```text
 inventory/
   01-onprem.ini
   02-aws_ec2.yml
@@ -301,7 +301,7 @@ ansible web-dc-01.local -i inventory/ -m debug -a "var=hostvars[inventory_hostna
 
 The constructed plugin needs all other inventory data loaded first. If your files are processed alphabetically:
 
-```
+```text
 inventory/
   01-static.ini          # Loaded first
   02-aws_ec2.yml         # Loaded second

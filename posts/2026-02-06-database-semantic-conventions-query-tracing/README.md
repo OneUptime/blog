@@ -16,7 +16,7 @@ This guide covers how to apply database semantic conventions to your instrumenta
 
 Without standardized naming, database telemetry gets messy fast. Consider three different services, each written by different developers:
 
-```
+```text
 # Service A (Python + PostgreSQL)
 db_type: "postgres"
 query: "SELECT * FROM users WHERE id = $1"
@@ -326,7 +326,7 @@ These queries work because every service follows the same conventions. You do no
 
 Getting span names right is crucial for database spans. Here are the rules to follow:
 
-```
+```text
 # Good span names (low cardinality, descriptive)
 SELECT users
 INSERT orders

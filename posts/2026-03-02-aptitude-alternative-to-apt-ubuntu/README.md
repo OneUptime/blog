@@ -65,7 +65,7 @@ The interface shows:
 
 Key bindings in the interactive interface:
 
-```
+```text
 Arrow keys    - Navigate
 Enter         - Expand/collapse category or view package details
 u             - Update package lists
@@ -266,7 +266,7 @@ fi
 
 Configure aptitude behavior in `~/.aptitude/config` or `/etc/apt/apt.conf`:
 
-```
+```text
 // Prefer aptitude's behavior for autoremove
 Aptitude::Delete-Unused "true";
 

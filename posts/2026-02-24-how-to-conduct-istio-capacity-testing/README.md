@@ -314,7 +314,7 @@ histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{nam
 
 After running your tests, compile the results into a comparison table:
 
-```
+```text
 | Metric              | No Mesh  | With Mesh | Overhead |
 |---------------------|----------|-----------|----------|
 | Max RPS             | 45,000   | 38,000    | -15.5%   |

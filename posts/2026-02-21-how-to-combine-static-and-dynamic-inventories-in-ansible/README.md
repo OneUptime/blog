@@ -14,7 +14,7 @@ Most real-world infrastructure is not purely cloud or purely on-premises. You ha
 
 The simplest way to combine static and dynamic inventory is to put them all in the same directory.
 
-```
+```text
 inventory/
   01-static-hosts.ini        # On-premises and manually managed servers
   02-aws_ec2.yml             # AWS EC2 inventory plugin config

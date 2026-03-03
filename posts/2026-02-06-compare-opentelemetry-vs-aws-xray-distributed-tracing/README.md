@@ -114,14 +114,14 @@ The trace ID format difference is noteworthy. X-Ray trace IDs include a timestam
 
 X-Ray uses its own header format for propagating trace context across services:
 
-```
+```text
 # X-Ray trace header format
 X-Amzn-Trace-Id: Root=1-67891233-abcdef012345678912345678;Parent=53995c3f42cd8ad8;Sampled=1
 ```
 
 OpenTelemetry uses the W3C TraceContext standard:
 
-```
+```text
 # W3C TraceContext format used by OpenTelemetry
 traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
 tracestate: vendor1=value1,vendor2=value2

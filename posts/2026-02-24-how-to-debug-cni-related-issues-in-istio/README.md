@@ -28,7 +28,7 @@ kubectl describe pod <pod-name> -n <namespace>
 
 Look for events like:
 
-```
+```text
 Warning  FailedCreatePodSandBox  networkPlugin cni failed to set up pod network
 ```
 
@@ -110,7 +110,7 @@ kubectl exec -it <pod-name> -c istio-proxy -- iptables -t nat -L -n -v
 
 You should see rules like:
 
-```
+```text
 Chain ISTIO_INBOUND (1 references)
  pkts bytes target     prot opt in     out     source       destination
     0     0 ISTIO_IN_REDIRECT  tcp  --  *      *       0.0.0.0/0    0.0.0.0/0    tcp dpt:80

@@ -83,7 +83,7 @@ If you tag resources with an Environment tag (production, staging, development),
 
 Filters narrow the data to specific subsets. Common filter combinations:
 
-```
+```text
 Filter: Service name = "Virtual Machines"
 Group by: Resource group name
 Granularity: Daily
@@ -91,7 +91,7 @@ Granularity: Daily
 
 This shows you daily VM costs per resource group - useful for spotting resource groups where VM costs are growing.
 
-```
+```text
 Filter: Tag:Environment = "Development"
 Group by: Service name
 Granularity: Monthly
@@ -99,7 +99,7 @@ Granularity: Monthly
 
 This shows how dev environment costs are distributed across services and whether they are growing.
 
-```
+```text
 Filter: Resource group name = "rg-data"
 Group by: Meter subcategory
 Granularity: Daily

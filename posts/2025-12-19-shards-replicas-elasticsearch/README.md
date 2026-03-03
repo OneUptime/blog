@@ -29,7 +29,7 @@ flowchart TD
 
 When you index a document, Elasticsearch determines which shard receives it using this formula:
 
-```
+```text
 shard = hash(document_id) % number_of_shards
 ```
 
@@ -94,7 +94,7 @@ GET /_cat/shards/products?v
 ```
 
 Output:
-```
+```text
 index    shard prirep state   docs  store ip         node
 products 0     p      STARTED 1000  5.2mb 10.0.0.1   node-1
 products 0     r      STARTED 1000  5.2mb 10.0.0.2   node-2
@@ -144,7 +144,7 @@ flowchart LR
 
 ### Calculate Shard Count
 
-```
+```text
 Number of shards = Estimated index size / Target shard size
 ```
 
@@ -169,7 +169,7 @@ Example:
 
 A common mistake is creating too many shards. Consider this calculation:
 
-```
+```text
 1000 indices x 5 shards x 1 replica = 10,000 shards
 ```
 

@@ -231,7 +231,7 @@ Go back to the Discord Developer Portal, find your application, and under "Gener
 
 Generate an invite URL with the `applications.commands` scope.
 
-```
+```text
 https://discord.com/api/oauth2/authorize?client_id=YOUR_APP_ID&scope=applications.commands+bot
 ```
 

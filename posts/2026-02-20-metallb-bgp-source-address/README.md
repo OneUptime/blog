@@ -8,7 +8,7 @@ Description: Learn how to configure the BGP source address in MetalLB for multi-
 
 ---
 
-### Why Configure the BGP Source Address?
+## Why Configure the BGP Source Address?
 
 When MetalLB opens a BGP session with an upstream router, it uses a source IP address for the TCP connection on port 179. By default, the kernel picks the source address based on the routing table, which is usually the IP of the interface closest to the peer.
 

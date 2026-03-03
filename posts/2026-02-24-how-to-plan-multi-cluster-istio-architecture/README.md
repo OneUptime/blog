@@ -67,7 +67,7 @@ If CIDRs overlap, you must use different-network mode even if the clusters can t
 
 All clusters in a mesh should share the same trust domain. The trust domain is part of every workload identity (SPIFFE ID):
 
-```
+```text
 spiffe://cluster.local/ns/default/sa/reviews
 ```
 
@@ -135,7 +135,7 @@ How does external traffic enter the mesh? Options:
 
 For most multi-cluster deployments, option 1 with a global load balancer in front is the best approach:
 
-```
+```text
 User -> Global LB (Route53/CloudFlare) -> Cluster1 Ingress Gateway
                                        -> Cluster2 Ingress Gateway
 ```

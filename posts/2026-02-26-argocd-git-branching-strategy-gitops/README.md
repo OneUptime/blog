@@ -25,7 +25,7 @@ Most experienced GitOps practitioners prefer directory-based separation over bra
 
 This is the recommended approach for most teams. All environments are defined on the `main` branch using directory-based separation.
 
-```
+```text
 config-repo/
   apps/
     my-service/
@@ -106,7 +106,7 @@ graph TD
 
 Some teams prefer separate branches for each environment. This can work, but comes with significant trade-offs.
 
-```
+```text
 main branch (dev)
   apps/my-service/
     deployment.yaml

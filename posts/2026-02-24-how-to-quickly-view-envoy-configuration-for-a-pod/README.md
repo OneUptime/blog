@@ -26,7 +26,7 @@ istioctl proxy-config listeners deploy/my-app -n default
 
 Output looks like:
 
-```
+```text
 ADDRESSES     PORT  MATCH                        DESTINATION
 10.96.0.1     443   Trans: raw_buffer; App: http  Cluster: outbound|443||kubernetes.default.svc.cluster.local
 0.0.0.0       80    Trans: raw_buffer; App: http  Route: 80
@@ -63,7 +63,7 @@ istioctl proxy-config clusters deploy/my-app -n default
 
 This lists every service endpoint the proxy knows about, including the load balancing policy and circuit breaking settings:
 
-```
+```text
 SERVICE FQDN                           PORT   SUBSET   DIRECTION   TYPE
 api-server.backend.svc.cluster.local   8080   -        outbound    EDS
 frontend.default.svc.cluster.local     80     -        outbound    EDS
@@ -87,7 +87,7 @@ istioctl proxy-config endpoints deploy/my-app -n default \
 
 This shows individual pod IPs and their health status:
 
-```
+```text
 ENDPOINT            STATUS   OUTLIER CHECK   CLUSTER
 10.244.1.15:8080    HEALTHY  OK              outbound|8080||api-server.backend.svc.cluster.local
 10.244.2.22:8080    HEALTHY  OK              outbound|8080||api-server.backend.svc.cluster.local

@@ -100,7 +100,7 @@ Check the rule order:
 sudo ufw status numbered
 ```
 
-```
+```text
      To                         Action      From
      --                         ------      ----
 [ 1] 22/tcp                     DENY IN     203.0.113.50

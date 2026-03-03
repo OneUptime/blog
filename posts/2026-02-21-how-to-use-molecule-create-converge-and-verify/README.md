@@ -53,7 +53,7 @@ molecule list
 
 Output:
 
-```
+```text
 Instance Name    Driver Name    Provisioner Name    Scenario Name    Created    Converged
 --------------   -----------    ----------------    -------------    -------    ---------
 ubuntu2204       docker         ansible             default          true       false

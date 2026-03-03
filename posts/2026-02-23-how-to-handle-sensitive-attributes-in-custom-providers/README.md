@@ -73,7 +73,7 @@ func (r *DatabaseResource) Schema(ctx context.Context, req resource.SchemaReques
 
 With this schema, `terraform plan` will show:
 
-```
+```text
 # example_database.main will be created
 + resource "example_database" "main" {
     + admin_password    = (sensitive value)

@@ -27,7 +27,7 @@ You know your Terraform runs are "large" when:
 
 The most effective long-term solution is splitting a large configuration into smaller, focused workspaces. Each workspace manages a logical group of resources:
 
-```
+```text
 # Before: One monolith workspace managing everything
 monolith-workspace/
   networking.tf       # VPCs, subnets, routes
@@ -289,7 +289,7 @@ Agents running in the same AWS region as your infrastructure have lower API late
 
 Large repositories can slow down the configuration upload to HCP Terraform:
 
-```
+```text
 # .terraformignore - Exclude unnecessary files from upload
 .git/
 .terraform/

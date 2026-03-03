@@ -68,7 +68,7 @@ That is it. One line change. But there is an important prerequisite to handle fi
 
 The most common reason pipelining fails is the `requiretty` setting in sudoers. Many Linux distributions ship with this line in `/etc/sudoers`:
 
-```
+```text
 Defaults    requiretty
 ```
 
@@ -252,7 +252,7 @@ ansible all -m ping -vvvv
 
 Look for this in the output:
 
-```
+```text
 <web01> EXEC /bin/sh -c 'echo ~ && sleep 0'
 <web01> EXEC /bin/sh -c '( umask 77 && mkdir -p "` echo ~/.ansible/tmp `"&& mkdir "` echo ~/.ansible/tmp/ansible-tmp-... `" && echo ansible-tmp-... )'
 ```
@@ -296,7 +296,7 @@ You cannot enable or disable pipelining per task in Ansible. It is a connection-
 
 If tasks fail after enabling pipelining, the usual culprit is `requiretty`. Check for these error messages:
 
-```
+```text
 "msg": "sudo: sorry, you must have a tty to run sudo"
 ```
 

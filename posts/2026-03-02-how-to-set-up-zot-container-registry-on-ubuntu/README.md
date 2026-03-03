@@ -86,7 +86,7 @@ htpasswd -Bn admin
 sudo nano /etc/zot/htpasswd
 ```
 
-```
+```text
 # /etc/zot/htpasswd - bcrypt-hashed passwords
 admin:$2y$05$ZfSdZqfW7t5CG2vCJ5gMZuE.MJE2fkDSCZPwEpWqJXsGN4NXGxOm6
 developer:$2y$05$someotherhashhere

@@ -289,7 +289,7 @@ Docker Build Cloud build minutes are metered based on your subscription plan. He
 
 **Use .dockerignore aggressively:** A large build context takes time to upload to the cloud builder. Exclude unnecessary files:
 
-```
+```text
 # .dockerignore - reduce build context size
 .git
 node_modules

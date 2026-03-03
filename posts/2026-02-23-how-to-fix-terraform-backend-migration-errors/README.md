@@ -14,7 +14,7 @@ Changing your Terraform backend is one of those tasks that sounds simple but can
 
 When you change the backend configuration in your Terraform code and run `terraform init`, Terraform detects the change and asks if you want to migrate the state:
 
-```
+```text
 Initializing the backend...
 
 Backend configuration changed!
@@ -30,7 +30,7 @@ If you say "yes," Terraform reads the state from the old backend and writes it t
 
 ## Error 1: State Lock Conflict
 
-```
+```text
 Error: Error acquiring the state lock
 
 Error message: ConditionalCheckFailedException: The conditional request failed
@@ -60,7 +60,7 @@ terraform init -migrate-state
 
 ## Error 2: Old Backend Not Accessible
 
-```
+```text
 Error: Failed to read backend state
 
 Error retrieving state from old backend: AccessDenied: Access Denied
@@ -92,7 +92,7 @@ terraform init
 
 ## Error 3: New Backend Not Writable
 
-```
+```text
 Error: Failed to save state
 
 Error saving state: AccessDenied: Access Denied
@@ -143,7 +143,7 @@ aws dynamodb describe-table --table-name terraform-locks
 
 ## Error 4: Backend Configuration Incomplete
 
-```
+```text
 Error: Backend initialization required, please run "terraform init"
 
 Error: Invalid backend configuration
@@ -176,7 +176,7 @@ terraform {
 
 ## Error 5: State Version Mismatch
 
-```
+```text
 Error: State version not supported
 
 The state is stored in a newer format (version 5) that this version

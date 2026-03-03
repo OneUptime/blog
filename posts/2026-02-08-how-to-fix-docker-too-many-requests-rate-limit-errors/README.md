@@ -26,7 +26,7 @@ The critical detail is how "per source IP" works for anonymous pulls. If multipl
 
 ## What the Error Looks Like
 
-```
+```text
 Error response from daemon: toomanyrequests: You have reached your pull rate limit. You may increase the limit by authenticating and upgrading: https://www.docker.com/increase-rate-limit
 
 Error response from daemon: toomanyrequests: Too Many Requests.
@@ -34,7 +34,7 @@ Error response from daemon: toomanyrequests: Too Many Requests.
 
 In Kubernetes, you see pods stuck in `ImagePullBackOff` with this message in the events:
 
-```
+```text
 Failed to pull image "nginx:alpine": rpc error: code = Unknown desc = toomanyrequests: You have reached your pull rate limit
 ```
 
@@ -55,7 +55,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 The response headers show your limits:
 
-```
+```text
 ratelimit-limit: 100;w=21600
 ratelimit-remaining: 87;w=21600
 ```

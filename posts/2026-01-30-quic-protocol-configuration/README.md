@@ -39,7 +39,7 @@ QUIC integrates several key features that make it superior for modern applicatio
 
 QUIC packets contain a header and encrypted payload. The header includes:
 
-```
+```text
 QUIC Packet Structure:
 +------------------+------------------+
 | Header Form (1)  | Fixed Bit (1)    |

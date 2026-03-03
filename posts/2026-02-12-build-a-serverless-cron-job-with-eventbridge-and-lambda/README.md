@@ -119,7 +119,7 @@ aws lambda add-permission \
 
 AWS cron expressions have 6 fields:
 
-```
+```text
 cron(minutes hours day-of-month month day-of-week year)
 ```
 

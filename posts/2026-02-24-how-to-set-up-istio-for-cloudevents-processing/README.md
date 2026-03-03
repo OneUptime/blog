@@ -16,7 +16,7 @@ The CloudEvents spec defines a set of required attributes like `type`, `source`,
 
 When CloudEvents are transported over HTTP, the event attributes become HTTP headers with a `ce-` prefix:
 
-```
+```text
 POST /events HTTP/1.1
 Host: event-processor.default.svc.cluster.local
 Content-Type: application/json

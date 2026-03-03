@@ -88,7 +88,7 @@ nodetool status
 
 ### Key Health JMX Metrics
 
-```
+```text
 # Gossip status
 org.apache.cassandra.net:type=FailureDetector
   DownEndpointCount    - Number of down nodes
@@ -113,7 +113,7 @@ Cassandra writes data to SSTables (Sorted String Tables). Over time, multiple SS
 
 ### Compaction JMX Metrics
 
-```
+```text
 # Compaction throughput
 org.apache.cassandra.metrics:type=Compaction,name=BytesCompacted
   Count    - Total bytes compacted (cumulative)
@@ -133,7 +133,7 @@ org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=LiveSSTableCount
 
 ### Compaction Throughput
 
-```
+```text
 compaction_throughput = rate(bytes_compacted[5m])
 ```
 
@@ -141,7 +141,7 @@ If compaction cannot keep up with writes, SSTable count grows, which degrades re
 
 ### Pending Compactions
 
-```
+```text
 pending_compactions = Compaction.PendingTasks
 ```
 
@@ -151,7 +151,7 @@ A growing pending compaction count indicates compaction is falling behind. Commo
 
 ### Per-Table Latency
 
-```
+```text
 # Read latency
 org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=ReadLatency
   Count    - Total read operations
@@ -167,7 +167,7 @@ org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=WriteLatency
 
 ### Coordinator Latency
 
-```
+```text
 # Client-facing latency (includes network hops)
 org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Latency
 org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Latency

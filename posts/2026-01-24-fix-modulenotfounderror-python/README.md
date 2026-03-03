@@ -212,7 +212,7 @@ python -c "import random; print(random.__file__)"
 
 For your own packages, incorrect structure causes import failures:
 
-```
+```text
 myproject/
     main.py
     utils/
@@ -226,7 +226,7 @@ from utils import helper  # ModuleNotFoundError
 
 ### Solution: Add __init__.py Files
 
-```
+```text
 myproject/
     main.py
     utils/
@@ -345,7 +345,7 @@ PYTHONPATH=/path/to/module python script.py
 
 ### Scenario: Script in Subdirectory
 
-```
+```text
 project/
     src/
         main.py

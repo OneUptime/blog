@@ -16,7 +16,7 @@ This post covers how to download, transfer, and install collection tarballs, plu
 
 A collection tarball is a compressed archive file that contains all the files for an Ansible collection in a specific directory layout. The file naming convention is:
 
-```
+```text
 <namespace>-<collection_name>-<version>.tar.gz
 ```
 
@@ -135,7 +135,7 @@ ansible-galaxy collection build
 
 This creates a tarball in the current directory:
 
-```
+```text
 Created collection for my_namespace.my_collection at
 /path/to/my-collection/my_namespace-my_collection-1.0.0.tar.gz
 ```
@@ -215,7 +215,7 @@ sha256sum -c checksums.sha256
 
 The output tells you if any files were corrupted during transfer:
 
-```
+```text
 community-docker-3.8.0.tar.gz: OK
 community-postgresql-3.2.0.tar.gz: OK
 ansible-posix-1.5.4.tar.gz: OK

@@ -218,7 +218,7 @@ The lock file records the resolved version that satisfies all constraints from b
 
 When multiple team members update the lock file, Git merge conflicts can occur:
 
-```
+```text
 <<<<<<< HEAD
 provider "registry.terraform.io/hashicorp/aws" {
   version     = "5.30.0"

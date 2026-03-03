@@ -186,7 +186,7 @@ S3 partitions data by key prefix. If all your uploads go to the same prefix, you
 
 Bad pattern - all files start with the same prefix.
 
-```
+```text
 uploads/2026/02/12/file-001.csv
 uploads/2026/02/12/file-002.csv
 uploads/2026/02/12/file-003.csv
@@ -194,7 +194,7 @@ uploads/2026/02/12/file-003.csv
 
 Better pattern - add randomness to distribute across partitions.
 
-```
+```text
 uploads/a3f2/2026/02/12/file-001.csv
 uploads/7b1c/2026/02/12/file-002.csv
 uploads/e9d4/2026/02/12/file-003.csv

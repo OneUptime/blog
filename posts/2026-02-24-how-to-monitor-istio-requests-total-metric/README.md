@@ -18,7 +18,7 @@ Every time a request flows through an Envoy sidecar, `istio_requests_total` incr
 
 The power of `istio_requests_total` is in its labels. Here's what a typical sample looks like:
 
-```
+```text
 istio_requests_total{
   reporter="destination",
   source_workload="frontend",

@@ -97,7 +97,7 @@ sudo perf report --sort comm,dso
 
 The `perf report` output shows functions sorted by CPU time:
 
-```
+```text
 Overhead  Command  Shared Object       Symbol
   23.45%  myapp    myapp               [.] myapp::process_items
   15.23%  myapp    myapp               [.] alloc::vec::Vec<T>::push

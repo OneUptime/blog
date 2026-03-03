@@ -21,7 +21,7 @@ This guide shows you how to configure SSL/TLS on Apache using Ansible, including
 
 ## Project Structure
 
-```
+```text
 ssl-apache/
   inventory/
     hosts.yml

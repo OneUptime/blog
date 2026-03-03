@@ -184,7 +184,7 @@ The filelog receiver supports glob patterns, multiline parsing, regex extraction
 
 This is where Splunk genuinely shines. SPL (Search Processing Language) is one of the most powerful log query languages available. It can handle everything from simple keyword searches to complex statistical analysis.
 
-```
+```text
 # Splunk SPL - Find error patterns in the last hour
 index=main sourcetype=application_json level=error earliest=-1h
 | stats count by error_code, service
@@ -192,7 +192,7 @@ index=main sourcetype=application_json level=error earliest=-1h
 | head 10
 ```
 
-```
+```text
 # Splunk SPL - Calculate 95th percentile response time by endpoint
 index=main sourcetype=access_log
 | rex field=_raw "(?<response_time>\d+)ms"

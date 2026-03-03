@@ -32,7 +32,7 @@ The `@aws-sdk/lib-dynamodb` package is the Document Client - it handles marshall
 
 Here's the structure we're building.
 
-```
+```text
 dynamodb-express-api/
   src/
     config/

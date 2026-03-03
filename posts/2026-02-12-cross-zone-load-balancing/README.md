@@ -168,7 +168,7 @@ Cross-AZ data transfer charges apply when an NLB with cross-zone enabled sends t
 
 Here's a quick cost estimate:
 
-```
+```text
 Scenario: 100 GB/day of traffic through NLB
 Without cross-zone: $0 extra (traffic stays in-AZ)
 With cross-zone: ~50% crosses AZs = 50 GB x $0.01 = $0.50/day = $15/month

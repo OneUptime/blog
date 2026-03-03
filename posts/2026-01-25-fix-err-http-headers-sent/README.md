@@ -10,7 +10,7 @@ Description: Fix the ERR_HTTP_HEADERS_SENT error in Express.js by understanding 
 
 When you see this error in your Node.js application:
 
-```
+```text
 Error [ERR_HTTP_HEADERS_SENT]: Cannot set headers after they are sent to the client
 ```
 

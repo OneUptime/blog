@@ -62,7 +62,7 @@ gh api repos/istio/istio/milestones --jq '.[] | {title: .title, open_issues: .op
 
 Each milestone shows the issues and PRs that are targeted for that release. You can filter by label to see specific areas:
 
-```
+```text
 # All networking features planned for a milestone
 https://github.com/istio/istio/issues?q=milestone:"1.23"+label:area/networking
 
@@ -108,7 +108,7 @@ Istio publishes detailed release notes with every version. There are several way
 
 The Istio blog at `istio.io/latest/blog/` publishes announcements for major releases, security advisories, and feature highlights. You can subscribe via RSS:
 
-```
+```text
 # RSS feed URL
 https://istio.io/latest/blog/feed.xml
 ```

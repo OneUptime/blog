@@ -138,7 +138,7 @@ const dataProcessor = new python.PythonFunction(this, 'DataProcessor', {
 
 The directory structure for a Python function looks like this.
 
-```
+```text
 lambda/data-processor/
   index.py              # Your handler code
   requirements.txt      # pip dependencies

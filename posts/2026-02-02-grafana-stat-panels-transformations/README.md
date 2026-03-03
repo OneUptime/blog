@@ -185,7 +185,7 @@ The Mode setting controls output structure:
 
 **Series to rows** creates one row per series with calculated values as columns:
 
-```
+```text
 | Field    | Last  | Mean  | Max   |
 |----------|-------|-------|-------|
 | cpu_0    | 45.2  | 42.1  | 78.3  |
@@ -195,7 +195,7 @@ The Mode setting controls output structure:
 
 **Reduce fields** calculates across all series:
 
-```
+```text
 | Last  | Mean  | Max   |
 |-------|-------|-------|
 | 45.2  | 42.1  | 82.1  |
@@ -405,7 +405,7 @@ Calculations:
 
 Output shows aggregated values per group:
 
-```
+```text
 | endpoint     | request_count (sum) | response_time (mean) | error_count (sum) |
 |--------------|---------------------|----------------------|-------------------|
 | /api/users   | 15420               | 45.2                 | 23                |

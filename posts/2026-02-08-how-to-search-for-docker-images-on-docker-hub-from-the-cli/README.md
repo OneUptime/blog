@@ -88,7 +88,7 @@ docker search --format json nginx
 
 Available template fields for search results:
 
-```
+```text
 .Name          - Image name
 .Description   - Image description
 .StarCount     - Number of stars

@@ -10,7 +10,7 @@ Description: Resolve the AWS error about reaching the maximum number of VPCs per
 
 You're trying to create a new VPC in AWS and you get this error:
 
-```
+```text
 The maximum number of VPCs has been reached.
 ```
 
@@ -173,7 +173,7 @@ If you're hitting VPC limits because of environment sprawl, consider whether you
 
 Instead of one VPC per environment, you can use a single VPC with separate subnets for dev, staging, and production. Use security groups and NACLs to isolate traffic.
 
-```
+```text
 VPC (10.0.0.0/16)
   ├── Production Subnets (10.0.0.0/20)
   ├── Staging Subnets (10.0.16.0/20)

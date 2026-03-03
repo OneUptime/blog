@@ -28,7 +28,7 @@ istioctl describe pod reviews-v1-545db77b95-abc12 -n default
 
 You get output like:
 
-```
+```text
 Pod: reviews-v1-545db77b95-abc12
    Pod Revision: default
    Pod Ports: 9080 (reviews), 15090 (istio-proxy)
@@ -62,7 +62,7 @@ The `describe` output is broken into several sections. Here's what each one mean
 
 The top section shows basic pod details, including which Istio revision the sidecar is running (important if you're doing canary upgrades), and what ports are exposed.
 
-```
+```text
 Pod: reviews-v1-545db77b95-abc12
    Pod Revision: default
    Pod Ports: 9080 (reviews), 15090 (istio-proxy)
@@ -74,7 +74,7 @@ If the pod revision doesn't match what you expect, the sidecar might be injected
 
 This shows which Kubernetes Services select this pod and how their ports map:
 
-```
+```text
 Service: reviews
    Port: http 9080/HTTP targets pod port 9080
 ```
@@ -87,7 +87,7 @@ The protocol detection is also important here. Istio needs to know if a port car
 
 If any VirtualServices match this pod's service, they show up here with their routing rules:
 
-```
+```text
 VirtualService: reviews-route
    Match: /reviews* to reviews.default
    Timeout: 5s
@@ -100,7 +100,7 @@ This is where you verify that your routing configuration is actually applying. I
 
 DestinationRules that target this pod's service are listed with their traffic policies and subsets:
 
-```
+```text
 DestinationRule: reviews-dr
    Traffic Policy: connection pool, outlier detection
    Subset: v1 (labels: version=v1)
@@ -113,7 +113,7 @@ If you're doing subset routing (sending traffic to specific versions), verify th
 
 The effective PeerAuthentication policy shows up at the bottom:
 
-```
+```text
 Effective PeerAuthentication:
    Workload mTLS mode: STRICT
 ```

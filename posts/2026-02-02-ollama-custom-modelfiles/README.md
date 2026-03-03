@@ -777,7 +777,7 @@ Follow these guidelines to create effective, maintainable custom models.
 
 Maintain a consistent directory structure for your Modelfiles.
 
-```
+```text
 ollama-models/
 ├── modelfiles/
 │   ├── code-reviewer.Modelfile

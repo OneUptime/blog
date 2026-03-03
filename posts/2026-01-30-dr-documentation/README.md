@@ -156,7 +156,7 @@ command --with-flags
 ```
 
 **Expected Output**:
-```
+```text
 Success message or expected response
 ```
 
@@ -179,7 +179,7 @@ Steps to undo changes if something goes wrong.
 - [ ] Update incident ticket
 - [ ] Notify stakeholders
 - [ ] Document any deviations
-```
+```text
 
 ### Example: Database Failover Runbook
 
@@ -226,7 +226,7 @@ psql -h db-replica-01.internal -U admin -c \
 ```
 
 **Expected Output** (confirming primary is down):
-```
+```text
 db-primary.internal:5432 - no response
 ```
 
@@ -253,7 +253,7 @@ psql -U admin -c "SELECT pg_is_in_recovery();"
 ```
 
 **Expected Output**:
-```
+```text
  pg_is_in_recovery
 -------------------
  f
@@ -308,7 +308,7 @@ If the original primary comes back online, do NOT allow it to accept writes:
 - [ ] Configure remaining replicas to follow new primary
 - [ ] Review and rebuild failed server
 - [ ] Schedule post-incident review
-```
+```text
 
 ## Contact and Escalation Lists
 

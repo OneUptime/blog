@@ -14,7 +14,7 @@ Managing all of this with Terraform gives you version-controlled, reproducible d
 
 ## Module Structure
 
-```
+```text
 modules/firestore/
   main.tf         # Database and API resources
   indexes.tf      # Composite indexes
@@ -168,7 +168,7 @@ resource "google_firebaserules_release" "firestore" {
 
 Here is an example security rules file for a typical application:
 
-```
+```text
 // firestore.rules
 // Security rules for the application database
 // These rules run on every read and write operation

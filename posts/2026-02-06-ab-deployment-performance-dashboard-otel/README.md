@@ -242,7 +242,7 @@ if __name__ == "__main__":
 
 Use Grafana template variables to make the dashboard flexible:
 
-```
+```text
 Variable: variant_a
   Type: Query
   Query: label_values(http_request_duration_seconds_bucket, deployment_variant)

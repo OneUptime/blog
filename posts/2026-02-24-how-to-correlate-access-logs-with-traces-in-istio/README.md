@@ -154,7 +154,7 @@ For the EFK stack, the approach is similar but uses Kibana's URL drilldown featu
 
 In Kibana, create a URL drilldown on the `trace_id` field that links to your Jaeger UI:
 
-```
+```text
 http://jaeger.your-cluster.local/trace/{{event.value}}
 ```
 

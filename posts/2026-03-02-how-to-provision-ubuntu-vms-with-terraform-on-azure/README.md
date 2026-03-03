@@ -46,7 +46,7 @@ sudo apt update && sudo apt install -y terraform
 
 Organize your Terraform files logically:
 
-```
+```text
 azure-ubuntu-vm/
   main.tf          # Core resources
   variables.tf     # Input variables

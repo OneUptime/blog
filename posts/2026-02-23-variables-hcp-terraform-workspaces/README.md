@@ -44,7 +44,7 @@ In HCP Terraform, you set values for these in the workspace variables section. T
 
 These are set in the shell environment during remote execution. They are how you pass cloud provider credentials and other runtime configuration:
 
-```
+```text
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=wJalr...
 AWS_DEFAULT_REGION=us-east-1
@@ -53,7 +53,7 @@ TF_LOG=DEBUG
 
 Any environment variable prefixed with `TF_VAR_` is automatically mapped to a Terraform variable:
 
-```
+```text
 TF_VAR_instance_type=t3.large
 # This sets var.instance_type to "t3.large"
 ```
@@ -71,7 +71,7 @@ TF_VAR_instance_type=t3.large
 
 For simple string values:
 
-```
+```text
 Key: environment
 Value: production
 Category: Terraform variable
@@ -81,7 +81,7 @@ Sensitive: No
 
 For complex types (maps, lists, objects), enable the HCL checkbox:
 
-```
+```text
 Key: tags
 Value: {
   Environment = "production"
@@ -93,7 +93,7 @@ HCL: Yes
 Sensitive: No
 ```
 
-```
+```text
 Key: availability_zones
 Value: ["us-east-1a", "us-east-1b", "us-east-1c"]
 Category: Terraform variable
@@ -207,7 +207,7 @@ variable "instance_type" {
 instance_type = "t3.small"
 ```
 
-```
+```text
 # Workspace variable - highest (for non-CLI workflows)
 Key: instance_type
 Value: t3.large
@@ -219,7 +219,7 @@ The workspace variable wins. The final value is `t3.large`.
 
 For complex data types, enable the HCL toggle. This tells HCP Terraform to parse the value as HCL rather than a plain string:
 
-```
+```text
 # Without HCL flag:
 Key: subnets
 Value: ["subnet-abc", "subnet-def"]

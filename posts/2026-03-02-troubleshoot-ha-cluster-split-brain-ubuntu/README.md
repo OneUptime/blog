@@ -45,7 +45,7 @@ sudo corosync-quorumtool -s
 
 An actual split-brain might show:
 
-```
+```text
 Cluster name: ha-cluster
 Stack: corosync
 WARNINGS:
@@ -247,7 +247,7 @@ sudo corosync-quorumtool -s
 
 Configure two network rings in Corosync so that a single network failure does not isolate nodes:
 
-```
+```text
 totem {
     version: 2
     transport: knet

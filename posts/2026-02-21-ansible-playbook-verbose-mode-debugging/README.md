@@ -41,7 +41,7 @@ ansible-playbook -i inventory.ini deploy.yml -v
 
 Sample output:
 
-```
+```text
 TASK [Install nginx] **********************************************************
 changed: [web01] => {"cache_update_time": 1708523041, "cache_updated": true, "changed": true}
 
@@ -62,7 +62,7 @@ ansible-playbook -i inventory.ini deploy.yml -vv
 
 Sample output:
 
-```
+```text
 TASK [Copy config file] *******************************************************
 task path: /home/admin/playbooks/deploy.yml:15
 ok: [web01] => {"changed": false, "checksum": "a3f2b8c..."}
@@ -82,7 +82,7 @@ ansible-playbook -i inventory.ini deploy.yml -vvv
 
 Sample output:
 
-```
+```text
 TASK [Install nginx] **********************************************************
 task path: /home/admin/playbooks/deploy.yml:10
 <192.168.1.10> ESTABLISH SSH CONNECTION FOR USER: admin

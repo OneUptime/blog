@@ -31,7 +31,7 @@ basic_auth_password = secret
 
 Here are the most useful metrics for monitoring Grafana:
 
-```
+```text
 # API performance
 grafana_http_request_duration_seconds_bucket   - HTTP request duration histogram
 grafana_http_request_total                      - Total HTTP requests by status
@@ -187,7 +187,7 @@ receivers:
 
 If Grafana uses a PostgreSQL or MySQL backend, monitor the database connection pool:
 
-```
+```text
 grafana_database_conn_max_open            - Maximum open connections
 grafana_database_conn_open                - Current open connections
 grafana_database_conn_in_use              - Connections in use

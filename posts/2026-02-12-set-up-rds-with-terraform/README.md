@@ -16,7 +16,7 @@ Terraform gives you version-controlled, repeatable infrastructure. Your RDS conf
 
 Here's how I'd organize the Terraform files:
 
-```
+```text
 terraform/
   rds/
     main.tf           # RDS instance and related resources

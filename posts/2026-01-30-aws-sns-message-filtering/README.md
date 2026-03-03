@@ -651,7 +651,7 @@ for queue_name, queue_info in queues.items():
 ```
 
 Expected output:
-```
+```text
 premium-orders: 2 messages (ORD-002 and ORD-003)
 high-value-orders: 1 message (ORD-003)
 shipping-notifications: 1 message (ORD-001 shipping)

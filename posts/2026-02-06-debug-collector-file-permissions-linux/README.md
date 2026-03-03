@@ -157,7 +157,7 @@ sudo grep otelcol /var/log/audit/audit.log | grep denied
 ### Scenario 1: Cannot Read Configuration File
 
 **Error:**
-```
+```text
 Error: failed to read config: open /etc/otelcol/config.yaml: permission denied
 ```
 
@@ -230,7 +230,7 @@ sudo systemctl restart otelcol
 ### Scenario 2: Cannot Write to Data Directory
 
 **Error:**
-```
+```text
 Error: failed to initialize storage: mkdir /var/lib/otelcol/queue: permission denied
 ```
 
@@ -277,7 +277,7 @@ exporters:
 ### Scenario 3: Cannot Create Log Files
 
 **Error:**
-```
+```text
 Error: failed to open log file: open /var/log/otelcol/collector.log: permission denied
 ```
 
@@ -322,7 +322,7 @@ EOF
 ### Scenario 4: Cannot Read Host Metrics
 
 **Error:**
-```
+```text
 Error: failed to scrape metrics: open /proc/diskstats: permission denied
 ```
 
@@ -382,7 +382,7 @@ receivers:
 ### Scenario 5: SELinux Blocking Access
 
 **Error:**
-```
+```text
 Error: permission denied
 # But file permissions look correct
 ```

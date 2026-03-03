@@ -320,7 +320,7 @@ For maximum flexibility, use variables to determine which user runs each task.
 
 The SSH user (deploy) needs sudo permission to become each target user. Configure sudoers accordingly.
 
-```
+```text
 # /etc/sudoers.d/ansible-multi-user
 # Allow deploy to become multiple specific users
 

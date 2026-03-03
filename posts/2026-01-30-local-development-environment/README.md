@@ -141,7 +141,7 @@ docker compose version
 
 Organize your project for containerized development:
 
-```
+```text
 my-project/
 ├── docker/
 │   ├── Dockerfile.dev        # Development Dockerfile

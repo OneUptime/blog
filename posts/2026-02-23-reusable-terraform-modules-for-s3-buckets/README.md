@@ -24,7 +24,7 @@ Without a module, these settings get applied inconsistently. Someone forgets to 
 
 ## Module Structure
 
-```
+```text
 modules/s3-bucket/
   main.tf
   variables.tf

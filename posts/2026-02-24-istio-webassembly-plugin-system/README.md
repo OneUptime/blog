@@ -32,7 +32,7 @@ Envoy has a built-in Wasm runtime (based on V8 or Wasmtime) that can load and ex
 
 The Wasm plugin lifecycle in Envoy follows this pattern:
 
-```
+```text
 1. Envoy loads the Wasm module
 2. For each request/response:
    a. onRequestHeaders() - called when request headers arrive
@@ -131,7 +131,7 @@ Wasm plugins communicate with Envoy through the proxy-wasm ABI (Application Bina
 
 The ABI provides these host functions:
 
-```
+```text
 // Header manipulation
 get_header_map_value() / set_header_map_value()
 add_header_map_value() / remove_header_map_value()

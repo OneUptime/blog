@@ -42,7 +42,7 @@ ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/ {print}'
 
 In `top` or `htop`, zombies appear in the task summary line:
 
-```
+```text
 Tasks: 234 total,   1 running, 232 sleeping,   0 stopped,   2 zombie
 ```
 

@@ -223,7 +223,7 @@ dockerize \
 
 The template uses Go's text/template syntax:
 
-```
+```text
 // config.tmpl - Configuration template for dockerize
 {
   "database": {

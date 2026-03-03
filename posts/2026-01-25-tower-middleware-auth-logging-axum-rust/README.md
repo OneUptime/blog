@@ -341,7 +341,7 @@ curl -i http://localhost:3000/health
 
 Your logs will show structured output like:
 
-```
+```text
 INFO Incoming request method=GET uri=/secret
 INFO Request completed method=GET uri=/secret status=401 duration_ms=0
 ```

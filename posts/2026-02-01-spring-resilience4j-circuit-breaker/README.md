@@ -283,7 +283,7 @@ private PaymentResponse bulkheadFallback(PaymentRequest request, BulkheadFullExc
 
 Real applications need multiple resilience patterns working together. The execution order matters:
 
-```
+```text
 Bulkhead -> TimeLimiter -> RateLimiter -> CircuitBreaker -> Retry -> Method
 ```
 

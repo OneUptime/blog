@@ -200,7 +200,7 @@ option_settings:
 
 Add a `Procfile` to specify how to start your app.
 
-```
+```text
 # Procfile
 web: npm start
 ```

@@ -231,7 +231,7 @@ func (r *ServerResource) Create(ctx context.Context, req resource.CreateRequest,
 
 When removing an entire resource, follow this timeline:
 
-```
+```text
 v1.4.0: Add deprecation warning to the resource
 v1.5.0: Log warning when resource is used
 v2.0.0: Remove the resource

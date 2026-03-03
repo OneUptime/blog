@@ -236,7 +236,7 @@ kubectl logs deploy/test-client -c istio-proxy -n production -f
 
 The access logs show the duration field, which includes the injected delay:
 
-```
+```text
 "duration": "5023"  # 5 seconds of injected delay + 23ms actual processing
 ```
 

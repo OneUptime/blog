@@ -118,7 +118,7 @@ ssh node1 "sysctl net.ipv4.conf.all.arp_ignore"
 
 With strict ARP enabled, you should see:
 
-```
+```text
 net.ipv4.conf.all.arp_announce = 2
 net.ipv4.conf.all.arp_ignore = 1
 ```
@@ -225,7 +225,7 @@ kubectl get svc test-lb -w
 
 You should see an external IP from your MetalLB pool:
 
-```
+```text
 NAME      TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)        AGE
 test-lb   LoadBalancer   10.96.100.50    192.168.1.240    80:32000/TCP   10s
 ```

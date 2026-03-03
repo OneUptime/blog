@@ -116,14 +116,14 @@ istioctl x precheck
 
 The precheck command catches many issues:
 
-```
+```text
 ✔ No issues found when checking the cluster. Istio is safe to install or upgrade!
   To get started, check out https://istio.io/latest/docs/setup/getting-started/
 ```
 
 Or it might warn you:
 
-```
+```text
 Warning [IST0152] (DestinationRule default/reviews) This resource is using a deprecated field
 ```
 
@@ -226,7 +226,7 @@ diff production-values.yaml new-chart-values.yaml
 
 For each upgrade, create a checklist like this:
 
-```
+```text
 ## Upgrade from 1.20 to 1.21 - Breaking Changes Checklist
 
 - [ ] Read upgrade notes: https://istio.io/latest/news/releases/1.21.x/

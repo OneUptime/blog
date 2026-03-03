@@ -67,7 +67,7 @@ The exam will test whether you know that basic roles are too permissive for prod
 
 Google provides hundreds of predefined roles for specific services. Examples:
 
-```
+```text
 roles/compute.instanceAdmin    - Full control of Compute Engine instances
 roles/storage.objectViewer     - Read-only access to Cloud Storage objects
 roles/cloudsql.client          - Connect to Cloud SQL instances

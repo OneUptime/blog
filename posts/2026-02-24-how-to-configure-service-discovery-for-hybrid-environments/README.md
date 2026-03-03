@@ -305,7 +305,7 @@ kubectl get workloadentry -A -o wide
 
 Check for unhealthy endpoints:
 
-```
+```text
 sum(rate(istio_requests_total{response_code="503",reporter="source"}[5m])) by (destination_workload, destination_workload_namespace)
 ```
 

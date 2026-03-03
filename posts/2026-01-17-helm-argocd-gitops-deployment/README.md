@@ -84,7 +84,7 @@ argocd login localhost:8080 --username admin --password <password> --insecure
 
 Organize your GitOps repository with a clear structure separating applications, environments, and base configurations.
 
-```
+```text
 gitops-repo/
 ├── apps/                    # ArgoCD Application manifests
 │   ├── dev/

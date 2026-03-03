@@ -142,7 +142,7 @@ sudo cat /run/systemd/netif/leases/2
 
 Lease file contents:
 
-```
+```text
 ADDRESS=192.168.1.105
 NETMASK=255.255.255.0
 ROUTER=192.168.1.1

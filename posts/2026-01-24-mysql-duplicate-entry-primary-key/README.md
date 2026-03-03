@@ -26,7 +26,7 @@ flowchart TD
 
 The error looks like this:
 
-```
+```text
 ERROR 1062 (23000): Duplicate entry '5' for key 'users.PRIMARY'
 ```
 

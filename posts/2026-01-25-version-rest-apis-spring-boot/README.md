@@ -443,7 +443,7 @@ When supporting multiple API versions long-term, structure your code to minimize
 
 ### Recommended Package Structure
 
-```
+```text
 src/main/java/com/example/
 ├── api/
 │   ├── v1/

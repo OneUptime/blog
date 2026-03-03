@@ -16,7 +16,7 @@ Before diving into Ansible, it helps to understand what "locking" a user actuall
 
 Here is what a locked account looks like in `/etc/shadow`:
 
-```
+```text
 lockeduser:!$6$salthash...:19100:0:99999:7:::
 ```
 

@@ -14,7 +14,7 @@ The "connection closed" error in MongoDB is one of the most frustrating issues t
 
 When MongoDB closes a connection unexpectedly, your application receives an error like:
 
-```
+```text
 MongoNetworkError: connection closed
 Error: connection 1 to localhost:27017 closed
 MongoError: Topology was destroyed
@@ -304,7 +304,7 @@ setInterval(() => {
 
 Use a properly configured connection string:
 
-```
+```text
 mongodb://user:password@host1:27017,host2:27017,host3:27017/database?
   replicaSet=rs0&
   retryWrites=true&

@@ -30,7 +30,7 @@ kubectl exec deploy/my-service -c istio-proxy -- \
 
 Or use Prometheus queries to get historical data:
 
-```
+```text
 # Peak concurrent connections over 7 days
 max_over_time(envoy_cluster_upstream_cx_active{cluster_name=~".*my-service.*"}[7d])
 

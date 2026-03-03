@@ -38,7 +38,7 @@ graph TD
 
 ## Project Structure
 
-```
+```text
 blue-green-deploy/
   inventory/
     production.ini

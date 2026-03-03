@@ -45,7 +45,7 @@ ip link show eth0 | grep mtu
 
 Output:
 
-```
+```text
 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT group default qlen 1000
 ```
 

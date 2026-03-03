@@ -93,7 +93,7 @@ DLP rules prevent sensitive data from leaving your organization through the brow
 2. Click "Create rule"
 3. Set the trigger conditions
 
-```
+```text
 Rule name: Block Credit Card Data
 Apps: Chrome
 Trigger: File upload, clipboard paste, print
@@ -105,7 +105,7 @@ Action: Block and alert admin
 
 Prevent source code from being pasted into unauthorized sites.
 
-```
+```text
 Rule name: Protect Source Code
 Apps: Chrome
 Trigger: Clipboard paste, file upload
@@ -118,7 +118,7 @@ Action: Warn user (allow override with justification)
 
 Block personally identifiable information from being shared externally.
 
-```
+```text
 Rule name: Protect PII
 Apps: Chrome
 Trigger: File upload, clipboard paste, print, download
@@ -155,7 +155,7 @@ The scanning happens locally through a connector or via Google's cloud-based ins
 
 Control which websites users can access from their managed Chrome browsers.
 
-```
+```text
 Rule name: Block Personal Cloud Storage
 Category: Cloud Storage
 URLs:
@@ -169,7 +169,7 @@ Message: "Use company-approved storage instead. Visit drive.google.com for file 
 
 For a more nuanced approach, allow read-only access to certain sites but block uploads.
 
-```
+```text
 Rule name: Read-Only Social Media
 Category: Social Media
 Trigger: File upload only
@@ -209,7 +209,7 @@ For example, users on corporate devices might have fewer DLP restrictions becaus
 
 This integration happens through the access level conditions in your DLP rules:
 
-```
+```text
 Rule name: Strict DLP for BYOD
 Condition: Device is NOT company-owned
 Apps: Chrome
@@ -218,7 +218,7 @@ Content condition: Any sensitive data
 Action: Block
 ```
 
-```
+```text
 Rule name: Relaxed DLP for Corp Devices
 Condition: Device IS company-owned AND managed
 Apps: Chrome

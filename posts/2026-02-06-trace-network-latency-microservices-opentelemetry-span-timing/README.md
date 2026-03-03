@@ -16,7 +16,7 @@ Every OpenTelemetry span records a start time and an end time. When Service A ca
 
 Here is a simplified timeline:
 
-```
+```text
 Service A (client span):  |-------- request --------|
                               ^ client sends request
 Network transit:              |====|

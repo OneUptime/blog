@@ -299,7 +299,7 @@ spec:
 
 ### Browse Releases
 
-```
+```text
 Dashboard Navigation:
 1. Open http://localhost:8080
 2. Select cluster context (if multiple)
@@ -367,7 +367,7 @@ helm repo update
 
 ### Installing from Dashboard
 
-```
+```text
 Installation Flow:
 1. Navigate to "Repository" tab
 2. Select repository (e.g., bitnami)
@@ -414,7 +414,7 @@ kubectl config get-contexts
 
 ### Resource Visualization
 
-```
+```text
 Release Resources View:
 ├── Deployment
 │   └── myapp-deployment (3/3 ready)

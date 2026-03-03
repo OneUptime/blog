@@ -14,7 +14,7 @@ Getting the directory structure right is one of the most important steps when bu
 
 Here is the complete directory structure that an Ansible collection can contain:
 
-```
+```text
 <namespace>/<collection_name>/
   galaxy.yml                   # Required: Collection metadata
   README.md                    # Recommended: Top-level docs
@@ -192,7 +192,7 @@ if __name__ == "__main__":
 
 You can also organize modules into subdirectories for grouping:
 
-```
+```text
 plugins/modules/
   firewall_rule.py              # acme_corp.network_tools.firewall_rule
   vlan/
@@ -318,7 +318,7 @@ class LookupModule(LookupBase):
 
 Roles inside a collection follow the exact same structure as standalone roles:
 
-```
+```text
 roles/
   baseline/
     tasks/
@@ -390,7 +390,7 @@ The routing section supports three actions:
 
 Testing is organized by type:
 
-```
+```text
 tests/
   unit/                        # Unit tests for Python code
     plugins/

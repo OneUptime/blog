@@ -333,7 +333,7 @@ extraEnvFrom: |
 
 The DAG repository is separate from the infrastructure repository:
 
-```
+```text
 airflow-dags/
   dags/
     daily_etl.py

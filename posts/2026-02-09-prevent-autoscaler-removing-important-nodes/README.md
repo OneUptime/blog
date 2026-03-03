@@ -396,7 +396,7 @@ kubectl logs -n kube-system deployment/cluster-autoscaler | grep "scale down"
 
 Logs show reasons for skipping nodes:
 
-```
+```text
 I0209 10:30:15 Skipping node-3: node has pod with local storage
 I0209 10:30:16 Skipping node-5: node has safe-to-evict=false pod
 I0209 10:30:17 Skipping node-7: removing would violate PodDisruptionBudget

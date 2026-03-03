@@ -41,7 +41,7 @@ Key challenges include:
 
 ## Recommended Directory Structure
 
-```
+```text
 terraform/
   modules/                    # Reusable modules
     vpc/
@@ -607,7 +607,7 @@ module "infrastructure" {
 
 Terragrunt simplifies multi-environment management:
 
-```
+```text
 terraform/
   terragrunt.hcl              # Root config
   modules/

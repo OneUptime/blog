@@ -46,7 +46,7 @@ flowchart TB
 ### Error: AuthenticationFailed
 
 **Error Message:**
-```
+```text
 AuthenticationFailed: Server failed to authenticate the request. Make sure the value of Authorization header is formed correctly including the signature.
 ```
 
@@ -155,7 +155,7 @@ az storage account update \
 ### Error: Login failed for user
 
 **Error Message:**
-```
+```text
 Login failed for user 'myuser'. Reason: Password did not match that for the login provided.
 ```
 
@@ -259,7 +259,7 @@ def get_connection():
 ### Error: Put token failed. Status-code: 401
 
 **Error Message:**
-```
+```text
 Put token failed. status-code: 401, status-description: InvalidSignature: The token has an invalid signature.
 ```
 

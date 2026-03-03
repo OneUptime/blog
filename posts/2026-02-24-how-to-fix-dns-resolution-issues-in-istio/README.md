@@ -236,7 +236,7 @@ kubectl exec <pod-name> -c my-app -n production -- cat /etc/resolv.conf
 
 You might see:
 
-```
+```text
 nameserver 10.96.0.10
 search production.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5

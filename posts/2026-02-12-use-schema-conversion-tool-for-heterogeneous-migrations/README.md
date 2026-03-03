@@ -56,7 +56,7 @@ For the target, do the same. If you have not created the target database yet, yo
 
 Before converting anything, run the assessment report. This gives you a clear picture of how much of your schema can be converted automatically and how much requires manual work.
 
-```
+```text
 Source: Oracle 19c
 Target: PostgreSQL 15
 

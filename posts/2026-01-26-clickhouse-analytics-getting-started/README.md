@@ -20,7 +20,7 @@ Before diving into the setup, let's understand what makes ClickHouse different f
 
 Traditional row-oriented databases store data like this:
 
-```
+```text
 Row 1: user_id=1, timestamp=2024-01-01, event=click, duration=5
 Row 2: user_id=2, timestamp=2024-01-01, event=view, duration=10
 Row 3: user_id=1, timestamp=2024-01-02, event=click, duration=3
@@ -28,7 +28,7 @@ Row 3: user_id=1, timestamp=2024-01-02, event=click, duration=3
 
 ClickHouse stores it by columns:
 
-```
+```text
 user_id:   [1, 2, 1, ...]
 timestamp: [2024-01-01, 2024-01-01, 2024-01-02, ...]
 event:     [click, view, click, ...]

@@ -37,7 +37,7 @@ Here are the error messages you will likely encounter:
 
 ### Error 1: Token Exchange Failure
 
-```
+```text
 Error: Unable to acquire credentials.
 Error while generating access token:
   Error: 401 Unauthorized: Request had invalid authentication credentials.
@@ -45,20 +45,20 @@ Error while generating access token:
 
 ### Error 2: Missing Permissions After Token Exchange
 
-```
+```text
 Error: HTTP Error: 403, The caller does not have permission
 Error: Failed to deploy hosting resources.
 ```
 
 ### Error 3: Audience Mismatch
 
-```
+```text
 Error: The audience in the identity token does not match the expected audience.
 ```
 
 ### Error 4: Firebase-Specific Permission Issues
 
-```
+```text
 Error: HTTP Error: 403, The caller does not have permission to access the
 Firebase Hosting API for project YOUR_PROJECT_ID.
 ```

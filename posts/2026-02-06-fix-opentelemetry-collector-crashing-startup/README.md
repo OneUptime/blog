@@ -89,7 +89,7 @@ service:
 
 The error message will say something like:
 
-```
+```text
 Error: cannot unmarshal the configuration: yaml: line 9: mapping values are not allowed in this context
 ```
 
@@ -123,7 +123,7 @@ kubectl create configmap otel-config \
 
 If you reference a receiver, processor, exporter, or extension that is not compiled into your Collector binary, it will crash with an "unknown type" error.
 
-```
+```text
 Error: failed to get config: cannot unmarshal the configuration:
 unknown type: "prometheusremotewrite" for id: "prometheusremotewrite"
 ```
@@ -169,7 +169,7 @@ processors:
 
 The Collector binds to several ports by default (4317 for gRPC, 4318 for HTTP, 8888 for internal metrics, and sometimes 13133 for health check). If any of these ports are already taken, it crashes.
 
-```
+```text
 Error: failed to start receivers: listen tcp 0.0.0.0:4317: bind: address already in use
 ```
 
@@ -231,7 +231,7 @@ spec:
 
 The Collector may need specific system permissions, especially when using receivers that access host metrics, log files, or network interfaces.
 
-```
+```text
 Error: failed to start receivers: open /var/log/syslog: permission denied
 Error: failed to start receivers: error creating metric reader: operation not permitted
 ```
@@ -284,7 +284,7 @@ volumes:
 
 If the Collector is configured with many receivers, processors, or large lookup tables, it might run out of memory before it finishes initializing.
 
-```
+```text
 # OOM killed in Kubernetes
 State:          Terminated
 Reason:         OOMKilled
@@ -349,7 +349,7 @@ exporters:
       Authorization: "Bearer ${OTEL_AUTH_TOKEN}"
 ```
 
-```
+```text
 Error: cannot resolve config: environment variable "OTEL_BACKEND_ENDPOINT" is not set
 ```
 

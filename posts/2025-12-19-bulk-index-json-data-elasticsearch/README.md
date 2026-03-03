@@ -12,7 +12,7 @@ The Bulk API is essential for efficiently indexing large amounts of data into El
 
 The Bulk API uses a specific newline-delimited JSON (NDJSON) format:
 
-```
+```text
 {"action": {"_index": "index_name", "_id": "doc_id"}}
 {"field1": "value1", "field2": "value2"}
 {"action": {"_index": "index_name", "_id": "doc_id"}}

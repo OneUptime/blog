@@ -39,7 +39,7 @@ ip link show
 
 A typical output:
 
-```
+```text
 Settings for eth0:
     Supported ports: [ TP ]
     Supported link modes:   10baseT/Half 10baseT/Full

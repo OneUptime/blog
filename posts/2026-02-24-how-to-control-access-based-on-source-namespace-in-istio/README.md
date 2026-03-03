@@ -18,7 +18,7 @@ When Istio's mTLS is enabled (which is the default in most installations), every
 
 The identity looks like this in SPIFFE format:
 
-```
+```text
 spiffe://cluster.local/ns/frontend/sa/web-app
 ```
 

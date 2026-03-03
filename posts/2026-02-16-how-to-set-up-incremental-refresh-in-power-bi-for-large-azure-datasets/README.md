@@ -65,7 +65,7 @@ For example, if your table is called Orders and has a column called OrderDate:
 
 This should produce M code that looks like the following:
 
-```
+```text
 // Power Query M code showing the filtered step with RangeStart and RangeEnd
 let
     Source = Sql.Database("your-server.database.windows.net", "your-database"),

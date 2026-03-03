@@ -16,13 +16,13 @@ When you enable VPC Flow Logs with CloudWatch Logs as the destination, every flo
 
 The default flow log format (version 2) includes these fields:
 
-```
+```text
 version account-id interface-id srcaddr dstaddr srcport dstport protocol packets bytes start end action log-status
 ```
 
 A sample record looks like:
 
-```
+```text
 2 123456789012 eni-abc123 10.0.1.100 10.0.2.50 44312 443 6 25 5000 1707696000 1707696060 ACCEPT OK
 ```
 
@@ -34,7 +34,7 @@ CloudWatch Logs Insights automatically discovers these fields when you query the
 
 This is usually the first thing you check when debugging connectivity issues:
 
-```
+```text
 filter action = "REJECT"
 | fields @timestamp, srcaddr, dstaddr, srcport, dstport, protocol
 | sort @timestamp desc
@@ -45,7 +45,7 @@ filter action = "REJECT"
 
 Find which sources are sending the most data:
 
-```
+```text
 stats sum(bytes) as totalBytes by srcaddr
 | sort totalBytes desc
 | limit 20
@@ -55,7 +55,7 @@ stats sum(bytes) as totalBytes by srcaddr
 
 Visualize total network throughput:
 
-```
+```text
 stats sum(bytes) / 1048576 as totalMB, sum(packets) as totalPackets by bin(5m)
 ```
 
@@ -65,7 +65,7 @@ stats sum(bytes) / 1048576 as totalMB, sum(packets) as totalPackets by bin(5m)
 
 Identify IPs that are hitting your security groups and getting blocked:
 
-```
+```text
 filter action = "REJECT"
 | stats count(*) as rejectedFlows by srcaddr
 | sort rejectedFlows desc
@@ -76,7 +76,7 @@ filter action = "REJECT"
 
 Look for IPs probing multiple ports on a single destination:
 
-```
+```text
 filter action = "REJECT"
 | stats count_distinct(dstport) as uniquePorts, count(*) as attempts by srcaddr, dstaddr
 | filter uniquePorts > 10
@@ -90,7 +90,7 @@ This query finds source IPs that tried to connect to more than 10 different port
 
 Check for traffic on ports that shouldn't be publicly accessible:
 
-```
+```text
 filter dstport not in [80, 443, 22] and action = "ACCEPT"
 | filter not ispresent(srcaddr like /^10\./ or srcaddr like /^172\.(1[6-9]|2[0-9]|3[01])\./ or srcaddr like /^192\.168\./)
 | stats count(*) as flows, sum(bytes) as totalBytes by dstport, dstaddr
@@ -102,7 +102,7 @@ filter dstport not in [80, 443, 22] and action = "ACCEPT"
 
 Monitor who's connecting via SSH:
 
-```
+```text
 filter dstport = 22 and action = "ACCEPT"
 | stats count(*) as connections, sum(bytes) as totalBytes by srcaddr, dstaddr
 | sort connections desc
@@ -113,7 +113,7 @@ filter dstport = 22 and action = "ACCEPT"
 
 Check for traffic on ports commonly used by malware:
 
-```
+```text
 filter dstport in [4444, 5555, 6666, 1234, 31337, 12345]
 | fields @timestamp, srcaddr, dstaddr, dstport, action
 | sort @timestamp desc
@@ -126,7 +126,7 @@ filter dstport in [4444, 5555, 6666, 1234, 31337, 12345]
 
 When you know the source and destination and want to see what's happening:
 
-```
+```text
 filter (srcaddr = "10.0.1.100" and dstaddr = "10.0.2.50") or (srcaddr = "10.0.2.50" and dstaddr = "10.0.1.100")
 | fields @timestamp, srcaddr, dstaddr, srcport, dstport, protocol, action, packets, bytes
 | sort @timestamp desc
@@ -137,7 +137,7 @@ filter (srcaddr = "10.0.1.100" and dstaddr = "10.0.2.50") or (srcaddr = "10.0.2.
 
 When an application can't connect and you suspect security groups:
 
-```
+```text
 filter srcaddr = "10.0.1.100" and action = "REJECT"
 | stats count(*) as rejected by dstaddr, dstport, protocol
 | sort rejected desc
@@ -148,7 +148,7 @@ filter srcaddr = "10.0.1.100" and action = "REJECT"
 
 See the mix of TCP, UDP, and ICMP traffic:
 
-```
+```text
 stats sum(bytes) as totalBytes, sum(packets) as totalPackets, count(*) as flows by protocol
 | sort totalBytes desc
 ```
@@ -159,7 +159,7 @@ Protocol numbers map to: 6 = TCP, 17 = UDP, 1 = ICMP.
 
 DNS runs on UDP port 53:
 
-```
+```text
 filter dstport = 53 and protocol = 17
 | stats count(*) as queries, sum(bytes) as totalBytes by srcaddr
 | sort queries desc
@@ -172,7 +172,7 @@ filter dstport = 53 and protocol = 17
 
 If you use consistent CIDR ranges, you can group traffic by subnet:
 
-```
+```text
 filter action = "ACCEPT"
 | parse srcaddr /(?<srcSubnet>\d+\.\d+\.\d+)\.\d+/
 | parse dstaddr /(?<dstSubnet>\d+\.\d+\.\d+)\.\d+/
@@ -185,7 +185,7 @@ filter action = "ACCEPT"
 
 Identify when your network is busiest:
 
-```
+```text
 stats sum(bytes) / 1073741824 as trafficGB by bin(1h)
 | sort trafficGB desc
 | limit 24
@@ -195,7 +195,7 @@ stats sum(bytes) / 1073741824 as trafficGB by bin(1h)
 
 Find which host pairs exchange the most data:
 
-```
+```text
 filter action = "ACCEPT"
 | stats sum(bytes) / 1048576 as trafficMB, sum(packets) as totalPackets by srcaddr, dstaddr
 | sort trafficMB desc
@@ -206,7 +206,7 @@ filter action = "ACCEPT"
 
 See which services are handling the most traffic:
 
-```
+```text
 filter action = "ACCEPT"
 | stats sum(bytes) / 1048576 as trafficMB, count(*) as flows by dstport
 | sort trafficMB desc
@@ -217,7 +217,7 @@ filter action = "ACCEPT"
 
 Cross-AZ data transfer costs money on AWS. If your flow logs include the `az-id` field (custom format), you can identify cross-AZ traffic:
 
-```
+```text
 filter srcaz != dstaz
 | stats sum(bytes) / 1073741824 as crossAzGB by srcaz, dstaz
 | sort crossAzGB desc

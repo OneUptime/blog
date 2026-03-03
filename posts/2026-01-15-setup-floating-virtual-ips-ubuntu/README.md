@@ -1106,7 +1106,7 @@ When a VIP moves between servers, ARP (Address Resolution Protocol) announcement
 
 ### Understanding ARP
 
-```
+```text
 Network Communication Flow:
 1. Client wants to reach VIP 192.168.1.100
 2. Client checks ARP cache for MAC address

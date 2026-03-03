@@ -187,7 +187,7 @@ Click on a cluster to see its overview page. This shows:
 
 The portal provides a Kubernetes resource view where you can browse namespaces, deployments, pods, and services running in the cluster. This is particularly useful for clusters that do not have their own dashboard.
 
-```
+```text
 Cluster > Kubernetes resources > Namespaces
 Cluster > Kubernetes resources > Workloads
 Cluster > Kubernetes resources > Services and ingresses

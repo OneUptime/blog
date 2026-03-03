@@ -173,7 +173,7 @@ ENTRYPOINT ["/server"]
 
 ## The .dockerignore File
 
-```
+```text
 target
 .git
 .gitignore

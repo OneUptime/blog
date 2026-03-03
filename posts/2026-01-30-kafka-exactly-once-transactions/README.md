@@ -420,7 +420,7 @@ The most common use case for Kafka transactions is the consume-transform-produce
 
 ### Architecture Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        TRANSACTION BOUNDARY                      │
 │                                                                  │

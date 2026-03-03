@@ -88,7 +88,7 @@ Set-Location "C:\Users\admin\Downloads"
 
 Once the script runs successfully, you will see output like:
 
-```
+```text
 Successfully connected to the recovery point.
 Volumes mounted:
   F:\ (OS Disk)
@@ -120,7 +120,7 @@ sudo python3 LinuxILRScript.py
 On Linux, the volumes are mounted under `/mnt/vmmount/` by default. If the original VM had LVM, the script automatically activates the volume groups and mounts the logical volumes.
 
 The mount points follow this pattern:
-```
+```text
 /mnt/vmmount/sdc1/     (OS partition)
 /mnt/vmmount/sdd1/     (Data disk 1)
 /mnt/vmmount/vg-data-lv-data/  (LVM logical volume)

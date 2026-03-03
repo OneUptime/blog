@@ -111,7 +111,7 @@ JOIN high_value_customers hvc ON c.id = hvc.customer_id;
 
 Example output showing materialization:
 
-```
+```text
 -> Nested loop inner join  (cost=125.50 rows=100)
     -> Table scan on hvc  (cost=25.50 rows=100)
         -> Materialize CTE high_value_customers  (cost=20.50 rows=100)
@@ -147,7 +147,7 @@ LIMIT 10;
 
 The output shows actual rows processed and timing:
 
-```
+```text
 -> Limit: 10 row(s)  (actual time=45.2..45.3 rows=10 loops=1)
     -> Sort: ps.revenue DESC, limit input to 10 row(s)  (actual time=45.2..45.2 rows=10 loops=1)
         -> Filter: (ps.revenue > 5000)  (actual time=12.5..44.8 rows=156 loops=1)

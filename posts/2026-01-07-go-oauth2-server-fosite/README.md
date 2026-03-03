@@ -56,7 +56,7 @@ go get github.com/ory/fosite/token/jwt
 
 Our OAuth2 server will follow a clean architecture with separation of concerns.
 
-```
+```text
 oauth2-server/
 ├── main.go
 ├── config/

@@ -123,7 +123,7 @@ indices.query.bool.max_clause_count: 32768
 sudo nano /etc/opensearch/jvm.options
 ```
 
-```
+```text
 # Set heap size (half of available RAM, max 31g)
 -Xms2g
 -Xmx2g
@@ -292,7 +292,7 @@ sudo systemctl restart graylog-server
 sudo nano /etc/rsyslog.d/90-graylog.conf
 ```
 
-```
+```text
 # Send all logs to Graylog
 *.* @GRAYLOG_SERVER_IP:5140;RSYSLOG_SyslogProtocol23Format
 ```
@@ -383,7 +383,7 @@ transport_email_from_email = graylog@yourdomain.com
 
 ### Example Dashboard Widgets
 
-```
+```text
 # Message count over time
 Widget: Stacked Chart
 Query: *
@@ -469,7 +469,7 @@ GRAYLOG_SERVER_JAVA_OPTS="-Xms4g -Xmx4g -XX:+UseG1GC"
 sudo nano /etc/security/limits.conf
 ```
 
-```
+```text
 graylog soft nofile 64000
 graylog hard nofile 64000
 ```

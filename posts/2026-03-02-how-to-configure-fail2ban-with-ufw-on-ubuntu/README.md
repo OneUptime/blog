@@ -56,7 +56,7 @@ cat /etc/fail2ban/action.d/ufw.conf
 
 If it exists, it typically contains:
 
-```
+```text
 [Definition]
 actionstart =
 actionstop =
@@ -267,7 +267,7 @@ sudo fail2ban-client status sshd
 
 Output from `fail2ban-client status sshd`:
 
-```
+```text
 Status for the jail: sshd
 |- Filter
 |  |- Currently failed: 2
@@ -309,7 +309,7 @@ sudo ufw status numbered | head -5
 
 You should see entries like:
 
-```
+```text
 [ 1] Anywhere                   DENY IN     203.0.113.100
 [ 2] Anywhere                   DENY IN     198.51.100.50
 ```

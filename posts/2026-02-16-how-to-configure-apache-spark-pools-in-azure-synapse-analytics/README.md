@@ -86,7 +86,7 @@ Fine-tune Spark behavior by setting configuration properties on the pool.
 
 Common configuration properties to consider:
 
-```
+```text
 spark.executor.memory    28g
 spark.executor.cores     4
 spark.driver.memory      28g

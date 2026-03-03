@@ -82,7 +82,7 @@ The fstab entries for a Btrfs setup with subvolumes look like this:
 blkid /dev/sdb1
 ```
 
-```
+```text
 # /etc/fstab
 # Btrfs root - using subvolumes with compression and SSD optimizations
 UUID=your-btrfs-uuid  /            btrfs  defaults,subvol=@,compress=zstd:1,noatime,ssd   0  0

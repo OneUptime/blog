@@ -273,7 +273,7 @@ All three ZooKeeper ports should be named with the `tcp-` prefix.
 
 Track connection metrics:
 
-```
+```text
 istio_tcp_connections_opened_total{destination_service="kafka-headless.messaging.svc.cluster.local"}
 istio_tcp_sent_bytes_total{destination_service="kafka-headless.messaging.svc.cluster.local"}
 istio_tcp_received_bytes_total{destination_service="kafka-headless.messaging.svc.cluster.local"}

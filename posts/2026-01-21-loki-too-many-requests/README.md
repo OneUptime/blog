@@ -16,7 +16,7 @@ The "too many outstanding requests" error in Grafana Loki indicates that the sys
 
 You may encounter these related errors:
 
-```
+```text
 too many outstanding requests
 max queriers per tenant reached
 query rejected: too many outstanding requests for tenant

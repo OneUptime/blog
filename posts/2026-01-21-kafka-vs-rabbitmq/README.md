@@ -68,7 +68,7 @@ Key characteristics:
 
 ### Kafka Performance
 
-```
+```text
 Throughput: 1-2 million messages/second (per broker)
 Latency: 5-50ms (depends on batching)
 Storage: Efficient sequential writes
@@ -83,7 +83,7 @@ Kafka excels at:
 
 ### RabbitMQ Performance
 
-```
+```text
 Throughput: 20,000-50,000 messages/second (per node)
 Latency: Sub-millisecond to few milliseconds
 Memory: Messages primarily in memory

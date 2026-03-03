@@ -326,7 +326,7 @@ spec:
 
 Create a `.trivyignore` file in your repository to suppress known false positives:
 
-```
+```text
 # .trivyignore
 # CVE-2024-1234 - mitigated by network policy, no fix available
 CVE-2024-1234

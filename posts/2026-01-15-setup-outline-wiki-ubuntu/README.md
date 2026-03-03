@@ -167,7 +167,7 @@ Slack authentication is the simplest option if your team already uses Slack.
 3. Name your app (e.g., "Outline Wiki") and select your workspace
 4. Navigate to "OAuth & Permissions"
 5. Add the following redirect URL:
-   ```
+   ```text
    https://your-domain.com/auth/slack.callback
    ```
 6. Under "Scopes", add these Bot Token Scopes:
@@ -188,7 +188,7 @@ For Google authentication:
 4. Click "Create Credentials" > "OAuth client ID"
 5. Select "Web application"
 6. Add authorized redirect URI:
-   ```
+   ```text
    https://your-domain.com/auth/google.callback
    ```
 7. Copy the Client ID and Client Secret
@@ -199,7 +199,7 @@ For OIDC providers (Okta, Auth0, Keycloak, Azure AD):
 
 1. Create a new application in your OIDC provider
 2. Set the callback URL to:
-   ```
+   ```text
    https://your-domain.com/auth/oidc.callback
    ```
 3. Note the following values:

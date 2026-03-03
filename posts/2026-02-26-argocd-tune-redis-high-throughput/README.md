@@ -67,7 +67,7 @@ The `--maxmemory-policy=allkeys-lru` setting is crucial. It tells Redis to evict
 
 Use this formula to estimate the memory you need.
 
-```
+```text
 Base memory: 256MB
 Per application: ~2-5MB (depending on manifest size)
 Per repository: ~10-50MB (depending on repo size)

@@ -187,7 +187,7 @@ Edit the VM options to give IntelliJ more heap space, especially for large proje
 
 Navigate to Help > Edit Custom VM Options and add:
 
-```
+```text
 -Xmx4g
 -Xms2g
 -XX:+UseG1GC

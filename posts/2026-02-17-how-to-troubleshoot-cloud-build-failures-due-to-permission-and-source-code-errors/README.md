@@ -107,7 +107,7 @@ gcloud projects add-iam-binding my-project \
 
 ### Dockerfile Not Found
 
-```
+```text
 ERROR: unable to prepare context: unable to evaluate symlinks in Dockerfile path:
 lstat /workspace/Dockerfile: no such file or directory
 ```
@@ -139,13 +139,13 @@ A common mistake is having `node_modules/` in `.gcloudignore` but your Dockerfil
 
 ### Build Context Too Large
 
-```
+```text
 ERROR: context size (512MB) exceeds limit (500MB)
 ```
 
 Your build context is too big. Use `.gcloudignore` to exclude unnecessary files:
 
-```
+```text
 # .gcloudignore
 .git/
 node_modules/

@@ -37,7 +37,7 @@ ls -la /etc/nginx/
 
 Output:
 
-```
+```text
 total 72
 drwxr-xr-x  6 root root  4096 Mar  2 09:00 .
 drwxr-xr-x 85 root root  4096 Mar  1 08:00 ..
@@ -51,7 +51,7 @@ drwxr-xr-x  2 root root  4096 Mar  2 09:00 sites-enabled
 
 Each line has 9 fields. Let's take `nginx.conf` as the example:
 
-```
+```text
 -rw-r--r--  1 root root  1490 Mar  2 09:00 nginx.conf
 │           │ │    │     │    │              └── Filename
 │           │ │    │     │    └────────────────── Last modification time
@@ -64,7 +64,7 @@ Each line has 9 fields. Let's take `nginx.conf` as the example:
 
 ## Field 1: Type and Permissions (10 Characters)
 
-```
+```text
 - r w - r - - r - -
 │ │   │ │   │ │   │
 │ └───┘ └───┘ └───┘
@@ -119,7 +119,7 @@ ls -la /var/mail            # drwxrwsr-x (SGID)
 
 After the 10-character permissions field, you may see a `+` or `.`:
 
-```
+```text
 -rw-r--r--+ 1 alice alice 1024 Mar 2 09:00 file-with-acl
 -rw-r--r--. 1 root  root   512 Mar 2 09:00 file-with-selinux-context
 ```
@@ -129,7 +129,7 @@ After the 10-character permissions field, you may see a `+` or `.`:
 
 ## Field 2: Hard Link Count
 
-```
+```text
 -rw-r--r--  1 root root  1490 nginx.conf
             │
             └── 1 hard link (typical for regular files)
@@ -137,7 +137,7 @@ After the 10-character permissions field, you may see a `+` or `.`:
 
 For directories, the link count is at least 2 (the directory itself and the `.` entry inside it), plus one more for each subdirectory it contains:
 
-```
+```text
 drwxr-xr-x  6 root root nginx/
              │
              └── 6 links: nginx/ itself, ., conf.d, sites-available, sites-enabled, + parent's link
@@ -145,7 +145,7 @@ drwxr-xr-x  6 root root nginx/
 
 ## Field 3 and 4: User and Group Owner
 
-```
+```text
 -rw-r--r--  1 www-data www-data 10701 nginx.conf
               │        │
               │        └── Group owner
@@ -193,7 +193,7 @@ ls -la --full-time /etc/passwd
 
 With `-a`, every directory listing shows `.` and `..`:
 
-```
+```text
 drwxr-xr-x  6 root root 4096 Mar 2 09:00 .
 drwxr-xr-x 85 root root 4096 Mar 1 08:00 ..
 ```
@@ -218,7 +218,7 @@ The permissions shown (`rwxrwxrwx`) are always the symlink's own permissions and
 
 The first line of a directory listing:
 
-```
+```text
 total 72
 ```
 
@@ -228,7 +228,7 @@ This is the number of **512-byte blocks** used by all files listed. It's unrelat
 
 With practice, you read permission strings by pattern rather than character by character:
 
-```
+```text
 -rw-r--r--   standard file (644)
 -rwxr-xr-x   standard executable or directory (755)
 -rw-------   private file (600)

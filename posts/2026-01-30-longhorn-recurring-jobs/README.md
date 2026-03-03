@@ -122,7 +122,7 @@ spec:
 
 Longhorn uses standard cron syntax with five fields:
 
-```
+```text
  +---------------- minute (0-59)
  |  +------------- hour (0-23)
  |  |  +---------- day of month (1-31)

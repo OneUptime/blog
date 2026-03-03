@@ -441,7 +441,7 @@ Once deployed, the control appears in the Insert panel under "Code components" i
 
 Set the properties from Power Apps formulas.
 
-```
+```text
 // In the Power Apps formula bar
 AzureResourceMonitor.apiEndpoint: "https://management.azure.com/subscriptions/YOUR-SUB-ID/resourceGroups/YOUR-RG/providers/Microsoft.Web/sites/YOUR-APP"
 AzureResourceMonitor.metricName: "CpuPercentage"

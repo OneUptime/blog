@@ -39,7 +39,7 @@ Before writing any code, agree on the rules. A governance framework answers ques
 
 Every module in the organization should follow the same layout:
 
-```
+```text
 terraform-aws-<service>/
   main.tf              # Primary resource definitions
   variables.tf         # Input variables with descriptions and types
@@ -63,7 +63,7 @@ terraform-aws-<service>/
 
 Consistent naming makes modules discoverable and their purpose clear.
 
-```
+```text
 # Repository naming: terraform-<provider>-<purpose>
 terraform-aws-vpc
 terraform-aws-ecs-service
@@ -106,7 +106,7 @@ module "vpc" {
 
 For organizations not ready for a full registry, a Git monorepo with clear directory structure works:
 
-```
+```text
 # Monorepo approach
 github.com/myorg/terraform-modules/
   modules/

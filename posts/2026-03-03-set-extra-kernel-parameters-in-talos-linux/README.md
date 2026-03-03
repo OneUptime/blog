@@ -256,7 +256,7 @@ talosctl read /proc/sys/vm/nr_hugepages --nodes <NODE_IP>
 
 Talos Linux sets several kernel parameters by default that you should be aware of:
 
-```
+```text
 talos.platform=metal      # Tells Talos which platform it is running on
 init_on_alloc=1           # Zero memory on allocation (security)
 slab_nomerge              # Prevent slab merging (security)

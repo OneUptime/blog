@@ -45,7 +45,7 @@ spec:
 
 With a headless service and a StatefulSet, each pod gets a stable DNS name:
 
-```
+```text
 my-db-0.my-db-headless.production.svc.cluster.local
 my-db-1.my-db-headless.production.svc.cluster.local
 my-db-2.my-db-headless.production.svc.cluster.local

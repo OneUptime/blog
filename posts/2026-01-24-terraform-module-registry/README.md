@@ -14,7 +14,7 @@ Publishing Terraform modules to a registry makes them reusable across teams and 
 
 The Terraform Registry expects modules to follow a standard structure.
 
-```
+```text
 terraform-aws-vpc/
 |-- README.md           # Required: module documentation
 |-- main.tf             # Required: primary resources
@@ -41,7 +41,7 @@ terraform-aws-vpc/
 
 Public registry modules must be hosted on GitHub with a specific naming pattern:
 
-```
+```text
 terraform-<PROVIDER>-<NAME>
 ```
 
@@ -300,7 +300,7 @@ module "vpc" {
 ## License
 
 Apache 2.0 Licensed. See LICENSE for full details.
-```
+```text
 
 ## Creating Examples
 

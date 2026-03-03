@@ -235,14 +235,14 @@ remote_write:
 
 Once metrics land in Dynatrace, you can query them using DQL (Dynatrace Query Language):
 
-```
+```text
 timeseries avg(istio_requests_total), by: {destination_service}
 | filter destination_service != ""
 ```
 
 Or use the classic metric selector syntax:
 
-```
+```text
 istio_requests_total:splitBy("destination_service"):rate(1m)
 ```
 

@@ -22,7 +22,7 @@ Check your current version skew:
 istioctl version
 ```
 
-```
+```text
 client version: 1.21.0
 control plane version: 1.21.0
 data plane version: 1.20.5 (45 proxies), 1.21.0 (12 proxies)

@@ -611,7 +611,7 @@ coverage report -m
 
 ### 1. Project Structure
 
-```
+```text
 myproject/
     api/
         api.py              # Main API instance

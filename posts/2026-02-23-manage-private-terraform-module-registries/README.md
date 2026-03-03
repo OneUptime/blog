@@ -210,7 +210,7 @@ curl -H "Authorization: Bearer $ARTIFACTORY_TOKEN" \
 
 You can run your own Terraform registry that implements the Module Registry Protocol. The protocol is straightforward HTTP with a few specific endpoints:
 
-```
+```text
 GET /.well-known/terraform.json
 GET /v1/modules/{namespace}/{name}/{provider}/versions
 GET /v1/modules/{namespace}/{name}/{provider}/{version}/download
@@ -244,7 +244,7 @@ module "vpc" {
 
 Regardless of which registry you choose, follow these naming conventions:
 
-```
+```text
 terraform-<PROVIDER>-<NAME>
 
 Examples:

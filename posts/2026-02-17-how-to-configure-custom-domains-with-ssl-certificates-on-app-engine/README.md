@@ -27,7 +27,7 @@ Google needs to confirm that you actually own the domain before it will let you 
 
 Click "Add a custom domain" and enter your domain name. If you have not verified it before, Google will ask you to prove ownership. The most common method is adding a TXT record to your domain's DNS:
 
-```
+```text
 # Example TXT record for domain verification
 Type: TXT
 Name: @
@@ -69,7 +69,7 @@ After mapping the domain, Google provides the DNS records you need to add. The s
 
 For subdomains like `app.yourdomain.com`, you need a CNAME record:
 
-```
+```text
 # CNAME record for subdomain mapping
 Type: CNAME
 Name: app
@@ -79,7 +79,7 @@ TTL: 3600
 
 For bare domains like `yourdomain.com`, you need A and AAAA records because bare domains cannot use CNAME records:
 
-```
+```text
 # A records for bare domain mapping
 Type: A
 Name: @

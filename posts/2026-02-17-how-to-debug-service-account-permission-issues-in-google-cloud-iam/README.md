@@ -16,18 +16,18 @@ I have spent more hours debugging service account issues than I care to admit. H
 
 Service account permission errors come in several flavors:
 
-```
+```text
 ERROR: (gcloud.compute.instances.list) PERMISSION_DENIED:
 Required 'compute.instances.list' permission for 'projects/my-project'
 ```
 
-```
+```text
 googleapiclient.errors.HttpError: <HttpError 403 when requesting
 https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-a/instances
 returned "Required 'compute.instances.list' permission for 'projects/my-project'">
 ```
 
-```
+```text
 Error: caller does not have permission to act as service account 'my-sa@my-project.iam.gserviceaccount.com'
 ```
 

@@ -50,7 +50,7 @@ max_connections = 100
 
 ### Memory Calculation
 
-```
+```text
 Total PostgreSQL memory =
     shared_buffers +
     (max_connections * work_mem * 2) +

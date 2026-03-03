@@ -24,7 +24,7 @@ Key differences:
 
 User unit files can be placed in several locations:
 
-```
+```text
 ~/.config/systemd/user/     # User-specific units (preferred)
 /etc/systemd/user/           # System-wide user units (admin installed)
 /usr/lib/systemd/user/       # Package-installed user units

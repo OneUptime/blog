@@ -85,7 +85,7 @@ chmod +x /opt/otel/scripts/systemd_status.sh
 
 The output will look something like this:
 
-```
+```text
 systemd_service_active{service="nginx",state="active"} 1
 systemd_service_active{service="postgresql",state="active"} 1
 systemd_service_active{service="redis",state="active"} 1

@@ -21,7 +21,7 @@ os.listdir("/missing/directory")  # Directory doesn't exist
 
 The error message includes the path that was not found:
 
-```
+```text
 FileNotFoundError: [Errno 2] No such file or directory: 'nonexistent.txt'
 ```
 

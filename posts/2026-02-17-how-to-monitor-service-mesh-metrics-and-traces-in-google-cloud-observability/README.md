@@ -197,7 +197,7 @@ The waterfall view shows each service hop as a span, with timing information for
 
 Use trace analysis to find patterns.
 
-```
+```text
 # In the Cloud Trace search, filter for slow traces
 latency > 1s AND /api/checkout
 ```
@@ -245,14 +245,14 @@ Envoy access logs capture detailed information about every request. In Cloud Log
 
 In the Cloud Logging log explorer, use this filter to find mesh access logs.
 
-```
+```text
 resource.type="k8s_container"
 resource.labels.container_name="istio-proxy"
 ```
 
 To find specific patterns.
 
-```
+```text
 # Find all 5xx responses
 resource.type="k8s_container"
 resource.labels.container_name="istio-proxy"

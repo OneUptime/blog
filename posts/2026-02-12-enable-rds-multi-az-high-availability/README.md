@@ -86,7 +86,7 @@ AWS offers two Multi-AZ modes. The original is "Multi-AZ Instance" (one primary 
 
 Here's how they compare:
 
-```
+```text
 Feature             | Multi-AZ Instance    | Multi-AZ Cluster
 --------------------|----------------------|---------------------
 Standby instances   | 1 (not readable)     | 2 (readable)

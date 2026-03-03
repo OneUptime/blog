@@ -14,7 +14,7 @@ When you manage Terraform across multiple environments, regions, or accounts, wr
 
 A matrix strategy takes a set of variables and creates a job for every combination. If you have 3 environments and 3 regions, the matrix generates 9 jobs:
 
-```
+```text
 dev     x us-east-1
 dev     x eu-west-1
 dev     x ap-southeast-1

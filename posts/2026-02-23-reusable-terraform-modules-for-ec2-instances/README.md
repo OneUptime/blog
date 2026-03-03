@@ -28,7 +28,7 @@ You do not want the module to manage the VPC, subnets, or security groups direct
 
 ## Directory Structure
 
-```
+```text
 modules/ec2-instance/
   main.tf
   variables.tf

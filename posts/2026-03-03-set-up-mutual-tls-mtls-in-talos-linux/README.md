@@ -23,7 +23,7 @@ Every interaction between a client (like `talosctl`) and a Talos node goes throu
 5. The server verifies the client certificate
 6. Only after both sides authenticate does the connection proceed
 
-```
+```text
 Client (talosctl)                    Server (Talos node)
      |                                     |
      |---- ClientHello ------------------>|
@@ -48,7 +48,7 @@ Talos maintains several mTLS-secured communication channels:
 
 ### Talos API (Port 50000)
 
-```
+```text
 Talos CA
   |-- Server cert (on each node)
   |-- Client cert (in talosconfig)
@@ -56,7 +56,7 @@ Talos CA
 
 ### Kubernetes API (Port 6443)
 
-```
+```text
 Kubernetes CA
   |-- API server cert
   |-- Kubelet client cert
@@ -67,7 +67,7 @@ Kubernetes CA
 
 ### etcd (Ports 2379/2380)
 
-```
+```text
 etcd CA
   |-- etcd peer certs (node-to-node)
   |-- etcd client certs (API server to etcd)

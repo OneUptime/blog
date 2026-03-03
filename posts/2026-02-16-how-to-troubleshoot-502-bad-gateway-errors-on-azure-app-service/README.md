@@ -68,7 +68,7 @@ Look at the timing of 502 errors. If they consistently appear after about 230 se
 
 Check Application Insights for long-running requests:
 
-```
+```text
 // KQL query to find slow requests in Application Insights
 requests
 | where timestamp > ago(1h)

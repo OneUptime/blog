@@ -3392,7 +3392,7 @@ main().catch(console.error);
 
 ### Output Example
 
-```
+```text
 Processing CSV batch...
 
 === Statistics ===

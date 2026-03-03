@@ -18,7 +18,7 @@ At a high level, Talos Linux consists of a minimal Linux kernel, an init system 
 
 Here is how the components stack up:
 
-```
+```text
 +------------------------------------------+
 |            Kubernetes Workloads           |
 +------------------------------------------+

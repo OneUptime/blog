@@ -178,7 +178,7 @@ app.register_blueprint(tenant_bp, subdomain='<tenant>')
 
 ### Directory Structure
 
-```
+```text
 myapp/
     app.py
     templates/              # Application-level templates
@@ -441,7 +441,7 @@ class TestingConfig(Config):
 
 ### Recommended Project Structure
 
-```
+```text
 myproject/
     app/
         __init__.py           # Application factory

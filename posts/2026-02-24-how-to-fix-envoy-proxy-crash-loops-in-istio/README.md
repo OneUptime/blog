@@ -96,7 +96,7 @@ kubectl logs <pod-name> -c istio-proxy -n production --previous | grep "istiod\|
 
 Common messages:
 
-```
+```text
 failed to fetch bootstrap config
 connection refused to istiod.istio-system:15012
 ```
@@ -157,7 +157,7 @@ kubectl logs <pod-name> -c istio-proxy -n production --previous | grep "cert\|ce
 
 Common certificate-related crash messages:
 
-```
+```text
 SDS: failed to fetch certificate
 CA: failed to get certificate
 ```

@@ -95,7 +95,7 @@ kill -USR1 <PID>  # Enables inspector on running Node process
 
 You'll see output like:
 
-```
+```text
 Debugger listening on ws://127.0.0.1:9229/abc-123-def
 For help, see: https://nodejs.org/en/docs/inspector
 ```

@@ -56,7 +56,7 @@ sudo journalctl -u php8.3-fpm | grep ERROR
 ```
 
 If the log shows something like:
-```
+```text
 PHP Parse error: syntax error, unexpected '}' in /var/www/html/index.php on line 42
 ```
 

@@ -59,7 +59,7 @@ This configuration sets up the Syslog receiver on the standard port 514, using R
 
 RFC 3164 is the older, simpler Syslog format:
 
-```
+```text
 <34>Oct 11 22:14:15 server1 sshd[1234]: Failed password for user from 192.168.1.1
 ```
 
@@ -85,7 +85,7 @@ receivers:
 
 RFC 5424 is the modern Syslog format with structured data:
 
-```
+```text
 <165>1 2024-02-06T10:30:00.123Z server1 app1 1234 ID47 [exampleSDID@32473 iut="3" eventSource="Application" eventID="1011"] Application started
 ```
 

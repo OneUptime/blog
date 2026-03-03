@@ -137,7 +137,7 @@ resource "aws_route53_record" "auth" {
 
 If you're not using Route 53, create a CNAME record at your DNS provider:
 
-```
+```text
 CNAME  auth.myapp.com  -->  d1234abcde.cloudfront.net
 ```
 
@@ -201,17 +201,17 @@ Amplify.configure({
 If you have social or enterprise identity providers, update the callback URLs in their configurations:
 
 **Google OAuth**: Update the authorized redirect URI to:
-```
+```text
 https://auth.myapp.com/oauth2/idpresponse
 ```
 
 **Facebook**: Update the valid OAuth redirect URI to:
-```
+```text
 https://auth.myapp.com/oauth2/idpresponse
 ```
 
 **SAML providers**: Update the ACS URL to:
-```
+```text
 https://auth.myapp.com/saml2/idpresponse
 ```
 

@@ -16,7 +16,7 @@ This guide covers enabling and disabling built-in admission controllers, setting
 
 When a request hits the Kubernetes API server, it goes through this pipeline:
 
-```
+```text
 Request -> Authentication -> Authorization -> Admission Controllers -> Persistence
 ```
 
@@ -36,7 +36,7 @@ kubectl get pod -n kube-system kube-apiserver-talos-cp-1 -o yaml | grep admissio
 
 Kubernetes enables a set of default admission controllers. The exact list depends on the Kubernetes version, but it typically includes:
 
-```
+```text
 # Default admission controllers (Kubernetes 1.29+)
 CertificateApproval
 CertificateSigning
@@ -86,7 +86,7 @@ Pod Security admission is the replacement for the deprecated PodSecurityPolicy. 
 
 There are three security levels:
 
-```
+```text
 # Pod Security Standards
 privileged  - Unrestricted policy (no restrictions)
 baseline    - Minimally restrictive (prevents known privilege escalations)
@@ -95,7 +95,7 @@ restricted  - Heavily restricted (follows current pod hardening best practices)
 
 And three enforcement modes:
 
-```
+```text
 # Enforcement modes
 enforce - Violations reject the pod
 audit   - Violations are logged but allowed

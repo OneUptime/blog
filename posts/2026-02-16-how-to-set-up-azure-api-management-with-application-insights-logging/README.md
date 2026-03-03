@@ -72,7 +72,7 @@ Open your Application Insights resource and go to "Logs." Here are some useful q
 
 Find the slowest API operations in the last hour:
 
-```
+```text
 // Find the top 10 slowest API operations in the last hour
 // Groups by operation name and shows average, 95th percentile, and max duration
 requests
@@ -90,7 +90,7 @@ requests
 
 Find failed requests and their error details:
 
-```
+```text
 // Show all failed API requests with error details
 // Includes the status code and any exception messages
 requests
@@ -104,7 +104,7 @@ requests
 
 Analyze request patterns by subscription:
 
-```
+```text
 // Request counts and error rates per API subscription
 // Helps identify which consumers are having issues
 requests
@@ -121,7 +121,7 @@ requests
 
 Track backend dependency health:
 
-```
+```text
 // Monitor backend service health
 // Shows success rate and latency for each backend
 dependencies
@@ -149,7 +149,7 @@ Go to Application Insights, click "Alerts," and create a new alert rule:
 
 **Slow response time alert**: Triggers when the P95 response time exceeds your SLA:
 
-```
+```text
 // Alert query for slow responses
 requests
 | where cloud_RoleName contains "apim"
@@ -159,7 +159,7 @@ requests
 
 **Backend failure alert**: Triggers when a specific backend starts failing:
 
-```
+```text
 // Alert when backend dependency failure rate spikes
 dependencies
 | where target contains "orders"

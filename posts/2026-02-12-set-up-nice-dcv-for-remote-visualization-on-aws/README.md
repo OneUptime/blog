@@ -163,7 +163,7 @@ aws ec2 authorize-security-group-ingress \
 
 Open a web browser and navigate to:
 
-```
+```text
 https://<instance-public-ip>:8443
 ```
 

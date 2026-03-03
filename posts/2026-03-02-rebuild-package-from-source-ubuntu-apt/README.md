@@ -25,7 +25,7 @@ sudo nano /etc/apt/sources.list
 
 The sources.list needs `deb-src` lines corresponding to your `deb` lines:
 
-```
+```text
 # Before (only binary packages):
 deb http://archive.ubuntu.com/ubuntu jammy main restricted
 

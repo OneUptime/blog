@@ -238,7 +238,7 @@ Each indoor radio unit covers approximately 15,000-25,000 square feet, depending
 
 Outdoor units cover significantly more area - up to several hundred meters in open space.
 
-```
+```text
 Coverage estimation:
 - Indoor (open floor): ~25,000 sq ft per radio
 - Indoor (shelving/walls): ~15,000 sq ft per radio

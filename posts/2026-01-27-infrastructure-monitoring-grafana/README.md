@@ -470,7 +470,7 @@ instance:node_cpu:utilization{instance="server1"}
 
 Structure your infrastructure dashboards:
 
-```
+```text
 Infrastructure/
 ├── Overview
 │   └── All servers at a glance

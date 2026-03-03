@@ -64,7 +64,7 @@ istiod memory consumption is primarily driven by the size of its internal state,
 
 **Formula:**
 
-```
+```text
 Memory = Base + (Proxies x Per_Proxy) + (Endpoints x Per_Endpoint) + (Config_Resources x Per_Config)
 
 Where:
@@ -77,7 +77,7 @@ Where:
 **Examples:**
 
 Small mesh (50 proxies, 100 services, 300 endpoints, 50 config resources):
-```
+```text
 Memory = 200 + (50 x 1) + (300 x 0.005) + (50 x 0.05)
 Memory = 200 + 50 + 1.5 + 2.5
 Memory = ~254 MB
@@ -85,7 +85,7 @@ Request: 512 Mi (with headroom)
 ```
 
 Medium mesh (500 proxies, 500 services, 3,000 endpoints, 200 config resources):
-```
+```text
 Memory = 200 + (500 x 1) + (3000 x 0.005) + (200 x 0.05)
 Memory = 200 + 500 + 15 + 10
 Memory = ~725 MB
@@ -93,7 +93,7 @@ Request: 1 Gi
 ```
 
 Large mesh (2,000 proxies, 2,000 services, 10,000 endpoints, 1,000 config resources):
-```
+```text
 Memory = 200 + (2000 x 1) + (10000 x 0.005) + (1000 x 0.05)
 Memory = 200 + 2000 + 50 + 50
 Memory = ~2,300 MB
@@ -106,7 +106,7 @@ CPU consumption spikes during configuration changes and certificate operations, 
 
 **Steady state CPU:**
 
-```
+```text
 CPU = Base + (Proxies x Keepalive_Cost) + (Config_Changes_Per_Min x Push_Cost)
 
 Where:

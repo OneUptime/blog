@@ -105,7 +105,7 @@ The key difference from a static site configuration is the `baseDirectory` point
 
 SSR apps often need server-side environment variables that differ from client-side ones. In the Amplify console, navigate to your app, then "Hosting" and "Environment variables."
 
-```
+```text
 # Example environment variables for an SSR app
 DATABASE_URL=postgresql://user:pass@host:5432/db
 NEXT_PUBLIC_API_URL=https://api.example.com

@@ -24,7 +24,7 @@ istioctl proxy-config secret productpage-v1-6b746f74dc-9rlmh.bookinfo
 
 Output:
 
-```
+```text
 RESOURCE NAME     TYPE           STATUS     VALID CERT     SERIAL NUMBER                        NOT AFTER                NOT BEFORE
 default           Cert Chain     ACTIVE     true           29f3a1e83bcf0a9c5ac4b64e0b3c5178     2026-02-25T12:00:00Z     2026-02-24T12:00:00Z
 ROOTCA            CA             ACTIVE     true           5a8e4f2c1b7d9a3e6c0f8b2d4a7e1c9f     2036-02-22T12:00:00Z     2026-02-24T12:00:00Z
@@ -53,7 +53,7 @@ ROOTCA            CA             ACTIVE     true           5a8e4f2c1b7d9a3e6c0f8
 
 If `VALID CERT` shows `false` and the `NOT AFTER` date is in the past, the certificate has expired:
 
-```
+```text
 RESOURCE NAME     TYPE           STATUS     VALID CERT     NOT AFTER
 default           Cert Chain     ACTIVE     false          2026-02-23T12:00:00Z
 ```
@@ -127,7 +127,7 @@ openssl x509 -in /tmp/cert.pem -text -noout | grep "Subject Alternative Name" -A
 
 You should see:
 
-```
+```text
 X509v3 Subject Alternative Name:
     URI:spiffe://cluster.local/ns/bookinfo/sa/bookinfo-productpage
 ```

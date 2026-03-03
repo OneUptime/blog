@@ -434,7 +434,7 @@ rm -rf .tsbuildinfo
 
 ### 1. Organize Custom Types
 
-```
+```text
 src/
 ├── types/
 │   ├── index.d.ts      # Re-exports all types

@@ -14,7 +14,7 @@ Terraform module outputs are the primary way modules communicate with the rest o
 
 Module output mismatches typically produce errors like these:
 
-```
+```text
 Error: Unsupported attribute
 
   on main.tf line 15, in resource "aws_instance" "web":
@@ -25,7 +25,7 @@ This object has no attribute named "public_subnet_id".
 
 Or a type mismatch:
 
-```
+```text
 Error: Invalid value for module argument
 
   on main.tf line 8, in module "app":

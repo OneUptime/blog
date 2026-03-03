@@ -70,7 +70,7 @@ Think about your workload pattern:
 
 Basic scaling uses B-class instances (not F-class like automatic scaling):
 
-```
+```text
 B1: 256MB memory, 600MHz CPU   - $0.05/hour
 B2: 512MB memory, 1.2GHz CPU   - $0.10/hour
 B4: 1GB memory, 2.4GHz CPU     - $0.20/hour
@@ -292,7 +292,7 @@ gcloud app deploy cron.yaml --project=your-project-id
 Let me compare costs for a workload that processes 100 tasks per day, each taking 5 minutes:
 
 With automatic scaling (F2 instances):
-```
+```text
 100 tasks x 5 minutes = 500 instance-minutes = 8.3 hours
 F2 cost: $0.10/hour
 Daily cost: ~$0.83
@@ -300,7 +300,7 @@ Plus min_idle_instances cost if any
 ```
 
 With basic scaling (B2 instances):
-```
+```text
 100 tasks x 5 minutes = 500 active minutes
 Plus idle time between tasks (depends on idle_timeout)
 With 10-minute idle timeout and tasks spread across the day:

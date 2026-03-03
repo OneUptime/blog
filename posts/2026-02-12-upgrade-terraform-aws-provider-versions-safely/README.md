@@ -125,7 +125,7 @@ If the plan shows zero changes, great - the upgrade is compatible with your curr
 
 Never upgrade production first. Follow this order:
 
-```
+```text
 Development -> Staging -> Production
 ```
 

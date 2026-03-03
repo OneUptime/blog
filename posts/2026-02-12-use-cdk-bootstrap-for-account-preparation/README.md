@@ -267,7 +267,7 @@ cdk bootstrap
 
 CDK will tell you during deployment if your bootstrap version is too old. The error message looks like:
 
-```
+```text
 This CDK deployment requires bootstrap stack version '21', found '20'.
 Please run 'cdk bootstrap'.
 ```

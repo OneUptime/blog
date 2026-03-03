@@ -48,7 +48,7 @@ The output shows a unified diff format similar to git diff, highlighting additio
 
 The diff output uses color coding and symbols to indicate changes:
 
-```
+```text
 + Lines in green with a plus sign indicate additions
 - Lines in red with a minus sign indicate deletions
 ~ Lines in yellow with a tilde indicate modifications

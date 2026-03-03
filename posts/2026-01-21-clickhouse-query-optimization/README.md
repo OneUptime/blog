@@ -68,7 +68,7 @@ GROUP BY user_id;
 ```
 
 Output interpretation:
-```
+```text
 Expression ((Projection + Before ORDER BY))
   Aggregating
     Expression (Before GROUP BY)

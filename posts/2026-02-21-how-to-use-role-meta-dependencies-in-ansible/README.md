@@ -14,7 +14,7 @@ When you build Ansible roles that depend on other roles, you need a way to expre
 
 Dependencies live in the `meta/main.yml` file of your role:
 
-```
+```text
 roles/
   webapp/
     meta/

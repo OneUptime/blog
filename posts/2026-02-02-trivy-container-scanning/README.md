@@ -77,7 +77,7 @@ trivy image nginx:latest
 
 Output shows vulnerabilities grouped by severity:
 
-```
+```text
 nginx:latest (debian 12.4)
 ===========================
 Total: 142 (UNKNOWN: 0, LOW: 89, MEDIUM: 42, HIGH: 9, CRITICAL: 2)

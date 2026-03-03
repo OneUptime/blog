@@ -107,7 +107,7 @@ Note the IP address - you will need it for DNS configuration.
 
 Point your domain to the reserved IP address. Create an A record in your DNS provider.
 
-```
+```text
 Type: A
 Name: app.yourdomain.com
 Value: <THE_STATIC_IP>

@@ -112,7 +112,7 @@ service:
 
 Look for logs from the connector component:
 
-```
+```text
 debug  connector/spanmetrics  received traces  {"num_spans": 42}
 debug  connector/spanmetrics  exported metrics  {"num_metrics": 5}
 ```

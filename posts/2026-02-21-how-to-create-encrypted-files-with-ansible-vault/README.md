@@ -34,7 +34,7 @@ ansible-vault create secrets.yml
 
 Ansible prompts for a vault password:
 
-```
+```text
 New Vault password:
 Confirm New Vault password:
 ```
@@ -61,7 +61,7 @@ cat secrets.yml
 
 Output:
 
-```
+```text
 $ANSIBLE_VAULT;1.1;AES256
 34613865303530383762376365623463613031326639333763363265373030656562346232613136
 6339323730343730326134663133346634623539393132360a383033323066636338303030383265
@@ -148,7 +148,7 @@ vault_password_file = ~/.vault_pass.txt
 
 Important: **Never commit the password file to Git.** Add it to `.gitignore`:
 
-```
+```text
 # .gitignore
 .vault_pass.txt
 *.vault_pass
@@ -273,7 +273,7 @@ db_password: !vault |
 
 Here is a recommended layout:
 
-```
+```text
 project/
   ansible.cfg
   .gitignore                    # Exclude vault password files

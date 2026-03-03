@@ -16,7 +16,7 @@ This guide explains how to calculate and configure appropriate resource reservat
 
 Total node resources are divided into:
 
-```
+```text
 Node Capacity
 ├─ System Reserved (systemReserved)
 │   └─ OS daemons, sshd, systemd, etc.
@@ -29,7 +29,7 @@ Node Capacity
 ```
 
 Formula:
-```
+```text
 Allocatable = Node Capacity - systemReserved - kubeReserved - evictionThreshold
 ```
 
@@ -161,7 +161,7 @@ systemReserved:
 
 Formula-based approach:
 
-```
+```text
 CPU: max(200m, node_cpu * 0.05)
 Memory: max(512Mi, node_memory * 0.05)
 Storage: max(5Gi, node_storage * 0.02)
@@ -189,7 +189,7 @@ kubeReserved:
 
 Scale with cluster size:
 
-```
+```text
 Small cluster (< 100 nodes):
   cpu: "500m"
   memory: "1Gi"
@@ -243,7 +243,7 @@ evictionSoftGracePeriod:
 
 Calculate allocatable:
 
-```
+```text
 Node: 8 CPU, 16GB RAM
 systemReserved: 500m CPU, 1GB RAM
 kubeReserved: 500m CPU, 1GB RAM

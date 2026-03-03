@@ -22,7 +22,7 @@ The pattern involves three components:
 2. **Responder** - Receives the request and sends a reply
 3. **Inbox** - A unique, ephemeral subject for the response
 
-```
+```text
 Requester                    NATS                     Responder
     |                         |                           |
     |-- Request (reply-to) -->|                           |

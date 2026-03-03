@@ -2393,7 +2393,7 @@ Recommended Rider plugins:
 
 Rider configuration recommendations:
 
-```
+```text
 # Enable .NET Hot Reload
 Settings -> Build, Execution, Deployment -> Hot Reload -> Enable Hot Reload
 

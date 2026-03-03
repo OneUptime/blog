@@ -76,7 +76,7 @@ spec:
 
 Structure your Linkerd configuration alongside your application manifests:
 
-```
+```text
 services/
   api-service/
     base/

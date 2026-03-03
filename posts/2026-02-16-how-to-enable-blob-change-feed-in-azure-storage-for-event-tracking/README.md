@@ -85,7 +85,7 @@ For infrastructure-as-code deployments, include the change feed setting in your 
 
 After enabling, the change feed data appears in a special container called `$blobchangefeed` in your storage account. The data is organized by time:
 
-```
+```text
 $blobchangefeed/
   log/
     00/

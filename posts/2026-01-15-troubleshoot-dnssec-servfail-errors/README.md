@@ -142,7 +142,7 @@ dig example.com +dnssec
 
 Expected output for a SERVFAIL:
 
-```
+```text
 ;; ->>HEADER<<- opcode: QUERY, status: SERVFAIL, id: 12345
 ;; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 0, ADDITIONAL: 1
 ```
@@ -207,7 +207,7 @@ dig example.com RRSIG +multi
 
 Example RRSIG output:
 
-```
+```text
 example.com.    3600 IN RRSIG A 13 2 3600 (
                 20260215000000 20260115000000 12345 example.com.
                 ABCDEF123456... )

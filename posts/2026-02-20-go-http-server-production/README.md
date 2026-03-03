@@ -28,7 +28,7 @@ graph TD
 
 ## Project Structure
 
-```
+```text
 server/
   main.go          # Entry point and server configuration
   handler/

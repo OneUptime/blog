@@ -228,7 +228,7 @@ EOF
 
 During an active incident, communicate using this template:
 
-```
+```text
 INCIDENT: [Title]
 SEVERITY: SEV[1-4]
 STATUS: Investigating / Identified / Mitigating / Resolved

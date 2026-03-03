@@ -403,7 +403,7 @@ flowchart LR
 
 ### Directory Structure
 
-```
+```text
 policies/
 ├── sentinel.hcl
 ├── restrict-ami.sentinel

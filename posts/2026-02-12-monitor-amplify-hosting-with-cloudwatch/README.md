@@ -185,7 +185,7 @@ aws cloudwatch put-metric-alarm \
 
 For SSR applications, Amplify creates Lambda functions that handle server-side rendering. These functions write logs to CloudWatch Logs. The log group name follows this pattern:
 
-```
+```text
 /aws/amplify/d1234abcde/main
 ```
 

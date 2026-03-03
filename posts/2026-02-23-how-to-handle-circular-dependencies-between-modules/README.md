@@ -12,7 +12,7 @@ Circular dependencies are one of the most frustrating errors in Terraform. You s
 
 ## What a Circular Dependency Looks Like
 
-```
+```text
 Error: Cycle: module.security.output.app_sg_id, module.compute.var.security_group_ids,
 module.compute.output.instance_ids, module.security.var.instance_ids
 ```

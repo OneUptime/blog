@@ -689,7 +689,7 @@ func init() {
 
 Here is the final project structure and a fully working implementation.
 
-```
+```text
 taskctl/
 ├── main.go
 ├── go.mod

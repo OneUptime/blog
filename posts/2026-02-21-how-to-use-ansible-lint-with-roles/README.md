@@ -31,7 +31,7 @@ ansible-lint automatically detects the role structure and applies appropriate ru
 
 A well-structured role looks like this, and ansible-lint validates each component:
 
-```
+```text
 roles/webserver/
   tasks/
     main.yml       # Linted for task-level rules
@@ -353,7 +353,7 @@ exclude_paths:
 
 Role names should use lowercase letters, numbers, and underscores only:
 
-```
+```text
 # Bad role names
 roles/Web-Server/
 roles/MyRole/

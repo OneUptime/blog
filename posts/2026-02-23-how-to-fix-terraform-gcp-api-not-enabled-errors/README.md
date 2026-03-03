@@ -12,7 +12,7 @@ When Terraform reports that a GCP API is "not enabled," it means the Google Clou
 
 ## What the Error Looks Like
 
-```
+```text
 Error: Error creating Instance: googleapi: Error 403: Compute Engine API
 has not been used in project 123456789 before or it is disabled.
 Enable it by visiting

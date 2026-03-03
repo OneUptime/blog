@@ -65,7 +65,7 @@ sudo pg_lsclusters
 
 You should see output like:
 
-```
+```text
 Ver Cluster Port Status Owner    Data directory              Log file
 16  main    5432 online postgres /var/lib/postgresql/16/main /var/log/postgresql/postgresql-16-main.log
 ```
@@ -228,7 +228,7 @@ sudo systemctl restart postgresql
 
 The `pg_hba.conf` file controls who can connect and how. The format is:
 
-```
+```text
 # TYPE  DATABASE  USER  ADDRESS  METHOD
 local   all       all            peer
 host    all       all  127.0.0.1/32  scram-sha-256

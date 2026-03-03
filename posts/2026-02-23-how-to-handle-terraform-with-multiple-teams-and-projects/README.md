@@ -82,7 +82,7 @@ resource "aws_instance" "app" {
 
 Choose a repository strategy that matches your organization's size and culture:
 
-```
+```text
 # Monorepo approach (works well for up to ~20 teams)
 infrastructure/
   shared/

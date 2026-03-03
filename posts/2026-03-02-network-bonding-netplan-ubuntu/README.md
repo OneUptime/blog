@@ -123,7 +123,7 @@ network:
 
 For LACP, the switch ports connected to `enp3s0` and `enp4s0` must be configured as an LACP port-channel with the same settings. A Cisco IOS example:
 
-```
+```text
 interface GigabitEthernet0/1
  channel-group 1 mode active
 

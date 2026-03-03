@@ -263,7 +263,7 @@ kubectl top pod -n app --containers | grep istio-proxy
 
 Also check for timeout and reset errors:
 
-```
+```text
 istio_requests_total{response_code="408", destination_service="upload-service.app.svc.cluster.local"}
 istio_requests_total{response_flags="UT", destination_service="upload-service.app.svc.cluster.local"}
 ```

@@ -14,7 +14,7 @@ By default, ArgoCD does not create the target namespace for an application. If y
 
 When ArgoCD syncs an application, it applies resources to the target namespace specified in the Application's `destination.namespace` field. If that namespace does not exist, kubectl returns an error.
 
-```
+```text
 FATA[0001] ComparisonError: namespace "production" not found
 ```
 

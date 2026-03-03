@@ -12,7 +12,7 @@ HAProxy exposes detailed metrics about frontends, backends, and individual serve
 
 Configure HAProxy to expose a Prometheus metrics endpoint:
 
-```
+```text
 # haproxy.cfg
 global
     log stdout format raw local0
@@ -52,7 +52,7 @@ curl http://localhost:8404/metrics
 
 HAProxy exposes hundreds of metrics. Here are the most important ones:
 
-```
+```text
 # Frontend metrics
 haproxy_frontend_current_sessions      - Active connections on frontend
 haproxy_frontend_bytes_in_total        - Total bytes received

@@ -91,7 +91,7 @@ mkdir -p db/sqlc
 
 The structure will look like this:
 
-```
+```text
 bookstore/
 ├── db/
 │   ├── migrations/    # Database schema migrations
@@ -405,7 +405,7 @@ This command reads your sqlc.yaml configuration and generates Go files in the sp
 
 After running sqlc generate, you will find these files in db/sqlc/:
 
-```
+```text
 db/sqlc/
 ├── db.go          # Database connection wrapper and Querier interface
 ├── models.go      # Go structs matching your database tables
@@ -1393,7 +1393,7 @@ Follow these best practices when using sqlc in production:
 
 Keep related queries together in separate files:
 
-```
+```text
 db/queries/
 ├── authors.sql      # Author-related queries
 ├── books.sql        # Book-related queries

@@ -199,7 +199,7 @@ spec:
 
 This creates the following priority chain for a pod in us-east-1/us-east-1a:
 
-```
+```text
 Priority 0: us-east-1/us-east-1a (local zone)
 Priority 1: us-east-1/us-east-1b, us-east-1/us-east-1c (same region)
 Priority 2: us-east-2/* (failover region)
@@ -270,7 +270,7 @@ istioctl proxy-config cluster <pod-name> -o json \
 
 In Prometheus, you can track the destination pod zones:
 
-```
+```text
 sum(rate(istio_requests_total{
   destination_service="order-processing.default.svc.cluster.local"
 }[5m])) by (destination_workload)

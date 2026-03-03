@@ -161,7 +161,7 @@ Instead of setting Spark configuration in every notebook, set it at the cluster 
 
 In the cluster configuration under Spark Config, add:
 
-```
+```text
 fs.azure.account.auth.type.<storage-account>.dfs.core.windows.net OAuth
 fs.azure.account.oauth.provider.type.<storage-account>.dfs.core.windows.net org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider
 fs.azure.account.oauth2.client.id.<storage-account>.dfs.core.windows.net {{secrets/adls-sp/client-id}}

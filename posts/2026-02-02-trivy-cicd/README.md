@@ -982,7 +982,7 @@ Real-world pipelines need mechanisms to handle false positives and accepted risk
 
 ### Using .trivyignore
 
-```
+```text
 # .trivyignore
 # List of CVE IDs to ignore during scans
 # Each line should include a comment explaining why

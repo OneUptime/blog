@@ -107,7 +107,7 @@ smtp_tls_ciphers = high
 sudo nano /etc/postfix/sasl_passwd
 ```
 
-```
+```text
 # Amazon SES SMTP credentials
 # Replace with your actual region and credentials
 [email-smtp.us-east-1.amazonaws.com]:587    AKIAIOSFODNN7EXAMPLE:BgDa8nCpJcZbcKEXAMPLEKEY
@@ -142,7 +142,7 @@ sudo tail -f /var/log/mail.log
 
 Successful delivery looks like:
 
-```
+```text
 postfix/smtp[1234]: to=<recipient@example.com>,
   relay=email-smtp.us-east-1.amazonaws.com[x.x.x.x]:587,
   status=sent (250 Ok 0000000000000000-XXXXXXXX-...)
@@ -166,7 +166,7 @@ sender_canonical_maps = hash:/etc/postfix/sender_canonical
 sudo nano /etc/postfix/sender_canonical
 ```
 
-```
+```text
 # Map local users to verified SES sender addresses
 root            noreply@yourdomain.com
 www-data        app@yourdomain.com
@@ -213,7 +213,7 @@ smtp_header_checks = regexp:/etc/postfix/header_checks
 sudo nano /etc/postfix/header_checks
 ```
 
-```
+```text
 # Add SES configuration set header to all outbound mail
 /^From:/  PREPEND X-SES-CONFIGURATION-SET: your-config-set-name
 ```

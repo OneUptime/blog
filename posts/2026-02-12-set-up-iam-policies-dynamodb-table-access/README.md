@@ -16,7 +16,7 @@ Let's walk through the common patterns from basic table access to fine-grained i
 
 DynamoDB has several resource types:
 
-```
+```text
 Table:    arn:aws:dynamodb:us-east-1:123456789012:table/MyTable
 Index:    arn:aws:dynamodb:us-east-1:123456789012:table/MyTable/index/MyIndex
 Stream:   arn:aws:dynamodb:us-east-1:123456789012:table/MyTable/stream/*

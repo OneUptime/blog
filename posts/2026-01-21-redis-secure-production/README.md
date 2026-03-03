@@ -24,7 +24,7 @@ This makes unconfigured Redis extremely vulnerable to attacks.
 
 ### Security Layers
 
-```
+```text
 Internet -> Firewall -> VPN/Private Network -> TLS Encryption -> Authentication -> ACL -> Redis
 ```
 
@@ -137,7 +137,7 @@ nocommands      # Deny all commands
 
 Create `/etc/redis/users.acl`:
 
-```
+```text
 # Default user (admin)
 user default on >adminpassword ~* +@all
 

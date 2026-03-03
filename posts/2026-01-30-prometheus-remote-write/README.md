@@ -117,7 +117,7 @@ Now let us build a custom receiver in Go. This receiver will handle incoming rem
 
 ### Project Structure
 
-```
+```text
 remote-write-receiver/
 ├── main.go
 ├── handler/

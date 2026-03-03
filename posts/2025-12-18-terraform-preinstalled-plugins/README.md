@@ -32,7 +32,7 @@ The filesystem mirror is the recommended approach for pre-installed providers.
 
 Terraform expects a specific directory structure:
 
-```
+```text
 /terraform-plugins/
   registry.terraform.io/
     hashicorp/

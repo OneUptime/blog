@@ -16,7 +16,7 @@ Backend configuration errors are among the most common issues Terraform users fa
 
 This is probably the most common one:
 
-```
+```text
 Error: Backend configuration changed
 
 A change in the backend configuration has been detected, which may require
@@ -42,7 +42,7 @@ If you are changing the S3 key or bucket, `-migrate-state` will copy the state f
 
 ## Error: Required Backend Configuration Not Present
 
-```
+```text
 Error: "bucket": required field is not set
 Error: "region": required field is not set
 ```
@@ -94,7 +94,7 @@ terraform init -backend-config=backend.hcl
 
 ## Error: Backend Not Initialized
 
-```
+```text
 Error: Backend initialization required, please run "terraform init"
 
 Reason: Initial configuration of the requested backend "s3"
@@ -121,13 +121,13 @@ steps:
 
 ## Error: Failed to Get Existing Workspaces
 
-```
+```text
 Error: Failed to get existing workspaces: S3 bucket does not exist.
 ```
 
 or
 
-```
+```text
 Error: Failed to get existing workspaces: AccessDenied: Access Denied
 ```
 
@@ -175,7 +175,7 @@ aws s3api put-bucket-encryption \
 
 ## Error: Backend Configuration with Unsupported Arguments
 
-```
+```text
 Error: Unsupported argument
 
 An argument named "lock_table" is not expected here. Did you mean "dynamodb_table"?
@@ -213,7 +213,7 @@ terraform {
 
 ## Error: Variables Not Allowed in Backend Configuration
 
-```
+```text
 Error: Variables not allowed
 
 Variables may not be used here.
@@ -263,7 +263,7 @@ terraform init -backend-config="environments/${ENVIRONMENT}/backend.hcl"
 
 ## Error: Backend Type Changed
 
-```
+```text
 Error: Invalid backend configuration argument
 
 The backend configuration argument "organization" is not expected for backend type "s3".

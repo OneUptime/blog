@@ -14,7 +14,7 @@ Starting with Ansible 2.10, the project split its modules into separate collecti
 
 A Fully Qualified Collection Name identifies a module by its namespace, collection, and module name:
 
-```
+```text
 namespace.collection.module_name
 ```
 

@@ -16,7 +16,7 @@ If Prometheus is your primary metrics backend and it develops problems, you lose
 
 ### TSDB Metrics
 
-```
+```text
 prometheus_tsdb_head_series            - Number of active time series
 prometheus_tsdb_head_chunks            - Number of chunks in the head block
 prometheus_tsdb_compactions_total      - Total compactions
@@ -27,7 +27,7 @@ prometheus_tsdb_blocks_loaded          - Number of loaded data blocks
 
 ### WAL Metrics
 
-```
+```text
 prometheus_tsdb_wal_segment_current    - Current WAL segment number
 prometheus_tsdb_wal_fsync_duration_seconds - WAL fsync duration
 prometheus_tsdb_wal_corruptions_total  - WAL corruption count
@@ -37,7 +37,7 @@ prometheus_tsdb_wal_page_flushes_total - WAL page flush count
 
 ### Scrape Metrics
 
-```
+```text
 prometheus_target_scrape_pool_targets  - Number of targets per scrape pool
 prometheus_target_scrape_pools_total   - Total scrape pools
 scrape_duration_seconds                - Per-target scrape duration
@@ -47,7 +47,7 @@ up                                     - Target up/down status
 
 ### Resource Usage
 
-```
+```text
 process_cpu_seconds_total              - CPU time consumed
 process_resident_memory_bytes          - Memory usage
 process_open_fds                       - Open file descriptors
@@ -173,7 +173,7 @@ volumes:
 
 Track disk usage trends:
 
-```
+```text
 prometheus_tsdb_storage_blocks_bytes   - Total storage used by blocks
 prometheus_tsdb_head_chunks_storage_size_bytes - Head block storage size
 ```
@@ -182,7 +182,7 @@ When storage grows unexpectedly, it usually means a new high-cardinality metric 
 
 ## Checking Query Performance
 
-```
+```text
 prometheus_engine_query_duration_seconds - Query execution time
 prometheus_engine_queries_concurrent_max - Max concurrent queries allowed
 prometheus_engine_queries               - Total queries executed

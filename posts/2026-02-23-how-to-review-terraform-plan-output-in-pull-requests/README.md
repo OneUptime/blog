@@ -16,7 +16,7 @@ Yet many teams treat plan review as a rubber stamp. They glance at the summary l
 
 Terraform plan output follows a consistent structure. Understanding this structure is the first step to effective review.
 
-```
+```text
 # Example plan output structure
 Terraform will perform the following actions:
 
@@ -133,7 +133,7 @@ When reviewing a Terraform plan, focus on these critical areas in order of impor
 
 The most dangerous operations are destroys and recreations. Look for the `-/+` symbol, which means Terraform will delete a resource and create a new one. This can cause downtime.
 
-```
+```text
 # DANGER: This resource will be destroyed and recreated
 -/+ resource "aws_db_instance" "main" {
       ~ id                = "mydb" -> (known after apply)
@@ -149,7 +149,7 @@ A database replacement means data loss unless you have taken precautions. Always
 
 Watch for changes to security groups, IAM policies, encryption settings, and network configurations:
 
-```
+```text
 # RED FLAG: Opening security group to the world
 ~ resource "aws_security_group_rule" "api" {
     ~ cidr_blocks = [
@@ -176,7 +176,7 @@ Any change to CIDR blocks, IAM actions, or encryption flags should receive extra
 
 Sometimes a plan shows changes you did not intend. This often happens due to provider upgrades, state drift, or implicit dependencies:
 
-```
+```text
 # Unexpected change - nobody modified this resource
 ~ resource "aws_lambda_function" "processor" {
     ~ last_modified     = "2024-01-15" -> (known after apply)

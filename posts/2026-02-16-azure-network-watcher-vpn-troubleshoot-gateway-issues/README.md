@@ -174,13 +174,13 @@ The IKE log file contains detailed negotiation traces. Here is what to look for.
 
 If Phase 1 fails, you will see messages like:
 
-```
+```text
 No matching proposal found during IKE_SA_INIT exchange
 ```
 
 This means the IKE encryption, integrity, or DH group parameters do not match between Azure and the on-premises device. Check that both sides have identical Phase 1 proposals.
 
-```
+```text
 IKE_AUTH exchange failed: Authentication failed
 ```
 
@@ -190,7 +190,7 @@ This indicates a shared key mismatch. The pre-shared key on the on-premises devi
 
 If Phase 1 succeeds but Phase 2 fails:
 
-```
+```text
 No matching IPsec transform set found during CREATE_CHILD_SA
 ```
 

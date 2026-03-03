@@ -71,7 +71,7 @@ Let us start by creating a well-organized project structure for our microservice
 
 The following structure keeps each service isolated with its own dependencies while sharing common utilities through a shared package:
 
-```
+```text
 bun-microservices/
 ├── services/
 │   ├── api-gateway/

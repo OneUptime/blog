@@ -47,7 +47,7 @@ multipass exec <name> -- <command>
 
 `multipass list` shows each VM's state:
 
-```
+```text
 Name                    State             IPv4             Image
 dev-primary             Running           192.168.64.3     Ubuntu 24.04 LTS
 test-server             Stopped           --               Ubuntu 22.04 LTS

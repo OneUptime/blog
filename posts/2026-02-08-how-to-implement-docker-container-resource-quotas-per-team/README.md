@@ -329,7 +329,7 @@ chmod +x /usr/local/bin/quota-dashboard.sh
 
 Sample output:
 
-```
+```text
 TEAM         CPU_USED  CPU_MAX MEM_USED  MEM_MAX CONTAINERS   CONT_MAX
 ------------------------------------------------------------------------------
 backend           4.0        6    12.0G      24G          8         20

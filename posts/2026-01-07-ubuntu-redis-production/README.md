@@ -988,7 +988,7 @@ sudo nano /etc/logrotate.d/redis
 
 Add the following content:
 
-```
+```text
 /var/log/redis/*.log {
     weekly
     rotate 12

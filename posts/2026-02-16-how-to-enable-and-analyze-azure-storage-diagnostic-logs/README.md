@@ -110,7 +110,7 @@ Once logs start flowing to your Log Analytics workspace (give it 5-10 minutes af
 
 This query surfaces all non-successful requests, which is usually where you start when troubleshooting:
 
-```
+```text
 StorageBlobLogs
 | where TimeGenerated > ago(1h)
 | where StatusCode >= 400
@@ -122,7 +122,7 @@ StorageBlobLogs
 
 Find operations that are taking longer than expected:
 
-```
+```text
 StorageBlobLogs
 | where TimeGenerated > ago(24h)
 | where DurationMs > 1000
@@ -135,7 +135,7 @@ StorageBlobLogs
 
 This is critical for security monitoring. See who is trying to access your storage and failing:
 
-```
+```text
 StorageBlobLogs
 | where TimeGenerated > ago(7d)
 | where StatusCode == 403
@@ -150,7 +150,7 @@ StorageBlobLogs
 
 Understand when your storage account is busiest:
 
-```
+```text
 StorageBlobLogs
 | where TimeGenerated > ago(24h)
 | summarize RequestCount = count(), AvgLatencyMs = avg(DurationMs)
@@ -162,7 +162,7 @@ StorageBlobLogs
 
 Identify hot blobs that might benefit from caching or CDN:
 
-```
+```text
 StorageBlobLogs
 | where TimeGenerated > ago(24h)
 | where OperationName == "GetBlob"

@@ -34,7 +34,7 @@ graph TD
 
 Consider a typical multi-environment setup. Without Terragrunt, your project structure might look like this:
 
-```
+```text
 infrastructure/
 ├── dev/
 │   ├── main.tf
@@ -96,7 +96,7 @@ When you need to add a new variable or change a resource, you must update multip
 
 Terragrunt solves this by allowing you to define configurations once and inherit them across environments. Here is how the same setup looks with Terragrunt:
 
-```
+```text
 infrastructure/
 ├── terragrunt.hcl                 # Root config with common settings
 ├── modules/
@@ -461,7 +461,7 @@ inputs = {
 
 For applications that span multiple regions:
 
-```
+```text
 infrastructure/
 ├── terragrunt.hcl
 ├── modules/

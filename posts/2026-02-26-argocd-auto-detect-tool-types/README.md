@@ -41,7 +41,7 @@ The detection priority is:
 
 ArgoCD looks for a `Chart.yaml` file in the root of the source path. It does not matter what is inside `Chart.yaml` - its mere presence triggers Helm detection:
 
-```
+```text
 my-app/
   Chart.yaml      <-- This file triggers Helm detection
   values.yaml
@@ -60,7 +60,7 @@ ArgoCD checks for three possible filenames (case-sensitive):
 - `kustomization.yml`
 - `Kustomization`
 
-```
+```text
 my-app/
   kustomization.yaml   <-- This triggers Kustomize detection
   base/
@@ -74,7 +74,7 @@ my-app/
 
 ArgoCD scans for files with `.jsonnet` or `.libsonnet` extensions:
 
-```
+```text
 my-app/
   main.jsonnet        <-- This triggers Jsonnet detection
   lib/
@@ -102,7 +102,7 @@ Let us walk through several scenarios to see how detection works.
 
 ### Scenario 1: Standard Helm Chart
 
-```
+```text
 apps/web-app/
   Chart.yaml
   values.yaml
@@ -114,7 +114,7 @@ Detection result: **Helm**. The `Chart.yaml` file is found.
 
 ### Scenario 2: Kustomize with Helm
 
-```
+```text
 apps/web-app/
   Chart.yaml
   kustomization.yaml
@@ -127,7 +127,7 @@ Detection result: **Helm**. Because `Chart.yaml` is checked first, Helm wins eve
 
 ### Scenario 3: Kustomize Only
 
-```
+```text
 apps/web-app/
   kustomization.yaml
   deployment.yaml
@@ -140,7 +140,7 @@ Detection result: **Kustomize**. No `Chart.yaml` exists, so ArgoCD proceeds to c
 
 ### Scenario 4: Jsonnet with Kustomization
 
-```
+```text
 apps/monitoring/
   main.jsonnet
   kustomization.yaml
@@ -152,7 +152,7 @@ Detection result: **Kustomize**. Because Kustomize is checked before Jsonnet, th
 
 ### Scenario 5: Plain YAML
 
-```
+```text
 apps/simple-app/
   deployment.yaml
   service.yaml

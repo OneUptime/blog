@@ -24,7 +24,7 @@ Before starting, your server must meet these requirements:
 
 These DNS records must be configured before installation:
 
-```
+```text
 # A record - server hostname resolves to your IP
 mail.example.com.  IN  A  203.0.113.1
 
@@ -53,7 +53,7 @@ sudo hostnamectl set-hostname mail.example.com
 sudo nano /etc/hosts
 ```
 
-```
+```text
 127.0.0.1   localhost
 203.0.113.1  mail.example.com mail
 ```
@@ -228,7 +228,7 @@ sudo cat /etc/amavis/conf.d/50-user | grep dkim_key
 
 Add a DMARC record to your DNS after DKIM is working:
 
-```
+```text
 # Start with monitoring mode (p=none) to see what fails without blocking
 _dmarc.example.com.  IN  TXT  "v=DMARC1; p=none; rua=mailto:dmarc@example.com; ruf=mailto:dmarc@example.com; fo=1"
 

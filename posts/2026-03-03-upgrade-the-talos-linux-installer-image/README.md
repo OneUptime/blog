@@ -21,7 +21,7 @@ The Talos installer image is an OCI container image that contains:
 
 The official installer images are published at `ghcr.io/siderolabs/installer` with tags matching Talos version numbers:
 
-```
+```text
 ghcr.io/siderolabs/installer:v1.6.0
 ghcr.io/siderolabs/installer:v1.6.1
 ghcr.io/siderolabs/installer:v1.7.0

@@ -144,7 +144,7 @@ kubectl get nodes
 
 Expected output:
 
-```
+```text
 NAME          STATUS   ROLES                  AGE   VERSION
 k3s-master    Ready    control-plane,master   5m    v1.28.5+k3s1
 k3s-worker1   Ready    <none>                 3m    v1.28.5+k3s1
@@ -203,7 +203,7 @@ kubectl get pods -n metallb-system
 
 Expected output:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-7dcc8764f4-2xjkl   1/1     Running   0          2m
 speaker-4kj9d                 1/1     Running   0          2m
@@ -422,7 +422,7 @@ kubectl get svc nginx-loadbalancer
 
 Expected output (IP will be from your configured pool):
 
-```
+```text
 NAME                 TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
 nginx-loadbalancer   LoadBalancer   10.43.45.123   192.168.1.100   80:31234/TCP   30s
 ```
@@ -925,7 +925,7 @@ kubectl get svc -n iot-gateway
 
 Expected output:
 
-```
+```text
 NAME          TYPE           CLUSTER-IP    EXTERNAL-IP     PORT(S)                         AGE
 mqtt-broker   LoadBalancer   10.43.12.45   192.168.1.105   1883:31234/TCP,8883:31235/TCP   30s
 ```

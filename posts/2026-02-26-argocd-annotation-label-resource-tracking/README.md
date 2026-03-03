@@ -82,7 +82,7 @@ argocd app list -o name | xargs -I {} argocd app sync {}
 
 The annotation stores the full resource identity:
 
-```
+```text
 my-app:apps/Deployment:production/api-server
 ```
 

@@ -350,7 +350,7 @@ The payment-service span has status ERROR with description "Database connection 
 
 **Step 4: Query Correlated Logs**
 Filter logs by `trace_id=a3f7b2c8`. You see:
-```
+```text
 [ERROR] Failed to acquire database connection from pool
 [ERROR] Connection pool exhausted: 50/50 connections in use
 [ERROR] Waited 2000ms for connection, timing out

@@ -20,7 +20,7 @@ In Talos Linux, the EFI partition contains the bootloader that the firmware load
 
 Here is how the EFI partition fits into the overall Talos disk layout on a UEFI system:
 
-```
+```text
 UEFI Talos Disk Layout:
   /dev/sda1 - EFI System Partition (ESP) - ~100MB, FAT32
   /dev/sda2 - BOOT partition - kernel and initramfs

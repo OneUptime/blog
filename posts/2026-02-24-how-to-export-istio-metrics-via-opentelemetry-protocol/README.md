@@ -221,7 +221,7 @@ This configuration:
 
 High cardinality metrics are the biggest challenge with Istio metrics at scale. Each unique combination of labels creates a separate time series. The default Istio metrics have many labels:
 
-```
+```text
 source_workload, source_workload_namespace, source_principal,
 destination_workload, destination_workload_namespace, destination_principal,
 request_protocol, response_code, response_flags, connection_security_policy

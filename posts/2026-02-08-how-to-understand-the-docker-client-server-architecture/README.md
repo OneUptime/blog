@@ -38,7 +38,7 @@ ls -la /var/run/docker.sock
 
 You should see something like:
 
-```
+```text
 srw-rw---- 1 root docker 0 Feb  8 10:00 /var/run/docker.sock
 ```
 

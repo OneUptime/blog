@@ -144,7 +144,7 @@ Create a launch configuration for debugging the provider.
 
 GoLand provides excellent Go support out of the box. Create a run configuration for debugging.
 
-```
+```text
 Run/Debug Configuration:
   Type: Go Build
   Run kind: Package

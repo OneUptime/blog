@@ -31,14 +31,14 @@ ANSIBLE_STDOUT_CALLBACK=yaml ansible-playbook site.yml
 
 This is the biggest selling point. Here is a task result with the default callback:
 
-```
+```text
 TASK [Get service status] ****************************************************
 ok: [web-01] => {"changed": false, "status": {"ActiveState": "active", "Description": "The NGINX HTTP and reverse proxy server", "ExecMainPID": 1234, "LoadState": "loaded", "SubState": "running", "UnitFileState": "enabled"}}
 ```
 
 The same result with the YAML callback:
 
-```
+```text
 TASK [Get service status] ****************************************************
 ok: [web-01] =>
   changed: false
@@ -64,13 +64,13 @@ ANSIBLE_STDOUT_CALLBACK=yaml ansible web-01 -m setup -a "filter=ansible_memory_m
 
 Default output:
 
-```
+```text
 web-01 | SUCCESS => {"ansible_facts": {"ansible_memory_mb": {"nocache": {"free": 1542, "used": 506}, "real": {"free": 234, "total": 2048, "used": 1814}, "swap": {"cached": 0, "free": 2048, "total": 2048, "used": 0}}}, "changed": false}
 ```
 
 YAML output:
 
-```
+```text
 web-01 | SUCCESS =>
   ansible_facts:
     ansible_memory_mb:
@@ -118,7 +118,7 @@ The YAML callback pairs well with debug tasks that display complex variables:
 
 With the YAML callback, the debug output is neatly indented:
 
-```
+```text
 TASK [Show network config] ***************************************************
 ok: [web-01] =>
   msg:
@@ -143,7 +143,7 @@ ANSIBLE_STDOUT_CALLBACK=yaml ansible-playbook site.yml --diff --check
 
 Output:
 
-```
+```text
 TASK [Update nginx config] ***************************************************
 --- before: /etc/nginx/nginx.conf
 +++ after: /home/user/.ansible/tmp/nginx.conf

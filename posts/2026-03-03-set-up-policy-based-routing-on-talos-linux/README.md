@@ -26,7 +26,7 @@ There are several practical scenarios where PBR is necessary:
 
 Linux implements PBR through routing rules and multiple routing tables. The routing rules specify conditions, and each condition points to a specific routing table:
 
-```
+```text
 Rule: if source is 192.168.1.0/24, use table 100
 Rule: if source is 10.0.0.0/8, use table 200
 Rule: everything else, use the main table

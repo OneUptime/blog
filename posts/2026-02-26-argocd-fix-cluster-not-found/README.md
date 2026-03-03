@@ -12,13 +12,13 @@ The "cluster not found" error in ArgoCD means your application references a dest
 
 The error looks like:
 
-```
+```text
 cluster 'https://remote-cluster.example.com' is not configured in ArgoCD
 ```
 
 Or:
 
-```
+```text
 cluster not found: https://remote-cluster.example.com
 ```
 
@@ -63,7 +63,7 @@ argocd cluster list
 
 You should see output like:
 
-```
+```text
 SERVER                                   NAME                VERSION  STATUS      MESSAGE
 https://kubernetes.default.svc           in-cluster          1.28     Successful
 https://remote-cluster.example.com       remote-production   1.28     Successful
@@ -87,7 +87,7 @@ argocd app get my-app -o yaml | grep -A5 destination
 
 **Common URL mismatches:**
 
-```
+```text
 # These are all considered DIFFERENT by ArgoCD:
 https://remote-cluster.example.com
 https://remote-cluster.example.com:443

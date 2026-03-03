@@ -16,7 +16,7 @@ The "role does not exist" error in PostgreSQL occurs when you try to connect or 
 
 The error appears in different contexts:
 
-```
+```text
 FATAL: role "myuser" does not exist
 
 ERROR: role "myuser" does not exist

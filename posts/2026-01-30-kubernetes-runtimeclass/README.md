@@ -136,7 +136,7 @@ kubectl get runtimeclasses
 
 Expected output:
 
-```
+```text
 NAME       HANDLER      AGE
 standard   runc         10s
 gvisor     runsc        10s

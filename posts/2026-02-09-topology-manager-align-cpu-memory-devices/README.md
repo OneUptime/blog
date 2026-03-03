@@ -192,7 +192,7 @@ kubectl describe pod aligned-app
 
 Look for events like:
 
-```
+```text
 Topology Affinity Error: Resources cannot be aligned to a single NUMA node
 ```
 

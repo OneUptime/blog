@@ -79,7 +79,7 @@ dig @your-nameserver.com example.com A +dnssec | grep RRSIG
 ```
 
 The RRSIG record format includes:
-```
+```text
 RRSIG A 13 2 300 20260215120000 20260115120000 12345 example.com. [signature]
                  ^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^
                  Expiration     Inception
@@ -173,7 +173,7 @@ dig example.com A +dnssec | grep flags
 ```
 
 The AD flag in the response indicates the resolver validated DNSSEC:
-```
+```text
 ;; flags: qr rd ra ad; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1
                    ^^
                    Authenticated Data flag
@@ -192,13 +192,13 @@ delv example.com A +vtrace
 ```
 
 Expected successful output:
-```
+```text
 ; fully validated
 example.com.        300    IN    A    192.0.2.1
 ```
 
 Failed validation shows:
-```
+```text
 ;; resolution failed: SERVFAIL
 ```
 

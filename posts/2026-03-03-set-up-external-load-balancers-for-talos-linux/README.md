@@ -38,7 +38,7 @@ yum install -y haproxy
 
 Configure HAProxy for the Talos control plane:
 
-```
+```text
 # /etc/haproxy/haproxy.cfg
 
 global
@@ -116,7 +116,7 @@ cluster:
 
 Extend the HAProxy configuration to load balance application traffic across your Talos worker nodes:
 
-```
+```text
 # Application traffic - HTTP
 frontend http-in
     bind *:80
@@ -251,7 +251,7 @@ A single load balancer is itself a single point of failure. Use keepalived to ru
 apt-get install -y keepalived
 ```
 
-```
+```text
 # /etc/keepalived/keepalived.conf on the primary LB
 
 vrrp_script check_haproxy {
@@ -282,7 +282,7 @@ vrrp_instance VI_1 {
 }
 ```
 
-```
+```text
 # /etc/keepalived/keepalived.conf on the backup LB
 
 vrrp_instance VI_1 {
@@ -344,7 +344,7 @@ systemctl reload haproxy
 
 Configure thorough health checks to ensure traffic only goes to healthy nodes:
 
-```
+```text
 backend k8s-workers
     mode http
     balance roundrobin

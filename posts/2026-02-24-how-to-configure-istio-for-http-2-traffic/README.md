@@ -55,7 +55,7 @@ This tells Istio to use HTTP/2 when connecting to the upstream service.
 
 Inside the mesh, Istio already uses HTTP/2 for communication between sidecars when mTLS is enabled. The flow looks like this:
 
-```
+```text
 App (HTTP/1.1 or HTTP/2) -> Client Sidecar (HTTP/2 over mTLS) -> Server Sidecar -> App
 ```
 

@@ -119,7 +119,7 @@ gh pr create --title "Add Redis cluster" --body "Adds ElastiCache Redis for sess
 
 Within seconds, HCP Terraform picks up the PR and starts a speculative plan. The PR gets a status check that shows:
 
-```
+```text
 HCP Terraform - Plan: 2 to add, 0 to change, 0 to destroy
 ```
 
@@ -127,7 +127,7 @@ HCP Terraform - Plan: 2 to add, 0 to change, 0 to destroy
 
 The plan output in the PR check shows exactly what Terraform would do:
 
-```
+```text
 Terraform v1.7.0
 Initializing plugins and modules...
 

@@ -26,7 +26,7 @@ Start by making sure the CNI DaemonSet is running on all nodes:
 kubectl get daemonset istio-cni-node -n istio-system
 ```
 
-```
+```text
 NAME             DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE
 istio-cni-node   3         3         3       3            3
 ```
@@ -102,7 +102,7 @@ kubectl exec httpbin-abc123 -c istio-proxy -- iptables -t nat -L -n
 
 You should see rules like:
 
-```
+```text
 Chain ISTIO_REDIRECT (2 references)
 target     prot opt source               destination
 REDIRECT   tcp  --  0.0.0.0/0            0.0.0.0/0            redir ports 15001

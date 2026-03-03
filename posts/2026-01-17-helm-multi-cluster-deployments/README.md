@@ -410,7 +410,7 @@ deploy-eu-west:
 
 ### Directory Structure
 
-```
+```text
 helm-configs/
 ├── base/
 │   └── values.yaml           # Common values

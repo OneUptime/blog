@@ -626,7 +626,7 @@ When verification fails, check these common issues:
 
 ### 1. Missing Provider State
 
-```
+```text
 Error: No handler found for state "user exists with ID 123"
 ```
 
@@ -642,7 +642,7 @@ stateHandlers: {
 
 ### 2. Response Mismatch
 
-```
+```text
 Expected: { "quantity": 50 }
 Actual:   { "quantity": "50" }
 ```
@@ -651,7 +651,7 @@ Solution: Check data types. The consumer expects a number, but the provider retu
 
 ### 3. Missing Fields
 
-```
+```text
 Expected body to contain: { "sku": "SKU-123", "available": true }
 Actual body: { "sku": "SKU-123" }
 ```

@@ -118,7 +118,7 @@ This playbook deploys a deny-all policy with specific exceptions:
 
 The hosts.allow template:
 
-```
+```text
 # templates/hosts.allow.j2 - TCP Wrappers allow rules
 # Managed by Ansible - do not edit manually
 # Last updated: {{ ansible_date_time.iso8601 }}
@@ -132,7 +132,7 @@ The hosts.allow template:
 
 The hosts.deny template:
 
-```
+```text
 # templates/hosts.deny.j2 - TCP Wrappers deny rules
 # Managed by Ansible - do not edit manually
 # Last updated: {{ ansible_date_time.iso8601 }}

@@ -267,7 +267,7 @@ Each metric includes labels for filtering and aggregation:
 
 **Example metric output:**
 
-```
+```text
 httpcheck.duration{endpoint="https://api.example.com/health",method="GET",status_code="200"} 145.2
 httpcheck.status{endpoint="https://api.example.com/health",method="GET"} 200
 httpcheck.success{endpoint="https://api.example.com/health",method="GET"} 1

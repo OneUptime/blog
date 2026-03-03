@@ -90,7 +90,7 @@ docker run --rm -it --security-opt seccomp=unconfined \
 
 The `-c` flag gives you a summary count of each syscall. The `-f` flag follows child processes. The output looks something like this:
 
-```
+```text
 % time     seconds  usecs/call     calls    errors syscall
 ------ ----------- ----------- --------- --------- --------
  35.12    0.012453        1245        10           read

@@ -40,7 +40,7 @@ sudo update-alternatives --config php
 
 This displays output like:
 
-```
+```text
 There are 3 choices for the alternative php (providing /usr/bin/php).
 
   Selection    Path             Priority   Status

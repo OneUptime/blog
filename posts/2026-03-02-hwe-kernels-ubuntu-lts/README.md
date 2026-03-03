@@ -49,7 +49,7 @@ hwe-support-status --verbose
 
 Example output:
 
-```
+```text
 Your HWE kernel (6.5.0-35-generic) is supported until April 2025.
 You have packages from a series that was released in October 2023,
 which reaches its HWE end-of-life in April 2025.

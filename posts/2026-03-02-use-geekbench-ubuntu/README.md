@@ -167,7 +167,7 @@ Server CPUs tend to score lower single-core than desktop CPUs because they are c
 
 After your run, Geekbench provides a URL to the Geekbench Browser:
 
-```
+```text
 https://browser.geekbench.com/v6/cpu/XXXXXXXX
 ```
 

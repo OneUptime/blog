@@ -79,7 +79,7 @@ If your data needs cleaning or restructuring before loading into BigQuery, you c
 
 Drag a Wrangler transform onto the canvas and connect it between the source and sink. You can add directives like:
 
-```
+```text
 // Parse the signup_date string into a proper date format
 parse-as-datetime signup_date "yyyy-MM-dd"
 

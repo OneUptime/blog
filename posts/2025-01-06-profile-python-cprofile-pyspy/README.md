@@ -210,7 +210,7 @@ def process_data(data):
 
 Understanding the output columns:
 
-```
+```text
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
      1000    0.500    0.001    2.500    0.003 app.py:45(process_item)
       500    1.200    0.002    1.200    0.002 db.py:23(query)
@@ -303,7 +303,7 @@ Flamegraphs show:
 - **Height**: Call stack depth
 - **Color**: Usually arbitrary, but can indicate different categories
 
-```
+```text
 # Generate different formats
 py-spy record -o profile.speedscope --format speedscope -- python app.py
 py-spy record -o profile.svg --format flamegraph -- python app.py
@@ -357,7 +357,7 @@ python -m memory_profiler memory_example.py
 ```
 
 Output:
-```
+```text
 Line #    Mem usage    Increment  Occurrences   Line Contents
 ============================================================
      4     38.5 MiB     38.5 MiB           1   @profile

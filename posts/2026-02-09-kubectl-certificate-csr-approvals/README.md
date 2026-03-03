@@ -30,7 +30,7 @@ kubectl get csr
 
 This shows all certificate requests, their status, and requester information. The output looks like this:
 
-```
+```text
 NAME        AGE   SIGNERNAME                      REQUESTOR          CONDITION
 user-1-csr  5m    kubernetes.io/kube-apiserver   admin              Pending
 node-csr    2h    kubernetes.io/kubelet-serving  system:node:node1  Approved,Issued

@@ -30,7 +30,7 @@ The error typically appears as:
 
 The `Allow` header in the response tells you which methods are supported:
 
-```
+```text
 Allow: GET, HEAD, DELETE
 ```
 

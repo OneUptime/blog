@@ -55,7 +55,7 @@ For local development, `--destructive-mode` is fastest since it skips VM setup. 
 
 Snapcraft builds snap parts through these steps in order:
 
-```
+```text
 pull -> build -> stage -> prime -> snap
 ```
 

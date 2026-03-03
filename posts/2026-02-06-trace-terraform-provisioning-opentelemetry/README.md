@@ -558,7 +558,7 @@ With per-resource traces, you can build dashboards showing average provisioning 
 
 For complex infrastructure, you often use Terraform modules. The resource address in traces includes the module path, so you can see how time is distributed across modules.
 
-```
+```text
 Trace: terraform-apply
   |
   |-- Span: create module.networking.aws_vpc.main (15s)

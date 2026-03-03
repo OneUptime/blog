@@ -44,7 +44,7 @@ sudo pvdisplay /dev/sdb
 ```
 
 Output from `pvdisplay`:
-```
+```text
   --- Physical volume ---
   PV Name               /dev/sdb
   VG Name               data_vg
@@ -79,7 +79,7 @@ sudo vgdisplay data_vg
 ```
 
 Output from `vgdisplay`:
-```
+```text
   --- Volume group ---
   VG Name               data_vg
   System ID
@@ -108,7 +108,7 @@ sudo lvdisplay /dev/data_vg/web_data
 ```
 
 Output from `lvdisplay`:
-```
+```text
   --- Logical volume ---
   LV Path                /dev/data_vg/web_data
   LV Name                web_data
@@ -135,7 +135,7 @@ The power here is that those 25,600 PEs can come from different Physical Volumes
 
 ## How the Layers Relate
 
-```
+```text
 Physical Storage
     /dev/sdb (500GB disk)   /dev/sdc (500GB disk)
          |                        |
@@ -230,7 +230,7 @@ sudo lvs
 
 A common Ubuntu LVM layout from the installer:
 
-```
+```text
 VG: ubuntu-vg
   LV: ubuntu-lv    (root filesystem, /dev/ubuntu-vg/ubuntu-lv)
 ```

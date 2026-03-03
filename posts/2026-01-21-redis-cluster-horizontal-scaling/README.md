@@ -39,7 +39,7 @@ flowchart TB
 
 Redis Cluster uses hash slots to distribute keys:
 
-```
+```text
 Total slots: 16384 (0 to 16383)
 Key to slot: CRC16(key) mod 16384
 

@@ -14,7 +14,7 @@ In many Kubernetes clusters, especially single-node or small clusters, the contr
 
 Control-plane nodes typically have this taint:
 
-```
+```text
 node-role.kubernetes.io/control-plane:NoSchedule
 ```
 

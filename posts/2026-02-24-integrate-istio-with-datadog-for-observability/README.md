@@ -216,7 +216,7 @@ After the integration is set up, Datadog provides an out-of-the-box Istio dashbo
 
 You can also create custom dashboards. Some useful queries:
 
-```
+```text
 # Request rate by service
 sum:istio.mesh.request.count{*} by {destination_service_name}.as_rate()
 

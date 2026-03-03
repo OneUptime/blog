@@ -51,7 +51,7 @@ curl http://localhost:8085/metrics | grep ^velero_
 
 Key metrics exposed by Velero:
 
-```
+```text
 # Backup metrics
 velero_backup_total                    # Total number of backups
 velero_backup_success_total            # Successful backups

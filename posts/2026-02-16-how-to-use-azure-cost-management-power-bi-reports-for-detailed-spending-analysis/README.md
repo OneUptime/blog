@@ -107,7 +107,7 @@ If you tag your resources (and you should), you can build cost allocation report
 
 In Power BI, tags are typically stored as a JSON string in the `Tags` column. You need to parse them:
 
-```
+```text
 // Power Query M code to extract a specific tag value
 // Add this as a custom column in Power Query Editor
 
@@ -209,7 +209,7 @@ This provides an additional layer of cost monitoring on top of the Azure Cost Ma
 
 Here are useful DAX measures to add to your Power BI model:
 
-```
+```text
 // Monthly cost growth percentage
 Monthly Growth % =
 VAR CurrentMonth = SUM('Usage Details'[PreTaxCost])

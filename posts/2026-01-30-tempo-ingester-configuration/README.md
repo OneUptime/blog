@@ -204,7 +204,7 @@ ingester:
 
 Consider a trace for an HTTP request that spans multiple services:
 
-```
+```text
 Time 0s:    First span arrives (HTTP request received)
 Time 0.1s:  Child span (database query)
 Time 0.5s:  Child span (external API call)
@@ -352,7 +352,7 @@ overrides:
 
 Estimate ingester memory requirements:
 
-```
+```text
 Memory = (avg_trace_size * max_traces) + (block_buffer * 2) + overhead
 
 Example:

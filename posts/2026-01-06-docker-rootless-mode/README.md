@@ -270,7 +270,7 @@ Rootless Docker stores data in your home directory:
 
 Unlike root Docker which uses /var/lib/docker, rootless Docker stores everything under your home directory. Plan for disk space accordingly.
 
-```
+```text
 ~/.local/share/docker/
 ├── containers/    # Container filesystems and metadata
 ├── image/         # Downloaded and built images

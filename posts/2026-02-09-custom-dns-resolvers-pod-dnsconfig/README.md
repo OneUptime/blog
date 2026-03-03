@@ -65,7 +65,7 @@ kubectl exec custom-dns-pod -- cat /etc/resolv.conf
 
 Expected output:
 
-```
+```text
 nameserver 8.8.8.8
 nameserver 8.8.4.4
 search default.svc.cluster.local svc.cluster.local cluster.local

@@ -37,7 +37,7 @@ done
 
 For Multi-Channel to work effectively, the interfaces should be on the same broadcast domain or at least both reachable from the client. A typical setup uses two separate IP addresses on the server:
 
-```
+```text
 enp3s0: 192.168.1.10/24
 enp4s0: 192.168.1.11/24
 ```

@@ -174,7 +174,7 @@ When your Helm chart source code lives in a Git repository, ArgoCD can directly 
 
 ### Repository Structure
 
-```
+```text
 my-app/
 ├── Chart.yaml
 ├── values.yaml
@@ -394,7 +394,7 @@ flowchart LR
 
 ### Repository Structure for Values
 
-```
+```text
 gitops-config/
 ├── apps/
 │   ├── nginx-ingress/
@@ -1015,7 +1015,7 @@ spec:
 
 Keep application code and deployment configuration in separate repositories:
 
-```
+```text
 # Application repository
 my-app/
 ├── src/

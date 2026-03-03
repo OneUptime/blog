@@ -30,7 +30,7 @@ Separation gives you several benefits:
 
 Here is the standard setup:
 
-```
+```text
 # Repo 1: Application Source Code
 myorg/backend-api
   src/
@@ -163,7 +163,7 @@ This removes the need for your CI pipeline to know about the config repo at all.
 
 For smaller teams, you might prefer a single config repo for all applications rather than one per app:
 
-```
+```text
 myorg/platform-config
   apps/
     backend-api/

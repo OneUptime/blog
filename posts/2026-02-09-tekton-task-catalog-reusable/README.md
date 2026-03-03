@@ -486,7 +486,7 @@ spec:
         - name: IMAGE
           value: registry.example.com/myapp:v1.0.0
     ```
-```
+```text
 
 ## Testing Catalog Tasks
 

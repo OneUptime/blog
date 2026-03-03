@@ -57,7 +57,7 @@ func main() {
 ```
 
 **Output:**
-```
+```text
 Name: Alice
 Age: 30
 ID: E123

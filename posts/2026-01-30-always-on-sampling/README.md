@@ -43,7 +43,7 @@ Always-on sampling (100% trace capture) is the right choice when:
 
 ### The Decision Matrix
 
-```
+```text
                     High Volume
                         |
      Tail-based    |    Head + Tail
@@ -349,7 +349,7 @@ Always-on sampling significantly increases data volume. Understanding the cost i
 
 ### Cost Comparison Matrix
 
-```
+```text
 Sampling Strategy     | Data Volume | Monthly Cost* | Use Case
 ---------------------|-------------|---------------|------------------
 Always-On (100%)     | 240 GB      | $$$          | Dev, Low-volume prod

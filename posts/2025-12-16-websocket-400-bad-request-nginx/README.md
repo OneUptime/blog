@@ -254,7 +254,7 @@ curl -i -N \
 ```
 
 Expected response for successful upgrade:
-```
+```text
 HTTP/1.1 101 Switching Protocols
 Upgrade: websocket
 Connection: Upgrade

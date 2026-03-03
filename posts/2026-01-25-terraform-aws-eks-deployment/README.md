@@ -35,7 +35,7 @@ flowchart TB
 
 ## Project Structure
 
-```
+```text
 eks-terraform/
 ├── main.tf
 ├── variables.tf

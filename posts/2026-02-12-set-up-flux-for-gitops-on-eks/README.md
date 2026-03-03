@@ -90,7 +90,7 @@ You should see the source-controller, kustomize-controller, helm-controller, and
 
 A typical Flux repository looks like this:
 
-```
+```text
 fleet-infra/
   clusters/
     my-cluster/

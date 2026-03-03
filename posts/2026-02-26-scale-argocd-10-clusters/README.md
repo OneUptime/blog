@@ -286,7 +286,7 @@ Different clusters often need different configurations for the same application.
 
 ### Using Values Files Per Cluster
 
-```
+```text
 manifests/
   monitoring/
     base/
@@ -423,7 +423,7 @@ redis-ha:
 
 ### Cluster Health Dashboard
 
-```
+```text
 # Per-cluster application count
 count(argocd_app_info) by (dest_server)
 

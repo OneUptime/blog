@@ -83,7 +83,7 @@ sudo ufw enable
 
 You'll see:
 
-```
+```text
 Command may disrupt existing ssh connections. Proceed with operation (y|n)?
 ```
 
@@ -97,7 +97,7 @@ sudo ufw status verbose
 
 Expected output:
 
-```
+```text
 Status: active
 Logging: on (low)
 Default: deny (incoming), allow (outgoing), deny (forwarded)
@@ -153,7 +153,7 @@ sudo ufw status numbered
 
 The numbered output is especially useful:
 
-```
+```text
      To                         Action      From
      --                         ------      ----
 [ 1] 22/tcp                     ALLOW IN    Anywhere
@@ -233,7 +233,7 @@ sudo journalctl -f | grep UFW
 
 Log entries look like:
 
-```
+```text
 [UFW BLOCK] IN=eth0 OUT= MAC=... SRC=203.0.113.1 DST=192.168.1.10 LEN=44 ... PROTO=TCP DPT=3306
 ```
 
@@ -263,7 +263,7 @@ sudo nano /etc/ufw/after.rules
 
 Add at the end:
 
-```
+```text
 # Block Docker from bypassing UFW
 *filter
 :DOCKER-USER - [0:0]

@@ -24,7 +24,7 @@ NodeLocal DNSCache provides several advantages:
 
 Architecture:
 
-```
+```text
 Pod -> Node-local DNS Cache (169.254.20.10) -> CoreDNS (if cache miss) -> Upstream DNS
 ```
 

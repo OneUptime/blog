@@ -55,7 +55,7 @@ echo "$lower"
 
 Running this produces:
 
-```
+```text
 ./script.sh: line 4: ${name,,}: bad substitution
 ```
 

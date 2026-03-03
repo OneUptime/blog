@@ -38,7 +38,7 @@ ingress:
 
 cloudflared logs look like this:
 
-```
+```text
 2026-02-06T10:30:00Z INF Request connection connIndex=0 ip=198.41.200.10 location=DFW
 2026-02-06T10:30:01Z INF  GET  https://app.example.com/api/users 200 origin=http://localhost:8080 originTime=45ms
 2026-02-06T10:30:02Z ERR  error proxying request to origin error="connection refused" connIndex=0

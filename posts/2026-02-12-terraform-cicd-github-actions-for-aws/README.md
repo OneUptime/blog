@@ -29,7 +29,7 @@ graph LR
 
 Organize your Terraform project for CI/CD.
 
-```
+```text
 infrastructure/
   environments/
     dev/

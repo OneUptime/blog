@@ -68,7 +68,7 @@ This command does the following:
 
 ## Repository Structure
 
-```
+```text
 gitops-repo/
   clusters/
     production/

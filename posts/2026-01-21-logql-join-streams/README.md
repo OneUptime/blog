@@ -34,7 +34,7 @@ Without correlation, these logs are disconnected and difficult to trace.
 
 ### The Solution: Correlation IDs
 
-```
+```text
 Service A: [req-12345] Received request for /api/orders
 Service B: [req-12345] Processing order validation
 Service C: [req-12345] Checking inventory
@@ -288,7 +288,7 @@ pipeline_stages:
 
 Create a dashboard variable:
 
-```
+```text
 Variable: request_id
 Query: {job=~".*-service"} |~ "request_id" | json | line_format "{{.request_id}}" | dedup
 ```
@@ -389,7 +389,7 @@ const requestId = `req-${Date.now()}-${randomString(8)}`;
 
 Standard headers to propagate:
 
-```
+```text
 X-Request-ID: req-12345
 X-Correlation-ID: corr-67890
 X-Trace-ID: abc123
@@ -496,7 +496,7 @@ logger.info('Request completed', {
 
 ### Result
 
-```
+```text
 2024-01-15T10:30:00.000Z [api-gateway] Request received
 2024-01-15T10:30:00.050Z [order-service] Creating order
 2024-01-15T10:30:00.100Z [inventory-service] Checking inventory

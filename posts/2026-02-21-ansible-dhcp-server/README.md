@@ -114,7 +114,7 @@ dhcp_failover_local_address: 10.0.1.11
 
 ## Interface Configuration Template
 
-```
+```text
 # roles/dhcp/templates/isc-dhcp-server.j2 - Listen interfaces
 INTERFACESv4="{{ dhcp_interfaces | join(' ') }}"
 INTERFACESv6=""
@@ -122,7 +122,7 @@ INTERFACESv6=""
 
 ## DHCP Configuration Template
 
-```
+```text
 # roles/dhcp/templates/dhcpd.conf.j2 - Main DHCP configuration
 # Global options
 option domain-name "{{ dhcp_global_options.domain_name }}";

@@ -118,7 +118,7 @@ sudo edquota alice
 
 This displays something like:
 
-```
+```text
 Disk quotas for user alice (uid 1001):
   Filesystem                   blocks       soft       hard     inodes     isoft     ihard
   /dev/sda1                         0      0          0          0        0         0
@@ -126,7 +126,7 @@ Disk quotas for user alice (uid 1001):
 
 Set the limits:
 
-```
+```text
 Disk quotas for user alice (uid 1001):
   Filesystem                   blocks       soft       hard     inodes     isoft     ihard
   /dev/sda1                         0   2097152    2621440          0        0         0

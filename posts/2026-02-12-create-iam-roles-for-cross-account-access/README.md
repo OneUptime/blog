@@ -299,7 +299,7 @@ Users can switch roles in the AWS Console too. Click your username in the top-ri
 
 The URL format is:
 
-```
+```text
 https://signin.aws.amazon.com/switchrole?account=222222222222&roleName=CrossAccountAdmin&displayName=Prod-Admin
 ```
 

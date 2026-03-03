@@ -173,7 +173,7 @@ az storage account blob-inventory-policy create \
 
 Inventory reports are written to the destination container you specified. The file structure looks like:
 
-```
+```text
 inventory/
   daily-blob-inventory/
     2026/

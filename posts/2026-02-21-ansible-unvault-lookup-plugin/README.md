@@ -139,7 +139,7 @@ Organize encrypted files by environment and select the right one dynamically.
 
 Directory structure:
 
-```
+```text
 secrets/
   production/
     database.conf    # vault-encrypted

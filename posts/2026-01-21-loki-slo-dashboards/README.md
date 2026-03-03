@@ -121,7 +121,7 @@ sum(count_over_time({job="application"} | json | operation!="" [$__range]))
 
 ### Error Budget Formula
 
-```
+```text
 Error Budget = 1 - SLO
 Budget Consumed = (1 - SLI) / Error Budget
 Budget Remaining = 1 - Budget Consumed
@@ -174,7 +174,7 @@ Budget Remaining = 1 - Budget Consumed
 
 Burn rate measures how fast you are consuming your error budget relative to your SLO window:
 
-```
+```text
 Burn Rate = Error Rate / Error Budget
 ```
 

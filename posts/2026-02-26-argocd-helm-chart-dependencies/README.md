@@ -236,7 +236,7 @@ dependencies:
 
 Repository structure:
 
-```
+```text
 charts/
   my-app/
     Chart.yaml
@@ -287,7 +287,7 @@ git push
 
 ### Error: repository not found
 
-```
+```text
 Error: repository "https://charts.bitnami.com/bitnami" not found
 ```
 
@@ -299,7 +299,7 @@ argocd repo add https://charts.bitnami.com/bitnami --type helm --name bitnami
 
 ### Error: chart version not found
 
-```
+```text
 Error: chart "postgresql" version "13.2.0" not found
 ```
 

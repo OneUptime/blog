@@ -431,7 +431,7 @@ CMD ["nginx", "-g", "daemon off;"]
 
 A proper `.dockerignore` file speeds up builds and prevents unnecessary files from being included in the build context.
 
-```
+```text
 # Dependencies - will be installed fresh
 node_modules
 npm-debug.log
@@ -570,7 +570,7 @@ CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
 
 Caddyfile:
 
-```
+```text
 :80 {
     root * /srv
 

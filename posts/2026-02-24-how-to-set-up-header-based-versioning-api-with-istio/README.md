@@ -18,7 +18,7 @@ The basic idea is simple. You deploy multiple versions of your service (v1, v2, 
 
 Here is what the setup looks like:
 
-```
+```text
 Client Request                 Istio Proxy
 +------------------+         +------------------+
 | GET /api/users   |         |                  |

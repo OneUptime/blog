@@ -14,7 +14,7 @@ Redis Cluster provides automatic data partitioning across multiple nodes, but un
 
 Redis Cluster uses a hash slot-based sharding mechanism:
 
-```
+```text
 Total Hash Slots: 16384 (0 to 16383)
 
 Slot Assignment Formula: CRC16(key) mod 16384
@@ -69,7 +69,7 @@ Hash tags allow you to control which slot a key belongs to, ensuring related key
 
 ### Basic Hash Tag Syntax
 
-```
+```text
 Key without tag: user:1001      -> CRC16("user:1001") mod 16384
 Key with tag:    {user:1001}:profile -> CRC16("user:1001") mod 16384
 Key with tag:    {user:1001}:orders  -> CRC16("user:1001") mod 16384

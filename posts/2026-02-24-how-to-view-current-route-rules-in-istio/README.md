@@ -97,7 +97,7 @@ istioctl proxy-config endpoints my-pod -n production --cluster "outbound|8080||m
 
 When you run `istioctl proxy-config routes`, the output looks something like this:
 
-```
+```text
 NAME          DOMAINS                           MATCH     VIRTUAL SERVICE
 8080          my-service.production             /*        my-service.production
 8080          other-service.production          /*        other-service.production

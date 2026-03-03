@@ -99,7 +99,7 @@ ssh <ubuntu-one-username>@<raspberry-pi-ip>
 
 On first connection, the Pi will prompt you to complete setup:
 
-```
+```text
 Welcome to Ubuntu Core 22!
 
 This is the first boot of this Ubuntu Core system.

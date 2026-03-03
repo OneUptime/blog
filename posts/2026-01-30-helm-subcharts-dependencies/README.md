@@ -47,7 +47,7 @@ Here is how Helm processes dependencies:
 
 A typical parent chart with subcharts follows this structure:
 
-```
+```text
 my-application/
 ├── Chart.yaml           # Declares dependencies here
 ├── Chart.lock           # Auto-generated lock file

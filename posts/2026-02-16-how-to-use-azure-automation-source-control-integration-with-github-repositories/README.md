@@ -26,7 +26,7 @@ The sync process publishes runbooks to Azure Automation. PowerShell files (.ps1)
 
 Create a repository structure for your runbooks:
 
-```
+```text
 azure-automation-runbooks/
     runbooks/
         Restart-VM.ps1
@@ -296,7 +296,7 @@ Common sync failures:
 
 For organizations with multiple Automation Accounts (per region, per environment, or per team), use the same repository with different folder paths or branches:
 
-```
+```text
 azure-automation-runbooks/
     production/
         runbooks/

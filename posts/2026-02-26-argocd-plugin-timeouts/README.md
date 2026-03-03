@@ -14,7 +14,7 @@ When an ArgoCD Config Management Plugin takes too long to generate manifests, th
 
 ArgoCD has a default timeout of 90 seconds for manifest generation. This applies to the entire CMP pipeline - the init command and the generate command combined. If your plugin does not complete within this window, ArgoCD kills the operation and returns an error:
 
-```
+```text
 rpc error: code = DeadlineExceeded desc = context deadline exceeded
 ```
 

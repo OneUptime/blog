@@ -73,7 +73,7 @@ labels = detect_labels("beach_photo.jpg")
 
 A typical response for a beach photo might look like:
 
-```
+```text
 Sky: 0.97
 Sea: 0.96
 Beach: 0.95

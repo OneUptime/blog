@@ -105,7 +105,7 @@ The key difference: `zip` stops at the shortest list, while `zip_longest` contin
 ```
 
 Output:
-```
+```text
 zip: [[1, 'a'], [2, 'b'], [3, 'c']]
 zip_longest: [[1, 'a'], [2, 'b'], [3, 'c'], [4, 'N/A'], [5, 'N/A']]
 ```
@@ -155,7 +155,7 @@ backend app_servers
 ```
 
 Output:
-```
+```text
 backend app_servers
     balance roundrobin
     server app01 10.0.1.10:8080 weight 100 check

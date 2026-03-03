@@ -42,7 +42,7 @@ npm install --save-dev style-loader css-loader
 
 Create the following directory structure for your project.
 
-```
+```text
 react-webpack-app/
   src/
     index.js

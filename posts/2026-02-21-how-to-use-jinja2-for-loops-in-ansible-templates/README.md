@@ -52,7 +52,7 @@ The playbook provides the data:
 
 Rendered output:
 
-```
+```text
 127.0.0.1   localhost
 ::1         localhost
 
@@ -102,7 +102,7 @@ allowed_ips = {% for ip in allowed_ips %}{{ ip }}{{ ', ' if not loop.last else '
 
 With `allowed_ips: ['10.0.1.10', '10.0.1.11', '10.0.2.10']`, this renders:
 
-```
+```text
 allowed_ips = 10.0.1.10, 10.0.1.11, 10.0.2.10
 ```
 
@@ -137,7 +137,7 @@ vars:
 
 Rendered:
 
-```
+```text
 export DATABASE_URL="postgresql://db.internal:5432/myapp"
 export REDIS_URL="redis://cache.internal:6379"
 export SECRET_KEY="actual-secret-value"

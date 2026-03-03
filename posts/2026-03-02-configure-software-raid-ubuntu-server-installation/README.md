@@ -65,7 +65,7 @@ RAID 1 for the system disk provides protection against disk failure without losi
 1. Select "Custom storage layout"
 2. Select the first disk and create partitions:
 
-```
+```text
 /dev/sda1  1 MB    BIOS boot (for BIOS) OR 512 MB fat32 EFI (for UEFI)
 /dev/sda2  1 GB    Linux RAID (to be assembled as /boot)
 /dev/sda3  rest    Linux RAID (to be assembled as / LV)

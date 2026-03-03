@@ -12,7 +12,7 @@ The "helm template failed" error in ArgoCD means the repo server could not rende
 
 The error message usually includes the specific Helm error:
 
-```
+```text
 rpc error: code = Unknown desc = helm template failed: exit status 1:
 Error: template: mychart/templates/deployment.yaml:15:20: executing
 "mychart/templates/deployment.yaml" at <.Values.image.tag>: nil pointer evaluating interface {}.tag
@@ -44,7 +44,7 @@ The most common cause - a Go template syntax error in your chart:
 
 **Example error:**
 
-```
+```text
 Error: template: mychart/templates/deployment.yaml:10:
 unexpected "}" in operand
 ```
@@ -76,7 +76,7 @@ kind: ConfigMap
 
 When templates reference values that do not exist:
 
-```
+```text
 nil pointer evaluating interface {}.tag
 ```
 
@@ -111,7 +111,7 @@ argocd app get my-app -o yaml | grep -A50 "source:"
 
 If ArgoCD references a values file that does not exist in the repository:
 
-```
+```text
 Error: open /tmp/values-production.yaml: no such file or directory
 ```
 
@@ -163,7 +163,7 @@ For very new Helm features, you may need to upgrade ArgoCD to a version that bun
 
 If your chart has dependencies that are not pulled:
 
-```
+```text
 Error: found in Chart.yaml, but missing in charts/ directory: common, postgresql
 ```
 
@@ -197,7 +197,7 @@ spec:
 
 Syntax errors in your values file:
 
-```
+```text
 Error: YAML parse error on my-chart/templates/deployment.yaml:
 error converting YAML to JSON: yaml: line 15: could not find expected ':'
 ```
@@ -240,7 +240,7 @@ Parameters take precedence over values files. If a parameter is set to an incomp
 
 For complex charts, rendering might timeout:
 
-```
+```text
 Error: context deadline exceeded
 ```
 
@@ -257,7 +257,7 @@ env:
 
 ArgoCD uses the application name as the Helm release name by default. If the name is too long or contains invalid characters:
 
-```
+```text
 Error: release name "very-long-application-name-that-exceeds-53-chars" is invalid
 ```
 

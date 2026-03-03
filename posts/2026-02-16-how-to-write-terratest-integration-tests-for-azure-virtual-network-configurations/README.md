@@ -27,7 +27,7 @@ The tests run against real Azure resources, which means they catch problems that
 
 Start by setting up a Go module for your tests. The conventional structure places tests alongside the Terraform module.
 
-```
+```text
 terraform-azure-vnet/
   main.tf
   variables.tf

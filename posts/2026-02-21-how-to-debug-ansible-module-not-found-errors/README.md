@@ -14,14 +14,14 @@ You write a playbook, reference a module you have used before, and Ansible tells
 
 The typical error looks like this:
 
-```
+```text
 ERROR! couldn't resolve module/action 'community.postgresql.postgresql_db'.
 This often indicates a misspelling, missing collection, or incorrect module path.
 ```
 
 Or the older format:
 
-```
+```text
 ERROR! no action detected in task.
 ```
 
@@ -135,7 +135,7 @@ export ANSIBLE_LIBRARY=./library:~/.ansible/plugins/modules
 
 **Directory structure for custom modules:**
 
-```
+```text
 project/
   ansible.cfg
   playbook.yml
@@ -211,7 +211,7 @@ sudo ansible-galaxy collection install community.postgresql -p /usr/share/ansibl
 
 Ansible modules run on the target host using Python. If the Python interpreter on the target host does not have required dependencies, or Ansible cannot find Python, you get errors:
 
-```
+```text
 MODULE FAILURE
 The module failed to execute correctly, you probably need to set the
 python interpreter.
@@ -336,7 +336,7 @@ ansible-deploy:
 
 Set up your project to avoid these errors in the first place:
 
-```
+```text
 project/
   ansible.cfg
   requirements.yml        # Collection dependencies

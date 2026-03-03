@@ -19,7 +19,7 @@ When Redis returns this error, it means:
 3. The current eviction policy cannot free enough memory to accommodate the new write
 4. Redis refuses the write command to prevent further memory growth
 
-```
+```text
 (error) OOM command not allowed when used memory > 'maxmemory'
 ```
 
@@ -34,7 +34,7 @@ redis-cli INFO memory
 
 Key metrics to examine:
 
-```
+```text
 used_memory:4294967296
 used_memory_human:4.00G
 used_memory_rss:4831838208

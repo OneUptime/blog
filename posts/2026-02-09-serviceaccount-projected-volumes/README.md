@@ -159,7 +159,7 @@ spec:
 
 The volume structure looks like this:
 
-```
+```text
 /app/config/
 ├── auth/
 │   └── token

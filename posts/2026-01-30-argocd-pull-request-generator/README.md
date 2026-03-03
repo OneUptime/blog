@@ -167,7 +167,7 @@ spec:
 
 Organize your repository with a dedicated overlay for preview environments. This allows you to customize resource limits, replicas, and other settings specifically for previews.
 
-```
+```text
 myapp/
 ├── k8s/
 │   ├── base/

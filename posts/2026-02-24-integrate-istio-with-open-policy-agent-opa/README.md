@@ -16,7 +16,7 @@ The integration works through Istio's external authorization feature. When a req
 
 The flow looks like this:
 
-```
+```text
 Client -> Envoy Sidecar -> External Authz (OPA) -> Application
 ```
 

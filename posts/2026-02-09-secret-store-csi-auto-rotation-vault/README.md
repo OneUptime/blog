@@ -412,7 +412,7 @@ spec:
 
 All secrets mount to the same directory:
 
-```
+```text
 /mnt/secrets/
 ├── db-username
 ├── db-password

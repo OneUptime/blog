@@ -187,7 +187,7 @@ All existing Prometheus/PromQL dashboards work without modification.
 
 VictoriaMetrics adds MetricsQL extensions to PromQL:
 
-```
+```text
 # Rate without looking-back window issues
 rate(http_requests_total[5m])
 
@@ -216,7 +216,7 @@ EOF
 
 Key self-metrics to watch:
 
-```
+```text
 vm_rows_ingested_total          # Total rows ingested
 vm_cache_size_bytes             # Cache memory usage
 vm_queries_total                # Total queries processed

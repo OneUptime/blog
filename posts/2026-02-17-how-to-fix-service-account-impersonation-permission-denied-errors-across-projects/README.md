@@ -23,13 +23,13 @@ The impersonation permission is checked on the service account resource itself, 
 
 The error usually looks like:
 
-```
+```text
 Error 403: Permission 'iam.serviceAccounts.getAccessToken' denied on resource (or it may not exist).
 ```
 
 Or with the gcloud CLI:
 
-```
+```text
 ERROR: (gcloud.auth.print-access-token) User does not have permission to access
 service account your-sa@target-project.iam.gserviceaccount.com
 ```

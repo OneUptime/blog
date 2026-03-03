@@ -1048,7 +1048,7 @@ Creating custom rules allows you to detect specific threats relevant to your env
 
 ### Rule Structure
 
-```
+```text
 action protocol source_ip source_port -> dest_ip dest_port (options)
 ```
 
@@ -1730,7 +1730,7 @@ EOF
 
 Common Kibana queries for Suricata data:
 
-```
+```text
 # View all alerts
 event_type:alert
 

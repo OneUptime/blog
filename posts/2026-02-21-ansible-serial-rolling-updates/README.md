@@ -44,7 +44,7 @@ The `serial` keyword in Ansible controls how many hosts are processed at a time 
 
 With 12 hosts and `serial: 3`, the play runs in 4 batches:
 
-```
+```text
 Batch 1: web-01, web-02, web-03 (all tasks, then handlers)
 Batch 2: web-04, web-05, web-06 (all tasks, then handlers)
 Batch 3: web-07, web-08, web-09 (all tasks, then handlers)
@@ -124,7 +124,7 @@ The most powerful serial feature is progressive batching. Start with a small bat
 
 With 20 hosts, the batches are:
 
-```
+```text
 Batch 1: 1 host (canary)
 Batch 2: 5 hosts
 Batch 3: 25% of remaining 14 = 4 hosts (rounded)

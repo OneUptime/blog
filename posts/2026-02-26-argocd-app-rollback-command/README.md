@@ -43,7 +43,7 @@ argocd app history my-app
 
 Output:
 
-```
+```text
 ID  DATE                           REVISION
 4   2026-02-26 09:30:00 +0000 UTC  abc123d (HEAD)   <-- broken deployment
 3   2026-02-25 14:15:00 +0000 UTC  def456a          <-- last known good

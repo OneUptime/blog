@@ -11,12 +11,12 @@ Service meshes like Istio and Linkerd add a sidecar proxy to every pod. This pro
 ## Understanding the Proxy Hops
 
 Without a service mesh, a request from Service A to Service B follows this path:
-```
+```text
 Service A -> Network -> Service B
 ```
 
 With a sidecar mesh, the path becomes:
-```
+```text
 Service A -> Envoy (outbound) -> Network -> Envoy (inbound) -> Service B
 ```
 

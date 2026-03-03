@@ -202,7 +202,7 @@ graph TB
 
 After starting your Django application with auto-instrumentation, you should see initialization logs indicating which instrumentations were loaded:
 
-```
+```text
 Starting OpenTelemetry automatic instrumentation...
 Instrumenting django
 Instrumenting psycopg2

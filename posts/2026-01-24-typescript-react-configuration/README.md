@@ -357,7 +357,7 @@ const [state, dispatch] = useReducer(reducer, { count: 0, step: 1 });
 
 Large projects often use multiple TypeScript configurations:
 
-```
+```text
 project/
   tsconfig.json          # Base config
   tsconfig.app.json      # App-specific config

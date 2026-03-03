@@ -16,7 +16,7 @@ Terragrunt has two path functions that complement each other: `path_relative_to_
 
 Think of it as the reverse direction of `path_relative_to_include()`:
 
-```
+```text
 # Directory structure:
 live/
   terragrunt.hcl              # parent (included config)
@@ -59,7 +59,7 @@ terraform {
 
 Here is the directory layout:
 
-```
+```text
 project/
   modules/
     vpc/
@@ -126,7 +126,7 @@ terraform {
 
 Directory structure:
 
-```
+```text
 live/
   terragrunt.hcl
   scripts/
@@ -152,7 +152,7 @@ terraform {
 }
 ```
 
-```
+```text
 live/
   terragrunt.hcl
   common/

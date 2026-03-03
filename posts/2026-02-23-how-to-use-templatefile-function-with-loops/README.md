@@ -14,7 +14,7 @@ When generating configuration files with `templatefile`, you frequently need to 
 
 The basic loop syntax in Terraform templates is:
 
-```
+```text
 %{for item in collection}
   ... content using ${item} ...
 %{endfor}

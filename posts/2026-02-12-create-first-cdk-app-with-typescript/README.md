@@ -39,7 +39,7 @@ cdk init app --language typescript
 
 CDK generates a clean project structure for you.
 
-```
+```text
 s3-processor/
   bin/
     s3-processor.ts          # App entry point - defines which stacks to deploy

@@ -53,7 +53,7 @@ meshConfig:
 Text format produces human-readable single-line log entries. Good for quick debugging with `kubectl logs`, but harder to parse programmatically.
 
 Example output:
-```
+```text
 [2024-01-15T10:30:00.000Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 45 43 "-" "curl/7.68.0" "abc-123" "my-service:8080" "10.244.1.5:8080" inbound|8080|| 10.244.1.5:41234 10.244.1.5:8080 10.244.2.3:52300 - default
 ```
 

@@ -24,7 +24,7 @@ kubectl get mutatingwebhookconfiguration --sort-by=.metadata.name
 
 Example output:
 
-```
+```text
 NAME                          WEBHOOKS   AGE
 cert-manager-webhook          1          30d
 istio-sidecar-injector        2          15d

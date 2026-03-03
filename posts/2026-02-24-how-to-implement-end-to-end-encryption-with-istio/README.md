@@ -14,7 +14,7 @@ End-to-end encryption means that data is encrypted at every point in transit - f
 
 A typical request path has several segments:
 
-```
+```text
 Client -> [Internet] -> Load Balancer -> [LB to Gateway] -> Istio Gateway ->
 [Gateway to Service A] -> Service A -> [Service A to Service B] -> Service B
 ```

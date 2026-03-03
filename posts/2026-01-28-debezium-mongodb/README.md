@@ -506,7 +506,7 @@ flowchart TD
 
 By default, topics are named: `{topic.prefix}.{database}.{collection}`
 
-```
+```text
 mongo.inventory.products
 mongo.inventory.orders
 mongo.inventory.customers

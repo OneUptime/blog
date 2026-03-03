@@ -14,7 +14,7 @@ Description: Learn how to diagnose and resolve 'Bean of type not found' errors i
 
 The full error message typically looks like this:
 
-```
+```text
 ***************************
 APPLICATION FAILED TO START
 ***************************

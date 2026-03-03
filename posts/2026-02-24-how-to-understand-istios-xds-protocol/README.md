@@ -38,7 +38,7 @@ LDS tells Envoy what network addresses and ports to listen on. In Istio, listene
 istioctl proxy-config listeners deploy/my-app -n default
 ```
 
-```
+```text
 ADDRESS         PORT  MATCH                                DESTINATION
 0.0.0.0         15001 ALL                                  PassthroughCluster
 0.0.0.0         15006 ALL                                  Inline Route
@@ -55,7 +55,7 @@ RDS configures HTTP routing rules. This is where VirtualService configurations e
 istioctl proxy-config routes deploy/my-app -n default
 ```
 
-```
+```text
 NAME                                                  DOMAINS                   MATCH     VIRTUAL SERVICE
 8080                                                  payment.default           /*        payment.default
 80                                                    frontend.default          /*
@@ -76,7 +76,7 @@ CDS defines upstream service clusters. Each Kubernetes Service becomes an Envoy 
 istioctl proxy-config clusters deploy/my-app -n default
 ```
 
-```
+```text
 SERVICE FQDN                                   PORT   SUBSET   DIRECTION   TYPE   DESTINATION RULE
 payment.default.svc.cluster.local              8080   -        outbound    EDS    payment.default
 payment.default.svc.cluster.local              8080   v1       outbound    EDS    payment.default
@@ -93,7 +93,7 @@ istioctl proxy-config endpoints deploy/my-app -n default \
     --cluster "outbound|8080||payment.default.svc.cluster.local"
 ```
 
-```
+```text
 ENDPOINT          STATUS    OUTLIER CHECK   CLUSTER
 10.244.1.5:8080   HEALTHY   OK              outbound|8080||payment...
 10.244.2.8:8080   HEALTHY   OK              outbound|8080||payment...
@@ -108,7 +108,7 @@ SDS delivers TLS certificates. In Istio, the pilot-agent uses SDS to provide Env
 istioctl proxy-config secret deploy/my-app -n default
 ```
 
-```
+```text
 RESOURCE NAME   TYPE         STATUS   VALID CERT   SERIAL NUMBER
 default         Cert Chain   ACTIVE   true         abc123...
 ROOTCA          CA           ACTIVE   true         def456...
@@ -125,7 +125,7 @@ The connection is initiated by the sidecar on startup. You can see the connectio
 istioctl proxy-status | grep my-app
 ```
 
-```
+```text
 my-app-abc.default   SYNCED  SYNCED  SYNCED  SYNCED  -   istiod-xyz-123.istio-system
 ```
 
@@ -146,7 +146,7 @@ You can watch pushes in real time:
 kubectl logs -n istio-system deploy/istiod -f | grep "Push"
 ```
 
-```
+```text
 info  ads  Push debounce stable[100] 1: 100.238704ms since last change, 100.238704ms since last push
 info  ads  XDS: Pushing:2024-01-15T10:30:45Z/2 Services:150 ConnectedEndpoints:45
 ```
@@ -166,7 +166,7 @@ kubectl exec -n istio-system deploy/istiod -- \
     curl -s localhost:15014/metrics | grep pilot_xds
 ```
 
-```
+```text
 pilot_xds_pushes{type="cds"} 1234
 pilot_xds_pushes{type="eds"} 5678
 pilot_xds_pushes{type="lds"} 1234
@@ -184,7 +184,7 @@ kubectl exec -n istio-system deploy/istiod -- \
     curl -s localhost:15014/metrics | grep convergence
 ```
 
-```
+```text
 pilot_proxy_convergence_time_bucket{le="0.1"} 500
 pilot_proxy_convergence_time_bucket{le="0.5"} 980
 pilot_proxy_convergence_time_bucket{le="1"} 1000

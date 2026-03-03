@@ -10,7 +10,7 @@ Description: Fix DynamoDB ProvisionedThroughputExceededException by understandin
 
 Your application is throwing this error from DynamoDB:
 
-```
+```text
 ProvisionedThroughputExceededException: The level of configured provisioned
 throughput for the table was exceeded. Consider increasing your provisioning
 level with the UpdateTable API.

@@ -36,7 +36,7 @@ User attributes are custom properties assigned to each Looker user. They store v
 
 Create a user attribute for region-based access:
 
-```
+```text
 Name: allowed_region
 Label: Allowed Region
 Type: String
@@ -47,7 +47,7 @@ User Access: View (users can see their value but not change it)
 
 Create another for department-based access:
 
-```
+```text
 Name: allowed_department
 Label: Allowed Department
 Type: String

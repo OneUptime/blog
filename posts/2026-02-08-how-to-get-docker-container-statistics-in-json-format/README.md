@@ -21,7 +21,7 @@ docker stats
 
 This produces a continuously updating table:
 
-```
+```text
 CONTAINER ID   NAME       CPU %   MEM USAGE / LIMIT     MEM %   NET I/O          BLOCK I/O        PIDS
 a1b2c3d4e5f6   web        0.50%   45.2MiB / 1GiB        4.41%   1.2kB / 500B     8.19kB / 0B      5
 f6e5d4c3b2a1   database   2.30%   256MiB / 2GiB         12.5%   3.4kB / 1.2kB    50.4MB / 10MB    25

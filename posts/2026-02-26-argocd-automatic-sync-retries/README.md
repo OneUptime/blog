@@ -52,7 +52,7 @@ The three backoff parameters control timing:
 
 With the configuration above (`duration: 5s`, `factor: 2`, `maxDuration: 3m`), the retry timing looks like:
 
-```
+```text
 Attempt 1: Sync fails
 Wait 5s
 Attempt 2: Sync fails
@@ -68,7 +68,7 @@ No more retries (limit of 5 reached)
 
 If `maxDuration` were set to `30s`, the timing would cap:
 
-```
+```text
 Attempt 1: Wait 5s
 Attempt 2: Wait 10s
 Attempt 3: Wait 20s

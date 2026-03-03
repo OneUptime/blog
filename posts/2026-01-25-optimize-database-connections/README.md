@@ -41,7 +41,7 @@ The optimal pool size depends on your workload, not the number of application in
 
 ### Formula for Pool Size
 
-```
+```text
 connections = (core_count * 2) + effective_spindle_count
 ```
 

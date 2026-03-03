@@ -37,19 +37,19 @@ LDAP organizes data in a hierarchical tree structure called the Directory Inform
 
 **DN (Distinguished Name)**: The unique identifier for an entry in the directory tree. It represents the full path from the root to the entry.
 
-```
+```text
 dn: uid=jdoe,ou=People,dc=example,dc=com
 ```
 
 **CN (Common Name)**: A human-readable name for an entry, typically used for users and groups.
 
-```
+```text
 cn: John Doe
 ```
 
 **OU (Organizational Unit)**: A container object used to organize entries within the directory, similar to folders in a filesystem.
 
-```
+```text
 ou: People
 ou: Groups
 ou: Services
@@ -57,7 +57,7 @@ ou: Services
 
 **DC (Domain Component)**: Represents parts of the domain name, used to define the base of your directory tree.
 
-```
+```text
 dc: example
 dc: com
 ```
@@ -74,7 +74,7 @@ Every LDAP entry belongs to one or more object classes that define what attribut
 
 ### Example Directory Structure
 
-```
+```text
 dc=example,dc=com (root)
 ├── ou=People
 │   ├── uid=jdoe
@@ -113,7 +113,7 @@ sudo nano /etc/hosts
 
 Add:
 
-```
+```text
 192.168.1.10    ldap.example.com    ldap
 ```
 
@@ -143,7 +143,7 @@ ldapsearch -x -H ldap://localhost -b "" -s base "(objectclass=*)" namingContexts
 
 You should see output similar to:
 
-```
+```text
 # extended LDIF
 #
 # LDAPv3
@@ -219,7 +219,7 @@ ldapwhoami -x -D "cn=admin,dc=example,dc=com" -W
 
 Enter your admin password when prompted. You should see:
 
-```
+```text
 dn:cn=admin,dc=example,dc=com
 ```
 
@@ -541,7 +541,7 @@ sudo nano /etc/default/slapd
 
 Modify the SLAPD_SERVICES line to include LDAPS:
 
-```
+```text
 SLAPD_SERVICES="ldap:/// ldapi:/// ldaps:///"
 ```
 
@@ -561,7 +561,7 @@ sudo nano /etc/ldap/ldap.conf
 
 Add TLS settings:
 
-```
+```text
 BASE    dc=example,dc=com
 URI     ldaps://ldap.example.com
 
@@ -571,7 +571,7 @@ TLS_REQCERT     demand
 
 For self-signed certificates during testing, you can use:
 
-```
+```text
 TLS_REQCERT     allow
 ```
 
@@ -616,7 +616,7 @@ ACLs define who can access what data in your LDAP directory. Proper ACL configur
 
 OpenLDAP ACL syntax:
 
-```
+```text
 olcAccess: {n}to <what> by <who> <access> [by <who> <access> ...]
 ```
 
@@ -749,7 +749,7 @@ Edit the client configuration:
 sudo nano /etc/ldap/ldap.conf
 ```
 
-```
+```text
 BASE    dc=example,dc=com
 URI     ldaps://ldap.example.com
 
@@ -767,7 +767,7 @@ Edit the nslcd configuration:
 sudo nano /etc/nslcd.conf
 ```
 
-```
+```text
 # The user and group nslcd should run as
 uid nslcd
 gid nslcd
@@ -849,7 +849,7 @@ sudo nano /etc/nsswitch.conf
 
 Modify the following lines to include LDAP:
 
-```
+```text
 passwd:         files ldap
 group:          files ldap
 shadow:         files ldap
@@ -865,7 +865,7 @@ Edit PAM common-auth:
 sudo nano /etc/pam.d/common-auth
 ```
 
-```
+```text
 auth    [success=2 default=ignore]      pam_unix.so nullok_secure
 auth    [success=1 default=ignore]      pam_ldap.so use_first_pass
 auth    requisite                       pam_deny.so
@@ -881,7 +881,7 @@ Edit PAM common-account:
 sudo nano /etc/pam.d/common-account
 ```
 
-```
+```text
 account [success=2 new_authtok_reqd=done default=ignore]    pam_unix.so
 account [success=1 default=ignore]                          pam_ldap.so
 account requisite                                           pam_deny.so
@@ -896,7 +896,7 @@ Edit PAM common-password:
 sudo nano /etc/pam.d/common-password
 ```
 
-```
+```text
 password    [success=2 default=ignore]      pam_unix.so obscure sha512
 password    [success=1 user_unknown=ignore default=die]    pam_ldap.so use_authtok try_first_pass
 password    requisite                       pam_deny.so
@@ -911,7 +911,7 @@ Edit PAM common-session:
 sudo nano /etc/pam.d/common-session
 ```
 
-```
+```text
 session [default=1]         pam_permit.so
 session requisite           pam_deny.so
 session required            pam_permit.so
@@ -966,7 +966,7 @@ sudo nano /etc/nslcd.conf
 
 Add:
 
-```
+```text
 # Only allow users in the 'linuxusers' group
 pam_authz_search (&(objectClass=posixAccount)(uid=$username)(|(memberOf=cn=linuxusers,ou=Groups,dc=example,dc=com)(memberOf=cn=admins,ou=Groups,dc=example,dc=com)))
 ```
@@ -1080,7 +1080,7 @@ Alias /phpldapadmin /usr/share/phpldapadmin/htdocs
 
 Open your web browser and navigate to:
 
-```
+```text
 https://ldap.example.com/phpldapadmin
 ```
 
@@ -1177,7 +1177,7 @@ sudo crontab -e
 
 Add:
 
-```
+```text
 0 2 * * * /usr/local/bin/ldap-backup.sh
 ```
 
@@ -1345,7 +1345,7 @@ sudo nano /etc/default/slapd
 
 Add:
 
-```
+```text
 SLAPD_OPTIONS="-d 256"
 ```
 

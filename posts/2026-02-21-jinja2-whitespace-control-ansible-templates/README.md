@@ -227,7 +227,7 @@ connection_string = {{- db_host -}}:{{- db_port -}}/{{- db_name -}}
 
 This collapses all whitespace between the variable values, producing something like:
 
-```
+```text
 connection_string =db_host_value:5432/mydb
 ```
 

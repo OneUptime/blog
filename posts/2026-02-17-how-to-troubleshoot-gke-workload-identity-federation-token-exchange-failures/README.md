@@ -131,7 +131,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 ```
 
 The member format is critical. It must be exactly:
-```
+```text
 serviceAccount:PROJECT_ID.svc.id.goog[NAMESPACE/KSA_NAME]
 ```
 

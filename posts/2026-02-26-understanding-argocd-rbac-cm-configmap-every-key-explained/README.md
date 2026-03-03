@@ -63,7 +63,7 @@ The main RBAC policy definition. This is where all permission rules and group ma
 
 Permission rules follow this format:
 
-```
+```text
 p, <subject>, <resource>, <action>, <object>, <allow|deny>
 ```
 

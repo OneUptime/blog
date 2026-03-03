@@ -84,7 +84,7 @@ service:
 
 Once the profiler is running, you can verify it is capturing stacks from multiple runtimes. A typical mixed-language stack might look like this in your profiling backend:
 
-```
+```text
 [kernel] __schedule
 [kernel] schedule
 [kernel] do_nanosleep

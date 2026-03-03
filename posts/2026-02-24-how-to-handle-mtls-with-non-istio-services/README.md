@@ -258,7 +258,7 @@ This allows connections from mesh services (identified by SPIFFE principal) AND 
 
 Track the ratio of mTLS to plain text connections to understand your migration progress:
 
-```
+```text
 sum(rate(istio_requests_total{connection_security_policy="none", reporter="destination"}[5m])) by (destination_service, source_workload)
 ```
 

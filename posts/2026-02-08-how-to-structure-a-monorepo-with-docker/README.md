@@ -14,7 +14,7 @@ This guide covers practical patterns for structuring Docker in a monorepo, from 
 
 ## Typical Monorepo Structure
 
-```
+```text
 monorepo/
 ├── docker-compose.yml
 ├── .dockerignore
@@ -172,7 +172,7 @@ The key optimization here is copying `package.json` files before source code. Th
 
 A proper `.dockerignore` is critical in a monorepo because the build context includes the entire repository:
 
-```
+```text
 # .dockerignore - Keep the build context lean
 node_modules
 **/node_modules
@@ -257,7 +257,7 @@ RUN --mount=type=cache,target=/root/.npm \
 
 If different services need different ignore rules, use named Dockerfiles with matching ignore files:
 
-```
+```text
 services/api/Dockerfile      -> services/api/Dockerfile.dockerignore
 services/worker/Dockerfile   -> services/worker/Dockerfile.dockerignore
 ```

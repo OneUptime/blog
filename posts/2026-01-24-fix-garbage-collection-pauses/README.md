@@ -60,7 +60,7 @@ java -XX:+PrintGCDetails \
 
 Look for patterns in your GC logs:
 
-```
+```text
 # Healthy GC pattern - short, frequent minor GCs
 [0.234s] GC(0) Pause Young (Normal) 24M->8M(256M) 12.345ms
 [0.456s] GC(1) Pause Young (Normal) 32M->10M(256M) 15.678ms

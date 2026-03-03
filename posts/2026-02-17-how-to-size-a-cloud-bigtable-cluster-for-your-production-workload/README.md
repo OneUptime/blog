@@ -40,14 +40,14 @@ Before picking a cluster size, answer these questions:
 
 Each SSD node supports up to 5 TB of data. Each HDD node supports up to 16 TB. Calculate your minimum node count based on storage:
 
-```
+```text
 Minimum nodes (SSD) = Total data size / 5 TB
 Minimum nodes (HDD) = Total data size / 16 TB
 ```
 
 For example, if you expect to store 20 TB of data on SSD:
 
-```
+```text
 Minimum nodes = 20 TB / 5 TB = 4 nodes
 ```
 

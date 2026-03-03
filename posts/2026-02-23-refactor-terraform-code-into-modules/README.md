@@ -35,7 +35,7 @@ Before touching any code, identify the logical groups of resources that should b
 
 For example, in a typical web application, you might identify:
 
-```
+```text
 # Current flat structure
 resource "aws_vpc" "main" { ... }
 resource "aws_subnet" "public" { ... }
@@ -65,7 +65,7 @@ Natural module boundaries:
 
 Start by creating the module directory and files:
 
-```
+```text
 modules/vpc/
   main.tf
   variables.tf
@@ -165,7 +165,7 @@ terraform plan
 
 You should see output like:
 
-```
+```text
 # module.vpc.aws_vpc.this will be moved from aws_vpc.main
 # (no changes)
 

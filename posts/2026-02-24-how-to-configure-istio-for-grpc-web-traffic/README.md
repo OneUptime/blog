@@ -16,7 +16,7 @@ Envoy, which powers Istio's data plane, has built-in support for this translatio
 
 The flow looks like this:
 
-```
+```text
 Browser (gRPC-Web over HTTP/1.1 or HTTP/2)
   -> Istio Ingress Gateway (Envoy translates gRPC-Web to gRPC)
     -> gRPC Service (native gRPC over HTTP/2)
@@ -357,7 +357,7 @@ The client must send `Content-Type: application/grpc-web` or `application/grpc-w
 
 gRPC-Web requests show up in Istio metrics with the same labels as regular gRPC:
 
-```
+```text
 istio_requests_total{
   destination_service="order-service.default.svc.cluster.local",
   request_protocol="grpc",

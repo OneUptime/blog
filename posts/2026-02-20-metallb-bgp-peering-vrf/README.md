@@ -12,7 +12,7 @@ In multi-tenant data centers or environments with overlapping IP spaces, you oft
 
 This guide walks through setting up a Linux VRF on your Kubernetes nodes, configuring MetalLB to peer through it, and verifying that routes are advertised in the correct routing domain.
 
-### What is a VRF?
+## What is a VRF?
 
 A VRF creates a separate routing table on a Linux host. Interfaces assigned to a VRF have their own forwarding table, ARP entries, and routing decisions that are isolated from the default table. This is the same concept used in enterprise routers for multi-tenancy.
 

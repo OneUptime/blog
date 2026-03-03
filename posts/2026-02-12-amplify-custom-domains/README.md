@@ -52,7 +52,7 @@ By default, Amplify maps your branches to subdomains. You get to choose which br
 
 You configure this mapping in the "Subdomains" section. A typical setup looks like this:
 
-```
+```text
 Root domain (yourdomain.com)       -> main branch
 www subdomain (www.yourdomain.com) -> main branch (redirect to root)
 dev subdomain (dev.yourdomain.com) -> develop branch
@@ -64,7 +64,7 @@ If your domain is in Route 53, Amplify handles everything automatically. It crea
 
 After you add the domain, Amplify creates these records:
 
-```
+```text
 # Amplify creates these DNS records automatically in Route 53
 Type: CNAME
 Name: _c3e2d7e8a9.yourdomain.com
@@ -85,7 +85,7 @@ If your domain is with GoDaddy, Namecheap, Cloudflare, or another provider, you'
 
 Amplify shows you the exact records to add. Here's what they typically look like:
 
-```
+```text
 # Step 1: Add the CNAME for SSL certificate validation
 Type: CNAME
 Host: _c3e2d7e8a9
@@ -115,7 +115,7 @@ Amplify uses ACM to provision a free SSL certificate. The certificate validation
 
 You can check the status in the Amplify Console. It goes through these stages:
 
-```
+```text
 Pending validation -> Requesting certificate -> Available
 ```
 
@@ -131,7 +131,7 @@ Most sites want `www.yourdomain.com` to redirect to `yourdomain.com` (or vice ve
 
 In the subdomain configuration, set up your redirect:
 
-```
+```text
 yourdomain.com       -> main branch (primary)
 www.yourdomain.com   -> redirects to yourdomain.com
 ```
@@ -142,7 +142,7 @@ Amplify sets up a 301 redirect so that `www.yourdomain.com/any-path` correctly r
 
 One of Amplify's nice features is automatic preview environments for branches. You can set up pattern-based subdomains:
 
-```
+```text
 Pattern: pr-*
 Domain: pr-*.yourdomain.com
 ```

@@ -211,7 +211,7 @@ kubectl get pods -n team-backend -o json | \
 
 A reasonable starting point:
 
-```
+```text
 Quota requests = current_average_usage * 1.5
 Quota limits = current_average_usage * 3.0
 
@@ -226,7 +226,7 @@ The 1.5x multiplier for requests gives teams room to scale. The 3x multiplier fo
 
 Make sure the sum of all namespace quotas does not dramatically exceed your cluster capacity. Some overcommitment is normal (not all namespaces use their full quota simultaneously), but excessive overcommitment leads to problems.
 
-```
+```text
 Total cluster CPU: 64 cores
 Sum of all namespace request quotas: 80 cores (1.25x overcommit - acceptable)
 Sum of all namespace limit quotas: 160 cores (2.5x overcommit - might be risky)

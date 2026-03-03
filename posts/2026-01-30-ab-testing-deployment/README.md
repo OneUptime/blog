@@ -763,7 +763,7 @@ sequenceDiagram
 
 ### Project Structure
 
-```
+```text
 myapp/
 ├── k8s/
 │   ├── base/

@@ -29,7 +29,7 @@ flowchart TB
 
 Common variations of this error:
 
-```
+```text
 # Port already in use
 nginx: [emerg] bind() to 0.0.0.0:80 failed (98: Address already in use)
 
@@ -61,7 +61,7 @@ sudo lsof -i6 TCP:80
 
 Example output:
 
-```
+```text
 COMMAND   PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
 nginx    1234     root    6u  IPv4  12345      0t0  TCP *:80 (LISTEN)
 nginx    1235 www-data    6u  IPv4  12345      0t0  TCP *:80 (LISTEN)

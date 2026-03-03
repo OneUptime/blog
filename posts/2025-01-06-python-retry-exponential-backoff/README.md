@@ -18,7 +18,7 @@ Retry logic seems simple until you implement it wrong. This guide shows you how 
 
 Without backoff, retries can make problems worse:
 
-```
+```text
 Time 0s: Request fails
 Time 0s: Retry 1 fails
 Time 0s: Retry 2 fails
@@ -28,7 +28,7 @@ Time 0s: Retry 3 fails
 
 This hammers an already struggling service. Exponential backoff adds increasing delays:
 
-```
+```text
 Time 0s: Request fails
 Time 1s: Retry 1 fails
 Time 2s: Retry 2 fails

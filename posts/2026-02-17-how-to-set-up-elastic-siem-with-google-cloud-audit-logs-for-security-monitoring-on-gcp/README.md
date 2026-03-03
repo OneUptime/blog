@@ -189,14 +189,14 @@ Enable the rules that match your security requirements.
 
 For organization-specific threats, create custom rules using KQL or EQL queries.
 
-```
+```text
 # KQL rule: Detect when someone grants Owner role to an external user
 event.action:"SetIamPolicy" AND gcp.audit.authorization_info.permission:"resourcemanager.projects.setIamPolicy" AND gcp.audit.request.policy.bindings.role:"roles/owner" AND NOT user.email:*@yourcompany.com
 ```
 
 Here is an EQL rule for detecting a sequence of suspicious activities.
 
-```
+```text
 # EQL rule: Detect service account key creation followed by immediate use from external IP
 sequence by gcp.audit.authentication_info.principal_email with maxspan=1h
   [any where event.action == "google.iam.admin.v1.CreateServiceAccountKey"]

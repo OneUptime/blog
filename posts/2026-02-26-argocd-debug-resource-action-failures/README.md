@@ -42,7 +42,7 @@ kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.resource\.customiz
 
 The key must exactly match this pattern:
 
-```
+```text
 resource.customizations.actions.<group>_<kind>
 ```
 

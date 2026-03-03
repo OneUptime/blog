@@ -36,7 +36,7 @@ kubectl logs -n argocd deployment/argocd-repo-server --tail=500 | \
 
 Common error messages by provider:
 
-```
+```text
 # GitHub
 "API rate limit exceeded"
 "You have exceeded a secondary rate limit"

@@ -553,7 +553,7 @@ Raw profile data needs interpretation to drive optimization decisions.
 
 Flame graphs visualize call stacks with width representing time spent:
 
-```
+```text
                     main() - 100%
         _____________________________|_____________________________
        |                                                           |

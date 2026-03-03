@@ -66,7 +66,7 @@ ORDER BY CreatedAt DESC;
 
 Without any secondary indexes, the query plan will look something like:
 
-```
+```text
 Distributed Union
   Serialize Result
     Sort (CreatedAt DESC)
@@ -89,7 +89,7 @@ CREATE INDEX OrdersByCustomerAndStatus
 
 Now the query plan changes dramatically:
 
-```
+```text
 Distributed Union
   Serialize Result
     Index Scan (OrdersByCustomerAndStatus)

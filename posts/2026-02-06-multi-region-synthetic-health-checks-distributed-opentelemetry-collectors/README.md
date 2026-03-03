@@ -14,7 +14,7 @@ OpenTelemetry Collectors can serve as lightweight synthetic probing agents when 
 
 The setup is straightforward. You deploy an OpenTelemetry Collector in each region you care about. Each collector runs the `httpcheck` receiver, which periodically hits your endpoints and generates metrics about response time, status codes, and errors. All collectors export their metrics to a single central backend.
 
-```
+```text
 [Collector: US-East]  ----\
 [Collector: EU-West]  ------> [Central OTLP Backend]
 [Collector: AP-South] ----/

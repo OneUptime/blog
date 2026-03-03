@@ -96,7 +96,7 @@ org.keycloak.events=DEBUG
 
 Look for these indicators in logs:
 
-```
+```text
 # Successful authentication
 INFO  [org.keycloak.events] type=LOGIN, realmId=myrealm, clientId=my-app, userId=abc123
 
@@ -118,7 +118,7 @@ This is the most frequent OIDC error. Keycloak strictly validates that the redir
 
 ### Symptoms
 
-```
+```text
 error=invalid_redirect_uri
 error_description=Invalid redirect uri
 ```
@@ -146,7 +146,7 @@ https://keycloak.example.com/realms/myrealm/protocol/openid-connect/auth?
 
 3. Common mismatches to check:
 
-```
+```text
 # These are ALL different URIs:
 https://myapp.com/callback
 https://myapp.com/callback/
@@ -159,7 +159,7 @@ https://myapp.com:443/callback
 
 In the Keycloak admin console, go to **Clients > your-client > Settings** and add all valid redirect URIs. For development, you can use wildcards:
 
-```
+```text
 # Development only - not for production
 https://localhost:*/*
 http://localhost:*/*
@@ -300,7 +300,7 @@ flowchart LR
 
 The issuer must match exactly. Common issues:
 
-```
+```text
 # These are different issuers:
 https://keycloak.example.com/realms/myrealm
 https://keycloak.example.com/realms/myrealm/
@@ -320,7 +320,7 @@ CORS issues appear when browser-based applications cannot communicate with Keycl
 
 Browser console shows:
 
-```
+```text
 Access to fetch at 'https://keycloak.example.com/...' from origin 'https://myapp.com'
 has been blocked by CORS policy
 ```
@@ -335,7 +335,7 @@ has been blocked by CORS policy
 
 In Keycloak admin console, go to **Clients > your-client > Settings** and configure Web Origins:
 
-```
+```text
 # Add your application's origin
 https://myapp.com
 
@@ -373,7 +373,7 @@ document.cookie.split(';').filter(c => c.includes('KC_'))
 
 3. Look for SameSite cookie issues:
 
-```
+```text
 # Modern browsers require SameSite=None for cross-site cookies
 # This requires HTTPS
 Set-Cookie: KC_RESTART=...; SameSite=None; Secure
@@ -400,7 +400,7 @@ SAML issues often involve certificate or configuration mismatches between Keyclo
 
 ### Symptoms
 
-```
+```text
 SAML Response signature validation failed
 Invalid SAML response
 Unexpected SAML response status

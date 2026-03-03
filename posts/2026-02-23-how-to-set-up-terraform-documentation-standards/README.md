@@ -207,7 +207,7 @@ module "networking" {
 ## Related Modules
 - [vpc-peering](../vpc-peering) - Manages VPC peering connections
 - [transit-gateway](../transit-gateway) - Manages transit gateway
-```
+```text
 
 ### Automating README Generation
 
@@ -269,7 +269,7 @@ save costs.
 
 Store ADRs alongside the Terraform code they relate to:
 
-```
+```text
 modules/
   networking/
     docs/

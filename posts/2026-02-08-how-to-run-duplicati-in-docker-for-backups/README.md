@@ -83,7 +83,7 @@ Click "Add backup" and choose "Configure a new backup." The wizard walks through
 
 ### Step 1: General Settings
 
-```
+```text
 Name: Daily Server Backup
 Description: Backs up home directories and configurations
 Encryption: AES-256, built-in
@@ -98,14 +98,14 @@ Choose your storage backend. Here are the most common options:
 
 For local storage:
 
-```
+```text
 Storage Type: Local folder or drive
 Folder path: /backups/server-daily
 ```
 
 For Backblaze B2:
 
-```
+```text
 Storage Type: B2 Cloud Storage
 Bucket: your-backup-bucket
 Account ID: your_account_id
@@ -115,7 +115,7 @@ Folder path: server-daily
 
 For Amazon S3:
 
-```
+```text
 Storage Type: S3 Compatible
 Server: s3.amazonaws.com
 Bucket: your-backup-bucket
@@ -129,7 +129,7 @@ Folder path: server-daily
 
 Select the directories to include:
 
-```
+```text
 # Check these paths in the file browser
 /source/home
 /source/etc
@@ -138,7 +138,7 @@ Select the directories to include:
 
 Add exclusion filters for files you do not want to back up:
 
-```
+```text
 # Exclusion filters
 *.tmp
 *.cache
@@ -151,7 +151,7 @@ Add exclusion filters for files you do not want to back up:
 
 Set the backup frequency:
 
-```
+```text
 Run automatically: Yes
 Schedule: Every day at 02:00 AM
 ```
@@ -160,7 +160,7 @@ Schedule: Every day at 02:00 AM
 
 Configure retention policy:
 
-```
+```text
 # Keep backups for a rolling period
 Keep all backups that are newer than: 7 days
 Keep one backup per day that is newer than: 30 days
@@ -212,7 +212,7 @@ docker exec duplicati duplicati-cli test \
 
 Duplicati can automatically verify backups after each run. Enable this in the backup job's advanced options:
 
-```
+```text
 # Under Advanced Options, add:
 --backup-test-samples=3
 ```
@@ -223,7 +223,7 @@ This tests 3 random backup files after each backup run to verify they are valid 
 
 Configure email notifications for backup success and failure. In the backup job settings, go to Advanced Options:
 
-```
+```text
 # Email notification settings
 --send-mail-to=admin@your-domain.com
 --send-mail-from=duplicati@your-domain.com
@@ -254,7 +254,7 @@ Create separate backup jobs for different applications so you can restore them i
 
 Duplicati uses block-level deduplication. If you have similar data across multiple directories, the storage usage is much lower than the raw data size. Adjust the block size for different workloads:
 
-```
+```text
 # For many small files (documents, configs): use smaller blocks
 --blocksize=100KB
 

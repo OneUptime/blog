@@ -214,7 +214,7 @@ Create a custom Azure Dashboard to get a single-pane view of your cache health.
 
 You can also use Azure Workbooks for more advanced visualizations. Here is a KQL query you can use in a Workbook to calculate cache hit ratio over time:
 
-```
+```text
 AzureMetrics
 | where ResourceProvider == "MICROSOFT.CACHE"
 | where MetricName in ("cachehits", "cachemisses")

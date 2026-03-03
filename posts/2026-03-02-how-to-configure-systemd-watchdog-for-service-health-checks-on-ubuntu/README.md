@@ -239,7 +239,7 @@ sudo journalctl -u myapp.service -f
 
 When the watchdog fires, you will see entries like:
 
-```
+```text
 myapp.service: Watchdog timeout (limit 30s)!
 myapp.service: Killing process 1234 (myapp) with signal SIGABRT.
 myapp.service: Main process exited, code=dumped, status=6/ABRT

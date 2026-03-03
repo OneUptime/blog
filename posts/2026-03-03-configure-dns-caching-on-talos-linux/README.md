@@ -67,7 +67,7 @@ data:
 
 Let me break down each cache directive:
 
-```
+```text
 # success <max_entries> <max_ttl> <min_ttl>
 # Cache up to 9984 successful responses
 # Use the record's TTL but cap at 300 seconds
@@ -119,7 +119,7 @@ A healthy cache should have a hit rate above 80%. If your hit rate is low, consi
 
 Different domains may need different cache durations. Internal services change frequently, while external domains are more stable:
 
-```
+```text
 .:53 {
     errors
     health {

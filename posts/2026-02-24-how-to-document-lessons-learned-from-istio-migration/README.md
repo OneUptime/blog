@@ -206,7 +206,7 @@ mkdir -p docs/istio-migration
 
 Structure it so people can find specific information quickly:
 
-```
+```text
 docs/istio-migration/
   README.md                    # Overview and timeline
   decision-log.md              # All major decisions

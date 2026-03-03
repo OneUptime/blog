@@ -258,7 +258,7 @@ Upload `ca-cert.pem` as the trusted client CA on the Application Gateway. Use `c
 
 Monitor mTLS authentication failures in Application Gateway logs:
 
-```
+```text
 // KQL query for mTLS authentication failures
 AzureDiagnostics
 | where ResourceType == "APPLICATIONGATEWAYS"

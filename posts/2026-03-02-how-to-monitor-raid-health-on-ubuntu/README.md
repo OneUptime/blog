@@ -30,7 +30,7 @@ cat /proc/mdstat | grep -E 'md[0-9]'
 
 A healthy RAID-5 array with 4 disks shows:
 
-```
+```text
 md0 : active raid5 sdd1[3] sdc1[2] sdb1[1] sda1[0]
       2929893888 blocks super 1.2 level 5, 512k chunk, algorithm 2 [4/4] [UUUU]
 ```
@@ -51,7 +51,7 @@ sudo nano /etc/mdadm/mdadm.conf
 
 Add or modify these lines:
 
-```
+```text
 # Send alerts to this address
 MAILADDR admin@example.com
 
@@ -164,7 +164,7 @@ Configure `/etc/smartd.conf`:
 sudo nano /etc/smartd.conf
 ```
 
-```
+```text
 # Monitor all disks, check hourly, email on failures
 # -a: enable all checks
 # -o on: enable offline testing

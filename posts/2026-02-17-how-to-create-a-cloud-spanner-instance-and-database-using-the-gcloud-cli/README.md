@@ -52,7 +52,7 @@ gcloud spanner instance-configs list
 
 This will output something like:
 
-```
+```text
 NAME                     DISPLAY_NAME
 regional-us-central1     us-central1
 regional-us-east1        us-east1

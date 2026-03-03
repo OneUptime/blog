@@ -40,7 +40,7 @@ ssh -i ~/.ssh/mykey -p 2222 user@remote-server-1 "hostname"
 
 Fabric reads `~/.ssh/config`, so entries there work automatically:
 
-```
+```text
 # ~/.ssh/config
 Host web1
     HostName web1.example.com

@@ -345,12 +345,12 @@ Open browser developer tools:
 3. Inspect the request URL
 
 Instant query:
-```
+```text
 /api/v1/query?query=up&time=1704067200
 ```
 
 Range query:
-```
+```text
 /api/v1/query_range?query=up&start=1704063600&end=1704067200&step=60
 ```
 

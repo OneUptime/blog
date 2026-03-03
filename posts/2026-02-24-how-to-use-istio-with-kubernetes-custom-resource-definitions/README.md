@@ -22,7 +22,7 @@ kubectl get crds | grep istio
 
 The output will include resources like:
 
-```
+```text
 authorizationpolicies.security.istio.io
 destinationrules.networking.istio.io
 envoyfilters.networking.istio.io
@@ -264,7 +264,7 @@ istioctl analyze my-config.yaml --use-kube=false
 
 Store your Istio CRD resources in Git alongside your application manifests. A common directory structure:
 
-```
+```text
 k8s/
   base/
     deployment.yaml

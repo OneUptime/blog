@@ -29,7 +29,7 @@ A Quality SLI (Service Level Indicator) measures the proportion of responses tha
 
 **Formula:**
 
-```
+```text
 Quality SLI = (Valid Responses / Total Responses) * 100
 ```
 

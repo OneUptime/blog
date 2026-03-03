@@ -204,7 +204,7 @@ kubectl get svc dns-tcp dns-udp
 
 Expected output:
 
-```
+```text
 NAME      TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)
 dns-tcp   LoadBalancer   10.96.10.5     192.168.1.200   53:31001/TCP
 dns-udp   LoadBalancer   10.96.10.8     192.168.1.200   53:31002/UDP

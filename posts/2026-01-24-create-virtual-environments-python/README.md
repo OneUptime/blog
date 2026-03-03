@@ -18,7 +18,7 @@ Without virtual environments, all your projects share the same installed package
 
 Consider this scenario:
 
-```
+```text
 Project A needs: Django==3.2, requests==2.25
 Project B needs: Django==4.0, requests==2.28
 ```
@@ -141,7 +141,7 @@ pip install -r requirements.txt
 
 ### Best Practice: Pin Versions
 
-```
+```text
 # requirements.txt - pin exact versions
 Flask==2.3.0
 requests==2.28.0
@@ -258,7 +258,7 @@ conda env create -f environment.yml
 
 ### Recommended Directory Layout
 
-```
+```text
 my_project/
     venv/               # Virtual environment (not in git)
     src/
@@ -403,7 +403,7 @@ pip install -r requirements.txt
 
 For larger projects, separate development and production dependencies:
 
-```
+```text
 # requirements.txt (production)
 Flask==2.3.0
 SQLAlchemy==2.0.0

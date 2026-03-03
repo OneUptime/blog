@@ -133,7 +133,7 @@ az automation webhook create \
 The response includes the webhook URL. Copy it immediately - Azure will never show the full URL again. If you lose it, you need to create a new webhook.
 
 The URL looks something like:
-```
+```text
 https://s1events.azure-automation.net/webhooks?token=AbCdEfGhIjKlMnOpQrStUvWxYz1234567890
 ```
 

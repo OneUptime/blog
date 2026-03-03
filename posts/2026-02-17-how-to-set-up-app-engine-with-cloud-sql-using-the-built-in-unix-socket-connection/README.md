@@ -16,7 +16,7 @@ In this guide, I will show you how to set up the connection for both MySQL and P
 
 When you deploy to App Engine, Google's infrastructure automatically creates a Unix socket for each Cloud SQL instance you reference in your `app.yaml`. The socket path follows this pattern:
 
-```
+```text
 /cloudsql/PROJECT_ID:REGION:INSTANCE_NAME
 ```
 
@@ -82,7 +82,7 @@ The `beta_settings.cloud_sql_instances` line is the key. It tells App Engine to 
 
 Install the required dependencies:
 
-```
+```text
 # requirements.txt
 SQLAlchemy==2.0.25
 pg8000==1.31.0        # Pure Python PostgreSQL driver (works with Unix sockets)
@@ -261,13 +261,13 @@ const db = Knex({
 
 Connection pooling is critical on App Engine because instances scale up and down. Each instance maintains its own connection pool, so the total number of database connections is:
 
-```
+```text
 Total connections = number_of_instances * pool_size_per_instance
 ```
 
 If you have 10 instances with a pool size of 10, that is 100 database connections. Cloud SQL has connection limits based on instance size:
 
-```
+```text
 db-f1-micro: 25 connections
 db-g1-small: 50 connections
 db-n1-standard-1: 100 connections

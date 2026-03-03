@@ -462,7 +462,7 @@ output "service_accounts" {
 
 Terraform can use GitHub releases as a module source. Structure your repository:
 
-```
+```text
 terraform-k8s-modules/
 ├── README.md
 ├── modules/
@@ -508,13 +508,13 @@ module "api_service" {
 
 For private registries (Terraform Cloud or Enterprise), publish modules following the naming convention:
 
-```
+```text
 terraform-<PROVIDER>-<NAME>
 ```
 
 For Kubernetes modules:
 
-```
+```text
 terraform-kubernetes-application
 terraform-kubernetes-statefulset
 terraform-kubernetes-namespace
@@ -675,7 +675,7 @@ module "api" {
 |------|-------------|
 | deployment_name | Name of the deployment |
 | service_endpoint | Internal service endpoint |
-```
+```text
 
 ## Module Testing
 

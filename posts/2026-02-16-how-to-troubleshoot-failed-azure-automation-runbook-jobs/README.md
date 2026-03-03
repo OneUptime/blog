@@ -58,11 +58,11 @@ This is the most frequent failure I see. The runbook cannot authenticate to Azur
 ### Symptom
 
 The error stream shows something like:
-```
+```text
 Connect-AzAccount : No MSI found for the specified ClientId/ResourceId
 ```
 or
-```
+```text
 Connect-AzAccount : ManagedIdentityCredential authentication unavailable
 ```
 
@@ -99,11 +99,11 @@ az role assignment list \
 
 ### Symptom
 
-```
+```text
 The term 'Get-AzVM' is not recognized as the name of a cmdlet
 ```
 or
-```
+```text
 Import-Module : The specified module 'Az.Compute' was not loaded
 ```
 
@@ -190,7 +190,7 @@ while ($status -ne "Ready") {
 
 The job fails with a message about exceeding the fair share limit, or you see:
 
-```
+```text
 The job was evicted and subsequently resumed. This is common for long-running jobs.
 ```
 
@@ -210,11 +210,11 @@ Azure Automation enforces a "fair share" policy where jobs in the Azure sandbox 
 
 ### Symptom
 
-```
+```text
 Resource group 'rg-dev-old' could not be found
 ```
 or
-```
+```text
 The Resource 'Microsoft.Compute/virtualMachines/myvm' was not found
 ```
 
@@ -243,7 +243,7 @@ Stop-AzVM -ResourceGroupName "rg-dev" -Name $vm.Name -Force
 
 ### Symptom
 
-```
+```text
 Authorization failed for the request. The client does not have authorization to perform action 'Microsoft.Compute/virtualMachines/deallocate/action'
 ```
 

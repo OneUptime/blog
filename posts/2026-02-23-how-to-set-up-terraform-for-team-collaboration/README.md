@@ -160,7 +160,7 @@ State locking prevents two people from modifying the same state simultaneously. 
 
 When someone runs `terraform apply`, Terraform acquires a lock. If another person tries to apply at the same time, they see:
 
-```
+```text
 Error: Error acquiring the state lock
 
 Lock Info:
@@ -187,7 +187,7 @@ Workspaces let you manage multiple environments (dev, staging, production) with 
 
 The simplest and most explicit approach:
 
-```
+```text
 infrastructure/
   modules/
     server/

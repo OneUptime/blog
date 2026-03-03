@@ -59,7 +59,7 @@ The `--attribute-mapping` flag is where the magic happens. Let me break it down.
 
 Attribute mappings use Common Expression Language (CEL) to transform IdP token claims into Google Cloud attributes. The format is:
 
-```
+```text
 google.attribute=CEL_expression_on_assertion
 ```
 

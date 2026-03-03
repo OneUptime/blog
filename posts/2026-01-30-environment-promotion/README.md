@@ -36,7 +36,7 @@ Each environment serves a specific purpose:
 
 The foundation of environment promotion is a clean repository structure. Using Kustomize overlays, you can maintain environment-specific configurations while sharing a common base.
 
-```
+```text
 app/
 ├── base/
 │   ├── kustomization.yaml

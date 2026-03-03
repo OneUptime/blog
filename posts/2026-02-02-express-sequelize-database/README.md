@@ -60,7 +60,7 @@ npm install --save-dev sequelize-cli dotenv nodemon
 
 A well-organized project structure makes your application easier to maintain and scale.
 
-```
+```text
 project/
 ├── src/
 │   ├── config/

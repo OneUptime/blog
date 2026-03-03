@@ -709,7 +709,7 @@ spec:
 
 ### Chart Structure
 
-```
+```text
 kyverno-policies/
 ├── Chart.yaml
 ├── values.yaml

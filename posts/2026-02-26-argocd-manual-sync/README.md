@@ -36,7 +36,7 @@ The sync dialog offers several configuration options:
 
 **Revision** - By default, ArgoCD syncs to the latest commit on the tracked branch. You can override this to sync a specific commit SHA or tag:
 
-```
+```text
 Revision: abc1234def5678
 ```
 
@@ -66,7 +66,7 @@ argocd app sync my-app
 
 This command blocks until the sync completes (or fails) and prints the result:
 
-```
+```text
 TIMESTAMP   GROUP  KIND        NAMESPACE  NAME  STATUS  HEALTH   HOOK  MESSAGE
 2026-02-26  apps   Deployment  my-app     web   Synced  Healthy        deployment.apps/web configured
 2026-02-26         Service     my-app     web   Synced  Healthy        service/web unchanged

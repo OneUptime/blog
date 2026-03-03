@@ -145,7 +145,7 @@ istioctl proxy-config clusters my-app-xxxxx.default | grep "api.external.com"
 
 You should see a cluster like:
 
-```
+```text
 outbound|443||api.external.com    api.external.com    443    -    EDS
 ```
 

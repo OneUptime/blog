@@ -43,7 +43,7 @@ When Grafana starts, it reads YAML configuration files from the provisioning dir
 
 Grafana expects provisioning files in a specific structure. The default location is `/etc/grafana/provisioning/`, but you can customize it via the `paths.provisioning` configuration option.
 
-```
+```text
 /etc/grafana/provisioning/
 ├── datasources/
 │   ├── datasources.yaml
@@ -614,7 +614,7 @@ flowchart LR
 
 ### Repository Structure for GitOps
 
-```
+```text
 grafana-config/
 ├── .github/
 │   └── workflows/

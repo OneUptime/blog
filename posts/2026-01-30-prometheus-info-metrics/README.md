@@ -117,7 +117,7 @@ if __name__ == '__main__':
 
 When you scrape the `/metrics` endpoint, you will see:
 
-```
+```text
 # HELP myapp_build_info Build information about the application
 # TYPE myapp_build_info gauge
 myapp_build_info{version="1.0.0",commit="abc123def",build_date="2026-01-30"} 1

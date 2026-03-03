@@ -138,7 +138,7 @@ FIDO2 security keys satisfy the "phishing-resistant MFA" authentication strength
 
 Go to Protection, then Conditional Access. Create a new policy:
 
-```
+```text
 Name: Require phishing-resistant MFA for admin portals
 Users: All administrators
 Cloud apps: Microsoft Azure Management, Microsoft 365 admin center

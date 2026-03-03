@@ -43,7 +43,7 @@ cd gke-config
 
 Config Sync supports two formats for organizing configs: unstructured and hierarchical. The unstructured format is simpler and more flexible:
 
-```
+```text
 gke-config/
   namespaces/
     production/

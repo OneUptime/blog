@@ -93,7 +93,7 @@ The `auto` plugin sees `plugin: amazon.aws.aws_ec2` and automatically routes to 
 
 The real power of the `auto` plugin shows up when you have an inventory directory with mixed source types:
 
-```
+```text
 inventory/
   static_hosts.yml          # Standard YAML inventory
   aws_ec2.yml               # AWS EC2 dynamic inventory
@@ -196,7 +196,7 @@ ansible-inventory -i inventory/ --list -vvv
 
 The verbose output shows lines like:
 
-```
+```text
 [DEBUG] auto: examining inventory/aws_ec2.yml
 [DEBUG] auto: found plugin directive: amazon.aws.aws_ec2
 [DEBUG] auto: loading inventory plugin amazon.aws.aws_ec2

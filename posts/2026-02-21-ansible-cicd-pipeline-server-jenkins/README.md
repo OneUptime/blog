@@ -20,7 +20,7 @@ You need a control machine with Ansible 2.12+ installed and a target Ubuntu 22.0
 
 Here is how I organize the Ansible project for Jenkins:
 
-```
+```text
 jenkins-setup/
   inventory/
     hosts.ini

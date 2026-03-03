@@ -67,7 +67,7 @@ A server profile tells LAM how to connect to your LDAP directory:
 2. Click **Add profile** (or edit the default one)
 3. Configure the settings:
 
-```
+```text
 Profile name: myldap
 Server address: ldap://localhost:389
 Tree suffix: dc=example,dc=com
@@ -81,7 +81,7 @@ For TLS connections, change the server address to `ldaps://localhost:636` and ad
 
 In the server profile, configure which account types LAM should manage:
 
-```
+```text
 Account types -> Add account type:
 - Users: enabled, suffix ou=People,dc=example,dc=com
 - Groups: enabled, suffix ou=Groups,dc=example,dc=com

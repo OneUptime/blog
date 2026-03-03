@@ -16,14 +16,14 @@ Let's look at the most common causes and fixes.
 
 The error typically looks like this:
 
-```
+```text
 An error occurred (InvalidParameterValue) when calling the RunInstances operation:
 Value (ami-abc123) for parameter imageId is invalid.
 ```
 
 Or sometimes more vaguely:
 
-```
+```text
 An error occurred (InvalidParameterValue) when calling the CreateFunction operation:
 Invalid request provided: Provided member is not valid.
 ```

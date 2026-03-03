@@ -46,7 +46,7 @@ Let's create a project that deploys a web application to AWS with different conf
 
 ### Project Structure
 
-```
+```text
 my-app-infra/
 ├── Pulumi.yaml           # Project definition
 ├── Pulumi.dev.yaml       # Dev stack configuration

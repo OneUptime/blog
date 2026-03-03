@@ -85,7 +85,7 @@ nano ~/.ssh/config
 
 Add an entry for your server:
 
-```
+```text
 # Development server
 Host devserver
     HostName 203.0.113.10
@@ -106,7 +106,7 @@ Options explained:
 
 For servers behind a jump host (bastion):
 
-```
+```text
 # Bastion host
 Host bastion
     HostName bastion.example.com
@@ -163,7 +163,7 @@ The port is now accessible at `localhost:3000` on your local machine.
 
 You can also set up forwarding in the SSH config:
 
-```
+```text
 Host devserver
     HostName 203.0.113.10
     User ubuntu
@@ -296,7 +296,7 @@ chmod 600 ~/.ssh/config
 
 Add keepalive settings to the SSH config:
 
-```
+```text
 Host devserver
     ServerAliveInterval 30
     ServerAliveCountMax 6

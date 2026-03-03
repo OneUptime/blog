@@ -165,7 +165,7 @@ kubectl describe deployment myapp -n production
 
 ### Scheduling Issues
 
-```
+```text
 Type     Reason            Message
 Warning  FailedScheduling  0/3 nodes are available: insufficient memory
 Warning  FailedScheduling  0/3 nodes are available: 3 node(s) didn't match node selector
@@ -174,7 +174,7 @@ Warning  FailedScheduling  0/3 nodes are available: 3 node(s) had taint that pod
 
 ### Image Pull Issues
 
-```
+```text
 Type     Reason         Message
 Warning  Failed         Failed to pull image "myregistry.io/myapp:v1": rpc error: code = NotFound
 Normal   BackOff        Back-off pulling image "myregistry.io/myapp:v1"
@@ -183,7 +183,7 @@ Warning  ErrImagePull   Error: ImagePullBackOff
 
 ### Health Check Failures
 
-```
+```text
 Type     Reason     Message
 Warning  Unhealthy  Readiness probe failed: HTTP probe failed with statuscode: 503
 Warning  Unhealthy  Liveness probe failed: connection refused
@@ -192,7 +192,7 @@ Normal   Killing    Container myapp failed liveness probe, will be restarted
 
 ### Resource Issues
 
-```
+```text
 Type     Reason    Message
 Warning  Evicted   The node was low on resource: memory
 Warning  OOMKilled Container myapp was OOMKilled

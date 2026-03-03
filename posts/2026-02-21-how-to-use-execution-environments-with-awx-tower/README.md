@@ -263,7 +263,7 @@ The project sync EE needs Git and any authentication tools required to access yo
 
 Here is a typical setup for a mid-size organization:
 
-```
+```text
 EE 1: Base EE (community.general, ansible.posix)
   -> Used for: General infrastructure tasks
 

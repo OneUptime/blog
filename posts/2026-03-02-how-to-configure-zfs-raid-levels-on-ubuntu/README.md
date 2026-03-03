@@ -56,7 +56,7 @@ Usable capacity: ~50% of total raw capacity (2TB raw = 1TB usable).
 sudo zpool status datapool
 ```
 
-```
+```text
   pool: datapool
  state: ONLINE
 config:
@@ -129,7 +129,7 @@ Usable: 75% (3 of 4 disks).
 sudo zpool status datapool
 ```
 
-```
+```text
   pool: datapool
  state: ONLINE
 config:
@@ -213,7 +213,7 @@ sudo zpool create datapool raidz2 \
 sudo zpool status
 ```
 
-```
+```text
   pool: datapool
  state: ONLINE
 config:

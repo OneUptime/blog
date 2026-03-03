@@ -160,7 +160,7 @@ az monitor metrics alert create \
 
 Build a workbook or dashboard in Azure Monitor for a real-time view of DDoS activity:
 
-```
+```text
 // KQL query for DDoS attack notifications
 AzureDiagnostics
 | where Category == "DDoSProtectionNotifications"

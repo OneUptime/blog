@@ -108,7 +108,7 @@ kubectl get deployment -n argocd
 
 You should see multiple replicas:
 
-```
+```text
 NAME                 READY   UP-TO-DATE   AVAILABLE
 argocd-server        2/2     2            2
 argocd-repo-server   2/2     2            2

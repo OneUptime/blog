@@ -16,7 +16,7 @@ This guide covers the architecture, prerequisites, deployment steps, and operati
 
 TFE high availability runs multiple TFE application nodes behind a load balancer, all sharing the same external services:
 
-```
+```text
                     Load Balancer (ALB/NLB)
                     /         |         \
                    /          |          \

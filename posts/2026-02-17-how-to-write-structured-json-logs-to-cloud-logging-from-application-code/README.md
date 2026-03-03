@@ -325,7 +325,7 @@ class TracingFormatter(logging.Formatter):
 
 Once your logs are structured, you can filter on any JSON field in Cloud Logging:
 
-```
+```text
 # Find logs for a specific user
 jsonPayload.user_id="12345"
 

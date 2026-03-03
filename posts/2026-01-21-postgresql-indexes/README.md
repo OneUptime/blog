@@ -21,14 +21,14 @@ Indexes are critical for PostgreSQL performance. Well-designed indexes can speed
 ### How Indexes Work
 
 Without index:
-```
+```text
 Query: WHERE id = 12345
 Action: Scan all 1,000,000 rows (sequential scan)
 Time: O(n)
 ```
 
 With index:
-```
+```text
 Query: WHERE id = 12345
 Action: Tree lookup to find row location
 Time: O(log n)

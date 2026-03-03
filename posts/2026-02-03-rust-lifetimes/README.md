@@ -34,7 +34,7 @@ fn main() {
 
 The compiler catches this at compile time:
 
-```
+```text
 error[E0597]: `value` does not live long enough
  --> src/main.rs:6:32
   |
@@ -81,7 +81,7 @@ fn longest(x: &str, y: &str) -> &str {
 
 The compiler gives this error:
 
-```
+```text
 error[E0106]: missing lifetime specifier
  --> src/main.rs:1:33
   |
@@ -784,7 +784,7 @@ struct ConfigRef<'a> {
 
 Rust's error messages are detailed. Read them carefully:
 
-```
+```text
 error[E0597]: `x` does not live long enough
   --> src/main.rs:4:13
    |

@@ -750,7 +750,7 @@ pipeline {
 
 For pipelines used across multiple projects, create a shared library.
 
-```
+```text
 jenkins-shared-library/
 ├── vars/
 │   ├── buildNode.groovy

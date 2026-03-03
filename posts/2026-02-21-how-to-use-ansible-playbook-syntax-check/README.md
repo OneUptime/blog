@@ -21,13 +21,13 @@ ansible-playbook --syntax-check deploy.yml
 
 If the syntax is correct, you see:
 
-```
+```text
 playbook: deploy.yml
 ```
 
 If there is an error, you get a detailed message:
 
-```
+```text
 ERROR! Syntax Error while loading YAML.
   mapping values are not allowed in this context
 

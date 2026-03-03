@@ -717,7 +717,7 @@ if __name__ == '__main__':
 1. **Quick**: Increase maxmemory if RAM available
    ```
    CONFIG SET maxmemory 4gb
-   ```
+   ```text
 
 2. **Expire old data**: Add TTLs to keys without expiration
    ```python
@@ -735,7 +735,7 @@ if __name__ == '__main__':
 - Implement proper TTLs
 - Consider Redis Cluster for horizontal scaling
 - Review data structures for efficiency
-```
+```text
 
 ## Best Practices
 

@@ -14,7 +14,7 @@ JSON Web Tokens (JWTs) are the standard for API authentication, but they're freq
 
 A JWT consists of three parts:
 
-```
+```text
 Header.Payload.Signature
 ```
 

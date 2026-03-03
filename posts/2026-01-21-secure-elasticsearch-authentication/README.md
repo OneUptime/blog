@@ -353,7 +353,7 @@ For simpler setups, use file-based authentication:
 
 Edit `/etc/elasticsearch/users`:
 
-```
+```text
 admin:$2a$10$...hashed_password...
 readonly_user:$2a$10$...hashed_password...
 ```
@@ -368,7 +368,7 @@ sudo /usr/share/elasticsearch/bin/elasticsearch-users passwd admin
 
 Edit `/etc/elasticsearch/users_roles`:
 
-```
+```text
 superuser:admin
 viewer:readonly_user
 ```

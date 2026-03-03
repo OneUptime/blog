@@ -89,7 +89,7 @@ kubectl describe vpa api-server-vpa -n production
 
 The output will look something like this:
 
-```
+```text
 Recommendation:
   Container Recommendations:
     Container Name: api-server

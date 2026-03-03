@@ -43,7 +43,7 @@ npm install -D typescript @types/node
 
 A clean layout keeps your database code maintainable:
 
-```
+```text
 src/
   db/
     index.ts          # Database connection

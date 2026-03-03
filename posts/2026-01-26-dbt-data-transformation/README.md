@@ -107,7 +107,7 @@ cd my_analytics
 
 This creates the following structure:
 
-```
+```text
 my_analytics/
 ├── dbt_project.yml          # Project configuration
 ├── profiles.yml             # Connection profiles (usually in ~/.dbt/)
@@ -469,7 +469,7 @@ dbt run --empty
 
 Example output:
 
-```
+```text
 Running with dbt=1.7.0
 Found 4 models, 8 tests, 0 snapshots, 0 analyses, 0 macros
 
@@ -802,7 +802,7 @@ vars:
 
 ### Folder Structure
 
-```
+```text
 models/
 ├── staging/
 │   ├── sources.yml           # Source definitions

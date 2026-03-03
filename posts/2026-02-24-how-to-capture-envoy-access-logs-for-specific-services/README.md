@@ -214,7 +214,7 @@ kubectl logs my-pod -n my-namespace -c istio-proxy -f
 
 A default text-format access log line looks like this:
 
-```
+```text
 [2026-02-24T10:30:00.000Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 45 43 "-" "curl/7.68.0" "abc-123-def" "my-service.my-namespace.svc.cluster.local:8080" "10.0.1.5:8080" inbound|8080|| 10.0.1.3:0 10.0.1.5:8080 10.0.1.3:45678 outbound_.8080_._.my-service.my-namespace.svc.cluster.local default
 ```
 

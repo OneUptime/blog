@@ -38,7 +38,7 @@ The Collector is not a simple pass-through proxy. Several components hold data i
 
 A rough formula for estimating memory:
 
-```
+```text
 Memory = (batch_size * avg_span_size * num_pipelines) +
          (queue_size * batch_size * avg_span_size) +
          processor_state_memory +

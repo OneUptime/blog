@@ -66,7 +66,7 @@ service:
 
 The receiver uses Zookeeper's four-letter commands (`mntr`, `ruok`, `srvr`). Enable them in `zoo.cfg`:
 
-```
+```text
 # zoo.cfg
 4lw.commands.whitelist=mntr,ruok,srvr,stat,conf
 ```
@@ -89,7 +89,7 @@ echo mntr | nc zookeeper 2181
 
 Zookeeper uses a leader election algorithm to choose one node as the leader. The rest are followers. Track the leader status:
 
-```
+```text
 zookeeper.server_state: leader | follower | standalone
 ```
 
@@ -113,7 +113,7 @@ receivers:
 ```
 
 Key log messages:
-```
+```text
 LEADING - This node became the leader
 FOLLOWING - This node is following the leader
 LOOKING - This node is looking for a leader (election in progress)
@@ -121,7 +121,7 @@ LOOKING - This node is looking for a leader (election in progress)
 
 ### Session Count
 
-```
+```text
 zookeeper.connections - Number of active client connections/sessions
 ```
 
@@ -132,7 +132,7 @@ Each connection represents a client session. High session counts can indicate:
 
 ### Outstanding Requests
 
-```
+```text
 zookeeper.outstanding_requests - Number of requests queued for processing
 ```
 
@@ -143,7 +143,7 @@ This is one of the most important Zookeeper metrics. A growing outstanding reque
 
 ### Request Latency
 
-```
+```text
 zookeeper.latency.avg - Average request latency in milliseconds
 zookeeper.latency.max - Maximum request latency
 zookeeper.latency.min - Minimum request latency
@@ -153,7 +153,7 @@ Average latency should stay below 10ms for a healthy Zookeeper. Spikes above 100
 
 ### Data Tree Size
 
-```
+```text
 zookeeper.znode.count     - Number of znodes in the tree
 zookeeper.data_tree.size  - Total data size in the tree (bytes)
 zookeeper.watch.count     - Number of active watches

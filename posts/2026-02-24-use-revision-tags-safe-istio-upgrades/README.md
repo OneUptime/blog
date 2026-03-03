@@ -64,7 +64,7 @@ istioctl tag list
 
 Output:
 
-```
+```text
 TAG    REVISION  NAMESPACES
 stable 1-20-5
 ```
@@ -93,7 +93,7 @@ Verify the tag list now shows associated namespaces:
 istioctl tag list
 ```
 
-```
+```text
 TAG    REVISION  NAMESPACES
 stable 1-20-5    my-app,backend,frontend
 ```

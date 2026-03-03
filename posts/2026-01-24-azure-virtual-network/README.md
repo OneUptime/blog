@@ -433,7 +433,7 @@ nslookup myserver.database.windows.net
 
 ### IP Address Planning
 
-```
+```text
 Production Environment:
   VNet: 10.0.0.0/16 (65,536 addresses)
     - web-subnet:     10.0.1.0/24   (254 hosts)

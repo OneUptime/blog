@@ -90,7 +90,7 @@ Cloud resource names appear in consoles, billing reports, logs, and monitoring d
 
 ### The Standard Naming Pattern
 
-```
+```text
 <environment>-<project>-<component>-<qualifier>
 ```
 

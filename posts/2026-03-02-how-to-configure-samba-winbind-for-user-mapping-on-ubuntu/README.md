@@ -127,7 +127,7 @@ sudo nano /etc/nsswitch.conf
 
 Modify the `passwd` and `group` lines:
 
-```
+```text
 passwd:         files systemd winbind
 group:          files systemd winbind
 shadow:         files
@@ -188,7 +188,7 @@ sudo nano /etc/pam.d/common-auth
 
 Ensure this line is present:
 
-```
+```text
 auth    [success=1 default=ignore]  pam_winbind.so krb5_auth krb5_ccache_type=FILE cached_login try_first_pass
 ```
 
@@ -200,7 +200,7 @@ sudo nano /etc/pam.d/common-session
 
 Add:
 
-```
+```text
 session optional        pam_mkhomedir.so skel=/etc/skel umask=0077
 ```
 

@@ -117,7 +117,7 @@ ENV HOSTNAME=0.0.0.0
 
 Or set it in your `.env.production` file.
 
-```
+```text
 HOSTNAME=0.0.0.0
 PORT=8080
 ```
@@ -126,7 +126,7 @@ PORT=8080
 
 Keep your Docker build context small with a proper `.dockerignore`.
 
-```
+```text
 # .dockerignore - Exclude files not needed in the build
 node_modules
 .next

@@ -20,7 +20,7 @@ Deno's built-in TypeScript support, secure-by-default permissions, and modern AP
 
 A JSON Web Token (JWT) is a compact, URL-safe means of representing claims between two parties. It consists of three parts separated by dots:
 
-```
+```text
 Header.Payload.Signature
 
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.

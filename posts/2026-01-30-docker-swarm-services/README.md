@@ -63,7 +63,7 @@ docker node ls
 
 Output:
 
-```
+```text
 ID                            HOSTNAME     STATUS    AVAILABILITY   MANAGER STATUS
 abc123 *                      manager-1    Ready     Active         Leader
 def456                        worker-1     Ready     Active
@@ -147,7 +147,7 @@ docker service ps api-service
 
 Example output of `docker service ps`:
 
-```
+```text
 ID             NAME            IMAGE         NODE       DESIRED STATE   CURRENT STATE
 a1b2c3d4e5     api-service.1   my-api:v1.0   worker-1   Running         Running 5 minutes ago
 f6g7h8i9j0     api-service.2   my-api:v1.0   worker-2   Running         Running 5 minutes ago

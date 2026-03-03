@@ -127,7 +127,7 @@ spec:
 
 In the App-of-Apps pattern, finalizers have cascading effects. Consider this hierarchy:
 
-```
+```text
 parent-app (with finalizer)
   |-- child-app-1 (with finalizer)
   |     |-- Deployment

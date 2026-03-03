@@ -12,7 +12,7 @@ When you try to use password-based SSH authentication with Ansible, you may enco
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "to use the 'ssh' connection type with passwords, you must install the sshpass program"
 }

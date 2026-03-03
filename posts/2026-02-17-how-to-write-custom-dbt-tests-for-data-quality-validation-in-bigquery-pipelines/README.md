@@ -341,7 +341,7 @@ dbt test --store-failures
 
 A well-organized test suite follows this structure:
 
-```
+```text
 tests/
   generic/                           # Reusable generic tests
     test_positive_value.sql

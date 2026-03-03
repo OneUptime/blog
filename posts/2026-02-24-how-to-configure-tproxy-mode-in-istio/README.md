@@ -14,14 +14,14 @@ TPROXY (transparent proxy) is an alternative to Istio's default REDIRECT mode fo
 
 In REDIRECT mode, iptables changes the destination address of packets to route them to Envoy. This happens in the NAT table:
 
-```
+```text
 # REDIRECT mode - NAT table
 -A ISTIO_IN_REDIRECT -p tcp -j REDIRECT --to-ports 15006
 ```
 
 In TPROXY mode, packets go through the mangle table instead. The destination address is NOT rewritten. Instead, TPROXY uses a special socket option that allows Envoy to receive packets destined for any address:
 
-```
+```text
 # TPROXY mode - mangle table
 -A ISTIO_INBOUND -p tcp -j TPROXY --on-port 15006 --on-ip 0.0.0.0 --tproxy-mark 0x1/0x1
 ```
@@ -122,7 +122,7 @@ For inbound traffic:
 kubectl exec -it <pod-name> -c istio-proxy -- iptables -t mangle -S
 ```
 
-```
+```text
 -A PREROUTING -p tcp -j ISTIO_INBOUND
 -A ISTIO_INBOUND -p tcp --dport 15008 -j RETURN
 -A ISTIO_INBOUND -p tcp --dport 15090 -j RETURN
@@ -138,7 +138,7 @@ For outbound traffic, a routing policy rule directs marked packets:
 kubectl exec -it <pod-name> -c istio-proxy -- ip rule show
 ```
 
-```
+```text
 0:      from all lookup local
 32765:  from all fwmark 0x1/0x1 lookup 133
 32766:  from all lookup main
@@ -151,7 +151,7 @@ Table 133 is a custom routing table that sends all traffic to the loopback inter
 kubectl exec -it <pod-name> -c istio-proxy -- ip route show table 133
 ```
 
-```
+```text
 default via 127.0.0.1 dev lo
 ```
 

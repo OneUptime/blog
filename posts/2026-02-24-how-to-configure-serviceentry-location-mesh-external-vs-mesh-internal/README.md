@@ -167,7 +167,7 @@ With MESH_EXTERNAL, Envoy skips mTLS entirely, which is correct for services wit
 The location setting changes how Prometheus metrics are labeled:
 
 For MESH_EXTERNAL:
-```
+```text
 istio_requests_total{
   destination_service_name="api.stripe.com",
   destination_service_namespace="unknown",
@@ -176,7 +176,7 @@ istio_requests_total{
 ```
 
 For MESH_INTERNAL:
-```
+```text
 istio_requests_total{
   destination_service_name="payment-service",
   destination_service_namespace="default",

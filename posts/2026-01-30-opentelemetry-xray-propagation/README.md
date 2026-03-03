@@ -87,7 +87,7 @@ The `X-Amzn-Trace-Id` header contains three main components.
 
 Here is how the header breaks down:
 
-```
+```text
 X-Amzn-Trace-Id: Root=1-5759e988-bd862e3fe1be46a994272793;Parent=53995c3f42cd8ad8;Sampled=1
 ```
 

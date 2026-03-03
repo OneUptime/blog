@@ -16,7 +16,7 @@ The classic scenario goes like this: a Lambda function reads from an S3 bucket, 
 
 Here are the most common recursive patterns:
 
-```
+```text
 S3 bucket -> Lambda -> writes to same S3 bucket -> triggers Lambda again
 SQS queue -> Lambda -> sends message to same SQS queue -> triggers Lambda again
 SNS topic -> Lambda -> publishes to same SNS topic -> triggers Lambda again

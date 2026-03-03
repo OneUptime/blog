@@ -256,7 +256,7 @@ gRPC methods are mapped to HTTP/2 paths in the format `/<package>.<service>/<met
 
 Istio exports gRPC-specific metrics when the port is properly named:
 
-```
+```text
 # gRPC request count by status
 sum(rate(istio_requests_total{destination_service="my-grpc-service.my-namespace.svc.cluster.local", grpc_response_status!=""}[5m])) by (grpc_response_status)
 

@@ -35,7 +35,7 @@ sudo fdisk -l /dev/sda
 
 Example output before resizing:
 
-```
+```text
 NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
 sda      8:0    0   50G  0 disk         # Disk is now 50G
 ├─sda1   8:1    0  512M  0 part /boot/efi
@@ -76,7 +76,7 @@ sudo parted /dev/sda
 
 Inside parted:
 
-```
+```text
 (parted) print free
 # Shows free space after last partition
 
@@ -131,7 +131,7 @@ sudo resize2fs /dev/sda3
 
 Output:
 
-```
+```text
 resize2fs 1.46.5 (30-Dec-2021)
 Filesystem at /dev/sda3 is mounted on /; on-line resizing required
 old_desc_blocks = 5, new_desc_blocks = 7
@@ -164,7 +164,7 @@ sudo parted /dev/sdb
 
 Inside parted:
 
-```
+```text
 (parted) print
 # Note the current end of the partition
 

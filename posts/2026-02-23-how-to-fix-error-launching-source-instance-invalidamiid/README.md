@@ -12,7 +12,7 @@ When you try to launch an EC2 instance with Terraform and get hit with an `Inval
 
 ## What the Error Looks Like
 
-```
+```text
 Error: error launching source instance: InvalidAMIID.NotFound:
 The image id 'ami-0abc123def456789' does not exist
     status code: 400, request id: abc123-def456

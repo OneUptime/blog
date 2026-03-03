@@ -102,7 +102,7 @@ sudo pcs cluster status
 
 Expected output:
 
-```
+```text
 Cluster Status:
   Cluster Summary:
     * Stack: corosync (Pacemaker is running)

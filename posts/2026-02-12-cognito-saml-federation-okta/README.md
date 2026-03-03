@@ -39,25 +39,25 @@ sequenceDiagram
 
 Before configuring Okta, you need the Cognito SAML endpoint information. The metadata URL is:
 
-```
+```text
 https://cognito-idp.{region}.amazonaws.com/{userPoolId}/.well-known/saml-metadata.xml
 ```
 
 For example:
 
-```
+```text
 https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX/.well-known/saml-metadata.xml
 ```
 
 You'll also need the Assertion Consumer Service (ACS) URL:
 
-```
+```text
 https://your-domain.auth.us-east-1.amazoncognito.com/saml2/idpresponse
 ```
 
 And the Audience URI (SP Entity ID):
 
-```
+```text
 urn:amazon:cognito:sp:{userPoolId}
 ```
 
@@ -71,7 +71,7 @@ In the Okta admin console:
 
 In the SAML Settings, configure:
 
-```
+```text
 Single sign-on URL: https://your-domain.auth.us-east-1.amazoncognito.com/saml2/idpresponse
 Audience URI (SP Entity ID): urn:amazon:cognito:sp:us-east-1_XXXXXXXXX
 Name ID format: EmailAddress

@@ -58,7 +58,7 @@ output "database_connection_string" {
 
 When you run `terraform plan`, sensitive values appear as `(sensitive value)` instead of the actual data:
 
-```
+```text
 # aws_db_instance.main will be created
 + resource "aws_db_instance" "main" {
     + password = (sensitive value)

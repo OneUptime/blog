@@ -101,7 +101,7 @@ Your on-premises routers need to peer with both VIFs. The BGP configuration vari
 
 Example BGP configuration for dual Direct Connect (Cisco-like syntax):
 
-```
+```text
 ! Primary Direct Connect BGP session
 router bgp 65000
   neighbor 169.254.100.1 remote-as 64512
@@ -189,7 +189,7 @@ BFD (Bidirectional Forwarding Detection) dramatically reduces failover time. Wit
 
 BFD configuration on your on-premises router:
 
-```
+```text
 ! Enable BFD on the BGP sessions
 router bgp 65000
   neighbor 169.254.100.1 fall-over bfd

@@ -65,7 +65,7 @@ callback_whitelist = timer
 
 Output:
 
-```
+```text
 PLAY RECAP *******************
 web01 : ok=5    changed=2    unreachable=0    failed=0
 web02 : ok=5    changed=2    unreachable=0    failed=0
@@ -83,7 +83,7 @@ callback_whitelist = profile_tasks
 
 Output:
 
-```
+```text
 Wednesday 21 February 2026  10:30:00 +0000 (0:00:45.123)   0:02:34.567 *******
 ===============================================================================
 Install packages ------------------------------------------- 45.12s
@@ -103,7 +103,7 @@ callback_whitelist = profile_roles
 
 Output:
 
-```
+```text
 ===============================================================================
 nginx -------------------------------------------------------- 65.45s
 common ------------------------------------------------------- 32.12s
@@ -198,7 +198,7 @@ ansible-doc -t callback profile_tasks
 
 Typical output of the list command includes plugins like:
 
-```
+```text
 ansible.builtin.default     Default output
 ansible.builtin.json        JSON output
 ansible.builtin.log_plays   Log playbook results per host

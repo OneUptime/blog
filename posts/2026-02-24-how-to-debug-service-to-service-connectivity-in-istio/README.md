@@ -67,7 +67,7 @@ istioctl x describe pod my-app-xxxxx -n default
 
 Look for output like:
 
-```
+```text
 Pod is STRICT, clients configured automatically
 ```
 

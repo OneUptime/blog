@@ -101,7 +101,7 @@ Here is what each metric category tells you:
 
 ### CPU Metrics
 
-```
+```text
 container.cpu.usage.total     - Total CPU time consumed in nanoseconds
 container.cpu.percent         - CPU usage as a percentage of available CPU
 container.cpu.usage.percpu    - CPU time per individual CPU core
@@ -111,7 +111,7 @@ The percent metric is most useful for dashboards and alerting. Values above 80% 
 
 ### Memory Metrics
 
-```
+```text
 container.memory.usage.total  - Current memory usage in bytes
 container.memory.usage.limit  - Memory limit set on the container
 container.memory.percent      - Memory usage as a percentage of the limit
@@ -121,7 +121,7 @@ When `container.memory.percent` approaches 100%, the container is at risk of bei
 
 ### Network Metrics
 
-```
+```text
 container.network.io.usage.rx_bytes  - Bytes received
 container.network.io.usage.tx_bytes  - Bytes transmitted
 ```
@@ -130,7 +130,7 @@ These are cumulative counters. Calculate the rate of change to get bytes per sec
 
 ### Block I/O Metrics
 
-```
+```text
 container.blockio.io_service_bytes_recursive  - Bytes read/written to block devices
 ```
 

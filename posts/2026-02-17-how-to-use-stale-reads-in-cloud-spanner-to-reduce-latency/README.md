@@ -209,7 +209,7 @@ def benchmark_reads(database, user_id, iterations=100):
 
 For a multi-region instance, you might see something like:
 
-```
+```text
 Strong reads - avg: 45.2ms, p99: 112.3ms
 Stale reads  - avg: 3.8ms, p99: 8.1ms
 Improvement  - avg: 41.4ms (92%)

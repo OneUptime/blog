@@ -61,7 +61,7 @@ In CI/CD pipelines, always set a lock timeout so failed jobs do not hang forever
 
 The most effective long-term solution is splitting your state files so that different teams and pipelines are not competing for the same lock.
 
-```
+```text
 # Before: One state file for everything
 infrastructure/
   main.tf          # State: s3://state/prod.tfstate

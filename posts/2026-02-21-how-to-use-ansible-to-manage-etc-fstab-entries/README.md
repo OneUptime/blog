@@ -41,7 +41,7 @@ Here is how to add a filesystem mount that takes effect immediately and persists
 
 This adds the following line to `/etc/fstab`:
 
-```
+```text
 /dev/sdb1 /data ext4 defaults,noatime 0 0
 ```
 

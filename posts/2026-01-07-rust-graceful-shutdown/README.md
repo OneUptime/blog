@@ -17,7 +17,7 @@ Proper shutdown handling is essential for zero-downtime deployments in Kubernete
 ## Why Graceful Shutdown Matters
 
 Without graceful shutdown:
-```
+```text
 SIGTERM → Process killed immediately
          → Active requests fail
          → Database transactions left incomplete
@@ -25,7 +25,7 @@ SIGTERM → Process killed immediately
 ```
 
 With graceful shutdown:
-```
+```text
 SIGTERM → Stop accepting new requests
         → Wait for active requests to complete
         → Close database connections properly

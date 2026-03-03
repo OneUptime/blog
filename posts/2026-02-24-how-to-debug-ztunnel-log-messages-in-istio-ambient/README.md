@@ -64,7 +64,7 @@ Here are the most common ztunnel log messages and what they mean.
 
 ### Workload Registration Messages
 
-```
+```text
 INFO ztunnel::state: adding workload WorkloadInfo { name: "my-pod", namespace: "default", service_account: "default" }
 ```
 
@@ -82,13 +82,13 @@ kubectl label namespace default istio.io/dataplane-mode=ambient
 
 ### Connection Log Messages
 
-```
+```text
 INFO ztunnel::proxy::inbound: got CONNECT request to 10.244.1.5:8080
 ```
 
 This means ztunnel received an inbound HBONE (HTTP-Based Overlay Network Environment) connection for a pod on its node. If you see these, traffic is flowing through the mesh correctly.
 
-```
+```text
 WARN ztunnel::proxy::outbound: failed to connect to upstream 10.244.2.3:8080: connection refused
 ```
 
@@ -96,7 +96,7 @@ This indicates that ztunnel tried to create an outbound connection to another po
 
 ### mTLS Handshake Messages
 
-```
+```text
 ERROR ztunnel::proxy::inbound: TLS handshake failed: certificate verify failed
 ```
 
@@ -120,7 +120,7 @@ kubectl exec -n istio-system ztunnel-xxxxx -- \
 
 ### Authorization Denial Messages
 
-```
+```text
 WARN ztunnel::proxy::inbound: RBAC: access denied for source 10.244.1.3 to destination 10.244.2.5:8080
 ```
 
@@ -139,13 +139,13 @@ kubectl get pods -A -o wide | grep 10.244.1.3
 
 ### DNS Resolution Messages
 
-```
+```text
 DEBUG ztunnel::dns: resolving my-service.default.svc.cluster.local -> 10.96.45.67
 ```
 
 ztunnel handles DNS for pods in the ambient mesh. If DNS resolution is failing, you will see:
 
-```
+```text
 WARN ztunnel::dns: failed to resolve my-service.default.svc.cluster.local: NXDOMAIN
 ```
 
@@ -173,7 +173,7 @@ kubectl logs -n istio-system ztunnel-xxxxx | grep "conn_id"
 
 A successful connection flow looks like this in the logs:
 
-```
+```text
 TRACE ztunnel::proxy::outbound: new outbound connection src=10.244.1.3:45678 dst=10.244.2.5:8080
 TRACE ztunnel::proxy::outbound: resolved destination to workload WorkloadInfo { name: "server-xxx", ... }
 TRACE ztunnel::proxy::outbound: establishing HBONE tunnel to 10.244.2.1:15008

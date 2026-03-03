@@ -43,7 +43,7 @@ flowchart TD
 
 ## Basic Parallel Routes Setup
 
-```
+```text
 app/
   layout.tsx
   page.tsx
@@ -88,7 +88,7 @@ The most common issue is slots not rendering because Next.js cannot match the cu
 
 ### Problem
 
-```
+```text
 app/
   layout.tsx
   page.tsx           # Renders at /
@@ -179,7 +179,7 @@ When combining intercepting routes with parallel routes for modals, the setup ca
 
 ### File Structure for Modal Pattern
 
-```
+```text
 app/
   layout.tsx
   page.tsx
@@ -312,7 +312,7 @@ export default function Layout({ children, modal }: LayoutProps) {
 
 Each slot can have its own loading and error handling.
 
-```
+```text
 app/
   @sidebar/
     loading.tsx     # Loading state for sidebar
@@ -403,7 +403,7 @@ Parallel routes must have matching URL structures across slots for proper naviga
 
 ### Incorrect Structure
 
-```
+```text
 app/
   @sidebar/
     users/
@@ -415,7 +415,7 @@ app/
 
 ### Correct Structure
 
-```
+```text
 app/
   @sidebar/
     dashboard/
@@ -457,7 +457,7 @@ export function Navigation() {
 
 Here is a complete implementation of the modal pattern with parallel and intercepting routes.
 
-```
+```text
 app/
   layout.tsx
   page.tsx

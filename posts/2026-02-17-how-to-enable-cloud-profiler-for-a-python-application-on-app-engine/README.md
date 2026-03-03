@@ -30,7 +30,7 @@ pip install google-cloud-profiler
 
 If you use a `requirements.txt` file, add it there:
 
-```
+```text
 # requirements.txt
 google-cloud-profiler>=4.0.0
 flask>=2.0
@@ -163,7 +163,7 @@ Switch between profile types using the dropdown at the top:
 
 The flame graph in Cloud Profiler for Python shows your call stack:
 
-```
+```text
 main:app (root)
   process_data()
     heavy_computation()

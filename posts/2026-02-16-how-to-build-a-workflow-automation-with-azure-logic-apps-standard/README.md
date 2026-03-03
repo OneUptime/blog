@@ -52,7 +52,7 @@ az logicapp create \
 
 A Logic Apps Standard project has a specific structure. Each workflow lives in its own folder with a `workflow.json` file.
 
-```
+```text
 my-logic-app/
   host.json                    # Runtime configuration
   connections.json             # Connector configurations

@@ -99,7 +99,7 @@ Edit the knockd defaults file to enable the daemon:
 sudo nano /etc/default/knockd
 ```
 
-```
+```text
 # Set to 1 to enable knockd
 START_KNOCKD=1
 

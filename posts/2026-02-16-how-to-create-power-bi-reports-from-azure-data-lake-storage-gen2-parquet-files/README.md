@@ -48,7 +48,7 @@ Once you select the Parquet files, Power Query loads the data. You can:
 
 Here is a typical Power Query M script for loading Parquet files from ADLS Gen2:
 
-```
+```text
 // Load all Parquet files from the sales-data container
 // Power Query automatically handles the Parquet format
 let
@@ -220,7 +220,7 @@ If you loaded multiple tables, set up relationships:
 **KPI Card - Year-over-Year Growth**
 Use DAX for the growth calculation:
 
-```
+```text
 // Calculate year-over-year revenue growth
 // Uses SAMEPERIODLASTYEAR for time intelligence
 YoY Growth =
@@ -254,7 +254,7 @@ Parquet files are organized into row groups. Each row group stores column data t
 
 Partition your files by the most common filter dimension. If Power BI reports typically filter by date, partition by year and month:
 
-```
+```text
 /sales-data/processed/year=2025/month=01/part-00000.parquet
 /sales-data/processed/year=2025/month=02/part-00000.parquet
 ```

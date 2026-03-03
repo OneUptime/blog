@@ -12,7 +12,7 @@ The OpenTelemetry Operator relies on cert-manager to provision TLS certificates 
 
 When cert-manager is missing or not ready, you will see errors like this when trying to create pods:
 
-```
+```text
 Error from server (InternalError): Internal error occurred: failed calling webhook
 "mpod.kb.io": failed to call webhook: Post
 "https://opentelemetry-operator-webhook-service.opentelemetry-operator-system.svc:443/mutate--v1-pod":
@@ -21,7 +21,7 @@ x509: certificate signed by unknown authority
 
 Or:
 
-```
+```text
 Error from server (InternalError): Internal error occurred: failed calling webhook
 "mpod.kb.io": failed to call webhook: Post
 "https://opentelemetry-operator-webhook-service.opentelemetry-operator-system.svc:443/mutate--v1-pod":

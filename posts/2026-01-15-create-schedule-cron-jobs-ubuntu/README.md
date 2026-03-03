@@ -24,7 +24,7 @@ Cron runs as a daemon (`crond`) and checks scheduled jobs every minute. Jobs are
 
 Each cron job follows this format:
 
-```
+```text
 ┌───────────── minute (0 - 59)
 │ ┌───────────── hour (0 - 23)
 │ │ ┌───────────── day of month (1 - 31)

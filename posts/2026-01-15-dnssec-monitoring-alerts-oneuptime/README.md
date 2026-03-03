@@ -350,7 +350,7 @@ Create a runbook document (in OneUptime or your knowledge base) with these secti
 2. Run manual DNSSEC validation:
    ```
    dig +dnssec +trace example.com
-   ```
+   ```text
 3. Check https://dnsviz.net for visual chain analysis
 4. Verify with https://dnssec-analyzer.verisignlabs.com/
 ```

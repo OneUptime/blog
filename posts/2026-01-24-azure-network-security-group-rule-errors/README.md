@@ -42,7 +42,7 @@ Key concepts:
 
 ### Error 1: Priority Conflict
 
-```
+```text
 ERROR: Network security rule priority '100' is already in use.
 ```
 
@@ -183,7 +183,7 @@ az network nsg rule update \
 
 ### Error 4: Service Tag Not Recognized
 
-```
+```text
 ERROR: The value 'InvalidServiceTag' is not a valid service tag.
 ```
 
@@ -227,7 +227,7 @@ az network nsg rule create \
 
 ### Error 5: Application Security Group Errors
 
-```
+```text
 ERROR: Application security group '/subscriptions/.../applicationSecurityGroups/myASG'
 is not in the same location as network security group.
 ```

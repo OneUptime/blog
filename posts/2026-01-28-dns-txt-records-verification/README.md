@@ -54,7 +54,7 @@ sequenceDiagram
 
 Example verification records from common services:
 
-```
+```text
 # Google Workspace
 google-site-verification=rXOxyZounnZasA8Z7oaD3c14JdjS9aKSWvsR1EbUSIQ
 
@@ -78,7 +78,7 @@ TXT records are essential for email security. Three protocols work together to p
 
 SPF specifies which servers can send email for your domain:
 
-```
+```text
 # Basic SPF record
 v=spf1 include:_spf.google.com include:sendgrid.net -all
 
@@ -93,7 +93,7 @@ v=spf1 include:_spf.google.com include:sendgrid.net -all
 
 DKIM uses cryptographic signatures. The public key lives in a TXT record:
 
-```
+```text
 # DKIM record (selector: google)
 google._domainkey.example.com.  TXT  "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA..."
 
@@ -105,7 +105,7 @@ google._domainkey.example.com.  TXT  "v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEF
 
 DMARC ties SPF and DKIM together and specifies what to do with failures:
 
-```
+```text
 # DMARC record
 _dmarc.example.com.  TXT  "v=DMARC1; p=reject; rua=mailto:dmarc@example.com; pct=100"
 

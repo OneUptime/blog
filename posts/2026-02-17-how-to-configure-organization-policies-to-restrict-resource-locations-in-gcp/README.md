@@ -285,7 +285,7 @@ gcloud compute instances create test-vm \
 ```
 
 The second command should fail with an error like:
-```
+```text
 ERROR: (gcloud.compute.instances.create) Could not fetch resource:
  - Operation denied by org policy constraint: constraints/gcp.resourceLocations
 ```

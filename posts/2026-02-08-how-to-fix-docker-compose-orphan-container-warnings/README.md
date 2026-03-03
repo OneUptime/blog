@@ -18,7 +18,7 @@ Docker Compose tracks containers by project name and service name. When you run 
 
 The warning looks like this:
 
-```
+```text
 WARN[0000] Found orphan containers ([myproject-oldservice-1]) for this project.
 If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
 ```

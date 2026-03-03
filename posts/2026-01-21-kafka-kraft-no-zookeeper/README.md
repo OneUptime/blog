@@ -423,7 +423,7 @@ bin/kafka-metadata.sh --snapshot /var/kafka-logs/__cluster_metadata-0/0000000000
 
 Important KRaft metrics to monitor:
 
-```
+```text
 kafka.controller:type=KafkaController,name=ActiveControllerCount
 kafka.controller:type=KafkaController,name=LastAppliedRecordOffset
 kafka.controller:type=KafkaController,name=LastAppliedRecordTimestamp

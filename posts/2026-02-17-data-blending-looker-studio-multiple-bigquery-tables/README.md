@@ -154,19 +154,19 @@ After blending, create a chart-level calculated field:
 
 **Customer Acquisition Cost (CAC):**
 
-```
+```text
 total_spend / orders
 ```
 
 **Return on Ad Spend (ROAS):**
 
-```
+```text
 revenue / total_spend
 ```
 
 **Cost per Click with Revenue:**
 
-```
+```text
 total_spend / total_clicks
 ```
 

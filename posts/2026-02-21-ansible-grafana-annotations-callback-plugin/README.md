@@ -173,7 +173,7 @@ Then in Grafana, your production dashboard filters annotations by `production` t
 
 The annotation body includes:
 
-```
+```text
 Playbook: deploy.yml
 Hosts: web-01, web-02, web-03
 Started: 2026-02-21 10:15:00
@@ -186,7 +186,7 @@ Failures: 0
 
 For failures:
 
-```
+```text
 Playbook: deploy.yml
 Status: FAILED
 Failed hosts: web-03

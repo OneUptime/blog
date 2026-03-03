@@ -514,7 +514,7 @@ Common issues:
 
 Some fields cannot be changed after creation. Server-side apply makes this more explicit:
 
-```
+```text
 Error: field spec.clusterIP is immutable
 ```
 
@@ -528,7 +528,7 @@ syncOptions:
 
 **Field ownership conflicts:**
 
-```
+```text
 Error: conflict: field managed by other manager
 ```
 
@@ -538,7 +538,7 @@ Solution: Add the field to ignoreDifferences or remove it from Git.
 
 Server-side apply enforces CRD validation more strictly:
 
-```
+```text
 Error: validation failed: spec.replicas must be >= 1
 ```
 

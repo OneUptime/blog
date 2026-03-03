@@ -69,7 +69,7 @@ services:
 
 ### Connector Status Metrics
 
-```
+```text
 # Connector state (0=running, 1=paused, 2=failed)
 kafka.connect:type=connector-metrics,connector={connector}
 
@@ -81,7 +81,7 @@ kafka.connect:type=connector-task-metrics,connector={connector},task={task}
 
 Debezium streaming metrics track CDC performance:
 
-```
+```text
 # MBean: debezium.{connector-type}:type=connector-metrics,context=streaming,server={server}
 
 # Total number of events processed
@@ -106,7 +106,7 @@ NumberOfCommittedTransactions
 
 Track initial snapshot progress:
 
-```
+```text
 # MBean: debezium.{connector-type}:type=connector-metrics,context=snapshot,server={server}
 
 # Snapshot progress

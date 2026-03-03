@@ -59,7 +59,7 @@ const query4 = db.collection('articles')
 
 The easiest way to create composite indexes is to run your query and let Firestore tell you what it needs. When a query requires a composite index that does not exist, Firestore returns an error with a URL:
 
-```
+```text
 FAILED_PRECONDITION: The query requires an index. You can create it here:
 https://console.firebase.google.com/v1/r/project/my-project/firestore/indexes?create_composite=...
 ```

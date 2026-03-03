@@ -47,7 +47,7 @@ flowchart TB
 
 Kubernetes DNS automatically creates records for services. The full DNS name follows this pattern:
 
-```
+```text
 <service-name>.<namespace>.svc.cluster.local
 ```
 

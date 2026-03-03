@@ -87,7 +87,7 @@ az monitor diagnostic-settings create \
 
 Once logging is enabled, query the logs in Log Analytics to see exactly why traffic was allowed or denied.
 
-```
+```text
 // KQL query to find denied traffic from a specific source IP
 // Shows which rule type denied the traffic and the reason
 AzureDiagnostics
@@ -177,7 +177,7 @@ Azure Firewall Premium includes threat intelligence-based filtering and IDPS (In
 
 If traffic is being denied and your rules look correct, check whether threat intelligence is blocking it.
 
-```
+```text
 // KQL query to check for threat intelligence denials
 AzureDiagnostics
 | where ResourceType == "AZUREFIREWALLS"

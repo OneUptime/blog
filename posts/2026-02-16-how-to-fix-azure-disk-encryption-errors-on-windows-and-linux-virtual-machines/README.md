@@ -40,7 +40,7 @@ az keyvault update --name myKeyVault --enabled-for-disk-encryption true
 
 This is the most common ADE error. The encryption extension cannot access the Key Vault to retrieve or store encryption keys.
 
-```
+```text
 "Azure Disk Encryption failed with error: Key Vault
 https://mykeyvault.vault.azure.net/ is not accessible."
 ```

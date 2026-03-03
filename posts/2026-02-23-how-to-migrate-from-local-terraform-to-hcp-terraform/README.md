@@ -247,7 +247,7 @@ terraform plan
 
 You should see:
 
-```
+```text
 Running plan in HCP Terraform. Output will stream here. Pressing Ctrl-C
 will stop streaming the logs, but will not stop the plan running remotely.
 

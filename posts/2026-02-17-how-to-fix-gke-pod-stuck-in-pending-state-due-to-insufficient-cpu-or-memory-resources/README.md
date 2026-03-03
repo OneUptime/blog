@@ -23,7 +23,7 @@ kubectl describe pod your-pod-name -n your-namespace
 
 Look at the Events section at the bottom. If you see a message like this, you have a resource shortage:
 
-```
+```text
 Events:
   Type     Reason            Age   From               Message
   ----     ------            ----  ----               -------
@@ -69,7 +69,7 @@ kubectl top nodes
 
 You might see something like this:
 
-```
+```text
 NAME                    CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
 gke-cluster-pool-abc    1850m        92%    5800Mi          90%
 gke-cluster-pool-def    1920m        96%    6100Mi          95%

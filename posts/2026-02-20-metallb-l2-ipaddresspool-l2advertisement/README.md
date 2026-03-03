@@ -12,7 +12,7 @@ MetalLB gives bare-metal Kubernetes clusters a LoadBalancer implementation. In L
 
 This guide covers the two custom resources that drive Layer 2 mode: **IPAddressPool** and **L2Advertisement**. You will learn how to define IP ranges, scope advertisements to specific nodes or interfaces, and test the setup end to end.
 
-### How Layer 2 Mode Works
+## How Layer 2 Mode Works
 
 In L2 mode, MetalLB assigns a virtual IP (VIP) to a LoadBalancer service. One node becomes the "leader" for that IP and responds to ARP (IPv4) or NDP (IPv6) requests, mapping the VIP to its MAC address.
 
@@ -263,7 +263,7 @@ kubectl get svc test-nginx
 
 Expected output:
 
-```
+```text
 NAME         TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
 test-nginx   LoadBalancer   10.96.45.123   192.168.1.240   80:31234/TCP   10s
 ```

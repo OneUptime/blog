@@ -30,7 +30,7 @@ Before jumping into implementation, think about what actually changes between en
 
 ## Repository Structure
 
-```
+```text
 istio-config/
   base/
     platform/

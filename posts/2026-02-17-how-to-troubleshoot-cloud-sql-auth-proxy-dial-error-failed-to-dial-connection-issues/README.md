@@ -16,7 +16,7 @@ Here is how to systematically track down the cause.
 
 The typical error from the proxy looks like:
 
-```
+```text
 failed to dial: failed to create ephemeral certificate: googleapi: Error 403:
 Access Not Configured. Cloud SQL Admin API has not been used in project 123456789
 before or it is disabled.
@@ -24,13 +24,13 @@ before or it is disabled.
 
 Or:
 
-```
+```text
 failed to dial: dial tcp: lookup sqladmin.googleapis.com: no such host
 ```
 
 Or the most generic version:
 
-```
+```text
 failed to dial: failed to connect to instance: dial error
 ```
 

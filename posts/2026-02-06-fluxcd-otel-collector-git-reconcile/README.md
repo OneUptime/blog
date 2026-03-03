@@ -27,7 +27,7 @@ flux bootstrap github \
 
 ## Repository Structure
 
-```
+```text
 otel-infrastructure/
   clusters/
     production/

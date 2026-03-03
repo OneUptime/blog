@@ -14,7 +14,7 @@ OTTL supports conditional logic through the `where` clause, which allows you to 
 
 The basic syntax is:
 
-```
+```text
 - statement where condition
 ```
 

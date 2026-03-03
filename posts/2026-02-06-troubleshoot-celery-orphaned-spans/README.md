@@ -168,7 +168,7 @@ def init_tracing(**kwargs):
 
 When context propagation works correctly:
 
-```
+```text
 POST /api/orders                    [==================] 100ms  (web server)
   django.view create_order          [================]    95ms
     celery.apply process_order      [=]                    5ms  (enqueue)

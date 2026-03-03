@@ -274,14 +274,14 @@ wpscan --url https://example.com \
 
 ### WordPress Version Vulnerabilities
 
-```
+```text
 [!] The WordPress version identified as 6.3.1 seems to be outdated
 ```
 Update WordPress immediately. Outdated versions have known CVEs.
 
 ### Plugin Vulnerabilities
 
-```
+```text
 [!] Title: All In One SEO Pack <= 4.4.4 - Missing Authorization
     Fixed In: 4.4.5
     References: https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2023-XXXX
@@ -290,7 +290,7 @@ Update the plugin to the fixed version or disable it until updated.
 
 ### User Enumeration
 
-```
+```text
 [+] Enumerating Users (via Passive and Aggressive Methods)
  Brute Forcing author ID's - Time: 00:00:02
 [i] User(s) Identified: admin, editor, johndoe
@@ -299,7 +299,7 @@ Consider enabling login protection plugins (Limit Login Attempts Reloaded) and r
 
 ### XML-RPC Exposure
 
-```
+```text
 [+] XML-RPC seems to be enabled: https://example.com/xmlrpc.php
 ```
 If you don't use XML-RPC (Jetpack, some plugins need it), disable it in your web server or WordPress configuration.

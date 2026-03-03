@@ -88,14 +88,14 @@ const server = new ApolloServer({
 
 Once you deploy this, look at the trace waterfall for a query that fetches a list with nested fields. A healthy trace looks like this:
 
-```
+```text
 resolve: Query.posts          [=============================]
   resolve: Post.author        [====]  (batch - single call)
 ```
 
 An N+1 trace looks like this:
 
-```
+```text
 resolve: Query.posts          [=============================]
   resolve: Post.author        [==]
   resolve: Post.author          [==]

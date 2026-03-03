@@ -302,7 +302,7 @@ The W3C Trace Context specification defines two headers:
 
 Format: `version-traceid-parentid-flags`
 
-```
+```text
 traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
              |  |                                |                |
              |  |                                |                +-- flags (01 = sampled)
@@ -315,7 +315,7 @@ traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
 
 Vendor-specific key-value pairs:
 
-```
+```text
 tracestate: vendor1=value1,vendor2=value2
 ```
 
@@ -512,7 +512,7 @@ export function CheckoutButton({ cartId, total }: CheckoutButtonProps) {
 
 The resulting trace shows:
 
-```
+```text
 checkout.initiated (2.5s)
 ├── HTTP POST /api/cart/validate (150ms)
 │   └── [backend] validate_cart (140ms)
@@ -1416,7 +1416,7 @@ tracer.startSpan('GET /users/:id', {
 
 ### Quick Reference: Trace Propagation Flow
 
-```
+```text
 1. User clicks button
    └── Frontend creates span (trace_id=abc123)
 

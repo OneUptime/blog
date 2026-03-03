@@ -119,7 +119,7 @@ terraform -version
 
 You should see output similar to:
 
-```
+```text
 Terraform v1.7.0
 on linux_amd64
 ```
@@ -236,7 +236,7 @@ terraform init
 
 You will see output indicating that Terraform is initializing the backend and downloading the local provider:
 
-```
+```text
 Initializing the backend...
 
 Initializing provider plugins...
@@ -259,7 +259,7 @@ terraform plan
 
 Review the output carefully. It shows the resources that will be created:
 
-```
+```text
 Terraform will perform the following actions:
 
   # local_file.config_file will be created
@@ -292,7 +292,7 @@ terraform apply
 
 Terraform will display the plan again and ask for confirmation. Type `yes` to proceed:
 
-```
+```text
 Do you want to perform these actions?
   Terraform will perform the actions described above.
   Only 'yes' will be accepted to approve.
@@ -697,7 +697,7 @@ Modules are the primary way to package and reuse Terraform configurations. A mod
 
 A typical module has this structure:
 
-```
+```text
 modules/
   file-creator/
     main.tf       # Main resource definitions

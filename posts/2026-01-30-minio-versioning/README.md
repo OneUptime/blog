@@ -72,7 +72,7 @@ mc version info myminio/my-versioned-bucket
 
 Expected output:
 
-```
+```text
 myminio/my-versioned-bucket versioning is enabled
 ```
 

@@ -94,7 +94,7 @@ WHERE transaction_date > '2024-01-01';
 
 A parallel plan will show output similar to:
 
-```
+```text
 Finalize Aggregate  (cost=154895.76..154895.77 rows=1 width=40) (actual time=1523.456..1525.789 rows=1 loops=1)
   ->  Gather  (cost=154895.54..154895.75 rows=2 width=40) (actual time=1520.123..1525.654 rows=3 loops=1)
         Workers Planned: 2

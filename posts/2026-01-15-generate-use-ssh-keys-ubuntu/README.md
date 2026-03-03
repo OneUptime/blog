@@ -69,7 +69,7 @@ ssh-keygen -lf ~/.ssh/id_ed25519.pub
 ```
 
 Public key format:
-```
+```text
 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... your_email@example.com
 ```
 
@@ -135,7 +135,7 @@ Simplify connections with `~/.ssh/config`:
 nano ~/.ssh/config
 ```
 
-```
+```text
 # Default settings for all hosts
 Host *
     AddKeysToAgent yes
@@ -191,7 +191,7 @@ ssh-keygen -t ed25519 -f ~/.ssh/personal_key -C "personal@example.com"
 
 Configure in `~/.ssh/config`:
 
-```
+```text
 Host github.com
     HostName github.com
     User git
@@ -264,7 +264,7 @@ After verifying key authentication works:
 sudo nano /etc/ssh/sshd_config
 ```
 
-```
+```text
 # Disable password authentication
 PasswordAuthentication no
 PubkeyAuthentication yes

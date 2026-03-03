@@ -21,7 +21,7 @@ ansible all -a "free -m"
 
 Output:
 
-```
+```text
 web1 | CHANGED | rc=0 >>
               total        used        free      shared  buff/cache   available
 Mem:           7963        3421         512         128        4030        4120
@@ -52,7 +52,7 @@ ansible all -m shell -a "free | awk '/^Mem:/ {printf \"%.0f%%\n\", \$3/\$2*100}'
 
 The `--one-line` output makes it easy to spot problems:
 
-```
+```text
 web1 | CHANGED | rc=0 | (stdout) 43% used, 52% available
 web2 | CHANGED | rc=0 | (stdout) 89% used, 7% available
 db1 | CHANGED | rc=0 | (stdout) 62% used, 35% available

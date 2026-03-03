@@ -350,7 +350,7 @@ The file provider integrates well with GitOps workflows. Use Git repositories to
 
 Directory structure for GitOps:
 
-```
+```text
 otel-config/
 ├── base/
 │   ├── collector-config.yaml

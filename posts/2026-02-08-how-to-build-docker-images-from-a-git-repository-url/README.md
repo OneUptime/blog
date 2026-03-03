@@ -29,7 +29,7 @@ You rarely want to build from the default branch alone. Docker lets you specify 
 
 The format looks like this:
 
-```
+```text
 docker build <repo_url>#<ref>:<directory>
 ```
 

@@ -16,7 +16,7 @@ Redis Cluster uses hash slots to distribute keys across nodes. When clients send
 
 A MOVED response indicates a permanent redirection:
 
-```
+```text
 (error) MOVED 12182 192.168.1.100:6379
 ```
 
@@ -29,7 +29,7 @@ This means:
 
 An ASK response indicates a temporary redirection during slot migration:
 
-```
+```text
 (error) ASK 12182 192.168.1.101:6379
 ```
 
@@ -52,7 +52,7 @@ CLUSTER INFO
 
 Key fields to examine:
 
-```
+```text
 cluster_state:ok
 cluster_slots_assigned:16384
 cluster_slots_ok:16384
@@ -82,7 +82,7 @@ CLUSTER GETKEYSINSLOT 12182 10
 
 Example CLUSTER NODES output:
 
-```
+```text
 07c37dfeb235213a872192d90877d0cd55635b91 192.168.1.100:6379@16379 master - 0 1642531234567 1 connected 0-5460
 67ed2db8d677e59ec4a4cde8e3c88cf1c5aabc38 192.168.1.101:6379@16379 master - 0 1642531234567 2 connected 5461-10922
 e7d1eecce10fd6bb5eb35b9f99a514335d9ba9ca 192.168.1.102:6379@16379 master - 0 1642531234567 3 connected 10923-16383

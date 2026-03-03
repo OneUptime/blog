@@ -23,7 +23,7 @@ Labels are metadata attached to Kubernetes objects. For nodes, they serve severa
 
 Kubernetes adds several default labels to every node:
 
-```
+```text
 kubernetes.io/hostname=node-1
 kubernetes.io/os=linux
 kubernetes.io/arch=amd64

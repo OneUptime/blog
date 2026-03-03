@@ -314,7 +314,7 @@ kubectl apply -f invalid-prod-db.yaml
 ```
 
 Output shows the validation error:
-```
+```text
 Error from server: error when creating "invalid-prod-db.yaml": admission webhook "database.validation.crossplane.io" denied the request: production databases must have multiAz: true
 ```
 

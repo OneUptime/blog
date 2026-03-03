@@ -25,7 +25,7 @@ sudo vgs
 ```
 
 Example output:
-```
+```text
   PV         VG       Fmt  Attr PSize    PFree
   /dev/sdb   data_vg  lvm2 a--  500.00g      0
   /dev/sdc   data_vg  lvm2 a--  500.00g  200.00g
@@ -42,7 +42,7 @@ Check how much is actually allocated on the PV you want to remove:
 sudo pvdisplay /dev/sdb | grep -E "Allocated|Total|Free"
 ```
 
-```
+```text
   Total PE              127999
   Free PE               0
   Allocated PE          127999
@@ -76,7 +76,7 @@ sudo pvmove /dev/sdb
 This moves all allocated extents off `/dev/sdb` to any available free space in the VG. The command can take a long time for large disks - plan accordingly.
 
 Output during migration:
-```
+```text
   /dev/sdb: Moved: 2.35%
   /dev/sdb: Moved: 8.72%
   /dev/sdb: Moved: 15.10%
@@ -126,7 +126,7 @@ After pvmove completes, confirm no extents remain on the PV:
 sudo pvdisplay /dev/sdb
 ```
 
-```
+```text
   --- Physical volume ---
   PV Name               /dev/sdb
   VG Name               data_vg
@@ -155,7 +155,7 @@ sudo vgreduce data_vg /dev/sdb
 ```
 
 Output:
-```
+```text
   Removed "/dev/sdb" from volume group "data_vg"
 ```
 
@@ -175,7 +175,7 @@ The PV still contains LVM metadata even after being removed from the VG. Clean t
 sudo pvremove /dev/sdb
 ```
 
-```
+```text
   Labels on physical volume "/dev/sdb" successfully wiped.
 ```
 
@@ -197,7 +197,7 @@ If the disk is being physically removed, you can now safely pull it.
 
 ## Handling pvmove Failure: Not Enough Space
 
-```
+```text
   Insufficient free space: 127999 extents needed, but only 51200 available
 ```
 

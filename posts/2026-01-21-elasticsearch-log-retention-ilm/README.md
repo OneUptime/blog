@@ -14,7 +14,7 @@ Index Lifecycle Management (ILM) in Elasticsearch automates the management of in
 
 ILM manages indices through phases:
 
-```
+```text
 Hot Phase -> Warm Phase -> Cold Phase -> Frozen Phase -> Delete Phase
 (Active)    (Less active)  (Rare access) (Archive)      (Cleanup)
 ```

@@ -297,7 +297,7 @@ az storage account update \
 
 Configure FSLogix on the session hosts through Intune with a custom configuration profile that sets the following registry values:
 
-```
+```text
 HKLM\Software\FSLogix\Profiles
 - Enabled = 1
 - VHDLocations = \\avdprofiles01.file.core.windows.net\profiles
@@ -309,7 +309,7 @@ HKLM\Software\FSLogix\Profiles
 
 Users can connect using the Windows Desktop client or the web client:
 
-```
+```text
 # Web client URL
 https://client.wvd.microsoft.com/arm/webclient
 

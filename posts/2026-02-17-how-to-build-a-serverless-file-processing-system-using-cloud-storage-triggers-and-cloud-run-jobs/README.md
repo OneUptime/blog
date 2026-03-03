@@ -297,7 +297,7 @@ CMD ["python", "main.py"]
 
 The `requirements.txt`:
 
-```
+```text
 google-cloud-storage==2.14.0
 google-cloud-bigquery==3.17.0
 google-cloud-firestore==2.14.0

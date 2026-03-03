@@ -123,7 +123,7 @@ Group-based bindings are the most practical approach. Map your IdP groups to GCP
 
 Workforce users access the GCP Console through a special URL that includes the workforce pool:
 
-```
+```text
 https://console.cloud.google/?wip=locations/global/workforcePools/my-corporate-pool&wipt=okta-provider
 ```
 

@@ -145,7 +145,7 @@ curl -X POST \
 
 Here is a group hierarchy that works well for a typical organization:
 
-```
+```text
 All Resources
   Production
     Production - Frontend

@@ -18,7 +18,7 @@ MQL is a text-based query language specific to Google Cloud Monitoring. Think of
 
 Every MQL query follows the same structure: you start with a data source, then apply operations using the pipe operator.
 
-```
+```text
 fetch gce_instance::compute.googleapis.com/instance/cpu/utilization
 | filter zone =~ "us-central1.*"
 | group_by [zone], mean(val())
@@ -31,7 +31,7 @@ Let me break that down. `fetch` selects the metric type and resource type. The p
 
 Let us start with a practical example. Here is a dashboard that shows CPU utilization across your GCE fleet.
 
-```
+```text
 # Average CPU utilization per zone, aligned to 5-minute intervals
 fetch gce_instance::compute.googleapis.com/instance/cpu/utilization
 | group_by [resource.zone], mean(val())
@@ -40,7 +40,7 @@ fetch gce_instance::compute.googleapis.com/instance/cpu/utilization
 
 To add a threshold line at 80% for visual reference, you can use the `union` operation.
 
-```
+```text
 # CPU utilization with an 80% threshold line
 {
   fetch gce_instance::compute.googleapis.com/instance/cpu/utilization
@@ -59,7 +59,7 @@ To add a threshold line at 80% for visual reference, you can use the `union` ope
 
 For services that expose HTTP metrics, here is how to build a dashboard panel showing request rates alongside error rates.
 
-```
+```text
 # Total request rate per service
 fetch gae_app::appengine.googleapis.com/http/server/response_count
 | group_by [resource.module_id], rate(val())
@@ -68,7 +68,7 @@ fetch gae_app::appengine.googleapis.com/http/server/response_count
 
 For error rate as a percentage.
 
-```
+```text
 # Error rate as a percentage - errors divided by total
 {
   # Fetch error responses (5xx status codes)
@@ -163,7 +163,7 @@ Here are some MQL patterns I use regularly.
 
 **Comparing current values to the same period last week.**
 
-```
+```text
 # Show current CPU vs same time last week for trend comparison
 {
   fetch gce_instance::compute.googleapis.com/instance/cpu/utilization
@@ -180,7 +180,7 @@ Here are some MQL patterns I use regularly.
 
 **Calculating percentiles.**
 
-```
+```text
 # 95th percentile response latency per service
 fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
 | group_by [resource.url_map_name],
@@ -190,7 +190,7 @@ fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
 
 **Top N consumers.**
 
-```
+```text
 # Top 5 instances by CPU utilization
 fetch gce_instance::compute.googleapis.com/instance/cpu/utilization
 | top 5
@@ -199,7 +199,7 @@ fetch gce_instance::compute.googleapis.com/instance/cpu/utilization
 
 **Conditional alerting thresholds.**
 
-```
+```text
 # Disk usage above 90% with minimum disk size filter
 fetch gce_instance::compute.googleapis.com/instance/disk/write_bytes_count
 | group_by [resource.instance_id, metric.device_name], sum(val())

@@ -308,7 +308,7 @@ spec:
 
 When analyzing benchmark results on Talos Linux, keep these reference points in mind:
 
-```
+```text
 # Typical good performance numbers on modern hardware:
 # Node-to-node bandwidth (10GbE):        9+ Gbps
 # Pod-to-pod bandwidth (eBPF CNI):       8+ Gbps

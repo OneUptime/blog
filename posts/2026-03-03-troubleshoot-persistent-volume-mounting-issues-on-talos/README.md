@@ -97,7 +97,7 @@ kubectl describe pod <pod-name> -n <namespace> | grep -A 10 Events
 
 Common error messages:
 
-```
+```text
 Warning  FailedMount  Unable to attach or mount volumes: unmounted volumes=[data]
 ```
 
@@ -166,7 +166,7 @@ machine:
 
 If the volume mounts but the application cannot write to it:
 
-```
+```text
 Error: EACCES: permission denied, open '/data/file.txt'
 ```
 
@@ -201,7 +201,7 @@ initContainers:
 
 If you are using a volume that only supports ReadWriteOnce (RWO) and try to mount it on multiple nodes:
 
-```
+```text
 Multi-Attach error for volume "pvc-xxx": Volume is already attached to node "worker-1"
 ```
 

@@ -21,7 +21,7 @@ ansible-galaxy collection init myorg.infrastructure
 
 This creates the following directory tree:
 
-```
+```text
 myorg/infrastructure/
     docs/
     meta/
@@ -326,7 +326,7 @@ mkdir -p myorg/infrastructure/tests/{unit,integration,sanity}
 
 Add a basic sanity test ignore file:
 
-```
+```text
 # tests/sanity/ignore-2.14.txt - Ignore known issues for specific versions
 plugins/modules/server_config.py validate-modules:missing-gplv3-license
 ```
@@ -343,7 +343,7 @@ git init
 
 Create a `.gitignore`:
 
-```
+```text
 # .gitignore - files to exclude from version control
 *.tar.gz
 *.retry

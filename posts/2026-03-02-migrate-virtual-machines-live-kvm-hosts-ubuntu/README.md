@@ -51,7 +51,7 @@ sudo nano /etc/exports
 
 Add:
 
-```
+```text
 /srv/kvm-images  192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
 ```
 

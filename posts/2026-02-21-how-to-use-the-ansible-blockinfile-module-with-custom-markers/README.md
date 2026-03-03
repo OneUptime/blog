@@ -16,7 +16,7 @@ This post covers how to define custom markers, manage multiple blocks in one fil
 
 By default, `blockinfile` uses these markers:
 
-```
+```text
 # BEGIN ANSIBLE MANAGED BLOCK
 (your content here)
 # END ANSIBLE MANAGED BLOCK
@@ -68,7 +68,7 @@ The `marker` parameter accepts a string that must contain `{mark}`. Ansible repl
 
 The resulting file looks like:
 
-```
+```text
 # BEGIN DATABASE CONFIG
 db_host=localhost
 db_port=5432
@@ -180,7 +180,7 @@ You can also change what `BEGIN` and `END` say by using `mark_begin` and `mark_e
 
 This produces:
 
-```
+```text
 # START ALERTING RULES
 - alert: HighCPU
   expr: cpu_usage > 90

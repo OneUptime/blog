@@ -130,7 +130,7 @@ docker info | grep "Docker Root Dir"
 
 The output should show your new path:
 
-```
+```text
  Docker Root Dir: /mnt/external-docker/docker
 ```
 

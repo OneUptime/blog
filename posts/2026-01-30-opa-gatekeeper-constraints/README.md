@@ -650,7 +650,7 @@ metadata:
 
 ### 5. Organize Policies by Category
 
-```
+```text
 policies/
   security/
     block-privileged.yaml

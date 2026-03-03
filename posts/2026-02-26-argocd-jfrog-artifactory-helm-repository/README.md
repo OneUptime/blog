@@ -54,7 +54,7 @@ You can also create a virtual repository that aggregates your local Helm repo wi
 
 The repository URL typically follows this pattern:
 
-```
+```text
 https://artifactory.example.com/artifactory/helm-virtual
 ```
 

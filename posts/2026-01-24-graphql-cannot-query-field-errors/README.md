@@ -14,7 +14,7 @@ The "Cannot query field" error is one of the most common errors you will encount
 
 When you see an error like:
 
-```
+```text
 Cannot query field "fieldName" on type "TypeName"
 ```
 

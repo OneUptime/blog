@@ -311,7 +311,7 @@ If you have many large static files, consider serving them from Cloud Storage in
 
 For large volumes of static content, Cloud Storage with a Cloud CDN is often a better choice:
 
-```
+```text
 App Engine Static Handlers:
   + Zero configuration beyond app.yaml
   + Deployed together with your application code

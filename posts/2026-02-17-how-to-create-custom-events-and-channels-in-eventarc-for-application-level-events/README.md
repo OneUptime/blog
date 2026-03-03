@@ -61,7 +61,7 @@ gcloud eventarc channels describe my-app-events \
 
 While Eventarc does not require you to formally register event types, it is good practice to define a naming convention. The standard format follows reverse domain notation:
 
-```
+```text
 # Event type naming convention
 custom.my-company.user.created
 custom.my-company.user.updated

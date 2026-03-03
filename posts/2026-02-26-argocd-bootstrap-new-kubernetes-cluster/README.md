@@ -131,7 +131,7 @@ kubectl rollout restart deployment argocd-server -n argocd
 
 Create a Git repository that defines the entire cluster state:
 
-```
+```text
 cluster-config/
   bootstrap/
     root-app.yaml              # The root application (app-of-apps)

@@ -74,7 +74,7 @@ curl http://localhost:9090/metrics | grep csi
 
 Common CSI metrics include:
 
-```
+```text
 # Volume operation duration
 csi_sidecar_operations_seconds_bucket
 csi_sidecar_operations_seconds_sum

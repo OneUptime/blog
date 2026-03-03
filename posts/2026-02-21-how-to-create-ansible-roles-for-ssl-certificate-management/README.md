@@ -23,7 +23,7 @@ The role will handle:
 
 ## Role Structure
 
-```
+```text
 roles/ssl_certs/
   defaults/main.yml
   handlers/main.yml

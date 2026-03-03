@@ -28,7 +28,7 @@ graph TD
 
 ## Repository Structure
 
-```
+```text
 timescaledb/
   base/
     kustomization.yaml

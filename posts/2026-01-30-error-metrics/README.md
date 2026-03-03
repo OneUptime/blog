@@ -44,7 +44,7 @@ The difference between proactive and reactive operations is measured in minutes 
 
 Error rate is the foundation of all error metrics. It measures what percentage of requests fail within a time window. The formula is simple.
 
-```
+```text
 Error Rate = (Failed Requests / Total Requests) * 100
 ```
 

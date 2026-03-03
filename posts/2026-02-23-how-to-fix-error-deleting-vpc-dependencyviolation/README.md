@@ -12,7 +12,7 @@ The `DependencyViolation` error when deleting a VPC is one of the most frustrati
 
 ## What the Error Looks Like
 
-```
+```text
 Error: error deleting VPC (vpc-0abc123def456789):
 DependencyViolation: The vpc 'vpc-0abc123def456789' has
 dependencies and cannot be deleted.

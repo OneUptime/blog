@@ -60,7 +60,7 @@ sudo nano /etc/clamav/freshclam.conf
 
 A solid baseline configuration looks like this:
 
-```
+```text
 # Log freshclam activity
 UpdateLogFile /var/log/clamav/freshclam.log
 
@@ -124,7 +124,7 @@ sudo systemctl start clamav-freshclam
 
 You'll see output like this during a successful update:
 
-```
+```text
 ClamAV update process started at Mon Mar  2 10:00:00 2026
 daily.cvd is up to date (version: 27385, sigs: 2073738)
 main.cvd is up to date (version: 62, sigs: 6647427)

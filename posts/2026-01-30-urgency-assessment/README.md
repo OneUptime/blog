@@ -926,7 +926,7 @@ async function recordOverride(override: UrgencyOverride): Promise<void> {
 
 Every incident notification should include:
 
-```
+```text
 [P1] Payment Service Degradation
 -------------------------------------
 Urgency Score: 72/100

@@ -49,7 +49,7 @@ gcloud monitoring slos create \
 
 Google Cloud Monitoring provides a built-in function to query the remaining error budget.
 
-```
+```text
 # MQL query to show error budget remaining as a percentage
 fetch cloud_monitoring_slo::monitoring.googleapis.com/service/slo/error_budget_remaining
 | filter resource.service = "my-api-service"
@@ -59,7 +59,7 @@ fetch cloud_monitoring_slo::monitoring.googleapis.com/service/slo/error_budget_r
 
 You can also query the budget consumption rate.
 
-```
+```text
 # MQL query to show how fast the error budget is being consumed
 fetch cloud_monitoring_slo::monitoring.googleapis.com/service/slo/burn_rate
 | filter resource.service = "my-api-service"

@@ -27,7 +27,7 @@ The x-axis is not time - it is sorted alphabetically to group identical stacks t
 
 A call tree shows every path through your code separately. Flame graphs merge identical stacks:
 
-```
+```text
 Call Tree:                          Flame Graph:
 main -> A -> B -> C (30%)           |------------- main -------------|
 main -> A -> B -> D (20%)           |-------- A --------|
@@ -486,7 +486,7 @@ Understanding what flame graphs reveal requires practice. Here are the key patte
 
 A wide flat-topped bar means that function is consuming significant CPU without calling other functions:
 
-```
+```text
 |------------------process_request------------------|
 |---------------parse_json--------------|
 |----------JSON.parse----------|
@@ -501,7 +501,7 @@ In this example, `JSON.parse` is the hotspot. The fix might be:
 
 Tall narrow stacks indicate recursion or deep call chains:
 
-```
+```text
 |main|
 | A  |
 | B  |
@@ -519,7 +519,7 @@ Look for:
 
 Many narrow bars at the same level indicate the parent is calling many different functions:
 
-```
+```text
 |----------process_request----------|
 | A | B | C | D | E | F | G | H | I |
 ```
@@ -533,7 +533,7 @@ This often appears in:
 
 Same sequence appearing multiple times indicates repeated work:
 
-```
+```text
 |---handler---|---handler---|---handler---|
 |---parse-----|---parse-----|---parse-----|
 |---validate--|---validate--|---validate--|
@@ -614,7 +614,7 @@ Icicle graphs are inverted flame graphs - they grow downward instead of upward.
 
 ### Visual Comparison
 
-```
+```text
 Flame Graph:         Icicle Graph:
      |leaf|               |main|
    |--child--|         |--child--|

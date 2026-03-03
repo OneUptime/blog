@@ -246,7 +246,7 @@ docker-compose.yml
 
 V uses `v.mod` for project metadata and dependencies:
 
-```
+```text
 // v.mod - V module file
 Module {
     name: 'v_docker_demo'

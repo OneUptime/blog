@@ -195,7 +195,7 @@ kubectl get nodes --show-labels | grep topology
 
 Kubernetes nodes typically have these labels set by the cloud provider:
 
-```
+```text
 topology.kubernetes.io/region=us-east-1
 topology.kubernetes.io/zone=us-east-1a
 ```

@@ -149,7 +149,7 @@ GitHub Pages provides free static hosting, perfect for smaller teams with charts
 
 Create a repository with the following structure:
 
-```
+```text
 helm-charts/
 ├── charts/
 │   ├── my-app/

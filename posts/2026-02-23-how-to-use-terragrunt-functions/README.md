@@ -44,7 +44,7 @@ include "env" {
 
 Given this directory structure:
 
-```
+```text
 live/
   terragrunt.hcl       # root config
   us-east-1/

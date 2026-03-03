@@ -193,7 +193,7 @@ kubectl get svc istio-ingressgateway -n istio-system -o jsonpath='{.status.loadB
 
 If you have an external load balancer in front of both clusters, you can shift traffic gradually:
 
-```
+```text
 Old cluster: 90% -> 70% -> 50% -> 30% -> 10% -> 0%
 New cluster: 10% -> 30% -> 50% -> 70% -> 90% -> 100%
 ```

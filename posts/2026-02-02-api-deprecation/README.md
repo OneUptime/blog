@@ -424,7 +424,7 @@ name = f"{user['firstName']} {user['lastName']}"
 - Email: api-support@example.com
 - Slack: #api-migration channel
 - Office hours: Tuesdays 2-3pm PT
-```
+```text
 
 ---
 

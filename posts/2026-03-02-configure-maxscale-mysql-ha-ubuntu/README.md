@@ -16,7 +16,7 @@ This guide covers installing MaxScale on Ubuntu and configuring it for a typical
 
 A MaxScale deployment looks like:
 
-```
+```text
 Applications -> MaxScale -> Primary (writes)
                         \-> Replica 1 (reads)
                          -> Replica 2 (reads)
@@ -219,7 +219,7 @@ sudo maxctrl list servers
 
 Expected output:
 
-```
+```text
 ┌──────────────────┬──────────────┬──────┬─────────────┬────────────────┬───────────┐
 │ Server           │ Address      │ Port │ Connections │ State          │ GTID      │
 ├──────────────────┼──────────────┼──────┼─────────────┼────────────────┼───────────┤

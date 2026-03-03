@@ -24,13 +24,13 @@ metadata:
 
 The tracking ID format is:
 
-```
+```text
 <application-name>:<group>/<kind>:<namespace>/<resource-name>
 ```
 
 For cluster-scoped resources (no namespace):
 
-```
+```text
 <application-name>:<group>/<kind>:<resource-name>
 ```
 
@@ -93,7 +93,7 @@ metadata:
 
 Label tracking only stores the application name. Annotation tracking stores the full resource identity:
 
-```
+```text
 # Label tracking
 app.kubernetes.io/instance: my-app
 

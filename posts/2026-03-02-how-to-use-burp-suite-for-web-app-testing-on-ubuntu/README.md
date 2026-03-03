@@ -122,7 +122,7 @@ The Repeater lets you send modified requests repeatedly and compare responses:
 5. Click **Send**
 6. View the response and compare
 
-```
+```text
 Example workflow for testing SQL injection:
 1. Find a login form
 2. Submit a test login to capture the request
@@ -145,7 +145,7 @@ The Intruder automates sending many variations of a request (fuzzing):
 7. Select payload type: Simple list, Numbers, Brute forcer, etc.
 8. Click **Start attack**
 
-```
+```text
 Common Intruder use cases:
 - Username enumeration: vary the username, look for different response lengths
 - Password brute force: vary the password field with a wordlist
@@ -181,7 +181,7 @@ For Community edition, use the target site map for manual coverage:
 
 ### SQL Injection Testing
 
-```
+```text
 Test these inputs in form fields and URL parameters:
 '
 ''
@@ -203,7 +203,7 @@ In Burp Repeater, send a request with these payloads and look for:
 
 ### XSS Testing
 
-```
+```text
 Test inputs:
 <script>alert(1)</script>
 <img src=x onerror=alert(1)>
@@ -216,7 +216,7 @@ In Burp, use **Ctrl+U** to URL-encode payloads before sending.
 
 ### Directory Traversal
 
-```
+```text
 Fuzz file path parameters with:
 ../../../etc/passwd
 ..%2F..%2F..%2Fetc%2Fpasswd
@@ -228,7 +228,7 @@ Fuzz file path parameters with:
 
 The Decoder tab helps encode and decode various formats:
 
-```
+```text
 Supported formats:
 - URL encoding/decoding
 - HTML encoding/decoding

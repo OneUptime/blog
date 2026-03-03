@@ -70,7 +70,7 @@ Not every machine type supports GPUs. Here are the rules:
 
 GPU to vCPU requirements for N1:
 
-```
+```text
 1 GPU  -> minimum 1 vCPU,  maximum 12 vCPUs
 2 GPUs -> minimum 1 vCPU,  maximum 24 vCPUs
 4 GPUs -> minimum 1 vCPU,  maximum 48 vCPUs
@@ -244,7 +244,7 @@ nvidia-smi
 
 Expected output:
 
-```
+```text
 +-----------------------------------------------------------------------------+
 | NVIDIA-SMI 535.54.03    Driver Version: 535.54.03    CUDA Version: 12.2     |
 |-------------------------------+----------------------+----------------------+

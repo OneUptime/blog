@@ -129,7 +129,7 @@ gcloud projects add-iam-policy-binding your-project-id \
 
 Install the Secret Manager client library:
 
-```
+```text
 # requirements.txt
 google-cloud-secret-manager==2.18.0
 ```
@@ -314,7 +314,7 @@ Secrets live in Secret Manager and are loaded at runtime. Non-sensitive configur
 
 For local development, use a `.env` file that mirrors your configuration:
 
-```
+```text
 # .env - Local development configuration (never commit this file)
 APP_ENV=development
 DB_PASSWORD=local-dev-password

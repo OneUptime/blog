@@ -10,7 +10,7 @@ Description: Learn how to diagnose and fix 'unmet dependencies' errors when inst
 
 An "unmet dependencies" error stops you from installing a package and can leave your system in an inconsistent state. The error message typically looks like:
 
-```
+```text
 E: Unable to correct problems, you have held broken packages.
 The following packages have unresolved dependencies:
   some-package : Depends: libfoo (>= 2.0) but 1.8 is installed
@@ -50,7 +50,7 @@ apt-cache policy libfoo
 
 The `apt-cache policy` output shows available versions and their sources:
 
-```
+```text
 libfoo:
   Installed: 1.8
   Candidate: 2.1

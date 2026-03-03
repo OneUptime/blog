@@ -147,7 +147,7 @@ sudo nano /etc/logrotate.d/myapp
 
 Example logrotate configuration:
 
-```
+```text
 # /etc/logrotate.d/myapp
 /var/log/myapp/*.log {
     daily

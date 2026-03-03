@@ -28,7 +28,7 @@ The key package is `mangum` - it's an ASGI/WSGI adapter that lets Flask (and oth
 
 Set up your project structure:
 
-```
+```text
 flask-lambda-api/
   src/
     app.py

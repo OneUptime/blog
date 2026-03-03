@@ -14,7 +14,7 @@ In this guide, we will cover how to build a complete testing pyramid for Terrafo
 
 ## The Infrastructure Testing Pyramid
 
-```
+```text
         /\
        /  \      End-to-End Tests
       /    \     (Full deployment, real resources)

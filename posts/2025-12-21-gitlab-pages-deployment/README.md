@@ -325,7 +325,7 @@ First, deploy your site with the pages job. Then go to Settings > Pages in your 
 
 Add DNS records for your domain.
 
-```
+```text
 # For apex domain (example.com)
 Type: A
 Name: @

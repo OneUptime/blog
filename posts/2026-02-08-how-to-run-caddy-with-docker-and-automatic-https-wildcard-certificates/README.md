@@ -32,7 +32,7 @@ cd caddy-docker
 
 Create a basic Caddyfile that enables automatic HTTPS:
 
-```
+```text
 # Caddyfile - Caddy configuration for a single domain
 example.com {
     root * /srv
@@ -107,7 +107,7 @@ docker build -t caddy-cloudflare .
 
 With the DNS plugin in place, configure the Caddyfile for wildcard certificates:
 
-```
+```text
 # Caddyfile - Wildcard certificate configuration using Cloudflare DNS
 # Define a reusable TLS configuration snippet
 (cloudflare) {
@@ -215,7 +215,7 @@ RUN xcaddy build \
 
 The Caddyfile syntax changes slightly for each provider. For Route53:
 
-```
+```text
 # Caddyfile snippet for AWS Route53 DNS challenge
 *.example.com {
     tls {
@@ -289,7 +289,7 @@ volumes:
 
 The corresponding Caddyfile:
 
-```
+```text
 # Caddyfile - Multi-service reverse proxy with wildcard cert
 *.example.com {
     tls {
@@ -352,7 +352,7 @@ If certificates fail to provision, check these common problems:
 
 4. **Rate limits** - Let's Encrypt has rate limits (50 certificates per domain per week). Use the staging endpoint for testing:
 
-```
+```text
 # Caddyfile - Use Let's Encrypt staging for testing
 {
     acme_ca https://acme-staging-v02.api.letsencrypt.org/directory

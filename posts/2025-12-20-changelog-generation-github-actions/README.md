@@ -34,7 +34,7 @@ flowchart TD
 
 The foundation of automated changelogs is structured commit messages:
 
-```
+```text
 <type>(<scope>): <description>
 
 [optional body]

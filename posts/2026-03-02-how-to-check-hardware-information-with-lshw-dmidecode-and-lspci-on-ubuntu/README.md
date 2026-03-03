@@ -59,7 +59,7 @@ sudo lshw -class disk -class storage -class volume
 
 Example output for a network interface:
 
-```
+```text
 *-network
      description: Ethernet interface
      product: I210 Gigabit Network Connection

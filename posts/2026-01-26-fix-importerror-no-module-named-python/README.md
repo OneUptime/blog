@@ -196,7 +196,7 @@ from main import something
 
 In Python 3.3+, `__init__.py` is not strictly required, but its absence can cause issues.
 
-```
+```text
 # Problem structure - missing __init__.py
 mypackage/
     module1.py

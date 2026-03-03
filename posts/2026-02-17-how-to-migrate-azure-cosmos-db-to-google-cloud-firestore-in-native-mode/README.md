@@ -83,7 +83,7 @@ Example Cosmos DB structure:
 
 Firestore equivalent with hierarchical modeling:
 
-```
+```text
 // Firestore structure
 // Collection: customers/{customerId}/orders/{orderId}
 // This enables querying all orders for a specific customer efficiently
@@ -100,7 +100,7 @@ customers/
 
 Or keep it flat if you need cross-customer queries:
 
-```
+```text
 // Flat Firestore structure
 // Collection: orders/{orderId}
 

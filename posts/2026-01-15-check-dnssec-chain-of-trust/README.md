@@ -92,7 +92,7 @@ dig +trace +dnssec example.com A
 
 This shows each delegation step:
 
-```
+```text
 .                       518400  IN  NS      a.root-servers.net.
 .                       518400  IN  RRSIG   NS 8 0 518400 ...
 
@@ -153,7 +153,7 @@ delv +vtrace example.com A
 
 Output shows each validation step:
 
-```
+```text
 ;; validating example.com/A: starting
 ;; validating example.com/DNSKEY: starting
 ;; validating example.com/DS: starting
@@ -184,7 +184,7 @@ drill -S example.com
 
 Example output:
 
-```
+```text
 ;; Number of trusted keys: 1
 ;; Chasing: example.com. A
 

@@ -41,7 +41,7 @@ For Amazon Linux 2023 and Amazon Linux 2 platforms, use the `.platform` director
 
 #### Directory Structure
 
-```
+```text
 your-app/
 ├── .platform/
 │   └── nginx/
@@ -106,7 +106,7 @@ For older platforms or additional flexibility, use `.ebextensions`.
 
 #### Directory Structure
 
-```
+```text
 your-app/
 ├── .ebextensions/
 │   └── nginx.config
@@ -153,7 +153,7 @@ proxy_busy_buffers_size 256k;
 
 ### Node.js Platform
 
-```
+```text
 your-app/
 ├── .platform/
 │   └── nginx/
@@ -171,7 +171,7 @@ client_max_body_size 100M;
 
 ### Python Platform (Django/Flask)
 
-```
+```text
 your-app/
 ├── .platform/
 │   └── nginx/

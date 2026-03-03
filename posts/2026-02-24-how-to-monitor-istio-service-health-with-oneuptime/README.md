@@ -128,7 +128,7 @@ The key metrics to monitor are:
 
 Track the ratio of successful requests to total requests:
 
-```
+```text
 # Success rate calculation using istio_requests_total
 sum(rate(istio_requests_total{response_code!~"5.*", destination_service="my-service.default.svc.cluster.local"}[5m]))
 /
@@ -141,7 +141,7 @@ In OneUptime, create a metric monitor that alerts when the success rate drops be
 
 Monitor the p99 latency for your services:
 
-```
+```text
 # P99 latency for a specific service
 histogram_quantile(0.99,
   sum(rate(istio_request_duration_milliseconds_bucket{destination_service="my-service.default.svc.cluster.local"}[5m])) by (le)
@@ -154,7 +154,7 @@ Set alerts for when p99 latency exceeds your SLO target.
 
 Track TCP connection failures:
 
-```
+```text
 # Rate of connection failures
 sum(rate(istio_tcp_connections_closed_total{connection_security_policy="mutual_tls", destination_service="my-service.default.svc.cluster.local"}[5m]))
 ```

@@ -22,7 +22,7 @@ The directory tree is your source of truth for what is deployed where.
 
 The simplest multi-environment setup separates environments at the top level:
 
-```
+```text
 infrastructure/
   modules/                       # Reusable Terraform modules
     vpc/
@@ -136,7 +136,7 @@ This structure works well for teams with a single region and a few environments.
 
 When you deploy to multiple regions, add a region level to the hierarchy:
 
-```
+```text
 live/
   root.hcl                         # Root config
   us-east-1/
@@ -218,7 +218,7 @@ EOF
 
 For organizations using separate AWS accounts per environment (which is the recommended practice), the account boundary maps to the environment level:
 
-```
+```text
 live/
   root.hcl
   accounts/
@@ -296,7 +296,7 @@ EOF
 
 Many organizations have infrastructure shared across environments - a central logging account, shared networking, or global DNS:
 
-```
+```text
 live/
   root.hcl
   _global/                         # Shared, not environment-specific
@@ -326,7 +326,7 @@ The `_global` directory (prefixed with underscore to sort it first) contains res
 
 For large environments with many modules, group related modules together:
 
-```
+```text
 live/
   root.hcl
   dev/

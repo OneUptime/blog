@@ -14,7 +14,7 @@ Importing existing resources into Terraform modules is a common requirement when
 
 In Terraform, every resource has a unique address in the state. When a resource is inside a module, its address includes the module path:
 
-```
+```text
 # Root-level resource address
 aws_instance.web_server
 

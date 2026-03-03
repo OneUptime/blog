@@ -66,7 +66,7 @@ The CUPS web interface is the easiest way to configure printer defaults:
 sudo nano /etc/cups/cupsd.conf
 ```
 
-```
+```text
 # Allow access from local network (optional)
 Listen *:631
 
@@ -179,7 +179,7 @@ sudo nano /etc/cups/ppd/MyPrinter.ppd
 
 Find the duplex section in the PPD file:
 
-```
+```text
 *OpenUI *Duplex/Two-Sided Printing: PickOne
 *DefaultDuplex: None
 *Duplex None/Off: "<</Duplex false>>setpagedevice"

@@ -32,7 +32,7 @@ sequenceDiagram
 
 ArgoCD exposes application events through this endpoint:
 
-```
+```text
 GET /api/v1/stream/applications
 ```
 
@@ -97,7 +97,7 @@ done
 
 Sample output:
 
-```
+```text
 Starting real-time ArgoCD monitor...
 
 [2026-02-26 14:23:01] MODIFIED | api-service | Health: Progressing | Sync: Synced

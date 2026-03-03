@@ -138,7 +138,7 @@ offline: false
 
 When ansible-lint finds issues, it prints them in a specific format. Here is an example output:
 
-```
+```text
 WARNING  Listing 4 violation(s) that are fatal
 risky-file-permissions: File permissions unset or incorrect.
 tasks/main.yml:12 Task/Handler: Copy nginx configuration

@@ -16,13 +16,13 @@ Every workload in the Istio mesh gets a SPIFFE identity based on its Kubernetes 
 
 The identity format is:
 
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
 In authorization policies, you reference this as:
 
-```
+```text
 cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
@@ -326,7 +326,7 @@ If a deployment does not specify a service account, it uses the `default` servic
 
 Use Prometheus metrics to track authorization outcomes:
 
-```
+```text
 istio_requests_total{response_code="403",reporter="destination"}
 ```
 

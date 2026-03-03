@@ -229,7 +229,7 @@ terraform state list
 
 ### Lineage Mismatch
 
-```
+```text
 Error: Cannot overwrite state with a different lineage
 ```
 
@@ -241,7 +241,7 @@ terraform state push -force state-file.json
 
 ### Serial Number Regression
 
-```
+```text
 Error: Cannot overwrite state with an earlier serial number
 ```
 
@@ -254,7 +254,7 @@ terraform state push -force state-file.json
 
 ### Invalid State Format
 
-```
+```text
 Error: Error reading state file
 ```
 

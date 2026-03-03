@@ -44,7 +44,7 @@ Re-enable it after the dual boot is fully working.
 
 Secure Boot is compatible with Ubuntu 22.04 and later - you do not need to disable it. Confirm you are using UEFI mode (not legacy BIOS) by checking System Information in Windows:
 
-```
+```text
 Win + R -> msinfo32 -> look for "BIOS Mode: UEFI"
 ```
 
@@ -88,7 +88,7 @@ The existing Windows EFI System Partition (ESP) is shared - Ubuntu adds its GRUB
 
 If you prefer full control, choose "Something else" on the installation type screen. You will see your disk layout. Click on the unallocated space and create:
 
-```
+```text
 # Suggested layout for the unallocated space:
 /boot/efi  - Use existing Windows EFI partition (do NOT format it, just assign mount point)
 /          - ext4, 40+ GB

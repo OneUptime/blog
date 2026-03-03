@@ -384,7 +384,7 @@ kubectl describe canary podinfo -n production
 
 Status shows current weight and analysis results:
 
-```
+```text
 Status:
   Canary Weight: 30
   Failed Checks: 0
@@ -468,7 +468,7 @@ spec:
 
 Complete GitOps workflow with Flux and Flagger:
 
-```
+```text
 Developer pushes code
     ↓
 CI builds image

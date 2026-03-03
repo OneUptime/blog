@@ -164,7 +164,7 @@ Power BI Desktop has a built-in Azure Resource Graph connector.
 3. Sign in with your Azure credentials.
 4. Enter your query:
 
-```
+```text
 advisorresources
 | where type == 'microsoft.advisor/recommendations'
 | project
@@ -259,7 +259,7 @@ def main(timer: func.TimerRequest):
 
 Send the snapshots to a Log Analytics custom table and use KQL to analyze trends.
 
-```
+```text
 // Query recommendation trend from historical snapshots
 AdvisorSnapshots_CL
 | where TimeGenerated > ago(90d)

@@ -275,7 +275,7 @@ kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/stats |
 
 Look for:
 
-```
+```text
 http_local_rate_limiter.enabled: 150
 http_local_rate_limiter.enforced: 50
 http_local_rate_limiter.ok: 100

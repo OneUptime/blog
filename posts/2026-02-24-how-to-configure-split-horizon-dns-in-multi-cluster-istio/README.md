@@ -162,7 +162,7 @@ This approach is less common with Istio because it requires maintaining DNS forw
 
 For production environments, using an external DNS (like Route53, Cloud DNS, or CoreDNS running outside the clusters) with a shared domain can be cleaner:
 
-```
+```text
 # Instead of cluster.local, use a shared domain
 reviews.default.mesh.example.com -> resolves to VIP or east-west gateway
 ```

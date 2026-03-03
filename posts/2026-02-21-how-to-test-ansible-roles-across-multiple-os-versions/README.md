@@ -24,7 +24,7 @@ Different OS versions introduce several categories of differences that can break
 
 Before testing, your role needs to be structured for multi-OS support. The standard pattern uses OS-specific variable files.
 
-```
+```text
 roles/my_webserver/
   defaults/main.yml
   vars/

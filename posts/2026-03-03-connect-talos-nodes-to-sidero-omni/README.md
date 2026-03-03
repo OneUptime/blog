@@ -229,7 +229,7 @@ The connection between Talos nodes and Omni is secured by:
 
 Ensure your firewall allows outbound UDP traffic to the Omni endpoint:
 
-```
+```text
 Required outbound ports:
 - UDP 8099: SideroLink (WireGuard) tunnel
 - TCP 443: Omni API (for initial connection)
@@ -256,7 +256,7 @@ resource "omni_machine" "workers" {
 
 For bare metal, use PXE booting with the Omni-enabled image. As servers boot, they automatically register with Omni:
 
-```
+```text
 PXE Boot Flow:
 1. Server PXE boots
 2. DHCP provides the Omni-enabled kernel and initrd

@@ -245,7 +245,7 @@ The CLI-driven workflow supports environment variables set on the workspace. Thi
 
 You can also set `TF_VAR_*` environment variables on the workspace to set Terraform variables:
 
-```
+```text
 Key: TF_VAR_environment
 Value: dev
 Category: Environment variable

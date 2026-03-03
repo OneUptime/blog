@@ -160,7 +160,7 @@ The resulting apply order is:
 
 Establish a wave numbering convention across your organization:
 
-```
+```text
 Wave Range    Purpose                          Typical Source
 -10 to -6    Cluster-wide resources            Platform infra repo
 -5 to -3     Namespace setup and security      Security policies repo

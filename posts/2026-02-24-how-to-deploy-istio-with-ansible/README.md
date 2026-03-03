@@ -33,7 +33,7 @@ Your control machine needs kubectl configured to access the target cluster, and 
 
 Organize your Ansible project like this:
 
-```
+```text
 istio-ansible/
   inventory/
     production.yml

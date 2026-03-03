@@ -18,7 +18,7 @@ The Hierarchical Namespace Controller (HNC) is a Kubernetes project that adds pa
 
 For example, if you have a parent namespace "engineering" with a NetworkPolicy that allows DNS access, all child namespaces (team-backend, team-frontend, team-data) automatically get that same NetworkPolicy. If you update the parent's policy, all children get the update.
 
-```
+```text
 engineering (parent)
   - team-backend (child)
     - backend-staging (subchild)
@@ -345,7 +345,7 @@ When you move a namespace, it stops inheriting from the old parent and starts in
 
 ### Pattern 1: Organization Structure
 
-```
+```text
 company
 ├── engineering
 │   ├── backend
@@ -361,7 +361,7 @@ company
 
 ### Pattern 2: Environment Separation
 
-```
+```text
 production
 ├── app-a-prod
 ├── app-b-prod
@@ -378,7 +378,7 @@ development
 
 ### Pattern 3: Project-Based
 
-```
+```text
 project-alpha
 ├── alpha-api
 ├── alpha-workers

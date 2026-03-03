@@ -20,7 +20,7 @@ Before jumping into configuration, it helps to understand how these two resource
 
 When used together:
 
-```
+```text
 ServiceEntry (legacy-db.vm-apps.svc.cluster.local)
   └── WorkloadEntry (vm-1: 10.0.1.10)
   └── WorkloadEntry (vm-2: 10.0.1.11)

@@ -91,7 +91,7 @@ BGP (Border Gateway Protocol) is what makes failover automatic. With BGP, your r
 
 On the AWS side, BGP is configured automatically. You need to set it up on your router. Here's the concept:
 
-```
+```text
 BGP Neighbor 1 (Tunnel 1):
   Peer IP: 169.254.10.1 (AWS side)
   Local IP: 169.254.10.2 (your side)

@@ -31,7 +31,7 @@ Prowlarr manages indexers (search sources) and feeds results to Sonarr and Radar
 
 Plan your media directories carefully. The key is giving all services access to a common root so file moves are instant (hard links or atomic moves) rather than copies.
 
-```
+```text
 /path/to/media/
 ├── downloads/
 │   ├── complete/

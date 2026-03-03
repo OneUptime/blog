@@ -103,7 +103,7 @@ WHERE event_time >= '2026-01-01'
 
 Output shows partition pruning:
 
-```
+```text
 Append  (cost=0.00..1234.56 rows=10000 width=100)
   ->  Seq Scan on events_2026_01  (cost=0.00..1234.56 rows=10000 width=100)
         Filter: ((event_time >= '2026-01-01') AND (event_time < '2026-01-15'))

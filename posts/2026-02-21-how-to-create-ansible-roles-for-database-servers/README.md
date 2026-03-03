@@ -21,7 +21,7 @@ ansible-galaxy role init --init-path roles/ postgresql
 
 This generates:
 
-```
+```text
 roles/postgresql/
   defaults/main.yml
   files/

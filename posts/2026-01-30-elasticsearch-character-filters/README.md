@@ -216,7 +216,7 @@ Result:
 
 For large mapping sets, store them in a file. Create a file at `config/analysis/char_mappings.txt`:
 
-```
+```text
 # Ligature expansion
 \uFB00 => ff
 \uFB01 => fi

@@ -29,7 +29,7 @@ kubectl describe pod my-pod-abc123 -n my-namespace
 
 In the `describe` output, look for:
 
-```
+```text
 Last State:     Terminated
   Reason:       OOMKilled
   Exit Code:    137

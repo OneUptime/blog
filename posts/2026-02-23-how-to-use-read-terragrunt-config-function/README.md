@@ -49,7 +49,7 @@ Use `read_terragrunt_config()` when you want to read values from a file without 
 
 The most common pattern is having small `.hcl` files at various levels of your directory hierarchy that define locals:
 
-```
+```text
 live/
   root.hcl                    # project-wide settings
   us-east-1/

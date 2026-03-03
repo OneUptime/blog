@@ -27,7 +27,7 @@ CAPI separates concerns into providers:
 
 ## Architecture
 
-```
+```text
 Management Cluster (runs CAPI controllers)
   |
   |-- CAPI Core Controllers

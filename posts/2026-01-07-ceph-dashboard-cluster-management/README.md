@@ -82,7 +82,7 @@ ceph mgr module ls | grep -A 2 enabled_modules
 
 You should see output similar to:
 
-```
+```text
     "enabled_modules": [
         "dashboard",
         "prometheus",

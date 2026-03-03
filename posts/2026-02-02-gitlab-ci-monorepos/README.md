@@ -48,7 +48,7 @@ graph TD
 
 Here is the directory layout in text form:
 
-```
+```text
 monorepo/
 ├── .gitlab-ci.yml
 ├── apps/

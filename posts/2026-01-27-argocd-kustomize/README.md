@@ -54,7 +54,7 @@ Kustomize works on the principle of bases and overlays. The base contains common
 
 ### Project Structure
 
-```
+```text
 myapp/
 ├── base/                           # Common configuration shared across all environments
 │   ├── kustomization.yaml          # Declares resources and common transformations

@@ -23,7 +23,7 @@ Before writing code, a few design principles I follow for Terraform modules:
 
 ## Module Structure
 
-```
+```text
 modules/
   app-service/
     main.tf           # Core resources

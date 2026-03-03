@@ -44,7 +44,7 @@ npm install -D moleculer-repl
 
 ### Project Structure
 
-```
+```text
 moleculer-demo/
   services/
     api.service.js       # API Gateway

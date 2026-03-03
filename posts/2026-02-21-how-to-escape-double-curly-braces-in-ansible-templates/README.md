@@ -26,7 +26,7 @@ Consider generating a Prometheus alerting rule file. Prometheus uses Go template
 
 If the template contains:
 
-```
+```text
 alert: HighMemoryUsage
 expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.1
 annotations:

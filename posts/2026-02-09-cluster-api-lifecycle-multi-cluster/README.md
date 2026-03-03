@@ -419,7 +419,7 @@ spec:
 
 Store cluster manifests in Git:
 
-```
+```text
 clusters/
 ├── production-east/
 │   └── cluster.yaml

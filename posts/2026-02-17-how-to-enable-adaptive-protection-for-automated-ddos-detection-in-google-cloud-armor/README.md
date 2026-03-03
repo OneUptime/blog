@@ -152,7 +152,7 @@ The alert includes:
 
 When Adaptive Protection generates a rule suggestion, it might look something like this:
 
-```
+```text
 evaluatePreconfiguredExpr('adaptive-protection-auto-deploy') &&
 origin.region_code in ['XX', 'YY'] &&
 request.headers['user-agent'].contains('BotPattern')

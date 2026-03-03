@@ -44,7 +44,7 @@ Pay attention to:
 
 If you have Prometheus set up, query the connection security status:
 
-```
+```text
 sum(rate(istio_requests_total{connection_security_policy="none", reporter="destination"}[5m])) by (destination_service)
 ```
 
@@ -52,7 +52,7 @@ This shows you which services are currently receiving plain text connections. Th
 
 For each service receiving plain text connections:
 
-```
+```text
 sum(rate(istio_requests_total{connection_security_policy="none", reporter="destination", destination_service="my-service.production.svc.cluster.local"}[5m])) by (source_workload, source_workload_namespace)
 ```
 
@@ -163,7 +163,7 @@ kubectl logs -n staging -l app=my-service --tail=100 | grep -i "error\|fail\|ref
 
 In Prometheus:
 
-```
+```text
 rate(istio_requests_total{response_code=~"5.*", destination_workload_namespace="staging"}[5m])
 ```
 

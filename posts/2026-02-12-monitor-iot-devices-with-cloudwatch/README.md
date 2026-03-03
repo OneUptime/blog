@@ -268,7 +268,7 @@ aws iot set-v2-logging-options \
 
 Then use CloudWatch Logs Insights to query these logs:
 
-```
+```text
 # Find all connection failures in the last hour
 fields @timestamp, clientId, @message
 | filter eventType = "Connect" and status = "Failure"
@@ -276,7 +276,7 @@ fields @timestamp, clientId, @message
 | limit 50
 ```
 
-```
+```text
 # Find devices that disconnected unexpectedly
 fields @timestamp, clientId, disconnectReason
 | filter eventType = "Disconnect" and disconnectReason != "CLIENT_INITIATED_DISCONNECT"

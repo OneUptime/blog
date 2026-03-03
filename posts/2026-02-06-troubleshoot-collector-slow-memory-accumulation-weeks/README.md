@@ -25,7 +25,7 @@ scrape_configs:
 
 Graph these metrics:
 
-```
+```text
 process_resident_memory_bytes{job="otel-collector"}
 go_memstats_heap_inuse_bytes{job="otel-collector"}
 go_memstats_heap_objects{job="otel-collector"}

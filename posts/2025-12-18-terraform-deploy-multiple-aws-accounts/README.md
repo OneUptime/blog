@@ -289,7 +289,7 @@ module "staging_vpc" {
 
 For large organizations, maintain separate Terraform configurations per account:
 
-```
+```text
 infrastructure/
   accounts/
     production/

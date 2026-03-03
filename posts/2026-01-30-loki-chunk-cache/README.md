@@ -281,7 +281,7 @@ Getting cache sizing right requires understanding your query patterns.
 
 Formula for rough sizing:
 
-```
+```text
 Cache Size = (Queries per second) x (Average chunks per query) x (Average chunk size) x (Target cache duration in seconds)
 ```
 

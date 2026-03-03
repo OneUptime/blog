@@ -144,7 +144,7 @@ Elasticsearch performs best with the heap set to no more than 50% of available R
 sudo nano /etc/elasticsearch/jvm.options.d/heap.options
 ```
 
-```
+```text
 # Set heap to 4GB (for a server with 8GB RAM)
 -Xms4g
 -Xmx4g

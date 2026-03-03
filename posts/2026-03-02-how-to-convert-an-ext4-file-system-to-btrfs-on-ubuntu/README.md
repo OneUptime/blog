@@ -75,7 +75,7 @@ sudo btrfs-convert /dev/sdb1
 
 The conversion takes time proportional to the amount of data. For a 100GB filesystem with 50GB of data, expect several minutes. You will see output like:
 
-```
+```text
 create btrfs filesystem:
         blocksize: 4096
         nodesize:  16384
@@ -109,7 +109,7 @@ sudo btrfs subvolume list /mnt/target
 ```
 
 You should see:
-```
+```text
 ID 256 gen 8 top level 5 path ext2_saved
 ```
 

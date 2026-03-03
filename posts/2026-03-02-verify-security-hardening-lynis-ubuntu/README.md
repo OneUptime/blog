@@ -65,7 +65,7 @@ The audit takes 2 to 5 minutes and checks categories including:
 
 The output follows a consistent format. Each check shows one of several status indicators:
 
-```
+```text
 [+]  - Found/Passed (green)
 [-]  - Not found (may or may not be an issue)
 [!]  - Warning (yellow/red)
@@ -75,7 +75,7 @@ The output follows a consistent format. Each check shows one of several status i
 
 At the end of the audit, Lynis prints a summary section:
 
-```
+```text
 ================================================================================
   Lynis security scan details:
   Hardening index : 68 [##############      ]
@@ -103,7 +103,7 @@ The hardening index gives you a score out of 100. A fresh Ubuntu install typical
 
 At the end of the audit, Lynis lists all warnings and suggestions with references:
 
-```
+```text
 * Consider hardening SSH configuration [SSH-7408]
   - Details  : AllowTcpForwarding (set YES, other value recommended)
   - Solution : Add 'AllowTcpForwarding no' to /etc/ssh/sshd_config

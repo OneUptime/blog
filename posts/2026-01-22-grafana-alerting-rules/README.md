@@ -361,7 +361,7 @@ annotations:
 
 ### 3. Use Appropriate Severity Levels
 
-```
+```text
 critical: Wake someone up at 3 AM
 warning: Look at this during business hours
 info: Log for awareness, no action needed

@@ -35,7 +35,7 @@ flowchart LR
 
 Before diving into templates, establish a clean project structure. Flask expects templates in a specific location by default:
 
-```
+```text
 myapp/
     app.py
     templates/

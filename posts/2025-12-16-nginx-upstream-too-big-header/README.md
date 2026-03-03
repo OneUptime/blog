@@ -14,7 +14,7 @@ The "upstream sent too big header" error occurs when your backend application se
 
 When Nginx proxies requests to a backend, it allocates buffers to store the response. If the headers exceed these buffers, you'll see errors like:
 
-```
+```text
 upstream sent too big header while reading response header from upstream
 ```
 

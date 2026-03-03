@@ -24,7 +24,7 @@ Before you write any rules, you need a place to store user roles. The most commo
 
 Here is the structure we will use throughout this guide:
 
-```
+```text
 // Firestore document structure for user roles
 // Collection: users
 // Document ID: the Firebase Auth UID

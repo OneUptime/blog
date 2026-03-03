@@ -183,7 +183,7 @@ Provide only the {target_lang} code, no explanations."""
 
     return generate_code(prompt, target_lang, temperature=0.1)
 
-# Convert Python to Go
+## Convert Python to Go
 python_code = """
 from typing import List, Optional
 
@@ -204,7 +204,7 @@ def binary_search(arr: List[int], target: int) -> Optional[int]:
 
 go_code = translate_code(python_code, "Python", "Go")
 print(go_code)
-```
+```text
 
 ## Test Generation
 

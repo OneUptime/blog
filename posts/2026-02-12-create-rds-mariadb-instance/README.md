@@ -64,7 +64,7 @@ Set up networking as you would for any RDS instance:
 
 This security group rule allows MariaDB connections from your application.
 
-```
+```text
 Type: MySQL/Aurora (MariaDB uses the same port)
 Protocol: TCP
 Port: 3306
@@ -158,7 +158,7 @@ MariaDB's thread pool is enabled by default on RDS. You can tune it through para
 
 These parameter group settings optimize the thread pool for high-concurrency workloads.
 
-```
+```text
 thread_handling = pool-of-threads
 thread_pool_size = [number of vCPUs]
 thread_pool_max_threads = 1000

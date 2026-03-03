@@ -57,7 +57,7 @@ flux bootstrap github \
 
 This creates a repository structure:
 
-```
+```text
 fleet-infra/
 ├── clusters/
 │   ├── production-east/
@@ -72,7 +72,7 @@ fleet-infra/
 
 Create a well-structured repository layout:
 
-```
+```text
 fleet-infra/
 ├── clusters/
 │   ├── production-east/

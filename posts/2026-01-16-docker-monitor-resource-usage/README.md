@@ -30,7 +30,7 @@ docker stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
 
 ### Understanding the Output
 
-```
+```text
 CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O        PIDS
 a1b2c3d4e5f6   web       2.34%     45.2MiB / 512MiB      8.83%     1.45MB / 892kB    12.3MB / 0B      12
 b2c3d4e5f6a7   api       15.67%    234MiB / 1GiB         22.85%    45.6MB / 23.1MB   156MB / 89MB     45
@@ -89,7 +89,7 @@ docker system info
 
 Example `docker system df` output:
 
-```
+```text
 TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
 Images          25        10        8.5GB     4.2GB (49%)
 Containers      15        8         2.1GB     1.8GB (85%)

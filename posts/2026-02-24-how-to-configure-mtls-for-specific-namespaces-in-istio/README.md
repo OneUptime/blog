@@ -192,7 +192,7 @@ kubectl get peerauthentication --all-namespaces
 
 Sample output:
 
-```
+```text
 NAMESPACE      NAME      MODE          AGE
 istio-system   default   PERMISSIVE    5d
 payments       default   STRICT        2d
@@ -247,7 +247,7 @@ This ensures that every time the namespace is created or recreated, the mTLS pol
 
 Track mTLS adoption by namespace using Prometheus:
 
-```
+```text
 sum(rate(istio_requests_total{connection_security_policy="mutual_tls", reporter="destination"}[5m])) by (destination_workload_namespace)
 /
 sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_workload_namespace)

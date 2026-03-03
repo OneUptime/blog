@@ -225,7 +225,7 @@ Deploy the updated code and verify that Istio retries are handling failures corr
 
 Check retry metrics in Prometheus:
 
-```
+```text
 istio_requests_total{response_code="503",destination_service="payment-service.default.svc.cluster.local"}
 ```
 

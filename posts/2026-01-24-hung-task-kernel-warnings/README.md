@@ -18,7 +18,7 @@ This guide covers the causes, diagnosis, and resolution of hung task warnings, a
 
 When the kernel detects a process in the "D" (uninterruptible sleep) state for too long, it generates a hung task warning:
 
-```
+```text
 INFO: task process_name:1234 blocked for more than 120 seconds.
       Not tainted 5.15.0-generic
 "echo 0 > /proc/sys/kernel/hung_task_timeout_secs" disables this message.

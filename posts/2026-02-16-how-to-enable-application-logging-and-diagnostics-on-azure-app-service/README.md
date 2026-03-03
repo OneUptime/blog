@@ -109,7 +109,7 @@ az webapp log tail \
 
 You can also stream logs by hitting the Kudu log streaming endpoint directly:
 
-```
+```text
 https://my-app-service.scm.azurewebsites.net/api/logstream
 ```
 

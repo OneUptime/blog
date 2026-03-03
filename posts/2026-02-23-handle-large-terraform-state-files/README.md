@@ -51,7 +51,7 @@ Step 1 can also be slow for very large state files over slow connections or when
 
 The most effective solution for a large state is to break it into smaller, independent states. See our detailed guide on [splitting state files](https://oneuptime.com/blog/post/2026-02-23-split-terraform-state-file-multiple-states/view), but here's the high-level approach:
 
-```
+```text
 # Before: one monolithic state
 terraform/
   main.tf          # Everything in one file/directory
@@ -227,7 +227,7 @@ fi
 
 Here are rough benchmarks for what different state sizes mean in practice:
 
-```
+```text
 Resources  | State Size | Plan Time | Recommendation
 < 100      | < 1 MB     | < 30s     | Fine as-is
 100-500    | 1-5 MB     | 30s-2min  | Monitor growth

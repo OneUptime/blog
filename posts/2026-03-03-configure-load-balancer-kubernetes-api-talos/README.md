@@ -198,7 +198,7 @@ All generated configurations will reference this endpoint. Worker nodes will con
 
 Point a DNS name at your load balancer:
 
-```
+```text
 k8s-api.example.com.  IN  A  192.168.1.50    # The load balancer's IP
 ```
 

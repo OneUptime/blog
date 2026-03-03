@@ -20,7 +20,7 @@ Start with the basics. Check if ztunnel pods are running on all nodes:
 kubectl get daemonset ztunnel -n istio-system
 ```
 
-```
+```text
 NAME      DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE
 ztunnel   3         3         3       3             3
 ```

@@ -93,7 +93,7 @@ Once your metrics scope includes multiple projects, building a cross-project das
 
 This MQL query shows CPU utilization for Compute Engine instances across all monitored projects:
 
-```
+```text
 # CPU utilization grouped by project
 fetch gce_instance
 | metric 'compute.googleapis.com/instance/cpu/utilization'
@@ -105,7 +105,7 @@ fetch gce_instance
 
 You can create a dashboard that compares the same metric across projects. This is useful for comparing environments:
 
-```
+```text
 # Average CPU utilization per project for comparison
 fetch gce_instance
 | metric 'compute.googleapis.com/instance/cpu/utilization'
@@ -117,7 +117,7 @@ fetch gce_instance
 
 If you run the same service across multiple projects, you might want the total request count:
 
-```
+```text
 # Total HTTP request count summed across all projects
 fetch https_lb_rule
 | metric 'loadbalancing.googleapis.com/https/request_count'

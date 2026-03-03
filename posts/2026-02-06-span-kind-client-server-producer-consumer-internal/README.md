@@ -384,7 +384,7 @@ def handle_api_request(request):
 
 The resulting trace structure looks like this:
 
-```
+```text
 [SERVER] POST /api/orders (250ms)
   [INTERNAL] validate_order (5ms)
   [CLIENT] POST /api/payments/charge (180ms)

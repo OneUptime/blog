@@ -227,7 +227,7 @@ istioctl proxy-config cluster <pod-name> \
 Each port should show its own traffic policy settings. Compare the `lbPolicy`, `circuitBreakers`, and `outlierDetection` fields between the two.
 
 You should see separate cluster entries like:
-```
+```text
 outbound|8080||my-service.default.svc.cluster.local
 outbound|9090||my-service.default.svc.cluster.local
 ```

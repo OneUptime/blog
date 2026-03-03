@@ -134,7 +134,7 @@ logging.getLogger().addHandler(console_handler)
 
 Output:
 
-```
+```text
 2024-01-15 10:30:00 [INFO] [trace_id=abc123def456... span_id=789xyz...] Processing order 12345
 ```
 

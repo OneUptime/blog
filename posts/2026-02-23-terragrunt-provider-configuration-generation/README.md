@@ -142,7 +142,7 @@ EOF
 
 Your directory structure supports this with config files at each level:
 
-```
+```text
 infrastructure/
   terragrunt.hcl
   dev/

@@ -118,7 +118,7 @@ jenkins_deployment_jobs:
 
 Set up the repository that ArgoCD will use.
 
-```
+```text
 gitops-repo/
   base/
     api/

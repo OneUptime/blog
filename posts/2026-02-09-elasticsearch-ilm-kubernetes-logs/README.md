@@ -337,7 +337,7 @@ curl -X PUT "https://elasticsearch-es-http:9200/_index_template/k8s-logs-dev-tem
 
 Update Fluent Bit to route logs by namespace:
 
-```
+```text
 [OUTPUT]
     Name            es
     Match           kube.var.log.containers.*_dev-*
@@ -436,7 +436,7 @@ Proper shard sizing is critical for ILM performance. For Kubernetes logs:
 
 Calculate your shard count based on daily log volume:
 
-```
+```text
 Daily log volume: 50 GB
 Target shard size: 25 GB
 Number of primary shards: 50 / 25 = 2
@@ -455,7 +455,7 @@ ILM rollover can encounter issues in certain scenarios:
 
 **Write alias not set**: If Fluent Bit writes directly to dated indices instead of using the rollover alias, ILM rollover will not work. Ensure your log shipper writes to the alias:
 
-```
+```text
 [OUTPUT]
     Name            es
     Match           kube.*

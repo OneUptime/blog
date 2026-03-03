@@ -412,7 +412,7 @@ spec:
 
 ### Directory Structure
 
-```
+```text
 kubernetes/
 ├── base/
 │   ├── kustomization.yaml

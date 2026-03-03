@@ -42,7 +42,7 @@ The simplest approach - add group entries directly to `/etc/sudoers`:
 sudo visudo
 ```
 
-```
+```text
 # Allow Domain Admins full sudo access
 %"domain admins"@corp.example.com ALL=(ALL:ALL) ALL
 
@@ -66,7 +66,7 @@ For better organization, use files in `/etc/sudoers.d/`:
 sudo nano /etc/sudoers.d/ad-groups
 ```
 
-```
+```text
 # Active Directory group to Ubuntu sudo mapping
 # File: /etc/sudoers.d/ad-groups
 
@@ -137,7 +137,7 @@ ldap_sudo_search_base = ou=SUDOers,dc=corp,dc=example,dc=com
 sudo nano /etc/nsswitch.conf
 ```
 
-```
+```text
 # Add sssd to the sudoers lookup
 sudoers: files sss
 ```
@@ -275,7 +275,7 @@ For more detailed audit logging, configure sudo's log file:
 sudo nano /etc/sudoers.d/logging
 ```
 
-```
+```text
 # Log all sudo commands to a dedicated file
 Defaults    log_output
 Defaults    logfile="/var/log/sudo.log"

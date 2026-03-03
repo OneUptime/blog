@@ -119,7 +119,7 @@ az monitor diagnostic-settings create \
 
 During an attack, query the mitigation flow logs to understand the attack characteristics.
 
-```
+```text
 // KQL query to analyze DDoS attack traffic during mitigation
 AzureDiagnostics
 | where Category == "DDoSMitigationFlowLogs"

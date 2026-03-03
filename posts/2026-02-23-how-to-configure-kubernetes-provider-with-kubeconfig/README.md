@@ -84,7 +84,7 @@ provider "kubernetes" {
 
 With the directory structure:
 
-```
+```text
 project/
   kubeconfigs/
     production.yaml

@@ -108,7 +108,7 @@ This filters for image files larger than 1 KB.
 
 You can also filter within the flow using a Condition action:
 
-```
+```text
 // Check if the blob is in the correct container and is a PDF
 // Subject format: /blobServices/default/containers/{container}/blobs/{blobpath}
 @contains(triggerBody()?['subject'], '/containers/uploads/')
@@ -160,7 +160,7 @@ The key fields are:
 
 The subject looks like `/blobServices/default/containers/uploads/blobs/reports/january.pdf`. To extract the container and blob name, use expressions:
 
-```
+```text
 // Extract the container name from the event subject
 // Split by '/containers/' and '/blobs/' to get the container name
 @split(split(triggerBody()?['subject'], '/containers/')[1], '/blobs/')[0]

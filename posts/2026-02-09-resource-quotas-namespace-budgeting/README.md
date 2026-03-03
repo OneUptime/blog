@@ -207,7 +207,7 @@ kubectl describe resourcequota -n team-backend
 
 The describe output shows:
 
-```
+```text
 Name:            compute-quota
 Namespace:       team-backend
 Resource         Used   Hard
@@ -240,7 +240,7 @@ Alert teams when they approach quota limits, giving them time to clean up or req
 
 When deployments fail due to quotas, kubectl shows clear errors:
 
-```
+```text
 Error from server (Forbidden): pods "myapp-abc123" is forbidden:
 exceeded quota: compute-quota, requested: requests.memory=2Gi,
 used: requests.memory=99Gi, limited: requests.memory=100Gi

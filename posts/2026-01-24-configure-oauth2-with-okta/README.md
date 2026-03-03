@@ -280,7 +280,7 @@ if (window.location.pathname === '/callback') {
 
 ## Step 3: Configure Redirect URIs
 
-```
+```text
 Sign-in redirect URIs:
 - http://localhost:3000/callback (development)
 - https://staging.your-app.com/callback (staging)

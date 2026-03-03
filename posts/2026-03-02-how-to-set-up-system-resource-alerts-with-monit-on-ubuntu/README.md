@@ -46,7 +46,7 @@ sudo nano /etc/monit/monitrc
 
 Key settings to configure:
 
-```
+```text
 # Check interval (default: 30 seconds)
 set daemon 60
 
@@ -82,7 +82,7 @@ Create resource monitoring checks in `/etc/monit/conf.d/system`:
 sudo nano /etc/monit/conf.d/system
 ```
 
-```
+```text
 # System resource monitoring
 check system myserver.example.com
     if loadavg (1min) per core > 2 for 3 cycles then alert
@@ -106,7 +106,7 @@ Key points:
 sudo nano /etc/monit/conf.d/nginx
 ```
 
-```
+```text
 check process nginx with pidfile /run/nginx.pid
     start program = "/usr/bin/systemctl start nginx"
     stop program = "/usr/bin/systemctl stop nginx"
@@ -128,7 +128,7 @@ The `if 3 restarts within 5 cycles then unmonitor` prevents monit from looping e
 sudo nano /etc/monit/conf.d/postgresql
 ```
 
-```
+```text
 check process postgresql with pidfile /var/run/postgresql/14-main.pid
     start program = "/usr/bin/systemctl start postgresql"
     stop program = "/usr/bin/systemctl stop postgresql"
@@ -145,7 +145,7 @@ check process postgresql with pidfile /var/run/postgresql/14-main.pid
 sudo nano /etc/monit/conf.d/redis
 ```
 
-```
+```text
 check process redis with pidfile /var/run/redis/redis-server.pid
     start program = "/usr/bin/systemctl start redis"
     stop program = "/usr/bin/systemctl stop redis"
@@ -160,7 +160,7 @@ check process redis with pidfile /var/run/redis/redis-server.pid
 sudo nano /etc/monit/conf.d/filesystem
 ```
 
-```
+```text
 # Monitor root filesystem
 check filesystem rootfs with path /
     if space usage > 80% then alert
@@ -182,7 +182,7 @@ check filesystem tmpfs with path /tmp
 sudo nano /etc/monit/conf.d/files
 ```
 
-```
+```text
 # Alert if a critical config file changes
 check file nginx-config with path /etc/nginx/nginx.conf
     if changed checksum then alert
@@ -203,7 +203,7 @@ check file nginx-error-log with path /var/log/nginx/error.log
 sudo nano /etc/monit/conf.d/network
 ```
 
-```
+```text
 # Check if port 25 (SMTP) is accessible
 check network eth0 with interface eth0
     if download > 100 MB/s then alert
@@ -247,13 +247,13 @@ sudo monit -I
 
 If you configured the web interface, access it at:
 
-```
+```text
 http://localhost:2812
 ```
 
 It shows a dashboard with all monitored items and their status. For remote access:
 
-```
+```text
 set httpd port 2812 and
     use address 0.0.0.0
     allow admin:yourpassword
@@ -291,7 +291,7 @@ Here's a production-ready configuration combining all the pieces:
 sudo nano /etc/monit/conf.d/production-setup
 ```
 
-```
+```text
 # System resources
 check system $HOST
     if loadavg (1min) per core > 3 for 3 cycles then alert

@@ -218,7 +218,7 @@ aws ec2 revoke-security-group-ingress \
 
 With even a modest infrastructure, you'll end up with dozens of security groups. Use consistent naming:
 
-```
+```text
 {environment}-{service}-{role}-sg
 ```
 

@@ -16,13 +16,13 @@ If you skip this alignment, you will see random connection errors, pool exhausti
 
 Without Istio, your application pool connects directly to the database:
 
-```
+```text
 Application Pool (50 connections) -> Database (max_connections: 200)
 ```
 
 With Istio, there is an extra hop:
 
-```
+```text
 Application Pool (50 connections) -> Client Sidecar -> Server Sidecar -> Database (max_connections: 200)
 ```
 
@@ -74,7 +74,7 @@ And your database `max_connections` should be higher still - 200 in this case, t
 
 The formula:
 
-```
+```text
 database max_connections > DestinationRule maxConnections > sum(all application pool sizes)
 ```
 
@@ -114,7 +114,7 @@ This is where things often go wrong. You have four timeout settings that need to
 
 The rule is: the closer to the application, the shorter the timeout should be.
 
-```
+```text
 Application pool idle timeout < Istio idleTimeout < Database idle timeout
 ```
 
@@ -127,7 +127,7 @@ connectionPool:
     idleTimeout: 1800s  # 30 minutes
 ```
 
-```
+```text
 # Application HikariCP
 spring.datasource.hikari.idle-timeout=600000   # 10 minutes
 
@@ -141,7 +141,7 @@ If Istio closes a connection before the application's pool notices, the pool wil
 
 Many teams use PgBouncer or ProxySQL between their application and database. With Istio, the architecture becomes:
 
-```
+```text
 App -> Client Sidecar -> PgBouncer Sidecar -> PgBouncer -> PgBouncer Sidecar -> DB Sidecar -> Database
 ```
 
@@ -213,7 +213,7 @@ If a database endpoint gets 5 consecutive connection errors within 30 seconds, I
 
 Track these Istio metrics to understand connection pool health:
 
-```
+```text
 # Active connections
 envoy_cluster_upstream_cx_active{cluster_name="outbound|5432||postgres.database.svc.cluster.local"}
 

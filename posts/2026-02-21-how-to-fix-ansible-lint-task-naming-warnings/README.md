@@ -39,7 +39,7 @@ This is the most basic naming rule. Every task must have a `name` field.
 
 When you run this, the output shows module names instead of meaningful descriptions:
 
-```
+```text
 TASK [ansible.builtin.apt] ******************
 TASK [ansible.builtin.systemd] **************
 TASK [ansible.builtin.copy] *****************
@@ -71,7 +71,7 @@ TASK [ansible.builtin.copy] *****************
 
 Now the output tells you what each step does:
 
-```
+```text
 TASK [Install nginx web server] *************
 TASK [Start and enable nginx service] *******
 TASK [Deploy nginx configuration file] ******

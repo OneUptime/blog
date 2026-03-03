@@ -132,7 +132,7 @@ If your on-premises network advertises routes you do not need in GCP, you can fi
 
 On a Cisco router, this might look like:
 
-```
+```text
 ! Example Cisco configuration to filter routes advertised to GCP
 route-map TO-GCP permit 10
   match ip address prefix-list GCP-ROUTES

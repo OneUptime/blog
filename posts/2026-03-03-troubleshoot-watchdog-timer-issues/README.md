@@ -182,7 +182,7 @@ machine:
 
 Check BIOS settings. Some servers require the watchdog to be explicitly enabled in the BIOS/UEFI:
 
-```
+```text
 BIOS Settings to verify:
 - OS Watchdog Timer: Enabled
 - Watchdog Timer Action: Reset

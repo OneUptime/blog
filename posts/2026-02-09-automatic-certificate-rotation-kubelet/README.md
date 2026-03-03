@@ -371,7 +371,7 @@ sudo journalctl -u kubelet | grep -i rotate
 
 Rotation occurs at 80% of certificate lifetime:
 
-```
+```text
 Certificate lifetime: 1 year (8760 hours)
 Rotation trigger: 80% = 7008 hours = 292 days
 Days before expiry: 73 days

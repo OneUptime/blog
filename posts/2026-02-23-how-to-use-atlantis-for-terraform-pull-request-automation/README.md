@@ -183,7 +183,7 @@ Here is the typical developer experience:
 6. Atlantis runs `terraform apply` and posts the result
 7. PR is merged
 
-```
+```text
 Developer: Opens PR modifying environments/production/networking/main.tf
 
 Atlantis Bot:
@@ -264,7 +264,7 @@ repos:
 
 Atlantis has a built-in locking mechanism separate from Terraform state locking. When a plan runs for a directory, Atlantis locks that directory to the specific PR. No other PR can plan or apply changes to the same directory until the lock is released.
 
-```
+```text
 # If another PR tries to plan the same directory:
 
 Developer: atlantis plan

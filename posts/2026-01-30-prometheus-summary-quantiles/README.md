@@ -419,7 +419,7 @@ longWindowSummary := prometheus.NewSummary(prometheus.SummaryOpts{
 
 When Prometheus scrapes a summary, it receives these metrics:
 
-```
+```text
 # HELP http_request_duration_seconds Request latency distribution in seconds
 # TYPE http_request_duration_seconds summary
 http_request_duration_seconds{quantile="0.5"} 0.052

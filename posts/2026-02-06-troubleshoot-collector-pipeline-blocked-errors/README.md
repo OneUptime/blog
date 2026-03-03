@@ -68,21 +68,21 @@ service:
 ### Key Metrics to Monitor
 
 **Queue Metrics:**
-```
+```text
 otelcol_exporter_queue_size          # Current items in queue
 otelcol_exporter_queue_capacity      # Max queue capacity
 otelcol_exporter_enqueue_failed      # Items rejected due to full queue
 ```
 
 **Exporter Metrics:**
-```
+```text
 otelcol_exporter_send_failed_spans         # Failed span exports
 otelcol_exporter_send_failed_metric_points # Failed metric exports
 otelcol_exporter_send_failed_log_records   # Failed log exports
 ```
 
 **Receiver Metrics:**
-```
+```text
 otelcol_receiver_accepted_spans      # Spans accepted by receiver
 otelcol_receiver_refused_spans       # Spans refused (backpressure)
 ```

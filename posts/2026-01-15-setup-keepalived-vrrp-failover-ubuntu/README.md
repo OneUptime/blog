@@ -112,7 +112,7 @@ The main Keepalived configuration file is located at `/etc/keepalived/keepalived
 
 A Keepalived configuration consists of several blocks:
 
-```
+```text
 global_defs {
     # Global definitions and notification settings
 }

@@ -56,7 +56,7 @@ Ask yourself:
 
 For an e-commerce app, your access patterns might be:
 
-```
+```text
 1. Get user profile by userId          -> userId as partition key
 2. Get all orders for a user           -> userId as partition key, orderDate as sort key
 3. Get order by orderId                -> orderId as partition key (separate table or GSI)
@@ -86,7 +86,7 @@ If your partition key groups related items together, a sort key lets you organiz
 
 Here's a classic pattern for a social media app:
 
-```
+```text
 Table: Posts
 Partition key: authorId
 Sort key: createdAt
@@ -105,7 +105,7 @@ Without a sort key, each partition key value can only have one item. With a sort
 
 Auto-incrementing IDs concentrate writes on the latest partition:
 
-```
+```text
 Bad:  id = 1, 2, 3, 4, 5, ...  (all recent writes go to the same partition range)
 Good: id = UUID                  (writes spread randomly across partitions)
 ```
@@ -114,7 +114,7 @@ Good: id = UUID                  (writes spread randomly across partitions)
 
 Similar problem - all current traffic hits the same partition:
 
-```
+```text
 Bad:  partition_key = "2026-02-12"  (all today's traffic on one partition)
 Good: partition_key = userId         (traffic distributed by user)
       sort_key = "2026-02-12"       (date as sort key for range queries)
@@ -130,7 +130,7 @@ Using something like `type = "user"` means every user record shares one partitio
 
 Sensors report data every second. Using `sensorId` as the partition key distributes traffic:
 
-```
+```text
 Partition key: sensorId   (e.g., "sensor-temp-floor3-001")
 Sort key: timestamp        (e.g., "2026-02-12T10:30:45.123Z")
 ```
@@ -141,14 +141,14 @@ Each sensor gets its own slice of throughput, and the sort key lets you query ti
 
 For a SaaS app with many tenants, `tenantId` works well if tenants are roughly the same size:
 
-```
+```text
 Partition key: tenantId    (e.g., "tenant-acme-corp")
 Sort key: resourceType#id  (e.g., "USER#user-123" or "PROJECT#proj-456")
 ```
 
 But if one tenant is 1000x bigger than others, you'll get a hot partition. In that case, add write sharding - append a random suffix to the partition key:
 
-```
+```text
 Partition key: tenantId#shard  (e.g., "tenant-megacorp#3")
 ```
 
@@ -158,7 +158,7 @@ For more on this technique, check out our post on [DynamoDB write sharding](http
 
 For event logs, combining the source and a time bucket works well:
 
-```
+```text
 Partition key: source#hourBucket  (e.g., "api-server#2026-02-12T10")
 Sort key: eventId                  (e.g., "evt-abc123")
 ```

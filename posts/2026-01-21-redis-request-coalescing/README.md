@@ -14,7 +14,7 @@ Request coalescing (also known as request deduplication or single-flight) is a t
 
 When a popular cache key expires or is missing, multiple concurrent requests can trigger simultaneous cache misses:
 
-```
+```text
 Without Coalescing:
 Time 0ms: Request A -> Cache MISS -> Fetch from DB
 Time 1ms: Request B -> Cache MISS -> Fetch from DB (duplicate!)

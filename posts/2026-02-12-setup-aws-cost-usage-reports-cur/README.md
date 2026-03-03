@@ -173,7 +173,7 @@ resource "aws_cur_report_definition" "monthly" {
 
 Once the report starts generating (it takes up to 24 hours for the first delivery), your S3 bucket will have this structure:
 
-```
+```text
 s3://my-company-cur-reports/
   cur/
     monthly-cur/

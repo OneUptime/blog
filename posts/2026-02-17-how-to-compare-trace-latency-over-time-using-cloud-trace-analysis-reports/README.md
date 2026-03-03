@@ -148,7 +148,7 @@ compare_periods(
 
 Running this produces output like:
 
-```
+```text
 Analyzing span: /api/orders
 Baseline: 2026-02-15 10:00:00 to 2026-02-16 10:00:00
 Comparison: 2026-02-16 10:00:00 to 2026-02-17 10:00:00

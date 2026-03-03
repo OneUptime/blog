@@ -151,7 +151,7 @@ cd ../project-current && npm run build
 
 A recommended structure for organizing worktrees:
 
-```
+```text
 ~/projects/
     myproject/                  # Primary worktree (main branch)
         .git/                   # The actual repository

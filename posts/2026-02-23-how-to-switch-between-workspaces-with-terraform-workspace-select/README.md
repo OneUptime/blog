@@ -21,7 +21,7 @@ terraform workspace select staging
 
 Output:
 
-```
+```text
 Switched to workspace "staging".
 ```
 
@@ -88,7 +88,7 @@ terraform workspace select nonexistent
 
 Output:
 
-```
+```text
 Workspace "nonexistent" doesn't exist.
 
 You can create this workspace with the "new" subcommand

@@ -49,7 +49,7 @@ npm create amplify@latest
 
 This creates an `amplify/` directory with the following structure:
 
-```
+```text
 amplify/
   auth/
     resource.ts

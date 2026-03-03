@@ -337,7 +337,7 @@ steps:
 To see how parallelism affects your pipeline, compare the total elapsed time before and after. Azure DevOps shows the duration of each job in the pipeline run view.
 
 Before parallelism:
-```
+```text
 Build Backend:      5 min
 Build Frontend:     4 min
 Test Backend:       8 min
@@ -347,7 +347,7 @@ Total:             25 min
 ```
 
 After parallelism:
-```
+```text
 Build Backend + Build Frontend + Lint:  5 min (parallel, limited by longest)
 Test Backend + Test Frontend:           8 min (parallel, limited by longest)
 Total:                                 13 min

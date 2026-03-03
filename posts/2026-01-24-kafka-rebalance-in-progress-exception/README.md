@@ -38,7 +38,7 @@ sequenceDiagram
 
 ## When This Error Occurs
 
-```
+```text
 org.apache.kafka.clients.consumer.RebalanceInProgressException:
 Offset commit cannot be completed since the consumer is undergoing a rebalance for auto partition assignment
 ```

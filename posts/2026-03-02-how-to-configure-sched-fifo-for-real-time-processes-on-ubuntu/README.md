@@ -18,7 +18,7 @@ Linux offers several scheduling policies. The default `SCHED_OTHER` (also called
 
 ## Understanding Linux Scheduling Policies
 
-```
+```text
 Policy          Class       Use Case
 --------        -----       --------
 SCHED_OTHER     Normal      General purpose - most applications

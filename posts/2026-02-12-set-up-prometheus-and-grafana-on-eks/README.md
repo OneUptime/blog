@@ -292,7 +292,7 @@ alertmanager:
 
 Prometheus data needs to survive pod restarts. The values file above configures a 50GB gp3 volume. Size this based on your retention period and the number of time series you're collecting. A rough formula:
 
-```
+```text
 Storage needed = retention_days * ingestion_rate * bytes_per_sample * 1.5 (overhead)
 ```
 

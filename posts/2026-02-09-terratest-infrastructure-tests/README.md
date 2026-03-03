@@ -37,7 +37,7 @@ go get github.com/stretchr/testify/require
 
 Create the basic project structure:
 
-```
+```text
 kubernetes-tests/
 ├── go.mod
 ├── go.sum

@@ -27,7 +27,7 @@ services:
 
 The full format supports three components separated by colons.
 
-```
+```text
 host-path:container-path:permissions
 ```
 

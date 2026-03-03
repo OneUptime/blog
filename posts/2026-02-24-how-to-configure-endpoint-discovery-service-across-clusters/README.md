@@ -46,7 +46,7 @@ istioctl proxy-config endpoints deployment/sleep -n sample --context="${CTX_CLUS
 
 The output looks something like:
 
-```
+```text
 10.10.1.5:5000    HEALTHY     outbound|5000||helloworld.sample.svc.cluster.local
 10.20.2.8:5000    HEALTHY     outbound|5000||helloworld.sample.svc.cluster.local
 ```

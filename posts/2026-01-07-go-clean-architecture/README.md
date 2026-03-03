@@ -27,7 +27,7 @@ The key principle is that inner layers know nothing about outer layers, making t
 
 Let's start by defining a clean project structure that reflects our architectural layers.
 
-```
+```text
 userservice/
 ├── cmd/
 │   └── api/

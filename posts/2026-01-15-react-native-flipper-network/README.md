@@ -380,7 +380,7 @@ Use the search bar to filter by:
 - Request method
 - Status code
 
-```
+```text
 // Search examples
 /api/users        # Filter by path
 api.example.com   # Filter by domain
@@ -416,7 +416,7 @@ DELETE // Deletions
 
 Create complex filters:
 
-```
+```text
 // Combine filters
 domain:api.example.com method:POST status:>=400
 ```
@@ -1062,7 +1062,7 @@ Clear the request list periodically to focus on current debugging:
 
 Learn search syntax for quick filtering:
 
-```
+```text
 status:>=400 method:POST  # Failed POST requests
 domain:api.example.com    # Specific API calls
 ```

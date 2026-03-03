@@ -18,7 +18,7 @@ There are legitimate reasons to go multi-cloud: regulatory requirements for data
 
 The most practical pattern is to create a thin abstraction layer that defines a common interface, with cloud-specific implementations underneath.
 
-```
+```text
 modules/
   compute/
     interface/         # Shared variable and output definitions

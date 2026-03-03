@@ -18,7 +18,7 @@ Without CORS configuration, browsers block requests from your frontend applicati
 
 CORS errors typically appear in the browser console:
 
-```
+```text
 Access to XMLHttpRequest at 'http://api.example.com/users' from origin
 'http://localhost:3000' has been blocked by CORS policy: No
 'Access-Control-Allow-Origin' header is present on the requested resource.

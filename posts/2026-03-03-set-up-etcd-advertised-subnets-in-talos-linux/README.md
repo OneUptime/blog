@@ -182,7 +182,7 @@ talosctl etcd members --nodes 10.0.1.10
 
 The output should show peer URLs using IPs from your configured subnet. For example:
 
-```
+```text
 ID                 HOSTNAME        PEER URLS                      CLIENT URLS
 8e9e05c52164694d   cp-1           https://10.0.1.10:2380         https://10.0.1.10:2379
 91bc3c398fc3c146   cp-2           https://10.0.1.11:2380         https://10.0.1.11:2379

@@ -14,7 +14,7 @@ The "cursor not found" error in MongoDB occurs when your application tries to co
 
 The error typically appears as:
 
-```
+```text
 MongoServerError: cursor id 1234567890 not found
 CursorNotFound: Cursor not found (namespace: 'mydb.mycollection', id: 1234567890)
 ```

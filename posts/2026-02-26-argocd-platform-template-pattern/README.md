@@ -47,7 +47,7 @@ The platform template reads this and provisions:
 
 ## Template Repository Structure
 
-```
+```text
 platform-templates/
 ├── templates/
 │   ├── microservice-full/

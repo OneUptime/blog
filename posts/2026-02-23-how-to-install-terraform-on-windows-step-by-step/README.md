@@ -66,7 +66,7 @@ terraform -version
 
 You should see something like:
 
-```
+```text
 Terraform v1.7.5
 on windows_amd64
 ```

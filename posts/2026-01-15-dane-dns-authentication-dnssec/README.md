@@ -34,13 +34,13 @@ Before implementing DANE, you need:
 
 DANE uses TLSA (Transport Layer Security Authentication) records to publish certificate information. A TLSA record has four fields:
 
-```
+```text
 _port._protocol.hostname. IN TLSA usage selector matching-type certificate-data
 ```
 
 ### Example TLSA Record
 
-```
+```text
 _443._tcp.www.example.com. IN TLSA 3 1 1 a9b42f8e...
 ```
 
@@ -206,7 +206,7 @@ dnssec-signzone -A -3 $(head -c 16 /dev/urandom | xxd -p) \
 
 Configure BIND to use the signed zone:
 
-```
+```text
 // named.conf
 zone "example.com" {
     type master;
@@ -253,7 +253,7 @@ drill -TD example.com
 
 Expected output shows `ad` (Authenticated Data) flag:
 
-```
+```text
 ;; flags: qr rd ra ad; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1
 ```
 
@@ -263,7 +263,7 @@ Once DNSSEC is active, add your TLSA records.
 
 ### BIND Zone File
 
-```
+```text
 ; TLSA records for HTTPS
 _443._tcp.www.example.com. 3600 IN TLSA 3 1 1 (
     a9b42f8e1d3c4b5a6789012345678901234567890abcdef0123456789abcdef0
@@ -434,7 +434,7 @@ systemctl reload postfix
 
 ### Exim DANE Configuration
 
-```
+```text
 # /etc/exim4/exim4.conf.template
 
 # Enable DNSSEC
@@ -452,7 +452,7 @@ remote_smtp:
 
 Publish TLSA records for all email-related ports:
 
-```
+```text
 ; Port 25 - MTA-to-MTA SMTP
 _25._tcp.mail.example.com. 3600 IN TLSA 3 1 1 (hash)
 
@@ -495,7 +495,7 @@ openssl s_client -connect mail.example.com:25 \
 
 Usage `3` pins your exact certificate. This is the strongest but requires DNS updates when certificates change:
 
-```
+```text
 _443._tcp.www.example.com. IN TLSA 3 1 1 (current-cert-hash)
 ```
 
@@ -511,7 +511,7 @@ _443._tcp.www.example.com. IN TLSA 3 1 1 (current-cert-hash)
 
 Usage `3` with selector `1` pins only the public key. You can renew certificates freely as long as you keep the same key pair:
 
-```
+```text
 _443._tcp.www.example.com. IN TLSA 3 1 1 (spki-hash)
 ```
 
@@ -522,7 +522,7 @@ _443._tcp.www.example.com. IN TLSA 3 1 1 (spki-hash)
 
 Usage `2` pins a CA certificate as the trust anchor. Any certificate issued by that CA (and chaining to it) is valid:
 
-```
+```text
 _443._tcp.www.example.com. IN TLSA 2 0 1 (ca-cert-hash)
 ```
 
@@ -532,7 +532,7 @@ _443._tcp.www.example.com. IN TLSA 2 0 1 (ca-cert-hash)
 
 Publish multiple TLSA records with different certificates or keys. This provides rollover capability and disaster recovery:
 
-```
+```text
 ; Primary certificate
 _443._tcp.www.example.com. IN TLSA 3 1 1 (primary-hash)
 

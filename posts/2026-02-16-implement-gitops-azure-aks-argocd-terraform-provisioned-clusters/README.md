@@ -335,7 +335,7 @@ resource "kubernetes_manifest" "orders_app" {
 
 Your GitOps configuration repository should have a clear structure. Here is what works well.
 
-```
+```text
 gitops-config/
   apps/                          # ArgoCD Application definitions
     orders-service.yaml

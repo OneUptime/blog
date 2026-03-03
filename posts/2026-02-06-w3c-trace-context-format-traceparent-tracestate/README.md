@@ -32,7 +32,7 @@ The diagram above shows the simplest case. Service A generates a trace context, 
 
 The `traceparent` header carries the core identification fields that every tracing system needs. It is a single string with four dash-separated parts.
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
               |  |                                |                |
               |  |                                |                +-- trace-flags
@@ -88,7 +88,7 @@ Downstream services can use this flag to make their own sampling decisions. A co
 
 While `traceparent` carries the mandatory fields that every system needs, `tracestate` is an optional header that lets vendors attach their own data. It is a comma-separated list of key-value pairs.
 
-```
+```text
 tracestate: rojo=00f067aa0ba902b7,congo=t61rcWkgMzE
 ```
 
@@ -172,7 +172,7 @@ with tracer.start_as_current_span("call-service-b") as span:
 
 When you run this, the `inject` function writes the `traceparent` header (and `tracestate` if applicable) into the headers dictionary. The output looks something like this:
 
-```
+```text
 Outgoing headers:
   traceparent: 00-a]b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e-1a2b3c4d5e6f7a8b-01
   tracestate:

@@ -94,7 +94,7 @@ The setup wizard guides you through connecting to Plex:
 1. **Welcome** - Click Next
 2. **Plex Authentication** - Sign in with your Plex account or manually enter the Plex URL and token:
 
-```
+```text
 Plex IP or Hostname: 192.168.1.100
 Port: 32400
 Plex Token: your_plex_token_here
@@ -134,7 +134,7 @@ Tautulli supports extensive notification options. Go to Settings > Notification 
 
 ### Discord Notifications
 
-```
+```text
 # Add a Discord notification agent
 Agent Type: Discord
 Webhook URL: https://discord.com/api/webhooks/YOUR_WEBHOOK_URL
@@ -148,7 +148,7 @@ Webhook URL: https://discord.com/api/webhooks/YOUR_WEBHOOK_URL
 
 Customize the notification text with Tautulli's template variables:
 
-```
+```text
 # Example Discord notification template for playback start
 {user} started watching {title} on {player}
 Quality: {quality_profile} ({stream_decision})
@@ -156,7 +156,7 @@ Quality: {quality_profile} ({stream_decision})
 
 ### Email Notifications
 
-```
+```text
 # Email agent configuration
 SMTP Server: smtp.gmail.com
 SMTP Port: 587
@@ -169,7 +169,7 @@ To: admin@your-domain.com
 
 ### Telegram Notifications
 
-```
+```text
 # Telegram agent configuration
 Bot Token: YOUR_BOT_TOKEN
 Chat ID: YOUR_CHAT_ID

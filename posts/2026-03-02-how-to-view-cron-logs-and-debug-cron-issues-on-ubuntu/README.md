@@ -46,7 +46,7 @@ sudo tail -f /var/log/syslog | grep CRON
 
 A typical cron log entry looks like:
 
-```
+```text
 Mar  2 10:00:01 server CRON[12345]: (root) CMD (/usr/local/bin/backup.sh)
 Mar  2 10:00:01 server CRON[12346]: (CRON) info (No MTA installed, discarding output)
 ```
@@ -141,7 +141,7 @@ sudo tail -f /var/log/syslog | grep -E "CRON|backup"
 
 If you see the CMD entry, cron ran the job. If the job had output issues, you may see:
 
-```
+```text
 Mar  2 10:00:01 server CRON[1234]: (root) CMD (/usr/local/bin/backup.sh)
 Mar  2 10:00:03 server CRON[1234]: (root) MAIL (mailed 289 bytes of output but got status 0x004b)
 ```

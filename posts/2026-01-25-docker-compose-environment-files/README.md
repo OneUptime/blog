@@ -110,7 +110,7 @@ services:
 
 Structure your environment files for different deployment targets:
 
-```
+```text
 project/
   docker-compose.yml
   .env                    # Default values (committed)
@@ -333,7 +333,7 @@ echo ".env.local" >> .gitignore
 
 Here is a full example showing environment file organization:
 
-```
+```text
 myproject/
   docker-compose.yml
   docker-compose.override.yml      # Local dev (auto-loaded)

@@ -68,7 +68,7 @@ go mod init github.com/yourorg/scheduler-extender
 
 ### Project Structure
 
-```
+```text
 scheduler-extender/
 ├── main.go
 ├── pkg/

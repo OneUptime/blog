@@ -31,7 +31,7 @@ sudo -H -S -n -u root /bin/sh -c 'echo BECOME-SUCCESS-xyz; /usr/bin/python3 /tmp
 
 ## Common Error: Missing sudo Password
 
-```
+```text
 fatal: [web-01]: FAILED! => {"msg": "Missing sudo password"}
 ```
 
@@ -88,13 +88,13 @@ You can automate this with an initial playbook:
 
 ## Common Error: sudo Requires a TTY
 
-```
+```text
 fatal: [web-01]: FAILED! => {"msg": "Timeout (12s) waiting for privilege escalation prompt"}
 ```
 
 Some systems (particularly RHEL/CentOS with default sudoers) require a TTY for sudo:
 
-```
+```text
 # In /etc/sudoers
 Defaults requiretty
 ```
@@ -127,7 +127,7 @@ Note: Pipelining requires `requiretty` to be disabled in sudoers.
 
 ## Common Error: User Not in sudoers
 
-```
+```text
 fatal: [web-01]: FAILED! => {"msg": "deploy is not in the sudoers file. This incident will be reported."}
 ```
 
@@ -176,7 +176,7 @@ become_method: runas   # Windows
 
 ## Common Error: Become User Does Not Exist
 
-```
+```text
 fatal: [web-01]: FAILED! => {"msg": "Failed to set permissions on the temporary files Ansible needs to create when becoming an unprivileged user"}
 ```
 
@@ -202,7 +202,7 @@ ansible web-01 -m command -a "sudo -u postgres whoami" --become
 
 **Fix: Ensure sudoers allows the user switch:**
 
-```
+```text
 # /etc/sudoers.d/deploy
 deploy ALL=(ALL) NOPASSWD: ALL
 # Or more restrictive:
@@ -211,7 +211,7 @@ deploy ALL=(postgres) NOPASSWD: ALL
 
 ## Common Error: Temporary File Permission Issues
 
-```
+```text
 fatal: [web-01]: FAILED! => {"msg": "Failed to set permissions on the temporary files Ansible needs to create when becoming an unprivileged user (rc: 1, err: chmod: changing permissions of '/tmp/ansible-tmp-xyz/': Operation not permitted)"}
 ```
 
@@ -251,7 +251,7 @@ ansible web-01 -m command -a "whoami" --become -vvvv
 
 Look for the `BECOME` line:
 
-```
+```text
 <web-01> SSH: EXEC ssh ... '/bin/sh -c '"'"'echo BECOME-SUCCESS-abcdef123;
   /usr/bin/sudo -H -S -n -u root /bin/sh -c '"'"'"'"'"'"'"'"'echo BECOME-SUCCESS-abcdef123;
   /usr/bin/python3 /home/deploy/.ansible/tmp/...'"'"'"'"'"'"'"'"''"'"''
@@ -259,7 +259,7 @@ Look for the `BECOME` line:
 
 If sudo is failing, you might see:
 
-```
+```text
 <web-01> (1, '', 'sudo: a password is required\n')
 ```
 

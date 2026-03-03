@@ -14,7 +14,7 @@ The S3 backend is the go-to choice for teams running Terraform on AWS. When you 
 
 When you configure an S3 backend and create workspaces, Terraform uses this pattern:
 
-```
+```text
 Default workspace:
   s3://<bucket>/<key>
 
@@ -36,7 +36,7 @@ terraform {
 
 The resulting S3 paths for different workspaces:
 
-```
+```text
 default:  acme-terraform-state/services/api/terraform.tfstate
 dev:      acme-terraform-state/env:/dev/services/api/terraform.tfstate
 staging:  acme-terraform-state/env:/staging/services/api/terraform.tfstate
@@ -62,7 +62,7 @@ terraform {
 
 Now the paths look like:
 
-```
+```text
 default:  acme-terraform-state/services/api/terraform.tfstate
 dev:      acme-terraform-state/workspaces/dev/services/api/terraform.tfstate
 staging:  acme-terraform-state/workspaces/staging/services/api/terraform.tfstate
@@ -84,7 +84,7 @@ terraform {
 
 This produces:
 
-```
+```text
 default:  acme-terraform-state/terraform.tfstate
 dev:      acme-terraform-state/services/api/dev/terraform.tfstate
 staging:  acme-terraform-state/services/api/staging/terraform.tfstate
@@ -138,7 +138,7 @@ terraform {
 
 The resulting S3 structure:
 
-```
+```text
 acme-terraform-state/
   terraform.tfstate                              (networking default)
   networking/
@@ -223,7 +223,7 @@ terraform {
 
 Lock entries in DynamoDB:
 
-```
+```text
 LockID: acme-terraform-state/services/api/dev/terraform.tfstate
 LockID: acme-terraform-state/services/api/staging/terraform.tfstate
 LockID: acme-terraform-state/services/api/prod/terraform.tfstate
@@ -387,7 +387,7 @@ done
 
 The default workspace does not use the `workspace_key_prefix`. Its state always lives at the `key` path directly. This can be confusing if you expect it to follow the same pattern:
 
-```
+```text
 workspace_key_prefix = "services/api"
 key                  = "terraform.tfstate"
 

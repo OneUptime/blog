@@ -39,7 +39,7 @@ The three headers involved are:
 
 The Accept-Encoding header can include quality values (q-values) that indicate client preference. A higher q-value means higher preference.
 
-```
+```text
 Accept-Encoding: gzip;q=1.0, br;q=0.8, deflate;q=0.5, *;q=0.1
 ```
 

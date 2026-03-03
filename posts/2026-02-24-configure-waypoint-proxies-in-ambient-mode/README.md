@@ -41,7 +41,7 @@ Verify the waypoint is running:
 kubectl get pods -n bookinfo -l gateway.networking.k8s.io/gateway-name
 ```
 
-```
+```text
 NAME                              READY   STATUS    RESTARTS   AGE
 bookinfo-waypoint-7f8b9c-xxxxx   1/1     Running   0          30s
 ```
@@ -52,7 +52,7 @@ You can also check the Gateway resource:
 kubectl get gateways -n bookinfo
 ```
 
-```
+```text
 NAME                CLASS            ADDRESS       PROGRAMMED   AGE
 bookinfo-waypoint   istio-waypoint   10.96.10.50   True         30s
 ```

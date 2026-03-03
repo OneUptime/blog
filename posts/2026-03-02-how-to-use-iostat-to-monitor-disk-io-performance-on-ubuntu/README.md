@@ -36,7 +36,7 @@ iostat
 
 Output:
 
-```
+```text
 Linux 5.15.0-91-generic (ubuntu-server)  03/02/2026  _x86_64_    (4 CPU)
 
 avg-cpu:  %user   %nice %system %iowait  %steal   %idle
@@ -66,7 +66,7 @@ iostat -x 1
 
 Extended output columns:
 
-```
+```text
 Device      r/s     w/s   rkB/s   wkB/s  rrqm/s  wrqm/s  %rrqm  %wrqm r_await w_await aqu-sz rareq-sz wareq-sz  svctm  %util
 sda        8.32   12.45  156.32  423.18    0.12    2.34   1.42   15.83    0.52    2.31   0.04    18.79    33.99   0.48   1.01
 nvme0n1   45.23  123.45 1234.56 5678.90    0.00    0.45   0.00    0.36    0.08    0.12   0.02    27.30    46.01   0.08   1.35

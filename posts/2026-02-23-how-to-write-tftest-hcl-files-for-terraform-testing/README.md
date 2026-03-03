@@ -481,7 +481,7 @@ run "full_deployment" {
 
 Structure your test files by purpose:
 
-```
+```text
 tests/
   unit-defaults.tftest.hcl      # Test default variable values
   unit-validation.tftest.hcl    # Test variable validation rules

@@ -21,7 +21,7 @@ Poison messages are messages that cause consumer failures repeatedly, blocking p
 
 ### Impact Without Handling
 
-```
+```text
 Without poison message handling:
 [msg1] -> processed
 [msg2] -> processed

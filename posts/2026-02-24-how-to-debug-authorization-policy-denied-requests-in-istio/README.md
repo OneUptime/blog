@@ -16,7 +16,7 @@ Not every 403 comes from Istio authorization. Before going down the authz rabbit
 
 Check the response body and headers. Istio's authorization engine returns a specific response:
 
-```
+```text
 HTTP/1.1 403 Forbidden
 content-length: 19
 content-type: text/plain
@@ -42,13 +42,13 @@ kubectl logs <pod-name> -c istio-proxy -n <namespace> | grep rbac
 
 You should see log entries like:
 
-```
+```text
 enforced denied, matched policy ns[default]-policy[deny-all]-rule[0]
 ```
 
 or
 
-```
+```text
 enforced denied, no matched policy found
 ```
 

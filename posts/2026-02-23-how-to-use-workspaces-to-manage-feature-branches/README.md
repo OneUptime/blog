@@ -43,7 +43,7 @@ echo "$WORKSPACE"
 
 Examples:
 
-```
+```text
 feature/user-auth    -> feature-user-auth
 bugfix/login-crash   -> bugfix-login-crash
 feature/JIRA-1234    -> feature-jira-1234

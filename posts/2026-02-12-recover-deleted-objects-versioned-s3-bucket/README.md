@@ -53,7 +53,7 @@ aws s3api list-object-versions \
 
 You'll see something like this:
 
-```
+```text
 DeleteMarkers:
   VersionId: del-marker-abc123    IsLatest: True    Modified: 2026-02-12T15:30:00Z
 

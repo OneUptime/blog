@@ -117,7 +117,7 @@ message User {
 
 Protocol Buffers produces significantly smaller payloads than JSON:
 
-```
+```text
 JSON Payload (typical user object):
 {
   "id": 12345678,
@@ -136,7 +136,7 @@ Size: ~80 bytes (60% smaller)
 
 ### Serialization Speed Benchmark
 
-```
+```text
 Benchmark Results (1 million operations):
 
 JSON (encoding/json):
@@ -181,7 +181,7 @@ graph LR
 
 ### Throughput Comparison
 
-```
+```text
 Load Test Results (10,000 requests):
 
 REST API:

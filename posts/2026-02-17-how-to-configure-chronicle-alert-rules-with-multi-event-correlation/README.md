@@ -31,7 +31,7 @@ graph LR
 
 This rule correlates failed login attempts across multiple accounts from the same IP. It is a classic credential stuffing pattern - the attacker tries stolen credentials against many accounts.
 
-```
+```text
 rule credential_stuffing_detection {
     meta:
         author = "security-team"
@@ -72,7 +72,7 @@ The key here is `count_distinct($target_user)` in the outcome section. This coun
 
 This rule detects a two-stage pattern: reconnaissance followed by exploitation. The attacker first scans for services, then exploits what they find.
 
-```
+```text
 rule recon_followed_by_exploitation {
     meta:
         author = "security-team"
@@ -116,7 +116,7 @@ rule recon_followed_by_exploitation {
 
 This rule detects a pattern consistent with insider threats or compromised accounts: a user changes their own permissions and then accesses resources they did not have access to before.
 
-```
+```text
 rule privilege_escalation_then_data_access {
     meta:
         author = "security-team"
@@ -156,7 +156,7 @@ rule privilege_escalation_then_data_access {
 
 This rule detects a complete account takeover sequence: password reset, followed by login from a new device, followed by MFA change.
 
-```
+```text
 rule account_takeover_chain {
     meta:
         author = "security-team"
@@ -201,7 +201,7 @@ rule account_takeover_chain {
 
 For multi-cloud environments, this rule detects an attacker moving from AWS to GCP using the same compromised identity.
 
-```
+```text
 rule cross_cloud_lateral_movement {
     meta:
         author = "security-team"
@@ -249,7 +249,7 @@ Start with a wider window for detection, then narrow it based on what you see. I
 
 Exclude known-good patterns. For example, your CI/CD service accounts might legitimately create access keys and deploy resources.
 
-```
+```text
 // Exclude known automation accounts
 not $perm_change.principal.user.email_addresses = /.*@.*\.iam\.gserviceaccount\.com$/
 not $perm_change.principal.user.email_addresses in %automation_accounts
@@ -259,7 +259,7 @@ not $perm_change.principal.user.email_addresses in %automation_accounts
 
 Instead of triggering on any correlation match, require a minimum volume of events.
 
-```
+```text
 condition:
     $scan and $exploit and $ports_scanned > 50
 ```

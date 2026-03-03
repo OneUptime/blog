@@ -295,7 +295,7 @@ For production-like setups, add HAProxy to distribute connections:
 
 Create the HAProxy configuration:
 
-```
+```text
 # haproxy.cfg - load balancer for CockroachDB cluster
 global
     maxconn 4096

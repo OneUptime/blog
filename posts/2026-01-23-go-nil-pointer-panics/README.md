@@ -247,7 +247,7 @@ func main() {
 
 ### Read the Stack Trace
 
-```
+```text
 panic: runtime error: invalid memory address or nil pointer dereference
 [signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0x123456]
 

@@ -255,7 +255,7 @@ jobs:
 
 Create a timeline for each deprecation:
 
-```
+```text
 Priority 1 (Immediate): Features removed in the next major version
   - Check the upcoming release notes for removals
   - Address before upgrading

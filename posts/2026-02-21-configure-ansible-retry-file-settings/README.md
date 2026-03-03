@@ -14,7 +14,7 @@ When an Ansible playbook fails on one or more hosts, it creates a `.retry` file 
 
 When a playbook fails, Ansible creates a file named `<playbook-name>.retry` in the same directory as the playbook. It contains a simple list of hostnames that failed:
 
-```
+```text
 web03
 db01
 worker05
@@ -92,7 +92,7 @@ ansible-playbook -i inventory.ini playbooks/deploy.yml
 
 If some hosts fail, Ansible prints:
 
-```
+```text
 PLAY RECAP *********************************************************************
 web01  : ok=5    changed=2    unreachable=0    failed=0    skipped=0
 web02  : ok=5    changed=2    unreachable=0    failed=0    skipped=0

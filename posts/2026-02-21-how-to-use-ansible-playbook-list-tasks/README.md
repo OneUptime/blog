@@ -21,7 +21,7 @@ ansible-playbook --list-tasks deploy.yml
 
 The output shows each play and its tasks:
 
-```
+```text
 playbook: deploy.yml
 
   play #1 (webservers): Configure web servers	TAGS: []
@@ -52,7 +52,7 @@ Each line in the output tells you:
 - **Task name** (after the colon): The `name` field of the task
 - **TAGS**: Any tags assigned to the task
 
-```
+```text
       nginx : Deploy nginx configuration	TAGS: [nginx, config]
       ^^^^^   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^      ^^^^^^^^^^^^^
       role    task name                           tags
@@ -77,7 +77,7 @@ ansible-playbook --list-tasks --tags "nginx,config" deploy.yml
 
 The output now shows only matching tasks:
 
-```
+```text
 playbook: deploy.yml
 
   play #1 (webservers): Configure web servers	TAGS: []
@@ -164,7 +164,7 @@ ansible-playbook --list-tasks site.yml
 
 Output:
 
-```
+```text
 playbook: site.yml
 
   play #1 (all): Configure all servers	TAGS: []
@@ -221,7 +221,7 @@ There is an important distinction between `import_tasks` and `include_tasks` whe
 ansible-playbook --list-tasks main.yml
 ```
 
-```
+```text
 playbook: main.yml
 
   play #1 (all): Task listing demo	TAGS: []
@@ -266,7 +266,7 @@ ansible-playbook --list-tasks site.yml 2>/dev/null | \
 
 Sample output:
 
-```
+```text
       8 common
       5 nginx
       4 myapp

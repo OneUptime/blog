@@ -10,13 +10,13 @@ Description: Resolve the API Gateway execution failed due to configuration error
 
 You hit your API Gateway endpoint and get a 500 error with this in the execution logs:
 
-```
+```text
 Execution failed due to configuration error: Invalid permissions on Lambda function
 ```
 
 or
 
-```
+```text
 Execution failed due to configuration error: Malformed Lambda proxy response
 ```
 
@@ -88,7 +88,7 @@ aws apigateway get-integration \
 
 The URI should look like:
 
-```
+```text
 arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:my-function/invocations
 ```
 

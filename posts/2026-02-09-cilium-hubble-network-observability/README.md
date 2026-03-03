@@ -93,7 +93,7 @@ hubble observe --from-pod frontend --to-pod backend
 
 Example output:
 
-```
+```text
 Dec  9 10:15:42.123: default/frontend-7d4f8b9c-xk2lp:45678 -> default/backend-6c8b7d5f-9qw4x:8080 to-endpoint FORWARDED (TCP Flags: SYN)
 Dec  9 10:15:42.124: default/backend-6c8b7d5f-9qw4x:8080 -> default/frontend-7d4f8b9c-xk2lp:45678 to-endpoint FORWARDED (TCP Flags: SYN, ACK)
 Dec  9 10:15:42.125: default/frontend-7d4f8b9c-xk2lp:45678 -> default/backend-6c8b7d5f-9qw4x:8080 to-endpoint FORWARDED (TCP Flags: ACK)

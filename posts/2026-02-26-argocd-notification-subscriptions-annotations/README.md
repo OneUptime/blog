@@ -14,7 +14,7 @@ ArgoCD notification subscriptions are driven entirely by annotations. This desig
 
 Every notification subscription in ArgoCD is expressed as a Kubernetes annotation on either an Application or an AppProject resource. The format is:
 
-```
+```text
 notifications.argoproj.io/subscribe.<trigger>.<service>: <recipient>
 ```
 

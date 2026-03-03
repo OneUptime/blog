@@ -48,7 +48,7 @@ flowchart TB
 ### 1. AWS Resource Detection Failed
 
 **Error Message:**
-```
+```text
 Error: Failed to detect AWS EC2 metadata: connect ETIMEDOUT 169.254.169.254:80
 ```
 
@@ -122,7 +122,7 @@ spec:
 ### 2. GCP Resource Detection Failed
 
 **Error Message:**
-```
+```text
 Error: Failed to detect GCP metadata: request to http://metadata.google.internal failed
 ```
 
@@ -185,7 +185,7 @@ spec:
 ### 3. Azure Resource Detection Failed
 
 **Error Message:**
-```
+```text
 Error: Failed to detect Azure metadata: ECONNREFUSED 169.254.169.254:80
 ```
 
@@ -222,7 +222,7 @@ sdk.start();
 ### 4. Kubernetes Resource Detection Failed
 
 **Error Message:**
-```
+```text
 Error: Failed to detect Kubernetes metadata: unable to read /var/run/secrets/kubernetes.io/serviceaccount/namespace
 ```
 
@@ -307,7 +307,7 @@ sdk.start();
 ### 5. Container ID Detection Failed
 
 **Error Message:**
-```
+```text
 Error: Failed to detect container ID: unable to read /proc/self/cgroup
 ```
 
@@ -371,7 +371,7 @@ const resource = new Resource({
 ### 6. Process Detection Failed
 
 **Error Message:**
-```
+```text
 Error: Failed to detect process information: permission denied reading /proc/self/status
 ```
 

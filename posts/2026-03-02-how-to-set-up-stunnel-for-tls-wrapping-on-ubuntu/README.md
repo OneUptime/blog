@@ -257,7 +257,7 @@ sudo openssl x509 -req -days 365 \
 
 Server config with client certificate verification:
 
-```
+```text
 [redis-tls]
 accept = 0.0.0.0:6380
 connect = 127.0.0.1:6379
@@ -270,7 +270,7 @@ verify = 2
 
 Client config with its certificate:
 
-```
+```text
 [redis-client]
 client = yes
 accept = 127.0.0.1:6379

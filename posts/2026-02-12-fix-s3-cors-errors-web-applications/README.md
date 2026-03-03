@@ -10,7 +10,7 @@ Description: Fix S3 CORS errors in web applications by configuring proper CORS r
 
 You're building a web app that uploads files directly to S3 from the browser, or you're loading images, fonts, or JSON from an S3 bucket. Then you see this in the browser console:
 
-```
+```text
 Access to XMLHttpRequest at 'https://my-bucket.s3.amazonaws.com/...'
 from origin 'https://myapp.com' has been blocked by CORS policy:
 No 'Access-Control-Allow-Origin' header is present on the requested resource.

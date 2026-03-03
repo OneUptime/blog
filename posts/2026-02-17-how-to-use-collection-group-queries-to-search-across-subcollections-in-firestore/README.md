@@ -16,7 +16,7 @@ A collection group query lets you search across all collections and subcollectio
 
 Consider a chat application where messages are stored as subcollections under room documents.
 
-```
+```text
 // Data structure with messages as subcollections
 rooms/
   room-1/

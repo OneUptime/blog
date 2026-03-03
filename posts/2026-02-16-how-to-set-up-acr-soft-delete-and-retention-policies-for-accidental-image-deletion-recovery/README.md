@@ -245,7 +245,7 @@ az monitor diagnostic-settings create \
 
 Query for deletion events:
 
-```
+```text
 // KQL query for image deletion events
 ContainerRegistryRepositoryEvents
 | where OperationName == "Delete"

@@ -45,7 +45,7 @@ go get github.com/stretchr/testify/assert
 
 Your project structure should look like:
 
-```
+```text
 my-terraform-project/
   main.tf
   variables.tf

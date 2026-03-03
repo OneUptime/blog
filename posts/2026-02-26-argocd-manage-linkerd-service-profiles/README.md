@@ -116,7 +116,7 @@ spec:
 
 Organize ServiceProfiles by namespace and service:
 
-```
+```text
 linkerd-config/
   base/
     kustomization.yaml

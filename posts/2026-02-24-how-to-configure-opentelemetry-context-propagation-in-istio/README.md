@@ -29,7 +29,7 @@ Istio supports multiple trace context formats:
 
 The W3C standard uses two headers:
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 tracestate: congo=ucfJifl5GOE,rojo=00f067aa0ba902b7
 ```
@@ -46,7 +46,7 @@ The `tracestate` header carries vendor-specific data.
 
 The B3 format uses multiple headers:
 
-```
+```text
 x-b3-traceid: 4bf92f3577b34da6a3ce929d0e0e4736
 x-b3-spanid: 00f067aa0ba902b7
 x-b3-parentspanid: 463ac35c9f6413ad
@@ -57,7 +57,7 @@ x-b3-sampled: 1
 
 A compact single-header variant:
 
-```
+```text
 b3: 4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-1-463ac35c9f6413ad
 ```
 
@@ -114,7 +114,7 @@ The most critical part of context propagation is what happens inside your applic
 
 Here are the headers that must be propagated:
 
-```
+```text
 traceparent
 tracestate
 x-request-id

@@ -73,7 +73,7 @@ keepalived --version
 
 Plan your addressing scheme before configuring:
 
-```
+```text
 Network:          2001:db8:1::/64
 Node 1 (Master):  2001:db8:1::10/64
 Node 2 (Backup):  2001:db8:1::11/64

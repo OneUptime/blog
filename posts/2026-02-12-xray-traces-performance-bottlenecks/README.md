@@ -102,7 +102,7 @@ A trace contains a timeline of segments and subsegments. Here's what to look for
 
 In the X-Ray console, traces are displayed as a waterfall chart. Each bar represents a segment or subsegment, with the width showing duration.
 
-```
+```text
 |-- API Gateway (5ms) ------|
    |-- Order Service (4850ms) ------------------------------------------|
       |-- DynamoDB GetItem (15ms) -|
@@ -117,7 +117,7 @@ In this example, it's immediately clear that the Stripe API call (4200ms) is the
 
 Look at whether downstream calls are sequential or parallel:
 
-```
+```text
 Sequential (slower):
 |-- Service A -----------------------------------------|
    |-- DB Query 1 (500ms) -----|
@@ -139,7 +139,7 @@ If you see sequential calls that could be parallelized, that's a quick win.
 
 You'll see this as many small, sequential database calls:
 
-```
+```text
 |-- List Orders (2500ms) -----------------------------------|
    |-- DynamoDB Query (50ms) -|
    |-- DynamoDB Get (20ms) |
@@ -155,7 +155,7 @@ You'll see this as many small, sequential database calls:
 
 Lambda functions show an initialization segment:
 
-```
+```text
 |-- Lambda (3200ms) -----------------------------------------|
    |-- Initialization (2800ms) --------------------------------|
    |-- Invocation (400ms) -----|
@@ -167,7 +167,7 @@ Lambda functions show an initialization segment:
 
 Repeated TCP/TLS handshakes show up as time before the actual request:
 
-```
+```text
 |-- HTTP Call (800ms) ----------|
    |-- Connect (600ms) ------|
    |-- Response (200ms) --|
@@ -179,7 +179,7 @@ Repeated TCP/TLS handshakes show up as time before the actual request:
 
 Failed calls followed by retries:
 
-```
+```text
 |-- Service Call (9500ms) ------------------------------------------------|
    |-- Attempt 1 (3000ms) FAIL ------|
                                       |-- Attempt 2 (3000ms) FAIL ------|

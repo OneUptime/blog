@@ -38,7 +38,7 @@ ANSIBLE_STDOUT_CALLBACK=minimal ansible-playbook site.yml
 
 With the default callback, a typical playbook run looks like this:
 
-```
+```text
 PLAY [Configure web servers] *************************************************
 
 TASK [Gathering Facts] *******************************************************
@@ -64,7 +64,7 @@ web-03  : ok=3  changed=1  unreachable=0  failed=0
 
 The same playbook with the minimal callback:
 
-```
+```text
 web-01 | SUCCESS => {"changed": false, "ansible_facts": {...}}
 web-02 | SUCCESS => {"changed": false, "ansible_facts": {...}}
 web-03 | SUCCESS => {"changed": false, "ansible_facts": {...}}
@@ -91,7 +91,7 @@ ANSIBLE_STDOUT_CALLBACK=minimal ansible all -m ping
 
 Output:
 
-```
+```text
 web-01 | SUCCESS => {"changed": false, "ping": "pong"}
 web-02 | SUCCESS => {"changed": false, "ping": "pong"}
 db-01 | SUCCESS => {"changed": false, "ping": "pong"}
@@ -117,7 +117,7 @@ The difference becomes pronounced with large inventories. If you run a playbook 
 
 Here is a practical comparison. A health check playbook against 5 hosts with the default callback:
 
-```
+```text
 PLAY [Health Check] **********************************************************
 
 TASK [Gathering Facts] *******************************************************

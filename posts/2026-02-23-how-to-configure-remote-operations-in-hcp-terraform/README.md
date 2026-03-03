@@ -356,7 +356,7 @@ There are a few things to be aware of:
 
 Create a `.terraformignore` file to keep uploads lean:
 
-```
+```text
 # .terraformignore
 .git/
 .terraform/

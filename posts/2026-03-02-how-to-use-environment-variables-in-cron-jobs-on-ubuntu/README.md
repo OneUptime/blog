@@ -14,7 +14,7 @@ One of the most common reasons cron jobs fail silently is environment variable p
 
 When cron runs a job, it sets only a few variables:
 
-```
+```text
 HOME=/home/username
 LOGNAME=username
 SHELL=/bin/sh
@@ -36,7 +36,7 @@ The simplest approach is to define variables at the top of the crontab file:
 crontab -e
 ```
 
-```
+```text
 # Set environment variables for all jobs in this crontab
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -64,7 +64,7 @@ The PATH issue is so common it deserves special attention:
 crontab -e
 ```
 
-```
+```text
 # Include all the directories your commands might be in
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 

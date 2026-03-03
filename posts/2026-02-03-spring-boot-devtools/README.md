@@ -1365,7 +1365,7 @@ Here is a complete example bringing together all DevTools features:
 
 ### Project Structure
 
-```
+```text
 devtools-demo/
 ├── pom.xml
 ├── src/

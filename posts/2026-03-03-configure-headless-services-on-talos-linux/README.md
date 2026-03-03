@@ -235,7 +235,7 @@ Headless services present a caching challenge. Pod IPs change more frequently th
 
 On Talos Linux with CoreDNS, the default TTL for Kubernetes records is 30 seconds. You can adjust this:
 
-```
+```text
 kubernetes cluster.local in-addr.arpa ip6.arpa {
    pods insecure
    fallthrough in-addr.arpa ip6.arpa

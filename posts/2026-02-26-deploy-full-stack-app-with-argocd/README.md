@@ -33,7 +33,7 @@ The application consists of:
 
 Organize your Git repository with a clean separation between components:
 
-```
+```text
 fullstack-app/
   base/
     frontend/

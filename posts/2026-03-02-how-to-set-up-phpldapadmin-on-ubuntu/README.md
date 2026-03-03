@@ -95,7 +95,7 @@ sudo systemctl reload apache2
 
 Open a browser and navigate to:
 
-```
+```text
 http://your-server-ip/phpldapadmin
 ```
 

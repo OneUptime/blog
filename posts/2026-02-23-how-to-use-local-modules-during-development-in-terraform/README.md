@@ -38,7 +38,7 @@ The key benefit is that changes to the module code are picked up immediately - n
 
 Here is a project layout that works well for local module development:
 
-```
+```text
 workspace/
   modules/                     # Module source code
     networking/
@@ -187,7 +187,7 @@ module "networking" {
 
 Add `override.tf` to your `.gitignore` so it never gets committed:
 
-```
+```text
 # .gitignore
 override.tf
 *_override.tf

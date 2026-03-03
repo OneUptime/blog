@@ -16,7 +16,7 @@ Redis stores data in memory and optionally persists to disk. Encryption at rest 
 
 ### Encryption Levels
 
-```
+```text
 +------------------+------------------------------------------+
 | Level            | Description                              |
 +------------------+------------------------------------------+

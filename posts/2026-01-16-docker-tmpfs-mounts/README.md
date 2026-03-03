@@ -174,7 +174,7 @@ docker volume rm testdata
 
 ### Results Example
 
-```
+```text
 Regular Volume (SSD):
 100+0 records in
 100+0 records out

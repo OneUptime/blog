@@ -198,7 +198,7 @@ public class VideoService
 
 The `AdaptiveStreaming` preset automatically analyzes the source video and generates a ladder of output bitrates. For a 1080p source, it might produce outputs like these.
 
-```
+```text
 1920x1080 at 4500 kbps   (Full HD)
 1280x720  at 2500 kbps   (HD)
 960x540   at 1500 kbps   (Medium)

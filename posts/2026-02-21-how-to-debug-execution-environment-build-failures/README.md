@@ -89,7 +89,7 @@ podman run --rm -v $(pwd):/work:z quay.io/ansible/ansible-runner:latest \
 
 When pip fails with a version conflict, the error message tells you which packages conflict:
 
-```
+```text
 ERROR: Cannot install package-a==1.0 and package-b==2.0 because these package
 versions have conflicting dependencies.
 The conflict is caused by:

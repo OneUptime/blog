@@ -24,12 +24,12 @@ When you enable Capture on an Event Hub, Azure runs an internal consumer that re
 
 The default folder structure looks like this:
 
-```
+```text
 {Namespace}/{EventHub}/{PartitionId}/{Year}/{Month}/{Day}/{Hour}/{Minute}/{Second}
 ```
 
 For example:
-```
+```text
 my-namespace/user-events/0/2026/02/16/14/30/00.avro
 my-namespace/user-events/1/2026/02/16/14/30/00.avro
 ```

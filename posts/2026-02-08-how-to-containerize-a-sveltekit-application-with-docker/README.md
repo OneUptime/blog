@@ -109,7 +109,7 @@ The build output in `build/index.js` is a self-contained Express-based server. I
 
 ## The .dockerignore File
 
-```
+```text
 # .dockerignore
 node_modules
 build

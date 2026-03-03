@@ -41,7 +41,7 @@ An organization is the top-level container in HCP Terraform. It holds workspaces
 3. Provide your email address
 4. Click "Create organization"
 
-```
+```text
 Organization: my-company-infra
 Email: devops@mycompany.com
 ```
@@ -91,7 +91,7 @@ Through the UI:
 
 For getting started, choose **CLI-driven**. Name it something descriptive:
 
-```
+```text
 Workspace name: dev-infrastructure
 Description: Development environment AWS infrastructure
 ```
@@ -144,7 +144,7 @@ Your workspace needs variables, especially credentials. In the HCP Terraform UI:
 2. Click "Variables"
 3. Add environment variables for AWS credentials:
 
-```
+```text
 Key: AWS_ACCESS_KEY_ID
 Value: AKIA...
 Category: Environment variable
@@ -164,7 +164,7 @@ Mark credentials as sensitive so they are write-only and never displayed.
 
 You can also add Terraform variables:
 
-```
+```text
 Key: aws_region
 Value: us-east-1
 Category: Terraform variable

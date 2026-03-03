@@ -200,7 +200,7 @@ The `terminationGracePeriodSeconds` should be longer than `terminationDrainDurat
 
 For HTTP/2 connections (including gRPC), Envoy sends a GOAWAY frame during shutdown. This tells clients to stop sending new requests on the connection and open a new one to a different backend:
 
-```
+```text
 # This happens automatically during sidecar shutdown
 # Envoy sends GOAWAY to all active HTTP/2 connections
 ```

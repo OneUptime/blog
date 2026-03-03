@@ -73,7 +73,7 @@ declare module 'my-library' {
 
 ### Type Root Organization
 
-```
+```text
 project/
 ├── src/
 │   └── index.ts
@@ -463,7 +463,7 @@ declare module 'constants' {
 
 ### 1. Keep Declarations Close to Usage
 
-```
+```text
 src/
 ├── components/
 │   ├── Button.tsx

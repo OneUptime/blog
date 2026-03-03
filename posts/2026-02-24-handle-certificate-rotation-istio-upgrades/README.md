@@ -201,7 +201,7 @@ kubectl logs -n my-app deploy/my-service -c istio-proxy --tail=100 | grep -i "tl
 
 Check certificate metrics:
 
-```
+```text
 # Cert expiration (seconds until expiry)
 citadel_server_root_cert_expiry_timestamp
 citadel_server_cert_chain_expiry_timestamp

@@ -287,7 +287,7 @@ auth_basic_user_file /etc/nginx/.gitpasswd;
 
 ### Repository Structure
 
-```
+```text
 /home/git/repositories/
 ├── project-a.git/
 ├── project-b.git/

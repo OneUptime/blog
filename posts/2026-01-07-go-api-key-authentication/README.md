@@ -23,7 +23,7 @@ Before we begin, ensure you have:
 
 We will organize our project with a clean structure that separates concerns:
 
-```
+```text
 api-key-auth/
 ├── main.go
 ├── auth/

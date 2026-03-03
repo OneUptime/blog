@@ -30,7 +30,7 @@ redis-cli INFO replication
 
 Key fields:
 
-```
+```text
 role:master
 connected_slaves:2
 slave0:ip=192.168.1.101,port=6379,state=online,offset=1234567890,lag=0
@@ -50,7 +50,7 @@ The `lag` field shows seconds since last ACK from each replica.
 redis-cli INFO replication
 ```
 
-```
+```text
 role:slave
 master_host:192.168.1.100
 master_port:6379

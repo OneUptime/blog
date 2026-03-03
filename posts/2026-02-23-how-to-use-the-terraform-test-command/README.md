@@ -30,7 +30,7 @@ When you run `terraform test`, Terraform looks for test files in two locations:
 
 Test files must have the `.tftest.hcl` extension. Any file matching this pattern in either location will be discovered and executed:
 
-```
+```text
 my-module/
   main.tf
   variables.tf
@@ -59,7 +59,7 @@ terraform test
 
 Output with all tests passing:
 
-```
+```text
 tests/validation.tftest.hcl... in progress
   run "valid_inputs"... pass
   run "invalid_inputs_rejected"... pass
@@ -183,7 +183,7 @@ run "verify_base" {
 
 After all run blocks in a file complete, Terraform destroys all resources created during that file's test runs. This happens even if assertions fail. The cleanup phase is shown in the output:
 
-```
+```text
 tests/integration.tftest.hcl... tearing down
 tests/integration.tftest.hcl... pass
 ```

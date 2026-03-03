@@ -214,7 +214,7 @@ if (order?.Customer is Customer customer)
 
 The stack trace tells you exactly where the exception occurred.
 
-```
+```text
 System.NullReferenceException: Object reference not set to an instance of an object.
    at OrderService.ProcessOrder(Int32 orderId) in OrderService.cs:line 45
    at OrderController.Create(OrderRequest request) in OrderController.cs:line 23

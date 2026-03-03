@@ -251,7 +251,7 @@ kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/stats |
 
 Look for:
 
-```
+```text
 http.adaptive_concurrency.gradient_controller.min_rtt_msecs: 5
 http.adaptive_concurrency.gradient_controller.limit: 150
 http.adaptive_concurrency.gradient_controller.burst_queue_size: 15

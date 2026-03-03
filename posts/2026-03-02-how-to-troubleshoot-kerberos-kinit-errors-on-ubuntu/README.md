@@ -29,7 +29,7 @@ nc -zv kdc.example.com 88
 
 This is one of the most common Kerberos errors. Kerberos requires clocks to be within 5 minutes of each other. If they differ more than this, authentication is rejected to prevent replay attacks.
 
-```
+```text
 kinit: Clock skew too great while getting initial credentials
 ```
 
@@ -67,7 +67,7 @@ If your system cannot reach public NTP servers, configure it to use the KDC as a
 
 ## Error: "kinit: Cannot find KDC for realm"
 
-```
+```text
 kinit: Cannot find KDC for realm "EXAMPLE.COM" while getting initial credentials
 ```
 
@@ -123,7 +123,7 @@ sudo ss -tlnup | grep 88
 
 ## Error: "kinit: Client not found in Kerberos database"
 
-```
+```text
 kinit: Client 'jsmith@EXAMPLE.COM' not found in Kerberos database
 ```
 
@@ -150,7 +150,7 @@ Also check the realm suffix - `kinit jsmith@EXAMPLE.COM` and `kinit jsmith@examp
 
 ## Error: "kinit: Preauthentication failed"
 
-```
+```text
 kinit: Preauthentication failed while getting initial credentials
 ```
 
@@ -189,7 +189,7 @@ sudo kadmin.local -q "modprinc -unlock jsmith"
 
 ## Error: "kinit: KDC has no support for encryption type"
 
-```
+```text
 kinit: KDC has no support for encryption type while getting initial credentials
 ```
 
@@ -228,7 +228,7 @@ sudo kadmin.local -q "cpw -randkey krbtgt/EXAMPLE.COM"
 
 ## Error: "kinit: Ticket expired"
 
-```
+```text
 kinit: Ticket expired while renewing credentials
 ```
 

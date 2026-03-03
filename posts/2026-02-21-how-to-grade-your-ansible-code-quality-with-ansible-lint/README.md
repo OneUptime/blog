@@ -226,7 +226,7 @@ echo "============================================"
 
 Running this might produce output like:
 
-```
+```text
 ============================================
 Ansible Code Quality Scorecard
 Project: playbooks/

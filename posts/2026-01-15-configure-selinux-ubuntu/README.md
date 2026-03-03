@@ -22,7 +22,7 @@ Traditional Linux security relies on Discretionary Access Control (DAC), where f
 
 **Security Contexts**: Every process and file in SELinux has a security context consisting of four parts:
 
-```
+```text
 user:role:type:level
 ```
 

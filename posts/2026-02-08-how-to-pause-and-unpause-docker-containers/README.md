@@ -38,7 +38,7 @@ docker unpause myapp
 
 When you run `docker ps` while a container is paused, the STATUS column shows "(Paused)":
 
-```
+```text
 CONTAINER ID   IMAGE          STATUS                  NAMES
 a1b2c3d4e5f6   nginx:latest   Up 5 minutes (Paused)   myapp
 ```

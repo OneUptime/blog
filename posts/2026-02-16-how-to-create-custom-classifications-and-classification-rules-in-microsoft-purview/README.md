@@ -190,7 +190,7 @@ The classification rule editor in the Purview portal includes a test feature:
 2. Click "Test"
 3. Enter sample values to test against:
 
-```
+```text
 AB123456    -> Should match
 XY789012    -> Should match
 abc123456   -> Should NOT match (lowercase letters)

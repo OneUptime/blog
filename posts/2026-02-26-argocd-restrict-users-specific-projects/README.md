@@ -16,7 +16,7 @@ This guide covers how to use ArgoCD's RBAC system to restrict users to specific 
 
 ArgoCD uses a Casbin-based RBAC system defined in the `argocd-rbac-cm` ConfigMap. Policies follow this format:
 
-```
+```text
 p, <subject>, <resource>, <action>, <object>, <effect>
 ```
 
@@ -141,7 +141,7 @@ data:
 
 The team can do everything with applications in their project:
 
-```
+```text
 p, role:team-a, applications, *, team-a/*, allow
 ```
 
@@ -149,7 +149,7 @@ p, role:team-a, applications, *, team-a/*, allow
 
 The team can view and sync but not create or delete:
 
-```
+```text
 p, role:team-b-deployer, applications, get, team-b/*, allow
 p, role:team-b-deployer, applications, sync, team-b/*, allow
 ```
@@ -158,7 +158,7 @@ p, role:team-b-deployer, applications, sync, team-b/*, allow
 
 Restrict production access while keeping dev open:
 
-```
+```text
 # Full access to dev applications
 p, role:developer, applications, *, dev/*, allow
 
@@ -177,7 +177,7 @@ p, role:tech-lead, applications, *, prod/*, allow
 
 Explicitly deny dangerous actions:
 
-```
+```text
 # Allow all actions on backend project
 p, role:backend-dev, applications, *, backend/*, allow
 
@@ -279,7 +279,7 @@ argocd app get frontend-web
 
 A central platform team manages ArgoCD, and application teams have restricted access:
 
-```
+```text
 # Platform team: full admin
 p, role:platform-admin, *, *, *, allow
 
@@ -295,7 +295,7 @@ policy.default: ""
 
 Teams have broad access within their projects, including managing project settings:
 
-```
+```text
 p, role:team-a-admin, applications, *, team-a/*, allow
 p, role:team-a-admin, projects, *, team-a, allow
 p, role:team-a-admin, repositories, *, *, allow

@@ -14,7 +14,7 @@ CORS (Cross-Origin Resource Sharing) errors are among the most common issues dev
 
 When you see this error in your browser console:
 
-```
+```text
 Access to XMLHttpRequest at 'http://api.example.com/data' from origin 'http://localhost:3000' 
 has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
 ```
@@ -25,7 +25,7 @@ It means the browser is protecting users by blocking a cross-origin request beca
 
 CORS is a security feature that prevents malicious websites from making requests to your API on behalf of unsuspecting users. Without it, any website could make authenticated requests to your banking API using your saved cookies.
 
-```
+```text
 Same Origin (allowed by default):
 http://example.com/page1 -> http://example.com/api  ✓
 

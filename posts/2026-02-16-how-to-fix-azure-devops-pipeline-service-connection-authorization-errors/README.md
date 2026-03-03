@@ -28,7 +28,7 @@ This is the most common issue, especially after creating a new service connectio
 
 The error looks like:
 
-```
+```text
 Pipeline does not have permissions to use service connection 'MyAzureConnection'.
 ```
 
@@ -73,7 +73,7 @@ Azure DevOps service connections of type "Azure Resource Manager" use a service 
 
 The error typically looks like:
 
-```
+```text
 Failed to obtain an access token. AADSTS7000222: The provided client secret keys for app
 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' are expired.
 ```

@@ -71,7 +71,7 @@ cat /etc/apache2/conf-available/pgadmin4.conf
 
 Open a browser and navigate to:
 
-```
+```text
 http://your-server-ip/pgadmin4
 ```
 

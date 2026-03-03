@@ -71,7 +71,7 @@ service:
 
 ### Queue Depth (Message Count)
 
-```
+```text
 rabbitmq.message.current{state="ready"}          - Messages ready for delivery
 rabbitmq.message.current{state="unacknowledged"}  - Messages delivered but not acked
 ```
@@ -80,7 +80,7 @@ The total queue depth is `ready + unacknowledged`. Growing `ready` count means c
 
 ### Consumer Count
 
-```
+```text
 rabbitmq.consumer.count - Number of consumers on the queue
 ```
 
@@ -88,14 +88,14 @@ If consumers drop to zero, messages accumulate. If consumers increase but queue 
 
 ### Publish Rate
 
-```
+```text
 rabbitmq.message.published - Total messages published (cumulative)
 publish_rate = rate(rabbitmq.message.published[5m])
 ```
 
 ### Delivery and Acknowledge Rate
 
-```
+```text
 rabbitmq.message.delivered - Total messages delivered to consumers
 rabbitmq.message.acknowledged - Total messages acknowledged
 
@@ -129,7 +129,7 @@ receivers:
 
 The Prometheus plugin exposes per-queue metrics:
 
-```
+```text
 rabbitmq_queue_messages_ready              - Ready messages per queue
 rabbitmq_queue_messages_unacked            - Unacked messages per queue
 rabbitmq_queue_consumers                   - Consumers per queue

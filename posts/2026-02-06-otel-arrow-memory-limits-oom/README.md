@@ -93,7 +93,7 @@ The `queue_size` limits how many batches can be queued. If each batch is approxi
 
 Here is a formula for estimating the Collector's memory needs with OTel Arrow:
 
-```
+```text
 Total memory = Receiver buffers
              + Processor memory
              + Exporter queue memory

@@ -25,7 +25,7 @@ System logs often account for 30-60 percent of total log volume, depending on cl
 
 Before excluding anything, figure out what is actually consuming the most volume. Run this query in the Logs Explorer:
 
-```
+```text
 resource.type="k8s_container"
 resource.labels.namespace_name="kube-system"
 ```
@@ -175,7 +175,7 @@ In the Cloud Console, go to **Logging** > **Log Storage** to see current ingesti
 
 Create a monitoring dashboard with this metric:
 
-```
+```text
 # Track log ingestion bytes over time
 fetch global
 | metric 'logging.googleapis.com/billing/bytes_ingested'

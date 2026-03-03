@@ -23,7 +23,7 @@ A few scenarios where this makes sense:
 
 Cookies are sent in the `Cookie` HTTP header as a semicolon-separated list of key-value pairs:
 
-```
+```text
 Cookie: session=abc123; theme=dark; beta=true
 ```
 
@@ -248,7 +248,7 @@ kubectl exec deploy/sleep -c sleep -- curl -s http://webapp.default.svc.cluster.
 
 The Cookie header is one long string with semicolons between values. Here are some patterns that work well:
 
-```
+```text
 # Match exact cookie value
 .*mycookie=specificvalue.*
 

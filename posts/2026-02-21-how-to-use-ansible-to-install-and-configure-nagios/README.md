@@ -26,7 +26,7 @@ flowchart TD
 
 ## Project Structure
 
-```
+```text
 nagios/
   inventory/
     hosts.yml

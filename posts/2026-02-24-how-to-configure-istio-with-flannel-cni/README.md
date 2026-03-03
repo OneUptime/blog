@@ -16,7 +16,7 @@ Flannel handles one thing well: giving pods IP addresses and enabling basic conn
 
 This simplicity is actually an advantage when running Istio. There are fewer moving parts that can conflict with Istio's iptables rules for traffic interception. The architecture looks like this:
 
-```
+```text
 Pod A -> iptables (Istio NAT rules) -> Envoy sidecar ->
   Flannel VXLAN overlay ->
   Envoy sidecar -> iptables (Istio NAT rules) -> Pod B

@@ -41,7 +41,7 @@ Before configuring privacy extensions, you need to understand what you're protec
 
 SLAAC (Stateless Address Autoconfiguration) defined in RFC 4862 allows hosts to configure their own IPv6 addresses without a DHCP server. The process works as follows:
 
-```
+```text
 Router Advertisement (RA) provides:
   - Network prefix (e.g., 2001:db8:abcd:1234::/64)
   - Prefix length (typically /64)
@@ -59,7 +59,7 @@ The interface identifier is created using Modified EUI-64 format, which transfor
 
 The transformation process takes a MAC address and converts it into an interface identifier by inserting FF:FE in the middle and flipping the Universal/Local bit:
 
-```
+```text
 Original MAC address:     00:1A:2B:3C:4D:5E
 
 Step 1 - Split in half:   00:1A:2B | 3C:4D:5E
@@ -76,7 +76,7 @@ This creates a globally unique identifier that persists across all networks your
 
 ### The Privacy Problem Visualized
 
-```
+```text
 Network A (Home)                    Network B (Office)
 Prefix: 2001:db8:a::/64            Prefix: 2001:db8:b::/64
         |                                   |
@@ -108,7 +108,7 @@ Privacy extensions introduce two types of addresses:
 
 ### Address Lifecycle
 
-```
+```text
 Time 0:     Generate random temporary address A
             Preferred lifetime starts
 
@@ -486,7 +486,7 @@ done
 
 Expected output shows 2 for enabled interfaces:
 
-```
+```text
 /proc/sys/net/ipv6/conf/all/use_tempaddr: 2
 /proc/sys/net/ipv6/conf/default/use_tempaddr: 2
 /proc/sys/net/ipv6/conf/eth0/use_tempaddr: 2
@@ -506,7 +506,7 @@ ip -6 addr show
 
 Example output showing privacy extensions working:
 
-```
+```text
 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP
     inet6 2001:db8:1234:5678:a1b2:c3d4:e5f6:7890/64 scope global temporary dynamic
        valid_lft 86389sec preferred_lft 14389sec
@@ -862,7 +862,7 @@ Be aware of limitations:
 
 Privacy extensions should be one layer of a comprehensive privacy strategy:
 
-```
+```text
 Privacy Extension Layer
         |
         v

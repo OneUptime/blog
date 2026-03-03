@@ -268,7 +268,7 @@ volumes:
 
 Fluentd configuration to forward logs to Zinc:
 
-```
+```text
 # fluentd/fluent.conf - Forward logs to Zinc
 <source>
   @type forward

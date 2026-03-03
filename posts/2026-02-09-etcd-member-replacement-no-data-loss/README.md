@@ -36,7 +36,7 @@ etcdctl endpoint status --cluster -w table
 
 Expected output for a healthy 3-member cluster:
 
-```
+```text
 +------------------+---------+--------+-------+---------+
 |    ENDPOINT      | HEALTHY | TOOK   | ERROR | VERSION |
 +------------------+---------+--------+-------+---------+

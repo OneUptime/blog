@@ -80,7 +80,7 @@ df -i /loki
 ### Disk Full Errors
 
 **Error message:**
-```
+```text
 no space left on device
 write /loki/chunks/...: no space left on device
 ```
@@ -113,7 +113,7 @@ limits_config:
 ### Index Corruption
 
 **Error message:**
-```
+```text
 error opening tsdb index
 index file corrupted
 ```
@@ -137,7 +137,7 @@ docker start loki
 ### Chunk Corruption
 
 **Error message:**
-```
+```text
 chunk checksum mismatch
 error reading chunk
 ```
@@ -158,7 +158,7 @@ mv /loki/chunks/corrupted_chunk_file /loki/quarantine/
 ### WAL Issues
 
 **Error message:**
-```
+```text
 wal replay failed
 error opening wal
 ```
@@ -192,7 +192,7 @@ ingester:
 ### S3 Connection Errors
 
 **Error message:**
-```
+```text
 error connecting to s3
 NoCredentialProviders
 AccessDenied
@@ -248,7 +248,7 @@ aws sts get-caller-identity
 ### GCS Connection Errors
 
 **Error message:**
-```
+```text
 error connecting to gcs
 failed to create GCS client
 ```
@@ -288,7 +288,7 @@ storage_config:
 ### Object Storage Timeouts
 
 **Error message:**
-```
+```text
 context deadline exceeded
 timeout waiting for s3 response
 ```
@@ -334,7 +334,7 @@ compactor:
 ### Compaction Failures
 
 **Error message:**
-```
+```text
 compaction failed
 error during compaction cycle
 ```

@@ -30,7 +30,7 @@ az monitor diagnostic-settings create \
 
 Now query the logs to break down where time is spent.
 
-```
+```text
 // KQL query to analyze APIM latency breakdown
 // Shows client latency vs backend latency vs APIM processing time
 ApiManagementGatewayLogs
@@ -62,7 +62,7 @@ In most cases, the backend API is the bottleneck, not APIM itself. APIM just mak
 
 Check which specific APIs and operations have the highest backend latency.
 
-```
+```text
 // Find the slowest API operations by backend response time
 ApiManagementGatewayLogs
 | where TimeGenerated > ago(1h)

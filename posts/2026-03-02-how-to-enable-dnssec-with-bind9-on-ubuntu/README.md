@@ -48,7 +48,7 @@ Configure a DNSSEC policy in `/etc/bind/named.conf.options`:
 sudo nano /etc/bind/named.conf.options
 ```
 
-```
+```text
 // Define a DNSSEC policy
 dnssec-policy "my-policy" {
     // Key signing key - 4096 bit RSA, rotate every 2 years
@@ -68,7 +68,7 @@ Apply the policy to your zone in `/etc/bind/named.conf.local`:
 sudo nano /etc/bind/named.conf.local
 ```
 
-```
+```text
 zone "example.com" {
     type master;
     file "/etc/bind/zones/db.example.com";
@@ -179,7 +179,7 @@ ls /etc/bind/zones/
 
 Update the zone file reference in `named.conf.local` to use the signed file:
 
-```
+```text
 zone "example.com" {
     type master;
     file "/etc/bind/zones/db.example.com.signed";
@@ -212,7 +212,7 @@ dnssec-dsfromkey /etc/bind/keys/Kexample.com.+008+22222.key
 
 This outputs something like:
 
-```
+```text
 example.com. IN DS 22222 8 1 ABCDEF1234567890...
 example.com. IN DS 22222 8 2 FEDCBA0987654321...
 ```

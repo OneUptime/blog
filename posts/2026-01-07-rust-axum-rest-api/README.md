@@ -63,7 +63,7 @@ chrono = { version = "0.4", features = ["serde"] }
 
 Organize your API with clear separation of concerns.
 
-```
+```text
 src/
 ├── main.rs           # Entry point
 ├── config.rs         # Configuration

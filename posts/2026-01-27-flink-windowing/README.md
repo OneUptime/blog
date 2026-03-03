@@ -68,7 +68,7 @@ Always prefer keyed windows for parallelism and scalability.
 
 Tumbling windows are fixed-size, non-overlapping windows. Each element belongs to exactly one window.
 
-```
+```text
 Time:    |----0----|----1----|----2----|----3----|
 Window:  [   W1    ][   W2    ][   W3    ][   W4   ]
 ```
@@ -131,7 +131,7 @@ DataStream<Stats> aligned = stream
 
 Sliding windows have a fixed size but can overlap. An element may belong to multiple windows.
 
-```
+```text
 Time:     |----0----|----1----|----2----|----3----|
 Window 1: [    W1 (size=2)    ]
 Window 2:           [    W2 (size=2)    ]
@@ -179,7 +179,7 @@ DataStream<Alert> alerts = errorEvents
 
 Session windows group elements by activity. A window closes when there is a gap of inactivity (no events) exceeding the defined timeout.
 
-```
+```text
 Events:   E1  E2     E3  E4  E5          E6  E7
 Gap:           <gap>              <gap>
 Sessions: [  S1   ]  [    S2    ]        [ S3  ]
@@ -728,7 +728,7 @@ WatermarkStrategy<Event> withIdleness = WatermarkStrategy
 
 ### How Watermarks Affect Windows
 
-```
+```text
 Event Time:     1  2  3  4  5  6  7  8  9  10
 Events:         E  E     E  E     E     E  E
 Watermark:            W(3)     W(6)        W(9)

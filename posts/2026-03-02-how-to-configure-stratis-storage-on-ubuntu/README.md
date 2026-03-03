@@ -137,7 +137,7 @@ sudo blkid /dev/stratis/data-pool/home
 
 Add to `/etc/fstab`:
 
-```
+```text
 # /etc/fstab entry for Stratis filesystem
 UUID=<uuid-from-blkid>  /mnt/home  xfs  defaults,x-systemd.requires=stratisd.service  0  0
 UUID=<uuid-from-blkid>  /mnt/projects  xfs  defaults,x-systemd.requires=stratisd.service  0  0

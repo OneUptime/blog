@@ -111,7 +111,7 @@ With the default "CPU is only allocated during request processing" setting, idle
 
 Let me break down the cost for a single minimum instance:
 
-```
+```text
 Configuration: 1 vCPU, 512Mi memory, CPU allocated during requests only
 
 Active cost:

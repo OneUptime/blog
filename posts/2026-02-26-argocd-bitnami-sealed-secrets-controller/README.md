@@ -196,7 +196,7 @@ spec:
 
 Organize your sealed secrets alongside application manifests:
 
-```
+```text
 apps/
   myapp/
     base/
@@ -323,7 +323,7 @@ spec:
 
 Store per-cluster public certificates:
 
-```
+```text
 .sealed-secrets/
   staging-cert.pem
   production-cert.pem

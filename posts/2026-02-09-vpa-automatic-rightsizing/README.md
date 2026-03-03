@@ -268,7 +268,7 @@ kubectl describe vpa web-app-vpa -n production
 
 The describe output shows current recommendations:
 
-```
+```text
 Recommendation:
   Container Recommendations:
     Container Name:  app

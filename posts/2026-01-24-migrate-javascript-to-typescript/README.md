@@ -570,7 +570,7 @@ To run type checking without building:
 ```bash
 npx tsc --noEmit
 ```
-```
+```text
 
 ## Common Pitfalls and Solutions
 

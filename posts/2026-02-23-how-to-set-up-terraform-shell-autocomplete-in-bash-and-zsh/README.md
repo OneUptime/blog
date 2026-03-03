@@ -151,7 +151,7 @@ Once set up, pressing Tab after `terraform` will complete:
 
 ### Top-Level Commands
 
-```
+```text
 terraform <TAB>
 # Shows: apply, console, destroy, fmt, get, graph, import, init,
 #        login, logout, output, plan, providers, refresh, show,
@@ -160,7 +160,7 @@ terraform <TAB>
 
 ### Subcommands
 
-```
+```text
 terraform state <TAB>
 # Shows: list, mv, pull, push, replace-provider, rm, show
 
@@ -170,7 +170,7 @@ terraform workspace <TAB>
 
 ### Flags
 
-```
+```text
 terraform plan -<TAB>
 # Shows: -compact-warnings, -destroy, -detailed-exitcode,
 #        -input, -json, -lock, -lock-timeout, -no-color,

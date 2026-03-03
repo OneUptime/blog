@@ -40,7 +40,7 @@ ansible-playbook mandatory-basic.yml
 
 You get:
 
-```
+```text
 TASK [Deploy version  to ] ***
 fatal: [web01]: FAILED! => {"msg": "Mandatory variable 'deploy_version' not defined."}
 ```

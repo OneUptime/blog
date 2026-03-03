@@ -87,7 +87,7 @@ Let's build a lookup that reads configuration from a JSON file. This demonstrate
 
 ### Directory Structure
 
-```
+```text
 my_collection/
 ├── plugins/
 │   └── lookup/
@@ -1211,7 +1211,7 @@ build_ignore:
 
 Directory structure:
 
-```
+```text
 myorg/
 └── mytools/
     ├── galaxy.yml

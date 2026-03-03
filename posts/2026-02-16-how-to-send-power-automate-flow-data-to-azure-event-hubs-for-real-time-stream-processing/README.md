@@ -125,7 +125,7 @@ If your Power Automate flow triggers frequently, you might want to batch events 
 
 The batch action sends multiple events in a single call, which is more efficient and reduces the number of flow actions.
 
-```
+```text
 // Build an array of events from the query results
 // Each item becomes a separate event in the Event Hub
 @{json(concat('[',
@@ -214,7 +214,7 @@ Enable Capture to automatically archive all events to Azure Blob Storage or Data
 
 Captured data is stored in Avro format, organized by date and time:
 
-```
+```text
 {StorageAccount}/{Container}/{Namespace}/{EventHub}/{PartitionId}/{Year}/{Month}/{Day}/{Hour}/{Minute}/{Second}
 ```
 

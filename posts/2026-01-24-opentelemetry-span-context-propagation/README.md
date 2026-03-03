@@ -49,7 +49,7 @@ OpenTelemetry uses the W3C Trace Context standard by default. This standard defi
 - **traceparent**: Contains the trace ID, parent span ID, and trace flags
 - **tracestate**: Contains vendor-specific trace information
 
-```
+```text
 traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
              |  |                                |                |
              |  |                                |                +-- Trace flags (01 = sampled)

@@ -14,7 +14,7 @@ The GDPR Right to Erasure (Article 17), also known as the "right to be forgotten
 
 ### When Erasure is Required
 
-```
+```text
 +--------------------------------+----------------------------------------+
 | Condition                      | Erasure Required                       |
 +--------------------------------+----------------------------------------+
@@ -29,7 +29,7 @@ The GDPR Right to Erasure (Article 17), also known as the "right to be forgotten
 
 ### Exceptions (When Erasure May Be Refused)
 
-```
+```text
 - Freedom of expression and information
 - Legal obligation compliance
 - Public health purposes

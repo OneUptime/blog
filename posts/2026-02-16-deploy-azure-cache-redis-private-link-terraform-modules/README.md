@@ -16,7 +16,7 @@ This post shows how to build a reusable Terraform module that deploys Azure Cach
 
 A well-structured Terraform module keeps things organized and reusable.
 
-```
+```text
 modules/
   redis-private/
     main.tf           # Core Redis resource

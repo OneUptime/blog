@@ -22,7 +22,7 @@ istioctl proxy-status
 
 The output looks like:
 
-```
+```text
 NAME                                          CLUSTER        CDS        LDS        EDS        RDS        ECDS       ISTIOD
 httpbin-74fb669cc6-5wq2r.default              Kubernetes     SYNCED     SYNCED     SYNCED     SYNCED     NOT SENT   istiod-7d4f5b7c4f-x2q9p
 productpage-v1-6b746f74dc-9rlmh.bookinfo     Kubernetes     SYNCED     SYNCED     SYNCED     SYNCED     NOT SENT   istiod-7d4f5b7c4f-x2q9p
@@ -59,7 +59,7 @@ The status for each xDS type can be one of:
 
 If a proxy shows STALE for any xDS type, it means istiod pushed a configuration update but the proxy did not acknowledge it:
 
-```
+```text
 NAME                                      CDS        LDS        EDS        RDS
 httpbin-74fb669cc6-5wq2r.default          STALE      SYNCED     SYNCED     SYNCED
 ```
@@ -101,7 +101,7 @@ kubectl exec httpbin-74fb669cc6-5wq2r -c istio-proxy -n default -- \
 
 In multi-cluster or multi-revision setups, a proxy might connect to the wrong istiod instance:
 
-```
+```text
 NAME                                      ISTIOD
 httpbin-74fb669cc6-5wq2r.default          istiod-canary-abc123
 reviews-v1-5984b.bookinfo                 istiod-7d4f5b7c4f-x2q9p

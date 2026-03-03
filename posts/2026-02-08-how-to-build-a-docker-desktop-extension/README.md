@@ -43,7 +43,7 @@ cd my-docker-extension
 
 The generated structure looks like this:
 
-```
+```text
 my-docker-extension/
   Dockerfile          # Builds the extension container
   metadata.json       # Extension metadata and configuration

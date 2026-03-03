@@ -94,7 +94,7 @@ flowchart LR
 
 Use the **Rename by regex** transformation to clean up field names:
 
-```
+```text
 Match: (.*)
 Replace: Success Rate
 ```
@@ -109,13 +109,13 @@ Grafana's expression engine allows you to create calculated fields:
 2. Add a new query of type **Expression**
 3. Set the expression:
 
-```
+```text
 $A / $B
 ```
 
 ### Advanced Math Expression
 
-```
+```text
 # Calculate percentage with null handling
 ($A / $B) * 100
 

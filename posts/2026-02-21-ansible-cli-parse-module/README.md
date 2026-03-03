@@ -143,7 +143,7 @@ TTP is an alternative to TextFSM that uses a more intuitive template syntax. Ins
 
 And the TTP template file looks like the actual command output with variables marked by double curly braces.
 
-```
+```text
 # templates/show_ip_ospf_neighbor.ttp
 # TTP templates resemble the actual output format, making them easy to write
 {{ NEIGHBOR_ID }}  {{ PRIORITY }}  {{ STATE }}/{{ ROLE }}  {{ DEAD_TIME }}  {{ ADDRESS }}  {{ INTERFACE }}

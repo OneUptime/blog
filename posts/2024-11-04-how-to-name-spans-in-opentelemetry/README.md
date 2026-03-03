@@ -8,7 +8,7 @@ Description: Here's how to craft meaningful span names that enhance your observa
 
 Tracing allows developers to understand how their applications behave in real-time, pinpointing performance bottlenecks and troubleshooting errors effectively. OpenTelemetry, a powerful open-source observability framework, provides the tools necessary to achieve this. Central to OpenTelemetry is the concept of a "span," representing a single operation within a trace. To harness the full potential of tracing, it is crucial to name spans effectively. Let’s explore how to name spans in OTel to maximize their utility.
 
-### The Importance of Naming Spans
+## The Importance of Naming Spans
 
 Properly named spans are more than just identifiers; they are the keys to understanding application workflows. Clear and consistent naming of spans ensures:
 

@@ -81,7 +81,7 @@ terraform plan
 
 The second terminal should display a message like:
 
-```
+```text
 Error: Error locking state: Error acquiring the state lock: writing
 "gs://my-terraform-state/infrastructure/production/default.tflock" failed:
 googleapi: Error 412: At least one of the pre-conditions you specified did

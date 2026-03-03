@@ -80,7 +80,7 @@ pro status
 
 The output shows all available services and whether they are enabled:
 
-```
+```text
 SERVICE          ENTITLED  STATUS    DESCRIPTION
 anbox-cloud      yes       disabled  Scalable Android in the cloud
 cc-eal           yes       disabled  Common Criteria EAL2 Provisioning Packages

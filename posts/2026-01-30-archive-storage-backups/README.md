@@ -1222,7 +1222,7 @@ Resources:
 
 ### Archive Storage Checklist
 
-```
+```text
 PRE-IMPLEMENTATION:
 [ ] Define compliance requirements and retention periods
 [ ] Identify data categories and their sensitivity

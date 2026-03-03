@@ -62,7 +62,7 @@ In Xcode, navigate to your project settings, select your project (not a target),
 
 Click the "+" button and enter the repository URL. For example, to add Alamofire:
 
-```
+```text
 https://github.com/Alamofire/Alamofire.git
 ```
 
@@ -115,7 +115,7 @@ swift package init --type executable
 
 This creates the following structure:
 
-```
+```text
 MySwiftPackage/
 |-- Package.swift
 |-- Sources/
@@ -652,7 +652,7 @@ let package = Package(
 
 Organize related packages in a directory structure that makes local development efficient.
 
-```
+```text
 MyProject/
 |-- MyApp/
 |   |-- Package.swift

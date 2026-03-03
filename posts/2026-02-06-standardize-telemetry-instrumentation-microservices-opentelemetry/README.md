@@ -297,7 +297,7 @@ Do not try to instrument everything at once. Use a phased approach.
 
 Most organizations with 50+ services use multiple languages. Maintain a shared library for each major language. Keep the libraries in a monorepo so changes can be coordinated.
 
-```
+```text
 org-otel-libs/
   python/
     org_otel/__init__.py

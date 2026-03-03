@@ -34,7 +34,7 @@ A linked template deployment consists of a main template that references child t
 
 Here is the project structure I recommend.
 
-```
+```text
 infrastructure/
   main.json                   # Orchestrator template
   main.parameters.dev.json    # Dev environment parameters

@@ -21,7 +21,7 @@ terraform workspace new dev
 
 Output:
 
-```
+```text
 Created and switched to workspace "dev"!
 
 You're now on a new, empty workspace. Workspaces isolate their state,
@@ -281,7 +281,7 @@ terraform plan -var-file="environments/staging.tfvars"
 
 Directory structure:
 
-```
+```text
 project/
   main.tf
   variables.tf

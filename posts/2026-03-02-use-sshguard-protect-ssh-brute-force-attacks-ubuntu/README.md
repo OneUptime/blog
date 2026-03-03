@@ -38,7 +38,7 @@ cat /etc/sshguard/sshguard.conf
 
 Key settings in the default configuration:
 
-```
+```text
 # Backend: which firewall to use (auto-detected based on system)
 BACKEND="/usr/lib/x86_64-linux-gnu/sshguard/sshg-fw-nft-sets"
 
@@ -68,7 +68,7 @@ sudo nano /etc/sshguard/sshguard.conf
 
 More aggressive settings for a production server:
 
-```
+```text
 # Block after 2 failed attempts (20 points, each SSH failure = 10 points)
 THRESHOLD=20
 
@@ -119,7 +119,7 @@ sudo nano /etc/sshguard/whitelist
 
 Add IP addresses, ranges, or hostnames:
 
-```
+```text
 # Whitelist format: one entry per line
 # Single IP address
 203.0.113.10
@@ -160,7 +160,7 @@ sudo cat /etc/sshguard/blacklist.db
 
 Example log output:
 
-```
+```text
 Mar 02 10:15:30 server sshguard[1234]: Attack from "192.168.99.5" on service SSH: 1 attack(s) in 1 seconds, 10/30 danger.
 Mar 02 10:15:45 server sshguard[1234]: Blocking "192.168.99.5" for 120 seconds (1 attacks in 30 seconds, 30 danger).
 Mar 02 10:17:55 server sshguard[1234]: Unblocking "192.168.99.5".
@@ -182,7 +182,7 @@ Configure sshguard to read from specific log files for additional services:
 sudo nano /etc/sshguard/sshguard.conf
 ```
 
-```
+```text
 # Monitor additional log files
 # This reads from the systemd journal (default on Ubuntu)
 # To add specific log files, use the -l flag in the service command

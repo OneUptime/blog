@@ -19,7 +19,7 @@ Effective monitoring is crucial for PostgreSQL operations. Prometheus and Grafan
 
 ## Architecture Overview
 
-```
+```text
 PostgreSQL --> postgres_exporter --> Prometheus --> Grafana
                     |
                     v

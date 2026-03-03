@@ -174,7 +174,7 @@ current-context: audit-webhook
 
 Enable it by adding to the API server flags:
 
-```
+```text
 --audit-webhook-config-file=/etc/kubernetes/audit/webhook-config.yaml
 --audit-webhook-batch-max-size=100
 --audit-webhook-batch-max-wait=5s

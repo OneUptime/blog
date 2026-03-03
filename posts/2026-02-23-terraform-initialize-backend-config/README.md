@@ -315,7 +315,7 @@ cat .terraform/terraform.tfstate
 
 ### "Backend configuration changed"
 
-```
+```text
 Error: Backend configuration changed
 
 A change in the backend configuration has been detected, which may require
@@ -330,7 +330,7 @@ terraform init -reconfigure -backend-config=config.hcl
 
 ### "Required backend configuration is missing"
 
-```
+```text
 Error: Required backend configuration is missing
 ```
 

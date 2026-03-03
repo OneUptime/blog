@@ -176,7 +176,7 @@ Notice that both Parameter Store and Secrets Manager values go into the `secrets
 
 A clean parameter hierarchy makes it easy to manage configuration across environments.
 
-```
+```text
 /production/myapp/
   api_url          = https://api.example.com/v2
   db_pool_size     = 20

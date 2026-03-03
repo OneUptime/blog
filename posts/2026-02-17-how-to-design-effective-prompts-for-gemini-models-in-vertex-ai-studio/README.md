@@ -38,12 +38,12 @@ model = GenerativeModel('gemini-1.5-pro')
 The most common prompting mistake is being too vague. Compare these two prompts:
 
 Bad prompt:
-```
+```text
 Tell me about Kubernetes.
 ```
 
 Good prompt:
-```
+```text
 Explain how Kubernetes horizontal pod autoscaling works. Include the default metrics it uses,
 how to configure custom metrics, and a YAML example of an HPA resource targeting 70% CPU utilization
 for a deployment called "web-app" with min 2 and max 10 replicas.
@@ -144,7 +144,7 @@ Terraform:"""
 
 response = model.generate_content(prompt)
 print(response.text)
-```
+```text
 
 ## Technique 4: Chain of Thought
 
@@ -258,7 +258,7 @@ For each issue found:
 
 response = model.generate_content(security_prompt)
 print(response.text)
-```
+```text
 
 ## Technique 7: Iterative Refinement
 

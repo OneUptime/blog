@@ -16,7 +16,7 @@ SSE establishes a one-way channel from server to client over HTTP. Unlike WebSoc
 
 The protocol is dead simple. The server sends a `text/event-stream` content type and writes events in a specific format:
 
-```
+```text
 event: message
 data: {"user": "alice", "text": "hello"}
 

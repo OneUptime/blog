@@ -8,7 +8,7 @@ Description: Have you ever opened your monitoring bill and felt your heart skip 
 
 Have you ever opened your monitoring bill and felt your heart skip a beat? You're not alone. In the world of digital infrastructure, many companies are experiencing sticker shock when they see their Datadog invoices. Let's unpack why your monitoring bill might be breaking the bank and explore how you can rein it back in.
 
-### The Allure of Datadog
+## The Allure of Datadog
 
 Datadog has positioned itself as a go-to solution for infrastructure monitoring, application performance, log management, and more. Its comprehensive features act like a Swiss Army knife for DevOps teams. The convenience of having everything under one roof is compelling, but it can also lead to costs piling up in unexpected ways.
 
@@ -24,7 +24,7 @@ Consider a retail company that experiences massive traffic spikes during the hol
 
 **Illustration:**
 
-```
+```text
 Normal Operation: 50 hosts x $15/host = $750/month
 Peak Season: 500 hosts x $15/host = $7,500/month
 ```
@@ -46,7 +46,7 @@ Imagine you're tagging your application's metrics with user IDs to track perform
 
 With 5 regions and 1 million user IDs:
 
-```
+```text
 Total Time Series = 1 metric x 5 regions x 1,000,000 user_ids = 5,000,000 time series
 ```
 
@@ -62,7 +62,7 @@ A fintech startup logs every transaction detail for auditing purposes. They gene
 
 **Cost Breakdown:**
 
-```
+```text
 Daily Ingestion: 500 GB x $0.10/GB = $50/day
 Monthly Ingestion: $50/day x 30 days = $1,500/month
 Retention Costs (for 15 days): Additional fees apply

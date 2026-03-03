@@ -753,7 +753,7 @@ Add validation in templates to catch configuration errors early. The fail functi
 
 NOTES.txt is displayed after installation to provide helpful information to users. Include access instructions and next steps for the operator.
 
-```
+```text
 # templates/NOTES.txt
 Thank you for installing {{ .Chart.Name }}.
 

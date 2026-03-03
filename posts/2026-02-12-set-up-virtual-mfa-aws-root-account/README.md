@@ -137,7 +137,7 @@ After setting up MFA, stop using the root account for daily tasks. Create IAM us
 
 Document the root account access procedure:
 
-```
+```text
 Root Account Access Procedure
 =============================
 1. Root email: admin@company.com

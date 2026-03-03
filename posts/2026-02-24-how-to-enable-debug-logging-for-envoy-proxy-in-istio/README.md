@@ -45,7 +45,7 @@ istioctl proxy-config log my-pod -n my-namespace
 
 The output of the last command shows you every logger and its current level:
 
-```
+```text
 active loggers:
   admin: warning
   alternate_protocols_cache: warning

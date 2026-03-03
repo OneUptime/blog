@@ -180,13 +180,13 @@ Notice that us-east-1c does not appear as a target for zones A or B. Zone C only
 
 Here is a formula to calculate weights based on capacity:
 
-```
+```text
 weight_for_zone = (zone_pods / total_pods) * 100
 ```
 
 For a cluster with pods distributed as 15, 10, and 3:
 
-```
+```text
 Total: 28 pods
 Zone A weight: (15/28) * 100 = 54%
 Zone B weight: (10/28) * 100 = 36%
@@ -195,7 +195,7 @@ Zone C weight: (3/28) * 100 = 10%
 
 But you also need to account for failover scenarios. If zone A goes down:
 
-```
+```text
 Remaining: 13 pods
 Zone B weight: (10/13) * 100 = 77%
 Zone C weight: (3/13) * 100 = 23%
@@ -207,7 +207,7 @@ Can zone B handle 77% of total traffic? Can zone C handle 23%? If not, you need 
 
 Set up dashboards to detect when zones are being overloaded:
 
-```
+```text
 # Requests per pod per zone
 sum(rate(istio_requests_total{
   destination_service="api-service.default.svc.cluster.local"
@@ -218,7 +218,7 @@ count(kube_pod_info{pod=~"api-service.*"}) by (node)
 
 Track CPU and memory per zone:
 
-```
+```text
 # Average CPU utilization by zone
 avg(rate(container_cpu_usage_seconds_total{
   container="api-service"

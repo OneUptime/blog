@@ -32,7 +32,7 @@ umask -S
 ```
 
 Example output:
-```
+```text
 0022
 u=rwx,g=rx,o=rx
 ```
@@ -160,7 +160,7 @@ sudo nano /etc/pam.d/common-session
 
 Add:
 
-```
+```text
 session optional pam_umask.so umask=027
 ```
 
@@ -172,7 +172,7 @@ grep UMASK /etc/login.defs
 
 You can change the default there too:
 
-```
+```text
 UMASK 027
 ```
 
@@ -208,7 +208,7 @@ sudo sh -c 'umask'
 
 If you need sudo to preserve your umask, add this to `/etc/sudoers` via `visudo`:
 
-```
+```text
 Defaults umask = 0027
 Defaults umask_override
 ```

@@ -21,7 +21,7 @@ The four GitOps principles applied to Terraform:
 
 ## The GitOps Workflow
 
-```
+```text
 Developer creates feature branch
     |
     v
@@ -52,7 +52,7 @@ The key difference from regular CI/CD is the last step: continuous reconciliatio
 
 Use a branch strategy that maps to your environments:
 
-```
+```text
 main       -> production environment (auto-apply)
 staging    -> staging environment (auto-apply)
 develop    -> dev environment (auto-apply)
@@ -374,7 +374,7 @@ Every infrastructure change has a PR that serves as documentation:
 ### Terraform Plan Summary
 ```
 Plan: 0 to add, 2 to change, 0 to destroy.
-```
+```text
 
 ### Rollback Plan
 - Revert this PR to restore previous instance count and size

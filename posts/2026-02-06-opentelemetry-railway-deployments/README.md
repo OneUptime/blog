@@ -144,7 +144,7 @@ In your `package.json`, modify the start script:
 
 Or if you use a `Procfile`:
 
-```
+```text
 web: node --require ./instrumentation.js server.js
 worker: node --require ./instrumentation.js worker.js
 ```
@@ -153,7 +153,7 @@ worker: node --require ./instrumentation.js worker.js
 
 Add the OpenTelemetry configuration to your Railway service's variables. Open the Railway dashboard, navigate to your service, and click the Variables tab.
 
-```
+```text
 OTEL_EXPORTER_OTLP_ENDPOINT = https://your-collector.example.com
 OTEL_SERVICE_NAME = my-api-service
 ONEUPTIME_TOKEN = your-auth-token
@@ -332,7 +332,7 @@ service:
 
 Point your application services to the collector using Railway's internal networking:
 
-```
+```text
 OTEL_EXPORTER_OTLP_ENDPOINT = http://otel-collector.railway.internal:4318
 ```
 

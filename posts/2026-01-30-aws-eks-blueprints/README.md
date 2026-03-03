@@ -49,7 +49,7 @@ The Terraform approach is more widely adopted and works well with existing infra
 
 Organize your blueprint like this:
 
-```
+```text
 eks-blueprints/
   main.tf
   variables.tf

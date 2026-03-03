@@ -10,7 +10,7 @@ Description: Learn how to diagnose and fix CORS errors when accessing Amazon S3 
 
 If you've ever tried to load an image, font, or JSON file from an S3 bucket in a browser app, there's a good chance you've run into something like this:
 
-```
+```text
 Access to XMLHttpRequest at 'https://my-bucket.s3.amazonaws.com/data.json' from origin 'https://myapp.com' has been blocked by CORS policy.
 ```
 
@@ -167,7 +167,7 @@ curl -X OPTIONS \
 
 Look for these headers in the response:
 
-```
+```text
 Access-Control-Allow-Origin: https://myapp.com
 Access-Control-Allow-Methods: GET
 Access-Control-Allow-Headers: Content-Type

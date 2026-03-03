@@ -180,7 +180,7 @@ provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 
 You should see spans like:
 
-```
+```text
 db.query SELECT * FROM users  [========] 12ms
   db.system: postgresql
   db.name: mydb

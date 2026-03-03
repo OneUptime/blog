@@ -49,7 +49,7 @@ sudo systemctl restart postgresql
 
 Configure `pg_hba.conf` to allow replication connections:
 
-```
+```text
 # Allow replication from subscriber IP
 host    replication     repl_user    10.0.0.50/32    scram-sha-256
 host    all             repl_user    10.0.0.50/32    scram-sha-256

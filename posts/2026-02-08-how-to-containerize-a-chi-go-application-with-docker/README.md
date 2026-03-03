@@ -164,7 +164,7 @@ ENTRYPOINT ["/server"]
 
 ## The .dockerignore File
 
-```
+```text
 .git
 .gitignore
 *.md
@@ -381,7 +381,7 @@ services:
 
 As your Chi application grows, organize it for clean Docker builds:
 
-```
+```text
 my-chi-app/
   cmd/
     server/

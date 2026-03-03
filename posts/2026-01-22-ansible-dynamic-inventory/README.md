@@ -301,7 +301,7 @@ service_account_file: /path/to/service-account.json
 
 Use an inventory directory to combine static and dynamic sources.
 
-```
+```text
 inventory/
 ├── 01-static.yml           # Static hosts (bastion, etc.)
 ├── 02-aws_ec2.yml          # AWS EC2 inventory

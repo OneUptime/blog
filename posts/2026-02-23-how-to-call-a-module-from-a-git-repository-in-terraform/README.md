@@ -126,7 +126,7 @@ module "vpc" {
 
 Many organizations keep all their Terraform modules in a single repository (a monorepo). The `//` path separator lets you point to a specific subdirectory within the repo:
 
-```
+```text
 terraform-modules/          (repository root)
   modules/
     vpc/

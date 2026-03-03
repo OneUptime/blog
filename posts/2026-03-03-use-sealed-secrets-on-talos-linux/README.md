@@ -199,7 +199,7 @@ kubeseal --re-encrypt \
 
 If you use ArgoCD or Flux on your Talos Linux cluster, Sealed Secrets integrates seamlessly. Store SealedSecret manifests in your Git repository alongside your other Kubernetes manifests.
 
-```
+```text
 # Repository structure example
 my-app/
   base/

@@ -16,7 +16,7 @@ Adding plugins to a collection follows the same pattern as modules, but each plu
 
 Each plugin type goes in a specific subdirectory under `plugins/`:
 
-```
+```text
 plugins/
   filter/          # Transform data in Jinja2 expressions
   lookup/          # Retrieve data from external sources

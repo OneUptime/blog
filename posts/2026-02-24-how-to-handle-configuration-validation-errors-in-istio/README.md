@@ -42,7 +42,7 @@ These are the most straightforward errors. Your YAML doesn't match the expected 
 
 ### Unknown Field
 
-```
+```text
 Error [IST0106] Schema validation error: unknown field "matchs" in HTTPMatchRequest
 ```
 
@@ -64,7 +64,7 @@ http:
 
 ### Wrong Type
 
-```
+```text
 Error [IST0106] Schema validation error: spec.http[0].route[0].weight must be of type integer
 ```
 
@@ -86,7 +86,7 @@ route:
 
 ### Missing Required Field
 
-```
+```text
 Error [IST0106] Schema validation error: spec.host is required
 ```
 
@@ -119,7 +119,7 @@ spec:
 
 ### IST0134: Host Has No Endpoints
 
-```
+```text
 Error [IST0134] (DestinationRule default/my-dr) This host has no endpoints
 ```
 
@@ -170,7 +170,7 @@ spec:
 
 ### Duplicate VirtualService Hosts
 
-```
+```text
 Error: Multiple VirtualServices for the same host in the same namespace
 ```
 
@@ -198,7 +198,7 @@ Fix: Merge the VirtualServices into one, or use different hosts.
 
 ### Conflicting DestinationRules
 
-```
+```text
 Error: Multiple DestinationRules for the same host
 ```
 
@@ -228,7 +228,7 @@ Fix: Merge the DestinationRules into a single resource.
 
 ### Port Conflict
 
-```
+```text
 Error: Gateway port 443 is already in use by another gateway
 ```
 
@@ -256,7 +256,7 @@ Fix: Combine them into one Gateway, or make the host patterns non-overlapping.
 
 ### Credential Not Found
 
-```
+```text
 Error: Gateway references secret "my-tls-cert" which does not exist
 ```
 
@@ -277,7 +277,7 @@ kubectl create secret tls my-tls-cert \
 
 ### Weights Don't Sum to 100
 
-```
+```text
 Error: Total weight of routes does not equal 100
 ```
 

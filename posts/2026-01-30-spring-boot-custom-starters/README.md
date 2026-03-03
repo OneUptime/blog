@@ -44,7 +44,7 @@ We will build a starter that provides a pre-configured HTTP client with retry lo
 
 Create a multi-module Maven project with this structure:
 
-```
+```text
 my-http-client-starter/
 ├── pom.xml                              # Parent POM
 ├── my-http-client-spring-boot-autoconfigure/
@@ -529,7 +529,7 @@ public class HttpClientAutoConfiguration {
 
 Spring Boot 3.x uses a file at `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` to discover auto-configuration classes:
 
-```
+```text
 com.example.httpclient.autoconfigure.HttpClientAutoConfiguration
 ```
 

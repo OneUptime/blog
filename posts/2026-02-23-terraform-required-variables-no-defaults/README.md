@@ -31,7 +31,7 @@ variable "instance_type" {
 
 If you run `terraform plan` without providing `environment`, Terraform will either prompt you interactively or error out in non-interactive mode (like CI/CD):
 
-```
+```text
 $ terraform plan
 var.environment
   Deployment environment (dev, staging, production)
@@ -41,7 +41,7 @@ var.environment
 
 In a CI/CD pipeline with `TF_INPUT=false`:
 
-```
+```text
 $ TF_INPUT=false terraform plan
 Error: No value for required variable
 

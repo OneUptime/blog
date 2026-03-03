@@ -228,7 +228,7 @@ machine:
 
 BGP uses TCP port 179. Talos Linux does not have a host firewall by default, but if you have network-level firewalls, make sure port 179 is open between the Talos nodes and the BGP peers:
 
-```
+```text
 # Required firewall rules
 # Allow BGP traffic (TCP 179) between nodes and routers
 # Allow ICMP for path MTU discovery
@@ -240,7 +240,7 @@ Your BGP setup is only half complete until the routers are configured. Here is a
 
 ### Cisco IOS Example
 
-```
+```text
 router bgp 64501
   neighbor 192.168.1.10 remote-as 64512
   neighbor 192.168.1.11 remote-as 64512
@@ -256,7 +256,7 @@ router bgp 64501
 
 ### FRRouting Example (Linux Router)
 
-```
+```text
 router bgp 64501
   neighbor k8s-nodes peer-group
   neighbor k8s-nodes remote-as 64512

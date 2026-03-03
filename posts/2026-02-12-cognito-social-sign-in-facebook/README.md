@@ -30,7 +30,7 @@ Go to developers.facebook.com and create a new app:
 
 In the Facebook Login settings, add the Cognito callback URL as a valid OAuth redirect URI:
 
-```
+```text
 https://your-domain.auth.us-east-1.amazoncognito.com/oauth2/idpresponse
 ```
 

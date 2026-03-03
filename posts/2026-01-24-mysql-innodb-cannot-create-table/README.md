@@ -14,7 +14,7 @@ The dreaded "Cannot create table" error in MySQL InnoDB can be frustrating becau
 
 When you encounter this error, MySQL typically shows something like:
 
-```
+```text
 ERROR 1005 (HY000): Can't create table 'database.tablename' (errno: 150)
 ERROR 1005 (HY000): Can't create table 'database.tablename' (errno: 121)
 ERROR 1813 (HY000): Tablespace 'database/tablename' exists.

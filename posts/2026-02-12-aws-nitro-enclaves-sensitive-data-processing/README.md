@@ -204,7 +204,7 @@ nitro-cli build-enclave \
 
 The build output includes PCR (Platform Configuration Register) values. These are cryptographic measurements of your enclave image - they're crucial for attestation.
 
-```
+```text
 Enclave Image successfully created.
 {
   "Measurements": {

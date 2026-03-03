@@ -195,7 +195,7 @@ esac
 
 Terragrunt excels at multi-tenant state management:
 
-```
+```text
 infrastructure/
   terragrunt.hcl          # Root configuration
   modules/

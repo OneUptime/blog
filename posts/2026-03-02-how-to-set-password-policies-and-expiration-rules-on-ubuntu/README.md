@@ -74,7 +74,7 @@ sudo nano /etc/login.defs
 
 Key settings to configure:
 
-```
+```text
 # /etc/login.defs - relevant password aging settings
 
 PASS_MAX_DAYS   90      # Maximum days before password must change
@@ -195,7 +195,7 @@ cat /etc/pam.d/common-password
 
 The relevant line should look like:
 
-```
+```text
 # /etc/pam.d/common-password
 password        requisite                       pam_pwquality.so retry=3
 ```
@@ -210,7 +210,7 @@ sudo nano /etc/pam.d/common-password
 
 Add the `remember` option to the pam_unix line:
 
-```
+```text
 # Old line:
 password        [success=1 default=ignore]      pam_unix.so obscure yescrypt
 
@@ -276,7 +276,7 @@ sudo nano /etc/pam.d/common-auth
 
 Ensure these lines are present (they may already be in Ubuntu 22.04+):
 
-```
+```text
 auth    required                        pam_faillock.so preauth
 auth    [success=1 default=ignore]      pam_unix.so nullok
 auth    [default=die]                   pam_faillock.so authfail

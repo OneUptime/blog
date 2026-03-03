@@ -14,7 +14,7 @@ When you need to install Ubuntu Server on multiple machines - whether in a bare-
 
 A preseed file is a plain text file containing debconf answers that the Debian installer reads before or during installation. Each line specifies the package/module, the question key, the data type, and the answer:
 
-```
+```text
 d-i <module>/<key> <type> <value>
 ```
 
@@ -34,7 +34,7 @@ sudo debconf-get-selections >> preseed.cfg
 
 Here is a complete, annotated preseed file for an Ubuntu Server installation:
 
-```
+```text
 # Localization
 d-i debian-installer/locale string en_US.UTF-8
 d-i localechooser/supported-locales multiselect en_US.UTF-8
@@ -118,7 +118,7 @@ openssl passwd -6 "your-secure-password"
 
 The `atomic` recipe puts everything on one partition. For servers, a custom recipe is better:
 
-```
+```text
 # Custom partitioning recipe: separate /boot, /, /var, /home
 d-i partman-auto/method string lvm
 d-i partman-auto/choose_recipe select custom-server
@@ -161,7 +161,7 @@ d-i partman-auto/expert_recipe string \
 
 The `preseed/late_command` directive runs a shell command after installation but before reboot. This is where you can do final configuration:
 
-```
+```text
 # Run commands after installation completes
 d-i preseed/late_command string \
     in-target apt-get install -y unattended-upgrades; \
@@ -223,7 +223,7 @@ genisoimage -rational-rock -joliet -joliet-long \
 
 At the GRUB menu during boot, press `e` to edit the boot entry and append:
 
-```
+```text
 auto=true priority=critical url=http://192.168.1.10:8080/preseed.cfg
 ```
 

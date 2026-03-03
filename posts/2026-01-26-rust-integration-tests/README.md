@@ -91,7 +91,7 @@ The `[dev-dependencies]` section contains packages only used during testing. Thi
 
 Organize your project to support both unit and integration tests.
 
-```
+```text
 myapp/
 ├── Cargo.toml
 ├── src/

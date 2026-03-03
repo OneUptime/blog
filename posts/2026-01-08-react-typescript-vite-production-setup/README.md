@@ -40,7 +40,7 @@ npm install
 
 After initialization, your project structure will look like this:
 
-```
+```text
 my-react-app/
 ├── node_modules/
 ├── public/
@@ -331,7 +331,7 @@ npm install -D prettier eslint-config-prettier eslint-plugin-prettier
 
 ### .prettierignore
 
-```
+```text
 node_modules
 dist
 coverage
@@ -488,7 +488,7 @@ export type Config = typeof config;
 
 A well-organized project structure improves maintainability and scalability.
 
-```
+```text
 src/
 ├── assets/                    # Static assets (images, fonts, etc.)
 │   ├── images/
@@ -1012,7 +1012,7 @@ networks:
 
 ### .dockerignore
 
-```
+```text
 node_modules
 dist
 coverage

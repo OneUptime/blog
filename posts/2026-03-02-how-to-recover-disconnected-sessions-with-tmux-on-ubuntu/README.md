@@ -101,7 +101,7 @@ tmux
 
 ### Saving and Restoring Sessions
 
-```
+```text
 Prefix + Ctrl+s    - Save current session layout
 Prefix + Ctrl+r    - Restore previously saved session
 ```

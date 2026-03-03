@@ -14,7 +14,7 @@ Keeping dependencies up to date is important for security and access to new feat
 
 npm uses semantic versioning (semver):
 
-```
+```text
 major.minor.patch
   1  .  2  .  3
 ```

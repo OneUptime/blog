@@ -145,7 +145,7 @@ Always assign roles to Azure AD groups rather than individual users. This gives 
 
 ### Recommended Group Naming Convention
 
-```
+```text
 az-rbac-<scope>-<role>
 
 Examples:

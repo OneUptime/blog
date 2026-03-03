@@ -457,7 +457,7 @@ func main() {
 
 Test your reconnection logic by stopping and starting RabbitMQ while your application runs. You should see logs like:
 
-```
+```text
 Connected to RabbitMQ
 Started consuming from orders
 Processing order order-0 with status pending

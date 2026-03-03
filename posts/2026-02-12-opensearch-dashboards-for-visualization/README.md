@@ -16,7 +16,7 @@ Let's go from zero to a production-grade monitoring dashboard.
 
 When you create an OpenSearch Service domain, Dashboards is automatically available at a URL like:
 
-```
+```text
 https://vpc-my-domain.us-east-1.es.amazonaws.com/_dashboards
 ```
 
@@ -81,7 +81,7 @@ The Discover tab is your starting point for data exploration. It shows raw docum
 
 Useful search queries in the Discover search bar:
 
-```
+```text
 # Find all errors
 level: "ERROR"
 
@@ -216,7 +216,7 @@ Now combine your visualizations into a dashboard.
 
 A good monitoring dashboard layout:
 
-```
+```text
 +-------------------+-------------------+-------------------+
 |   Error Rate      |  Request Count    |  Avg Response     |
 |   (Big Number)    |  (Big Number)     |  Time (Big Number)|
@@ -242,7 +242,7 @@ Save commonly used filters so your team can apply them with one click.
 
 Here are some useful saved queries for an application monitoring dashboard:
 
-```
+```text
 # Production only
 NOT environment: "staging" AND NOT environment: "dev"
 

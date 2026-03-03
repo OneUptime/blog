@@ -280,7 +280,7 @@ func (al *APILookup) Name() string {
 
 Create `plugin.cfg` to include your plugin:
 
-```
+```text
 # Add your plugin to the list
 customplugin:github.com/yourname/coredns-custom-plugin/customplugin
 apilookup:github.com/yourname/coredns-custom-plugin/apilookup
@@ -314,7 +314,7 @@ make
 
 Create test Corefile:
 
-```
+```text
 .:5353 {
     customplugin {
         option1 value1

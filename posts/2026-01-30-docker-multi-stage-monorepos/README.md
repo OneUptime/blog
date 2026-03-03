@@ -14,7 +14,7 @@ Monorepos bundle multiple services into a single repository, which simplifies co
 
 A typical monorepo might look like this:
 
-```
+```text
 monorepo/
 ├── packages/
 │   ├── shared-utils/

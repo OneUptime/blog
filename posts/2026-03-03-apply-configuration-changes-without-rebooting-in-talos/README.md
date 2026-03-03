@@ -258,7 +258,7 @@ echo "All nodes updated successfully"
 
 When you try to apply a change that requires a reboot using `--mode no-reboot`, you get an error:
 
-```
+```text
 error applying configuration: 1 error occurred:
     * config changes require a reboot: machine.install.disk changed
 ```

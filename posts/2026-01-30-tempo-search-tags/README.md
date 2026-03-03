@@ -281,7 +281,7 @@ Not every attribute should be indexed. More tags mean larger indexes, slower com
 
 ### Cardinality Guidelines
 
-```
+```text
 Low cardinality (< 100 values):     Always index
 Medium cardinality (100-10000):     Index if frequently queried
 High cardinality (> 10000):         Avoid indexing
@@ -297,7 +297,7 @@ TraceQL is Tempo's query language. Here are practical examples using indexed tag
 
 ### Basic Tag Queries
 
-```
+```text
 # Find all traces for a specific service
 { resource.service.name = "checkout-service" }
 
@@ -313,7 +313,7 @@ TraceQL is Tempo's query language. Here are practical examples using indexed tag
 
 ### Duration-Based Queries
 
-```
+```text
 # Slow requests (over 2 seconds)
 { span.http.route = "/checkout" } | duration > 2s
 
@@ -326,7 +326,7 @@ TraceQL is Tempo's query language. Here are practical examples using indexed tag
 
 ### Error Queries
 
-```
+```text
 # All errors
 { status = error }
 
@@ -342,7 +342,7 @@ TraceQL is Tempo's query language. Here are practical examples using indexed tag
 
 ### Business Logic Queries
 
-```
+```text
 # Find traces for a specific order
 { span.order.id = "ord-12345" }
 
@@ -355,7 +355,7 @@ TraceQL is Tempo's query language. Here are practical examples using indexed tag
 
 ### Aggregation Queries
 
-```
+```text
 # Count traces by service
 { } | count() by (resource.service.name)
 
@@ -368,7 +368,7 @@ TraceQL is Tempo's query language. Here are practical examples using indexed tag
 
 ### Advanced Patterns
 
-```
+```text
 # Find traces that hit both services
 { resource.service.name = "api-gateway" } && { resource.service.name = "database-service" }
 
@@ -479,7 +479,7 @@ Fix: Index only what you query. Review index usage monthly.
 
 Problem: Queries without `service.name` scan all services.
 
-```
+```text
 # BAD: Scans everything
 { span.http.status_code = 500 }
 
@@ -493,7 +493,7 @@ Fix: Always include `service.name` in queries when possible.
 
 Problem: Querying tags that are not indexed falls back to full scan.
 
-```
+```text
 # If custom.business.metric is not indexed, this is slow
 { span.custom.business.metric = "important" }
 ```
@@ -517,7 +517,7 @@ Fix: For high-cardinality fields, use full-text search on unindexed attributes s
 
 Problem: Confusing resource and span attribute namespaces.
 
-```
+```text
 # WRONG: service.name is a resource attribute
 { span.service.name = "api" }
 
@@ -597,7 +597,7 @@ Here is a complete workflow for rolling out search tags in production.
 
 List the queries your team runs most often. Check Grafana query history or ask developers.
 
-```
+```text
 Common queries:
 - Find errors in checkout service
 - Trace specific order IDs
@@ -648,7 +648,7 @@ New indexes only appear after compaction runs. For existing data, you may need t
 
 Verify indexed queries are fast:
 
-```
+```text
 # Should be fast (indexed)
 { resource.service.name = "checkout" && span.order.id = "ord-12345" }
 

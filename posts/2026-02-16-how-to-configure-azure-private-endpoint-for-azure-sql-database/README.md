@@ -119,7 +119,7 @@ nslookup mysqlserver.database.windows.net
 
 You should see something like this:
 
-```
+```text
 Name:    mysqlserver.privatelink.database.windows.net
 Address: 10.0.1.5
 Aliases: mysqlserver.database.windows.net

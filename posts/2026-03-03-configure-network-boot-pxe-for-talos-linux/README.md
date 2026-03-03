@@ -16,7 +16,7 @@ This guide covers building a complete PXE infrastructure tailored for Talos Linu
 
 A PXE boot setup for Talos Linux involves several components working together:
 
-```
+```text
 [Bare Metal Server] --DHCP request--> [DHCP Server]
                     <--IP + boot file--
                     --TFTP request----> [TFTP Server]

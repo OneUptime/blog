@@ -281,7 +281,7 @@ kubectl logs <pod> -c istio-init
 
 ### Network Troubleshooting Decision Tree
 
-```
+```text
 Traffic not working?
 ├── Is sidecar injected? (kubectl get pod - look for 2/2)
 │   ├── No → Check namespace label, webhook

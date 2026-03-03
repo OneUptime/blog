@@ -101,7 +101,7 @@ pip-compile --generate-hashes requirements.in -o requirements.txt
 
 The resulting `requirements.txt` includes cryptographic hashes:
 
-```
+```text
 # requirements.txt with hashes for reproducibility
 flask==3.0.0 \
     --hash=sha256:a1b2c3d4e5f6... \

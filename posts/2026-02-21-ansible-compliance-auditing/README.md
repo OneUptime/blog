@@ -133,7 +133,7 @@ compliance_checks:
 
 ## Report Template
 
-```
+```text
 # roles/compliance/templates/compliance_report.j2
 Compliance Audit Report
 ========================

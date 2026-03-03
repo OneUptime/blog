@@ -28,14 +28,14 @@ Let's walk through each one.
 
 This error means AWS doesn't have enough of the instance type you requested in the availability zone you specified.
 
-```
+```text
 An error occurred (InsufficientInstanceCapacity) when calling the RunInstances operation:
 There is no Spot capacity available that matches your request.
 ```
 
 Or for On-Demand:
 
-```
+```text
 An error occurred (InsufficientInstanceCapacity) when calling the RunInstances operation:
 We currently do not have sufficient capacity in the Availability Zone you requested.
 ```
@@ -84,7 +84,7 @@ For guaranteed capacity, consider [Capacity Reservations](https://oneuptime.com/
 
 You've hit the instance limit for your account in this region. Every account has default limits on how many vCPUs it can run per instance family.
 
-```
+```text
 An error occurred (InstanceLimitExceeded) when calling the RunInstances operation:
 You have requested more vCPU capacity than your current vCPU limit allows.
 ```

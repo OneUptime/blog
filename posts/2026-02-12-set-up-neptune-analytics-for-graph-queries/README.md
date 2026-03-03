@@ -70,7 +70,7 @@ Prepare your data in CSV format and load it from S3.
 First, create node and edge files.
 
 Node file (nodes.csv):
-```
+```text
 ~id,~label,name:String,risk_score:Double
 p1,Person,Alice,0.1
 p2,Person,Bob,0.8
@@ -80,7 +80,7 @@ a2,Account,ACC-002,0.0
 ```
 
 Edge file (edges.csv):
-```
+```text
 ~id,~source,~target,~label,amount:Double,timestamp:String
 e1,p1,a1,OWNS,,2026-01-01
 e2,p2,a2,OWNS,,2026-01-15

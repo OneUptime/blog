@@ -26,7 +26,7 @@ Modules solve these problems by providing a single, versioned source of truth fo
 
 Let's build a module that creates a complete Talos cluster:
 
-```
+```text
 modules/
   talos-cluster/
     main.tf

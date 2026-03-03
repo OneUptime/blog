@@ -25,7 +25,7 @@ flowchart TD
 
 When Spring actually cannot find a bean to inject, you'll see errors like:
 
-```
+```text
 ***************************
 APPLICATION FAILED TO START
 ***************************

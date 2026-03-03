@@ -43,7 +43,7 @@ flowchart LR
 
 A typical bundle looks like this:
 
-```
+```text
 bundle/
   .manifest
   policy/
@@ -487,7 +487,7 @@ curl http://localhost:8181/health?bundles
 
 OPA exposes bundle metrics:
 
-```
+```text
 # Bundle download duration
 opa_bundle_download_duration_seconds
 
@@ -564,7 +564,7 @@ opa build -b ./policies -o "bundle-v1.2.3.tar.gz"
 
 ### 2. Separate Data from Policies
 
-```
+```text
 bundles/
   policies/        # Changes less frequently
     authz.rego

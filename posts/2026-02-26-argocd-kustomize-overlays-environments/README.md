@@ -16,7 +16,7 @@ This guide covers structuring overlays for multiple environments, connecting the
 
 The standard pattern uses a base directory with shared manifests and an overlay directory per environment:
 
-```
+```text
 platform/
   base/
     kustomization.yaml

@@ -71,7 +71,7 @@ A problem matcher is a JSON file with a specific structure. Here is a complete e
 
 Let us build a problem matcher for a custom linter that outputs errors in this format:
 
-```
+```text
 src/utils/parser.ts:42:15: error TS2345: Argument of type 'string' is not assignable
 src/components/Button.tsx:18:3: warning: Unused import 'useState'
 ```
@@ -134,7 +134,7 @@ Some tools output errors across multiple lines. Problem matchers handle this wit
 
 Consider this multi-line error format:
 
-```
+```text
 Error in file: src/api/handler.ts
   Line 45, Column 12
   TypeError: Cannot read property 'map' of undefined
@@ -214,7 +214,7 @@ With `loop: true`, the matcher continues scanning for matches after finding one,
 
 ESLint with the stylish formatter outputs errors like:
 
-```
+```text
 /home/runner/work/project/src/index.ts
   2:10  error  'foo' is defined but never used  no-unused-vars
   5:1   warning  Unexpected console statement    no-console
@@ -249,7 +249,7 @@ ESLint with the stylish formatter outputs errors like:
 
 Pytest failure output:
 
-```
+```text
 FAILED tests/test_api.py::test_create_user - AssertionError: assert 200 == 201
 ```
 
@@ -275,7 +275,7 @@ FAILED tests/test_api.py::test_create_user - AssertionError: assert 200 == 201
 
 Go compiler errors:
 
-```
+```text
 ./main.go:15:2: undefined: fmt.Prinln
 ./utils/helper.go:8:9: cannot use x (type int) as type string
 ```

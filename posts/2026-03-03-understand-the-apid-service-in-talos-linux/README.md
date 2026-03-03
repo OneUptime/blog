@@ -22,7 +22,7 @@ Think of `apid` as the front door to your Talos node. Every administrative actio
 
 Talos Linux runs several core services, and `apid` sits at the top of the stack from a user interaction perspective. Here is how the services relate to each other:
 
-```
+```text
 User (talosctl) --> apid (port 50000) --> machined --> system resources
                                       --> etcd (control plane only)
                                       --> trustd (certificate management)

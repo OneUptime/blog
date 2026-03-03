@@ -323,7 +323,7 @@ graph TD
 
 ### Create Item
 
-```
+```text
 Name: Custom App Status
 Type: Zabbix agent
 Key: custom.app.status
@@ -333,7 +333,7 @@ Update interval: 60s
 
 ### Create Trigger
 
-```
+```text
 Name: Custom App is down
 Expression: last(/Custom Application Monitor/custom.app.status)=0
 Severity: High

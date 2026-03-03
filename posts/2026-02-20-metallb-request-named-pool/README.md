@@ -194,7 +194,7 @@ kubectl get svc internal-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 
 Expected output:
 
-```
+```text
 NAME            TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)
 web-frontend    LoadBalancer   10.96.10.5     203.0.113.10    80:31001/TCP,443:31002/TCP
 internal-api    LoadBalancer   10.96.10.8     10.0.50.10      9090:31003/TCP

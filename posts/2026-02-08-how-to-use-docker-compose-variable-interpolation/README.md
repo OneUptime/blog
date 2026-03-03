@@ -145,7 +145,7 @@ services:
 
 If `APP_VERSION` is not set, Docker Compose will print the error message and refuse to start:
 
-```
+```text
 ERROR: Variable "APP_VERSION" is not set. APP_VERSION must be set to deploy
 ```
 

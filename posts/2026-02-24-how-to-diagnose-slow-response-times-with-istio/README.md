@@ -83,7 +83,7 @@ The widest span is your bottleneck.
 
 Make sure your services propagate trace headers. Istio needs these headers to correlate spans:
 
-```
+```text
 x-request-id
 x-b3-traceid
 x-b3-spanid

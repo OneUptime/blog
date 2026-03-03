@@ -165,7 +165,7 @@ minio_buckets:
 
 ## Environment File Template
 
-```
+```text
 # roles/minio/templates/minio.env.j2 - MinIO environment variables
 MINIO_ROOT_USER={{ minio_root_user }}
 MINIO_ROOT_PASSWORD={{ minio_root_password }}

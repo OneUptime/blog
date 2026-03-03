@@ -20,7 +20,7 @@ kubectl api-resources | grep istio
 
 This gives you a list of all registered Istio resource types:
 
-```
+```text
 authorizationpolicies          ap           security.istio.io/v1                  true         AuthorizationPolicy
 destinationrules               dr           networking.istio.io/v1                true         DestinationRule
 envoyfilters                   ef           networking.istio.io/v1alpha3          true         EnvoyFilter
@@ -50,7 +50,7 @@ This single command lists VirtualServices, DestinationRules, Gateways, ServiceEn
 
 The output looks like:
 
-```
+```text
 NAMESPACE      NAME                                          GATEWAYS               HOSTS             AGE
 default        virtualservice.networking.istio.io/bookinfo   ["bookinfo-gateway"]   ["*"]             5d
 default        virtualservice.networking.istio.io/reviews                            ["reviews"]       5d
@@ -80,7 +80,7 @@ done
 
 Output:
 
-```
+```text
 === Istio Resource Inventory ===
 virtualservices                12
 destinationrules               8
@@ -174,7 +174,7 @@ istioctl proxy-status
 
 This lists all connected proxies and their sync status:
 
-```
+```text
 NAME                                     CLUSTER     CDS     LDS     EDS     RDS     ECDS    ISTIOD
 productpage-v1-xxx.default               Kubernetes  SYNCED  SYNCED  SYNCED  SYNCED  -       istiod-abc-xyz
 reviews-v1-xxx.default                   Kubernetes  SYNCED  SYNCED  SYNCED  SYNCED  -       istiod-abc-xyz

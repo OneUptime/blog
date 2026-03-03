@@ -113,7 +113,7 @@ In the Grafana query editor, select the Google Cloud Monitoring data source and 
 
 ### Cloud SQL Connection Count
 
-```
+```text
 # Grafana query for Cloud SQL active connections
 Service: Cloud SQL
 Metric: cloudsql.googleapis.com/database/network/connections
@@ -124,7 +124,7 @@ Alignment Period: 60s
 
 ### GKE Container Memory Usage
 
-```
+```text
 # Query for GKE container memory by namespace
 Service: Kubernetes
 Metric: kubernetes.io/container/memory/used_bytes

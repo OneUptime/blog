@@ -18,7 +18,7 @@ The difference between "User login failed" and a JSON object with user_id, error
 
 Traditional logging produces output like this:
 
-```
+```text
 2024-01-15 10:23:45 ERROR - User john@example.com failed to login: invalid password attempt 3 from IP 192.168.1.100
 ```
 

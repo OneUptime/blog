@@ -971,7 +971,7 @@ class TestResponseTimes:
 
 Organize your tests for easy maintenance and CI/CD integration:
 
-```
+```text
 tests/
     __init__.py
     conftest.py              # Shared fixtures

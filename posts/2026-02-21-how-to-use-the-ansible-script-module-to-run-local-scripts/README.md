@@ -377,7 +377,7 @@ echo "SUCCESS: Deployment complete"
 
 Keep scripts organized alongside your playbooks.
 
-```
+```text
 ansible-project/
   playbooks/
     deploy.yml

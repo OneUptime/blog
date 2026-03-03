@@ -20,7 +20,7 @@ lsblk
 ```
 
 Typical output:
-```
+```text
 NAME   MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
 sda      8:0    0   500G  0 disk
 ├─sda1   8:1    0   512M  0 part /boot/efi
@@ -247,7 +247,7 @@ sudo nano /etc/fstab
 ```
 
 The format is:
-```
+```text
 # device/UUID   mountpoint   fstype   options   dump   pass
 UUID=a1b2c3d4-e5f6-7890-abcd-ef1234567890  /data  ext4  defaults  0  2
 ```

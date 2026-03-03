@@ -81,7 +81,7 @@ sudo nano /etc/crypttab
 
 The format is: `<mapper-name> <device> <keyfile> <options>`
 
-```
+```text
 # /etc/crypttab - encrypted device configuration
 # <name>       <device>                                    <keyfile>                          <options>
 data_drive     UUID=a1b2c3d4-e5f6-7890-abcd-ef1234567890  /etc/luks-keys/data_drive.key      luks,discard
@@ -95,7 +95,7 @@ Options explained:
 
 ### For a drive that may not always be present (external/removable)
 
-```
+```text
 backup_drive   UUID=b2c3d4e5-f6a7-8901-bcde-f12345678901  /etc/luks-keys/backup_drive.key   luks,nofail,noauto
 ```
 
@@ -118,7 +118,7 @@ Add to `/etc/fstab`:
 sudo nano /etc/fstab
 ```
 
-```
+```text
 # /etc/fstab
 # <filesystem>                             <mountpoint>  <type>  <options>           <dump>  <pass>
 UUID=c3d4e5f6-a7b8-9012-cdef-123456789012  /data         ext4    defaults,nofail     0       2

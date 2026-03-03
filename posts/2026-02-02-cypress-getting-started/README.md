@@ -70,7 +70,7 @@ npx cypress open
 
 This creates the following structure:
 
-```
+```text
 my-cypress-project/
 ├── cypress/
 │   ├── e2e/           # Your test files go here

@@ -50,12 +50,12 @@ ssh -T git@your-server.com
 ```
 
 Successful response:
-```
+```text
 Hi username! You've successfully authenticated, but GitHub does not provide shell access.
 ```
 
 Failed response:
-```
+```text
 git@github.com: Permission denied (publickey).
 ```
 
@@ -67,13 +67,13 @@ ssh -vT git@github.com
 ```
 
 Look for these key lines:
-```
+```text
 debug1: Offering public key: /Users/you/.ssh/id_ed25519
 debug1: Server accepts key: /Users/you/.ssh/id_ed25519
 ```
 
 Or failure indicators:
-```
+```text
 debug1: No more authentication methods to try.
 Permission denied (publickey).
 ```
@@ -107,7 +107,7 @@ ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
 ```
 
 Follow the prompts:
-```
+```text
 Enter file in which to save the key (/Users/you/.ssh/id_ed25519): [Press Enter]
 Enter passphrase (empty for no passphrase): [Type a passphrase]
 Enter same passphrase again: [Confirm passphrase]
@@ -192,7 +192,7 @@ ssh -vT git@github.com 2>&1 | grep "Offering"
 
 Create or update `~/.ssh/config`:
 
-```
+```text
 # GitHub
 Host github.com
     HostName github.com
@@ -267,7 +267,7 @@ ssh -T -p 443 git@ssh.github.com
 
 Configure SSH to use port 443 for GitHub:
 
-```
+```text
 # ~/.ssh/config
 Host github.com
     HostName ssh.github.com
@@ -369,7 +369,7 @@ ssh-keygen -t ed25519 -C "deploy-key-server-name" -f ~/.ssh/deploy_key
 
 Configure for the specific repository:
 
-```
+```text
 # ~/.ssh/config
 Host github-deploy
     HostName github.com

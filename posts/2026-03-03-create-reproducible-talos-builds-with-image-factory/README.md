@@ -48,7 +48,7 @@ KUBERNETES_VERSION="v1.30.0"
 
 Keep your schematic files in git alongside your cluster configurations:
 
-```
+```text
 # Repository layout
 infrastructure/
   versions.env

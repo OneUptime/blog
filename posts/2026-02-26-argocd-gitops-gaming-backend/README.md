@@ -50,7 +50,7 @@ ArgoCD manages all of these components declaratively through Git.
 
 ## Repository Structure
 
-```
+```text
 gaming-platform-config/
   infrastructure/
     redis/

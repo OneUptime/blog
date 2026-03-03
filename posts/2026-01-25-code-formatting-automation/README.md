@@ -71,7 +71,7 @@ Configure Prettier in `.prettierrc`:
 
 Create `.prettierignore` to exclude files:
 
-```
+```text
 # .prettierignore
 # Dependencies
 node_modules/
@@ -466,7 +466,7 @@ git push origin format-codebase
 
 Use `.git-blame-ignore-revs` to hide formatting commits from blame:
 
-```
+```text
 # .git-blame-ignore-revs
 # Prettier formatting migration
 abc123def456789...

@@ -261,7 +261,7 @@ check = RequireRDSBackup()
 
 Ignore specific findings when needed:
 
-```
+```text
 # .trivyignore
 # Allow specific public bucket for static website
 AVD-AWS-0088

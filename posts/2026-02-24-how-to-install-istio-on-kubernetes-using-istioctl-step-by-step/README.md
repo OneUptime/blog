@@ -92,7 +92,7 @@ The `-y` flag skips the confirmation prompt. The default profile installs:
 
 You'll see output showing each component being installed. It typically takes a minute or two depending on your cluster.
 
-```
+```text
 ✔ Istio core installed
 ✔ Istiod installed
 ✔ Ingress gateways installed
@@ -109,7 +109,7 @@ kubectl get pods -n istio-system
 
 You should see something like:
 
-```
+```text
 NAME                                    READY   STATUS    RESTARTS   AGE
 istio-ingressgateway-5d6b8c5f5-abcde   1/1     Running   0          2m
 istiod-7f4c8d6b9-fghij                 1/1     Running   0          2m

@@ -35,7 +35,7 @@ Choosing between ClickHouse Cloud and self-hosted deployment involves weighing c
 
 ### Break-Even Analysis
 
-```
+```text
 Self-Hosted makes sense when:
 - Data volume > 50TB compressed
 - Stable, predictable workloads
@@ -170,7 +170,7 @@ Monthly:
 
 ### ClickHouse Cloud Scaling
 
-```
+```text
 # Auto-scaling (automatic)
 1. Workload increases
 2. System detects need
@@ -225,7 +225,7 @@ Built-in features:
 4. **Compliance** - Specific requirements (data sovereignty)
 5. **Cost optimization** - Already have infrastructure
 
-```
+```text
 Example: Large enterprise with
 - 100TB+ data
 - 24/7 DevOps team
@@ -242,7 +242,7 @@ Example: Large enterprise with
 4. **Startup/Growth** - Focus on product, not infrastructure
 5. **Standard compliance** - SOC 2, GDPR support included
 
-```
+```text
 Example: Growing startup with
 - 1-10TB data
 - Small engineering team

@@ -124,7 +124,7 @@ Choosing the right shard count involves tradeoffs:
 
 The query frontend uses this formula to determine sharding:
 
-```
+```text
 effective_shards = min(
     query_sharding_total_shards,
     query_sharding_max_sharded_queries,

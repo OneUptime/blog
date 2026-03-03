@@ -55,7 +55,7 @@ spec:
 
 The schedule field uses standard cron syntax:
 
-```
+```text
 # .---------------- minute (0 - 59)
 # |  .------------- hour (0 - 23)
 # |  |  .---------- day of month (1 - 31)

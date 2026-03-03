@@ -21,7 +21,7 @@ terraform workspace delete test
 
 Output:
 
-```
+```text
 Deleted workspace "test"!
 ```
 
@@ -50,7 +50,7 @@ When you delete a workspace, Terraform removes the state file associated with it
 
 This is a critical point. If you had a workspace called "feature-xyz" with five EC2 instances tracked in its state, deleting the workspace removes the state file. Those five EC2 instances keep running in AWS. Terraform just forgets about them.
 
-```
+```text
 Before deletion:
   Workspace "feature-xyz" state tracks:
     - aws_instance.web[0]    (i-abc123)
@@ -95,7 +95,7 @@ terraform workspace delete staging
 
 Output:
 
-```
+```text
 Workspace "staging" is not empty.
 
 To delete a workspace with existing resources, use the -force flag.

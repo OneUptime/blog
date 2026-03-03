@@ -286,7 +286,7 @@ curl http://192.168.1.10:8080/autoinstall.yaml
 
 At the Ubuntu Server installer's GRUB menu, press `e` to edit the boot entry and append to the linux line:
 
-```
+```text
 autoinstall ds=nocloud-net;s=http://192.168.1.10:8080/
 ```
 

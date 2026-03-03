@@ -160,7 +160,7 @@ gdb /tmp/crash_test /tmp/crash.core
 
 Inside GDB:
 
-```
+```text
 (gdb) bt
 #0  0x00005555555551a9 in main () at crash_test.c:5
         ptr = 0x0

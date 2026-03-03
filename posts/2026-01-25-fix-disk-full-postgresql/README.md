@@ -16,7 +16,7 @@ A disk full error in PostgreSQL can bring your entire application to a halt. Whe
 
 Disk full errors appear in various forms:
 
-```
+```text
 ERROR: could not extend file "base/16384/16385": No space left on device
 HINT: Check free disk space.
 

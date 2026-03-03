@@ -31,7 +31,7 @@ npm install
 
 Your extension structure should look like this:
 
-```
+```text
 my-team-extension/
 ├── package.json
 ├── src/

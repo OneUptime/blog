@@ -14,7 +14,7 @@ Real-world configuration files are rarely one-size-fits-all. You need SSL blocks
 
 The conditional syntax in Terraform templates uses `%{if}`, `%{else}`, and `%{endif}`:
 
-```
+```text
 %{if condition}
   ... included when condition is true ...
 %{endif}

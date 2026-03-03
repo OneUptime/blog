@@ -437,7 +437,7 @@ Calico evaluates policies in this order:
 
 Example precedence:
 
-```
+```text
 Tier: security (order 100)
   Policy: block-ssh (order 50) - Evaluated first
   Policy: allow-monitoring (order 100) - Evaluated second

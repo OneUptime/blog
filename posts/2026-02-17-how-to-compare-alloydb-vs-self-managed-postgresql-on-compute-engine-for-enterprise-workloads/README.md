@@ -263,7 +263,7 @@ If your workload depends on a specific extension that AlloyDB does not support, 
 
 For a typical enterprise setup (16 vCPUs, 64 GB RAM, 1 TB storage, HA):
 
-```
+```text
 AlloyDB:
   Primary instance (16 vCPU): ~$1,100/month
   Read pool (2 nodes, 8 vCPU each): ~$550/month

@@ -20,7 +20,7 @@ KubeSpan solves the networking layer of this problem by creating encrypted WireG
 
 Before configuring anything, plan your network layout. Here is a typical multi-site setup:
 
-```
+```text
 Site A (Primary Data Center)
   - Control plane nodes: 10.1.0.10, 10.1.0.11, 10.1.0.12
   - Worker nodes: 10.1.0.20, 10.1.0.21

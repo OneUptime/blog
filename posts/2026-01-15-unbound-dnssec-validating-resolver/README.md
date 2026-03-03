@@ -64,7 +64,7 @@ unbound -V
 
 You should see output showing the version and compile-time options:
 
-```
+```text
 Version 1.19.0
 
 Configure line: --build=x86_64-linux-gnu --prefix=/usr --includedir=${prefix}/include ...
@@ -80,7 +80,7 @@ Confirm that `validator` appears in the linked modules list. This module perform
 
 DNSSEC validation requires a root trust anchor-the public key for the DNS root zone. Every signed zone chains its signatures back to this anchor:
 
-```
+```text
 Root Zone (.)
     |
     +-- .com (signed, delegated from root)
@@ -123,7 +123,7 @@ cat /var/lib/unbound/root.key
 
 You should see something like:
 
-```
+```text
 . IN DS 20326 8 2 E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
 ```
 
@@ -337,7 +337,7 @@ sudo unbound-checkconf
 
 Expected output:
 
-```
+```text
 unbound-checkconf: no errors in /etc/unbound/unbound.conf
 ```
 
@@ -382,7 +382,7 @@ sudo systemctl status unbound
 
 Expected status output:
 
-```
+```text
 ● unbound.service - Unbound DNS server
      Loaded: loaded (/lib/systemd/system/unbound.service; enabled)
      Active: active (running) since ...
@@ -398,7 +398,7 @@ dig @127.0.0.1 example.com A
 
 Look for the `ad` (Authenticated Data) flag in the response:
 
-```
+```text
 ;; flags: qr rd ra ad; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
 ```
 
@@ -425,7 +425,7 @@ dig @127.0.0.1 dnssec-failed.org A
 
 This domain has intentionally broken DNSSEC. Your resolver should return `SERVFAIL` because validation fails:
 
-```
+```text
 ;; ->>HEADER<<- opcode: QUERY, status: SERVFAIL, id: 12345
 ```
 
@@ -451,7 +451,7 @@ sudo unbound-control stats_noreset
 
 Key metrics to monitor:
 
-```
+```text
 total.num.queries=15234
 total.num.cachehits=12456
 total.num.cachemiss=2778
@@ -526,7 +526,7 @@ sudo journalctl -u unbound -f
 
 Sample output:
 
-```
+```text
 unbound: [12345:0] info: 127.0.0.1 example.com. A IN
 unbound: [12345:0] info: reply 127.0.0.1 example.com. A IN NOERROR 0.034s
 ```
@@ -647,7 +647,7 @@ drill -S example.com
 
 Output shows each step of validation:
 
-```
+```text
 ;; Chase successful
 example.com.    86400   IN      A       93.184.216.34
 example.com.    86400   IN      RRSIG   A 13 2 86400 ...

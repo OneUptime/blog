@@ -86,7 +86,7 @@ deploy:
 
 ### Project Structure
 
-```
+```text
 my-project/
 ├── skaffold.yaml
 ├── Dockerfile
@@ -333,7 +333,7 @@ deploy:
 
 ### Kustomize Structure
 
-```
+```text
 k8s/
 ├── base/
 │   ├── deployment.yaml

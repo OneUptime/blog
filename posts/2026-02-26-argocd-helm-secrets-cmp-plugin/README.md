@@ -183,7 +183,7 @@ spec:
 
 A typical project using helm-secrets looks like this:
 
-```
+```text
 my-app/
   Chart.yaml
   values.yaml           # Non-sensitive values (plaintext)
@@ -316,7 +316,7 @@ spec:
 
 For multiple environments, use environment-specific values and secrets files:
 
-```
+```text
 my-app/
   Chart.yaml
   values.yaml              # Base values

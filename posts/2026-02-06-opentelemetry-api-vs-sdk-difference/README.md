@@ -182,7 +182,7 @@ After this initialization runs, all the API calls in your libraries and applicat
 Here's how package boundaries look across different languages:
 
 ### JavaScript/TypeScript
-```
+```text
 @opentelemetry/api           → API only (import in libraries)
 @opentelemetry/sdk-trace-base → SDK trace components
 @opentelemetry/sdk-metrics    → SDK metric components
@@ -191,21 +191,21 @@ Here's how package boundaries look across different languages:
 ```
 
 ### Python
-```
+```text
 opentelemetry-api            → API only
 opentelemetry-sdk            → SDK implementation
 opentelemetry-exporter-*     → SDK exporters
 ```
 
 ### Go
-```
+```text
 go.opentelemetry.io/otel               → API
 go.opentelemetry.io/otel/sdk           → SDK
 go.opentelemetry.io/otel/exporters/*   → Exporters
 ```
 
 ### Java
-```
+```text
 io.opentelemetry:opentelemetry-api            → API
 io.opentelemetry:opentelemetry-sdk            → SDK
 io.opentelemetry:opentelemetry-exporter-*     → Exporters

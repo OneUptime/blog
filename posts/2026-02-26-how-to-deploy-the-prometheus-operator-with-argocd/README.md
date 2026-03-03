@@ -338,7 +338,7 @@ data:
 
 Here is the recommended layout for your monitoring configuration:
 
-```
+```text
 platform/
   monitoring/
     crds/

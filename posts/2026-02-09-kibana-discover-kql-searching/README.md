@@ -22,7 +22,7 @@ KQL distinguishes between free text search across all fields and field-specific 
 
 Search specific fields using colon syntax:
 
-```
+```text
 log.level: ERROR
 ```
 
@@ -30,7 +30,7 @@ This finds all logs where the level field equals ERROR. Field names are case-sen
 
 Multiple field queries:
 
-```
+```text
 service.name: api AND log.level: ERROR
 ```
 
@@ -38,7 +38,7 @@ This returns errors from the api service only.
 
 Query numeric fields:
 
-```
+```text
 http.response.status_code: 500
 ```
 
@@ -48,7 +48,7 @@ Finds logs with HTTP 500 status codes.
 
 Use wildcards for partial matching:
 
-```
+```text
 message: *timeout*
 ```
 
@@ -56,7 +56,7 @@ Matches messages containing "timeout" anywhere in the text.
 
 Wildcard at the beginning or end:
 
-```
+```text
 # Find services starting with "user"
 service.name: user*
 
@@ -66,7 +66,7 @@ message: *failed
 
 Multiple wildcards:
 
-```
+```text
 url.path: */api/*/users
 ```
 
@@ -76,7 +76,7 @@ Matches paths like /v1/api/internal/users or /v2/api/public/users.
 
 Combine conditions with AND, OR, and NOT:
 
-```
+```text
 # AND: Both conditions must match
 log.level: ERROR AND service.name: database
 
@@ -89,7 +89,7 @@ log.level: ERROR NOT service.name: healthcheck
 
 Group conditions with parentheses:
 
-```
+```text
 # Errors or warnings from critical services
 (log.level: ERROR OR log.level: WARN) AND (service.name: api OR service.name: database)
 
@@ -103,7 +103,7 @@ Operator precedence follows standard logic rules: NOT, then AND, then OR. Use pa
 
 Search numeric ranges:
 
-```
+```text
 # Response times over 1000ms
 http.response.time > 1000
 
@@ -116,7 +116,7 @@ request.size >= 1048576 AND request.size <= 10485760
 
 Date range queries:
 
-```
+```text
 # Timestamp after a specific date
 @timestamp > "2024-02-09"
 
@@ -130,7 +130,7 @@ The time picker at the top handles date ranges more conveniently, but range quer
 
 Match any value in an array field:
 
-```
+```text
 # Find logs with specific tags
 tags: error OR tags: critical OR tags: alert
 
@@ -140,7 +140,7 @@ tags: (error OR critical OR alert)
 
 Check if array contains all values:
 
-```
+```text
 # Both tags must be present
 tags: production AND tags: critical
 ```
@@ -149,7 +149,7 @@ tags: production AND tags: critical
 
 Search nested objects using dot notation:
 
-```
+```text
 # User information in nested structure
 user.details.email: *@example.com
 
@@ -166,7 +166,7 @@ Nested objects maintain their structure in KQL, making hierarchical data easy to
 
 Check if a field exists:
 
-```
+```text
 # Logs that have an error_code field
 error_code: *
 
@@ -180,7 +180,7 @@ This works because wildcard matches any value, so the field must exist to match.
 
 Search for exact phrases in text fields:
 
-```
+```text
 # Exact phrase match
 message: "connection refused"
 
@@ -194,7 +194,7 @@ Quotes ensure words appear together in order, unlike separate terms that can app
 
 KQL is case-insensitive for values by default:
 
-```
+```text
 # These are equivalent
 log.level: error
 log.level: ERROR
@@ -203,7 +203,7 @@ log.level: Error
 
 Field names remain case-sensitive:
 
-```
+```text
 # Correct
 log.level: ERROR
 
@@ -215,7 +215,7 @@ Log.Level: ERROR
 
 KQL treats some characters specially. Escape them with backslashes when searching for literals:
 
-```
+```text
 # Search for actual asterisk
 message: \*
 
@@ -232,7 +232,7 @@ Characters needing escaping include: *, ?, (, ), {, }, [, ], ", \, :, <, >
 
 Filters provide a visual way to build queries. Add filters through the UI, then convert to KQL:
 
-```
+```text
 # Add filter: log.level is ERROR
 # Add filter: service.name is api
 # Add filter: @timestamp is in the last 15 minutes
@@ -247,7 +247,7 @@ The time range stays separate from KQL, controlled by the time picker.
 
 Save frequently used searches:
 
-```
+```text
 # Click "Save" in the query bar
 # Name: "Production Errors"
 # Query: log.level: ERROR AND environment: production
@@ -260,21 +260,21 @@ Load saved queries quickly without retyping. Share them with team members by exp
 
 Find logs missing expected fields:
 
-```
+```text
 # Requests without user authentication
 http.request.method: POST AND NOT user.id: *
 ```
 
 Search multiple fields for the same value:
 
-```
+```text
 # Username in any field
 simon OR message: *simon* OR user.name: simon OR client.name: *simon*
 ```
 
 Complex filtering for troubleshooting:
 
-```
+```text
 # Failed requests from mobile apps, excluding known issues
 http.response.status_code >= 500 AND user_agent: *Mobile* NOT message: "rate limit exceeded" NOT url.path: /health
 ```
@@ -283,7 +283,7 @@ http.response.status_code >= 500 AND user_agent: *Mobile* NOT message: "rate lim
 
 Write efficient queries by being specific:
 
-```
+```text
 # Slow: Searches all fields
 *timeout*
 
@@ -296,7 +296,7 @@ error_code: ETIMEDOUT
 
 Lead with indexed fields:
 
-```
+```text
 # Good: Starts with indexed keyword field
 service.name: api AND message: *error*
 
@@ -306,7 +306,7 @@ message: *error* AND service.name: api
 
 Avoid leading wildcards when possible:
 
-```
+```text
 # Slow: Leading wildcard scans all terms
 url.path: *users
 
@@ -318,31 +318,31 @@ url.path: /api/users*
 
 Find authentication failures:
 
-```
+```text
 log.level: ERROR AND (message: *authentication* OR message: *unauthorized* OR http.response.status_code: 401)
 ```
 
 Identify slow database queries:
 
-```
+```text
 service.name: database AND duration > 5000 AND NOT query: *SELECT*COUNT*
 ```
 
 Debug specific user session:
 
-```
+```text
 session.id: abc123 AND @timestamp >= "2024-02-09T10:00:00" AND @timestamp < "2024-02-09T11:00:00"
 ```
 
 Monitor API rate limiting:
 
-```
+```text
 http.response.status_code: 429 AND service.name: api AND NOT client.ip: 10.*
 ```
 
 Find memory-related errors:
 
-```
+```text
 (message: *OutOfMemory* OR message: *heap* OR message: *memory*) AND log.level: ERROR
 ```
 
@@ -350,7 +350,7 @@ Find memory-related errors:
 
 Explore available fields in the left sidebar:
 
-```
+```text
 # Click field names to see top values
 # Click "+" to add field to table
 # Click "Visualize" to create quick charts
@@ -358,7 +358,7 @@ Explore available fields in the left sidebar:
 
 Search for field names:
 
-```
+```text
 # In the field filter box
 kubernetes
 ```
@@ -369,7 +369,7 @@ This shows all fields with "kubernetes" in their name, helping you discover the 
 
 Toggle between KQL and Lucene when needed:
 
-```
+```text
 # Disable KQL in query options
 # Switch to Lucene for advanced features like fuzzy matching
 
@@ -386,7 +386,7 @@ KQL covers most use cases, but Lucene offers additional operators for specialize
 
 Start broad and narrow down:
 
-```
+```text
 # Step 1: Find all errors
 log.level: ERROR
 

@@ -18,7 +18,7 @@ Kubernetes has a feature called admission webhooks. These are HTTP callbacks tha
 kubectl get mutatingwebhookconfiguration
 ```
 
-```
+```text
 NAME                         WEBHOOKS   AGE
 istio-sidecar-injector       1          30d
 ```

@@ -39,7 +39,7 @@ This command tells `machined` to initialize etcd as a new single-node cluster. T
 
 For subsequent control plane nodes, etcd starts in join mode. The new node contacts the existing etcd cluster and requests to be added as a member:
 
-```
+```text
 Node 2 (machined) --> Node 1 (etcd) : "Add me as a member"
 Node 1 (etcd) --> Node 2 : "Welcome, here's the cluster state"
 Node 2 (etcd) : Starts and syncs data

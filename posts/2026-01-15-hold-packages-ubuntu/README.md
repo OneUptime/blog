@@ -161,7 +161,7 @@ sudo nano /etc/apt/preferences.d/package-name
 
 ### Pin to Specific Version
 
-```
+```text
 # Pin nginx to version 1.18
 Package: nginx
 Pin: version 1.18.*
@@ -181,7 +181,7 @@ Pin-Priority: 1001
 
 ### Pin from Specific Repository
 
-```
+```text
 # Prefer packages from specific repo
 Package: nginx*
 Pin: release o=Ubuntu

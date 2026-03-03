@@ -70,7 +70,7 @@ If you use `serial`, `run_once` executes once per batch:
 
 Output:
 
-```
+```text
 Batch 1: runs on web-01 (batch of web-01, web-02)
 Batch 2: runs on web-03 (batch of web-03, web-04)
 ```

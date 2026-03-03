@@ -25,7 +25,7 @@ Good onboarding documentation is an investment that pays dividends every time so
 
 Organize onboarding docs in a clear progression:
 
-```
+```text
 onboarding/
 ├── README.md                    # Start here
 ├── 01-first-day/
@@ -90,7 +90,7 @@ This takes about 10 minutes. While it runs, continue to Step 2.
 
 Request database read access in #platform-requests Slack channel:
 
-```
+```text
 @platform-team Please grant read access to dev databases for [your-name]
 ```
 
@@ -114,7 +114,7 @@ Run the verification script:
 ```
 
 Expected output:
-```
+```text
 ✓ Docker running
 ✓ Node.js v20.x installed
 ✓ PostgreSQL connection successful
@@ -148,7 +148,7 @@ Once your setup is verified:
 1. Read [Architecture Overview](../02-first-week/architecture.md)
 2. Pick a [Good First Issue](https://github.com/acme/platform/labels/good-first-issue)
 3. Join the #dev-onboarding Slack channel
-```
+```text
 
 ## First Week: Understanding the System
 
@@ -264,7 +264,7 @@ Trade-offs we accept:
 - [Database Schema Documentation](./database-schemas.md)
 - [API Documentation](https://api.acme.com/docs)
 - [Infrastructure Diagrams](./infrastructure.md)
-```
+```text
 
 ## First Month: Going Deeper
 

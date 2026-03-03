@@ -47,7 +47,7 @@ cat /etc/aide/aide.conf | head -100
 
 AIDE predefines attribute groups in the default config:
 
-```
+```text
 # Common predefined groups (from /etc/aide/aide.conf):
 # p = permissions
 # i = inode
@@ -76,7 +76,7 @@ sudo nano /etc/aide/aide.conf
 
 Key configuration sections to customize:
 
-```
+```text
 # Database location - where the baseline is stored
 database_in=file:/var/lib/aide/aide.db
 database_out=file:/var/lib/aide/aide.db.new
@@ -105,7 +105,7 @@ NORMAL = p+i+n+u+g+s+m+c+sha256
 
 ### Defining Monitored Paths
 
-```
+```text
 # Monitor critical system directories thoroughly
 /bin BINARIES
 /sbin BINARIES

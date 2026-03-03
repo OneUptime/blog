@@ -51,7 +51,7 @@ ProducerRecord<String, String> record = new ProducerRecord<>(
 
 More partitions enable more concurrent consumers. But too many partitions increase overhead.
 
-```
+```text
 Partitions: 1   -> Max consumers: 1
 Partitions: 10  -> Max consumers: 10
 Partitions: 100 -> Max consumers: 100
@@ -330,7 +330,7 @@ public void routeByVolume(Event event) {
 
 Guidelines for partition count:
 
-```
+```text
 Target throughput / Per-partition throughput = Minimum partitions
 
 Example:

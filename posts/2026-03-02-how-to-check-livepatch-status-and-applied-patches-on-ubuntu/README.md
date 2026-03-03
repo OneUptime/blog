@@ -33,7 +33,7 @@ sudo canonical-livepatch status --verbose
 
 A healthy system shows:
 
-```
+```text
 Machine ID:  a1b2c3d4e5f6...
 Machine token: [redacted]
 Status: active

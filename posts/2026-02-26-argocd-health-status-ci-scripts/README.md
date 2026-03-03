@@ -68,7 +68,7 @@ argocd app get my-app \
 
 Example output:
 
-```
+```text
 Deployment/my-app: Healthy - OK
 Service/my-app: Healthy - OK
 Ingress/my-app: Healthy - OK

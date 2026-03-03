@@ -434,7 +434,7 @@ services:
 
 ## Project Structure Example
 
-```
+```text
 project/
   common/
     base.yml           # Lowest-level shared config

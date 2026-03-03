@@ -54,7 +54,7 @@ Before the review session, collect:
 
 The Well-Architected Tool (available free in the AWS console) provides a structured questionnaire for each pillar. It's the easiest way to run a review:
 
-```
+```text
 AWS Console -> Well-Architected Tool -> Define workload -> Answer questions
 ```
 
@@ -144,7 +144,7 @@ For each high-risk issue, define:
 
 Here's an example improvement plan format:
 
-```
+```text
 Issue: No automated backup testing
 Pillar: Reliability
 Risk: High

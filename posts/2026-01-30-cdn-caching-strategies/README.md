@@ -36,7 +36,7 @@ Cache-Control is the primary mechanism for telling CDNs (and browsers) how to ca
 
 ### Basic Directives
 
-```
+```text
 Cache-Control: public, max-age=3600
 ```
 
@@ -167,7 +167,7 @@ flowchart TB
 
 The best caching strategy for static assets: include a content hash in the filename.
 
-```
+```text
 // Before: Risky, might serve stale
 /static/app.js
 
@@ -211,7 +211,7 @@ flowchart LR
 
 **Ignore query string order:**
 
-```
+```text
 /products?color=red&size=large
 /products?size=large&color=red
 ```
@@ -220,7 +220,7 @@ These should hit the same cache entry. Most CDNs have a setting to normalize que
 
 **Ignore tracking parameters:**
 
-```
+```text
 /page?utm_source=twitter&utm_medium=social
 /page
 ```
@@ -229,7 +229,7 @@ Marketing parameters shouldn't create separate cache entries.
 
 **Cloudflare Page Rules example:**
 
-```
+```text
 URL: example.com/*
 Cache Level: Cache Everything
 Query String Sort: On
@@ -388,7 +388,7 @@ With shielding, all edge POPs route through a single shield POP. A cache miss re
 
 **Cloudflare (Argo Tiered Cache):**
 
-```
+```text
 Dashboard > Speed > Optimization > Argo Tiered Cache > Enable
 ```
 

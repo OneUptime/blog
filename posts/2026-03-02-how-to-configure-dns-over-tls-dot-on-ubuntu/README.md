@@ -208,7 +208,7 @@ listen_addresses:
 
 A more flexible setup uses dnsmasq as the local resolver (handling caching and local names) and forwards to stubby for upstream resolution:
 
-```
+```text
 Applications -> dnsmasq (127.0.0.1:53) -> stubby (127.0.0.1:5353) -> DoT Upstream
 ```
 
@@ -218,7 +218,7 @@ Configure dnsmasq to forward to stubby:
 sudo nano /etc/dnsmasq.conf
 ```
 
-```
+```text
 # Forward all external queries to stubby
 server=127.0.0.1#5353
 

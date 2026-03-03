@@ -142,7 +142,7 @@ machine:
 
 If your private registry uses a self-signed certificate or a private CA, containerd will reject the connection:
 
-```
+```text
 x509: certificate signed by unknown authority
 ```
 
@@ -186,7 +186,7 @@ If disk space is low, clean up unused images by draining the node and letting ga
 
 Public registries like Docker Hub enforce rate limits. If your cluster pulls many images frequently, you may hit these limits:
 
-```
+```text
 toomanyrequests: You have reached your pull rate limit
 ```
 

@@ -27,7 +27,7 @@ CQRS isn't free, though. You're trading simplicity for flexibility. For many app
 
 We'll organize the code to make the separation explicit:
 
-```
+```text
 src/main/java/com/example/orders/
 ├── command/
 │   ├── CreateOrderCommand.java

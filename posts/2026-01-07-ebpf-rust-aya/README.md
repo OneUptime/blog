@@ -105,7 +105,7 @@ cargo generate https://github.com/aya-rs/aya-template
 
 When prompted, enter your project name. The template creates a workspace with this structure:
 
-```
+```text
 my-ebpf-project/
 ├── Cargo.toml              # Workspace configuration
 ├── my-ebpf-project/        # User-space application
@@ -1328,7 +1328,7 @@ pub fn main_program(ctx: XdpContext) -> u32 {
 
 Here is the recommended project structure for a production Aya project:
 
-```
+```text
 my-ebpf-project/
 ├── Cargo.toml                    # Workspace configuration
 ├── Makefile                      # Build automation

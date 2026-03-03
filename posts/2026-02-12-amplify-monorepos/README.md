@@ -16,7 +16,7 @@ The main challenge is that Amplify was originally designed for single-app repos.
 
 A typical monorepo might look like this:
 
-```
+```text
 my-monorepo/
   packages/
     shared-ui/        # Shared component library
@@ -223,7 +223,7 @@ Both apps share the same repository and build process, but deploy independently.
 
 If your Amplify backend (auth, API, storage) is shared across apps, put the `amplify/` directory at the monorepo root or in a shared location:
 
-```
+```text
 my-monorepo/
   amplify/               # Shared backend
   apps/

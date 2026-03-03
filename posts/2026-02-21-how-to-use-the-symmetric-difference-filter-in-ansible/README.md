@@ -262,7 +262,7 @@ Here is how symmetric_difference fits with the other set filters:
 ```
 
 Output:
-```
+```text
 union:                [1, 2, 3, 4, 5, 6, 7, 8]
 intersect:            [4, 5]
 difference (A not B): [1, 2, 3]

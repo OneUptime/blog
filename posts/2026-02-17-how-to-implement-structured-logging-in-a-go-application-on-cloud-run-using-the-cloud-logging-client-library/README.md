@@ -288,7 +288,7 @@ flowchart LR
 
 Once your logs are structured, you can run powerful queries in Cloud Logging:
 
-```
+```text
 # Find all errors for a specific endpoint
 severity="ERROR" AND jsonPayload.path="/api/v1/tasks"
 

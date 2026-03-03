@@ -38,7 +38,7 @@ argocd app resources my-app | grep Unknown
 
 Output might look like:
 
-```
+```text
 GROUP                 KIND             NAMESPACE   NAME           STATUS  HEALTH   MESSAGE
 cert-manager.io       Certificate      production  my-cert        Synced  Unknown
 monitoring.coreos.com ServiceMonitor   production  my-monitor     Synced  Unknown

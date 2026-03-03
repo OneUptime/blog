@@ -36,13 +36,13 @@ When certificates expire, you will typically see one or more of these symptoms:
 
 The error messages often look like this:
 
-```
+```text
 Unable to connect to the server: x509: certificate has expired or is not yet valid
 ```
 
 or
 
-```
+```text
 error: You must be logged in to the server (Unauthorized)
 ```
 

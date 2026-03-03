@@ -123,7 +123,7 @@ Okta provides built-in MFA policies that are easy to configure.
 3. Go to Security, then Authentication Policies
 4. Create or edit a policy for the ArgoCD app:
 
-```
+```text
 Policy Name: ArgoCD MFA Policy
 Rule: Require MFA
   - Factor types: Any enrolled factor
@@ -167,7 +167,7 @@ Azure AD Conditional Access policies provide sophisticated MFA controls.
 1. In Azure Portal, go to Microsoft Entra ID, then Security, then Conditional Access
 2. Create a new policy:
 
-```
+```text
 Name: ArgoCD MFA Requirement
 Users: All users (or specific groups)
 Cloud apps: Select the ArgoCD enterprise application
@@ -299,7 +299,7 @@ Most identity providers support conditional MFA - requiring MFA only in certain 
 
 ### Example: Okta Risk-Based MFA
 
-```
+```text
 Policy: ArgoCD Adaptive MFA
 Conditions:
   - If risk score is HIGH: Require MFA + email verification

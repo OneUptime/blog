@@ -31,7 +31,7 @@ ANSIBLE_CALLBACK_WHITELIST=profile_tasks ansible-playbook site.yml
 
 With profile_tasks enabled, each task line includes the elapsed time. At the end of the run, you get a sorted summary:
 
-```
+```text
 TASK [Gathering Facts] *******************************************************
 Thursday 21 February 2026  10:00:00 +0000 (0:00:00.012)       0:00:00.012 ****
 ok: [web-01]
@@ -68,7 +68,7 @@ The summary at the bottom sorts tasks from slowest to fastest.
 
 The two columns on each task line mean:
 
-```
+```text
 Thursday 21 February 2026  10:02:15 +0000 (0:02:03.123)       0:02:15.480 ****
                                            ^task duration^     ^total elapsed^
 ```
@@ -82,7 +82,7 @@ This tells you both how long each task takes and where you are in the overall ti
 
 The sorted summary at the end is where you look first:
 
-```
+```text
 ===============================================================================
 Compile application from source ------------------------------------ 345.67s
 Download dependencies from npm ------------------------------------- 120.34s

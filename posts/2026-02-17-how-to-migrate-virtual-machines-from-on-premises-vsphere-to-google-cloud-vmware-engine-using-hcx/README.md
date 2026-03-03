@@ -101,7 +101,7 @@ The deployment process involves:
 
 After deploying the OVA, configure the connector through its management interface.
 
-```
+```text
 # HCX Connector configuration (done through the web UI)
 # Management Network: Your management VLAN
 # vMotion Network: Your vMotion network
@@ -133,7 +133,7 @@ Create network profiles for:
 
 After creating network profiles, deploy a Service Mesh, which creates the HCX appliances (Interconnect, WAN Optimizer, Network Extension) that handle the actual migration.
 
-```
+```text
 # Service Mesh Configuration
 Source Site: on-premises
 Destination Site: GCVE Private Cloud
@@ -153,7 +153,7 @@ The service mesh deployment takes 15-30 minutes as it creates multiple appliance
 
 If your VMs need to keep their IP addresses during migration, use HCX Network Extension to stretch Layer 2 networks between on-premises and GCVE.
 
-```
+```text
 # Network Extension Configuration
 Source Network: VM-Network-192.168.10.0
 Destination: GCVE-Extended-Network
@@ -170,7 +170,7 @@ HCX supports several migration types depending on your downtime tolerance.
 
 Live migration with no downtime. The VM continues running during the move. Best for production workloads that cannot tolerate any interruption.
 
-```
+```text
 # vMotion migration steps (through HCX UI)
 1. Navigate to Services > Migration
 2. Select VMs to migrate

@@ -162,7 +162,7 @@ Common error messages you might see:
 
 A subtle but common issue is getting the ConfigMap key format wrong. The key must follow this exact pattern:
 
-```
+```text
 resource.customizations.health.<group>_<kind>
 ```
 

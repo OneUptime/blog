@@ -67,7 +67,7 @@ PR Description: {pr_description}
 Changes:
 ```
 {file_diff}
-```
+```text
 
 For each issue you find, provide:
 1. The specific line or code section
@@ -301,7 +301,7 @@ Generate comprehensive tests for this code:
 File: {file_path}
 ```
 {source_code}
-```
+```text
 
 Test framework: {test_framework}
 

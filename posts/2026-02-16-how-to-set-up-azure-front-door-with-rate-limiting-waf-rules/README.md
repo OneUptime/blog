@@ -221,7 +221,7 @@ az monitor diagnostic-settings create \
 
 Then query the logs to see which rules are triggering:
 
-```
+```text
 // KQL query to see rate-limited requests
 AzureDiagnostics
 | where ResourceType == "PROFILES" and Category == "FrontDoorWebApplicationFirewallLog"

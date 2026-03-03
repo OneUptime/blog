@@ -34,7 +34,7 @@ flowchart TD
 
 Start with a simple directory structure.
 
-```
+```text
 config/
   apps/
     web-frontend.json
@@ -199,7 +199,7 @@ For most use cases, keep config values as strings or nested objects. If you need
 
 Organize configs by category for larger organizations.
 
-```
+```text
 configs/
   infrastructure/
     cert-manager.json

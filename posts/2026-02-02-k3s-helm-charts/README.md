@@ -824,7 +824,7 @@ kubectl delete all -l app.kubernetes.io/instance=myapp -n production
 
 ### Organize Values by Environment
 
-```
+```text
 helm/myapp/
 ├── values.yaml           # Default values
 ├── values-dev.yaml       # Development overrides

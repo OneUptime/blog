@@ -115,13 +115,13 @@ dig CAA com
 
 If you have CAA records, make sure they include `pki.goog`:
 
-```
+```text
 example.com.  CAA  0 issue "pki.goog"
 ```
 
 Or if you want to allow both Let's Encrypt and Google:
 
-```
+```text
 example.com.  CAA  0 issue "pki.goog"
 example.com.  CAA  0 issue "letsencrypt.org"
 ```

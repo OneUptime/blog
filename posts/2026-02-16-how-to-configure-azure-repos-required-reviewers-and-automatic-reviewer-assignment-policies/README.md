@@ -72,7 +72,7 @@ Here are some common required reviewer configurations:
 
 ### Security Team Review for Auth Changes
 
-```
+```text
 Reviewer: Security Team (group)
 Path filter: /src/auth/*; /src/security/*; /config/auth*
 Required: Yes
@@ -81,7 +81,7 @@ Message: "Security team must review all authentication and authorization changes
 
 ### DBA Review for Database Migrations
 
-```
+```text
 Reviewer: Database Admins (group)
 Path filter: /migrations/*; /src/database/schema/*; *.sql
 Required: Yes
@@ -90,7 +90,7 @@ Message: "DBA team must review all database schema changes"
 
 ### DevOps Review for Infrastructure Changes
 
-```
+```text
 Reviewer: DevOps Team (group)
 Path filter: /infrastructure/*; /terraform/*; *.bicep; azure-pipelines.yml
 Required: Yes
@@ -99,7 +99,7 @@ Message: "DevOps team must review infrastructure and pipeline changes"
 
 ### API Review for Contract Changes
 
-```
+```text
 Reviewer: API Design Group
 Path filter: /src/api/contracts/*; /openapi/*; *.swagger.json
 Required: Yes
@@ -117,7 +117,7 @@ Path filters support:
 - Multiple paths separated by semicolons: `/src/api/*; /src/models/*`
 - Negation with `!`: `/src/*; !/src/tests/*` (matches src but not tests)
 
-```
+```text
 # Example: Different teams review different parts of the codebase
 Frontend Team    -> /src/frontend/*; /src/components/*; *.css; *.html
 Backend Team     -> /src/api/*; /src/services/*; /src/models/*

@@ -35,7 +35,7 @@ A connection pool maintains a set of pre-established connections ready for use:
 4. Application returns the connection to the pool
 5. Pool keeps the connection open for reuse
 
-```
+```text
 ┌─────────────┐     ┌──────────────────┐     ┌──────────────┐
 │ Application │────▶│  Connection Pool │────▶│   Database   │
 │   Thread 1  │◀────│                  │◀────│              │
@@ -53,17 +53,17 @@ A connection pool maintains a set of pre-established connections ready for use:
 The optimal pool size depends on your workload and backend capacity. Here is a practical formula:
 
 **For CPU-bound workloads:**
-```
+```text
 pool_size = number_of_cpu_cores + 1
 ```
 
 **For I/O-bound workloads (most web applications):**
-```
+```text
 pool_size = number_of_cpu_cores * 2
 ```
 
 **PostgreSQL's recommendation:**
-```
+```text
 pool_size = (core_count * 2) + effective_spindle_count
 ```
 

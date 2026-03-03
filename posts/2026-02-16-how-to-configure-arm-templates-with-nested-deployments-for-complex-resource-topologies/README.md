@@ -127,7 +127,7 @@ Here is the simplest form of a nested deployment. The child template is defined 
 
 For production use, linked deployments are better because they keep templates modular and reusable. Each component gets its own file:
 
-```
+```text
 templates/
     main.json              (orchestrator)
     networking.json         (VNet, subnets, NSGs)

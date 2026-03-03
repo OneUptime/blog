@@ -171,7 +171,7 @@ data:
 
 Enterprise organizations need a clear repository strategy:
 
-```
+```text
 # Recommended: Config repo separate from application code repos
 # Platform config repo (managed by platform team)
 platform-config/

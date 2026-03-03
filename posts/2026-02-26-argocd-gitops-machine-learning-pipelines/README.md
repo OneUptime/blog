@@ -39,7 +39,7 @@ ArgoCD manages the infrastructure components (Kubeflow, MLflow, KServe, Feast) a
 
 Separate infrastructure from model deployments:
 
-```
+```text
 ml-platform-config/
   infrastructure/
     kubeflow/

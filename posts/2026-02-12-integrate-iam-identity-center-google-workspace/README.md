@@ -65,7 +65,7 @@ Back in Google Admin Console, on the "Service provider details" page:
 
 Add attribute mappings:
 
-```
+```text
 Google Directory Attribute     -> App Attribute
 ----------------------------------------------
 Basic Information: First name -> firstName

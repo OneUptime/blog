@@ -12,7 +12,7 @@ In a monorepo with multiple services, each service needs OpenTelemetry instrumen
 
 Here is a typical monorepo structure using npm workspaces:
 
-```
+```text
 monorepo/
   package.json
   packages/

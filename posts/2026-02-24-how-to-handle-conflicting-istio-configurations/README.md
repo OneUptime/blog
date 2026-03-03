@@ -34,7 +34,7 @@ istioctl analyze --all-namespaces
 
 Example output when conflicts exist:
 
-```
+```text
 Warning [IST0109] (VirtualService frontend/my-app-vs) The VirtualService
   has a conflict with VirtualService backend/my-app-vs: both target host
   "my-app.example.com"

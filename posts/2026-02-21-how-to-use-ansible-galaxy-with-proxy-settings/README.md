@@ -14,7 +14,7 @@ Corporate networks almost always have proxy servers between your workstation and
 
 When you run `ansible-galaxy install` behind a proxy without configuration, you will see something like this:
 
-```
+```text
 $ ansible-galaxy install geerlingguy.nginx
 - downloading role 'nginx', owned by geerlingguy
 [WARNING]: - geerlingguy.nginx was NOT installed successfully:
@@ -150,7 +150,7 @@ The `ansible.cfg` approach is less direct than environment variables for proxy c
 
 Corporate proxies often perform SSL inspection, which means they present their own certificate instead of the original server's certificate. This causes SSL verification errors:
 
-```
+```text
 [WARNING]: - geerlingguy.nginx was NOT installed successfully:
 SSL: CERTIFICATE_VERIFY_FAILED
 ```

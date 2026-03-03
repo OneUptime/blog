@@ -16,7 +16,7 @@ This guide explains how quorum works in Talos Linux, how to configure it for you
 
 Quorum is the minimum number of members that must agree for a decision to be valid. In etcd, which uses the Raft consensus algorithm, quorum is defined as a strict majority of cluster members:
 
-```
+```text
 Quorum = (N / 2) + 1
 
 Where N is the total number of etcd members:
@@ -44,7 +44,7 @@ Quorum prevents split-brain scenarios where two groups of nodes independently ma
 
 The number of control plane nodes directly determines your quorum requirements:
 
-```
+```text
 Nodes | Quorum | Fault Tolerance | Recommended For
 ------+--------+-----------------+------------------
   1   |   1    |       0         | Development only

@@ -18,7 +18,7 @@ The .NET auto-instrumentation agent uses CLR profiling APIs to inject bytecode i
 
 The auto-instrumentation agent depends on a specific version of `System.Diagnostics.DiagnosticSource`. If your application uses a different version:
 
-```
+```text
 System.MissingMethodException: Method not found:
 'Void System.Diagnostics.Activity.SetIdFormat(System.Diagnostics.ActivityIdFormat)'
 ```
@@ -29,7 +29,7 @@ This happens when the agent expects a newer version of the assembly than what yo
 
 Your application uses `Grpc.Net.Client` v2.60, but the agent bundles v2.55 for its OTLP exporter:
 
-```
+```text
 System.IO.FileLoadException: Could not load file or assembly
 'Grpc.Net.Client, Version=2.55.0.0'. The located assembly's
 manifest definition does not match the assembly reference.

@@ -194,7 +194,7 @@ export OTEL_SERVICE_NAME="my-service"
 
 Once data flows in, query it using Axiom Processing Language (APL):
 
-```
+```text
 // Find slow traces
 ['my-traces']
 | where duration > 1000ms

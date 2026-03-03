@@ -24,7 +24,7 @@ docker system df -v
 
 Typical output shows four categories:
 
-```
+```text
 TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
 Images          45        12        12.4GB    8.2GB (66%)
 Containers      28        5         2.1GB     1.8GB (85%)
@@ -50,7 +50,7 @@ docker system prune
 
 Docker will show you what it plans to remove and ask for confirmation:
 
-```
+```text
 WARNING! This will remove:
   - all stopped containers
   - all networks not used by at least one container

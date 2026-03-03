@@ -48,7 +48,7 @@ go get github.com/golang-jwt/jwt/v5
 
 Organize your project with a clean, scalable structure:
 
-```
+```text
 echo-rest-api/
 ├── cmd/
 │   └── server/

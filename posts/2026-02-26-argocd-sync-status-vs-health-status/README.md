@@ -36,7 +36,7 @@ Sync status compares the rendered manifests from Git (desired state) with the li
 
 The live state matches the desired state. Every resource in Git exists in the cluster with the same configuration.
 
-```
+```text
 Sync Status: Synced to main (abc1234)
 ```
 
@@ -46,7 +46,7 @@ This means ArgoCD compared every field it tracks in every resource and found no 
 
 The live state differs from the desired state. At least one resource has a difference between what Git says and what the cluster has.
 
-```
+```text
 Sync Status: OutOfSync from main (abc1234)
 ```
 
@@ -60,7 +60,7 @@ Common causes of OutOfSync:
 
 ArgoCD cannot determine the sync status, usually because it failed to render the manifests or connect to the repository.
 
-```
+```text
 Sync Status: Unknown
 ```
 
@@ -119,7 +119,7 @@ ArgoCD cannot determine health, usually because:
 
 ### Deployment Health
 
-```
+```text
 Healthy:      All desired replicas are ready and updated
 Progressing:  Rolling update in progress, or replicas not yet ready
 Degraded:     Available replicas < desired AND progress deadline exceeded
@@ -127,7 +127,7 @@ Degraded:     Available replicas < desired AND progress deadline exceeded
 
 ### Pod Health
 
-```
+```text
 Healthy:      All containers running and passing health checks
 Progressing:  Pod is Pending or containers are starting
 Degraded:     Any container in CrashLoopBackOff, OOMKilled, or Error state
@@ -135,7 +135,7 @@ Degraded:     Any container in CrashLoopBackOff, OOMKilled, or Error state
 
 ### Service Health
 
-```
+```text
 Healthy:      Always (Services are considered healthy once created)
               For LoadBalancer type: healthy once external IP is assigned
 Progressing:  LoadBalancer type waiting for external IP
@@ -143,7 +143,7 @@ Progressing:  LoadBalancer type waiting for external IP
 
 ### StatefulSet Health
 
-```
+```text
 Healthy:      All replicas ready and at current revision
 Progressing:  Rolling update in progress
 Degraded:     Replicas not becoming ready
@@ -151,14 +151,14 @@ Degraded:     Replicas not becoming ready
 
 ### Ingress Health
 
-```
+```text
 Healthy:      Ingress has at least one active backend
 Progressing:  Waiting for load balancer
 ```
 
 ### Job Health
 
-```
+```text
 Healthy:      Job completed successfully
 Progressing:  Job is still running
 Degraded:     Job failed (backoff limit reached)
@@ -170,7 +170,7 @@ Degraded:     Job failed (backoff limit reached)
 
 This is the ideal state. Git and cluster match, and everything is working.
 
-```
+```text
 Sync Status:    Synced
 Health Status:  Healthy
 ```
@@ -181,7 +181,7 @@ No action needed.
 
 Git has changes that have not been applied, but the current running version is fine.
 
-```
+```text
 Sync Status:    OutOfSync
 Health Status:  Healthy
 ```
@@ -192,7 +192,7 @@ Action: Sync when ready. The current deployment is working, so there is no urgen
 
 The cluster matches Git, but the application is not working. This is a runtime issue, not a GitOps issue.
 
-```
+```text
 Sync Status:    Synced
 Health Status:  Degraded
 ```
@@ -203,7 +203,7 @@ Action: Check logs and events. The manifests were applied correctly, but somethi
 
 Both the configuration and the runtime are in a bad state.
 
-```
+```text
 Sync Status:    OutOfSync
 Health Status:  Degraded
 ```

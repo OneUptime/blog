@@ -58,7 +58,7 @@ go install go.uber.org/mock/mockgen@latest
 
 ### Project Structure
 
-```
+```text
 myservice/
 ├── proto/
 │   └── user.proto

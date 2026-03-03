@@ -175,7 +175,7 @@ istioctl analyze -n production -o json
 
 Common findings from analyze:
 
-```
+```text
 Warning [IST0101] (VirtualService production/orders-routes) Referenced host not found: "orders-service"
 Warning [IST0104] (VirtualService production/orders-routes) Referenced gateway not found: "missing-gateway"
 Warning [IST0108] (DestinationRule production/orders-service) No matching subsets for host "orders-service"

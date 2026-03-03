@@ -78,7 +78,7 @@ npm install -D typescript @types/node ts-node
 
 Organize your code by workflow domain rather than function type to improve maintainability.
 
-```
+```text
 workflow-functions/
 ├── src/
 │   ├── workflows/

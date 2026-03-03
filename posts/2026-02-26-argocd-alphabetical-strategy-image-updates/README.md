@@ -111,7 +111,7 @@ annotations:
 
 Be careful with these formats:
 
-```
+```text
 # BAD: Non-padded numbers sort incorrectly
 build-9       # Sorts AFTER build-10 alphabetically!
 build-10

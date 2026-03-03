@@ -23,7 +23,7 @@ docker history nginx:latest
 
 Output looks like this:
 
-```
+```text
 IMAGE          CREATED       CREATED BY                                      SIZE      COMMENT
 3b25b682ea82   2 weeks ago   CMD ["nginx" "-g" "daemon off;"]                0B        buildkit
 <missing>      2 weeks ago   STOPSIGNAL SIGQUIT                              0B        buildkit
@@ -227,7 +227,7 @@ RUN apt-get update && \
 
 2. **Unnecessary files copied**: Use a `.dockerignore` file to exclude test files, documentation, and version control data.
 
-```
+```text
 # .dockerignore - Exclude files that bloat the image
 .git
 node_modules
@@ -272,7 +272,7 @@ docker images python --format "table {{.Tag}}\t{{.Size}}"
 
 Typical output:
 
-```
+```text
 TAG           SIZE
 3.12          1.02GB
 3.12-slim     155MB

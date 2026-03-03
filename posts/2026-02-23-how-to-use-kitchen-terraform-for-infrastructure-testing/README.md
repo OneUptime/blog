@@ -50,7 +50,7 @@ gem install test-kitchen kitchen-terraform inspec
 
 A Kitchen-Terraform project has this layout:
 
-```
+```text
 my-terraform-module/
   main.tf
   variables.tf

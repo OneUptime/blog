@@ -78,7 +78,7 @@ git cherry-pick <commit-hash-3>  # Security hardening
 
 Maintain a clear naming convention.
 
-```
+```text
 upstream-v2.10     - Mirror of upstream release-2.10 (never modify)
 custom-v2.10       - Your customized version based on v2.10
 custom-patches     - Your patches as individual commits (for cherry-picking)

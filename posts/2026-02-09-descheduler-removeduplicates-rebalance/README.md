@@ -267,7 +267,7 @@ kubectl logs -n kube-system -l app=descheduler --tail=100
 
 You should see output like:
 
-```
+```text
 I0209 10:30:15.123456 1 removeDuplicates.go:89] Processing namespace default
 I0209 10:30:15.234567 1 removeDuplicates.go:112] Found 5 duplicate pods for deployment nginx-test on node worker-node-1
 I0209 10:30:15.345678 1 evictions.go:160] Evicted pod nginx-test-7d8f9c5b-xyz12

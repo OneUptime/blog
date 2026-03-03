@@ -158,7 +158,7 @@ docker run --rm -d \
 
 ## Summary of Recommended Production Settings
 
-```
+```text
 Sampling frequency:  19 Hz
 Max stack depth:     64 frames
 Export interval:     15 seconds

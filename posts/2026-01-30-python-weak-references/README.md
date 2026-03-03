@@ -67,7 +67,7 @@ print(f"Weak ref after deletion: {weak_ref()}")
 ```
 
 Output:
-```
+```text
 Created: Resource-A
 Weak ref alive: <__main__.ExpensiveObject object at 0x...>
 Processing: Processing Resource-A
@@ -109,7 +109,7 @@ print(f"Processor active after del: {weak_processor() is not None}")
 ```
 
 Output:
-```
+```text
 Processor PROC-001 initialized
 Processor active: True
 Callback triggered - object is being collected
@@ -277,7 +277,7 @@ print(f"Tracked widgets after del: {store.tracked_count()}")
 ```
 
 Output:
-```
+```text
 Widget1 author: alice
 Widget2 metadata: {'created_at': '2024-01-16', 'author': 'bob', 'priority': 1}
 Tracked widgets: 2
@@ -467,7 +467,7 @@ model.set("username", "bob")
 ```
 
 Output:
-```
+```text
 Subscribed to on_change, total observers: 1
 Subscribed to on_change, total observers: 2
 Observers: 2
@@ -591,7 +591,7 @@ print(f"Active users: {ActiveSession.get_active_users()}")
 ```
 
 Output:
-```
+```text
 Session started for user-001
 Session started for user-002
 Session started for user-003

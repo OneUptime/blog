@@ -116,7 +116,7 @@ You moved a policy from "Report-only" to "On" and users started getting blocked.
 
 When a user is blocked, the sign-in logs show which policy caused the failure. This is the fastest way to identify the problem policy.
 
-```
+```text
 1. Go to Entra ID > Sign-in logs
 2. Find the failed sign-in for the user
 3. Click on it and go to the "Conditional Access" tab
@@ -127,7 +127,7 @@ When a user is blocked, the sign-in logs show which policy caused the failure. T
 
 You can also query sign-in logs with KQL in Log Analytics:
 
-```
+```text
 // Find sign-ins blocked by Conditional Access for a specific user
 // Shows the policy name and failure reason
 SigninLogs

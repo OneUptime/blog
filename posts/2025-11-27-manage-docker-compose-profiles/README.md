@@ -67,7 +67,7 @@ Organize environment-specific configuration in separate files. Each environment 
 
 This directory structure separates concerns: shared settings go in common.env, while environment-specific values live in their own files.
 
-```
+```text
 configs/
   common.env      # Shared settings (log format, timeouts, feature flags)
   dev.env         # Local development (debug mode, local URLs)

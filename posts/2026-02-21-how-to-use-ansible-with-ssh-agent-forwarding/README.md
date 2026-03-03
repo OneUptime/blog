@@ -46,7 +46,7 @@ ssh-add -l
 
 You should see output like:
 
-```
+```text
 256 SHA256:abc123... user@control-node (ED25519)
 ```
 

@@ -249,7 +249,7 @@ If any component in the list is an absolute path (starts with `/`), path_join tr
 ```
 
 Output:
-```
+```text
 Relative: /base/relative/path
 Absolute reset: /absolute/path
 ```

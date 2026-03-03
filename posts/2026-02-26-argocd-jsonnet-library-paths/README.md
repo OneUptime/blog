@@ -58,7 +58,7 @@ The `libs` paths are resolved relative to the root of the Git repository, not re
 
 A well-organized Jsonnet repository for ArgoCD typically follows this structure:
 
-```
+```text
 k8s-manifests/
   lib/                          # Shared internal libraries
     k8s.libsonnet               # Kubernetes resource helpers
@@ -275,7 +275,7 @@ This ordering lets you override vendored libraries with local versions when need
 
 The most common error when library paths are wrong is:
 
-```
+```text
 RUNTIME ERROR: couldn't open import "k8s.libsonnet": no match locally or in the Jsonnet library paths
 ```
 

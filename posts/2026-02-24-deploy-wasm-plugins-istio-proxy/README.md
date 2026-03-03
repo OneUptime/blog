@@ -226,7 +226,7 @@ kubectl logs -n my-app -l app=api-gateway -c istio-proxy | grep "Plugin.*loaded\
 
 If the plugin failed to load, you will see error messages like:
 
-```
+```text
 Failed to load Wasm module
 Failed to create Wasm VM
 ```

@@ -10,7 +10,7 @@ Description: Learn why APT keeps packages back during upgrades on Ubuntu and the
 
 After running `sudo apt upgrade`, you sometimes see a message like:
 
-```
+```text
 The following packages have been kept back:
   linux-generic linux-headers-generic linux-image-generic
 ```
@@ -64,7 +64,7 @@ sudo apt full-upgrade
 
 This will show you what additional actions it needs to take:
 
-```
+```text
 The following NEW packages will be installed:
   linux-image-6.5.0-26-generic linux-modules-6.5.0-26-generic
 The following packages will be upgraded:

@@ -107,7 +107,7 @@ spec:
 
 Organize flags by domain or service:
 
-```
+```text
 flags/
   base/
     checkout-flags.yaml

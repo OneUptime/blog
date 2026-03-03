@@ -111,7 +111,7 @@ maxPods: 240  # Leave buffer for safety
 
 Calculate based on average pod resource usage:
 
-```
+```text
 Node Memory: 32GB
 System Reserved: 2GB
 Kube Reserved: 2GB
@@ -375,7 +375,7 @@ evictionHard:
 
 Example capacity calculation:
 
-```
+```text
 Cluster: 10 nodes
 maxPods per node: 110
 Total cluster capacity: 10 × 110 = 1,100 pods

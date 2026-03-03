@@ -16,7 +16,7 @@ This post covers how to tune concurrency, handle common problems, and get the mo
 
 Terraform's dependency graph determines which resources can be created in parallel. If resource B depends on resource A, then A is created first. But if resources B and C are both independent of each other (both only depend on A), they can be created simultaneously.
 
-```
+```text
      A
     / \
    B   C   <- B and C are created in parallel
@@ -288,7 +288,7 @@ terraform {
 
 If two pipelines try to modify the same state simultaneously, one will get a lock error:
 
-```
+```text
 Error: Error locking state: Error acquiring the state lock: ConditionalCheckFailedException
 ```
 

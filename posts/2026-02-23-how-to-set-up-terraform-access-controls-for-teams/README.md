@@ -16,7 +16,7 @@ This guide covers how to implement layered access controls for Terraform across 
 
 Terraform access control operates at four layers, each providing a different type of protection:
 
-```
+```text
 Layer 1: Repository Access
   Who can view and modify Terraform code
 
@@ -50,7 +50,7 @@ Control who can modify Terraform code through Git repository permissions:
 
 Implement this using GitHub teams and CODEOWNERS:
 
-```
+```text
 # .github/CODEOWNERS
 # Restrict who can approve merges for different areas
 

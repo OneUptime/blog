@@ -314,13 +314,13 @@ In the Chronicle console, go to the Data Ingestion dashboard and look for the WI
 
 Run a UDM search to verify specific event types.
 
-```
+```text
 metadata.log_type = "WINEVTLOG" AND metadata.event_type = "USER_LOGIN"
 ```
 
 For process creation events, which are useful for detecting malicious activity.
 
-```
+```text
 metadata.log_type = "WINEVTLOG" AND metadata.event_type = "PROCESS_LAUNCH"
 ```
 

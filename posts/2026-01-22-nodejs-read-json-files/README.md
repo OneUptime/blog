@@ -494,7 +494,7 @@ module.exports = config;
 
 Directory structure:
 
-```
+```text
 config/
 ├── index.js
 ├── default.json

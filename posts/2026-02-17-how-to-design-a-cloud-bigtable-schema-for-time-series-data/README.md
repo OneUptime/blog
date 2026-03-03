@@ -22,7 +22,7 @@ The naive approach of using a timestamp as the row key creates a massive hotspot
 
 The fundamental pattern for time-series data in Bigtable is a compound row key with the entity identifier first and the timestamp second.
 
-```
+```text
 // Row key structure for time-series data
 // entity_id#timestamp
 //
@@ -240,7 +240,7 @@ In Bigtable, you have two options for storing multiple metrics per timestamp:
 
 **Tall schema**: One row per metric per timestamp. More rows, but simpler queries for individual metrics.
 
-```
+```text
 // Tall: Each metric gets its own row
 sensor-001#temperature#9999997674
 sensor-001#humidity#9999997674
@@ -249,7 +249,7 @@ sensor-001#pressure#9999997674
 
 **Wide schema**: One row per timestamp with multiple column qualifiers. Fewer rows, all metrics for a timestamp in one read.
 
-```
+```text
 // Wide: All metrics in one row with different column qualifiers
 sensor-001#9999997674
   raw:temperature = 23.5

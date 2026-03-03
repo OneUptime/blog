@@ -12,7 +12,7 @@ Caddy Server writes structured access logs in JSON format by default. Each log e
 
 Enable structured access logging in your Caddyfile:
 
-```
+```text
 # Caddyfile
 {
     log {
@@ -151,7 +151,7 @@ service:
 
 When Caddy has tracing enabled, you can include the trace ID in the access log and correlate logs with traces. Caddy includes the trace ID in its log output when the `tracing` directive is active:
 
-```
+```text
 {
     tracing {
         span "caddy"

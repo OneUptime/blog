@@ -238,7 +238,7 @@ az monitor diagnostic-settings create \
 
 Once enabled, you can query the logs in Log Analytics.
 
-```
+```text
 // Kusto query to find failed notifications
 NHPushNotificationLog
 | where TimeGenerated > ago(1h)

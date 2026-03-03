@@ -59,7 +59,7 @@ roles:
 
 Also pin Ansible itself in your project:
 
-```
+```text
 # requirements.txt
 # Pin Ansible version for consistency across the team
 ansible-core==2.16.2

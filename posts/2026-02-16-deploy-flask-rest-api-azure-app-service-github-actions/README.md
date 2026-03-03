@@ -192,7 +192,7 @@ def test_get_nonexistent_task(client):
 
 Your project should look like this before deployment.
 
-```
+```text
 flask-api/
     app.py
     test_app.py
@@ -205,7 +205,7 @@ flask-api/
 
 The requirements.txt file.
 
-```
+```text
 Flask>=3.0
 gunicorn>=21.2
 pytest>=7.4

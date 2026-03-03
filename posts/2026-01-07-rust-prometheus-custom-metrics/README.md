@@ -566,7 +566,7 @@ scrape_configs:
 
 Your `/metrics` endpoint will return data like this:
 
-```
+```text
 # HELP http_requests_total Total number of HTTP requests processed
 # TYPE http_requests_total counter
 http_requests_total 1542

@@ -285,7 +285,7 @@ result = tracked_llm_call(
 
 This produces metrics like:
 
-```
+```text
 gen_ai.usage.cost{feature="document_summarization", model="gpt-4o"} = 0.0125
 gen_ai.usage.cost{feature="translation", model="gpt-4o-mini"} = 0.00008
 ```
@@ -447,7 +447,7 @@ def compute_throughput(output_tokens: int, ttft_ms: float, total_ms: float) -> f
 
 Once your metrics are flowing, here are some useful queries to build dashboards around. These are written in a generic PromQL-like syntax that most observability platforms support.
 
-```
+```text
 # Total daily cost by model
 sum(rate(gen_ai_usage_cost_sum[24h])) by (gen_ai_request_model)
 

@@ -18,31 +18,31 @@ Azure Table Storage supports several connection string formats depending on your
 
 **Standard connection string with account key**:
 
-```
+```text
 DefaultEndpointsProtocol=https;AccountName=stmyapp;AccountKey=base64encodedkey==;EndpointSuffix=core.windows.net
 ```
 
 **Connection string with specific endpoint**:
 
-```
+```text
 DefaultEndpointsProtocol=https;AccountName=stmyapp;AccountKey=base64encodedkey==;TableEndpoint=https://stmyapp.table.core.windows.net
 ```
 
 **Connection string for Azure Storage Emulator (local development)**:
 
-```
+```text
 UseDevelopmentStorage=true
 ```
 
 **Connection string with SAS token**:
 
-```
+```text
 TableEndpoint=https://stmyapp.table.core.windows.net;SharedAccessSignature=sv=2021-06-08&ss=t&srt=sco&sp=rwdlacu&se=2026-12-31&st=2026-01-01&spr=https&sig=signature
 ```
 
 **Connection string for Azurite (local emulator)**:
 
-```
+```text
 DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1
 ```
 

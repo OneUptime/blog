@@ -47,7 +47,7 @@ The most common pattern uses workspaces to represent deployment environments. Th
 
 ### Directory Structure
 
-```
+```text
 terraform/
     main.tf
     variables.tf

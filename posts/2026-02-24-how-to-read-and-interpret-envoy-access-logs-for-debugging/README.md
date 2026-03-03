@@ -44,7 +44,7 @@ spec:
 
 Istio's default access log format looks like this:
 
-```
+```text
 [2024-01-15T10:30:45.123Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 15 14 "-" "curl/7.68.0" "abc-123-def" "my-service:8080" "10.0.0.5:8080" inbound|8080|| 10.0.0.10:45678 10.0.0.5:8080 10.0.0.10:34567 outbound_.8080_._.my-service.default.svc.cluster.local default
 ```
 

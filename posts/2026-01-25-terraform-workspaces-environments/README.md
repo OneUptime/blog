@@ -438,7 +438,7 @@ When to use separate directories:
 
 ### Directory-Based Approach
 
-```
+```text
 terraform/
 ├── modules/
 ├── environments/

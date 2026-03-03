@@ -66,7 +66,7 @@ sudo nano /etc/ssh/sshd_config
 
 Find the `PermitRootLogin` line and set it:
 
-```
+```text
 # Completely prevent root from logging in via SSH
 PermitRootLogin no
 ```
@@ -130,7 +130,7 @@ sudo visudo
 ```
 
 The default configuration:
-```
+```text
 # Members of the sudo group can run any command
 %sudo   ALL=(ALL:ALL) ALL
 ```
@@ -142,7 +142,7 @@ For more controlled access, you can specify exact commands:
 sudo visudo -f /etc/sudoers.d/adminuser
 ```
 
-```
+```text
 # Allow adminuser to run specific commands without password
 adminuser ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
 adminuser ALL=(ALL) NOPASSWD: /usr/bin/systemctl status *
@@ -174,7 +174,7 @@ sudo visudo
 
 Add at the top of the Defaults section:
 
-```
+```text
 # Require password for every sudo invocation (no caching)
 Defaults timestamp_timeout=0
 
@@ -206,7 +206,7 @@ sudo nano /etc/pam.d/su
 
 Uncomment the line requiring `wheel` group membership (on Ubuntu, use `sudo` group):
 
-```
+```text
 # Require membership in sudo group to use su -
 auth required pam_wheel.so
 ```
@@ -226,7 +226,7 @@ For comprehensive sudo auditing, add to `/etc/sudoers.d/logging`:
 sudo visudo -f /etc/sudoers.d/logging
 ```
 
-```
+```text
 # Log all sudo commands with timestamps
 Defaults log_year
 Defaults logfile=/var/log/sudo.log

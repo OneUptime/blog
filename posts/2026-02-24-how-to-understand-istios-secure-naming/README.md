@@ -39,7 +39,7 @@ The mapping between service names and authorized identities comes from Istio's s
 
 Every workload in Istio gets a SPIFFE identity based on its Kubernetes service account:
 
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
@@ -86,7 +86,7 @@ The mapping between services and service accounts is derived from Kubernetes:
 
 If `service-b` pods all run with the `service-b` service account, then the secure naming mapping is:
 
-```
+```text
 service-b.default.svc.cluster.local → spiffe://cluster.local/ns/default/sa/service-b
 ```
 

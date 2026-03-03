@@ -18,13 +18,13 @@ This guide walks through how to create availability targets that actually work: 
 
 Availability measures the proportion of time a service is operational and serving users correctly. The standard formula is:
 
-```
+```text
 Availability = (Total Time - Downtime) / Total Time
 ```
 
 Or expressed in terms of successful requests:
 
-```
+```text
 Availability = Successful Requests / Total Requests
 ```
 
@@ -52,13 +52,13 @@ The jump from three nines to four nines is not 0.09 percentage points. It is a 1
 
 An error budget is the inverse of your availability target. If you promise 99.9% availability, your error budget is 0.1% of total requests or time.
 
-```
+```text
 Error Budget = 1 - Availability Target
 ```
 
 For a service handling 1 million requests per day with a 99.9% target:
 
-```
+```text
 Daily Error Budget = 1,000,000 × 0.001 = 1,000 failed requests
 Monthly Error Budget = 30,000,000 × 0.001 = 30,000 failed requests
 ```
@@ -117,7 +117,7 @@ What do your users actually need? A consumer social app might tolerate brief out
 
 Calculate the cost of downtime. For an e-commerce site doing $10 million per month:
 
-```
+```text
 Hourly Revenue = $10,000,000 / 720 hours = $13,889/hour
 Cost of 99.9% (43.8 min/month) = ~$10,000/month in lost sales
 Cost of 99.99% (4.4 min/month) = ~$1,000/month in lost sales
@@ -179,7 +179,7 @@ There are several approaches to measuring availability, each with trade-offs:
 
 Count successful vs failed requests at your load balancer or application:
 
-```
+```text
 Availability = (2xx + 4xx responses) / Total Responses
 ```
 
@@ -273,7 +273,7 @@ Whatever you choose, document it clearly and apply the rule consistently. Users 
 
 Your internal SLO should be stricter than your external SLA (Service Level Agreement):
 
-```
+```text
 Internal SLO: 99.95% (21.9 minutes downtime/month)
 External SLA: 99.9% (43.8 minutes downtime/month)
 ```

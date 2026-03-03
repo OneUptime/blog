@@ -81,7 +81,7 @@ Create a configuration file:
 
 semantic-release uses commit messages to determine version bumps. Follow the Conventional Commits specification:
 
-```
+```text
 <type>(<scope>): <description>
 
 [optional body]

@@ -194,7 +194,7 @@ Add-DnsServerConditionalForwarderZone -Name "us-east-1.rds.amazonaws.com" -Maste
 
 For BIND, add to `named.conf`:
 
-```
+```text
 zone "internal.aws" {
     type forward;
     forward only;

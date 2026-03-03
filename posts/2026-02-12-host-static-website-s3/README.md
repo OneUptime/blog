@@ -185,7 +185,7 @@ aws s3 sync ./website/ s3://my-static-site/ \
 
 Your website is now live at the S3 website endpoint:
 
-```
+```text
 http://my-static-site.s3-website-us-east-1.amazonaws.com
 ```
 

@@ -27,7 +27,7 @@ This command queries the Talos API running on the node and returns a table of al
 
 A typical output looks something like this:
 
-```
+```text
 DEV        MODEL              SERIAL       TYPE   UUID   WWID   MODALIAS      NAME   SIZE     BUS_PATH                                                  SUBSYSTEM   READ_ONLY   SYSTEM_DISK
 /dev/sda   Virtual disk        -           HDD    -      -      scsi:...      -      50 GB   /pci0000:00/0000:00:10.0/host0/target0:0:0/0:0:0:0/        /sys/...    false       true
 /dev/sdb   Virtual disk        -           HDD    -      -      scsi:...      -      100 GB  /pci0000:00/0000:00:10.0/host0/target0:0:1/0:0:1:0/        /sys/...    false       false

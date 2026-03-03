@@ -210,7 +210,7 @@ kubectl exec -n kube-system ds/cilium -- cilium status | grep KubeProxyReplaceme
 
 Expected output showing eBPF programs loaded:
 
-```
+```text
 # Example output from 'cilium bpf prog list'
 # Each entry represents an eBPF program attached to a specific hook point
 ID      Type            Name                    Attached

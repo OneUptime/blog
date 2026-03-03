@@ -12,7 +12,7 @@ A single failed request in a microservices system can trigger errors in multiple
 
 Consider a request that flows through three services:
 
-```
+```text
 Client -> API Gateway -> Order Service -> Payment Service
 ```
 

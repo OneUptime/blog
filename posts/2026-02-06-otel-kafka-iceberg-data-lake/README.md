@@ -19,7 +19,7 @@ Iceberg gives you several things that raw Parquet files on S3 do not:
 
 ## Architecture
 
-```
+```text
 OTel Collector -> Kafka -> Spark Streaming -> Iceberg Tables (on S3)
                                                    |
                                             Query Engines

@@ -12,7 +12,7 @@ Your .NET application's memory usage keeps growing. You trace the issue to OpenT
 
 A histogram in OpenTelemetry stores a count for each bucket boundary. The default bucket boundaries for the explicit bucket histogram are:
 
-```
+```text
 [0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
 ```
 

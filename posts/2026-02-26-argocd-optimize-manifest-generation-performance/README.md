@@ -108,7 +108,7 @@ Kustomize is generally faster than Helm, but complex overlay chains can still be
 
 Deep overlay hierarchies (base, overlay, environment overlay, cluster overlay) require Kustomize to process multiple layers of patches.
 
-```
+```text
 # Slow: Deep overlay chain
 base/
   overlays/
@@ -119,7 +119,7 @@ base/
             cluster-1/
 ```
 
-```
+```text
 # Faster: Flatter structure with targeted patches
 base/
   overlays/

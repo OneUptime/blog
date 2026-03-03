@@ -313,7 +313,7 @@ kubectl get resourcequota -n production
 
 Output shows each quota separately:
 
-```
+```text
 NAME              AGE   REQUEST
 high-priority     1d    requests.cpu: 20/30, requests.memory: 40Gi/60Gi
 low-priority      1d    requests.cpu: 5/10, requests.memory: 8Gi/20Gi

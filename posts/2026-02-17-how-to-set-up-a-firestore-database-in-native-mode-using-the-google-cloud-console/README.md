@@ -221,7 +221,7 @@ func main() {
 
 Firestore security rules control who can read and write data. From the Firestore console, click the "Rules" tab:
 
-```
+```text
 // Allow authenticated users to read and write their own data
 rules_version = '2';
 service cloud.firestore {

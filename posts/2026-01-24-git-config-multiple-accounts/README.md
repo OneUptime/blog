@@ -242,7 +242,7 @@ git config --list --local
 
 Organizing your projects by account makes conditional includes work seamlessly:
 
-```
+```text
 ~/
 ├── personal/           # Personal projects
 │   ├── blog/

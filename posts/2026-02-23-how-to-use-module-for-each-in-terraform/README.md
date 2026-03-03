@@ -198,7 +198,7 @@ output "environment_endpoints" {
 
 Resources inside a `for_each` module have addresses that include the map key:
 
-```
+```text
 module.service["api"].aws_ecs_service.this
 module.service["web"].aws_ecs_service.this
 module.service["worker"].aws_ecs_service.this

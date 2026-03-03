@@ -16,7 +16,7 @@ Let's build a solid testing approach for Lambda functions using Jest and proper 
 
 The key to testable Lambda functions is separating your business logic from the AWS SDK interactions.
 
-```
+```text
 my-function/
   src/
     handlers/

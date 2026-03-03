@@ -12,7 +12,7 @@ Using Envoy as a front-end proxy is a common pattern for API gateways and edge p
 
 The setup looks like this:
 
-```
+```text
 Client -> Envoy (front-end proxy) -> Service A -> Service B -> Database
                 |
                 v
@@ -244,7 +244,7 @@ services:
 
 A request to `GET /api/users/123` produces this trace:
 
-```
+```text
 Trace ID: 4bf92f3577b34da6a3ce929d0e0e4736
   |
   +-- envoy-frontend: user-service-route [10ms]

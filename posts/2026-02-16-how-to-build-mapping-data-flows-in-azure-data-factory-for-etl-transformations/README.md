@@ -72,7 +72,7 @@ Click the **+** next to the SalesData source and select **Filter**.
 
 Name it `FilterValidSales`. In the expression builder, enter:
 
-```
+```text
 // Keep only records where quantity is greater than 0 and price is not null
 Quantity > 0 && !isNull(UnitPrice)
 ```
@@ -85,7 +85,7 @@ Click **+** after the filter and select **Derived column**.
 
 Name it `CalculateMetrics`. Add new columns:
 
-```
+```text
 // Calculate total amount for each line item
 TotalAmount = Quantity * UnitPrice
 
@@ -121,7 +121,7 @@ Name it `AggregateByCategory`. Configure:
 - **Group by** - select `CategoryName` and `SaleYear` and `SaleMonth`
 - **Aggregates**:
 
-```
+```text
 // Sum total sales amount per category per month
 TotalSales = sum(TotalAmount)
 

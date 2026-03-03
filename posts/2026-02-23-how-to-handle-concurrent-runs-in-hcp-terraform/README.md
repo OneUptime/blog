@@ -21,7 +21,7 @@ HCP Terraform processes runs (plans and applies) using worker infrastructure. Yo
 
 A "concurrent run" means an active plan or apply operation. Runs in other states (pending, queued, waiting for confirmation) do not count toward the limit.
 
-```
+```text
 # Visualization of run concurrency
 Worker 1: [Planning workspace-A]  [Applying workspace-A]  [idle]
 Worker 2: [Planning workspace-B]  [idle]                   [Planning workspace-C]
@@ -194,7 +194,7 @@ Shorter runs mean faster queue throughput. Reduce run time by:
 
 Within a single workspace, runs queue automatically. Only one run can be active per workspace at a time, regardless of your organization-level concurrency limit.
 
-```
+```text
 # Within workspace "app-prod":
 # Run 1: [Active - Planning]
 # Run 2: [Queued - waiting for Run 1]

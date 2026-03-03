@@ -56,7 +56,7 @@ resolvectl statistics
 
 Sample output from `resolvectl statistics`:
 
-```
+```text
 Transactions
 Current Transactions: 0
   Total Transactions: 1247
@@ -158,7 +158,7 @@ dig +nocmd example.com +noall +answer
 ```
 
 Output:
-```
+```text
 example.com.            3474    IN      A       93.184.216.34
 ```
 

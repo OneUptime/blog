@@ -71,7 +71,7 @@ spec:
 
 ### Directory Structure
 
-```
+```text
 feature-flags/
 ├── environments/
 │   ├── development/

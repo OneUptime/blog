@@ -10,7 +10,7 @@ Description: Resolve the DEPTH_ZERO_SELF_SIGNED_CERT error in Node.js when conne
 
 When your Node.js application tries to connect to a server using HTTPS and you see this error:
 
-```
+```text
 Error: DEPTH_ZERO_SELF_SIGNED_CERT
     at TLSSocket.onConnectSecure (_tls_wrap.js:1515:34)
 ```

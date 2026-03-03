@@ -121,7 +121,7 @@ This is a common stumbling point. If your container starts but you cannot reach 
 
 Keep the build context lean:
 
-```
+```text
 node_modules
 .git
 .gitignore

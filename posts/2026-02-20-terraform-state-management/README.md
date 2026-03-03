@@ -239,7 +239,7 @@ graph TD
 
 A good approach is to combine both strategies.
 
-```
+```text
 terraform-state-bucket/
   networking/
     dev/terraform.tfstate

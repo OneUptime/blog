@@ -99,7 +99,7 @@ cat ~/.ssh/id_ed25519.pub | ssh user@server "mkdir -p ~/.ssh && chmod 700 ~/.ssh
 
 Each line in `~/.ssh/authorized_keys` on the remote server represents one authorized public key. The format is:
 
-```
+```text
 # Optional comment line
 ssh-ed25519 AAAA... user@hostname
 ssh-rsa AAAA... another-user@another-host

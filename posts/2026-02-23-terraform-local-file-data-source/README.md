@@ -300,7 +300,7 @@ This reads all JSON files from a `policies/` directory and creates an IAM policy
 
 If the file does not exist, Terraform fails during the plan phase with a clear error:
 
-```
+```text
 Error: Read local file data source error
 
   on main.tf line 1, in data "local_file" "missing":

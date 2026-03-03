@@ -154,7 +154,7 @@ kubectl get pods -n metallb-system
 
 You should see output similar to this:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-7476b58756-h2wkt   1/1     Running   0          45s
 speaker-abcde                 1/1     Running   0          45s
@@ -308,7 +308,7 @@ kubectl get svc nginx-test -w
 
 You should see something like:
 
-```
+```text
 NAME         TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
 nginx-test   LoadBalancer   10.43.12.100   192.168.1.200   80:31234/TCP   10s
 ```

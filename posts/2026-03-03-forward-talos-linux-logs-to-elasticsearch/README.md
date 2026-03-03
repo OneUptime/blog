@@ -29,19 +29,19 @@ There are several ways to get Talos Linux logs into Elasticsearch:
 
 ### Option 1: Talos to Logstash to Elasticsearch
 
-```
+```text
 Talos Nodes --> Logstash --> Elasticsearch --> Kibana
 ```
 
 ### Option 2: Talos to Vector to Elasticsearch
 
-```
+```text
 Talos Nodes --> Vector --> Elasticsearch --> Kibana
 ```
 
 ### Option 3: Talos to Fluent Bit to Elasticsearch
 
-```
+```text
 Talos Nodes --> Fluent Bit --> Elasticsearch --> Kibana
 ```
 
@@ -324,7 +324,7 @@ In Kibana, go to Stack Management and create an index pattern matching `talos-lo
 
 ### Useful Searches
 
-```
+```text
 # Find all errors
 talos_level: "error"
 
@@ -343,7 +343,7 @@ talos_service: "kubelet" AND msg: "failed" AND NOT msg: "probe"
 
 ### Using KQL (Kibana Query Language)
 
-```
+```text
 # KQL queries for Talos logs
 talos_service: "etcd" and talos_level: "error"
 talos_service: "kubelet" and msg: "OOMKilled"

@@ -14,7 +14,7 @@ A well-organized Ansible project is the difference between a codebase that three
 
 Ansible has a recommended directory structure. Here is what a production-ready project looks like:
 
-```
+```text
 ansible-project/
   ansible.cfg
   requirements.yml

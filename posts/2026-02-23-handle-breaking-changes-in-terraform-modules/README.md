@@ -114,7 +114,7 @@ This prevents destroy/recreate cycles for anyone upgrading. See [how to use the 
 
 For complex breaking changes, create a migration module that users run once:
 
-```
+```text
 modules/vpc/
   v2-migration/
     main.tf     # Contains moved blocks and state adjustments
@@ -142,7 +142,7 @@ moved {
 
 For very large changes, maintain two module versions side by side:
 
-```
+```text
 modules/
   vpc-v1/      # Legacy, bug fixes only
   vpc-v2/      # New version with breaking changes

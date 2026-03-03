@@ -67,7 +67,7 @@ Well-designed event schemas are the foundation of maintainable event-driven arch
 
 ### Event Type Naming
 
-```
+```text
 {domain}.{aggregate}.{event}
 
 Examples:
@@ -79,7 +79,7 @@ Examples:
 
 ### Topic Naming
 
-```
+```text
 {domain}-{event-category}-events
 
 Examples:

@@ -31,7 +31,7 @@ kubectl get configmap -n kube-system coredns -o yaml
 
 The default Corefile looks something like this:
 
-```
+```text
 .:53 {
     errors
     health
@@ -257,7 +257,7 @@ Warning: DNS query logging generates a very high volume of log data in productio
 
 The cache plugin controls how long DNS responses are cached. Tuning this affects both performance and how quickly DNS changes propagate:
 
-```
+```text
 cache {
     success 9984 30   # Cache successful responses for 30 seconds, max 9984 entries
     denial 9984 5     # Cache NXDOMAIN for 5 seconds
@@ -371,7 +371,7 @@ spec:
 
 Key metrics to track:
 
-```
+```text
 # CoreDNS metrics to monitor
 coredns_dns_requests_total        # Total query count
 coredns_dns_responses_total       # Response count by rcode

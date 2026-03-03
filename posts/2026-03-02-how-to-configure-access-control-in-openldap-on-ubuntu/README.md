@@ -19,7 +19,7 @@ OpenLDAP evaluates ACLs in order, stopping at the first matching rule. Each rule
 
 Basic syntax:
 
-```
+```text
 access to <what>
   by <who> <access-level> [control]
   by <who> <access-level> [control]
@@ -57,7 +57,7 @@ sudo ldapsearch -Y EXTERNAL -H ldapi:/// -LLL \
 
 OpenLDAP ships with a permissive default that allows anyone to read most attributes. The default rule is essentially:
 
-```
+```text
 access to *
   by * read
 ```

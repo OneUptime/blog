@@ -25,7 +25,7 @@ gcloud composer environments update my-composer-env \
 
 Your `requirements.txt` file should pin versions for reproducibility:
 
-```
+```text
 # requirements.txt - Pin versions for consistent deployments
 pandas==2.1.4
 requests==2.31.0
@@ -72,7 +72,7 @@ gcloud composer environments update my-composer-env \
 
 A well-organized requirements file for a data engineering team might look like this:
 
-```
+```text
 # requirements.txt
 
 # Data processing

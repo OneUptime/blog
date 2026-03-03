@@ -40,7 +40,7 @@ B-Tree (Balanced Tree) is PostgreSQL's default index type. It works well for mos
 
 ### How B-Tree Works
 
-```
+```text
                     [50]
                    /    \
               [25]      [75]
@@ -116,7 +116,7 @@ GIN (Generalized Inverted Index) is designed for values that contain multiple el
 
 ### How GIN Works
 
-```
+```text
 Inverted Index Structure:
 
 'electronics' -> [1, 5, 12, 89]     (documents containing 'electronics')
@@ -202,7 +202,7 @@ BRIN (Block Range Index) stores summary information about ranges of physical tab
 
 ### How BRIN Works
 
-```
+```text
 Block Range    | Min Value  | Max Value
 -------------- | ---------- | ----------
 Blocks 1-128   | 2024-01-01 | 2024-01-15

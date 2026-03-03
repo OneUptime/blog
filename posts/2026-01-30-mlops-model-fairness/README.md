@@ -22,7 +22,7 @@ Before implementing fairness measures, you need to understand what fairness mean
 
 The model's positive prediction rate should be equal across all protected groups.
 
-```
+```text
 P(Y_hat = 1 | A = 0) = P(Y_hat = 1 | A = 1)
 ```
 
@@ -32,7 +32,7 @@ Where `A` represents the protected attribute (e.g., gender, race).
 
 The true positive rate and false positive rate should be equal across groups.
 
-```
+```text
 P(Y_hat = 1 | Y = 1, A = 0) = P(Y_hat = 1 | Y = 1, A = 1)  # Equal TPR
 P(Y_hat = 1 | Y = 0, A = 0) = P(Y_hat = 1 | Y = 0, A = 1)  # Equal FPR
 ```
@@ -45,7 +45,7 @@ A relaxed version of equalized odds focusing only on true positive rate equality
 
 The positive predictive value should be equal across groups.
 
-```
+```text
 P(Y = 1 | Y_hat = 1, A = 0) = P(Y = 1 | Y_hat = 1, A = 1)
 ```
 

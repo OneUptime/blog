@@ -46,7 +46,7 @@ sudo nano /etc/frr/daemons
 
 Enable `bfdd` and whichever routing protocol daemons you need:
 
-```
+```text
 zebra=yes
 bgpd=yes
 ospfd=yes
@@ -70,7 +70,7 @@ This is the most common use case. BFD runs alongside BGP to detect peer failures
 
 ### Router A Configuration (192.168.1.1)
 
-```
+```text
 configure terminal
 
 ! Configure BGP with BFD
@@ -100,7 +100,7 @@ write memory
 
 ### Router B Configuration (192.168.1.2)
 
-```
+```text
 configure terminal
 
 router bgp 65002
@@ -127,7 +127,7 @@ The `bfd 3 300 300` parameters mean: detect-multiplier=3, minimum-receive-interv
 
 ## Configuring BFD with OSPF
 
-```
+```text
 configure terminal
 
 router ospf
@@ -146,7 +146,7 @@ write memory
 
 ## Configuring BFD with IS-IS
 
-```
+```text
 configure terminal
 
 router isis CORE
@@ -169,7 +169,7 @@ write memory
 
 You can also configure BFD sessions directly without routing protocol integration - useful for testing or monitoring link health independently:
 
-```
+```text
 configure terminal
 
 bfd
@@ -202,7 +202,7 @@ sudo vtysh -c "show bfd peers"
 
 Output when sessions are established:
 
-```
+```text
 BFD Peers:
         peer 192.168.1.2 vrf default
                 ID: 1234567890
@@ -235,7 +235,7 @@ sudo vtysh -c "show bgp neighbors 192.168.1.2"
 
 Look for the BFD section in the output:
 
-```
+```text
 BFD: Type: single hop
   Detect Mul: 3, Min Rx interval: 300, Min Tx interval: 300
   Status: Up, Last update: 0:05:32ago
@@ -264,7 +264,7 @@ sudo ip link set eth0 up
 
 Echo mode improves detection speed by testing the forwarding path rather than control plane processing. One side sends echo packets that the other side loops back at the forwarding plane level:
 
-```
+```text
 configure terminal
 
 bfd
@@ -286,7 +286,7 @@ Echo mode requires that the remote router forwards packets back to the sender. N
 
 Standard BFD works for directly connected peers. For BGP sessions across multiple hops, use multi-hop BFD:
 
-```
+```text
 configure terminal
 
 bfd

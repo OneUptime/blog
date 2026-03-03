@@ -30,7 +30,7 @@ That outputs something like: `user@hostname:~/Projects$`
 
 Bash recognizes these backslash-escaped sequences inside PS1:
 
-```
+```text
 \u    - current username
 \h    - hostname (short, up to first dot)
 \H    - full hostname
@@ -57,7 +57,7 @@ Colors use ANSI escape codes. The format is:
 
 Common color codes:
 
-```
+```text
 30 - Black       90 - Bright Black (dark gray)
 31 - Red         91 - Bright Red
 32 - Green       92 - Bright Green

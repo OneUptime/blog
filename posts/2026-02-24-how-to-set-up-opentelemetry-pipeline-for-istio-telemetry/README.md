@@ -20,13 +20,13 @@ The pipeline has three layers:
 
 The data flow looks like this:
 
-```
+```text
 Envoy Proxies --> OTel Collector Agent (per node) --> OTel Collector Gateway --> Backends
 ```
 
 Or for simpler setups:
 
-```
+```text
 Envoy Proxies --> OTel Collector Gateway --> Backends
 ```
 

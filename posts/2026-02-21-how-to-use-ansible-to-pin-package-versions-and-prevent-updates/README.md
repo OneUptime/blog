@@ -41,7 +41,7 @@ The `dpkg_selections` module controls how dpkg treats packages. Setting a packag
 
 When a package is held, `apt-get upgrade` and `apt-get dist-upgrade` will skip it. The output shows:
 
-```
+```text
 The following packages have been kept back:
   postgresql-15 postgresql-client-15
 ```

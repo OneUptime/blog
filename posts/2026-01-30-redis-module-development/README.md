@@ -84,7 +84,7 @@ cp /path/to/redis/src/redismodule.h src/
 
 Your project layout should look like this:
 
-```
+```text
 my-redis-module/
 ├── src/
 │   ├── redismodule.h    # Redis module API header

@@ -35,7 +35,7 @@ go get github.com/hashicorp/terraform-plugin-log
 
 Organize your code with this structure:
 
-```
+```text
 terraform-provider-example/
   main.go
   internal/

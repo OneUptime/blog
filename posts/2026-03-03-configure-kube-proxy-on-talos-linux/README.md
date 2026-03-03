@@ -159,7 +159,7 @@ spec:
 
 Key metrics to monitor include:
 
-```
+```text
 # Useful kube-proxy metrics
 kubeproxy_sync_proxy_rules_duration_seconds  # How long rule syncing takes
 kubeproxy_network_programming_duration_seconds  # End-to-end programming time

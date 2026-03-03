@@ -212,7 +212,7 @@ By default, ArgoCD polls the Git repository every 3 minutes. For faster deployme
 
 For GitHub, add a webhook in your repository settings pointing to:
 
-```
+```text
 https://<argocd-server>/api/webhook
 ```
 

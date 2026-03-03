@@ -36,7 +36,7 @@ const batchProcessor = new BatchSpanProcessor(exporter, {
 
 With a synchronous exporter, every request pays the cost of a network round-trip to the telemetry backend. Here is what that looks like:
 
-```
+```text
 Request without telemetry:     10ms
 Request with sync exporter:    10ms + 50ms (export) = 60ms
 Request with batch exporter:   10ms + ~0.1ms (queuing) = ~10.1ms

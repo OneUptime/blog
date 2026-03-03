@@ -87,7 +87,7 @@ Create `tsconfig.json`:
 
 ## Project Structure
 
-```
+```text
 src/
   index.ts              # Application entry point
   app.ts                # Express app configuration

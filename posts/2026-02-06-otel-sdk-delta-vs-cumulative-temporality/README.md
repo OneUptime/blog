@@ -13,7 +13,7 @@ Aggregation temporality controls how metric data points relate to each other ove
 Consider a counter that tracks HTTP requests:
 
 **Cumulative temporality** (monotonically increasing):
-```
+```text
 t=0:  total_requests = 0
 t=15: total_requests = 42
 t=30: total_requests = 89
@@ -21,7 +21,7 @@ t=45: total_requests = 134
 ```
 
 **Delta temporality** (change per interval):
-```
+```text
 t=0-15:  delta_requests = 42
 t=15-30: delta_requests = 47
 t=30-45: delta_requests = 45

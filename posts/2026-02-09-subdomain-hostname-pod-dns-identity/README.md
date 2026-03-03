@@ -16,7 +16,7 @@ These fields are particularly useful for StatefulSets, clustered applications, a
 
 By default, Kubernetes assigns DNS names to pods in the format `pod-ip-address.namespace.pod.cluster.local`. For example, a pod with IP 10.244.1.5 in the default namespace gets:
 
-```
+```text
 10-244-1-5.default.pod.cluster.local
 ```
 
@@ -82,7 +82,7 @@ spec:
 
 With this configuration, the pod is accessible at:
 
-```
+```text
 webapp-01.webapp-cluster.production.svc.cluster.local
 ```
 

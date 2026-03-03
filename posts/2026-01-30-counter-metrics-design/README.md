@@ -59,7 +59,7 @@ A counter metric has three parts: the name, labels, and the value itself.
 
 Follow the pattern: `<namespace>_<name>_<unit>_total`
 
-```
+```text
 # Good names
 http_requests_total
 payment_transactions_processed_total

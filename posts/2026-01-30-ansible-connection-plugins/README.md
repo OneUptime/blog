@@ -79,7 +79,7 @@ sequenceDiagram
 
 Connection plugins live in a specific location within your Ansible setup:
 
-```
+```text
 my_ansible_collection/
 ├── plugins/
 │   └── connection/

@@ -244,7 +244,7 @@ az security automation create \
 
 Then query the exported data in Log Analytics:
 
-```
+```text
 // Track compliance status changes over time
 SecurityRegulatoryCompliance
 | where TimeGenerated > ago(30d)

@@ -86,7 +86,7 @@ kubebuilder create api \
 
 Multi-group projects organize code by group:
 
-```
+```text
 myoperator/
 ├── api/
 │   ├── compute/
@@ -392,7 +392,7 @@ make manifests
 
 This creates CRDs in `config/crd/bases/`:
 
-```
+```text
 config/crd/bases/
 ├── compute.example.com_applications.yaml
 ├── compute.example.com_environments.yaml

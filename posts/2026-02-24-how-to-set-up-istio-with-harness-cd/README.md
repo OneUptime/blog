@@ -25,7 +25,7 @@ In Harness, set up a Kubernetes Cloud Provider that points to your cluster. The 
 
 Go to **Setup > Cloud Providers > Add Cloud Provider** and configure:
 
-```
+```text
 Type: Kubernetes Cluster
 Name: production-cluster
 Authentication: Inherit from selected Delegate
@@ -138,14 +138,14 @@ Add a verification step that checks Istio metrics. Harness supports Prometheus a
 
 In Harness Continuous Verification settings, configure Prometheus:
 
-```
+```text
 Provider: Prometheus
 URL: http://prometheus.monitoring.svc.cluster.local:9090
 ```
 
 Define verification queries:
 
-```
+```text
 Metric: Error Rate
 Query: sum(rate(istio_requests_total{destination_service_name="my-app-canary",response_code=~"5.*"}[5m])) / sum(rate(istio_requests_total{destination_service_name="my-app-canary"}[5m]))
 Threshold: < 0.01

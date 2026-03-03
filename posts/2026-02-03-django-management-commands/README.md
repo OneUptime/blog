@@ -42,7 +42,7 @@ flowchart LR
 
 Before you write your first command, you need to set up the right directory structure. Django expects a specific layout to discover your commands.
 
-```
+```text
 myproject/
 ├── manage.py
 └── myapp/

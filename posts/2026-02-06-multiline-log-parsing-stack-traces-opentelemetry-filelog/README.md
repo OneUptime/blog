@@ -16,7 +16,7 @@ The filelog receiver reads log files line by line. By default, each line becomes
 
 For example, if your log format starts each entry with a timestamp:
 
-```
+```text
 2026-02-06 10:15:23 ERROR Something went wrong
 java.lang.NullPointerException: object was null
     at com.example.OrderService.process(OrderService.java:42)

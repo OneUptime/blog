@@ -267,7 +267,7 @@ done
 
 Keep your runbooks organized in a Git repository with a clear structure:
 
-```
+```text
 runbooks/
   talos/
     upgrade-talos-os.md

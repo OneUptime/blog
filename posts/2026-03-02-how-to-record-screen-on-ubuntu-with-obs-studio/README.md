@@ -103,7 +103,7 @@ In the Sources panel, click + and select:
 
 To capture system audio and microphone:
 
-```
+```text
 Sources panel -> + -> Audio Output Capture
 Name: "Desktop Audio"
 Device: Default (or select specific output)
@@ -123,7 +123,7 @@ Go to Settings (gear icon or File -> Settings):
 
 ### Video Settings
 
-```
+```text
 Settings -> Video:
 - Base (Canvas) Resolution: 1920x1080 (match your display)
 - Output (Scaled) Resolution: 1920x1080 (or 1280x720 for smaller files)
@@ -133,7 +133,7 @@ Settings -> Video:
 
 ### Output Settings
 
-```
+```text
 Settings -> Output -> Output Mode: Advanced
 
 Recording tab:
@@ -146,7 +146,7 @@ Recording tab:
 
 ### Choosing an Encoder
 
-```
+```text
 Software encoders (works everywhere, uses CPU):
 - x264: Best compatibility, adjustable quality
   - Rate Control: CRF
@@ -201,7 +201,7 @@ For microphone, add these filters (right-click source -> Filters):
 2. **Noise Gate**: Mutes mic when below threshold (silence between speech)
 3. **Compressor**: Evens out volume spikes
 
-```
+```text
 Noise Gate settings:
 - Close Threshold: -40 dB
 - Open Threshold: -35 dB
@@ -212,7 +212,7 @@ Noise Gate settings:
 
 Set hotkeys so you don't have to click during recordings:
 
-```
+```text
 Settings -> Hotkeys:
 - Start Recording: Ctrl+Alt+R
 - Stop Recording: Ctrl+Alt+S (or same key to toggle)
@@ -224,7 +224,7 @@ Settings -> Hotkeys:
 
 ### For Tutorial/Screencasts
 
-```
+```text
 Encoder: x264
 Rate Control: CRF
 CRF: 23
@@ -236,7 +236,7 @@ FPS: 30
 
 ### For Gaming/High Motion
 
-```
+```text
 Encoder: NVENC H.264 (if NVIDIA) or x264
 Rate Control: CQP (NVENC) or CRF (x264)
 CQ Level/CRF: 18-20
@@ -246,7 +246,7 @@ FPS: 60
 
 ### For Small File Size
 
-```
+```text
 Encoder: x264
 Rate Control: CRF
 CRF: 28-32
@@ -259,7 +259,7 @@ FPS: 30
 
 Record audio sources to separate tracks for flexible post-editing:
 
-```
+```text
 Settings -> Output -> Recording -> Audio Track: enable tracks 1-3
 
 Then in Edit -> Advanced Audio Properties:
@@ -274,7 +274,7 @@ microphone-only on Track 3
 
 OBS is also used for live streaming. Configure for common platforms:
 
-```
+```text
 Settings -> Stream:
 - Service: Twitch / YouTube / Custom RTMP
 - Server: select nearest server

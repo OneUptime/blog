@@ -175,7 +175,7 @@ etcd_server_proposals_pending
 
 Create a Grafana dashboard with panels for each latency category. Here is a layout suggestion:
 
-```
+```text
 Row 1: Overview
 - Current leader (single stat)
 - Member count (single stat)

@@ -257,7 +257,7 @@ For more granular control, load variables from the most specific file available,
 
 With this pattern, you might have:
 
-```
+```text
 vars/
   Debian.yml           # Base settings for all Debian-family systems
   RedHat.yml           # Base settings for all RedHat-family systems

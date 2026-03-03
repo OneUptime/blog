@@ -24,7 +24,7 @@ The verification policies we deploy will check that images have valid signatures
 
 ## Repository Structure
 
-```
+```text
 security/
   cosign-policies/
     kyverno/

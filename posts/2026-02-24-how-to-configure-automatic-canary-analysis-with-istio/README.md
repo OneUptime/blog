@@ -295,7 +295,7 @@ kubectl logs -n istio-system -l app.kubernetes.io/name=flagger -f | grep api-ser
 
 You'll see output like:
 
-```
+```text
 Starting canary analysis for api-server.production
 Advance api-server.production canary weight 10
 Checking request-success-rate: 99.8% >= 99.5% (pass)
@@ -305,7 +305,7 @@ Advance api-server.production canary weight 20
 
 Or for a failing canary:
 
-```
+```text
 Checking request-success-rate: 97.2% < 99.5% (fail) 1/3
 Checking request-success-rate: 96.5% < 99.5% (fail) 2/3
 Checking request-success-rate: 95.1% < 99.5% (fail) 3/3

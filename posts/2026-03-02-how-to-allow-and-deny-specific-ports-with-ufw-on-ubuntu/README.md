@@ -76,7 +76,7 @@ The numbered view is essential for managing existing rules:
 sudo ufw status numbered
 ```
 
-```
+```text
 Status: active
 
      To                         Action      From
@@ -228,7 +228,7 @@ sudo nano /etc/ufw/before.rules
 
 To allow ping, these lines should be present (they are by default):
 
-```
+```text
 # Allow ICMP
 -A ufw-before-input -p icmp --icmp-type echo-request -j ACCEPT
 ```

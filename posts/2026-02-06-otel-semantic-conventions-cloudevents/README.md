@@ -202,7 +202,7 @@ function publishEvent(orderData: any): void {
 
 When all your services use these conventions, you can write powerful queries:
 
-```
+```text
 # Find all spans for a specific event type across all services
 cloudevents.event_type = "com.example.order.created"
 

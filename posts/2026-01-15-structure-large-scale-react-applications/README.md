@@ -20,7 +20,7 @@ The most scalable approach for large React applications is organizing code by fe
 
 ### Traditional (Type-Based) Structure - Avoid This at Scale
 
-```
+```text
 src/
   components/
     Button.tsx
@@ -54,7 +54,7 @@ This structure breaks down quickly because:
 
 ### Feature-Based Structure - The Scalable Approach
 
-```
+```text
 src/
   features/
     auth/
@@ -246,7 +246,7 @@ module.exports = {
 
 For non-trivial components, use a folder structure that keeps related files together:
 
-```
+```text
 IncidentList/
   IncidentList.tsx          # Main component
   IncidentList.test.tsx     # Tests
@@ -358,7 +358,7 @@ For large applications, you need a clear strategy for different types of state.
 
 ### State Categories
 
-```
+```text
 src/
   features/
     incidents/
@@ -1036,7 +1036,7 @@ export const AppRouter: React.FC = () => {
 
 ### Test File Organization
 
-```
+```text
 src/
   features/
     incidents/

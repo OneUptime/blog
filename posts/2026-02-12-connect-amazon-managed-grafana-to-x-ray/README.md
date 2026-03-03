@@ -108,17 +108,17 @@ The easiest way to start is with the Explore view.
 
 Shows a list of traces matching your filter criteria.
 
-```
+```text
 # Find traces with errors in the last hour
 service("order-api") { error = true }
 ```
 
-```
+```text
 # Find slow traces (over 2 seconds)
 service("order-api") { responsetime > 2 }
 ```
 
-```
+```text
 # Find traces for a specific URL
 service("order-api") { http.url CONTAINS "/api/orders" }
 ```
@@ -127,7 +127,7 @@ service("order-api") { http.url CONTAINS "/api/orders" }
 
 Shows aggregate statistics about your traces.
 
-```
+```text
 # Average response time by service
 service("order-api")
 ```
@@ -197,31 +197,31 @@ X-Ray filter expressions let you narrow down traces precisely.
 
 **By HTTP method and status:**
 
-```
+```text
 service("order-api") { http.method = "POST" AND http.status = 500 }
 ```
 
 **By annotation (custom metadata):**
 
-```
+```text
 annotation.customer_tier = "premium"
 ```
 
 **By response time range:**
 
-```
+```text
 service("order-api") { responsetime >= 1 AND responsetime <= 5 }
 ```
 
 **By partial service match:**
 
-```
+```text
 service(id(name: "order", type: "AWS::Lambda::Function"))
 ```
 
 **Combining multiple services:**
 
-```
+```text
 service("order-api") OR service("payment-api") { error = true }
 ```
 

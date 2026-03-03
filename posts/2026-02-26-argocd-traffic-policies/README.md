@@ -221,7 +221,7 @@ spec:
 
 A clean directory structure keeps things manageable as your cluster grows:
 
-```
+```text
 policies/
   production/
     api-gateway-vs.yaml

@@ -239,7 +239,7 @@ COPY . .
 CMD ["newrelic-admin", "run-program", "python", "app.py"]
 ```
 
-```
+```text
 # python-app/requirements.txt
 flask==3.0.0
 newrelic==9.6.0

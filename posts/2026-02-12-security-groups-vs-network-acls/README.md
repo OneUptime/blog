@@ -46,7 +46,7 @@ NACLs evaluate rules in order, starting from the lowest rule number. The first m
 
 Here's an example that shows why ordering matters.
 
-```
+```text
 NACL Rules (Inbound):
 Rule 50:  DENY  TCP  port 22  from 198.51.100.0/24
 Rule 100: ALLOW TCP  port 22  from 0.0.0.0/0
@@ -125,7 +125,7 @@ NACLs are best for:
 
 Here's a pattern I see working well in production.
 
-```
+```text
 Internet
     |
 [NACL: Allow 80, 443 inbound; Block known bad IPs]

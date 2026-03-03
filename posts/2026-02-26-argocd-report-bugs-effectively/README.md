@@ -185,7 +185,7 @@ This is the most important section. Write steps that anyone can follow to reprod
 2. Click "Sync" in the ArgoCD UI
 3. Observe the repo-server pod getting OOMKilled after approximately 45 seconds
 4. Check pod events: `kubectl describe pod -n argocd -l app.kubernetes.io/name=argocd-repo-server`
-```
+```text
 
 ### Expected Behavior
 
@@ -202,14 +202,14 @@ Memory usage spikes from 200Mi to over 1Gi within 30 seconds.
 Error from controller logs:
 ```
 level=error msg="ComparisonError: rpc error: code = Unavailable desc = connection error"
-```
+```text
 
 Pod events show:
 ```
 Last State: Terminated
 Reason: OOMKilled
 Exit Code: 137
-```
+```text
 ```
 
 ### Attach Relevant Logs
@@ -223,7 +223,7 @@ Paste sanitized logs inline or attach them as files. Use collapsible sections fo
 ```
 time="2024-01-15T10:23:45Z" level=info msg="Generating manifests for app large-chart"
 time="2024-01-15T10:24:30Z" level=error msg="manifest generation error: signal: killed"
-```
+```text
 
 </details>
 ```

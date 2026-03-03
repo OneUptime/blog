@@ -42,7 +42,7 @@ Optional: `sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl` 
 
 Windows Package Manager (winget) makes installation straightforward on Windows 10/11.
 
-```
+```text
 # Install kubectl using winget
 winget install -e --id Kubernetes.kubectl
 # Verify installation

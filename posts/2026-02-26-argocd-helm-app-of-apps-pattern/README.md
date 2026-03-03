@@ -35,7 +35,7 @@ Without Helm, you would need a separate YAML file for each child application. Wi
 
 Create a Helm chart that serves as the parent application. This chart does not deploy workloads - it deploys ArgoCD Application resources.
 
-```
+```text
 argocd-apps/
   Chart.yaml
   values.yaml

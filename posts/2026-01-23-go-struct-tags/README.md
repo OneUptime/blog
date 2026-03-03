@@ -26,7 +26,7 @@ type User struct {
 ```
 
 The general format is:
-```
+```text
 `key1:"value1" key2:"value2" key3:"value3"`
 ```
 
@@ -301,7 +301,7 @@ func main() {
 ```
 
 Output:
-```
+```text
 Field: ID
   json: id
   db: user_id

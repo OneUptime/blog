@@ -133,7 +133,7 @@ When the UI loads the application list, it fetches data for all applications. Wi
 
 The ArgoCD UI supports filtering applications. Use project-based filtering to load only relevant apps:
 
-```
+```text
 # In the UI, use the search bar with project: prefix
 project:team-a
 ```
@@ -313,7 +313,7 @@ curl localhost:8083/metrics | grep argocd_app_reconcile
 
 **Key metrics:**
 
-```
+```text
 # API request duration
 argocd_redis_request_duration
 grpc_server_handled_total

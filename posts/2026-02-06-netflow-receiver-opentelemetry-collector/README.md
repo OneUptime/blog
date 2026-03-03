@@ -688,7 +688,7 @@ Configure network devices to export flow data.
 
 ### Cisco Router (Netflow v9)
 
-```
+```text
 ! Enable Netflow on interface
 interface GigabitEthernet0/0
  ip flow ingress
@@ -702,7 +702,7 @@ ip flow-export source GigabitEthernet0/0
 
 ### Juniper Router (IPFIX)
 
-```
+```text
 set forwarding-options sampling instance netflow-instance
 set forwarding-options sampling instance netflow-instance input rate 100
 set forwarding-options sampling instance netflow-instance family inet output flow-server 192.168.1.100 port 4739

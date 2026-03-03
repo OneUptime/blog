@@ -61,7 +61,7 @@ A Kustomize project is organized around bases and overlays. The base contains yo
 
 Here is a typical directory structure:
 
-```
+```text
 my-app/
   base/
     kustomization.yaml

@@ -123,7 +123,7 @@ dig . DNSKEY +dnssec
 
 DNSKEY records contain the public keys used to verify signatures. There are two types:
 
-```
+```text
 ; Zone Signing Key (ZSK) - Flag 256
 example.com. 86400 IN DNSKEY 256 3 13 (
     mdsswUyr3DPW132mOi8V9xESWE8jTo0dxCjj
@@ -150,7 +150,7 @@ example.com. 86400 IN DNSKEY 257 3 13 (
 
 RRSIG (Resource Record Signature) records contain the cryptographic signatures for DNS records:
 
-```
+```text
 ; RRSIG for an A record
 example.com. 86400 IN A 93.184.216.34
 example.com. 86400 IN RRSIG A 13 2 86400 (
@@ -178,7 +178,7 @@ example.com. 86400 IN RRSIG A 13 2 86400 (
 
 DS (Delegation Signer) records link child zones to parent zones, creating the chain of trust:
 
-```
+```text
 ; DS record in parent zone (.com)
 example.com. 86400 IN DS 12345 13 2 (
     49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE
@@ -217,7 +217,7 @@ These records provide authenticated denial of existence - proving that a domain 
 
 NSEC records list the next domain name in the zone and what record types exist:
 
-```
+```text
 ; NSEC record showing 'alpha.example.com' is followed by 'beta.example.com'
 alpha.example.com. 86400 IN NSEC beta.example.com. A AAAA RRSIG NSEC
 ```
@@ -228,7 +228,7 @@ alpha.example.com. 86400 IN NSEC beta.example.com. A AAAA RRSIG NSEC
 
 NSEC3 uses hashed domain names to prevent zone enumeration:
 
-```
+```text
 ; NSEC3 record with hashed names
 CK0POJMG874LJREF7EFN8430QVIT8BSM.example.com. 86400 IN NSEC3 (
     1 0 10 AABBCCDD

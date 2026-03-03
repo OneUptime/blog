@@ -78,7 +78,7 @@ talosctl get machineconfig --nodes 10.0.1.10 -o yaml | \
 ```
 
 If the output shows:
-```
+```text
 eth0
 eth1
 ```
@@ -190,7 +190,7 @@ If the `test` fails (the field does not exist or has a different value), the ent
 
 If you try to remove a path that does not exist, the patch fails:
 
-```
+```text
 error applying configuration: remove operation does not apply:
 doc is missing path: /machine/kubelet/nodeLabels/nonexistent
 ```

@@ -36,7 +36,7 @@ flowchart LR
 
 The sidecar project follows a clean architecture with separate packages for each concern.
 
-```
+```text
 sidecar-proxy/
 ├── main.go
 ├── config/

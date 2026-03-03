@@ -88,7 +88,7 @@ Collector logs follow a structured format that makes parsing and filtering strai
 
 **Console format** provides human-readable logs:
 
-```
+```text
 2026-02-06T10:30:45.123Z    info    service@v0.96.0/telemetry.go:84    Setting up own telemetry...
 2026-02-06T10:30:45.124Z    info    service@v0.96.0/telemetry.go:201   Serving Prometheus metrics    {"address": ":8888", "level": "Basic"}
 2026-02-06T10:30:45.125Z    info    exporter@v0.96.0/exporter.go:275   Development component. May change in the future.    {"kind": "exporter", "data_type": "traces", "name": "debug"}
@@ -133,7 +133,7 @@ Startup logs reveal configuration issues, component initialization status, and r
 
 **Successful startup sequence**:
 
-```
+```text
 2026-02-06T10:30:45.123Z    info    service@v0.96.0/telemetry.go:84    Setting up own telemetry...
 2026-02-06T10:30:45.124Z    info    service@v0.96.0/telemetry.go:201   Serving Prometheus metrics    {"address": ":8888", "level": "Basic"}
 2026-02-06T10:30:45.125Z    info    service@v0.96.0/service.go:143    Starting otelcol-contrib...    {"Version": "0.96.0", "NumCPU": 8}
@@ -150,7 +150,7 @@ The final "Everything is ready" message confirms successful startup. Before this
 
 Configuration errors during startup show specific component failures:
 
-```
+```text
 2026-02-06T10:30:45.123Z    info    service@v0.96.0/telemetry.go:84    Setting up own telemetry...
 2026-02-06T10:30:45.124Z    info    service@v0.96.0/service.go:143    Starting otelcol-contrib...    {"Version": "0.96.0", "NumCPU": 8}
 2026-02-06T10:30:45.125Z    error   service@v0.96.0/service.go:226    Failed to build pipelines    {"error": "cannot build pipelines: cannot build receiver \"otlp\": missing required field 'endpoint'"}
@@ -200,7 +200,7 @@ service:
 
 With debug logging, you'll see data flow messages:
 
-```
+```text
 2026-02-06T10:31:00.456Z    debug   otlpreceiver@v0.96.0/otlp.go:89    Received trace data    {"kind": "receiver", "name": "otlp", "data_type": "traces", "resource_spans": 1, "spans": 5}
 2026-02-06T10:31:00.457Z    debug   batchprocessor@v0.96.0/batch_processor.go:189   Processing batch    {"kind": "processor", "name": "batch", "spans": 5}
 2026-02-06T10:31:10.458Z    debug   batchprocessor@v0.96.0/batch_processor.go:234   Sending batch    {"kind": "processor", "name": "batch", "spans": 105, "trigger": "timeout"}
@@ -221,7 +221,7 @@ Performance-related logs reveal bottlenecks, slowdowns, and resource constraints
 
 **Exporter backpressure warnings**:
 
-```
+```text
 2026-02-06T10:35:00.789Z    warn    exporterhelper@v0.96.0/queued_retry.go:321    Exporter queue is full    {"kind": "exporter", "data_type": "traces", "name": "otlp", "queue_size": 1000, "dropped_items": 50}
 2026-02-06T10:35:01.890Z    warn    exporterhelper@v0.96.0/queued_retry.go:180    Exporting failed. Will retry the request after interval.    {"kind": "exporter", "data_type": "traces", "name": "otlp", "interval": "5.234s", "error": "rpc error: code = Unavailable desc = connection closed"}
 ```
@@ -258,7 +258,7 @@ Monitor logs after configuration changes to verify improvements.
 
 **Memory pressure indicators**:
 
-```
+```text
 2026-02-06T10:40:15.234Z    warn    memorylimiterprocessor@v0.96.0/memorylimiter.go:285    Memory usage is above soft limit    {"kind": "processor", "name": "memory_limiter", "memory_usage_mib": 1400, "soft_limit_mib": 1280, "hard_limit_mib": 1536}
 2026-02-06T10:40:16.345Z    warn    memorylimiterprocessor@v0.96.0/memorylimiter.go:304    Refusing data due to memory pressure    {"kind": "processor", "name": "memory_limiter", "memory_usage_mib": 1500, "hard_limit_mib": 1536}
 ```
@@ -273,7 +273,7 @@ Error logs require immediate attention as they indicate failures affecting data 
 
 **Receiver errors**:
 
-```
+```text
 2026-02-06T10:45:30.567Z    error   otlpreceiver@v0.96.0/otlp.go:134    Failed to receive trace data    {"kind": "receiver", "name": "otlp", "error": "rpc error: code = InvalidArgument desc = invalid trace data"}
 ```
 
@@ -286,7 +286,7 @@ Examine client configurations and test with known-good telemetry to isolate the 
 
 **Processor errors**:
 
-```
+```text
 2026-02-06T10:50:45.678Z    error   transformprocessor@v0.96.0/processor.go:89    Failed to process span    {"kind": "processor", "name": "transform", "error": "error evaluating statement: attribute not found: http.status_code"}
 ```
 
@@ -294,7 +294,7 @@ Processor errors show transformation or filtering failures. Review processor con
 
 **Exporter errors**:
 
-```
+```text
 2026-02-06T10:55:12.789Z    error   otlpexporter@v0.96.0/otlp.go:189    Failed to export traces    {"kind": "exporter", "data_type": "traces", "name": "otlp", "error": "rpc error: code = Unavailable desc = connection refused"}
 ```
 
@@ -308,7 +308,7 @@ Exporter errors indicate backend connectivity or compatibility issues. Verify:
 
 Some log messages include throughput information, helping understand collector load:
 
-```
+```text
 2026-02-06T11:00:00.123Z    info    service@v0.96.0/service.go:201    Received spans    {"spans_received": 15340, "spans_dropped": 0}
 2026-02-06T11:00:00.124Z    info    service@v0.96.0/service.go:202    Exported spans    {"spans_exported": 15340, "spans_failed": 0}
 ```
@@ -490,7 +490,7 @@ Recognize these log patterns to quickly diagnose common problems:
 
 **Pattern: Receiver not receiving data**
 
-```
+```text
 # Receiver started but no data arrival logs
 2026-02-06T10:30:45.130Z    info    otlpreceiver@v0.96.0/otlp.go:45    Starting OTLP receiver    {"kind": "receiver", "name": "otlp", "endpoint": "0.0.0.0:4317"}
 # ... no subsequent "Received trace data" debug logs
@@ -500,7 +500,7 @@ Recognize these log patterns to quickly diagnose common problems:
 
 **Pattern: Data stuck in batch processor**
 
-```
+```text
 # Data received but batches not sending
 2026-02-06T11:00:00.456Z    debug   otlpreceiver@v0.96.0/otlp.go:89    Received trace data    {"spans": 10}
 2026-02-06T11:00:05.567Z    debug   otlpreceiver@v0.96.0/otlp.go:89    Received trace data    {"spans": 15}
@@ -511,7 +511,7 @@ Recognize these log patterns to quickly diagnose common problems:
 
 **Pattern: Exporter repeatedly failing**
 
-```
+```text
 # Continuous export failures
 2026-02-06T11:10:00.123Z    error   otlpexporter@v0.96.0/otlp.go:189    Failed to export traces    {"error": "connection refused"}
 2026-02-06T11:10:05.234Z    error   otlpexporter@v0.96.0/otlp.go:189    Failed to export traces    {"error": "connection refused"}
@@ -522,7 +522,7 @@ Recognize these log patterns to quickly diagnose common problems:
 
 **Pattern: Memory limiter activating**
 
-```
+```text
 # Increasing memory pressure
 2026-02-06T11:15:00.123Z    warn    memorylimiterprocessor@v0.96.0/memorylimiter.go:285    Memory usage above soft limit
 2026-02-06T11:15:05.234Z    warn    memorylimiterprocessor@v0.96.0/memorylimiter.go:304    Refusing data due to memory pressure

@@ -148,7 +148,7 @@ After completing the wizard, Jellyfin begins scanning your media and downloading
 
 Jellyfin works best when media files follow a consistent naming convention:
 
-```
+```text
 # Recommended directory structure for movies
 /mnt/media/movies/
   Movie Name (2024)/

@@ -31,7 +31,7 @@ When you look at a package.json file, you will see dependency versions prefixed 
 
 Before diving into tilde and caret, you need to understand semantic versioning (semver). Most npm packages follow this convention:
 
-```
+```text
 MAJOR.MINOR.PATCH
   2   .  29  . 4
 ```
@@ -61,7 +61,7 @@ The caret allows updates that do not change the leftmost non-zero version number
 
 This means npm can install any version from `4.18.2` up to (but not including) `5.0.0`:
 
-```
+```text
 ^4.18.2   allows:  4.18.2, 4.18.3, 4.19.0, 4.99.99
           blocks:  5.0.0, 4.18.1
 
@@ -101,7 +101,7 @@ The tilde allows only patch updates, keeping the minor version fixed.
 
 This means npm can install any version from `4.17.21` up to (but not including) `4.18.0`:
 
-```
+```text
 ~4.17.21  allows:  4.17.21, 4.17.22, 4.17.99
           blocks:  4.18.0, 5.0.0
 

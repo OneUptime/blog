@@ -35,7 +35,7 @@ flowchart LR
 
 Organize your test scripts for maintainability and reuse across environments.
 
-```
+```text
 project/
 ├── k6/
 │   ├── scripts/

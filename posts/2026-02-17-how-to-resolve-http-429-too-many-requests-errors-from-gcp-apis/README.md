@@ -28,7 +28,7 @@ The 429 error typically looks like this:
 
 Or from gcloud:
 
-```
+```text
 ERROR: (gcloud.compute.instances.list) HttpError accessing
 https://compute.googleapis.com/compute/v1/projects/my-project/zones/us-central1-a/instances:
 response: <{status: 429}>, Quota exceeded for quota metric 'Requests' and limit

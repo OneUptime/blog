@@ -128,7 +128,7 @@ kubectl describe vpa resource-consumer-vpa
 
 The output will include something like:
 
-```
+```text
 Recommendation:
   Container Recommendations:
     Container Name:  consumer

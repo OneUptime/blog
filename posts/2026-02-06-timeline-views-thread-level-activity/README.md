@@ -111,7 +111,7 @@ Color-code the states:
 
 ### Thread Pool Starvation
 
-```
+```text
 Thread-1: [CCCCCCCCCCCCCCCCCCCCCCCC]  (100% CPU)
 Thread-2: [CCCCCCCCCCCCCCCCCCCCCCCC]  (100% CPU)
 Thread-3: [CCCCCCCCCCCCCCCCCCCCCCCC]  (100% CPU)
@@ -125,7 +125,7 @@ All threads are maxed out. You either need more threads, or you need to make the
 
 ### Lock Contention
 
-```
+```text
 Thread-1: [CC-LLLL-CCC-LLLL-CC-LLLL]
 Thread-2: [LLLL-CC-LLLL-CCC-LLLL-CC]
 Thread-3: [C-LLLL-CC-LLLL-CC-LLLL-C]
@@ -137,7 +137,7 @@ Threads are taking turns. Only one can hold the lock at a time. The fix is usual
 
 ### I/O Wait Dominance
 
-```
+```text
 Thread-1: [C-IIIIIIIIIIII-C-IIIIIII]
 Thread-2: [C-IIIIIIIIII-CC-IIIIIIIII]
 

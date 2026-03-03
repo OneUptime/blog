@@ -419,7 +419,7 @@ EOF
 
 Expected output:
 
-```
+```text
 Error from server: admission webhook denied the request: Privileged containers are not allowed (Baseline)
 ```
 

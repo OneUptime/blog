@@ -40,7 +40,7 @@ Key rules:
 
 The most common pattern is a centralized values repository that serves multiple Helm chart deployments:
 
-```
+```text
 config-repo/
   charts/
     nginx-ingress/

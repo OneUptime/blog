@@ -49,7 +49,7 @@ flowchart LR
 
 For tasks that spend most of their time performing computations:
 
-```
+```text
 Optimal Pool Size = Number of CPUs + 1
 ```
 
@@ -63,7 +63,7 @@ The extra thread accounts for occasional page faults or brief pauses. Adding mor
 
 For tasks that spend significant time waiting for external resources (database queries, API calls, file operations):
 
-```
+```text
 Optimal Pool Size = Number of CPUs * Target CPU Utilization * (1 + Wait Time / Compute Time)
 ```
 
@@ -83,7 +83,7 @@ Where:
 
 An alternative formula based on queuing theory:
 
-```
+```text
 Optimal Pool Size = Throughput * Latency
 ```
 

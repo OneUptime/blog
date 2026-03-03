@@ -142,7 +142,7 @@ curl localhost:15020/stats/prometheus | grep istio_requests_total
 
 You should see lines like:
 
-```
+```text
 istio_requests_total{response_code="200",source_workload="frontend",destination_workload="api-service",...} 1523
 ```
 
@@ -160,7 +160,7 @@ All the Istio targets should show as UP.
 
 The labels on Istio metrics are what make them powerful. Here are the most important ones:
 
-```
+```text
 istio_requests_total{
   reporter="source",                          # or "destination"
   source_workload="frontend",

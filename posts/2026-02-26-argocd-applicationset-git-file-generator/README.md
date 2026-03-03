@@ -34,7 +34,7 @@ graph TD
 
 Given a repository with per-application config files:
 
-```
+```text
 config-repo/
 ├── apps/
 │   ├── api-gateway.json
@@ -189,7 +189,7 @@ generators:
 
 A powerful pattern is using separate config files for each environment, discovered by the file generator.
 
-```
+```text
 config-repo/
 ├── environments/
 │   ├── dev/

@@ -104,7 +104,7 @@ subjects:
 
 Linear mode calculates replicas using this formula:
 
-```
+```text
 replicas = max(ceil(cores * 1/coresPerReplica), ceil(nodes * 1/nodesPerReplica))
 replicas = max(replicas, min)
 replicas = min(replicas, max)
@@ -141,7 +141,7 @@ data:
 
 With this configuration, a cluster with 64 nodes and 256 cores would run:
 
-```
+```text
 replicas = max(ceil(256/256), ceil(64/16)) = max(1, 4) = 4
 replicas = max(4, 2) = 4 (apply min)
 ```
@@ -231,7 +231,7 @@ kubectl logs -n kube-system deployment/dns-autoscaler
 
 Expected output shows scaling decisions:
 
-```
+```text
 I0209 10:30:15.123456 Target deployment: kube-system/coredns
 I0209 10:30:15.234567 Cluster status: 48 nodes, 192 cores
 I0209 10:30:15.345678 Expected replicas: 3 (from nodes), 1 (from cores), using 3

@@ -903,7 +903,7 @@ spec:
 
 Store all MetalLB configuration in version control:
 
-```
+```text
 metallb-config/
 ├── base/
 │   ├── kustomization.yaml

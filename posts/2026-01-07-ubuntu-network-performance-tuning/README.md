@@ -93,12 +93,12 @@ sysctl net.ipv4.tcp_wmem
 
 The optimal buffer size depends on your bandwidth-delay product (BDP):
 
-```
+```text
 BDP = Bandwidth (bytes/sec) x Round-Trip Time (seconds)
 ```
 
 For a 10 Gbps link with 10ms RTT:
-```
+```text
 BDP = (10,000,000,000 / 8) x 0.010 = 12,500,000 bytes (~12 MB)
 ```
 

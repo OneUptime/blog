@@ -17,22 +17,22 @@ The idea is simple: after you deploy, watch the metrics for a defined period. If
 Istio gives you several metrics that are useful for post-deployment checks:
 
 **Request success rate** - The percentage of non-5xx responses:
-```
+```text
 sum(rate(istio_requests_total{destination_workload="my-app",response_code!~"5.*"}[5m])) / sum(rate(istio_requests_total{destination_workload="my-app"}[5m]))
 ```
 
 **P99 latency** - The worst-case response time:
-```
+```text
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="my-app"}[5m])) by (le))
 ```
 
 **Request throughput** - Make sure traffic is actually flowing:
-```
+```text
 sum(rate(istio_requests_total{destination_workload="my-app"}[5m]))
 ```
 
 **TCP connection errors** - For non-HTTP services:
-```
+```text
 sum(rate(istio_tcp_connections_closed_total{destination_workload="my-app",response_flags!=""}[5m]))
 ```
 

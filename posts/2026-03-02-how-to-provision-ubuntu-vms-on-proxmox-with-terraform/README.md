@@ -79,7 +79,7 @@ pveum user token add terraform@pve terraform-token --privsep=0
 
 ## Project Structure
 
-```
+```text
 proxmox-terraform/
   main.tf
   variables.tf

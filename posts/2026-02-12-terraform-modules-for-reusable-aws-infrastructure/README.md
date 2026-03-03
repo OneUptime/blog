@@ -32,7 +32,7 @@ graph TD
 
 A well-organized module follows this structure.
 
-```
+```text
 modules/
   vpc/
     main.tf          # Resource definitions

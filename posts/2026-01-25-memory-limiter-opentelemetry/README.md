@@ -120,7 +120,7 @@ flowchart TD
 
 Estimate your memory needs based on workload:
 
-```
+```text
 base_memory = 200 MiB (collector overhead)
 receiver_memory = receivers * 50 MiB
 processor_memory = varies by processor
@@ -132,7 +132,7 @@ total = base + receiver + processor + exporter_queue + tail_sampling
 
 Example calculation:
 
-```
+```text
 Base:                200 MiB
 2 OTLP receivers:    100 MiB
 Batch processor:      50 MiB

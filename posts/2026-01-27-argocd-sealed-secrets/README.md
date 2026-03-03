@@ -213,7 +213,7 @@ flowchart TD
 
 Organize your GitOps repository to separate SealedSecrets from other manifests:
 
-```
+```text
 gitops-repo/
 ├── apps/
 │   └── myapp/

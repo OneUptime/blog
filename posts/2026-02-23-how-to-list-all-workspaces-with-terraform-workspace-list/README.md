@@ -19,7 +19,7 @@ terraform workspace list
 
 Output:
 
-```
+```text
   default
   dev
 * staging
@@ -37,7 +37,7 @@ The output format is consistent:
 - An asterisk replaces the first space for the active workspace
 - The `default` workspace always exists and always appears first
 
-```
+```text
   default       <-- always present
   dev           <-- two-space indent
 * staging       <-- asterisk marks current
@@ -105,7 +105,7 @@ terraform workspace list | sed 's/^[ *]*//'
 
 Output:
 
-```
+```text
 default
 dev
 staging
@@ -199,7 +199,7 @@ terraform workspace select "$ORIGINAL" > /dev/null 2>&1
 
 Sample output:
 
-```
+```text
 Workspace Status Report
 =======================
 

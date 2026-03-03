@@ -131,13 +131,13 @@ Every Envoy sidecar in a large mesh generates a lot of metrics. With thousands o
 
 Estimate the load:
 
-```
+```text
 pods * metrics_per_pod * (1 / scrape_interval) = samples_per_second
 ```
 
 A typical Envoy sidecar exposes around 500-1000 metrics. With 1000 pods and a 15-second scrape interval:
 
-```
+```text
 1000 * 750 * (1/15) = 50,000 samples/second
 ```
 

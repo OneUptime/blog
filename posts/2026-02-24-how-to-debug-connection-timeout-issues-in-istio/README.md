@@ -42,7 +42,7 @@ Look for these response flags:
 
 A request timeout looks like:
 
-```
+```text
 "GET /api/slow HTTP/1.1" 504 UT upstream_response_timeout - "-" 0 24 30001 - ...
 ```
 
@@ -193,7 +193,7 @@ kubectl logs my-app-xxxxx -c istio-proxy --tail=200 | awk '{print $NF}'
 
 Or use metrics if you have Prometheus:
 
-```
+```text
 histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service="my-service.default.svc.cluster.local"}[5m]))
 ```
 

@@ -372,7 +372,7 @@ location /app2/socket.io/ {
 
 ### Issue 1: WebSocket Connection Failed
 
-```
+```text
 WebSocket connection to 'wss://example.com/socket.io/' failed
 ```
 

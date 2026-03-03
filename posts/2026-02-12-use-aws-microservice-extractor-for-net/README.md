@@ -170,7 +170,7 @@ For each identified service, the tool creates:
 - Stub implementations for service clients
 - Updated project references
 
-```
+```text
 Solution/
   OrderService/
     OrderService.csproj

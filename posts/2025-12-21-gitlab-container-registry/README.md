@@ -20,7 +20,7 @@ To verify Container Registry is enabled for your project, go to Settings > Packa
 
 Each project has a unique Container Registry URL based on your GitLab instance and project path.
 
-```
+```text
 # GitLab.com format
 registry.gitlab.com/group/project
 
@@ -30,7 +30,7 @@ registry.example.com/group/project
 
 You can also use nested paths for different images within a project.
 
-```
+```text
 registry.gitlab.com/group/project/api
 registry.gitlab.com/group/project/frontend
 registry.gitlab.com/group/project/worker

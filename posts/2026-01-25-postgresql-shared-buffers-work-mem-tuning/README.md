@@ -128,7 +128,7 @@ SHOW work_mem;
 
 ### The Math
 
-```
+```text
 Potential memory = max_connections x work_mem x operations_per_query
 ```
 
@@ -205,7 +205,7 @@ SELECT * FROM orders ORDER BY created_at DESC LIMIT 1000;
 
 Example output showing disk spill:
 
-```
+```text
 Sort  (cost=... rows=1000000)
   Sort Key: created_at DESC
   Sort Method: external merge  Disk: 35000kB  <- Problem!
@@ -214,7 +214,7 @@ Sort  (cost=... rows=1000000)
 
 After increasing work_mem:
 
-```
+```text
 Sort  (cost=... rows=1000000)
   Sort Key: created_at DESC
   Sort Method: quicksort  Memory: 45000kB  <- Good!

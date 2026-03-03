@@ -28,7 +28,7 @@ Circuit breakers estimate memory usage before operations execute and reject requ
 
 ### Common Error Messages
 
-```
+```text
 [parent] Data too large, data for [<operation>] would be [xxx/xxxgb], which is larger than the limit of [xxx/xxxgb]
 
 CircuitBreakingException: [request] Data too large, data for [<agg>] would be [xxxmb], which is larger than the limit of [xxxmb]

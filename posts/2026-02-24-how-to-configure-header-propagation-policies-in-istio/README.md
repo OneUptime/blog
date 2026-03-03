@@ -43,7 +43,7 @@ This is the part that trips people up. Istio does not magically propagate trace 
 
 Here is what happens without proper propagation:
 
-```
+```text
 User -> Service A (trace: abc123) -> Service B (trace: def456) -> Service C (trace: ghi789)
 ```
 
@@ -51,7 +51,7 @@ Each service gets a new trace ID, and you have three disconnected traces instead
 
 With proper propagation:
 
-```
+```text
 User -> Service A (trace: abc123) -> Service B (trace: abc123) -> Service C (trace: abc123)
 ```
 

@@ -38,14 +38,14 @@ docker container prune -f
 
 The `-f` flag skips the confirmation prompt. Without it, Docker asks:
 
-```
+```text
 WARNING! This will remove all stopped containers.
 Are you sure you want to continue? [y/N]
 ```
 
 The prune command also shows how much space was reclaimed:
 
-```
+```text
 Deleted Containers:
 a1b2c3d4e5f6...
 b2c3d4e5f6a7...

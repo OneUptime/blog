@@ -22,7 +22,7 @@ ProxySQL operates at the MySQL protocol level. Applications connect to ProxySQL 
 
 ## Architecture
 
-```
+```text
 Applications -> ProxySQL (port 6033) -> Primary MySQL (writes)
                                      -> Replica MySQL 1 (reads)
                                      -> Replica MySQL 2 (reads)

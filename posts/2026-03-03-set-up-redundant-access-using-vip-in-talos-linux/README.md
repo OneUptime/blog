@@ -27,7 +27,7 @@ Redundant access means having backup paths to reach your cluster even when the p
 
 A redundant access setup typically includes multiple layers:
 
-```
+```text
                      External Clients
                      /              \
               [Primary Path]    [Backup Path]
@@ -71,7 +71,7 @@ This is your primary access path. Most of the time, clients will use this addres
 
 Set up DNS records pointing to all control plane nodes directly:
 
-```
+```text
 # DNS records for backup access
 k8s-api.example.com    A    192.168.1.10
 k8s-api.example.com    A    192.168.1.11

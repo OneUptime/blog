@@ -18,7 +18,7 @@ When you see "Container exceeded memory limit" in Cloud Logging, it means your c
 
 Here is what the error typically looks like in Cloud Logging.
 
-```
+```text
 Container memory limit reached. Consider increasing the memory limit.
 The container was terminated because it exceeded its memory limit.
 ```

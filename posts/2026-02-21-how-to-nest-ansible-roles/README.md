@@ -130,7 +130,7 @@ flowchart TD
 
 ## Practical Example: A Database-Backed Application Role
 
-```
+```text
 roles/
   app_stack/
     meta/

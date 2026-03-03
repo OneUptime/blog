@@ -252,7 +252,7 @@ ALTER ROLE app_user SET pgaudit.log = 'write, ddl';
 
 ### pgaudit Log Output
 
-```
+```text
 AUDIT: SESSION,1,1,DDL,CREATE TABLE,TABLE,public.test_table,CREATE TABLE test_table (id int);,<none>
 AUDIT: SESSION,2,1,WRITE,INSERT,TABLE,public.users,INSERT INTO users (name) VALUES ('John');,<none>
 AUDIT: SESSION,3,1,READ,SELECT,TABLE,public.users,SELECT * FROM users;,<none>

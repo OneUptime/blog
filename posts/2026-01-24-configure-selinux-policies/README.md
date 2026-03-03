@@ -89,7 +89,7 @@ sudo semanage port -l | grep http
 
 ### Understanding Context Format
 
-```
+```text
 user:role:type:level
 ```
 
@@ -297,7 +297,7 @@ sudo tail -f /var/log/audit/audit.log | grep denied
 
 ### Understanding Denial Messages
 
-```
+```text
 type=AVC msg=audit(1706100000.123:456): avc:  denied  { read } for  pid=1234
 comm="httpd" name="config.php" dev="sda1" ino=789
 scontext=system_u:system_r:httpd_t:s0

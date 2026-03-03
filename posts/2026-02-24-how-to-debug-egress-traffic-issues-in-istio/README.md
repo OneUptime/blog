@@ -166,7 +166,7 @@ istioctl proxy-config clusters my-app-xxxxx.default | grep httpbin
 
 Expected output:
 
-```
+```text
 outbound|443||httpbin.org    httpbin.org    443    -    EDS
 ```
 

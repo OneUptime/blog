@@ -42,18 +42,18 @@ kubectl apply -f your-deployment.yaml 2>&1
 
 Common error patterns:
 
-```
+```text
 autopilot-default-resources-mutator: Autopilot adjusted resources to meet
 requirements for Deployment default/your-app: adjusted requests for container
 "app" to meet minimum: {"cpu":"250m","ephemeral-storage":"1Gi","memory":"512Mi"}
 ```
 
-```
+```text
 GKE Autopilot does not allow containers with privilege escalation.
 Set allowPrivilegeEscalation to false.
 ```
 
-```
+```text
 GKE Autopilot does not support host namespaces (hostNetwork, hostPID, hostIPC).
 ```
 

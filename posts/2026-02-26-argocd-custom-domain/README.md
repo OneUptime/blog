@@ -56,7 +56,7 @@ Create a DNS record pointing your domain to the external IP:
 
 ### A Record (for IP address)
 
-```
+```text
 Type: A
 Name: argocd.yourcompany.com
 Value: 203.0.113.10
@@ -65,7 +65,7 @@ TTL: 300
 
 ### CNAME Record (for AWS load balancer hostname)
 
-```
+```text
 Type: CNAME
 Name: argocd.yourcompany.com
 Value: abc123-1234567890.us-east-1.elb.amazonaws.com
@@ -185,7 +185,7 @@ data:
 
 Update your identity provider (Okta, Azure AD, Google, etc.) with the new callback URL:
 
-```
+```text
 https://argocd.yourcompany.com/auth/callback
 ```
 
@@ -240,7 +240,7 @@ current-context: argocd.yourcompany.com
 
 If you have webhooks configured for automatic sync triggers, update them to use the new domain:
 
-```
+```text
 # GitHub webhook URL
 https://argocd.yourcompany.com/api/webhook
 

@@ -31,7 +31,7 @@ service:
 
 Running `otelcol-contrib validate --config config.yaml` might return:
 
-```
+```text
 Config validation succeeded.
 ```
 
@@ -54,7 +54,7 @@ It does not check:
 
 Create a checklist for each connector in your config:
 
-```
+```text
 Connector: spanmetrics
   Input type: traces (receives spans)
   Output type: metrics (produces metrics)

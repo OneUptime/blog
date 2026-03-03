@@ -91,7 +91,7 @@ sudo journalctl -k | grep -i "oom\|killed process"
 
 You will see messages like:
 
-```
+```text
 Out of memory: Killed process 12345 (node) total-vm:2048000kB, anon-rss:1024000kB
 ```
 

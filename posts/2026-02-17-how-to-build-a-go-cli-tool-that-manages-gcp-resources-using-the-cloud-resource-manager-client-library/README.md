@@ -26,7 +26,7 @@ go get google.golang.org/api/cloudresourcemanager/v3
 
 ## Project Structure
 
-```
+```text
 gcp-manager/
   main.go
   cmd/

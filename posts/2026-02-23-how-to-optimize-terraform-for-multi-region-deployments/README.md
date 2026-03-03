@@ -22,7 +22,7 @@ If you put all regions in a single Terraform project, plan times scale linearly 
 
 ### Option 1: One Project Per Region
 
-```
+```text
 infrastructure/
   us-east-1/
     main.tf
@@ -201,7 +201,7 @@ module "infrastructure" {
 
 Some resources need to reference resources in other regions (like VPC peering or Route53 records). Handle these in a separate project:
 
-```
+```text
 infrastructure/
   us-east-1/          # Regional resources
   us-west-2/          # Regional resources
@@ -299,7 +299,7 @@ done
 
 Some resources are global (IAM, Route53, CloudFront) and should not be duplicated per region:
 
-```
+```text
 infrastructure/
   global/
     iam/            # IAM roles, policies

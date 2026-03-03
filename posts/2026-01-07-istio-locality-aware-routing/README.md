@@ -20,7 +20,7 @@ Locality-aware routing (also known as locality load balancing) is a traffic mana
 
 The locality hierarchy in Kubernetes and Istio follows this structure:
 
-```
+```text
 Region > Zone > Sub-zone
 ```
 

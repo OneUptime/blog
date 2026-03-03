@@ -148,7 +148,7 @@ Configure marker appearance based on metric values. The following settings creat
 
 Set thresholds for color coding. These thresholds provide visual severity indicators.
 
-```
+```text
 0.0 - 0.5: Green (healthy)
 0.5 - 0.8: Yellow (warning)
 0.8 - 1.0: Red (critical)
@@ -235,7 +235,7 @@ groups:
 
 In your alert notification template, include a link to the Geomap dashboard with the relevant time range.
 
-```
+```text
 Dashboard: https://grafana.example.com/d/geo-overview?from={{ $startsAt }}&to={{ $endsAt }}&var-region={{ $labels.region }}
 ```
 

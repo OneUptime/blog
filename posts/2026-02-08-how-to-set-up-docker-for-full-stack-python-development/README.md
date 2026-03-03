@@ -16,7 +16,7 @@ Docker and Docker Compose must be installed. Familiarity with Python and basic w
 
 ## Project Structure
 
-```
+```text
 fullstack-python/
   backend/           # FastAPI application
   frontend/          # React application

@@ -27,7 +27,7 @@ Here is what our microservices platform looks like:
 
 Organize your Terraform code with reusable modules:
 
-```
+```text
 microservices-infra/
   main.tf
   variables.tf

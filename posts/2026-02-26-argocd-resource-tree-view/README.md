@@ -77,7 +77,7 @@ Each tree node shows:
 Clicking a resource node opens a side panel with multiple tabs:
 
 **Summary Tab:**
-```
+```text
 Kind:       Deployment
 Name:       web-frontend
 Namespace:  my-app
@@ -97,7 +97,7 @@ A side-by-side comparison highlighting differences between live and desired stat
 
 **Events Tab:**
 Shows recent Kubernetes events for this resource:
-```
+```text
 LAST SEEN   TYPE      REASON              MESSAGE
 2m ago      Normal    ScalingReplicaSet   Scaled up replica set web-abc123 to 3
 5m ago      Normal    SuccessfulCreate    Created pod: web-abc123-x7k9l
@@ -127,7 +127,7 @@ The resource tree supports several organizational features:
 
 Use the health status dropdown to show only resources with specific health states:
 
-```
+```text
 All | Healthy | Progressing | Degraded | Suspended | Missing | Unknown
 ```
 
@@ -137,7 +137,7 @@ This is invaluable when debugging. Filter to "Degraded" to immediately see which
 
 Similarly, filter by sync status:
 
-```
+```text
 All | Synced | OutOfSync
 ```
 
@@ -145,7 +145,7 @@ All | Synced | OutOfSync
 
 The kind filter lets you focus on specific resource types:
 
-```
+```text
 All | Deployment | Service | ConfigMap | Pod | ReplicaSet | ...
 ```
 
@@ -160,7 +160,7 @@ You can group the tree by:
 
 Grouping by health status is particularly useful for large applications:
 
-```
+```text
 Healthy (15 resources)
   Deployment/web
   Service/web
@@ -216,7 +216,7 @@ Filter by Sync Status to "OutOfSync" to see exactly which resources differ from 
 
 ### Scenario 3: CrashLooping Pod
 
-```
+```text
 Deployment (Degraded) -> ReplicaSet (Degraded) -> Pod (CrashLoopBackOff)
 ```
 

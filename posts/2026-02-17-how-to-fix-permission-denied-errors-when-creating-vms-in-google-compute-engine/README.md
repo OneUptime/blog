@@ -16,21 +16,21 @@ Let me walk through the different flavors of this error and how to fix each one.
 
 When you try to create a VM and lack the right permissions, you will see something like one of these:
 
-```
+```text
 ERROR: (gcloud.compute.instances.create) Could not fetch resource:
  - Required 'compute.instances.create' permission for 'projects/my-project/zones/us-central1-a/instances/my-vm'
 ```
 
 Or through the Console:
 
-```
+```text
 You don't have permission to create instances in project "my-project".
 Required permission: compute.instances.create
 ```
 
 Sometimes the error is more cryptic:
 
-```
+```text
 ERROR: (gcloud.compute.instances.create) PERMISSION_DENIED: Constraint constraints/compute.vmExternalIpAccess is enforced
 ```
 
@@ -139,7 +139,7 @@ If your project uses a Shared VPC, you need additional permissions on the host p
 
 The error might look like:
 
-```
+```text
 Required 'compute.subnetworks.use' permission for 'projects/host-project/regions/us-central1/subnetworks/shared-subnet'
 ```
 

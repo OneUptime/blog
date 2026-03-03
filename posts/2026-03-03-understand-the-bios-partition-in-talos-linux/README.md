@@ -20,7 +20,7 @@ The BIOS boot partition solves this by providing a dedicated space where GRUB ca
 
 On a system with legacy BIOS, Talos creates this disk layout:
 
-```
+```text
 Legacy BIOS Talos Disk Layout:
   /dev/sda1 - BIOS boot partition - ~1MB
   /dev/sda2 - BOOT partition - kernel and initramfs

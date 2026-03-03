@@ -38,7 +38,7 @@ Understanding when to use action plugins versus modules is critical for proper A
 
 Before writing code, set up your project structure. Ansible looks for action plugins in specific locations.
 
-```
+```text
 my_collection/
 ├── plugins/
 │   ├── action/
@@ -51,7 +51,7 @@ my_collection/
 
 For standalone roles or playbooks:
 
-```
+```text
 playbook_dir/
 ├── action_plugins/
 │   └── my_action.py

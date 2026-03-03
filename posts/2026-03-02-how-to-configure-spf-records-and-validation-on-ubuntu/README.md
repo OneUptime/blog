@@ -16,7 +16,7 @@ SPF alone does not prevent all spoofing (it only checks the envelope sender, not
 
 An SPF record is a DNS TXT record at the root of your domain. The basic structure:
 
-```
+```text
 v=spf1 [mechanisms] [modifiers] [all]
 ```
 
@@ -41,14 +41,14 @@ v=spf1 [mechanisms] [modifiers] [all]
 
 For a domain where only one server sends mail:
 
-```
+```text
 # If your server's IP is 203.0.113.10:
 v=spf1 ip4:203.0.113.10 -all
 ```
 
 For a domain where the servers sending mail are also the MX records:
 
-```
+```text
 v=spf1 mx -all
 ```
 
@@ -56,7 +56,7 @@ v=spf1 mx -all
 
 If you send mail through your own server AND Google Workspace or SendGrid:
 
-```
+```text
 v=spf1 ip4:203.0.113.10 include:_spf.google.com include:sendgrid.net -all
 ```
 
@@ -263,7 +263,7 @@ v=spf1 mx -all
 
 After proper configuration, received email should contain headers like:
 
-```
+```text
 Received-SPF: pass (example.com: 203.0.113.10 is authorized to use
     'sender@example.com' in 'mfrom' identity (mechanism 'ip4:203.0.113.10'
     matched)) receiver=mail.recipient.com; identity=mailfrom;

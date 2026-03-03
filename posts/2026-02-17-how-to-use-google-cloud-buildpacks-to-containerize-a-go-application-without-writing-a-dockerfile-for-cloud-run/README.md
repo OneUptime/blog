@@ -116,7 +116,7 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 
 And the Go module file:
 
-```
+```text
 // go.mod
 module example.com/my-app
 
@@ -260,7 +260,7 @@ pack build my-go-app \
 
 Your project structure might look like:
 
-```
+```text
 my-project/
   go.mod
   go.sum
@@ -280,7 +280,7 @@ my-project/
 
 If the default start command does not work for your app, use a Procfile:
 
-```
+```text
 # Procfile - Custom start command
 web: ./cmd/server --config=/etc/app/config.yaml
 ```

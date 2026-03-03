@@ -163,7 +163,7 @@ resource "local_file" "ansible_inventory" {
 
 The template file (`inventory.tftpl`) might look like:
 
-```
+```text
 [web_servers]
 %{ for ip in web_servers ~}
 ${ip} ansible_user=${ssh_user} ansible_ssh_private_key_file=${ssh_key}

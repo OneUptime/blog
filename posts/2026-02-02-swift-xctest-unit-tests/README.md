@@ -979,7 +979,7 @@ struct Item: Codable {
 
 Organize your tests to mirror your source code structure.
 
-```
+```text
 MyAppTests/
 ├── Services/
 │   ├── UserServiceTests.swift

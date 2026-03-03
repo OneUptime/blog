@@ -59,7 +59,7 @@ kubectl get pods -n istio-system -l app=istiod
 
 You should see 3 pods:
 
-```
+```text
 NAME                      READY   STATUS    RESTARTS   AGE
 istiod-7b69f6b4c8-abc12   1/1     Running   0          2m
 istiod-7b69f6b4c8-def34   1/1     Running   0          2m
@@ -90,7 +90,7 @@ istioctl proxy-status
 
 The output shows which istiod instance each proxy is connected to:
 
-```
+```text
 NAME                     CLUSTER   CDS   LDS   EDS   RDS   ECDS   ISTIOD
 app-1-pod.default        ...       SYNCED SYNCED SYNCED SYNCED ...    istiod-7b69f6b4c8-abc12
 app-2-pod.default        ...       SYNCED SYNCED SYNCED SYNCED ...    istiod-7b69f6b4c8-def34
@@ -196,7 +196,7 @@ kubectl get lease -n istio-system
 
 Typical output:
 
-```
+```text
 NAME                                           HOLDER                               AGE
 istio-leader                                   istiod-7b69f6b4c8-abc12              2h
 ```

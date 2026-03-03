@@ -36,7 +36,7 @@ There are several common ways to organize modules within a project.
 
 The most common pattern - all modules live under a `modules/` directory at the project root:
 
-```
+```text
 infrastructure/
   main.tf
   variables.tf
@@ -81,7 +81,7 @@ module "database" {
 
 Some modules contain sub-modules for internal use:
 
-```
+```text
 infrastructure/
   main.tf
   modules/
@@ -126,7 +126,7 @@ module "security_group" {
 
 You can also reference modules in sibling directories using `../`:
 
-```
+```text
 project/
   environments/
     dev/

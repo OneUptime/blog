@@ -135,7 +135,7 @@ awk '{print NF}' /var/log/nginx/access.log | sort | uniq -c
 
 Nginx access logs have a predictable format:
 
-```
+```text
 127.0.0.1 - frank [10/Oct/2023:13:55:36 -0700] "GET /index.html HTTP/1.1" 200 2326
 ```
 

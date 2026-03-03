@@ -25,7 +25,7 @@ Before starting, you need:
 
 Here is the directory structure for our Ansible project:
 
-```
+```text
 flask-deploy/
   inventory/
     hosts.yml

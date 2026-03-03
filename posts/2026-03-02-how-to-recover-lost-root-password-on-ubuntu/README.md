@@ -51,7 +51,7 @@ The GRUB menu should appear. If it doesn't, try repeatedly pressing `Esc` during
 
 ### Step 2: Enter Recovery Mode
 
-```
+```text
 Ubuntu                                      ← Normal boot
 Advanced options for Ubuntu                 ← Select this
 Ubuntu, with Linux 6.5.0-21-generic (recovery mode)  ← Select recovery kernel
@@ -61,7 +61,7 @@ Ubuntu, with Linux 6.5.0-21-generic (recovery mode)  ← Select recovery kernel
 
 The recovery menu offers several options:
 
-```
+```text
 Recovery Menu:
   resume           - Resume normal boot
   clean            - Try to make free space
@@ -118,7 +118,7 @@ Same as above - hold Shift during boot to see GRUB.
 
 You'll see the kernel command line, which looks something like:
 
-```
+```text
 linux /boot/vmlinuz-6.5.0-21-generic root=/dev/mapper/ubuntu--vg-ubuntu--lv ro quiet splash $vt_handoff
 ```
 
@@ -128,7 +128,7 @@ Navigate to the line starting with `linux` and find `ro quiet splash`.
 
 Change `ro` to `rw` and add `init=/bin/bash` at the end of the line:
 
-```
+```text
 linux /boot/vmlinuz-6.5.0-21-generic root=/dev/mapper/ubuntu--vg-ubuntu--lv rw quiet splash init=/bin/bash
 ```
 
@@ -267,7 +267,7 @@ sudo grub-mkpasswd-pbkdf2
 sudo nano /etc/grub.d/40_custom
 ```
 
-```
+```text
 set superusers="grubadmin"
 password_pbkdf2 grubadmin grub.pbkdf2.sha512.10000.<hash>
 ```

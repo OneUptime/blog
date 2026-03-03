@@ -125,7 +125,7 @@ def record_cert_attributes(span, cert):
 
 ### Certificate Expiration
 
-```
+```text
 tls.error.type = "certificate_verification"
 tls.error.verify_code = 10
 tls.error.verify_message = "certificate has expired"
@@ -134,7 +134,7 @@ tls.cert.not_after = "Jan 15 00:00:00 2026 UTC"
 
 ### Certificate Name Mismatch
 
-```
+```text
 tls.error.type = "certificate_verification"
 tls.error.verify_code = 62
 tls.error.verify_message = "hostname mismatch"
@@ -144,7 +144,7 @@ tls.cert.subject.cn = "old.example.com"
 
 ### Protocol Version Mismatch
 
-```
+```text
 tls.error.type = "ssl_error"
 tls.error.reason = "TLSV1_ALERT_PROTOCOL_VERSION"
 tls.client.max_version = "TLSv1.2"

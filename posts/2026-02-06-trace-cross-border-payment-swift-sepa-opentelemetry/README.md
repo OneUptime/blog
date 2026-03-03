@@ -12,7 +12,7 @@ Cross-border payments are inherently complex. A single payment might pass throug
 
 A typical SWIFT MT103 (single customer credit transfer) flow looks like this:
 
-```
+```text
 Originator Bank -> SWIFT Network -> Intermediary Bank -> SWIFT Network -> Beneficiary Bank
 ```
 

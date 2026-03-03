@@ -14,7 +14,7 @@ The "recursion limit reached" error occurs when the Rust compiler exceeds its re
 
 Rust limits recursion to prevent infinite loops during compilation. The error appears when macro expansion, type resolution, or trait evaluation exceeds this limit.
 
-```
+```text
 error: recursion limit reached while expanding the macro `recursive_macro`
   --> src/main.rs:10:5
    |

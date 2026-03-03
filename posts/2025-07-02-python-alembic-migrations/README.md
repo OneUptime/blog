@@ -78,7 +78,7 @@ poetry add alembic sqlalchemy psycopg2-binary
 
 A typical Alembic project structure looks like this:
 
-```
+```text
 myproject/
 ├── alembic/
 │   ├── versions/           # Migration scripts live here

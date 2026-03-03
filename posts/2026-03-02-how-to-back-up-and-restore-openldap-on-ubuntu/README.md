@@ -116,7 +116,7 @@ Schedule with cron:
 sudo crontab -e
 ```
 
-```
+```text
 # Run LDAP backup daily at 2:30 AM
 30 2 * * * /usr/local/bin/ldap-backup.sh >> /var/log/ldap-backup.log 2>&1
 ```

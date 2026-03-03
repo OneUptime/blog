@@ -226,7 +226,7 @@ The consecutive error threshold interacts with Istio's load balancing in an impo
 
 For example, with round-robin across pods A, B, and C where B is broken:
 
-```
+```text
 Request 1 -> A (200)
 Request 2 -> B (503) -- B errors: 1
 Request 3 -> C (200)
@@ -236,7 +236,7 @@ Request 5 -> B (503) -- B errors: 1 (reset because non-consecutive to B)
 
 Wait, that is not right. The consecutive counter is per-instance, not per-request-sequence. Envoy tracks errors per pod, so:
 
-```
+```text
 Request to B: 503 -- B errors: 1
 Request to A: 200 -- (doesn't affect B's counter)
 Request to B: 503 -- B errors: 2

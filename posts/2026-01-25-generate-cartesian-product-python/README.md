@@ -14,7 +14,7 @@ The Cartesian product combines elements from multiple sets, producing all possib
 
 Given two sets A = {1, 2} and B = {x, y}, the Cartesian product A x B is all possible pairs:
 
-```
+```text
 A x B = {(1, x), (1, y), (2, x), (2, y)}
 ```
 

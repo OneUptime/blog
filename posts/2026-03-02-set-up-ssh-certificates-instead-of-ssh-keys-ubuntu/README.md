@@ -63,7 +63,7 @@ sudo nano /etc/ssh/sshd_config
 
 Add this line to `sshd_config`:
 
-```
+```text
 # Trust certificates signed by this CA
 TrustedUserCAKeys /etc/ssh/ssh_ca.pub
 ```
@@ -204,7 +204,7 @@ sudo cp ssh_host_ed25519_key-cert.pub /etc/ssh/
 
 Add to `/etc/ssh/sshd_config`:
 
-```
+```text
 # Tell sshd to present this certificate to clients
 HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub
 ```
@@ -238,7 +238,7 @@ sudo chmod 644 /etc/ssh/revoked-keys.krl
 
 Configure `sshd_config` to use the KRL:
 
-```
+```text
 RevokedKeys /etc/ssh/revoked-keys.krl
 ```
 

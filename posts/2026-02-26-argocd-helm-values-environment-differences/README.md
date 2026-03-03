@@ -16,7 +16,7 @@ The idea is straightforward. Your Helm chart defines templates with configurable
 
 A typical repository structure looks like this:
 
-```
+```text
 my-app/
   chart/
     Chart.yaml

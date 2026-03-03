@@ -78,7 +78,7 @@ kubectl logs -n argocd deployment/argocd-application-controller | \
 
 Applications in the affected cluster will show:
 
-```
+```text
 HEALTH: Unknown
 SYNC: Unknown
 MESSAGE: "failed to get cluster info: x509: certificate signed by unknown authority"

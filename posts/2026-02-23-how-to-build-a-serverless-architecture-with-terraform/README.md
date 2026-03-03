@@ -31,7 +31,7 @@ Here is what we will build:
 
 Start with a clean project structure:
 
-```
+```text
 serverless-infra/
   main.tf
   variables.tf

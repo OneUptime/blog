@@ -533,7 +533,7 @@ app.use('/api/', apiLimiter);
 
 ## Complete Project Structure
 
-```
+```text
 my-api/
   src/
     index.js              # Entry point

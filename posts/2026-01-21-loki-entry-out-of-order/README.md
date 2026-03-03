@@ -14,7 +14,7 @@ The "entry out of order" error in Grafana Loki occurs when logs are pushed with 
 
 ### Error Messages
 
-```
+```text
 entry out of order for stream
 entry with timestamp older than existing entries
 stream rate limit exceeded
@@ -24,7 +24,7 @@ stream rate limit exceeded
 
 Loki organizes logs into streams defined by unique label combinations:
 
-```
+```text
 Stream: {job="app", service="api", instance="pod-1"}
   - Entry 1: timestamp=1000, "log line 1"
   - Entry 2: timestamp=1001, "log line 2"

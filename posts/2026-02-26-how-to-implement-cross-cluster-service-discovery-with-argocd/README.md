@@ -337,7 +337,7 @@ spec:
 
 Organize your cross-cluster service discovery configuration:
 
-```
+```text
 platform/
   service-discovery/
     external-dns/

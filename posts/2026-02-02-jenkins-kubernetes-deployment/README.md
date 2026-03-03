@@ -45,7 +45,7 @@ Jenkins needs specific plugins to interact with Kubernetes and Docker. Install t
 
 Navigate to Manage Jenkins > Manage Plugins > Available and install:
 
-```
+```text
 Kubernetes Plugin
 Kubernetes CLI Plugin
 Docker Pipeline Plugin

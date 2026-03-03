@@ -126,7 +126,7 @@ ssl_private_key: |
 
 After encryption, the file looks like:
 
-```
+```text
 $ANSIBLE_VAULT;1.1;AES256
 61626364656667686970716b6c6d6e6f70717273747576777879...
 3233343536373839306162636465666768696a6b6c6d6e6f7071...
@@ -240,7 +240,7 @@ flowchart TB
 
 Recommended directory structure:
 
-```
+```text
 project/
 ├── ansible.cfg
 ├── .vault_pass              # Vault password file (git-ignored)

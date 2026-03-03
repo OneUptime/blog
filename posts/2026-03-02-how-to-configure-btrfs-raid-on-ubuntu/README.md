@@ -84,7 +84,7 @@ sudo btrfs filesystem df /mnt/data
 ```
 
 Sample output:
-```
+```text
 Data, RAID1: total=10.00GiB, used=256.00MiB
 System, RAID1: total=8.00MiB, used=16.00KiB
 Metadata, RAID1: total=1.00GiB, used=112.00KiB

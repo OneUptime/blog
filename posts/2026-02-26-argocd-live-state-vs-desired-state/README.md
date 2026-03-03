@@ -177,7 +177,7 @@ argocd app diff my-app
 
 The output shows only the meaningful differences after normalization. For example:
 
-```
+```text
 ===== apps/Deployment production/my-app ======
   spec:
     template:

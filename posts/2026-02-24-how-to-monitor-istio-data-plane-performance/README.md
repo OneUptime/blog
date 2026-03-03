@@ -50,7 +50,7 @@ The `proxyStatsMatcher` controls which detailed Envoy stats are exported. Withou
 
 These are the bread-and-butter metrics for understanding service health:
 
-```
+```text
 # Request rate per service
 sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service)
 
@@ -77,7 +77,7 @@ The `reporter` label is important. `reporter="destination"` gives you server-sid
 
 Monitor how much each sidecar consumes:
 
-```
+```text
 # CPU usage per sidecar
 sum(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])) by (pod, namespace)
 
@@ -95,7 +95,7 @@ sum(container_memory_working_set_bytes{container="istio-proxy"}) by (namespace)
 
 Track how connections are being used:
 
-```
+```text
 # Active connections per upstream service
 envoy_cluster_upstream_cx_active
 
@@ -118,7 +118,7 @@ A high connection creation rate relative to active connections indicates poor co
 
 Monitor mTLS handshake performance:
 
-```
+```text
 # TLS handshake count
 sum(rate(envoy_cluster_ssl_handshake[5m])) by (cluster_name)
 

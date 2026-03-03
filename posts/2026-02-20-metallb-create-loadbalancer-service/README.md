@@ -192,7 +192,7 @@ kubectl get svc web-app --watch
 
 You should see output like:
 
-```
+```text
 NAME      TYPE           CLUSTER-IP    EXTERNAL-IP     PORT(S)        AGE
 web-app   LoadBalancer   10.96.12.5    192.168.1.200   80:31234/TCP   3s
 ```
@@ -232,7 +232,7 @@ kubectl get svc web-app -o json | jq '.status'
 
 The describe output shows important details:
 
-```
+```text
 Name:                     web-app
 Type:                     LoadBalancer
 LoadBalancer Ingress:     192.168.1.200

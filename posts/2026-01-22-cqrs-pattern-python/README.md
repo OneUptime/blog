@@ -49,7 +49,7 @@ flowchart LR
 
 Organize your CQRS application with clear separation:
 
-```
+```text
 my_app/
     domain/
         __init__.py

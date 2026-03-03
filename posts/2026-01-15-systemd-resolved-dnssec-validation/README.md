@@ -58,7 +58,7 @@ systemctl status systemd-resolved
 
 Expected output:
 
-```
+```text
 ● systemd-resolved.service - Network Name Resolution
      Loaded: loaded (/lib/systemd/system/systemd-resolved.service; enabled; vendor preset: enabled)
      Active: active (running) since Wed 2026-01-15 10:00:00 UTC; 2h ago
@@ -128,7 +128,7 @@ resolvectl status
 
 Look for the DNSSEC setting in the output:
 
-```
+```text
 Global
        Protocols: +LLMNR +mDNS +DNSOverTLS DNSSEC=yes/supported
 resolv.conf mode: stub
@@ -225,7 +225,7 @@ resolvectl query cloudflare.com
 
 Expected output:
 
-```
+```text
 cloudflare.com: 104.16.132.229
                 104.16.133.229
                 -- link: eth0
@@ -243,7 +243,7 @@ dig +dnssec cloudflare.com
 
 Look for the `ad` (Authenticated Data) flag in the response:
 
-```
+```text
 ;; flags: qr rd ra ad; QUERY: 1, ANSWER: 3, AUTHORITY: 0, ADDITIONAL: 1
 ```
 
@@ -257,7 +257,7 @@ resolvectl query dnssec-failed.org
 
 With strict DNSSEC enabled, this should fail:
 
-```
+```text
 dnssec-failed.org: resolve call failed: DNSSEC validation failed: signature-expired
 ```
 
@@ -277,7 +277,7 @@ journalctl -u systemd-resolved -f
 
 This shows real-time DNSSEC validation events:
 
-```
+```text
 Jan 15 10:30:15 hostname systemd-resolved[1234]: DNSSEC validation failed for example.org: signature-expired
 Jan 15 10:30:16 hostname systemd-resolved[1234]: DNSSEC validation succeeded for cloudflare.com
 ```
@@ -404,7 +404,7 @@ sudo mkdir -p /etc/dnssec-trust-anchors.d
 sudo nano /etc/dnssec-trust-anchors.d/example.positive
 ```
 
-```
+```text
 example.com. DS 12345 8 2 ABCDEF1234567890...
 ```
 

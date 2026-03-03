@@ -12,7 +12,7 @@ When your OpenTelemetry configuration lives in environment variables scattered a
 
 Organize your OpenTelemetry configuration files alongside your application code or in a dedicated config repository:
 
-```
+```text
 observability-config/
   README.md
   schemas/
@@ -204,7 +204,7 @@ ArgoCD watches the repository and automatically syncs configuration changes when
 
 Ensure configuration changes get reviewed by the right people:
 
-```
+```text
 # .github/CODEOWNERS
 
 # All OTel config changes require observability team review

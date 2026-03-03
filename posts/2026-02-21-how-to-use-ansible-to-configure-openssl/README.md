@@ -258,7 +258,7 @@ This task checks every certificate and flags any expiring within the defined thr
 
 For reusability, wrap everything into an Ansible role. Here is the directory structure:
 
-```
+```text
 roles/openssl/
   tasks/main.yml
   templates/openssl.cnf.j2

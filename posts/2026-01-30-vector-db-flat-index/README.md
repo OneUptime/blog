@@ -682,7 +682,7 @@ if __name__ == "__main__":
 
 Output:
 
-```
+```text
 Adding 10000 documents to index...
 Index now contains 10000 vectors
 

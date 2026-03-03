@@ -278,7 +278,7 @@ spec:
 
 ## Repository Structure
 
-```
+```text
 egress-policies/
   base/
     kustomization.yaml

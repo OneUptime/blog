@@ -860,7 +860,7 @@ OneUptime natively supports OpenTelemetry logs from Azure Event Hubs. After conf
 
 Example OneUptime query:
 
-```
+```text
 source.type = "azure_eventhub" AND
 azure.resource.type = "Microsoft.Web/sites" AND
 severity_text = "Error"

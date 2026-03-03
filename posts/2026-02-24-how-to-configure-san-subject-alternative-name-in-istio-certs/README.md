@@ -25,7 +25,7 @@ Istio primarily uses URI-type SANs to encode SPIFFE identities.
 
 When istiod signs a workload certificate, it sets the SAN based on the pod's Kubernetes service account. The SAN format follows the SPIFFE specification:
 
-```
+```text
 spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 
@@ -39,7 +39,7 @@ istioctl proxy-config secret <pod-name>.default -o json | \
 
 The output will look like:
 
-```
+```text
 X509v3 Subject Alternative Name: critical
     URI:spiffe://cluster.local/ns/default/sa/my-api
 ```
@@ -102,7 +102,7 @@ spec:
 
 After changing the trust domain, your SANs will look like:
 
-```
+```text
 spiffe://my-company.com/ns/default/sa/my-api
 ```
 

@@ -158,7 +158,7 @@ The Alpine version adds roughly 7MB but gives you shell access and timezone data
 
 ## The .dockerignore File
 
-```
+```text
 .git
 .gitignore
 *.md

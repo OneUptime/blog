@@ -41,7 +41,7 @@ kubectl get pods
 
 Output:
 
-```
+```text
 NAME        READY   STATUS        RESTARTS   AGE
 stuck-pod   1/1     Terminating   0          15m
 ```
@@ -118,7 +118,7 @@ kubectl get node worker-node-1
 
 Output:
 
-```
+```text
 NAME           STATUS     ROLES    AGE   VERSION
 worker-node-1  NotReady   <none>   5d    v1.28.0
 ```
@@ -158,7 +158,7 @@ sudo tail -f /var/log/kubelet.log | grep stuck-pod
 
 Look for errors like:
 
-```
+```text
 Failed to delete pod: timeout waiting for volume unmount
 Error removing container: context deadline exceeded
 Failed to remove pod sandbox: rpc error
@@ -288,7 +288,7 @@ kubectl get namespace stuck-namespace
 
 Output:
 
-```
+```text
 NAME              STATUS        AGE
 stuck-namespace   Terminating   30m
 ```

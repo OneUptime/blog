@@ -88,7 +88,7 @@ HandBrake's built-in presets cover most needs:
 
 In the "Video" tab:
 
-```
+```text
 Video Codec: H.264 (x264)  - best compatibility
              H.265 (x265)  - better compression, slower encode
              VP9            - open source, good for web
@@ -105,7 +105,7 @@ Encoder Preset: "Medium" balances speed and compression
 
 In the "Audio" tab, add audio tracks:
 
-```
+```text
 Codec: AAC (best compatibility) or AC3/EAC3 for surround
 Bitrate: 160kbps for stereo, 384kbps for 5.1 surround
 Sample Rate: Same as source

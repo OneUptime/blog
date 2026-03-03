@@ -125,7 +125,7 @@ func main() {
 
 **Exposed Metrics Format:**
 
-```
+```text
 # HELP http_request_duration_seconds HTTP request latency in seconds
 # TYPE http_request_duration_seconds summary
 http_request_duration_seconds{quantile="0.5"} 0.042
@@ -222,7 +222,7 @@ func main() {
 
 **Exposed Metrics Format:**
 
-```
+```text
 # HELP http_request_duration_seconds HTTP request latency distribution
 # TYPE http_request_duration_seconds histogram
 http_request_duration_seconds_bucket{le="0.005"} 24054

@@ -62,7 +62,7 @@ tar -xzf istio-1.24.0-osx-arm64.tar.gz
 
 Once extracted, the directory structure looks like this:
 
-```
+```text
 istio-1.24.0/
 ├── bin/
 │   └── istioctl

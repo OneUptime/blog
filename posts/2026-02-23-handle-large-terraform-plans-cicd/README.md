@@ -26,7 +26,7 @@ A Terraform plan refreshes every resource in your state before calculating chang
 
 The most effective solution is breaking your monolith into smaller, focused state files. Each state file should represent a logical boundary.
 
-```
+```text
 # Directory structure for split states
 infrastructure/
   networking/        # VPCs, subnets, route tables

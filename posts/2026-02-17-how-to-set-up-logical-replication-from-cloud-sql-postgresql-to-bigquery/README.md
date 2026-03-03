@@ -16,7 +16,7 @@ PostgreSQL logical replication uses the Write-Ahead Log (WAL) to capture changes
 
 The flow looks like this:
 
-```
+```text
 Cloud SQL PostgreSQL -> WAL -> Logical Replication Slot -> Datastream -> BigQuery
 ```
 

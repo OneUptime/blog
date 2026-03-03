@@ -355,7 +355,7 @@ kubectl logs -n argocd deployment/argocd-dex-server | grep -i "error\|failed\|wa
 
 The callback URL in your identity provider must match exactly.
 
-```
+```text
 https://argocd.example.com/api/dex/callback
 ```
 

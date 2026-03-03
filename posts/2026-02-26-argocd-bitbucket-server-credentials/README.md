@@ -14,7 +14,7 @@ Bitbucket Server (now called Bitbucket Data Center) is Atlassian's self-hosted G
 
 Bitbucket Server uses a different URL format than other Git providers. Understanding this is crucial for getting ArgoCD credential templates right:
 
-```
+```text
 # Bitbucket Server HTTPS clone URL
 https://bitbucket.company.com/scm/PROJECT_KEY/repo-name.git
 

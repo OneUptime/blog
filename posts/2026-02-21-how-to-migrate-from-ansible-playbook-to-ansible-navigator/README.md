@@ -276,7 +276,7 @@ ansible-navigator run site.yml -i inventory.yml
 
 Learn the TUI navigation:
 
-```
+```text
 # In the TUI:
 # - Numbers select items (plays, tasks, hosts)
 # - Esc or :back goes up one level
@@ -335,7 +335,7 @@ ansible-navigator:
 
 Use this checklist to track your migration progress:
 
-```
+```text
 [ ] Install ansible-navigator
 [ ] Test running existing playbooks with --ee false --mode stdout
 [ ] Create ansible-navigator.yml configuration file

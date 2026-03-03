@@ -30,7 +30,7 @@ ansible all -m ping
 
 Successful output looks like:
 
-```
+```text
 web1 | SUCCESS => {
     "ansible_facts": {
         "discovered_interpreter_python": "/usr/bin/python3"
@@ -49,7 +49,7 @@ web2 | SUCCESS => {
 
 A failed ping might look like:
 
-```
+```text
 db3 | UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: ssh: connect to host db3.example.com port 22: Connection timed out",
@@ -170,17 +170,17 @@ ansible all -m ping -v
 The possible outcomes are:
 
 **SUCCESS** - The host is fully reachable and Ansible can manage it:
-```
+```text
 web1 | SUCCESS => {"changed": false, "ping": "pong"}
 ```
 
 **UNREACHABLE** - SSH connection failed (network issue, wrong credentials, host down):
-```
+```text
 web4 | UNREACHABLE! => {"msg": "Failed to connect to the host via ssh: ..."}
 ```
 
 **FAILED** - SSH connected but the module could not run (Python missing, permission denied):
-```
+```text
 web5 | FAILED! => {"msg": "MODULE FAILURE", "module_stderr": "..."}
 ```
 
@@ -255,7 +255,7 @@ ansible all -m ping -a "data=alive"
 ```
 
 Output:
-```
+```text
 web1 | SUCCESS => {
     "changed": false,
     "ping": "alive"

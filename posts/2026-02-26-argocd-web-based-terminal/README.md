@@ -84,7 +84,7 @@ data:
 
 The RBAC policy format for exec permissions follows this pattern:
 
-```
+```text
 p, <role>, exec, create, <project>/<namespace>/<app>, <allow|deny>
 ```
 

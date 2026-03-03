@@ -18,7 +18,7 @@ Your Terraform configuration needs modularization when `terraform plan` takes mi
 
 Before moving code, design your target structure:
 
-```
+```text
 project/
   modules/
     networking/
@@ -298,7 +298,7 @@ resource "aws_instance" "web" {
 
 Migrate modules in dependency order, starting with the least dependent:
 
-```
+```text
 1. Networking (no dependencies)
 2. Security/IAM (depends on networking)
 3. Storage (depends on networking)

@@ -77,7 +77,7 @@ Create a relationship between the two:
 4. Select the `UserRegionMapping` table.
 5. Enter the DAX filter expression:
 
-```
+```text
 // Filter the mapping table to only show rows where the UserEmail
 // matches the current Power BI user's email address
 // USERPRINCIPALNAME() returns the logged-in user's email
@@ -154,7 +154,7 @@ Power BI DirectQuery can pass the user's identity to Azure SQL using a connectio
 2. Click Advanced Editor.
 3. Modify the connection to include `SESSION_CONTEXT`:
 
-```
+```text
 // Power Query M code that sets the user identity in SQL session context
 // This allows Azure SQL RLS to filter data based on the Power BI user
 let
@@ -252,7 +252,7 @@ ON dbo.UserRegionMapping (UserEmail, Region);
 
 Some users (like admins) should see all data. Handle this in the DAX expression:
 
-```
+```text
 // Allow admins to see all data by checking a separate admin table
 // Regular users are filtered by region mapping
 [UserEmail] = USERPRINCIPALNAME()

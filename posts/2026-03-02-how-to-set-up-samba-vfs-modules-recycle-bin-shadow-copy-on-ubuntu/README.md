@@ -110,7 +110,7 @@ sudo crontab -e
 ```
 
 Add:
-```
+```text
 0 2 * * * /usr/local/bin/samba-recycle-cleanup.sh
 ```
 
@@ -192,7 +192,7 @@ sudo crontab -e
 ```
 
 Add:
-```
+```text
 0 * * * * /usr/local/bin/samba-snapshot.sh
 ```
 

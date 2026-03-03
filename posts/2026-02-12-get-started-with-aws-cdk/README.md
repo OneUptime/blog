@@ -100,7 +100,7 @@ cdk init app --language typescript
 
 This generates a project with the following structure.
 
-```
+```text
 my-first-cdk-app/
   bin/
     my-first-cdk-app.ts    # App entry point

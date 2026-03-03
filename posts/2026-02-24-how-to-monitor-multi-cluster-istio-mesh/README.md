@@ -197,20 +197,20 @@ Once you have aggregated metrics, set up Grafana dashboards that show cross-clus
 
 ### Cross-Cluster Request Rate
 
-```
+```text
 sum(rate(istio_requests_total{reporter="source"}[5m])) by (source_cluster, destination_cluster)
 ```
 
 ### Cross-Cluster Error Rate
 
-```
+```text
 sum(rate(istio_requests_total{reporter="source", response_code=~"5.."}[5m])) by (source_cluster, destination_cluster)
 / sum(rate(istio_requests_total{reporter="source"}[5m])) by (source_cluster, destination_cluster)
 ```
 
 ### Cross-Cluster Latency (P99)
 
-```
+```text
 histogram_quantile(0.99,
   sum(rate(istio_request_duration_milliseconds_bucket{reporter="source"}[5m]))
   by (le, source_cluster, destination_cluster)
@@ -219,7 +219,7 @@ histogram_quantile(0.99,
 
 ### Control Plane Health Per Cluster
 
-```
+```text
 # Proxy push time per cluster
 histogram_quantile(0.99,
   sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le, cluster)
@@ -233,7 +233,7 @@ sum(pilot_xds) by (cluster)
 
 For multi-network setups, the east-west gateway is a critical component. Monitor it specifically:
 
-```
+```text
 # East-west gateway request rate
 sum(rate(istio_requests_total{destination_workload="istio-eastwestgateway"}[5m])) by (cluster)
 

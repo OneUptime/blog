@@ -16,7 +16,7 @@ The overhead of each individual operation (network round trip, transaction commi
 
 ## Why Batching Matters
 
-```
+```text
 Without batching:
 1000 inserts * 5ms each = 5000ms total
 

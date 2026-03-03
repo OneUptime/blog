@@ -238,7 +238,7 @@ public class QueueStats
 
 For a visual overview, create an Azure Workbook that shows queue depth over time. You can query the metrics data using KQL.
 
-```
+```text
 // KQL query to show queue depth trend over the last 24 hours
 AzureMetrics
 | where ResourceProvider == "MICROSOFT.SERVICEBUS"

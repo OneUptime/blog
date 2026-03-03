@@ -49,7 +49,7 @@ polaris audit --audit-path k8s/ --set-exit-code-on-danger
 
 Example output shows violations:
 
-```
+```text
 Polaris audited 5 controllers and found:
   - 3 danger-level issues
   - 5 warning-level issues

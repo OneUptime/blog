@@ -80,13 +80,13 @@ export SLACK_CHANNEL=#deployments
 When a playbook runs, the slack callback posts messages at key points:
 
 **Playbook start:**
-```
+```text
 Ansible: deploy.yml started on inventory/production
 Hosts: web-01, web-02, web-03
 ```
 
 **Playbook success:**
-```
+```text
 Ansible: deploy.yml completed successfully
 Duration: 3m 47s
 Results:
@@ -96,7 +96,7 @@ Results:
 ```
 
 **Playbook failure:**
-```
+```text
 Ansible: deploy.yml FAILED
 Host: web-03
 Task: Deploy application

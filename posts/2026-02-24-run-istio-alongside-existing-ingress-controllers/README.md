@@ -70,7 +70,7 @@ kubectl get svc -n istio-system istio-ingressgateway
 
 The output should show a LoadBalancer service with its own external IP:
 
-```
+```text
 NAME                   TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)
 istio-ingressgateway   LoadBalancer   10.96.45.123   34.56.78.90    15021:31234/TCP,80:30080/TCP,443:30443/TCP
 ```

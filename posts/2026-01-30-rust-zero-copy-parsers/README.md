@@ -132,7 +132,7 @@ fn demonstrate_lifetimes() {
 
 Let us build a parser for a simple configuration format:
 
-```
+```text
 name = "server"
 port = 8080
 debug = true
@@ -254,7 +254,7 @@ fn main() {
 ```
 
 Output:
-```
+```text
 name = String("my-service")
 port = Integer(8080)
 debug = Boolean(true)
@@ -936,7 +936,7 @@ fn measure_allocations() {
 
 Typical output for 10,000 lines:
 
-```
+```text
 Allocating: 1,245,184 bytes allocated
 Zero-copy: 240,000 bytes allocated (just the Vec metadata)
 ```

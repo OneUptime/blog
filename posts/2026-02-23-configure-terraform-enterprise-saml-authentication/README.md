@@ -55,14 +55,14 @@ In the Okta admin console:
 2. Select **SAML 2.0**
 3. Fill in the general settings:
 
-```
+```text
 App Name: Terraform Enterprise
 Logo: (upload the Terraform logo)
 ```
 
 4. Configure the SAML settings:
 
-```
+```text
 Single sign-on URL:    https://tfe.example.com/users/saml/auth
 Audience URI (SP Entity ID): https://tfe.example.com/users/saml/metadata
 Name ID format:        EmailAddress
@@ -87,7 +87,7 @@ In the Azure portal:
 2. Select **Create your own application** and name it "Terraform Enterprise"
 3. Under **Single sign-on**, select **SAML**
 
-```
+```text
 Basic SAML Configuration:
   Identifier (Entity ID):  https://tfe.example.com/users/saml/metadata
   Reply URL (ACS URL):     https://tfe.example.com/users/saml/auth
@@ -142,7 +142,7 @@ Now configure TFE with your IdP metadata. Go to the TFE admin console at `https:
 2. Check **Enable SAML single sign-on**
 3. Fill in the fields:
 
-```
+```text
 Single Sign-On URL:      [from your IdP metadata]
 Single Log-Out URL:      [from your IdP metadata, optional]
 IdP Certificate:         [paste the PEM-encoded certificate from IdP metadata]
@@ -186,7 +186,7 @@ curl -s \
 
 One of the most useful features of SAML in TFE is automatic team mapping. When the IdP sends group information in the SAML assertion, TFE can automatically add users to the correct teams.
 
-```
+```text
 IdP Group Name    ->    TFE Team
 -------------------------------
 tfe-admins        ->    owners

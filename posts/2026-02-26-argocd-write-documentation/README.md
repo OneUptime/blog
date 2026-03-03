@@ -14,7 +14,7 @@ Documentation contributions are among the most valuable and often most needed co
 
 ArgoCD uses MkDocs with the Material theme for its documentation site, hosted at `argo-cd.readthedocs.io`. The documentation source lives in the `docs/` directory of the main ArgoCD repository.
 
-```
+```text
 argo-cd/
   docs/
     operator-manual/      # Installation, configuration, administration
@@ -120,7 +120,7 @@ spec:
 source:
   repoURL: https://github.com/example/app.git
 ```
-```
+```text
 
 ### Admonitions
 
@@ -214,7 +214,7 @@ data:
 !!! warning
     Changing this value on an existing installation will cause ArgoCD
     to lose track of previously managed resources.
-```
+```text
 
 ## Adding Diagrams
 
@@ -238,7 +238,7 @@ sequenceDiagram
     Kubernetes-->>ArgoCD Server: Resource Status
     ArgoCD Server-->>User: Sync Complete
 ```
-```
+```text
 
 ## Submitting Documentation PRs
 

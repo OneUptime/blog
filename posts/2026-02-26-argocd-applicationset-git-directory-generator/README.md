@@ -38,7 +38,7 @@ graph TD
 
 Given a repository with this structure:
 
-```
+```text
 platform-repo/
 ├── services/
 │   ├── api-gateway/

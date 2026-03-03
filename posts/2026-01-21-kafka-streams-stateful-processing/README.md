@@ -14,7 +14,7 @@ Stateful processing in Kafka Streams allows you to maintain and query state whil
 
 ### Stateless vs Stateful Operations
 
-```
+```text
 Stateless Operations:
 - filter()
 - map()
@@ -31,7 +31,7 @@ Stateful Operations:
 
 ### State Store Types
 
-```
+```text
 Local State Stores:
 - RocksDB (default) - persistent, disk-based
 - In-Memory - faster, limited by memory

@@ -10,7 +10,7 @@ Description: Fix Lambda permission denied errors when accessing DynamoDB, S3, SQ
 
 Your Lambda function runs fine in theory, but when it tries to talk to DynamoDB, S3, SQS, or any other AWS service, you get an error like:
 
-```
+```text
 An error occurred (AccessDeniedException) when calling the PutItem operation:
 User: arn:aws:sts::123456789012:assumed-role/my-lambda-role/my-function
 is not authorized to perform: dynamodb:PutItem on resource: arn:aws:dynamodb:us-east-1:123456789012:table/my-table

@@ -28,7 +28,7 @@ Talos Linux uses all of these to provide a secure, reliable boot process.
 
 Before installing Talos Linux, configure the UEFI firmware on your machine:
 
-```
+```text
 Common keys to enter UEFI setup:
 - Dell: F2
 - HP: F10
@@ -47,7 +47,7 @@ Some servers also provide remote firmware management through IPMI/BMC interfaces
 
 Make sure the firmware is set to UEFI boot mode, not Legacy/CSM:
 
-```
+```text
 Boot Mode: UEFI (not Legacy, not CSM, not Hybrid)
 ```
 
@@ -58,20 +58,20 @@ If your firmware offers a "CSM" (Compatibility Support Module) option, disable i
 Set the boot order to match your deployment method:
 
 For USB installation:
-```
+```text
 1. USB Drive / Removable Media
 2. Internal SSD / NVMe
 3. Network / PXE
 ```
 
 For PXE boot:
-```
+```text
 1. Network / PXE (IPv4)
 2. Internal SSD / NVMe
 ```
 
 For installed systems:
-```
+```text
 1. Internal SSD / NVMe
 2. (Optional) Network / PXE for recovery
 ```
@@ -80,7 +80,7 @@ For installed systems:
 
 For the initial installation, you may need to disable Secure Boot temporarily:
 
-```
+```text
 Secure Boot: Disabled (for initial install)
 ```
 
@@ -119,7 +119,7 @@ talosctl apply-config --insecure \
 
 The installer creates the following disk layout:
 
-```
+```text
 /dev/nvme0n1:
   ├── p1: EFI System Partition (260MB, FAT32)
   ├── p2: BIOS Boot Partition (1MB, for legacy compatibility)
@@ -151,7 +151,7 @@ Secure Boot verifies that every piece of software loaded during boot is signed b
 
 ### Understanding the Secure Boot Key Hierarchy
 
-```
+```text
 Platform Key (PK)
   └── Key Exchange Key (KEK)
        └── Signature Database (db)
@@ -257,7 +257,7 @@ efibootmgr --bootorder 0001,0002,0003
 
 Configure UEFI for PXE network booting:
 
-```
+```text
 UEFI Network Stack: Enabled
 IPv4 PXE Support: Enabled
 IPv6 PXE Support: Disabled (unless needed)
@@ -346,7 +346,7 @@ talosctl disks --insecure --nodes <NODE_IP>
 
 Some firmware runs extensive hardware checks during boot. To speed things up:
 
-```
+```text
 Quick Boot: Enabled
 Fast Boot: Enabled
 POST Delay: 0 seconds

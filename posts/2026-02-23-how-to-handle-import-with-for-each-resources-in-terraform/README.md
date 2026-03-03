@@ -24,7 +24,7 @@ resource "aws_s3_bucket" "data" {
 
 This creates three resource instances with these addresses:
 
-```
+```text
 aws_s3_bucket.data["logs"]
 aws_s3_bucket.data["backups"]
 aws_s3_bucket.data["artifacts"]
@@ -257,7 +257,7 @@ terraform console
 
 The most frequent error is "Invalid resource instance key." This happens when the key you specify in the import does not match any key in the for_each expression:
 
-```
+```text
 Error: Invalid resource instance key
 The resource aws_s3_bucket.data does not have an instance with the key "log".
 ```

@@ -41,7 +41,7 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 
 ### Understanding Output
 
-```
+```text
 GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG      CONSUMER-ID                                   HOST            CLIENT-ID
 my-group        my-topic        0          1000            1050            50       consumer-1-abc123                             /10.0.0.1       consumer-1
 my-group        my-topic        1          2000            2000            0        consumer-2-def456                             /10.0.0.2       consumer-2

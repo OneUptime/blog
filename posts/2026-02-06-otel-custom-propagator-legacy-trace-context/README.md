@@ -21,7 +21,7 @@ OpenTelemetry ships with W3C Trace Context and Baggage propagators. Your custom 
 
 Let's say your organization uses these headers:
 
-```
+```text
 X-MyCompany-Trace-ID: abc123def456
 X-MyCompany-Span-ID: 789xyz
 X-MyCompany-Sampled: 1

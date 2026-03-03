@@ -37,7 +37,7 @@ ansible all -m shell -a "ss -tlnp"
 
 The flags are identical to netstat. Here is what typical output looks like:
 
-```
+```text
 web01 | CHANGED | rc=0 >>
 State   Recv-Q  Send-Q  Local Address:Port  Peer Address:Port  Process
 LISTEN  0       128     0.0.0.0:22          0.0.0.0:*          users:(("sshd",pid=1234,fd=3))

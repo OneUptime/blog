@@ -70,7 +70,7 @@ The environment variable overrides the ansible.cfg `library` setting.
 
 Here is a recommended project structure that keeps custom modules organized:
 
-```
+```text
 my-ansible-project/
   ansible.cfg
   inventory.ini

@@ -16,7 +16,7 @@ In this guide, we will build event-driven automation patterns that use Terraform
 
 Traditional Terraform workflows are imperative: someone decides to make a change and runs the plan. Event-driven Terraform flips this model. Events from monitoring systems, cloud platforms, and applications trigger Terraform runs automatically, with the appropriate variables set based on the event context.
 
-```
+```text
 Event Source (CloudWatch, Datadog, GitHub, etc.)
     |
     v

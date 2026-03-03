@@ -10,7 +10,7 @@ Description: How to identify and resolve held-back packages after Ubuntu upgrade
 
 After running `apt upgrade`, you may see output like:
 
-```
+```text
 The following packages have been kept back:
   linux-generic linux-headers-generic linux-image-generic
 ```
@@ -63,7 +63,7 @@ apt-cache policy package-name
 
 Output example:
 
-```
+```text
 linux-generic:
   Installed: 6.5.0.21.22
   Candidate: 6.8.0.35.35

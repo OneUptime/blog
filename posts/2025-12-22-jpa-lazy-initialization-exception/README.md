@@ -37,7 +37,7 @@ sequenceDiagram
 
 ## The Error
 
-```
+```text
 org.hibernate.LazyInitializationException: failed to lazily initialize a collection
 of role: com.example.User.orders, could not initialize proxy - no Session
 ```

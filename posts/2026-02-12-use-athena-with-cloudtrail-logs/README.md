@@ -16,7 +16,7 @@ Athena is the natural fit. CloudTrail delivers logs to S3 as JSON files, and Ath
 
 CloudTrail logs are JSON files organized by account, region, and date:
 
-```
+```text
 s3://your-cloudtrail-bucket/AWSLogs/123456789012/CloudTrail/us-east-1/2025/01/15/
 ```
 

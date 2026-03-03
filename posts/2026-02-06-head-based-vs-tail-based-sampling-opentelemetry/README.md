@@ -286,7 +286,7 @@ The effective sampling rate for routine traces in this setup is 50% times 10%, w
 
 Tail-based sampling requires careful resource planning. The Collector must hold all spans for every in-flight trace until the `decision_wait` expires. A rough estimate for memory usage:
 
-```
+```text
 Memory = expected_new_traces_per_sec * decision_wait_seconds * avg_spans_per_trace * avg_span_size_bytes
 ```
 

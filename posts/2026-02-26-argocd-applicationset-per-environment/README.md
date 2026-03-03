@@ -73,7 +73,7 @@ This creates three applications: `myapp-dev`, `myapp-staging`, and `myapp-produc
 
 If you use Kustomize with a base and per-environment overlays, the Git directory generator maps naturally.
 
-```
+```text
 manifests/
   base/
     kustomization.yaml
@@ -133,7 +133,7 @@ When you add a new overlay directory (e.g., `manifests/overlays/qa`), a new Appl
 
 For more complex configurations, use the Git file generator with per-environment config files.
 
-```
+```text
 config/
   dev.json
   staging.json

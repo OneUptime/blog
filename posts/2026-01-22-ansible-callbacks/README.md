@@ -70,7 +70,7 @@ callbacks_enabled = timer
 ```
 
 Output:
-```
+```text
 Playbook run took 0 days, 0 hours, 2 minutes, 34 seconds
 ```
 
@@ -84,7 +84,7 @@ callbacks_enabled = profile_tasks
 ```
 
 Output:
-```
+```text
 Tuesday 25 January 2026  10:30:45 +0000 (0:00:05.234)   0:02:34.567 *****
 ===============================================================================
 Install packages -------------------------------------------- 45.23s

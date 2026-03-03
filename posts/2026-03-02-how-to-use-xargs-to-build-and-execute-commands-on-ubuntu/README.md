@@ -64,7 +64,7 @@ echo "1 2 3 4 5 6" | xargs -n 2 echo
 
 Output for the `-n 1` example:
 
-```
+```text
 Item: a
 Item: b
 Item: c

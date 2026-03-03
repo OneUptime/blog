@@ -41,7 +41,7 @@ The key insight of OT is that we can **transform** operations against each other
 
 For OT to work correctly, it must satisfy the **convergence property**. Given two concurrent operations `a` and `b`:
 
-```
+```text
 apply(apply(state, a), transform(b, a)) = apply(apply(state, b), transform(a, b))
 ```
 
@@ -304,7 +304,7 @@ OT must satisfy two critical properties to guarantee convergence:
 
 For any two concurrent operations `a` and `b`:
 
-```
+```text
 apply(apply(S, a), T(b, a)) = apply(apply(S, b), T(a, b))
 ```
 
@@ -327,7 +327,7 @@ graph TD
 
 For three or more concurrent operations, the composition must also converge:
 
-```
+```text
 T(T(c, a), T(b, a)) = T(T(c, b), T(a, b))
 ```
 

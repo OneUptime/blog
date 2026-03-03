@@ -14,7 +14,7 @@ Description: Learn how to reshard Redis Cluster to redistribute hash slots, add 
 
 Redis Cluster uses a shared-nothing architecture where data is automatically partitioned across multiple nodes. Each node holds a subset of the total data and can communicate with every other node.
 
-```
+```text
 +------------------+     +------------------+     +------------------+
 |   Master Node 1  |     |   Master Node 2  |     |   Master Node 3  |
 |  Slots: 0-5460   |     | Slots: 5461-10922|     |Slots: 10923-16383|
@@ -63,7 +63,7 @@ redis-cli -c -h 192.168.1.10 -p 7000 cluster info
 
 Example output from `cluster nodes`:
 
-```
+```text
 a1b2c3d4... 192.168.1.10:7000@17000 master - 0 0 1 connected 0-5460
 e5f6g7h8... 192.168.1.11:7001@17001 master - 0 0 2 connected 5461-10922
 i9j0k1l2... 192.168.1.12:7002@17002 master - 0 0 3 connected 10923-16383

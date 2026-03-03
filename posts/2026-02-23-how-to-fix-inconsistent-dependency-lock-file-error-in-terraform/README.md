@@ -10,7 +10,7 @@ Description: How to resolve the Inconsistent Dependency Lock File error in Terra
 
 You run `terraform init` and get:
 
-```
+```text
 Error: Inconsistent dependency lock file
 
 The following dependency selections recorded in the lock file are
@@ -26,7 +26,7 @@ run:
 
 Or this variant:
 
-```
+```text
 Error: Inconsistent dependency lock file
 
 The following dependency selections recorded in the lock file are
@@ -94,7 +94,7 @@ This is the most common variant of this error. It happens when:
 - A team member on a different OS generated the lock file
 - The lock file was generated before Apple Silicon support was added
 
-```
+```text
 Error: Inconsistent dependency lock file
 
 The following dependency selections recorded in the lock file are
@@ -133,7 +133,7 @@ terraform init
 
 When you add a new provider to your configuration but the lock file does not include it:
 
-```
+```text
 Error: Inconsistent dependency lock file
 
 The following dependency selections recorded in the lock file are
@@ -162,7 +162,7 @@ terraform providers lock \
 
 This is the opposite case. You removed a provider from your configuration, but it is still in the lock file:
 
-```
+```text
 Warning: Unused provider lock
 
 The lock file contains a provider lock for
@@ -186,7 +186,7 @@ terraform providers lock \
 
 If the lock file has been manually edited or corrupted:
 
-```
+```text
 Error: Failed to install providers
 
 Could not parse dependency lock file: syntax error

@@ -190,7 +190,7 @@ sudo dmsetup status vg--storage-lv--data
 
 The status output shows:
 
-```
+```text
 0 1879048192 writecache stats: reads=1234 read_cache_hits=0 writes=5678 write_cache_hits=0 committed_blocks=0
   total_blocks=20480 free_blocks=20480 uncommitted_blocks=0
 ```

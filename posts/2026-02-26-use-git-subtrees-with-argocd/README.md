@@ -47,7 +47,7 @@ The `--squash` flag merges all the shared repo's history into a single commit, k
 
 Your directory structure now looks like this:
 
-```
+```text
 backend-api-config/
 ├── base/
 │   ├── kustomization.yaml

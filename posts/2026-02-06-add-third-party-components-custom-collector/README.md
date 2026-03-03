@@ -70,7 +70,7 @@ When no existing component fits your needs, you can write your own. Let's build 
 
 ### Project Structure
 
-```
+```text
 my-collector/
   manifest.yaml
   config.yaml

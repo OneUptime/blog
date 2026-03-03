@@ -34,7 +34,7 @@ KeyDB was created by Snap Inc. (Snapchat) in 2019 as a multi-threaded fork of Re
 
 Redis traditionally used a single-threaded model for command execution:
 
-```
+```text
 Client 1 ----\
 Client 2 ------> Event Loop (Single Thread) --> Execute Commands
 Client 3 ----/          |
@@ -56,7 +56,7 @@ However, command execution remains single-threaded, ensuring atomicity.
 
 KeyDB uses symmetric multi-threading:
 
-```
+```text
 Client 1 --> Thread 1 --> Execute Commands --> Shared State
 Client 2 --> Thread 2 --> Execute Commands --> (with locks)
 Client 3 --> Thread 3 --> Execute Commands

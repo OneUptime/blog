@@ -274,12 +274,12 @@ The optimal pool size depends on your workload and database capabilities.
 
 ### Formula for OLTP Workloads
 
-```
+```text
 connections = ((core_count * 2) + effective_spindle_count)
 ```
 
 For an 8-core server with SSD:
-```
+```text
 connections = (8 * 2) + 1 = 17
 ```
 
@@ -386,7 +386,7 @@ spring.datasource.hikari.leak-detection-threshold=60000
 
 This logs a warning when a connection is held longer than the threshold:
 
-```
+```text
 WARN  - Connection leak detection triggered for connection
 ```
 

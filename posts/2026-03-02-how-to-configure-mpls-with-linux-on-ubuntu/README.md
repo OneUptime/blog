@@ -60,7 +60,7 @@ sudo sysctl -w net.mpls.platform_labels=1048575
 sudo nano /etc/sysctl.d/mpls.conf
 ```
 
-```
+```text
 # /etc/sysctl.d/mpls.conf
 net.mpls.conf.eth0.input = 1
 net.mpls.conf.eth1.input = 1
@@ -95,7 +95,7 @@ sudo apt install -y frr frr-pythontools
 sudo nano /etc/frr/daemons
 ```
 
-```
+```text
 zebra=yes
 ospfd=yes    # LDP needs an IGP for loopback reachability
 ldpd=yes     # Enable LDP daemon
@@ -110,13 +110,13 @@ sudo systemctl restart frr
 
 This example uses three Ubuntu routers in series:
 
-```
+```text
 Router A (10.0.0.1) --- eth1:192.168.12.1/24:eth1 --- Router B (10.0.0.2) --- eth2:192.168.23.1/24:eth1 --- Router C (10.0.0.3)
 ```
 
 ### Router A Configuration
 
-```
+```text
 configure terminal
 
 ! Configure loopback (used as router ID and LDP transport address)
@@ -162,7 +162,7 @@ write memory
 
 ### Router B Configuration (LSR - Label Switching Router)
 
-```
+```text
 configure terminal
 
 interface lo
@@ -203,7 +203,7 @@ write memory
 
 ### Router C Configuration
 
-```
+```text
 configure terminal
 
 interface lo
@@ -245,7 +245,7 @@ sudo vtysh -c "show mpls ldp neighbor"
 
 Expected output showing LDP sessions are up:
 
-```
+```text
 AF   ID              State       Remote Address    Uptime
 ipv4 10.0.0.2        OPERATIONAL 10.0.0.2          00:02:15
 ```
@@ -262,7 +262,7 @@ ip -f mpls route show
 
 The kernel routing table shows entries like:
 
-```
+```text
 100 as to 10.0.0.3 via inet 192.168.12.2 dev eth1
 ```
 
@@ -318,7 +318,7 @@ ip link show eth1 | grep mtu
 
 Modern MPLS deployments increasingly use Segment Routing (SR-MPLS) instead of LDP. FRR supports SR-MPLS via OSPF or IS-IS extensions:
 
-```
+```text
 configure terminal
 
 router ospf

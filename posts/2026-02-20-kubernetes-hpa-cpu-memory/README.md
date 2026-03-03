@@ -26,7 +26,7 @@ flowchart LR
 
 The formula HPA uses is:
 
-```
+```text
 desiredReplicas = ceil(currentReplicas * (currentMetricValue / desiredMetricValue))
 ```
 

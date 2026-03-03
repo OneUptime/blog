@@ -220,7 +220,7 @@ done
 
 Sample output:
 
-```
+```text
 Directory                                           Used           Quota    Percent
 --------------------------------------------------------------------------------
 home/team-alpha                                   50GiB         100GiB        50%

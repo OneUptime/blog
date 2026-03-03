@@ -163,7 +163,7 @@ RUN chmod 644 /usr/local/share/fonts/custom/* && \
 
 Your project directory should look like this:
 
-```
+```text
 project/
   Dockerfile
   fonts/

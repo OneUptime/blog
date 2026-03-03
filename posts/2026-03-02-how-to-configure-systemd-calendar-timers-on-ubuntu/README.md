@@ -16,7 +16,7 @@ The `OnCalendar=` directive accepts a time specification that can range from sim
 
 ### Basic Format
 
-```
+```text
 OnCalendar=DayOfWeek Year-Month-Day Hour:Minute:Second
 ```
 

@@ -14,7 +14,7 @@ Terragrunt adds a layer on top of Terraform, and that layer has its own performa
 
 When you run Terragrunt, it creates a `.terragrunt-cache` directory in each module folder. This cache contains a copy of the Terraform source code (downloaded from the `source` URL), along with the `.terraform` directory that holds providers and module dependencies.
 
-```
+```text
 my-module/
   terragrunt.hcl
   .terragrunt-cache/

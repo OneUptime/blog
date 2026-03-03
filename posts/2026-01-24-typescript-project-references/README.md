@@ -51,7 +51,7 @@ graph TD
 
 Consider a project with shared utilities, a server, and a client application. Here is the directory structure:
 
-```
+```text
 my-project/
   tsconfig.json           # Root config
   packages/
@@ -181,7 +181,7 @@ tsc --build --watch
 
 TypeScript automatically determines the correct build order based on the dependency graph. If you run `tsc -b --verbose`, you will see output like:
 
-```
+```text
 Projects in this build:
   * packages/common/tsconfig.json
   * packages/server/tsconfig.json
@@ -443,7 +443,7 @@ Maintain predictable output locations:
 
 The build info files are machine-specific and should not be committed:
 
-```
+```text
 # .gitignore
 *.tsbuildinfo
 packages/*/dist/

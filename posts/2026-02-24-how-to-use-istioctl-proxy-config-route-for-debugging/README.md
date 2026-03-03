@@ -26,7 +26,7 @@ istioctl proxy-config route productpage-v1-6b746f74dc-9rlmh.bookinfo
 
 Output:
 
-```
+```text
 NAME           DOMAINS                                          MATCH                  VIRTUAL SERVICE
 9080           reviews, reviews.bookinfo + 1 more...            /*                     reviews.bookinfo
 9080           ratings, ratings.bookinfo + 1 more...            /*                     ratings.bookinfo
@@ -228,7 +228,7 @@ for rc in data:
 
 Expected output:
 
-```
+```text
 outbound|9080|v1|reviews.bookinfo.svc.cluster.local: 90
 outbound|9080|v2|reviews.bookinfo.svc.cluster.local: 10
 ```

@@ -363,7 +363,7 @@ cd ~/coredns
 
 Add your plugin to the list (order matters):
 
-```
+```text
 # plugin.cfg
 # ...existing plugins...
 ipfilter:github.com/yourusername/coredns-ipfilter

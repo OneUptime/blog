@@ -12,7 +12,7 @@ When managing Windows hosts, Ansible uses WinRM (Windows Remote Management) inst
 
 ## The Error
 
-```
+```text
 fatal: [windows-server]: UNREACHABLE! => {
     "msg": "winrm connection error: HTTPSConnectionPool(host='10.0.1.100', port=5986): Max retries exceeded"
 }

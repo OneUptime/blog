@@ -64,7 +64,7 @@ If `tofu init` succeeds, all providers are compatible. If it fails, you get spec
 
 If a provider is not in the OpenTofu registry, you will see:
 
-```
+```text
 Error: Failed to query available provider packages
 
 Could not retrieve the list of available versions for provider
@@ -122,7 +122,7 @@ provider_installation {
 
 When modules or configurations have conflicting version requirements:
 
-```
+```text
 Error: Failed to query available provider packages
 
 No available version of provider hashicorp/aws matches the
@@ -160,7 +160,7 @@ Options:
 
 ## Scenario 3: Provider Protocol Mismatch
 
-```
+```text
 Error: Incompatible provider version
 
 Provider example/myprovider v2.0.0 uses protocol version 6,
@@ -192,7 +192,7 @@ terraform {
 
 When switching between Terraform and OpenTofu, the lock file may have incompatible hashes:
 
-```
+```text
 Error: Failed to install provider
 
 The checksum for provider hashicorp/aws does not match the

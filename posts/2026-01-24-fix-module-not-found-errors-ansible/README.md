@@ -14,7 +14,7 @@ Module not found errors in Ansible can halt your automation workflows unexpected
 
 Module not found errors typically appear in several forms:
 
-```
+```text
 ERROR! couldn't resolve module/action 'community.general.ufw'. This often indicates a misspelling, missing collection, or incorrect module path.
 
 fatal: [webserver01]: FAILED! => {
@@ -266,7 +266,7 @@ If you are using custom modules, ensure they are in the correct location.
 
 ### Project Structure for Custom Modules
 
-```
+```text
 project/
 ├── ansible.cfg
 ├── playbooks/

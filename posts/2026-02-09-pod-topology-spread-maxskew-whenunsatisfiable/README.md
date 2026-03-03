@@ -343,7 +343,7 @@ kubectl describe pod my-pod
 
 Look for events:
 
-```
+```text
 Events:
   Warning  FailedScheduling  0/3 nodes are available: 3 node(s) didn't match pod topology spread constraints.
 ```
@@ -360,7 +360,7 @@ kubectl get pods -l app=myapp -o json | \
 
 Output:
 
-```
+```text
   3 us-east-1a
   5 us-east-1b
   2 us-east-1c

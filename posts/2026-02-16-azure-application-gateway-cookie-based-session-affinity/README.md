@@ -261,7 +261,7 @@ az monitor diagnostic-settings create \
 
 Query the logs to see how sessions are distributed across backends.
 
-```
+```text
 // Session distribution across backends
 AzureDiagnostics
 | where Category == "ApplicationGatewayAccessLog"
@@ -272,7 +272,7 @@ AzureDiagnostics
 
 If session affinity is working properly, you should see requests distributed across backends, but individual client IPs should consistently route to the same backend.
 
-```
+```text
 // Verify individual clients stick to one backend
 AzureDiagnostics
 | where Category == "ApplicationGatewayAccessLog"

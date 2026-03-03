@@ -161,7 +161,7 @@ gcloud logging read "resource.type=dataflow_step AND
 
 Key metrics to watch in Cloud Monitoring:
 
-```
+```text
 dataflow.googleapis.com/job/current_num_vcpus  # Total vCPUs in use
 dataflow.googleapis.com/job/system_lag          # How far behind the pipeline is
 dataflow.googleapis.com/job/backlog_bytes       # Unprocessed data volume

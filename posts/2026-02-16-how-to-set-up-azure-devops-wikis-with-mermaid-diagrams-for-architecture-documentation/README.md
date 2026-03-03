@@ -56,7 +56,7 @@ Now any changes pushed to that folder in the repository will appear in the wiki 
 
 A good architecture wiki follows a predictable structure. Here is what I use:
 
-```
+```text
 docs/architecture/
   Home.md                    (landing page with links to key sections)
   system-overview.md         (high-level architecture diagram and description)
@@ -309,7 +309,7 @@ replaying its events.
 
 Azure DevOps code wikis use a `.order` file to control page ordering. Create this file in each directory:
 
-```
+```text
 Home
 system-overview
 deployment-architecture

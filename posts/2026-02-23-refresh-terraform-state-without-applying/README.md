@@ -45,7 +45,7 @@ terraform apply -refresh-only
 
 This command does the same thing as `terraform refresh`, but it shows you what changes it's going to make to the state and asks for confirmation before proceeding. Here's what typical output looks like:
 
-```
+```text
 Note: Objects have changed outside of Terraform
 
 Terraform detected the following changes made outside of Terraform

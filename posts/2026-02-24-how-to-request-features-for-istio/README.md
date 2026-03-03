@@ -63,7 +63,7 @@ Keep it concise and descriptive:
 ### Problem Statement
 Describe the problem you are facing in detail:
 
-```
+```text
 When services in a mesh have retry configuration at multiple levels
 of a call chain, a single failing service causes retry amplification.
 
@@ -84,7 +84,7 @@ those levels.
 ### Use Cases
 Provide concrete examples of who would benefit:
 
-```
+```text
 Use Case 1: E-commerce platform with 5-service-deep call chains.
 During Black Friday, a database hiccup caused retry amplification
 that overwhelmed the connection pool and took down the entire
@@ -97,7 +97,7 @@ configure retries without visibility into the full call chain.
 ### Proposed Solution (Optional)
 If you have a specific idea, share it, but make it clear that you are open to alternatives:
 
-```
+```text
 One possible approach would be to add a retry budget to
 DestinationRule that limits total concurrent retries to a
 destination, similar to Envoy's retry budget feature:
@@ -122,7 +122,7 @@ retry amplification in deep call chains would solve our problem.
 ### Impact
 Describe how important this is:
 
-```
+```text
 This affects any Istio deployment with service call chains deeper
 than 2 levels where retries are configured. Without this feature,
 teams have to choose between retry resilience and retry safety,
@@ -185,7 +185,7 @@ Feature requests with broad community support are more likely to be prioritized:
 
 GitHub reactions on the issue help maintainers gauge demand:
 
-```
+```text
 # A feature request with 50+ thumbs-up reactions
 # gets much more attention than one with 2
 ```
@@ -194,7 +194,7 @@ GitHub reactions on the issue help maintainers gauge demand:
 
 If you have Go development experience, offering to implement the feature dramatically increases the chance of it being accepted:
 
-```
+```text
 I'm happy to implement this feature if the approach is approved.
 I have experience with Go and have contributed to other CNCF projects.
 ```
@@ -223,7 +223,7 @@ gh issue list --repo istio/istio --author @me --label "kind/feature" --state ope
 
 If there is no activity after a month, leave a polite comment:
 
-```
+```text
 Hi, just checking if there's been any discussion about this feature
 request. Happy to provide more details or adjust the proposal based
 on feedback.

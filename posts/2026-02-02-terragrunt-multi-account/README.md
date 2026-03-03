@@ -54,7 +54,7 @@ A well-organized directory structure is critical for maintainability. The recomm
 
 The structure below demonstrates a production-ready layout with clear separation between accounts, regions, and resource types.
 
-```
+```text
 infrastructure/
 ├── terragrunt.hcl                    # Root configuration
 ├── _envcommon/                       # Shared module configurations

@@ -33,7 +33,7 @@ talosctl read --nodes 192.168.1.10 /etc/hosts
 
 The default Talos hosts file typically contains just the localhost entries:
 
-```
+```text
 127.0.0.1       localhost
 ::1             localhost
 ```
@@ -130,7 +130,7 @@ talosctl read --nodes 192.168.1.10 /etc/hosts
 
 The output should now include your custom entries:
 
-```
+```text
 127.0.0.1       localhost
 ::1             localhost
 192.168.1.100   registry.internal docker-registry

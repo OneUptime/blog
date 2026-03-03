@@ -46,7 +46,7 @@ In React Native, native UI components are managed by a ViewManager class. The Vi
 
 ### Architecture Overview
 
-```
+```text
 JavaScript Layer          Bridge/JSI           Native Layer
      |                        |                     |
   <MyView                     |                     |

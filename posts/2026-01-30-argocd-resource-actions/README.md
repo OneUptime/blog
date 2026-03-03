@@ -534,7 +534,7 @@ discovery.lua: |
 
 Follow a naming convention for actions:
 
-```
+```text
 [verb]-[target]
 
 Examples:

@@ -28,7 +28,7 @@ flowchart LR
 
 ## Project Structure
 
-```
+```text
 filebeat/
   inventory/
     hosts.yml

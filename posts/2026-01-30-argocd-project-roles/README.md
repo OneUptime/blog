@@ -108,7 +108,7 @@ kubectl apply -f backend-project.yaml
 
 Each policy line follows this format:
 
-```
+```text
 p, <subject>, <resource>, <action>, <object>, <effect>
 ```
 

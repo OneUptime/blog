@@ -27,7 +27,7 @@ Structure your documentation around these tasks, not around Istio concepts.
 
 Organize your docs into four sections:
 
-```
+```text
 docs/
   getting-started/
     deploying-your-first-service.md

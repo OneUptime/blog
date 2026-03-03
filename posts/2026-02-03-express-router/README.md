@@ -137,7 +137,7 @@ graph TD
 
 The corresponding folder structure:
 
-```
+```text
 project/
   src/
     app.js              # Express app setup

@@ -78,7 +78,7 @@ cat ~/.config/Yubico/u2f_keys
 
 The enrollment file contains your username and the key's public credential data. It looks like:
 
-```
+```text
 username:credential_id,public_key,options
 ```
 
@@ -117,14 +117,14 @@ sudo nano /etc/pam.d/sudo
 
 Add this line after the first `@include` or at the top of auth section:
 
-```
+```text
 # Two-factor: require key touch after password
 auth required pam_u2f.so authfile=/etc/u2f-mappings/u2f_keys
 ```
 
 Or for your home directory enrollment:
 
-```
+```text
 auth required pam_u2f.so authfile=/home/USERNAME/.config/Yubico/u2f_keys
 ```
 
@@ -146,21 +146,21 @@ sudo nano /etc/pam.d/common-auth
 
 Add the u2f line. For two-factor (password AND key):
 
-```
+```text
 # Add after the existing auth line
 auth required pam_u2f.so authfile=/etc/security/u2f_keys
 ```
 
 For optional key (password OR key, key preferred):
 
-```
+```text
 auth sufficient pam_u2f.so authfile=/etc/security/u2f_keys
 auth required pam_unix.so try_first_pass
 ```
 
 For two-factor where key is required in addition to password:
 
-```
+```text
 auth required pam_unix.so
 auth required pam_u2f.so authfile=/etc/security/u2f_keys
 ```
@@ -175,7 +175,7 @@ sudo nano /etc/pam.d/sshd
 
 Add:
 
-```
+```text
 auth required pam_u2f.so authfile=/etc/security/u2f_keys
 ```
 
@@ -185,7 +185,7 @@ Also ensure SSH is configured for PAM:
 sudo nano /etc/ssh/sshd_config
 ```
 
-```
+```text
 UsePAM yes
 ChallengeResponseAuthentication yes
 # For keyboard-interactive (needed for FIDO2 PAM)

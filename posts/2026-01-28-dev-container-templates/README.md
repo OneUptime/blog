@@ -33,7 +33,7 @@ Start with a basic template structure. Every Dev Container needs at minimum a `d
 
 ### Directory Structure
 
-```
+```text
 .devcontainer/
   devcontainer.json
   Dockerfile           # Optional - for custom images
@@ -288,7 +288,7 @@ Organize templates in a central repository that teams can reference.
 
 ### Template Repository Structure
 
-```
+```text
 devcontainer-templates/
   src/
     nodejs/

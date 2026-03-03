@@ -34,19 +34,19 @@ Before you start, make sure you have:
 
 HCP Terraform expects a specific repository naming convention for modules:
 
-```
+```text
 terraform-<PROVIDER>-<NAME>
 ```
 
 For example, if you are building an AWS VPC module, your repository should be named:
 
-```
+```text
 terraform-aws-vpc
 ```
 
 The module repository itself needs to follow the standard module structure:
 
-```
+```text
 terraform-aws-vpc/
   main.tf          # Primary resource definitions
   variables.tf     # Input variable declarations
@@ -217,7 +217,7 @@ module "vpc" {
 
 The `source` format for private registry modules is:
 
-```
+```text
 app.terraform.io/<ORGANIZATION>/<MODULE_NAME>/<PROVIDER>
 ```
 

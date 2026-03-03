@@ -36,7 +36,7 @@ terraform providers
 
 Here is what typical output looks like:
 
-```
+```text
 Providers required by configuration:
 .
 |-- provider[registry.terraform.io/hashicorp/aws] >= 5.0.0
@@ -55,7 +55,7 @@ The output breaks down into two sections. The first shows providers required by 
 
 Each entry shows the provider source address and any version constraints. The tree format tells you exactly which module introduced each dependency:
 
-```
+```text
 # Root configuration requires AWS >= 5.0.0
 # The vpc module also requires AWS but with a looser >= 4.0.0 constraint
 # Terraform resolves both constraints together to find a compatible version

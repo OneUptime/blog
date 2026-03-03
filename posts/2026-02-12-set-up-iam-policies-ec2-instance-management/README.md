@@ -16,7 +16,7 @@ This guide covers practical IAM policies for EC2 management, from basic read-onl
 
 EC2 has many resource types, each with its own ARN format:
 
-```
+```text
 Instance:        arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0
 Volume:          arn:aws:ec2:us-east-1:123456789012:volume/vol-1234567890abcdef0
 Security Group:  arn:aws:ec2:us-east-1:123456789012:security-group/sg-12345678

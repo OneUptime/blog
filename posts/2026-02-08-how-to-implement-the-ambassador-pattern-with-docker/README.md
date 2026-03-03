@@ -35,7 +35,7 @@ Suppose your application connects to PostgreSQL. In development it talks to a lo
 
 First, create a custom HAProxy configuration that proxies PostgreSQL connections:
 
-```
+```text
 # haproxy-pg.cfg
 # Proxies local PostgreSQL connections to the actual database server
 

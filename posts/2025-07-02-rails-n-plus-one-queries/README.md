@@ -1341,7 +1341,7 @@ end
 
 Expected output:
 
-```
+```text
                            user     system      total        real
 N+1 (500 posts):       0.450000   0.120000   0.570000 (  2.340000)
 includes:              0.080000   0.010000   0.090000 (  0.150000)

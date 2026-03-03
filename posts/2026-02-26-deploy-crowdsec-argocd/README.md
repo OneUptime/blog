@@ -34,7 +34,7 @@ graph LR
 
 ## Repository Structure
 
-```
+```text
 security/
   crowdsec/
     Chart.yaml

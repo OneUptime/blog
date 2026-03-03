@@ -32,7 +32,7 @@ ansible-vault edit group_vars/production/vault.yml
 
 Ansible asks for the vault password:
 
-```
+```text
 Vault password:
 ```
 

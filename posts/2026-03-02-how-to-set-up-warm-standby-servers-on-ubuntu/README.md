@@ -74,7 +74,7 @@ sudo nano /etc/postgresql/14/main/pg_hba.conf
 
 Add this line, replacing the standby IP:
 
-```
+```text
 # Allow standby server to connect for streaming replication
 host    replication     replicator      192.168.1.20/32         md5
 ```

@@ -41,7 +41,7 @@ The most common calculated fields involve basic math on existing metrics.
 
 **Conversion rate:**
 
-```
+```text
 total_orders / unique_visitors
 ```
 
@@ -49,19 +49,19 @@ Name this field "Conversion Rate" and set the output type to Percent.
 
 **Average revenue per user (ARPU):**
 
-```
+```text
 revenue / unique_customers
 ```
 
 **Profit margin:**
 
-```
+```text
 (revenue - cost_of_goods) / revenue
 ```
 
 **Year-over-year growth:**
 
-```
+```text
 (current_period_revenue - previous_period_revenue) / previous_period_revenue
 ```
 
@@ -71,7 +71,7 @@ CASE statements are incredibly useful for creating categories and conditional me
 
 **Customer segment based on order value:**
 
-```
+```text
 CASE
   WHEN avg_order_value >= 500 THEN "Premium"
   WHEN avg_order_value >= 100 THEN "Standard"
@@ -84,7 +84,7 @@ Name this "Customer Segment" and use it as a dimension in charts.
 
 **Traffic source grouping:**
 
-```
+```text
 CASE
   WHEN REGEXP_MATCH(utm_source, "google|bing|yahoo") THEN "Search"
   WHEN REGEXP_MATCH(utm_source, "facebook|instagram|twitter|linkedin") THEN "Social"
@@ -96,7 +96,7 @@ END
 
 **Status color indicator:**
 
-```
+```text
 CASE
   WHEN error_rate > 0.05 THEN "Red"
   WHEN error_rate > 0.01 THEN "Yellow"
@@ -112,13 +112,13 @@ Date calculations are essential for time-based analysis.
 
 **Day of week:**
 
-```
+```text
 WEEKDAY(order_date)
 ```
 
 This returns 0 (Sunday) through 6 (Saturday). For human-readable names:
 
-```
+```text
 CASE WEEKDAY(order_date)
   WHEN 0 THEN "Sunday"
   WHEN 1 THEN "Monday"
@@ -132,13 +132,13 @@ END
 
 **Days since last order:**
 
-```
+```text
 DATE_DIFF(CURRENT_DATE(), last_order_date)
 ```
 
 **Fiscal quarter (for companies with non-calendar fiscal years starting in April):**
 
-```
+```text
 CASE
   WHEN MONTH(order_date) >= 4 AND MONTH(order_date) <= 6 THEN "Q1"
   WHEN MONTH(order_date) >= 7 AND MONTH(order_date) <= 9 THEN "Q2"
@@ -149,7 +149,7 @@ END
 
 **Year-month string for chart labels:**
 
-```
+```text
 CONCAT(CAST(YEAR(order_date) AS TEXT), "-", LPAD(CAST(MONTH(order_date) AS TEXT), 2, "0"))
 ```
 
@@ -159,25 +159,25 @@ Clean up and transform text fields for better reporting.
 
 **Extract domain from email:**
 
-```
+```text
 REGEXP_EXTRACT(email, "@(.+)")
 ```
 
 **Capitalize first letter:**
 
-```
+```text
 CONCAT(UPPER(LEFT(city, 1)), LOWER(SUBSTR(city, 2)))
 ```
 
 **Combine fields for display:**
 
-```
+```text
 CONCAT(first_name, " ", last_name, " (", customer_id, ")")
 ```
 
 **Clean up product names:**
 
-```
+```text
 TRIM(REGEXP_REPLACE(product_name, "  +", " "))
 ```
 
@@ -187,13 +187,13 @@ Some calculated fields use aggregation functions. These are particularly useful 
 
 **Count of distinct values (useful as a metric):**
 
-```
+```text
 COUNT_DISTINCT(customer_id)
 ```
 
 **Percentage of total:**
 
-```
+```text
 SUM(revenue) / SUM(revenue, "grand_total")
 ```
 
@@ -209,7 +209,7 @@ Combine CASE statements with aggregations for powerful filtered metrics.
 
 **Revenue from new customers only:**
 
-```
+```text
 SUM(
   CASE
     WHEN customer_type = "new" THEN order_total
@@ -220,7 +220,7 @@ SUM(
 
 **Count of high-value orders:**
 
-```
+```text
 SUM(
   CASE
     WHEN order_total > 100 THEN 1
@@ -231,7 +231,7 @@ SUM(
 
 **Error rate as a percentage:**
 
-```
+```text
 SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) / COUNT(request_id)
 ```
 
@@ -241,13 +241,13 @@ Regular expressions are powerful for extracting patterns from text fields.
 
 **Extract version number from user agent:**
 
-```
+```text
 REGEXP_EXTRACT(user_agent, "Chrome/(\\d+)")
 ```
 
 **Classify URL paths into page categories:**
 
-```
+```text
 CASE
   WHEN REGEXP_MATCH(page_path, "^/product/") THEN "Product Pages"
   WHEN REGEXP_MATCH(page_path, "^/blog/") THEN "Blog"
@@ -259,7 +259,7 @@ END
 
 **Check if email is from a business domain:**
 
-```
+```text
 CASE
   WHEN REGEXP_MATCH(email, "@(gmail|yahoo|hotmail|outlook)\\.com$") THEN "Personal"
   ELSE "Business"
@@ -272,7 +272,7 @@ You can reference one calculated field from another, but be careful about evalua
 
 First, create a "Customer Tier" field:
 
-```
+```text
 CASE
   WHEN lifetime_revenue >= 10000 THEN "Enterprise"
   WHEN lifetime_revenue >= 1000 THEN "Mid-Market"
@@ -282,7 +282,7 @@ END
 
 Then use it in another calculated field:
 
-```
+```text
 CASE
   WHEN Customer Tier = "Enterprise" THEN 0.15
   WHEN Customer Tier = "Mid-Market" THEN 0.10

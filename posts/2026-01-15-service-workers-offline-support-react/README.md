@@ -142,7 +142,7 @@ self.addEventListener('activate', (event) => {
 
 ### Lifecycle Diagram
 
-```
+```text
 Registration -> Installation -> Waiting -> Activation -> Idle <-> Fetch/Message
                     |              |           |
                     v              v           v
@@ -168,7 +168,7 @@ npm install workbox-webpack-plugin workbox-window workbox-precaching workbox-rou
 
 ### Project Structure
 
-```
+```text
 my-offline-app/
 ├── public/
 │   ├── index.html

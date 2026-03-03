@@ -14,7 +14,7 @@ Running Django migrations in a containerized environment requires careful timing
 
 When you run `docker compose up`, containers start roughly simultaneously. Your Django app might try to run migrations before PostgreSQL finishes initializing, causing errors like:
 
-```
+```text
 django.db.utils.OperationalError: could not connect to server: Connection refused
 ```
 

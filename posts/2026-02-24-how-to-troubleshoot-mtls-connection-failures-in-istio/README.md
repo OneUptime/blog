@@ -99,7 +99,7 @@ istioctl proxy-config secret <source-pod> -n <source-namespace>
 
 Sample output:
 
-```
+```text
 RESOURCE NAME     TYPE           STATUS     VALID CERT     SERIAL NUMBER     NOT AFTER              NOT BEFORE
 default           Cert Chain     ACTIVE     true           abc123...         2026-02-25T10:00:00Z   2026-02-24T10:00:00Z
 ROOTCA            CA             ACTIVE     true           def456...         2036-02-22T10:00:00Z   2026-02-24T10:00:00Z
@@ -157,7 +157,7 @@ kubectl exec <dest-pod> -c istio-proxy -n <dest-namespace> -- \
 
 Key metrics:
 
-```
+```text
 listener.0.0.0.0_8080.ssl.connection_error: 15
 listener.0.0.0.0_8080.ssl.handshake: 1200
 listener.0.0.0.0_8080.ssl.no_certificate: 3

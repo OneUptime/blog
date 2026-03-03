@@ -60,7 +60,7 @@ sudo systemctl status auditd
 
 You should see output indicating the service is active:
 
-```
+```text
 ● auditd.service - Security Auditing Service
      Loaded: loaded (/lib/systemd/system/auditd.service; enabled; vendor preset: enabled)
      Active: active (running) since Wed 2026-01-15 10:00:00 UTC; 1min ago

@@ -170,7 +170,7 @@ With equal weights, Azure load balances traffic across both circuits. This doubl
 
 Your on-premises routers should be configured with BGP sessions to both circuits. Use BGP attributes to control traffic flow:
 
-```
+```text
 ! On-premises BGP configuration for dual ExpressRoute
 router bgp 65010
   ! Primary circuit BGP neighbor

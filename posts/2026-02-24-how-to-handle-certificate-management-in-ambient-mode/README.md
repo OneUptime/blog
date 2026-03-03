@@ -16,7 +16,7 @@ Every ztunnel instance requests certificates from the Istio CA (istiod) on behal
 
 When a pod joins the ambient mesh, ztunnel requests a certificate for that pod's service account identity. The certificate contains a SPIFFE ID like:
 
-```
+```text
 spiffe://cluster.local/ns/default/sa/my-app
 ```
 

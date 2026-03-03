@@ -160,7 +160,7 @@ If any step fails:
 2. Revert configuration: `git checkout .`
 3. Verify: `terraform plan` shows no changes
 4. Notify team: Post in #infrastructure channel
-```
+```text
 
 ### 5. Communication Templates
 
@@ -227,7 +227,7 @@ Use `terraform state show [address]` to inspect.
 
 Store migration documents alongside your Terraform code:
 
-```
+```text
 infrastructure/
   docs/
     migrations/

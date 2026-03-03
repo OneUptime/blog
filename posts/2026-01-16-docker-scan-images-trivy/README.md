@@ -83,7 +83,7 @@ trivy image registry.company.com/myapp:v1.0
 
 ### Understanding Scan Output
 
-```
+```text
 nginx:latest (debian 11.6)
 ===========================
 Total: 142 (UNKNOWN: 0, LOW: 85, MEDIUM: 43, HIGH: 12, CRITICAL: 2)
@@ -128,7 +128,7 @@ trivy image --ignore-unfixed nginx:latest
 
 Create a `.trivyignore` file to skip specific vulnerabilities (with justification).
 
-```
+```text
 # .trivyignore
 
 # False positive - not exploitable in our context

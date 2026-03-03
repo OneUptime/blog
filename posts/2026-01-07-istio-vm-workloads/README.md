@@ -471,7 +471,7 @@ istioctl x workload entry configure \
 
 This command generates the following files:
 
-```
+```text
 vm-files/
 ├── cluster.env          # Environment variables for the cluster
 ├── hosts                 # DNS entries for Istiod

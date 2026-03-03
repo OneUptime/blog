@@ -18,7 +18,7 @@ ArgoCD treats terminal access as a distinct permission type called `exec`. This 
 
 The RBAC policy format for exec is:
 
-```
+```text
 p, <subject>, exec, create, <project>/<namespace>/<application>, <allow|deny>
 ```
 

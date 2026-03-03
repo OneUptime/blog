@@ -216,7 +216,7 @@ logger.setLevel(logging.DEBUG)
 
 A rough calculation for memory per span:
 
-```
+```text
 memory_per_span = num_attributes * (avg_key_length + avg_value_length)
                 + num_events * (event_name_length + num_event_attributes * attr_size)
                 + base_span_overhead (~200 bytes)
@@ -224,7 +224,7 @@ memory_per_span = num_attributes * (avg_key_length + avg_value_length)
 
 With limits of 64 attributes, 1024-byte max value, and 32 events:
 
-```
+```text
 worst_case = 64 * (50 + 1024) + 32 * (100 + 16 * 1024) + 200
            = 68,736 + 527,200 + 200
            = ~596 KB per span
@@ -232,7 +232,7 @@ worst_case = 64 * (50 + 1024) + 32 * (100 + 16 * 1024) + 200
 
 With a BatchSpanProcessor queue of 8192 spans:
 
-```
+```text
 max_queue_memory = 8192 * 596 KB = ~4.8 GB
 ```
 

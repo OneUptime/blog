@@ -24,7 +24,7 @@ Benefits:
 
 The cleanest way is to configure multiplexing in `~/.ssh/config`:
 
-```
+```text
 # ~/.ssh/config
 
 Host frequent-server
@@ -64,7 +64,7 @@ ls -la ~/.ssh/control/
 
 If you want multiplexing everywhere by default:
 
-```
+```text
 # ~/.ssh/config
 
 Host *
@@ -81,7 +81,7 @@ Host *
 
 `ControlPersist` controls how long the control master process keeps running after the last session closes:
 
-```
+```text
 # Keep master alive for 10 minutes
 ControlPersist 10m
 

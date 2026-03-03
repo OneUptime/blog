@@ -21,13 +21,13 @@ terraform validate
 
 If everything is correct:
 
-```
+```text
 Success! The configuration is valid.
 ```
 
 If there are errors:
 
-```
+```text
 Error: Missing required argument
 
   on main.tf line 5, in resource "aws_instance" "web":

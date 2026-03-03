@@ -53,7 +53,7 @@ This playbook reads a configuration value from an LMDB store:
 
 Before diving into examples, it helps to understand LMDB's file structure. An LMDB environment consists of two files:
 
-```
+```text
 /var/lib/myapp/
   data.mdb    # The main database file
   lock.mdb    # The lock file for concurrency

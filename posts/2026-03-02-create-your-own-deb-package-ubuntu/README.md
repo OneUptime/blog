@@ -14,7 +14,7 @@ Creating a `.deb` package is useful when you want to distribute software in a fo
 
 A Debian package is built from a staging directory that mirrors how the files will appear on the target filesystem, plus a `DEBIAN/` directory containing package metadata and scripts.
 
-```
+```text
 my-package/
 ├── DEBIAN/
 │   ├── control        (required - package metadata)
@@ -298,7 +298,7 @@ dpkg-buildpackage -b -us -uc
 
 For internal packages, follow a sensible versioning scheme:
 
-```
+```text
 upstream_version-debian_revision
 1.0.0-1          # First package of version 1.0.0
 1.0.0-2          # Same upstream, packaging fix

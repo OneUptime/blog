@@ -49,7 +49,7 @@ talosctl services --nodes 192.168.1.10
 
 The output shows each service with its state. You are looking for services stuck in "Starting", "Failed", or "Waiting" states. A healthy control plane shows all critical services as "Running":
 
-```
+```text
 SERVICE      STATE     HEALTH   LAST CHANGE
 apid         Running   OK       5m ago
 etcd         Running   OK       5m ago

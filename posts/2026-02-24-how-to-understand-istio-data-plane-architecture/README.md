@@ -82,7 +82,7 @@ istioctl proxy-config listeners deploy/my-app -n default
 
 Output looks something like:
 
-```
+```text
 ADDRESS       PORT  MATCH   DESTINATION
 0.0.0.0       15001 ALL     PassthroughCluster
 0.0.0.0       15006 ALL     Inline Route

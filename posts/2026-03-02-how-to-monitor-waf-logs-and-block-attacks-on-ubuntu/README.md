@@ -33,7 +33,7 @@ sudo tail -f /var/log/apache2/modsec_audit.log
 
 The ModSecurity audit log uses a multi-part format. Each request is a section bounded by markers:
 
-```
+```text
 ---UNIQUE_ID---A--   (transaction ID and timestamp)
 ---UNIQUE_ID---B--   (request headers)
 ---UNIQUE_ID---C--   (request body)

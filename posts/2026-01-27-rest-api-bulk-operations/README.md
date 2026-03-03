@@ -38,7 +38,7 @@ There are several approaches to designing bulk endpoints:
 
 ### Pattern 1: Dedicated Bulk Endpoint
 
-```
+```text
 POST /api/v1/users/bulk
 POST /api/v1/users/bulk-create
 POST /api/v1/users/bulk-update
@@ -47,14 +47,14 @@ DELETE /api/v1/users/bulk-delete
 
 ### Pattern 2: Array Body on Collection Endpoint
 
-```
+```text
 POST /api/v1/users        # Single: {name: "John"}
 POST /api/v1/users        # Bulk: [{name: "John"}, {name: "Jane"}]
 ```
 
 ### Pattern 3: Generic Batch Endpoint
 
-```
+```text
 POST /api/v1/batch
 {
   "operations": [

@@ -37,7 +37,7 @@ kubectl get lease -n istio-system
 
 Example output:
 
-```
+```text
 NAME                                           HOLDER                                   AGE
 istio-namespace-controller-election            istiod-7f4b8c6d9f-abc12_a1b2c3d4         5d
 istiod-election                                istiod-7f4b8c6d9f-abc12_a1b2c3d4         5d
@@ -160,13 +160,13 @@ kubectl logs -n istio-system $LEADER | grep -i "leader\|election"
 
 You should see messages like:
 
-```
+```text
 Successfully acquired lease istio-system/istiod-election
 ```
 
 If you see:
 
-```
+```text
 Failed to acquire lease
 ```
 

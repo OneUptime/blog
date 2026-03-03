@@ -57,7 +57,7 @@ sudo nano /etc/haproxy/haproxy.cfg
 
 Add a location for the ACME challenge in your HAProxy frontend:
 
-```
+```text
 frontend http_front
     bind *:80
 
@@ -121,7 +121,7 @@ Now configure HAProxy to use the combined certificate:
 sudo nano /etc/haproxy/haproxy.cfg
 ```
 
-```
+```text
 global
     log /dev/log local0
     log /dev/log local1 notice
@@ -215,7 +215,7 @@ sudo chmod 600 /etc/haproxy/certs/*.pem
 
 Reference the directory in HAProxy (HAProxy 2.0+):
 
-```
+```text
 frontend https_front
     # Load all PEM files from the directory
     # HAProxy selects the right cert based on SNI

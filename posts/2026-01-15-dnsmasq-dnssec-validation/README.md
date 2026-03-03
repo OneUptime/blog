@@ -49,7 +49,7 @@ dnsmasq --version
 
 Expected output should show DNSSEC compilation options:
 
-```
+```text
 Dnsmasq version 2.89  Copyright (c) 2000-2023 Simon Kelley
 Compile time options: IPv6 GNU-getopt DBus no-UBus no-i18n IDN2 DHCP DHCPv6 no-Lua TFTP conntrack ipset nftset auth cryptohash DNSSEC loop-detect inotify dumpfile
 ```
@@ -119,7 +119,7 @@ flowchart TD
 
 Trust anchors are stored in a specific format. Here's what the root trust anchor looks like:
 
-```
+```text
 . IN DS 20326 8 2 E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
 ```
 
@@ -522,7 +522,7 @@ dig @127.0.0.1 dnssec-tools.org +dnssec
 
 Expected output should include:
 
-```
+```text
 ;; flags: qr rd ra ad; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1
                    ^^
                    |
@@ -543,7 +543,7 @@ dig @127.0.0.1 bad.dnssec-or-not.com A +dnssec
 
 For the bad domain, you should see a SERVFAIL response:
 
-```
+```text
 ;; Got answer:
 ;; ->>HEADER<<- opcode: QUERY, status: SERVFAIL, id: 12345
 ```

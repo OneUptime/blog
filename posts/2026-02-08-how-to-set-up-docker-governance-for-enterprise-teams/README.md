@@ -98,7 +98,7 @@ done
 
 Consistent naming prevents confusion and makes automation possible.
 
-```
+```text
 Registry structure:
 registry.example.com/
   base-images/           # Approved base images (platform team only)

@@ -24,7 +24,7 @@ max_connections = 100  # Default
 
 ### Connection Calculation
 
-```
+```text
 Available memory for connections = Total RAM - shared_buffers - OS needs
 
 Example (32GB server):

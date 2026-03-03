@@ -367,7 +367,7 @@ spec:
 
 If you have several DaemonSets that form a node-level stack (logging, monitoring, security), group them in a single ArgoCD Application:
 
-```
+```text
 apps/node-stack/
   fluent-bit-daemonset.yaml
   node-exporter-daemonset.yaml

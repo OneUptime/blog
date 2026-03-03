@@ -29,7 +29,7 @@ Cache plugins extend the `BaseCacheModule` class from `ansible.plugins.cache`. T
 
 Here is how the files are organized:
 
-```
+```text
 my_project/
   cache_plugins/
     sqlite_cache.py

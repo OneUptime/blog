@@ -12,7 +12,7 @@ When Docker stops a container, it sends SIGTERM, waits for a grace period, then 
 
 ## How Docker Stops Containers
 
-```
+```text
 1. Docker sends SIGTERM to PID 1
 2. Docker waits for stop timeout (default 10 seconds)
 3. Docker sends SIGKILL (cannot be caught)
@@ -46,7 +46,7 @@ CMD node server.js
 # Shell (PID 1) receives SIGTERM, but doesn't forward to node
 ```
 
-```
+```text
 Container
 └── /bin/sh (PID 1)  ← Receives SIGTERM
     └── node server.js (PID 7)  ← Never gets signal
@@ -59,7 +59,7 @@ Container
 CMD ["node", "server.js"]
 ```
 
-```
+```text
 Container
 └── node server.js (PID 1)  ← Receives SIGTERM directly
 ```

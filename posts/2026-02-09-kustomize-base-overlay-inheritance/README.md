@@ -16,7 +16,7 @@ Well-designed inheritance patterns keep configurations DRY (Don't Repeat Yoursel
 
 The simplest pattern has one base and multiple overlays:
 
-```
+```text
 myapp/
 ├── base/
 │   ├── kustomization.yaml
@@ -75,7 +75,7 @@ This structure works well for simple applications with straightforward environme
 
 Complex deployments benefit from intermediate layers:
 
-```
+```text
 platform/
 ├── base/
 │   └── common resources
@@ -137,7 +137,7 @@ This pattern reduces duplication when some environments need additional resource
 
 Kustomize components provide optional, reusable functionality:
 
-```
+```text
 myapp/
 ├── base/
 │   └── kustomization.yaml
@@ -200,7 +200,7 @@ Development skips these components, keeping the deployment simple.
 
 Organize configurations by region with shared production settings:
 
-```
+```text
 infrastructure/
 ├── base/
 ├── production/
@@ -269,7 +269,7 @@ This pattern scales to many regions while maintaining consistency through shared
 
 Related applications share common base configurations:
 
-```
+```text
 platform/
 ├── app-base/
 │   ├── kustomization.yaml
@@ -399,14 +399,14 @@ The merge behavior combines generators, with overlay values overriding base valu
 
 Deep inheritance hierarchies become difficult to understand:
 
-```
+```text
 # Anti-pattern: Too many layers
 base -> shared -> environment-base -> region-base -> cluster -> overlay
 ```
 
 Keep hierarchies shallow. Three levels (base -> shared -> overlay) usually suffice:
 
-```
+```text
 # Better: Flatter structure
 base -> production-shared -> us-east-overlay
 ```

@@ -187,7 +187,7 @@ cat /proc/net/bonding/bond0
 
 Sample output:
 
-```
+```text
 Ethernet Channel Bonding Driver: v5.15.0
 
 Bonding Mode: active-backup

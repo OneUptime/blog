@@ -1388,7 +1388,7 @@ flowchart TB
 
 ### Backup Window Optimization Checklist
 
-```
+```text
 Pre-Optimization Analysis:
 [ ] Measure current backup duration and variance
 [ ] Map application traffic patterns by hour

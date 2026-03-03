@@ -159,7 +159,7 @@ You can add multiple databases to the same failover group. They will all fail ov
 
 This is the key advantage of failover groups. Instead of connecting to a specific server, your application connects to the failover group listener:
 
-```
+```text
 # Read-write listener (always points to the current primary)
 Server=tcp:<failover-group-name>.database.windows.net,1433;Database=appdb;...
 

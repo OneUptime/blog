@@ -161,7 +161,7 @@ pip install -r requirements-dev.txt
 
 And the corresponding requirements file:
 
-```
+```text
 # requirements-dev.txt - development dependencies for Ansible testing
 ansible-core>=2.15
 molecule>=6.0
@@ -202,7 +202,7 @@ yamllint --version
 
 Expected output from `molecule drivers`:
 
-```
+```text
 default
 docker
 podman

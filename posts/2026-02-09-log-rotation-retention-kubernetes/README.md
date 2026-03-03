@@ -14,7 +14,7 @@ Kubernetes container logs grow indefinitely without proper rotation, eventually 
 
 Kubernetes writes container logs to:
 
-```
+```text
 /var/log/pods/<namespace>_<pod>_<uid>/<container>/
 /var/log/containers/<pod>_<namespace>_<container>-<container-id>.log
 ```

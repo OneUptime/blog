@@ -14,7 +14,7 @@ Ubuntu keeps multiple kernel versions installed as a safety net - if a new kerne
 
 The `/boot` partition is typically 500 MB to 1 GB. Each kernel version takes about 50-100 MB. After a year of updates without cleanup, you can easily have 10-15 old kernels taking up the entire partition, causing `apt upgrade` to fail with:
 
-```
+```text
 E: gzip: stdout: No space left on device
 E: mkinitramfs failure cpio 141 gzip 1
 ```
@@ -36,7 +36,7 @@ ls -lah /boot/
 ```
 
 Example output showing the problem:
-```
+```text
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/sda1       976M  921M    0 100% /boot
 ```

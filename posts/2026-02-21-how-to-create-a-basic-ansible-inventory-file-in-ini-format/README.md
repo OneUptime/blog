@@ -254,7 +254,7 @@ ansible-inventory -i inventory.ini --graph
 
 The `--graph` output will show your group hierarchy:
 
-```
+```text
 @all:
   |--@production:
   |  |--@webservers:

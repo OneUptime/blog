@@ -115,7 +115,7 @@ vault secrets list
 
 Expected output:
 
-```
+```text
 Path          Type         Accessor              Description
 ----          ----         --------              -----------
 cubbyhole/    cubbyhole    cubbyhole_xxxxxxxx    per-token private secret storage
@@ -194,7 +194,7 @@ vault kv get -format=json secret/myapp/database | jq '.data.data'
 
 Example output:
 
-```
+```text
 ======= Secret Path =======
 secret/data/myapp/database
 
@@ -312,7 +312,7 @@ vault kv metadata get secret/myapp/database
 
 Output:
 
-```
+```text
 ========== Metadata ==========
 Key                     Value
 ---                     -----
@@ -1110,7 +1110,7 @@ safe_update_secret(client, 'myapp/config', {'new_key': 'new_value'})
 
 Use a logical path hierarchy that mirrors your organization.
 
-```
+```text
 secret/
   prod/
     myapp/

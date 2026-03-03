@@ -22,7 +22,7 @@ We'll use the OpenTelemetry Collector as the central hub that receives all three
 
 ## Architecture Overview
 
-```
+```text
 Istio Proxies ──> OpenTelemetry Collector ──> Prometheus (metrics)
                                           ──> Jaeger (traces)
                                           ──> Loki (logs)

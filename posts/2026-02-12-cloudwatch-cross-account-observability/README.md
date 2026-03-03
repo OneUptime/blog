@@ -51,7 +51,7 @@ aws oam create-sink \
 
 This returns a sink ARN that looks like:
 
-```
+```text
 arn:aws:oam:us-east-1:999999999999:sink/abc123def456
 ```
 

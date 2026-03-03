@@ -83,7 +83,7 @@ pip install fastapi uvicorn python-jose[cryptography] passlib[bcrypt] \
 
 ### Project Structure
 
-```
+```text
 python-api-auth/
     app/
         __init__.py

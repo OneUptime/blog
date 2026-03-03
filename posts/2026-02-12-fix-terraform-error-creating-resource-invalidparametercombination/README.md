@@ -16,14 +16,14 @@ This error is frustrating because Terraform can't catch it during `plan`. It onl
 
 The error typically looks like:
 
-```
+```text
 Error: error creating EC2 Instance: InvalidParameterCombination:
   The parameter 'instanceType' is not valid for the given parameter 'ImageId'.
 ```
 
 Or:
 
-```
+```text
 Error: error creating RDS DB Instance: InvalidParameterCombination:
   RDS does not support creating a DB instance with the following combination:
   DBInstanceClass=db.t3.micro, Engine=oracle-ee, ...

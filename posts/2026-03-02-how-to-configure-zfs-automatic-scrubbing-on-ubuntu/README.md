@@ -38,7 +38,7 @@ sudo zpool status tank
 
 During a scrub, the status shows:
 
-```
+```text
   pool: tank
  state: ONLINE
   scan: scrub in progress since Mon Mar  2 02:00:02 2026
@@ -55,7 +55,7 @@ config:
 
 After completion:
 
-```
+```text
   scan: scrub repaired 0 in 00:45:23 with 0 errors on Mon Mar  2 02:45:23 2026
 ```
 
@@ -75,19 +75,19 @@ sudo zpool status -v tank
 
 If errors were found and repaired:
 
-```
+```text
   scan: scrub repaired 128K in 01:23:45 with 0 errors on Mon Mar  2 03:23:45 2026
 ```
 
 If unrepaired errors exist (only possible when there's no redundancy to repair from):
 
-```
+```text
   scan: scrub repaired 0 in 01:23:45 with 3 errors on Mon Mar  2 03:23:45 2026
 ```
 
 Look at the per-device error counts:
 
-```
+```text
         NAME        STATE     READ WRITE CKSUM
         tank        ONLINE       0     0     3
           sdb       ONLINE       0     0     3
@@ -105,7 +105,7 @@ Ubuntu with the `zfsutils-linux` package includes systemd timers for automatic s
 sudo systemctl list-timers | grep zfs
 ```
 
-```
+```text
 Mon 2026-03-16 00:00:00 UTC  13d 22h left  Mon 2026-03-02 01:00:00 UTC  -   zfs-scrub-monthly@tank.timer
 ```
 
@@ -117,7 +117,7 @@ By default, Ubuntu configures monthly scrubs via systemd timers when you create 
 sudo systemctl status zfs-scrub-monthly@tank.timer
 ```
 
-```
+```text
 zfs-scrub-monthly@tank.timer - Monthly zpool scrub for tank
      Loaded: loaded (/lib/systemd/system/zfs-scrub-monthly@.timer; enabled; vendor preset: enabled)
      Active: active (waiting) since Mon 2026-03-02 00:00:00 UTC; 1 month 2 days ago
@@ -262,7 +262,7 @@ sudo nano /etc/cron.d/zfs-scrub
 
 ### Healthy pool after scrub
 
-```
+```text
 scan: scrub repaired 0 in 02:13:47 with 0 errors on Sun Mar  1 03:13:47 2026
 ```
 
@@ -270,7 +270,7 @@ Nothing was repaired, no errors remain.
 
 ### Data was repaired
 
-```
+```text
 scan: scrub repaired 4.50K in 02:13:47 with 0 errors on Sun Mar  1 03:13:47 2026
 ```
 
@@ -278,7 +278,7 @@ Some data was corrupted and repaired from a redundant copy. The pool is healthy 
 
 ### Unrecoverable errors
 
-```
+```text
 scan: scrub repaired 0 in 02:13:47 with 5 errors on Sun Mar  1 03:13:47 2026
 ```
 

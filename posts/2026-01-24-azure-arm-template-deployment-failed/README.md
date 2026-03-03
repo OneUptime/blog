@@ -60,7 +60,7 @@ This error means your template has syntax issues or invalid references.
 ### Missing Required Parameters
 
 **Error Message:**
-```
+```text
 InvalidTemplate - Deployment template validation failed: 'The template parameters 'storageAccountName' in the parameters file are not valid; they are not present in the original template'
 ```
 
@@ -95,7 +95,7 @@ InvalidTemplate - Deployment template validation failed: 'The template parameter
 ### Invalid Resource Reference
 
 **Error Message:**
-```
+```text
 InvalidTemplate - Deployment template validation failed: 'The template reference 'storageAccount' is not valid'
 ```
 
@@ -145,7 +145,7 @@ This happens when referencing resources that do not exist yet or are in differen
 ### Missing Dependency
 
 **Error Message:**
-```
+```text
 ResourceNotFound - The Resource 'Microsoft.Storage/storageAccounts/mystorageaccount' under resource group 'rg-myapp' was not found.
 ```
 
@@ -210,7 +210,7 @@ This occurs when creating resources that already exist or have conflicting setti
 ### Resource Already Exists
 
 **Error Message:**
-```
+```text
 Conflict - The resource write operation failed to complete successfully, because it reached terminal provisioning state 'Failed'. Resource 'mystorageaccount' already exists.
 ```
 
@@ -264,7 +264,7 @@ Your subscription hit resource limits.
 ### VM Quota Exceeded
 
 **Error Message:**
-```
+```text
 QuotaExceeded - Operation could not be completed as it results in exceeding approved standardDSv3Family Cores quota.
 ```
 
@@ -305,7 +305,7 @@ Alternatively, modify template to use available VM sizes:
 Permission issues when accessing resources across subscriptions or tenants.
 
 **Error Message:**
-```
+```text
 LinkedAuthorizationFailed - The client 'xxx' with object id 'yyy' does not have authorization to perform action 'Microsoft.Network/virtualNetworks/subnets/join/action'
 ```
 

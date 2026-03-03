@@ -26,7 +26,7 @@ Each layer can have different TTL settings, and they don't always agree with eac
 
 CoreDNS has two relevant TTL settings. The first is the TTL it assigns to Kubernetes service records:
 
-```
+```text
 kubernetes cluster.local in-addr.arpa ip6.arpa {
    pods insecure
    fallthrough in-addr.arpa ip6.arpa
@@ -38,7 +38,7 @@ The `ttl 30` means Kubernetes service DNS records are served with a 30-second TT
 
 The second is the cache plugin TTL:
 
-```
+```text
 cache 30 {
     success 9984
     denial 9984
@@ -106,7 +106,7 @@ DNS TTL becomes critical during service migrations. If you're moving an external
 
 The total time before all traffic shifts depends on the maximum TTL across all caching layers:
 
-```
+```text
 Total migration time = max(app_cache_ttl, system_resolver_ttl, istio_dns_proxy_ttl, coredns_cache_ttl, envoy_dns_refresh_rate)
 ```
 
@@ -139,7 +139,7 @@ spec:
 
 Also reduce the CoreDNS cache for the specific domain:
 
-```
+```text
 dynamic-service.example.com:53 {
     forward . /etc/resolv.conf
     cache 5
@@ -222,7 +222,7 @@ Remember that the application's own DNS caching can override everything you conf
 
 For JVM applications, you might want to lower the cache TTL:
 
-```
+```text
 -Dnetworkaddress.cache.ttl=10
 ```
 

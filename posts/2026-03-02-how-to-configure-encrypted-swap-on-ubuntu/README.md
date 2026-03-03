@@ -49,11 +49,11 @@ grep swap /etc/fstab
 ```
 
 You might see a line like:
-```
+```text
 /dev/sda2   none   swap   sw   0   0
 ```
 or for a swap file:
-```
+```text
 /swapfile   none   swap   sw   0   0
 ```
 
@@ -82,7 +82,7 @@ sudo nano /etc/crypttab
 ```
 
 Add a line in this format:
-```
+```text
 # Format: name  device  key  options
 # For a swap partition (/dev/sda2):
 swap   /dev/sda2   /dev/urandom   swap,cipher=aes-xts-plain64,size=256,hash=sha256
@@ -105,7 +105,7 @@ sudo nano /etc/fstab
 ```
 
 Remove or comment out the old swap line and add:
-```
+```text
 # Old line (comment this out):
 # /dev/sda2   none   swap   sw   0   0
 
@@ -153,7 +153,7 @@ sudo losetup /dev/loop0 /swapfile
 sudo nano /etc/crypttab
 ```
 
-```
+```text
 # Use the loop device as the underlying block device
 swap   /dev/loop0   /dev/urandom   swap,cipher=aes-xts-plain64,size=256
 ```
@@ -180,13 +180,13 @@ sudo swapon /dev/mapper/swap
 
 Configure `/etc/crypttab` (without the `swap` option, and pointing to a keyfile or prompting for password):
 
-```
+```text
 # crypttab entry for persistent LUKS swap
 swap   /dev/sda2   none   luks
 ```
 
 And `/etc/fstab`:
-```
+```text
 /dev/mapper/swap   none   swap   sw   0   0
 ```
 

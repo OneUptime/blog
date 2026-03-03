@@ -20,7 +20,7 @@ argocd-application-controller-5f88b7c6d9-xxxxx      0/1     OOMKilled   15      
 
 Or in a crash loop:
 
-```
+```text
 CrashLoopBackOff (OOMKilled)
 ```
 

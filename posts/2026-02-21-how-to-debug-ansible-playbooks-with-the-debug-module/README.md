@@ -37,7 +37,7 @@ The `debug` module has two main parameters: `msg` for displaying messages and `v
 
 The output looks like:
 
-```
+```text
 TASK [Display a simple message] ************************************************
 ok: [web1.example.com] => {
     "msg": "Running on web1.example.com"

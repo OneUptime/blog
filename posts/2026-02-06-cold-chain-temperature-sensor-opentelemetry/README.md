@@ -14,7 +14,7 @@ The challenge is not just keeping things cold. It is proving that you kept thing
 
 A typical cold chain monitoring setup:
 
-```
+```text
 Temperature Sensors (in truck/container/warehouse)
     --> Gateway Device (cellular/WiFi/satellite)
         --> Cloud Ingestion API

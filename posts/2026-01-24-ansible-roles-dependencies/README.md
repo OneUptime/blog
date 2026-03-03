@@ -177,7 +177,7 @@ ansible-galaxy install -r requirements.yml -vvv
 
 ### Project Structure with Dependencies
 
-```
+```text
 project/
 ├── ansible.cfg
 ├── requirements.yml
@@ -359,7 +359,7 @@ graph LR
 ```
 
 **Error message:**
-```
+```text
 ERROR! A recursion loop was detected
 ```
 
@@ -386,7 +386,7 @@ dependencies:
 #### Problem 2: Missing Role Dependencies
 
 **Error message:**
-```
+```text
 ERROR! the role 'missing_role' was not found
 ```
 

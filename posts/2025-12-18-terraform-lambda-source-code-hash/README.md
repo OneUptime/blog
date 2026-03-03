@@ -14,7 +14,7 @@ One of the most frustrating Terraform issues is when `terraform plan` shows chan
 
 The `source_code_hash` attribute tells Terraform when to update a Lambda function. When it changes, Terraform redeploys the function. But sometimes this hash changes unexpectedly:
 
-```
+```text
 # aws_lambda_function.my_function will be updated in-place
 ~ resource "aws_lambda_function" "my_function" {
     ~ source_code_hash = "abc123..." -> "xyz789..."

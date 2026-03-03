@@ -204,7 +204,7 @@ The critical question for multi-region failover is: can the failover region hand
 
 Use this approach:
 
-```
+```text
 Failover region capacity needed =
   Local traffic + (Primary region traffic * expected failover percentage)
 ```
@@ -240,7 +240,7 @@ Note the `averageUtilization: 50` - this leaves headroom for traffic spikes duri
 
 Track traffic distribution across regions with Prometheus:
 
-```
+```text
 # Requests by destination region (approximate using workload labels)
 sum(rate(istio_requests_total{
   destination_service="checkout-service.default.svc.cluster.local"

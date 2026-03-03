@@ -365,7 +365,7 @@ func main() {
 
 Intentions are evaluated in a specific order based on specificity.
 
-```
+```text
 1. Exact source and destination match (highest priority)
 2. Wildcard source with exact destination
 3. Exact source with wildcard destination

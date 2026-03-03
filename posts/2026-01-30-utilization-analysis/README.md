@@ -29,7 +29,7 @@ Utilization analysis measures how effectively your provisioned resources are bei
 
 ### The Utilization Spectrum
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        UTILIZATION SPECTRUM                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤

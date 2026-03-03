@@ -22,7 +22,7 @@ The result:
 kubectl get pods -l job-name=my-job
 ```
 
-```
+```text
 NAME           READY   STATUS    RESTARTS   AGE
 my-job-abc12   1/2     Running   0          45m
 ```

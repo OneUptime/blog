@@ -168,7 +168,7 @@ With KubeSpan enabled:
 
 ### API Encryption
 
-```
+```text
 All API communication is TLS-encrypted:
 - Talos API (port 50000): mTLS
 - Kubernetes API (port 6443): mTLS
@@ -203,7 +203,7 @@ Zero trust means verifying not just identity but also integrity. Talos Linux ver
 
 ### Boot Verification (SecureBoot)
 
-```
+```text
 UEFI Firmware
   |-- Verifies bootloader signature
        |-- Verifies kernel signature

@@ -345,7 +345,7 @@ flowchart TB
 
 ### Test Directory Structure
 
-```
+```text
 myapp/
   templates/
     tests/

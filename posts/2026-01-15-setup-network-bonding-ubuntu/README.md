@@ -245,7 +245,7 @@ ip link show
 
 ### Expected Output
 
-```
+```text
 $ cat /proc/net/bonding/bond0
 Ethernet Channel Bonding Driver: v5.15.0
 

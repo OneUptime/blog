@@ -10,7 +10,7 @@ Description: Fix the Terraform error where a reference to a resource type must b
 
 You are writing or editing Terraform code and you get this error:
 
-```
+```text
 Error: Invalid reference
 
 on main.tf line 25:
@@ -26,7 +26,7 @@ This error is telling you that you referenced a resource type (like `aws_vpc`) w
 
 In Terraform, every resource reference follows this pattern:
 
-```
+```text
 <resource_type>.<resource_name>.<attribute>
 ```
 
@@ -261,7 +261,7 @@ resource "aws_subnet" "private" {
 
 Terraform will give you a different error for this case:
 
-```
+```text
 Error: Reference to undeclared resource
 
 A managed resource "aws_vpc" "mian" has not been declared in the root module.

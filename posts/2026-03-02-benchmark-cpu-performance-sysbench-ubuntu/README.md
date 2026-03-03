@@ -47,7 +47,7 @@ sysbench cpu --cpu-max-prime=20000 --threads=1 --time=60 run
 ```
 
 Example output:
-```
+```text
 CPU speed:
     events per second:  1042.73
 

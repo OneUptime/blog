@@ -58,7 +58,7 @@ cat /var/log/ansible/hosts/web-01
 
 Output:
 
-```
+```text
 2026-02-21 10:15:23 - TASK: Gathering Facts - OK
 2026-02-21 10:15:35 - TASK: Install nginx - OK (changed=false)
 2026-02-21 10:15:36 - TASK: Deploy nginx config - CHANGED
@@ -100,7 +100,7 @@ When something breaks, the per-host logs tell you exactly what happened and when
 tail -50 /var/log/ansible/hosts/web-03
 ```
 
-```
+```text
 2026-02-18 14:30:00 - TASK: Gathering Facts - OK
 2026-02-18 14:30:12 - TASK: Update apt cache - OK
 2026-02-18 14:30:15 - TASK: Upgrade packages - CHANGED
@@ -170,7 +170,7 @@ Every run of this playbook gets logged per host, creating a timeline of complian
 
 The log files grow indefinitely since each run appends to them. Set up log rotation:
 
-```
+```text
 # /etc/logrotate.d/ansible-logs - Rotate Ansible per-host logs
 /var/log/ansible/hosts/* {
     monthly

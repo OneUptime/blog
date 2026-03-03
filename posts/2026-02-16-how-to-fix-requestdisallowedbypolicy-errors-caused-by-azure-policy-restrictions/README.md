@@ -10,7 +10,7 @@ Description: Diagnose and resolve RequestDisallowedByPolicy errors in Azure by i
 
 You try to create a resource in Azure and get this:
 
-```
+```text
 RequestDisallowedByPolicy - Resource 'my-storage-account' was disallowed by policy.
 Policy identifiers: '[policyDefinitionId]'
 ```

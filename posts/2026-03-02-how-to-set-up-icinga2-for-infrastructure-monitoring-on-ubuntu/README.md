@@ -144,7 +144,7 @@ ls /etc/icinga2/conf.d/
 sudo nano /etc/icinga2/conf.d/hosts.conf
 ```
 
-```
+```text
 // Monitor a specific server
 object Host "webserver01" {
     // The address for checks
@@ -186,7 +186,7 @@ object Host "database01" {
 sudo nano /etc/icinga2/conf.d/services.conf
 ```
 
-```
+```text
 // Apply rule - add this service to all hosts with vars.os == "Linux"
 apply Service "ssh" {
     check_command = "ssh"
@@ -260,7 +260,7 @@ sudo apt install msmtp msmtp-mta
 sudo nano /etc/msmtprc
 ```
 
-```
+```text
 # msmtp configuration for icinga notifications
 account default
 host smtp.gmail.com
@@ -280,7 +280,7 @@ logfile /var/log/msmtp.log
 sudo nano /etc/icinga2/conf.d/users.conf
 ```
 
-```
+```text
 object User "ops-team" {
     display_name = "Ops Team"
     email = "ops@example.com"
@@ -294,7 +294,7 @@ object User "ops-team" {
 sudo nano /etc/icinga2/conf.d/notifications.conf
 ```
 
-```
+```text
 // Apply notification to all services
 apply Notification "mail-service" to Service {
     command = "mail-service-notification"
@@ -371,7 +371,7 @@ sudo icinga2 ca sign agent-hostname
 sudo nano /etc/icinga2/conf.d/hosts.conf
 ```
 
-```
+```text
 object Endpoint "agent-hostname" {
     host = "192.168.1.70"
 }

@@ -34,7 +34,7 @@ helm search repo istio
 
 You should see output like:
 
-```
+```text
 NAME            CHART VERSION   APP VERSION   DESCRIPTION
 istio/base      1.22.0          1.22.0        Istio Base Chart
 istio/istiod    1.22.0          1.22.0        Istio Control Plane

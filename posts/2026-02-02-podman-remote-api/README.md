@@ -216,7 +216,7 @@ podman system connection list
 
 Output:
 
-```
+```text
 Name           URI                                                     Identity     Default
 my-server      ssh://username@podman-host.example.com/run/user/1000/podman/podman.sock  ~/.ssh/id_rsa  true
 my-server-root ssh://root@podman-host.example.com/run/podman/podman.sock                ~/.ssh/id_rsa  false

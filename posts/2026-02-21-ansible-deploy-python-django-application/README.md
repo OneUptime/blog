@@ -28,7 +28,7 @@ Our Ansible deployment will handle:
 
 ## Project Structure
 
-```
+```text
 django-deploy/
   inventory/
     production.yml

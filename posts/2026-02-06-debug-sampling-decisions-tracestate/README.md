@@ -20,7 +20,7 @@ This guide shows you how to make sampling decisions visible using the W3C `trace
 
 The W3C Trace Context specification defines two headers: `traceparent` and `tracestate`. Most people know `traceparent`, which carries the trace ID, span ID, and sampled flag. Fewer people use `tracestate`, which is a vendor-neutral key-value store that propagates alongside the trace.
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 tracestate: ot=s:1;r:0.1;d:error_sampler,company=sampling_debug
 ```
@@ -424,22 +424,22 @@ Wrap any sampler with `AuditingSampler` to get detailed attributes on every samp
 Once sampling debug attributes are on your spans, you can query them.
 
 Find all traces sampled because of errors:
-```
+```text
 sampling.decision_by = "error_sampler"
 ```
 
 Find traces where the rate limiter dropped spans:
-```
+```text
 sampling.rate_limited = true
 ```
 
 Find traces where no specialized sampler matched (fell through to baseline):
-```
+```text
 sampling.decision_by = "ratio_10pct"
 ```
 
 Find traces with a specific evaluation path:
-```
+```text
 sampling.evaluation_log contains "error_sampler:PASS"
 ```
 

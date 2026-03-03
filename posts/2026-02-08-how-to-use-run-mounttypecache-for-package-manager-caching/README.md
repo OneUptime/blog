@@ -334,7 +334,7 @@ time docker build -t test-cache -f Dockerfile.cache .
 
 Typical results for a Python project with 100 dependencies:
 
-```
+```text
 Without cache mounts: 120 seconds (every rebuild)
 With cache mounts (first build): 120 seconds
 With cache mounts (rebuild): 15 seconds

@@ -12,7 +12,7 @@ The "kustomize build failed" error in ArgoCD appears when the repo server cannot
 
 You will see something like:
 
-```
+```text
 rpc error: code = Unknown desc = `kustomize build` failed:
 Error: accumulating resources: accumulating resources from 'deployment.yaml':
 evalsymlink failure on '/tmp/repo/deployment.yaml' : lstat deployment.yaml: no such file or directory
@@ -41,7 +41,7 @@ This gives you immediate feedback without waiting for ArgoCD reconciliation cycl
 
 The most common cause. A file referenced in `kustomization.yaml` does not exist:
 
-```
+```text
 Error: accumulating resources from 'deployment.yaml': no such file or directory
 ```
 
@@ -72,7 +72,7 @@ grep -A20 "resources:" kustomization.yaml
 
 Patches that reference fields or resources incorrectly:
 
-```
+```text
 Error: no matches for OriginalId apps~v1~Deployment|~|my-deployment
 ```
 
@@ -117,7 +117,7 @@ patches:
 
 If using overlays that reference a base:
 
-```
+```text
 Error: accumulating resources from '../base': evalsymlink failure
 ```
 
@@ -131,7 +131,7 @@ resources:
 
 **Fix by verifying the directory structure:**
 
-```
+```text
 repo/
   base/
     kustomization.yaml
@@ -210,7 +210,7 @@ resources:
 
 And ArgoCD cannot fetch it:
 
-```
+```text
 Error: accumulating resources from 'https://github.com/org/shared-base//base?ref=v1.0.0':
 unable to access 'https://github.com/org/shared-base/': Authentication required
 ```
@@ -248,7 +248,7 @@ resources:
 
 Invalid YAML in resource files:
 
-```
+```text
 Error: YAML parse error in deployment.yaml: yaml: line 15: found character that cannot start any token
 ```
 
@@ -280,7 +280,7 @@ yamllint overlay/production/
 
 Two files defining the same resource:
 
-```
+```text
 Error: may not add resource with an already registered id: apps_v1_Deployment|~|my-deployment
 ```
 
@@ -294,7 +294,7 @@ grep -rn "kind: Deployment" . | grep "name: my-deployment"
 
 The `kustomization.yaml` file itself has structural issues:
 
-```
+```text
 Error: invalid Kustomization: json: cannot unmarshal string into Go value of type types.Kustomization
 ```
 

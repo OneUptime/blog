@@ -122,7 +122,7 @@ rclone config
 
 You will see a menu like this:
 
-```
+```text
 No remotes found, make a new one?
 n) New remote
 s) Set configuration password

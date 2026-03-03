@@ -38,7 +38,7 @@ Nginx terminates TLS and proxies requests to the Docker registry running on port
 
 ## Directory Structure
 
-```
+```text
 docker-registry/
 ├── docker-compose.yml
 ├── nginx/

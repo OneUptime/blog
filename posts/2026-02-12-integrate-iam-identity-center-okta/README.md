@@ -65,7 +65,7 @@ On the "Sign-On Options" tab:
 
 In the Okta application's SAML settings, add these attribute statements:
 
-```
+```text
 Name                                            Value
 ----                                            -----
 Subject (NameID)                                user.email
@@ -108,7 +108,7 @@ Enable these features:
 
 The attribute mappings should be pre-configured, but verify them:
 
-```
+```text
 Okta Attribute              -> Identity Center Attribute
 ---------------------------------------------------------
 userName                    -> userName
@@ -204,7 +204,7 @@ One of the biggest advantages of the Okta integration is leveraging Okta's MFA p
 
 You can create different MFA requirements for different groups:
 
-```
+```text
 Rule: Platform team AWS access
   IF: Group is "Platform-Admins"
   THEN: Require Okta Verify + biometric

@@ -20,7 +20,7 @@ argocd-repo-server-7f8b5c9d6-xxxxx      0/1     OOMKilled   8          1h
 
 And applications will show errors like:
 
-```
+```text
 ComparisonError: failed to generate manifests: rpc error: code = Unavailable
 ```
 
@@ -275,7 +275,7 @@ curl localhost:8084/metrics | grep -E "process_resident|go_memstats"
 
 **Key metrics to watch:**
 
-```
+```text
 # Current memory usage
 process_resident_memory_bytes
 

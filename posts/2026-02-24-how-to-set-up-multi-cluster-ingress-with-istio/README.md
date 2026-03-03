@@ -171,7 +171,7 @@ This approach is simpler but creates a single point of failure at the ingress cl
 
 For production environments, put a global load balancer (like AWS Global Accelerator, Google Cloud Global Load Balancer, or Cloudflare) in front of the Istio ingress gateways:
 
-```
+```text
 Internet -> Global LB -> Istio Ingress (cluster1)
                       -> Istio Ingress (cluster2)
 ```

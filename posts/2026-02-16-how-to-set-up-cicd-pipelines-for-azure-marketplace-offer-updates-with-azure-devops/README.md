@@ -36,7 +36,7 @@ The CI pipeline handles validation, testing, and packaging. The CD pipeline hand
 
 Organize your repository so the pipeline knows where to find everything:
 
-```
+```text
 marketplace-app/
   src/
     mainTemplate.json        # ARM deployment template

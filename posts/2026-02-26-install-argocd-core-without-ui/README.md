@@ -61,7 +61,7 @@ kubectl get pods -n argocd
 
 You should see something like:
 
-```
+```text
 NAME                                  READY   STATUS    RESTARTS   AGE
 argocd-application-controller-0       1/1     Running   0          1m
 argocd-redis-5b6967fdfc-xxxxx         1/1     Running   0          1m

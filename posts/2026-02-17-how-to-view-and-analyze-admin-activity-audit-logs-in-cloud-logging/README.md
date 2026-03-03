@@ -37,7 +37,7 @@ What they do NOT capture:
 1. Go to **Logging** > **Logs Explorer**
 2. In the query editor, enter:
 
-```
+```text
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 ```
 
@@ -67,14 +67,14 @@ The real power comes from filtering. Here are the most useful filter patterns.
 
 Find out what a specific person did:
 
-```
+```text
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.authenticationInfo.principalEmail="user@company.com"
 ```
 
 Track service account activity:
 
-```
+```text
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.authenticationInfo.principalEmail="terraform@my-project.iam.gserviceaccount.com"
 ```
@@ -83,13 +83,13 @@ protoPayload.authenticationInfo.principalEmail="terraform@my-project.iam.gservic
 
 See all changes to a specific GCP service:
 
-```
+```text
 # All Compute Engine administrative changes
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.serviceName="compute.googleapis.com"
 ```
 
-```
+```text
 # All IAM changes
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.serviceName="iam.googleapis.com"
@@ -99,13 +99,13 @@ protoPayload.serviceName="iam.googleapis.com"
 
 Look for specific types of operations:
 
-```
+```text
 # All resource deletions across any service
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.methodName=~"delete"
 ```
 
-```
+```text
 # IAM policy changes specifically
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.methodName="SetIamPolicy"
@@ -115,7 +115,7 @@ protoPayload.methodName="SetIamPolicy"
 
 Track changes to a specific resource:
 
-```
+```text
 # Changes to a specific VM instance
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.resourceName=~"instances/my-production-vm"
@@ -125,7 +125,7 @@ protoPayload.resourceName=~"instances/my-production-vm"
 
 Combine with timestamp for incident investigation:
 
-```
+```text
 # Changes during a specific incident window
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 timestamp>="2026-02-17T10:00:00Z"
@@ -138,7 +138,7 @@ timestamp<="2026-02-17T12:00:00Z"
 
 During a security incident, one of the first things to check is whether firewall rules were modified:
 
-```
+```text
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.serviceName="compute.googleapis.com"
 protoPayload.methodName=~"firewalls"
@@ -150,7 +150,7 @@ This shows all firewall create, update, and delete operations.
 
 Track permission changes - critical for access reviews and incident response:
 
-```
+```text
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.methodName="SetIamPolicy"
 ```
@@ -161,7 +161,7 @@ The log entry includes both the old and new policy, so you can see exactly what 
 
 Find out who deleted a resource that should not have been deleted:
 
-```
+```text
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.methodName=~"\.delete$"
 severity="NOTICE"
@@ -171,7 +171,7 @@ severity="NOTICE"
 
 See all deployments to Cloud Run or App Engine:
 
-```
+```text
 # Cloud Run deployments
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 protoPayload.serviceName="run.googleapis.com"

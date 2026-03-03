@@ -21,7 +21,7 @@ Before diving in, let us understand when building a custom framework makes sense
 
 ## Project Structure
 
-```
+```text
 test-framework/
   src/
     core/

@@ -143,7 +143,7 @@ The auto-pause feature has some nuances that are important to understand.
 
 Here is how to handle the resume delay in your application's connection string:
 
-```
+```text
 Server=myserver.database.windows.net;Database=mydb;Connection Timeout=60;...
 ```
 

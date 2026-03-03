@@ -14,7 +14,7 @@ This post covers instrumenting tRPC in a monorepo setup where the client (Next.j
 
 A typical tRPC monorepo looks like this:
 
-```
+```text
 packages/
   api/          # tRPC router definitions
   web/          # Next.js frontend

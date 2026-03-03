@@ -14,7 +14,7 @@ The `default` callback plugin is what you see every time you run an Ansible play
 
 Every time Ansible runs a task, the callback plugin receives events: playbook started, task started, host ok, host failed, host unreachable, play recap. The `default` callback formats these events into human-readable output. It is the reason you see lines like:
 
-```
+```text
 TASK [Install nginx] *********************************************************
 ok: [web-01]
 changed: [web-02]
@@ -96,13 +96,13 @@ callback_result_format = yaml
 
 Compare the output difference. Default (Python dict) format:
 
-```
+```text
 ok: [web-01] => {"changed": false, "msg": "All items completed", "results": [{"changed": false, "item": "nginx"}]}
 ```
 
 YAML format:
 
-```
+```text
 ok: [web-01] =>
   changed: false
   msg: All items completed
@@ -125,7 +125,7 @@ display_skipped_hosts = False
 
 Here is a practical example. With `display_skipped_hosts = True` (the default):
 
-```
+```text
 TASK [Install apt packages] **************************************************
 skipped: [db-01]
 skipped: [db-02]
@@ -141,7 +141,7 @@ skipped: [web-02]
 
 With `display_skipped_hosts = False`:
 
-```
+```text
 TASK [Install apt packages] **************************************************
 ok: [web-01]
 ok: [web-02]
@@ -197,7 +197,7 @@ show_custom_stats = True
 
 The recap then includes your custom data:
 
-```
+```text
 PLAY RECAP *******************************************************************
 web-01  : ok=3  changed=1  unreachable=0  failed=0
 web-02  : ok=3  changed=1  unreachable=0  failed=0
@@ -218,7 +218,7 @@ ansible-playbook site.yml --diff
 
 This produces output like:
 
-```
+```text
 TASK [Update nginx config] ***************************************************
 --- before: /etc/nginx/nginx.conf
 +++ after: /tmp/ansible_temp/nginx.conf

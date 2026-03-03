@@ -16,7 +16,7 @@ This guide covers how to figure out what went wrong and the most common fixes fo
 
 Every command in a `RUN` instruction must exit with code 0 for the build to continue. Any non-zero exit code stops the build immediately. The error looks like this:
 
-```
+```text
 ------
  > [stage 5/8] RUN npm install:
 #8 12.45 npm ERR! code ENETUNREACH
@@ -147,7 +147,7 @@ RUN npm ci --no-audit --no-fund || \
 
 The command you are trying to run does not exist in the image.
 
-```
+```text
 /bin/sh: some-command: not found
 The command '/bin/sh -c some-command' returned a non-zero code: 127
 ```

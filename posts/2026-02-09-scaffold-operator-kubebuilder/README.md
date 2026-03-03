@@ -48,7 +48,7 @@ kubebuilder init \
 
 This creates the project structure.
 
-```
+```text
 application-operator/
 ├── Dockerfile
 ├── Makefile
@@ -423,7 +423,7 @@ go tool cover -html=cover.out
 
 Understanding the generated structure helps customize it.
 
-```
+```text
 ├── api/v1/              # API type definitions
 ├── config/              # Kubernetes manifests
 │   ├── crd/            # CRD definitions

@@ -36,7 +36,7 @@ sudo visudo -f /etc/sudoers.d/ansible
 
 Here is what each part means:
 
-```
+```text
 deploy     ALL=(ALL) NOPASSWD: ALL
 |          |   |     |         |
 |          |   |     |         +-- Can run any command
@@ -120,7 +120,7 @@ The important settings are `become_ask_pass = false` (never prompt for a sudo pa
 
 Giving a user NOPASSWD access to ALL commands is the easiest setup, but it is not the most secure. You can restrict which commands the Ansible user can run without a password.
 
-```
+```text
 # /etc/sudoers.d/ansible-restricted
 # Only allow specific commands without a password
 deploy ALL=(ALL) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dpkg

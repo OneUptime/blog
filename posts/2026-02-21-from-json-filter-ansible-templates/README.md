@@ -23,7 +23,7 @@ Port: {{ data.port }}
 
 Output:
 
-```
+```text
 Name: myapp
 Port: 8080
 ```

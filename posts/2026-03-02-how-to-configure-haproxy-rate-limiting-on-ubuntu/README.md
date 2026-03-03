@@ -39,7 +39,7 @@ Limit the number of new connections per IP per time window:
 sudo nano /etc/haproxy/haproxy.cfg
 ```
 
-```
+```text
 global
     log /dev/log local0
     maxconn 50000
@@ -92,7 +92,7 @@ backend app_backend
 
 Different endpoints may need different limits. An authentication endpoint needs tighter limits than a general API:
 
-```
+```text
 backend per_url_limits
     # This table tracks requests indexed by IP+path combination
     stick-table type binary len 64 size 500k expire 1m store http_req_rate(60s)
@@ -122,7 +122,7 @@ frontend smart_rate_limit
 
 Block clients generating too many errors (scraping, fuzzing, etc.):
 
-```
+```text
 backend error_tracking
     stick-table type ip size 200k expire 5m store http_err_rate(1m),http_req_rate(1m)
 
@@ -153,7 +153,7 @@ frontend with_error_tracking
 
 For repeat offenders, add them to a ban list:
 
-```
+```text
 global
     # Size of the ban table
     tune.stick-counters 8
@@ -205,7 +205,7 @@ echo "show table ban_list" | sudo socat - /run/haproxy/admin.sock
 
 Return informative responses with the Retry-After header:
 
-```
+```text
 frontend friendly_rate_limit
     bind *:80
 
@@ -228,7 +228,7 @@ frontend friendly_rate_limit
 
 HAProxy stick tables support these counters:
 
-```
+```text
 conn_cur          - Current concurrent connections from this key
 conn_rate(period) - Connection rate over the period
 conn_cnt          - Total connection count
@@ -262,7 +262,7 @@ sudo journalctl -u haproxy -f | grep "429"
 
 ## Full Production Configuration Example
 
-```
+```text
 global
     log /dev/log local0
     log /dev/log local1 notice

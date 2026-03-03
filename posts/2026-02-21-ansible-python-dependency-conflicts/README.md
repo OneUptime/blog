@@ -39,7 +39,7 @@ Some Ansible modules require specific libraries:
 
 The controller node needs different packages than remote hosts:
 
-```
+```text
 Controller: ansible-core, jinja2, PyYAML, paramiko
 Remote: just Python + minimal libraries for module execution
 ```
@@ -91,7 +91,7 @@ pip install ansible==9.0.0
 
 Create a constraints file:
 
-```
+```text
 # constraints.txt
 PyYAML>=6.0,<7.0
 cryptography>=41.0,<43.0

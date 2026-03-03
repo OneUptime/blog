@@ -47,7 +47,7 @@ Each status processor handles one application at a time. With 20 processors (the
 
 ### Choosing the Right Status Processor Count
 
-```
+```text
 Recommended status processors = Total applications / 10
 ```
 
@@ -82,7 +82,7 @@ Operation processors are typically set lower than status processors because sync
 
 ### Choosing the Right Operation Processor Count
 
-```
+```text
 Recommended operation processors = Status processors / 2
 ```
 
@@ -219,7 +219,7 @@ data:
 
 Controller parallelism directly affects repo server load. Each status processor may trigger a manifest generation request to the repo server:
 
-```
+```text
 Maximum repo server requests = Status processors * (1 / Cache hit rate)
 ```
 

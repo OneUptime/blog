@@ -70,7 +70,7 @@ Here is a playbook demonstrating all sections:
 
 This produces:
 
-```
+```text
 1. Pre-task: Disable monitoring alerts
 2. Handler from pre_task
 3. Role tasks (webserver role)

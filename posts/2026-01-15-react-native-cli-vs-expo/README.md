@@ -32,7 +32,7 @@ npx react-native@latest init MyProject
 
 After running this command, your project structure will look like this:
 
-```
+```text
 MyProject/
 ├── android/
 │   ├── app/
@@ -617,7 +617,7 @@ npx expo prebuild
 
 This generates the native directories while maintaining Expo tooling. Your project structure becomes:
 
-```
+```text
 MyProject/
 ├── android/
 ├── ios/
@@ -786,7 +786,7 @@ The skill requirements differ significantly between the two approaches.
 - Performance optimization techniques
 
 **Team Composition Example:**
-```
+```text
 - 2-3 React Native developers
 - 1 iOS specialist (part-time or on-call)
 - 1 Android specialist (part-time or on-call)
@@ -807,7 +807,7 @@ The skill requirements differ significantly between the two approaches.
 - Web development (for cross-platform support)
 
 **Team Composition Example:**
-```
+```text
 - 2-3 JavaScript/TypeScript developers
 - No dedicated native specialists required
 - (Optional) DevOps for custom CI/CD

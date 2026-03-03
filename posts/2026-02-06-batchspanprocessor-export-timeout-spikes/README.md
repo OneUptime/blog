@@ -127,14 +127,14 @@ The processor timeout should always be larger than the exporter timeout. If the 
 
 Start with your backend's typical response time and add headroom:
 
-```
+```text
 exporter_timeout = p99_backend_latency * 2
 processor_timeout = exporter_timeout + 5 seconds
 ```
 
 If your Collector typically responds in 200ms at p99, set the exporter timeout to 400ms... wait, that is too aggressive. In practice, during traffic spikes the backend latency can increase 10-50x. A safer formula:
 
-```
+```text
 exporter_timeout = max(p99_backend_latency * 10, 5 seconds)
 processor_timeout = exporter_timeout + 5 seconds
 ```
@@ -143,13 +143,13 @@ processor_timeout = exporter_timeout + 5 seconds
 
 The timeout and queue must work together. During a backend slowdown, the queue needs to be large enough to buffer spans while exports are retried:
 
-```
+```text
 buffer_duration = timeout * (maxQueueSize / maxExportBatchSize)
 ```
 
 With a 15-second timeout, queue of 16384, and batch size of 1024:
 
-```
+```text
 buffer_duration = 15 * (16384 / 1024) = 240 seconds = 4 minutes
 ```
 

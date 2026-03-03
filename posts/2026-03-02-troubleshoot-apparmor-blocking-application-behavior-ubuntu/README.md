@@ -61,7 +61,7 @@ sudo ausearch -m AVC --start recent | grep apparmor
 
 If you see lines like this, AppArmor is definitely involved:
 
-```
+```text
 kernel: audit: type=1400 audit(1709000000.123:456): apparmor="DENIED" operation="open" profile="/usr/bin/myapp" name="/var/data/file.dat" pid=1234 comm="myapp" requested_mask="r" denied_mask="r"
 ```
 
@@ -225,19 +225,19 @@ snap connect myapp:network
 
 Some denials are harder to interpret. Here's a reference:
 
-```
+```text
 apparmor="DENIED" operation="exec" profile="/usr/bin/shell" name="/usr/bin/something" pid=123 comm="shell" requested_mask="x" denied_mask="x"
 ```
 
 `operation="exec"` - the profile blocked execution of another binary. The profile needs an `x` rule for that binary.
 
-```
+```text
 apparmor="DENIED" operation="connect" profile="/usr/bin/myapp" pid=123 comm="myapp" family="inet" sock_type="stream" protocol=6
 ```
 
 `operation="connect"` - outbound network connection was blocked. The profile needs `network inet tcp,` or similar.
 
-```
+```text
 apparmor="DENIED" operation="ptrace" profile="/usr/bin/myapp" pid=123 comm="myapp" requested_mask="read" peer="/usr/bin/myapp"
 ```
 

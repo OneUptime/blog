@@ -18,7 +18,7 @@ TraceZ organizes spans into three categories: running spans (in-flight operation
 
 The latency buckets follow a predefined set of ranges:
 
-```
+```text
 [0us, 10us)
 [10us, 100us)
 [100us, 1ms)
@@ -115,7 +115,7 @@ Let me walk through a real debugging scenario. You have a web service that norma
 
 Step one: open TraceZ in your browser.
 
-```
+```text
 http://your-service-host:8888/debug/tracez
 ```
 
@@ -134,7 +134,7 @@ Step two: click on the span name that shows counts in the [1s, 10s) bucket. Trac
 
 Step three: look at the span attributes. In our example, you might see something like this in the span details:
 
-```
+```text
 Span Name: HTTP GET /api/users
 Duration: 3.2s
 Attributes:

@@ -91,7 +91,7 @@ docker wait task-1 task-2 task-3
 
 The output is one exit code per line:
 
-```
+```text
 0
 0
 1

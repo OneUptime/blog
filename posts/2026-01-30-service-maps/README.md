@@ -209,7 +209,7 @@ process.on('SIGTERM', () => {
 
 Consistent naming is essential for clean service maps. Establish a convention like:
 
-```
+```text
 {team}-{domain}-{type}
 ```
 

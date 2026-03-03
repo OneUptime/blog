@@ -60,7 +60,7 @@ Emacs documentation uses specific notation:
 
 ## Essential File Operations
 
-```
+```text
 C-x C-f     - Find file (open file, prompting for path)
 C-x C-s     - Save current buffer to file
 C-x C-w     - Write to a different filename (Save As)
@@ -74,7 +74,7 @@ When you press `C-x C-f`, Emacs shows a minibuffer prompt where you type the pat
 
 ### Cursor Movement
 
-```
+```text
 C-f         - Forward one character
 C-b         - Backward one character
 C-n         - Next line (down)
@@ -92,7 +92,7 @@ C-l         - Center screen on current line
 
 ### Jumping to Positions
 
-```
+```text
 M-g M-g     - Go to line number (type number, press Enter)
 C-s         - Forward incremental search (continue searching with C-s)
 C-r         - Backward incremental search
@@ -102,7 +102,7 @@ C-r         - Backward incremental search
 
 ### Inserting and Deleting
 
-```
+```text
 (just type)  - Insert text at cursor
 Backspace    - Delete character before cursor
 C-d          - Delete character under cursor
@@ -117,20 +117,20 @@ C-w          - Kill (cut) selected region
 
 Emacs uses a "kill ring" - a history of cut items. Paste from it with `C-y` (yank):
 
-```
+```text
 C-y         - Yank (paste) most recently killed text
 M-y         - After C-y, cycle through kill ring (paste older items)
 ```
 
 ### Copy Without Cutting
 
-```
+```text
 M-w         - Copy selected region to kill ring (without deleting)
 ```
 
 ### Undo
 
-```
+```text
 C-/         - Undo
 C-x u       - Undo (alternative)
 C-_         - Undo (alternative)
@@ -140,7 +140,7 @@ Emacs undo is linear - repeated undo goes back, but after inserting text you can
 
 ## Selecting Text (Regions)
 
-```
+```text
 C-Space     - Set mark (start of selection)
 C-Space C-Space  - Set mark without activating region
 C-x C-x     - Swap point and mark (jump to start of selection)
@@ -154,7 +154,7 @@ Shift + arrow keys also select text in modern Emacs.
 
 Emacs calls open files "buffers." Multiple files can be open simultaneously.
 
-```
+```text
 C-x b       - Switch to buffer (type buffer name, Tab to complete)
 C-x C-b     - List all buffers
 C-x k       - Kill (close) current buffer
@@ -162,7 +162,7 @@ M-x ibuffer - Better buffer list with sorting and filtering
 ```
 
 In the buffer list (`C-x C-b`):
-```
+```text
 d           - Mark buffer for deletion
 k           - Kill (close) buffer immediately
 s           - Mark buffer to save
@@ -174,7 +174,7 @@ q           - Quit buffer list
 
 Emacs splits the screen into "windows" (not to be confused with OS windows):
 
-```
+```text
 C-x 2       - Split window horizontally (stacked top/bottom)
 C-x 3       - Split window vertically (side by side)
 C-x 1       - Keep only current window (close all splits)
@@ -187,7 +187,7 @@ C-x 4 f     - Open file in other window
 
 ### Incremental Search
 
-```
+```text
 C-s         - Start forward search (type pattern, C-s for next match)
 C-r         - Start backward search
 Enter       - End search, stay at match
@@ -196,20 +196,20 @@ C-g         - Cancel search, return to original position
 
 Search supports regular expressions:
 
-```
+```text
 C-M-s       - Forward regex search
 C-M-r       - Backward regex search
 ```
 
 ### Find and Replace
 
-```
+```text
 M-%         - Query replace (interactive)
 C-M-%       - Query replace with regex
 ```
 
 During query replace:
-```
+```text
 y / Space   - Replace this match and advance
 n           - Skip this match
 !           - Replace all remaining without asking
@@ -221,7 +221,7 @@ q           - Quit replace
 
 The `M-x` prompt runs any Emacs command by name:
 
-```
+```text
 M-x shell          - Open a shell inside Emacs
 M-x eshell         - Emacs built-in shell
 M-x dired          - Directory editor (file manager)
@@ -273,13 +273,13 @@ M-x goto-line      - Go to line number
 
 ## Using Dired (File Manager)
 
-```
+```text
 M-x dired   - Open directory browser
 C-x d       - Open dired for a path
 ```
 
 Inside Dired:
-```
+```text
 n / p       - Next / previous file
 Enter       - Open file or directory
 d           - Mark for deletion
@@ -292,7 +292,7 @@ q           - Quit dired
 
 ## Getting Help Inside Emacs
 
-```
+```text
 C-h k       - Describe what a key binding does
 C-h f       - Describe a function
 C-h v       - Describe a variable
@@ -305,7 +305,7 @@ The built-in tutorial (`C-h t`) is an excellent 30-minute interactive introducti
 
 ## Quick Reference
 
-```
+```text
 Save:       C-x C-s
 Open:       C-x C-f
 Quit:       C-x C-c

@@ -315,7 +315,7 @@ CMD ["dumb-init", "node", "dist/index.js"]
 
 The .dockerignore file excludes files from the build context sent to the Docker daemon. This speeds up builds and prevents sensitive files from accidentally being included in images.
 
-```
+```text
 # .dockerignore
 
 # Dependencies

@@ -35,7 +35,7 @@ django-admin startproject myproject .
 
 Create a `requirements.txt` file listing your dependencies:
 
-```
+```text
 Django>=5.0,<6.0
 gunicorn>=22.0
 psycopg2-binary>=2.9
@@ -104,7 +104,7 @@ CMD ["gunicorn", "myproject.wsgi:application", "--bind", "0.0.0.0:8000", "--work
 
 Python projects can have large virtual environments and cache directories:
 
-```
+```text
 venv
 __pycache__
 *.pyc

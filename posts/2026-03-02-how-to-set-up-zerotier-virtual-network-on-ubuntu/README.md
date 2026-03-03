@@ -54,7 +54,7 @@ sudo zerotier-cli info
 ```
 
 The output of `zerotier-cli info` looks like:
-```
+```text
 200 info a1b2c3d4e5 1.12.2 ONLINE
 ```
 

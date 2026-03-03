@@ -60,7 +60,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 healthcare-platform-config/
   infrastructure/
     vault/

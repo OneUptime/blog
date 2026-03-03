@@ -448,7 +448,7 @@ const response = await fetch('http://service-b/api/data', {
 ```
 
 OpenTelemetry automatically adds headers:
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 tracestate: vendor1=value1,vendor2=value2
 ```

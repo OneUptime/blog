@@ -54,7 +54,7 @@ ansible-vault encrypt secrets/*.yml
 
 Keep encrypted and unencrypted variables separate for clarity.
 
-```
+```text
 inventory/
 └── group_vars/
     └── production/

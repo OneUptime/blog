@@ -139,13 +139,13 @@ Before deploying the custom domain resources, you need to configure the DNS reco
 
 For the www subdomain, create a CNAME record.
 
-```
+```text
 www.example.com  CNAME  <default-hostname>.azurestaticapps.net
 ```
 
 For the apex domain, create a TXT record for validation, then an ALIAS or A record pointing to the Static Web App.
 
-```
+```text
 # Validation TXT record
 example.com  TXT  <validation-token-from-output>
 

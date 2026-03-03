@@ -260,7 +260,7 @@ The relationship between memory and performance is important. Lambda allocates C
 
 Lambda Insights writes performance data as structured logs in the `/aws/lambda-insights/` log group. You can query these with CloudWatch Logs Insights:
 
-```
+```text
 # Find invocations with high memory usage
 filter function_name = "my-function"
 | filter memory_utilization > 80
@@ -269,7 +269,7 @@ filter function_name = "my-function"
 | limit 20
 ```
 
-```
+```text
 # Analyze cold start frequency and duration
 filter function_name = "my-function"
 | filter ispresent(init_duration)

@@ -71,7 +71,7 @@ With su: The SSH user uses su, typically through root first, then to the target 
 
 For sudo to work, the SSH user needs a sudoers entry that allows becoming the target user.
 
-```
+```text
 # /etc/sudoers.d/ansible
 # Allow deploy to become specific non-root users
 deploy ALL=(appuser) NOPASSWD: ALL

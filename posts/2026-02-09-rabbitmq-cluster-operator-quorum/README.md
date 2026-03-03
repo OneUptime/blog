@@ -38,7 +38,7 @@ kubectl get pods -n rabbitmq-system
 
 You should see the cluster operator pod running:
 
-```
+```text
 NAME                                         READY   STATUS    RESTARTS   AGE
 rabbitmq-cluster-operator-7b9c9f5b4d-xk8nh   1/1     Running   0          30s
 ```

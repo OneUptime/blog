@@ -317,7 +317,7 @@ Policy tags inherit permissions hierarchically. If you grant access to the paren
 
 This makes permission management scalable:
 
-```
+```text
 Sensitive Data Classification (Taxonomy)
   PII                          --> Analytics team has access
     Email Address              --> (inherited from PII)

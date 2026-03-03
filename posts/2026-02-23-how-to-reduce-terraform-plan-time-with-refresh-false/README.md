@@ -16,7 +16,7 @@ This can reduce plan time from minutes to seconds. But it comes with trade-offs 
 
 By default, `terraform plan` refreshes every resource:
 
-```
+```text
 $ terraform plan
 aws_vpc.main: Refreshing state... [id=vpc-abc123]
 aws_subnet.private[0]: Refreshing state... [id=subnet-def456]

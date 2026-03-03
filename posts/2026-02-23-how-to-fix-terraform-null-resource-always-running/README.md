@@ -24,7 +24,7 @@ resource "null_resource" "deploy" {
 
 Every `terraform apply` shows:
 
-```
+```text
   # null_resource.deploy must be replaced
 -/+ resource "null_resource" "deploy" {
       ~ id       = "1234567890" -> (known after apply)

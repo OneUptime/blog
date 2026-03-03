@@ -52,7 +52,7 @@ pulumi new azure-python
 
 Make sure your `requirements.txt` includes:
 
-```
+```text
 pulumi>=3.0.0,<4.0.0
 pulumi-azure-native>=2.0.0,<3.0.0
 ```

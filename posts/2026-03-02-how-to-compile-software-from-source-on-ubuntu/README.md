@@ -282,7 +282,7 @@ Build failures usually fall into a few categories:
 
 ### Missing Dependencies
 
-```
+```text
 configure: error: zlib library not found
 ```
 

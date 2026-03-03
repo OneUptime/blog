@@ -428,7 +428,7 @@ def kinesis_consumer():
 
 ### Kafka (Self-Hosted)
 
-```
+```text
 Infrastructure costs (example for 3-broker cluster):
 - 3x m5.xlarge instances: ~$500/month
 - EBS storage (3TB): ~$300/month
@@ -439,7 +439,7 @@ Total: ~$800-1500/month for small cluster
 
 ### AWS Kinesis
 
-```
+```text
 Per shard (provisioned):
 - $0.015/hour = ~$11/shard/month
 - PUT payload unit: $0.014 per 1M units
@@ -454,7 +454,7 @@ Total: ~$115-200/month for 10 shards
 
 ### AWS MSK (Managed Kafka)
 
-```
+```text
 Broker hours:
 - kafka.m5.large: $0.21/hour = ~$150/broker/month
 
@@ -469,7 +469,7 @@ Total: ~$550-700/month for small cluster
 
 ### Throughput and Scaling
 
-```
+```text
 Kafka:
 - Add partitions for more parallelism
 - Add brokers for more capacity
@@ -484,7 +484,7 @@ Kinesis:
 
 ### Message Retention
 
-```
+```text
 Kafka:
 - Configurable retention (time or size based)
 - Tiered storage for unlimited retention
@@ -498,7 +498,7 @@ Kinesis:
 
 ### Consumer Model
 
-```
+```text
 Kafka:
 - Consumer groups with automatic rebalancing
 - Exactly-once semantics available

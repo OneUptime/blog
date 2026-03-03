@@ -169,7 +169,7 @@ For production systems with heavy background processing, use Celery. It provides
 
 ### Project Structure
 
-```
+```text
 myproject/
     app/
         __init__.py

@@ -268,14 +268,14 @@ DataStax Astra uses a secure connect bundle and port 29042 for CQL connections.
 
 Track Cassandra connections through Istio:
 
-```
+```text
 istio_tcp_connections_opened_total{destination_service="cassandra.database.svc.cluster.local"}
 istio_tcp_sent_bytes_total{destination_service="cassandra.database.svc.cluster.local"}
 ```
 
 Monitor inter-node traffic separately:
 
-```
+```text
 istio_tcp_sent_bytes_total{destination_service="cassandra-headless.database.svc.cluster.local", destination_port="7000"}
 ```
 

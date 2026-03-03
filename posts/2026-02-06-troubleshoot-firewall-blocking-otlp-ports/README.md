@@ -12,7 +12,7 @@ In corporate environments, firewalls and network policies often block non-standa
 
 The symptoms vary depending on the firewall behavior. Some firewalls drop packets silently (causing timeouts), while others actively reject connections.
 
-```
+```text
 # Timeout symptoms (firewall drops packets)
 context deadline exceeded
 export timeout: context deadline exceeded after 30s

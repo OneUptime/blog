@@ -856,7 +856,7 @@ For large Jenkins installations, split configuration across multiple files for b
 
 JCasC can load multiple YAML files from a directory. Set the `CASC_JENKINS_CONFIG` environment variable to a directory path.
 
-```
+```text
 /var/jenkins_home/casc_configs/
   01-jenkins-core.yaml
   02-security.yaml

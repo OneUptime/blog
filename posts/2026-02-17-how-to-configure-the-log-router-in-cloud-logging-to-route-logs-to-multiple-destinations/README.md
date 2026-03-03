@@ -137,35 +137,35 @@ The filter determines which logs a sink captures. Here are some common patterns:
 
 ### Filter by Resource Type
 
-```
+```text
 # Only Compute Engine instance logs
 resource.type="gce_instance"
 ```
 
 ### Filter by Severity
 
-```
+```text
 # Only warning and above
 severity>=WARNING
 ```
 
 ### Filter by Log Name
 
-```
+```text
 # Only Cloud Audit logs
 logName:"cloudaudit.googleapis.com"
 ```
 
 ### Combining Filters
 
-```
+```text
 # Application errors from Cloud Run services
 resource.type="cloud_run_revision" AND severity>=ERROR
 ```
 
 ### Excluding Specific Logs
 
-```
+```text
 # All logs except health check requests
 NOT httpRequest.requestUrl="/healthz"
 ```

@@ -44,7 +44,7 @@ Squid is a widely-used proxy server that provides web caching, access control, a
 
 ## Squid Configuration
 
-```
+```text
 # roles/squid/templates/squid.conf.j2
 # Squid proxy configuration - managed by Ansible
 http_port {{ squid_port | default(3128) }}

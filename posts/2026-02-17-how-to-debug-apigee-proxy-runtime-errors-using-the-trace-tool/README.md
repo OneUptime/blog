@@ -122,7 +122,7 @@ Flow variables are the glue of Apigee proxies. They carry data between policies.
 
 Click on any node in the trace to see variables:
 
-```
+```text
 # Common variables to check:
 request.header.x-api-key = "abc123"
 client_id = "app123"

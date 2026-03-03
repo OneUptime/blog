@@ -72,7 +72,7 @@ kubectl attach my-nginx-pod
 
 You see each HTTP request as it happens:
 
-```
+```text
 192.168.1.1 - - [09/Feb/2026:10:15:32 +0000] "GET /api/status HTTP/1.1" 200 1234
 192.168.1.2 - - [09/Feb/2026:10:15:33 +0000] "POST /api/data HTTP/1.1" 201 5678
 ```
@@ -160,7 +160,7 @@ kubectl attach data-processor-pod
 
 Watch the processing logs:
 
-```
+```text
 Processing batch 1 of 100...
 Records processed: 1000
 Processing batch 2 of 100...
@@ -177,7 +177,7 @@ kubectl attach worker-pod
 
 See which messages are being processed:
 
-```
+```text
 Received message: {"id": 123, "action": "process"}
 Processing message 123...
 Completed message 123
@@ -244,7 +244,7 @@ kubectl attach init-demo -c setup
 
 You see the init container output:
 
-```
+```text
 Init step 1
 Init step 2
 Init step 3
@@ -277,7 +277,7 @@ kubectl apply -f crashing-pod.yaml && kubectl attach crashing-pod
 
 You see the output before the crash:
 
-```
+```text
 Starting...
 About to crash
 ```

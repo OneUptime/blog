@@ -44,7 +44,7 @@ This is particularly useful when you are troubleshooting hardware problems, netw
 
 Kernel messages have severity levels that indicate their importance. These follow the standard syslog severity scale:
 
-```
+```text
 # Kernel log severity levels (from most to least severe)
 # 0 - KERN_EMERG:   System is unusable
 # 1 - KERN_ALERT:   Action must be taken immediately
@@ -64,7 +64,7 @@ Here are kernel log entries you will commonly encounter on Talos Linux nodes and
 
 ### Boot and Hardware Detection
 
-```
+```text
 # Normal boot messages showing CPU and memory detection
 [    0.000000] Linux version 6.1.58-talos ...
 [    0.000000] Command line: talos.platform=metal ...
@@ -76,7 +76,7 @@ These are informational messages from early boot. They tell you which kernel ver
 
 ### Storage Device Detection
 
-```
+```text
 # Disk detection messages
 [    1.234567] scsi host0: Virtio SCSI HBA
 [    1.345678] sd 0:0:0:0: [sda] 104857600 512-byte logical blocks
@@ -87,7 +87,7 @@ These messages show which storage devices were found. If you are having disk iss
 
 ### Network Interface Initialization
 
-```
+```text
 # Network device messages
 [    2.123456] e1000e 0000:00:1f.6: eth0: Intel(R) PRO/1000 Network Connection
 [    2.234567] e1000e 0000:00:1f.6: eth0: MAC: aa:bb:cc:dd:ee:ff
@@ -119,7 +119,7 @@ talosctl -n 192.168.1.10 dmesg | grep -i "eth\|eno\|ens\|link"
 
 One of the most common reasons to check kernel logs is to investigate out-of-memory kills. When the Linux kernel runs out of memory, it invokes the OOM killer to terminate processes and free up RAM. The kernel log records exactly which process was killed and why:
 
-```
+```text
 # Typical OOM kill kernel log entry
 [12345.678] Out of memory: Killed process 4523 (kubelet) total-vm:2048000kB, anon-rss:1536000kB
 [12345.679] oom_reaper: reaped process 4523 (kubelet), now anon-rss:0kB
@@ -143,7 +143,7 @@ talosctl -n 192.168.1.10 dmesg | grep -i "ext4\|xfs\|filesystem\|I/O error"
 
 Common messages to watch for:
 
-```
+```text
 # Disk I/O error indicating potential hardware failure
 [23456.789] sd 0:0:0:0: [sda] tag#12 FAILED Result: hostbyte=DID_OK driverbyte=DRIVER_SENSE
 [23456.790] blk_update_request: I/O error, dev sda, sector 12345678

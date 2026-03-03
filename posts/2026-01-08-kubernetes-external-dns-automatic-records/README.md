@@ -601,7 +601,7 @@ args:
 
 This creates records like:
 
-```
+```text
 myapp.example.com.              A     1.2.3.4
 externaldns-myapp.example.com.  TXT   "heritage=external-dns,external-dns/owner=prod-cluster-us-east-1"
 ```
@@ -719,18 +719,18 @@ kubectl logs -n external-dns deployment/external-dns | grep -i error
 ### Common Log Messages
 
 **Successful record creation:**
-```
+```text
 level=info msg="Desired change: CREATE myapp.example.com A [Id: /hostedzone/Z123]"
 level=info msg="Record created successfully"
 ```
 
 **Skipped (already exists):**
-```
+```text
 level=debug msg="Skipping record myapp.example.com because it already exists"
 ```
 
 **Permission error:**
-```
+```text
 level=error msg="AccessDenied: User is not authorized to perform route53:ChangeResourceRecordSets"
 ```
 

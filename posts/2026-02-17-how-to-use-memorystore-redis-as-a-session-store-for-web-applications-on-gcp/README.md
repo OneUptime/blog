@@ -339,7 +339,7 @@ monitor_session_store()
 
 Estimate the Redis size you need:
 
-```
+```text
 Required memory = (concurrent sessions) x (average session size) x 1.5 (overhead)
 ```
 
@@ -348,7 +348,7 @@ For example:
 - 3 KB average session size
 - 1.5x overhead factor
 
-```
+```text
 100,000 x 3 KB x 1.5 = 450 MB
 ```
 

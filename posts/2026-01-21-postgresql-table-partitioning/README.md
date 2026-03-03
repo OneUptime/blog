@@ -313,7 +313,7 @@ WHERE created_at >= '2026-01-01'
 ```
 
 Output shows pruning:
-```
+```text
 Seq Scan on orders_2026_01 orders  (cost=...)
   Filter: (created_at >= '2026-01-01' AND created_at < '2026-02-01')
 ```

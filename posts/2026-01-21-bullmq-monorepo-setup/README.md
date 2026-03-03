@@ -14,7 +14,7 @@ Monorepos are increasingly popular for managing multiple related projects in a s
 
 Here's the recommended monorepo structure for BullMQ:
 
-```
+```text
 my-monorepo/
 ├── apps/
 │   ├── api/                    # API service that enqueues jobs

@@ -223,7 +223,7 @@ rules:
 
 If you use Loki, create a Grafana dashboard to visualize audit activity:
 
-```
+```text
 # Loki queries for ArgoCD audit dashboard
 
 # All sync operations

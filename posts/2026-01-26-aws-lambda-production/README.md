@@ -18,7 +18,7 @@ This guide walks through the practical decisions and code patterns you need to b
 
 A well-organized Lambda project makes it easier to test, debug, and extend. Here is a structure that works for both simple functions and larger serverless applications:
 
-```
+```text
 my-lambda-function/
 ├── src/
 │   ├── handlers/           # Lambda entry points

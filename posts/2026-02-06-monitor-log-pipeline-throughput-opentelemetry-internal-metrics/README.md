@@ -38,7 +38,7 @@ Here are the internal metrics that matter most for detecting log loss and throug
 
 These tell you how many log records the collector is ingesting:
 
-```
+```text
 # Total log records accepted by the receiver
 otelcol_receiver_accepted_log_records{receiver="filelog"}
 
@@ -52,7 +52,7 @@ If `refused_log_records` is increasing, the collector is dropping logs at the in
 
 These show what happens to logs as they move through the pipeline:
 
-```
+```text
 # Log records that entered the processor
 otelcol_processor_incoming_log_records{processor="batch"}
 
@@ -69,7 +69,7 @@ The difference between incoming and outgoing (minus intentional drops from filte
 
 These are the most critical for detecting loss:
 
-```
+```text
 # Log records successfully sent to the backend
 otelcol_exporter_sent_log_records{exporter="otlp"}
 

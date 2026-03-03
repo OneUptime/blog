@@ -29,7 +29,7 @@ sudo passwd -S username
 
 Output:
 
-```
+```text
 username P 03/02/2026 0 99999 7 -1
 ```
 
@@ -47,7 +47,7 @@ sudo chage -l username
 
 Output:
 
-```
+```text
 Last password change                                    : Mar 02, 2026
 Password expires                                        : never
 Password inactive                                       : never
@@ -125,7 +125,7 @@ sudo nano /etc/login.defs
 
 Find and modify these fields:
 
-```
+```text
 # Maximum number of days a password may be used
 PASS_MAX_DAYS   90
 
@@ -213,7 +213,7 @@ ssh username@localhost
 
 The session should prompt:
 
-```
+```text
 WARNING: Your password has expired.
 You must change your password now and login again!
 Changing password for username.

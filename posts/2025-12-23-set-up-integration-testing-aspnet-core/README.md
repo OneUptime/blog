@@ -593,7 +593,7 @@ public class ExternalApiTests : IAsyncLifetime
 
 ### Organizing Integration Tests
 
-```
+```text
 MyApp.IntegrationTests/
 ├── CustomWebApplicationFactory.cs
 ├── Helpers/

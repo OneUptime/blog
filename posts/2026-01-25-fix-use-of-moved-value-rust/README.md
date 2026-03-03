@@ -26,7 +26,7 @@ fn main() {
 
 Error message:
 
-```
+```text
 error[E0382]: use of moved value: `s1`
  --> src/main.rs:5:20
   |

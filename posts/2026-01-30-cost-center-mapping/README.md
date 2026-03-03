@@ -245,7 +245,7 @@ team_usage:
 
 Calculate each team's share:
 
-```
+```text
 Total CPU: 6000 millicores
 Total Memory: 28672 MB
 Total Storage: 650 GB
@@ -282,7 +282,7 @@ Reports should answer specific questions for specific audiences. Create views at
 
 Show trends and anomalies at the business unit level:
 
-```
+```text
 Monthly Cloud Cost Summary - January 2026
 
 Business Unit        This Month    Last Month    Change    Budget    Variance
@@ -303,7 +303,7 @@ Top cost drivers this month:
 
 Give engineering managers the detail they need to take action:
 
-```
+```text
 Gateway Team - January 2026
 
 Service              Environment    Cost       % of Team    MoM Change
@@ -327,7 +327,7 @@ Anomalies detected:
 
 Connect infrastructure costs to business metrics:
 
-```
+```text
 Unit Economics - January 2026
 
 Product          Monthly Cost    Active Users    Cost/User    Transactions    Cost/Txn

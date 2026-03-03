@@ -315,7 +315,7 @@ API_KEY=your-personal-api-key
 
 Add to `.gitignore`:
 
-```
+```text
 .env.development.local
 .env.local
 .env*.local

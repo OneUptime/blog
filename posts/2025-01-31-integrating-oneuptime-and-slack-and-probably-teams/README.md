@@ -44,7 +44,7 @@ So why not get the fear inducing incident alerts there too?
 4. Fill in the "Slack Incoming Webhook URL" with your Slack bot webhook (if you haven't got one of those, watch this video [Connect OneUptime to Slack using Workflows](https://www.youtube.com/watch?v=k1-reCQTZnM))
 5. In the "Message Text" box, add the following Slack message template. This uses double curly braces `{{}}` to reference the incident data from the trigger component. The format uses Slack's mrkdwn syntax for formatting:
 
-```
+```text
 🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
 *{{local.components.incident-on-create-1.returnValues.model.incidentSeverity.name}} Declared*
 
@@ -106,7 +106,7 @@ Your incidents will auto-resolve themselves when the monitor goes back into an o
 
 5. Add a `Send Message to Slack` component, add the same Slack webhook as before, and the following message template in the "Message Text" box. This template formats the state change notification with all relevant details:
 
-```
+```text
   🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
 *[{{local.components.incident-state-timeline-on-create-1.returnValues.model.incident.title}}] State Changed!*
 

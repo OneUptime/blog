@@ -16,13 +16,13 @@ Let me go through the systematic approach to diagnosing and fixing these timeout
 
 The typical error you see:
 
-```
+```text
 failed to connect to instance: dial tcp: i/o timeout
 ```
 
 Or from your application:
 
-```
+```text
 Error: connect ETIMEDOUT
 could not connect to Cloud SQL instance "my-project:us-central1:my-db"
 ```

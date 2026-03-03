@@ -86,7 +86,7 @@ terraform {
 
 This is particularly useful when you have a layered variable file structure:
 
-```
+```text
 infrastructure/
   common.tfvars               # Org-wide variables
   dev/

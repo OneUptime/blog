@@ -18,7 +18,7 @@ A naive retry strategy that retries immediately can actually make things worse. 
 
 Here is the basic formula:
 
-```
+```text
 wait_time = base_delay * (2 ^ attempt_number) + random_jitter
 ```
 

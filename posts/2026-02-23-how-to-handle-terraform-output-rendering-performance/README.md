@@ -204,7 +204,7 @@ terraform show -json | jq '.values.root_module.resources[] | select(.address == 
 
 Resources created with `for_each` that have many instances generate large output blocks:
 
-```
+```text
 # aws_route53_record.records["api.example.com"] will be created
 # aws_route53_record.records["web.example.com"] will be created
 # aws_route53_record.records["mail.example.com"] will be created
@@ -232,7 +232,7 @@ fi
 
 Some resources have large attribute values that create huge diffs. For example, updating an IAM policy with a long JSON document:
 
-```
+```text
 # aws_iam_policy.app will be updated in-place
 ~ resource "aws_iam_policy" "app" {
     ~ policy = jsonencode(

@@ -26,13 +26,13 @@ ls -la /var/www/html/index.html
 
 Output:
 
-```
+```text
 -rw-r--r-- 1 www-data www-data 10701 Mar  2 09:00 index.html
 ```
 
 Breaking down `-rw-r--r--`:
 
-```
+```text
 - rw- r-- r--
 │  │   │   └── Others: read only
 │  │   └────── Group: read only
@@ -161,7 +161,7 @@ The kernel can execute compiled binaries without reading them (the binary format
 
 The first character in the permissions string indicates the type:
 
-```
+```text
 - regular file
 d directory
 l symbolic link

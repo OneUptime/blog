@@ -12,7 +12,7 @@ The ETIMEDOUT error occurs when a connection attempt or request takes too long a
 
 ## Understanding ETIMEDOUT
 
-```
+```text
 Error: connect ETIMEDOUT 93.184.216.34:443
     at TCPConnectWrap.afterConnect [as oncomplete] (net.js:1141:16)
 ```

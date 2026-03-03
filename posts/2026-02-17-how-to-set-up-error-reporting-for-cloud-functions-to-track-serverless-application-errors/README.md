@@ -51,7 +51,7 @@ npm install @google-cloud/error-reporting
 
 For Python functions, add it to your requirements.txt:
 
-```
+```text
 # requirements.txt for Python Cloud Function
 google-cloud-error-reporting==1.9.1
 functions-framework==3.*

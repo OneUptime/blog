@@ -83,7 +83,7 @@ ansible_password={{ vault_junos_password }}
 
 NETCONF needs to be enabled on each JunOS device before Ansible can connect via NETCONF:
 
-```
+```text
 # JunOS CLI commands to enable NETCONF
 set system services netconf ssh
 set system services netconf rfc-compliant
@@ -194,7 +194,7 @@ You can also push configuration blocks in JunOS's curly-brace format:
 
 Where `templates/router-base.conf.j2` contains:
 
-```
+```text
 system {
     host-name {{ inventory_hostname }};
     domain-name corp.local;

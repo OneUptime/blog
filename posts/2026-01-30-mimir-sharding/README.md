@@ -150,13 +150,13 @@ spec:
 
 Calculate the number of ingester shards based on total series and per-instance limits:
 
-```
+```text
 total_ingesters = (total_active_series * replication_factor) / max_series_per_ingester
 ```
 
 For 10 million active series with replication factor 3 and 1.5 million series per ingester:
 
-```
+```text
 total_ingesters = (10,000,000 * 3) / 1,500,000 = 20 ingesters
 ```
 
@@ -437,7 +437,7 @@ runtime_config:
 
 The blast radius probability helps determine shard size. For a cluster with N instances and shard size S, the probability that two random tenants share at least one instance is:
 
-```
+```text
 P(overlap) = 1 - (C(N-S, S) / C(N, S))
 ```
 

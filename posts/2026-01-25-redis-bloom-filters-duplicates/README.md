@@ -18,7 +18,7 @@ Traditional deduplication approaches like hash sets work well for small datasets
 
 A Bloom Filter is a space-efficient probabilistic data structure that tests whether an element is a member of a set. It can produce false positives (saying an element exists when it does not) but never false negatives (if it says an element does not exist, it definitely does not).
 
-```
+```text
 +--------------------------------------------------+
 |              Bloom Filter (bit array)            |
 +--------------------------------------------------+

@@ -30,7 +30,7 @@ variable "environment" {
 
 If someone passes `environment = "prod"`, they get:
 
-```
+```text
 Error: Invalid value for variable
 
 Environment must be one of: dev, staging, production. Got: 'prod'.

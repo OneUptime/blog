@@ -498,7 +498,7 @@ groups:
 
 ### Formula-Based Sizing
 
-```
+```text
 Ingesters = (Daily Volume GB / 100) * Replication Factor
 Queriers = Concurrent Queries / 10
 Distributors = Ingesters / 3

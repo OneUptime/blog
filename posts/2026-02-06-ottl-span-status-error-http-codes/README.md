@@ -12,7 +12,7 @@ The OpenTelemetry Transformation Language (OTTL) is used in the Collector's tran
 
 OTTL statements follow this pattern:
 
-```
+```text
 <function>(<arguments>) where <condition>
 ```
 

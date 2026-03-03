@@ -50,7 +50,7 @@ Dovecot handles:
 
 ### How They Work Together
 
-```
+```text
 Internet → Postfix (SMTP) → Dovecot LDA → Mailbox → Dovecot (IMAP/POP3) → Email Client
                 ↓
          Outgoing Mail → Remote Mail Servers
@@ -108,7 +108,7 @@ sudo nano /etc/hosts
 
 Add the following line:
 
-```
+```text
 # /etc/hosts
 # Format: IP_ADDRESS    FQDN    SHORT_NAME
 203.0.113.10    mail.example.com    mail
@@ -925,7 +925,7 @@ sudo crontab -e
 
 Add:
 
-```
+```text
 # Renew Let's Encrypt certificates daily at 3:30 AM
 30 3 * * * /usr/bin/certbot renew --quiet
 ```
@@ -957,7 +957,7 @@ Create the virtual mailbox file:
 sudo nano /etc/postfix/vmailbox
 ```
 
-```
+```text
 # /etc/postfix/vmailbox
 # Virtual mailbox mapping
 # Format: email_address    mailbox_path (relative to virtual_mailbox_base)
@@ -976,7 +976,7 @@ Create the virtual alias file:
 sudo nano /etc/postfix/virtual
 ```
 
-```
+```text
 # /etc/postfix/virtual
 # Virtual alias mapping
 # Format: alias_address    destination_address
@@ -1017,7 +1017,7 @@ ls -la /etc/postfix/vmailbox.db /etc/postfix/virtual.db
 sudo nano /etc/dovecot/users
 ```
 
-```
+```text
 # /etc/dovecot/users
 # User authentication database
 # Format: user:{scheme}password:uid:gid:gecos:home:shell:extra_fields

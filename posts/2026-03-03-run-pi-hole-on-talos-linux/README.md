@@ -292,7 +292,7 @@ The first query should return a valid IP address. The second should return 0.0.0
 
 Pi-hole comes with a default blocklist, but you can add more for better coverage. Access the admin interface at http://192.168.1.200/admin and navigate to Adlists under Group Management. Some popular blocklists include:
 
-```
+```text
 https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
 https://raw.githubusercontent.com/PolishFiltersTeam/KADhosts/master/KADhosts.txt
 https://raw.githubusercontent.com/FadeMind/hosts.extras/master/add.Spam/hosts

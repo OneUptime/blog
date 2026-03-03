@@ -38,7 +38,7 @@ redis-cli INFO memory
 
 This returns detailed memory information:
 
-```
+```text
 # Memory
 used_memory:1073741824
 used_memory_human:1.00G
@@ -95,7 +95,7 @@ redis-cli CONFIG GET maxmemory
 
 Output:
 
-```
+```text
 1) "maxmemory"
 2) "4294967296"
 ```
@@ -149,7 +149,7 @@ When memory is exceeded:
 redis-cli SET newkey "value"
 ```
 
-```
+```text
 (error) OOM command not allowed when used memory > 'maxmemory'.
 ```
 
@@ -343,7 +343,7 @@ Higher values give better approximation of true LRU:
 
 Visual comparison of sample sizes:
 
-```
+```text
 True LRU:        ████████████████████████████████
 maxmemory-samples 10: █████████████████████████████
 maxmemory-samples 5:  ██████████████████████████
@@ -397,7 +397,7 @@ Check the idle time or frequency of a key:
 redis-cli OBJECT IDLETIME mykey
 ```
 
-```
+```text
 (integer) 120
 ```
 
@@ -406,7 +406,7 @@ redis-cli OBJECT IDLETIME mykey
 redis-cli OBJECT FREQ mykey
 ```
 
-```
+```text
 (integer) 45
 ```
 
@@ -529,7 +529,7 @@ Use INFO stats to see eviction counters:
 redis-cli INFO stats | grep evicted
 ```
 
-```
+```text
 evicted_keys:12345
 ```
 
@@ -589,7 +589,7 @@ chmod +x redis-eviction-monitor.sh
 
 Output:
 
-```
+```text
 Timestamp,Used_Memory_MB,Max_Memory_MB,Memory_Pct,Evicted_Keys,Evicted_Delta,Policy
 2026-01-30 10:00:00,3891,4096,95,12345,0,allkeys-lru
 2026-01-30 10:00:10,3950,4096,96,12367,22,allkeys-lru
@@ -637,7 +637,7 @@ Track hits versus misses to evaluate cache effectiveness:
 redis-cli INFO stats | grep -E "keyspace_hits|keyspace_misses"
 ```
 
-```
+```text
 keyspace_hits:1000000
 keyspace_misses:50000
 ```
@@ -673,7 +673,7 @@ A healthy cache typically has > 90% hit ratio. If your hit ratio is low:
 
 Symptom:
 
-```
+```text
 (error) OOM command not allowed when used memory > 'maxmemory'.
 ```
 
@@ -690,7 +690,7 @@ Fix for cause 2:
 redis-cli INFO keyspace
 ```
 
-```
+```text
 # Keyspace
 db0:keys=1000000,expires=100,avg_ttl=3600000
 ```
@@ -749,7 +749,7 @@ Symptom: used_memory_rss much higher than used_memory.
 redis-cli INFO memory | grep mem_fragmentation_ratio
 ```
 
-```
+```text
 mem_fragmentation_ratio:2.50
 ```
 

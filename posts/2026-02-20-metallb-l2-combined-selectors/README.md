@@ -10,7 +10,7 @@ Description: Learn how to combine interface selectors and node selectors in Meta
 
 MetalLB L2Advertisement supports two selector fields: `nodeSelectors` and `interfaces`. Each one narrows advertisement behavior on its own. When you use both in the same L2Advertisement resource, MetalLB applies AND logic. The IP is only advertised on the chosen interfaces of the chosen nodes. This post walks through how to combine them for multi-NIC, multi-node bare-metal clusters.
 
-### How the Two Selectors Work Individually
+## How the Two Selectors Work Individually
 
 **nodeSelectors** restricts which nodes participate in leader election. Only nodes matching the selector respond to ARP for the pool's IPs.
 

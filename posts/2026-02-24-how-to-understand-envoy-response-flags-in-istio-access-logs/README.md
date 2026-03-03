@@ -16,7 +16,7 @@ A 503 could mean a dozen different things. The response flag narrows it down to 
 
 In the default TEXT access log format, response flags appear right after the response code:
 
-```
+```text
 [2026-02-24T10:00:00.000Z] "GET /api/users HTTP/1.1" 503 UF via_upstream ...
 ```
 

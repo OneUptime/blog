@@ -299,7 +299,7 @@ jobs:
 
 As your policy library grows, organize it by concern:
 
-```
+```text
 policy/
   security/
     containers.rego      # Container security policies

@@ -21,7 +21,7 @@ cat /etc/resolv.conf
 
 You'll see something like:
 
-```
+```text
 nameserver 10.96.0.10
 search production.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5

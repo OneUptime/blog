@@ -256,7 +256,7 @@ kubectl get database mydb -o jsonpath='{range .status.conditions[*]}{.type}{"\t"
 
 Output:
 
-```
+```text
 Ready       True    AllReplicasReady    All database replicas are ready and accepting connections
 Provisioned True    StorageReady        PersistentVolumeClaims are bound
 BackedUp    True    BackupComplete      Last backup completed at 2026-02-09T02:30:00Z

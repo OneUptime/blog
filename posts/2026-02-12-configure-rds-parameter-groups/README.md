@@ -104,7 +104,7 @@ Here are the most impactful PostgreSQL parameters to tune.
 
 These control how PostgreSQL allocates memory.
 
-```
+```text
 shared_buffers = {DBInstanceClassMemory/4}
   # Main memory cache for data pages. Set to 25% of instance memory.
   # Static - requires reboot.
@@ -128,7 +128,7 @@ maintenance_work_mem = 524288  (512 MB in KB)
 
 These help the planner make better decisions for SSDs.
 
-```
+```text
 random_page_cost = 1.1
   # Cost of a random page fetch. Default is 4.0 (for spinning disks).
   # Set to 1.1 for SSD storage (all RDS storage is SSD).
@@ -143,7 +143,7 @@ effective_io_concurrency = 200
 
 Configure logging for debugging and monitoring.
 
-```
+```text
 log_min_duration_statement = 1000
   # Log queries that take longer than 1000ms (1 second).
   # Dynamic. Set to 0 to log all queries (very verbose).
@@ -178,7 +178,7 @@ aws rds modify-db-parameter-group \
 
 Key MySQL settings explained:
 
-```
+```text
 innodb_buffer_pool_size = {DBInstanceClassMemory*3/4}
   # InnoDB's main memory cache. Set to 75% of memory.
   # This is the single most impactful MySQL parameter.

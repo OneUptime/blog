@@ -29,7 +29,7 @@ flowchart LR
 
 ## Project Structure
 
-```
+```text
 nginx-http2/
   inventory/
     hosts.yml

@@ -162,7 +162,7 @@ This is the critical part that many teams get wrong. Istio automatically generat
 
 The headers your application needs to propagate:
 
-```
+```text
 x-request-id
 x-b3-traceid
 x-b3-spanid

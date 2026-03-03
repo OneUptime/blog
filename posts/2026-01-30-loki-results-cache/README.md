@@ -197,7 +197,7 @@ flowchart LR
 
 Before hashing, Loki normalizes queries to maximize cache hits:
 
-```
+```text
 # These queries produce the same cache key after normalization
 {app="nginx"} | json | level="error"
 { app = "nginx" } | json | level = "error"
@@ -289,7 +289,7 @@ Your Grafana dashboards can make or break cache effectiveness. Here are practica
 
 Inconsistent time ranges defeat caching:
 
-```
+```text
 # Bad: Custom time ranges produce unique cache keys
 {app="api"} | json [now-23h47m:now]
 
@@ -315,7 +315,7 @@ split_queries_by_interval: 15m
 
 Template variables can harm cache efficiency if they produce many unique queries:
 
-```
+```text
 # Poor cache efficiency: Unique query per user
 {app="api", user="$user"} | json
 

@@ -8,7 +8,7 @@ Description: Fix Helm chart upgrade failures for the OpenTelemetry Collector cau
 
 You run `helm upgrade` for the OpenTelemetry Collector and get:
 
-```
+```text
 Error: UPGRADE FAILED: cannot patch "otel-collector" with kind Deployment:
 Deployment.apps "otel-collector" is invalid: spec.selector:
 Invalid value: ...: field is immutable

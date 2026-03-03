@@ -82,7 +82,7 @@ perf report --call-graph --stdio | head -100
 
 The report shows percentages of CPU time per symbol (function):
 
-```
+```text
 # Overhead  Command    Shared Object      Symbol
 # ........  .......    .............      ......
     45.23%  myprogram  myprogram          [.] compute_matrix
@@ -123,7 +123,7 @@ perf stat ./myprogram
 
 Example output:
 
-```
+```text
  Performance counter stats for './myprogram':
 
       2,345,678      cache-misses              #    4.32% of all cache refs

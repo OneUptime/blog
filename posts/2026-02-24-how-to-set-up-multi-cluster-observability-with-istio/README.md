@@ -16,7 +16,7 @@ This post covers setting up distributed tracing, centralized logging, and multi-
 
 In a multi-cluster mesh, a single user request might traverse services in multiple clusters:
 
-```
+```text
 User -> Frontend (cluster1) -> Reviews (cluster2) -> Ratings (cluster1)
 ```
 
@@ -276,14 +276,14 @@ Create dashboards that show cross-cluster traffic patterns. Key panels:
 
 ### Service Map by Cluster
 
-```
+```text
 # Request rate grouped by source and destination cluster
 sum(rate(istio_requests_total{reporter="source"}[5m])) by (source_cluster, destination_cluster, destination_service)
 ```
 
 ### Cross-Cluster Latency
 
-```
+```text
 histogram_quantile(0.95,
   sum(rate(istio_request_duration_milliseconds_bucket{
     reporter="source",
@@ -294,7 +294,7 @@ histogram_quantile(0.95,
 
 ### Error Rate by Cluster
 
-```
+```text
 sum(rate(istio_requests_total{response_code=~"5..", reporter="source"}[5m])) by (destination_cluster)
 /
 sum(rate(istio_requests_total{reporter="source"}[5m])) by (destination_cluster)

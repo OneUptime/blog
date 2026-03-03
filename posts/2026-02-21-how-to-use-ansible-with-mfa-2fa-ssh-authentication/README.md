@@ -14,7 +14,7 @@ Multi-factor authentication (MFA) for SSH adds a second layer of security beyond
 
 When SSH MFA is enabled (typically via PAM with Google Authenticator or similar), users must provide both their SSH key and a time-based one-time password (TOTP):
 
-```
+```text
 $ ssh user@server
 Authenticated with partial success.
 Verification code: ______

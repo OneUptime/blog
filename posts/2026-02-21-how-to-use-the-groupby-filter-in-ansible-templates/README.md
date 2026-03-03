@@ -97,7 +97,7 @@ The playbook to render this template:
 
 The output would look like this:
 
-```
+```text
 Server Inventory Report
 ========================
 

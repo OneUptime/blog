@@ -18,7 +18,7 @@ Understanding why this error occurs and how to debug it will save you hours of t
 
 The error typically looks like one of these:
 
-```
+```text
 bash: syntax error near unexpected token `('
 bash: syntax error near unexpected token `}'
 bash: syntax error near unexpected token `fi'

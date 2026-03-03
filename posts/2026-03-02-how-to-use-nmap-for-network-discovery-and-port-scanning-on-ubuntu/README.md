@@ -39,7 +39,7 @@ sudo nmap -sn 192.168.1.0/24
 
 Output:
 
-```
+```text
 Nmap scan report for 192.168.1.1
 Host is up (0.001s latency).
 MAC Address: AA:BB:CC:DD:EE:FF (TP-Link Technologies)
@@ -150,7 +150,7 @@ nmap -sV --version-all 192.168.1.100
 
 Output with `-sV`:
 
-```
+```text
 PORT    STATE SERVICE VERSION
 22/tcp  open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.6 (Ubuntu Linux; protocol 2.0)
 80/tcp  open  http    nginx 1.18.0 (Ubuntu)

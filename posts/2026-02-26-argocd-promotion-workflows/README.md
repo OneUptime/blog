@@ -36,7 +36,7 @@ The most common approach uses Kustomize overlays with a directory per environmen
 
 ### Repository Structure
 
-```
+```text
 k8s-manifests/
   base/
     deployment.yaml

@@ -40,7 +40,7 @@ sudo nano /etc/issue.net
 
 A typical security/legal notice:
 
-```
+```text
 *******************************************************************************
 *                                                                             *
 *  NOTICE TO USERS                                                            *
@@ -58,7 +58,7 @@ A typical security/legal notice:
 
 For internal servers, a more informative banner works well:
 
-```
+```text
 ===============================================================================
   Hostname: prod-db-01.internal.example.com
   Role:     PostgreSQL Primary Database
@@ -104,7 +104,7 @@ The `/etc/issue` file is displayed on local console and virtual terminal logins 
 sudo nano /etc/issue
 ```
 
-```
+```text
 Ubuntu \r (\l)
 Host: \n
 Date: \d \t
@@ -139,7 +139,7 @@ ls -la /etc/update-motd.d/
 
 You will see numbered scripts like:
 
-```
+```text
 00-header
 10-help-text
 50-motd-news
@@ -271,7 +271,7 @@ sudo chmod -x /etc/update-motd.d/*
 sudo nano /etc/motd
 ```
 
-```
+```text
 Welcome to prod-web-01
 
 This is a production server. Proceed with caution.

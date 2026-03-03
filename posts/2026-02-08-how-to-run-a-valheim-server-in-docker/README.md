@@ -167,7 +167,7 @@ docker exec valheim-server bash -c 'echo "PLAYER_STEAM_ID" >> /config/bannedlist
 
 Once you are an admin in-game, press F5 to open the console and use admin commands.
 
-```
+```text
 # In-game console commands (press F5)
 kick [name/steamID]
 ban [name/steamID]

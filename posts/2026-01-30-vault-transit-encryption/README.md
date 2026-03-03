@@ -487,7 +487,7 @@ decrypted = decrypt(encrypted)
 
 Use descriptive, hierarchical names:
 
-```
+```text
 transit/keys/prod/payments/card-encryption
 transit/keys/prod/users/pii-encryption
 transit/keys/staging/payments/card-encryption

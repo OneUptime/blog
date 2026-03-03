@@ -18,7 +18,7 @@ argocd app resources my-app
 
 This lists all resources managed by the application:
 
-```
+```text
 GROUP        KIND            NAMESPACE   NAME                STATUS   HEALTH   HOOK
              Service         my-app-ns   my-app-svc          Synced   Healthy
              ConfigMap       my-app-ns   app-config           Synced   Healthy

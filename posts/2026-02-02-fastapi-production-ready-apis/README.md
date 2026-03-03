@@ -18,7 +18,7 @@ A production-ready API is one that handles failures gracefully, scales under loa
 
 A well-organized project makes maintenance easier. Here is a structure that scales well:
 
-```
+```text
 myapi/
 ├── app/
 │   ├── __init__.py

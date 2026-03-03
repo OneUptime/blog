@@ -26,7 +26,7 @@ An agent pool is a group of agents (workers) that you run on your own infrastruc
 
 The agent connects outbound to HCP Terraform - it does not require any inbound network access. This makes it firewall-friendly.
 
-```
+```text
 [Your Network]
   Agent 1 ----outbound----> HCP Terraform
   Agent 2 ----outbound----> HCP Terraform

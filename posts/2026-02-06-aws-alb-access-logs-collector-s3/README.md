@@ -22,7 +22,7 @@ aws elbv2 modify-load-balancer-attributes \
 
 ALB writes logs in gzip-compressed format to a path like:
 
-```
+```text
 s3://my-alb-logs/alb-logs/AWSLogs/123456789/elasticloadbalancing/us-east-1/2026/02/06/
 ```
 
@@ -30,7 +30,7 @@ s3://my-alb-logs/alb-logs/AWSLogs/123456789/elasticloadbalancing/us-east-1/2026/
 
 Each log line contains space-delimited fields:
 
-```
+```text
 http 2026-02-06T10:30:00.123456Z app/my-alb/abc123 10.0.0.5:54321 10.0.1.10:8080 0.001 0.045 0.000 200 200 234 5678 "GET https://example.com:443/api/users HTTP/1.1" "Mozilla/5.0" ECDHE-RSA-AES128-GCM-SHA256 TLSv1.2 arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/my-tg/def456 "Root=1-abc-def" "example.com" "arn:aws:acm:..." 0 2026-02-06T10:30:00.123000Z "forward" "-" "-" "10.0.1.10:8080" "200" "-" "-"
 ```
 
@@ -38,7 +38,7 @@ http 2026-02-06T10:30:00.123456Z app/my-alb/abc123 10.0.0.5:54321 10.0.1.10:8080
 
 The recommended architecture uses an S3 notification to trigger processing:
 
-```
+```text
 ALB -> S3 -> SQS -> Collector (S3 receiver) -> Backend
 ```
 

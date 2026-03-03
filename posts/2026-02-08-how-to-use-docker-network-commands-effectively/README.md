@@ -34,7 +34,7 @@ docker network ls
 
 Typical output on a fresh installation:
 
-```
+```text
 NETWORK ID     NAME      DRIVER    SCOPE
 a1b2c3d4e5f6   bridge    bridge    local
 f6e5d4c3b2a1   host      host      local

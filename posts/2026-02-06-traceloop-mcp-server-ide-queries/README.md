@@ -119,7 +119,7 @@ You ask your assistant: "Show me a sample trace for POST /api/orders including a
 
 The assistant calls the Traceloop MCP server, which fetches a representative trace. The response includes the full span tree:
 
-```
+```text
 POST /api/orders (245ms)
   -> validate-order (12ms)
   -> check-inventory (89ms)

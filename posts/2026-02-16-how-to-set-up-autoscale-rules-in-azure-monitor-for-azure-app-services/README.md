@@ -157,7 +157,7 @@ az monitor autoscale rule create \
 
 For infrastructure-as-code, here is a Bicep snippet that configures autoscale.
 
-```
+```text
 // Bicep resource definition for autoscale settings
 resource autoscale 'Microsoft.Insights/autoscalesettings@2022-10-01' = {
   name: 'web-autoscale'

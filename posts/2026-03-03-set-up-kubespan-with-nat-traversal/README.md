@@ -64,7 +64,7 @@ machine:
 
 Set up port forwarding on the NAT router:
 
-```
+```text
 # NAT router port forwarding rule (varies by router)
 # Forward UDP 51820 from public IP to the Talos node's private IP
 # External port: 51820 -> Internal IP: 192.168.1.100, Internal port: 51820
@@ -111,7 +111,7 @@ KubeSpan will try multiple endpoints and use whichever works. Nodes on the same 
 
 Double NAT (where your node is behind two layers of NAT) makes things more complicated. Port forwarding needs to be configured on both NAT devices, and the public IP that gets advertised needs to be the outermost public IP.
 
-```
+```text
 Internet -> Router 1 (ISP NAT) -> Router 2 (Home/Office NAT) -> Talos Node
 ```
 

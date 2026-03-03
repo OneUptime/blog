@@ -147,7 +147,7 @@ Create a Grafana dashboard to visualize circuit breaker status. Here are the pan
 
 ### Panel 1: Circuit Breaker Overflow Rate
 
-```
+```text
 # PromQL
 sum(rate(envoy_cluster_upstream_rq_pending_overflow[5m])) by (cluster_name)
 ```
@@ -156,7 +156,7 @@ This shows how often the circuit breaker is tripping. Any value above zero means
 
 ### Panel 2: Active Ejections
 
-```
+```text
 # PromQL
 sum(envoy_cluster_outlier_detection_ejections_active) by (cluster_name)
 ```
@@ -165,7 +165,7 @@ Shows the current number of ejected hosts per service. Spikes indicate health is
 
 ### Panel 3: Connection Utilization
 
-```
+```text
 # PromQL
 sum(envoy_cluster_upstream_cx_active) by (cluster_name)
 ```
@@ -174,7 +174,7 @@ Shows active connections. Compare this against your `maxConnections` limit to se
 
 ### Panel 4: Ejection vs Membership
 
-```
+```text
 # PromQL - Percentage of ejected hosts
 sum(envoy_cluster_outlier_detection_ejections_active) by (cluster_name)
 / sum(envoy_cluster_membership_total) by (cluster_name) * 100

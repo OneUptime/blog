@@ -213,7 +213,7 @@ The key is imported into ArgoCD's keyring, but it is only trusted for a specific
 
 Each project explicitly selects which keys from the keyring it trusts:
 
-```
+```text
 Keyring (all imported keys):
   Alice (3AA5...)   --|
   Bob (9B2C...)     --|

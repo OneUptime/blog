@@ -26,7 +26,7 @@ variable "instance_type" {
 
 When Terraform prompts for a variable (because it has no default and no value was provided), the description is displayed:
 
-```
+```text
 var.instance_type
   The EC2 instance type for application servers
 

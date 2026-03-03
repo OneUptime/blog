@@ -250,7 +250,7 @@ These log-based metrics appear alongside your regular metrics in Cloud Monitorin
 
 Use Cloud Logging's trace filter to find all logs for a specific trace.
 
-```
+```text
 # In Cloud Logging, find all logs for a trace
 trace="projects/my-gcp-project/traces/abc123def456789"
 
@@ -263,7 +263,7 @@ labels."logging.googleapis.com/trace"!=""
 
 Use MQL to query metrics that correlate with specific time periods identified in traces.
 
-```
+```text
 # Find the error rate during the time window of a specific trace
 fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count
 | filter metric.response_code_class = 500

@@ -185,7 +185,7 @@ vault_identity_list = dev@~/.vault_pass_dev, prod@~/.vault_pass_prod
 
 Some teams keep a project-level password file that is distributed out-of-band (not through git):
 
-```
+```text
 project/
   ansible.cfg           # references .vault_pass
   .vault_pass           # git-ignored, distributed separately

@@ -75,13 +75,13 @@ sudo nano /boot/firmware/cmdline.txt
 
 Add these parameters at the end of the existing line (do not create a new line):
 
-```
+```text
 cgroup_memory=1 cgroup_enable=memory
 ```
 
 The complete line should look similar to:
 
-```
+```text
 console=serial0,115200 console=tty1 root=PARTUUID=xxxxx rootfstype=ext4 fsck.repair=yes rootwait cgroup_memory=1 cgroup_enable=memory
 ```
 
@@ -179,7 +179,7 @@ sudo k3s kubectl get nodes
 
 Expected output:
 
-```
+```text
 NAME         STATUS   ROLES                  AGE   VERSION
 k3s-master   Ready    control-plane,master   2m    v1.28.5+k3s1
 ```
@@ -196,7 +196,7 @@ sudo cat /var/lib/rancher/k3s/server/node-token
 
 The output looks like:
 
-```
+```text
 K10abc123def456...::server:xyz789token
 ```
 
@@ -238,7 +238,7 @@ sudo k3s kubectl get nodes -o wide
 
 Expected output:
 
-```
+```text
 NAME           STATUS   ROLES                  AGE   VERSION        INTERNAL-IP     OS-IMAGE
 k3s-master     Ready    control-plane,master   10m   v1.28.5+k3s1   192.168.1.100   Debian GNU/Linux 12
 k3s-worker-1   Ready    <none>                 3m    v1.28.5+k3s1   192.168.1.101   Debian GNU/Linux 12

@@ -68,7 +68,7 @@ The combination of `period: 300` and `evaluation-periods: 2` means the alarm tri
 
 How CloudWatch evaluates alarms can be confusing. Here's the mental model:
 
-```
+```text
 Period 1 (5 min): CPU = 85%  -> BREACH
 Period 2 (5 min): CPU = 82%  -> BREACH
 -> 2 of 2 periods breaching -> ALARM triggers

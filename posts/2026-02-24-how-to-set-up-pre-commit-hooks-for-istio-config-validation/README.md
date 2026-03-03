@@ -38,7 +38,7 @@ istioctl validate -f networking/virtual-service.yaml
 
 If the file is valid, you get a clean output. If there are problems, you get specific error messages:
 
-```
+```text
 Error: 1 error occurred:
     * VirtualService "my-service" has empty destination host
 ```

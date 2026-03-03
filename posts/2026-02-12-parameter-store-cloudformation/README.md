@@ -146,7 +146,7 @@ Resources:
 
 ### Dynamic Reference Syntax
 
-```
+```text
 {{resolve:ssm:parameter-name:version}}         # String/StringList
 {{resolve:ssm-secure:parameter-name:version}}   # SecureString
 ```

@@ -160,7 +160,7 @@ kubectl get pods -n kube-system -l k8s-app=kube-dns -o wide
 
 Set up alerts for DNS issues that impact applications:
 
-```
+```text
 # Critical: CoreDNS is returning SERVFAIL responses
 # Rate of coredns_dns_responses_total{rcode="SERVFAIL"} > 0
 
@@ -181,7 +181,7 @@ Set up alerts for DNS issues that impact applications:
 
 When you see DNS latency spikes, correlate them with application trace data. If your application traces include DNS resolution time, you can build dashboards that show the relationship:
 
-```
+```text
 Application latency spike -> DNS resolution slow -> CoreDNS forward latency high -> Upstream DNS issue
 ```
 

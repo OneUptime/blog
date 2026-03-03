@@ -87,7 +87,7 @@ kubectl exec -n exhaust-test $FORTIO_POD -- fortio load \
 
 With 30 concurrent connections hitting a pool limited to 5, you should see a bunch of 503 responses. Check the output for the status code distribution:
 
-```
+```text
 Code 200 : 4523 (60.2 %)
 Code 503 : 2987 (39.8 %)
 ```
@@ -144,7 +144,7 @@ kubectl exec -n exhaust-test $FORTIO_POD_PROXY -c istio-proxy -- \
 
 You will see counters like:
 
-```
+```text
 cluster.outbound|8000||httpbin.exhaust-test.svc.cluster.local.circuit_breakers.default.cx_open: 0
 cluster.outbound|8000||httpbin.exhaust-test.svc.cluster.local.circuit_breakers.default.cx_pool_open: 0
 cluster.outbound|8000||httpbin.exhaust-test.svc.cluster.local.circuit_breakers.default.rq_pending_open: 0

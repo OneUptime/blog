@@ -169,7 +169,7 @@ CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "app:app"]
 
 The requirements file:
 
-```
+```text
 flask==3.0.*
 gunicorn==21.*
 psycopg2-binary==2.9.*

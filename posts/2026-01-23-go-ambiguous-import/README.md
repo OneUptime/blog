@@ -14,7 +14,7 @@ Ambiguous import errors occur when Go finds multiple modules that could provide 
 
 ## The Error
 
-```
+```text
 ambiguous import: found package github.com/user/pkg in multiple modules:
     github.com/user/pkg v1.0.0
     github.com/user/pkg/v2 v2.0.0
@@ -22,7 +22,7 @@ ambiguous import: found package github.com/user/pkg in multiple modules:
 
 Or:
 
-```
+```text
 ambiguous import: found package example.com/pkg in multiple directories:
     /path/to/vendor/example.com/pkg
     /home/user/go/pkg/mod/example.com/pkg@v1.0.0
@@ -293,7 +293,7 @@ replace github.com/company/shared-lib => ../shared-lib
 
 ### Pattern 3: Monorepo
 
-```
+```text
 monorepo/
 ├── go.work
 ├── service-a/

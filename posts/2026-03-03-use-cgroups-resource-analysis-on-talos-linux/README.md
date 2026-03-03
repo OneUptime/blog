@@ -41,7 +41,7 @@ Kubernetes translates this into cgroup settings:
 
 Talos Linux organizes cgroups in a specific hierarchy:
 
-```
+```text
 /sys/fs/cgroup/
   /init/                 # Talos init process
   /system/               # Talos system services

@@ -20,7 +20,7 @@ Cassandra organizes nodes into a hierarchy of clusters, datacenters, and racks. 
 
 **Rack:** A subdivision within a datacenter. Cassandra spreads replicas across racks to survive rack-level failures (power, network switch, etc.).
 
-```
+```text
 Cluster: production-cassandra
 |
 +-- Datacenter: us-east

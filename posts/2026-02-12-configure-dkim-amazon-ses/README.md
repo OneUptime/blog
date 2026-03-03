@@ -259,7 +259,7 @@ In the received email, check the headers for:
 - Authentication results showing `dkim=pass`
 
 Gmail users can click "Show original" to see the full headers. Look for:
-```
+```text
 ARC-Authentication-Results: dkim=pass header.d=example.com
 ```
 

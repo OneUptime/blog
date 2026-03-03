@@ -12,13 +12,13 @@ The "failed to load initial state" error in ArgoCD occurs during the application
 
 The error typically appears in the application controller logs:
 
-```
+```text
 level=error msg="failed to load initial state of resource <resource>: the server could not find the requested resource"
 ```
 
 Or:
 
-```
+```text
 FATA[0001] failed to load initial state: <various reasons>
 ```
 
@@ -94,7 +94,7 @@ subjects:
 
 If ArgoCD tries to load resources for a CRD that does not exist in the cluster, the API call fails:
 
-```
+```text
 failed to load initial state of resource: the server could not find the requested resource (get certificates.cert-manager.io)
 ```
 

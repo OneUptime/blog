@@ -29,7 +29,7 @@ spec:
 
 Start with a simple Kustomize project structure:
 
-```
+```text
 my-app/
   base/
     kustomization.yaml

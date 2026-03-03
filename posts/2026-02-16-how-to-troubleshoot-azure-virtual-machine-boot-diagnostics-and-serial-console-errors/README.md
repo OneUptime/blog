@@ -118,7 +118,7 @@ The boot diagnostics screenshot will show the blue screen with a stop code. Comm
 
 For BSOD issues, you typically need to use the Serial Console with Special Administrative Console (SAC) or boot into safe mode.
 
-```
+```text
 # From Serial Console on Windows, access SAC
 # Type these commands in the SAC prompt
 cmd
@@ -153,7 +153,7 @@ Windows VMs sometimes get stuck in a "Configuring Windows Updates" loop. The boo
 
 From Serial Console, disable the problematic update:
 
-```
+```text
 # Access the command prompt via SAC
 cmd
 ch -si 1

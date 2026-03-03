@@ -47,7 +47,7 @@ sudo cp ffmpeg-*-amd64-static/ffprobe /usr/local/bin/
 
 Every FFmpeg command follows this pattern:
 
-```
+```text
 ffmpeg [global options] [input options] -i input [output options] output
 ```
 

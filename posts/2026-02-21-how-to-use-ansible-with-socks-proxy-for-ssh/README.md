@@ -115,7 +115,7 @@ With this setup, hosts in `direct_hosts` connect normally, while hosts in `proxi
 
 You can configure the SOCKS proxy in your SSH config file and keep the Ansible configuration clean.
 
-```
+```text
 # ~/.ssh/config
 # Route connections to the 10.0.1.x subnet through the SOCKS proxy
 

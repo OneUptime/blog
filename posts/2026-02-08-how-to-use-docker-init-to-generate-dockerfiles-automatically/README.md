@@ -69,7 +69,7 @@ docker init
 
 The command detects your project as Node.js and walks you through an interactive wizard:
 
-```
+```text
 Welcome to the Docker Init CLI!
 
 This utility will walk you through creating the following files with
@@ -146,7 +146,7 @@ The compose file is intentionally minimal but functional. You can extend it with
 
 ## Examining the Generated .dockerignore
 
-```
+```text
 # Include any files or directories that you don't want to be copied to your
 # container here (e.g., local build artifacts, temporary files, etc.).
 node_modules

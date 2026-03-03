@@ -246,7 +246,7 @@ istioctl proxy-config clusters deployment/istio-eastwestgateway -n istio-system 
 
 Monitor gateway metrics in Prometheus:
 
-```
+```text
 # Throughput through the east-west gateway
 sum(rate(istio_requests_total{destination_workload="istio-eastwestgateway"}[5m]))
 

@@ -22,7 +22,7 @@ This guide covers deploying static sites with Ansible, including build steps, Ng
 
 ## Project Structure
 
-```
+```text
 static-deploy/
   inventory/
     staging.yml

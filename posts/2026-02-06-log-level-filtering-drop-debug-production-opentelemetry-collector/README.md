@@ -50,7 +50,7 @@ The `severity_number < SEVERITY_NUMBER_INFO` condition uses OpenTelemetry's seve
 
 OpenTelemetry defines a numeric severity scale that maps to the familiar text levels. Here is the mapping:
 
-```
+```text
 TRACE:  1-4
 DEBUG:  5-8
 INFO:   9-12

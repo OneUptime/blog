@@ -42,7 +42,7 @@ IAM allow policies are attached to resources and say "these principals can do th
 
 Before creating PAB policies, map out which principals belong to which tenants and which resources each tenant should access:
 
-```
+```text
 Tenant A:
   - Principals: group:tenant-a-devs@example.com, sa:tenant-a-app@project-a.iam.gserviceaccount.com
   - Resources: projects/project-a-prod, projects/project-a-staging

@@ -104,7 +104,7 @@ echo "OIDC Issuer URL: $OIDC_ISSUER"
 
 The output looks similar to this:
 
-```
+```text
 OIDC Issuer URL: https://eastus.oic.prod-aks.azure.com/00000000-0000-0000-0000-000000000000/11111111-1111-1111-1111-111111111111/
 ```
 
@@ -239,7 +239,7 @@ az identity federated-credential create \
 
 The subject field format is important. It must match exactly:
 
-```
+```text
 system:serviceaccount:<namespace>:<service-account-name>
 ```
 
@@ -418,7 +418,7 @@ kubectl exec -n ${NAMESPACE} ${POD_NAME} -- env | grep AZURE
 
 You should see these environment variables injected by the webhook:
 
-```
+```text
 AZURE_CLIENT_ID=<your-identity-client-id>
 AZURE_TENANT_ID=<your-tenant-id>
 AZURE_FEDERATED_TOKEN_FILE=/var/run/secrets/azure/tokens/azure-identity-token
@@ -465,7 +465,7 @@ kubectl exec -n ${NAMESPACE} ${POD_NAME} -- \
 
 Expected output:
 
-```
+```text
 workload-identity-works
 ```
 

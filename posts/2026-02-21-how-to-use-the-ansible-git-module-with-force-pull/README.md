@@ -14,13 +14,13 @@ Sometimes the working directory on a remote host gets modified outside of your d
 
 Without `force`, the git module will fail if there are local modifications:
 
-```
+```text
 fatal: could not reset index file to revision 'HEAD'
 ```
 
 Or:
 
-```
+```text
 Local modifications exist in repository (force=no)
 ```
 

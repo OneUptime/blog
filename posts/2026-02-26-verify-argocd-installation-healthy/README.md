@@ -53,7 +53,7 @@ kubectl get pods -n argocd -o wide
 
 Expected output for a standard installation:
 
-```
+```text
 NAME                                  READY   STATUS    RESTARTS   AGE
 argocd-application-controller-0       1/1     Running   0          10m
 argocd-dex-server-xxxx-xxxxx          1/1     Running   0          10m

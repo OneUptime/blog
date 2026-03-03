@@ -140,7 +140,7 @@ spec:
 
 Result in `/etc/resolv.conf`:
 
-```
+```text
 nameserver 10.96.0.10
 nameserver 192.168.1.100
 search default.svc.cluster.local svc.cluster.local cluster.local internal.company.com company.com

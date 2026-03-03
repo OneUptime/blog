@@ -87,7 +87,7 @@ sudo nano /etc/security/limits.conf
 
 Add these lines:
 
-```
+```text
 # Disable core dumps for all users
 *   soft   core   0
 *   hard   core   0

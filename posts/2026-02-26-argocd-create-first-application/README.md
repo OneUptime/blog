@@ -153,7 +153,7 @@ You can also sync from the UI. Open the ArgoCD web interface, find your applicat
 
 After syncing, the status should change to:
 
-```
+```text
 Sync Status:  Synced
 Health Status: Healthy
 ```

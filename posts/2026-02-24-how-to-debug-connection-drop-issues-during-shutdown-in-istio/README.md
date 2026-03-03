@@ -81,7 +81,7 @@ kubectl logs deploy/web-api -c istio-proxy -n default -f --since=1s
 
 With debug logging, you'll see entries like:
 
-```
+```text
 connection: [C123] closing socket
 http: [C123] response complete
 pool: [C123] destroying stream

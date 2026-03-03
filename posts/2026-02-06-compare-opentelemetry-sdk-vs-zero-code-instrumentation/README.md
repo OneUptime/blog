@@ -66,7 +66,7 @@ eBPF-based tools like Grafana Beyla, Pixie, and Odigos can detect HTTP, gRPC, an
 
 What eBPF captures:
 
-```
+```text
 # eBPF can observe these at the kernel/syscall level
 - HTTP request/response (method, path, status, duration)
 - gRPC calls (service, method, status)
@@ -77,7 +77,7 @@ What eBPF captures:
 
 What eBPF cannot capture:
 
-```
+```text
 # eBPF cannot see inside application logic
 - Business-specific attributes (order ID, user tier, etc.)
 - Custom span names for internal operations

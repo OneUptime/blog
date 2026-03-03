@@ -8,7 +8,7 @@ Description: MetalLB is a load-balancer implementation for bare metal Kubernetes
 
 MetalLB is a load balancer implementation for environments that do not natively provide this feature, like bare metal clusters and edge deployments. It allows external access to services deployed in your Kubernetes cluster, which is crucial for many applications.
 
-### Prerequisites
+## Prerequisites
 
 Before we start, make sure you have the following:
 

@@ -21,7 +21,7 @@ docker volume ls
 
 Output:
 
-```
+```text
 DRIVER    VOLUME NAME
 local     postgres-data
 local     redis-data

@@ -25,7 +25,7 @@ ip addr show docker0
 
 Typical output:
 
-```
+```text
 4: docker0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP
     link/ether 02:42:a8:6f:3e:01 brd ff:ff:ff:ff:ff:ff
     inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0

@@ -92,7 +92,7 @@ sudo nano /etc/hosts
 
 Add the following entries:
 
-```
+```text
 # Cluster nodes
 192.168.1.101   node1.cluster.local   node1
 192.168.1.102   node2.cluster.local   node2

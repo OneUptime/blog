@@ -350,7 +350,7 @@ spec:
 
 Monitor for any cross-tenant traffic attempts:
 
-```
+```text
 sum(rate(istio_requests_total{source_workload_namespace!~"istio-system|shared",response_code="403"}[5m])) by (source_workload_namespace, destination_workload_namespace)
 ```
 

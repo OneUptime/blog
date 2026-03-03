@@ -76,7 +76,7 @@ curl http://localhost/nginx_status
 
 Expected output:
 
-```
+```text
 Active connections: 2
 server accepts handled requests
  123 123 456

@@ -122,7 +122,7 @@ STORAGE_CLASS:.storageClassName
 
 Example output:
 
-```
+```text
 NODE        CAPACITY      STORAGE_CLASS
 worker-1    500Gi         fast-ssd
 worker-2    1000Gi        fast-ssd

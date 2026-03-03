@@ -304,7 +304,7 @@ terraform {
 
 Organize state files by environment and component:
 
-```
+```text
 s3://mycompany-terraform-state/
 ├── network/
 │   └── terraform.tfstate
@@ -604,7 +604,7 @@ resource "aws_s3_bucket_replication_configuration" "state_replication" {
 
 ### Access Denied
 
-```
+```text
 Error: Failed to load state: AccessDenied
 ```
 
@@ -612,7 +612,7 @@ Check IAM permissions for S3 and KMS access.
 
 ### Lock Table Not Found
 
-```
+```text
 Error: Error acquiring the state lock: ResourceNotFoundException
 ```
 
@@ -620,7 +620,7 @@ Verify DynamoDB table exists and table name matches configuration.
 
 ### State Locked
 
-```
+```text
 Error: Error acquiring the state lock
 Lock Info:
   ID:        abc-123

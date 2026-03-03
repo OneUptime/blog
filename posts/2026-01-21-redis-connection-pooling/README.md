@@ -21,7 +21,7 @@ Creating a new Redis connection involves:
 
 For high-throughput applications, these costs accumulate quickly:
 
-```
+```text
 Without pooling: 1000 requests/sec x 5ms connection time = 5 seconds wasted per second
 With pooling:    Connections reused, near-zero connection overhead
 ```

@@ -26,7 +26,7 @@ If you have a single module, stick with the standard `go.mod` setup. Workspaces 
 
 Let's say you have this project structure - a monorepo with an API service, a worker service, and shared packages they both use.
 
-```
+```text
 myproject/
 ├── api/
 │   ├── go.mod
@@ -198,7 +198,7 @@ For VS Code, the Go extension picks up `go.work` automatically. For GoLand, you 
 
 Workspaces do not magically fix circular dependencies. If `api` imports `shared` and `shared` imports `api`, you still have a problem.
 
-```
+```text
 # This will fail regardless of workspaces
 api -> shared -> api  (circular import)
 ```

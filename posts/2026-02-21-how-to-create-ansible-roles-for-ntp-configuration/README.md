@@ -14,7 +14,7 @@ This post uses Chrony, which has replaced the older ntpd as the default NTP impl
 
 ## Role Structure
 
-```
+```text
 roles/ntp/
   defaults/main.yml
   handlers/main.yml

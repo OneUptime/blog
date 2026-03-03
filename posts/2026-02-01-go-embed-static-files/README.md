@@ -184,7 +184,7 @@ func main() {
 
 The `fs.Sub` call is important. Without it, the embedded path includes the directory name. If your structure is:
 
-```
+```text
 main.go
 web/
   index.html

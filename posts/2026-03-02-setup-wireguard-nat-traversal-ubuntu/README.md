@@ -269,7 +269,7 @@ sudo ufw route allow in on eth0 out on wg0
 sudo nano /etc/nftables.conf
 ```
 
-```
+```text
 table ip nat {
   chain postrouting {
     type nat hook postrouting priority 100;

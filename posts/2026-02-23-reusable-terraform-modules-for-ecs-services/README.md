@@ -28,7 +28,7 @@ It does not create the ECS cluster, VPC, ALB, or security groups. Those come fro
 
 ## Module Structure
 
-```
+```text
 modules/ecs-service/
   main.tf
   iam.tf

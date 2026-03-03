@@ -107,7 +107,7 @@ ansible-navigator run dev-playbook.yml
 
 Once the playbook finishes, you see a list of plays. Here are the most useful navigation commands:
 
-```
+```text
 # Navigation commands in the TUI
 # Type a number to drill into that item
 0                    # Select the first play

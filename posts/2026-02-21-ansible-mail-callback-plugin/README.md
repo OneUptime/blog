@@ -99,7 +99,7 @@ The mail callback sends an email with the playbook results. The email body inclu
 
 A failure notification looks something like:
 
-```
+```text
 Subject: Ansible: deploy.yml failed on web-03
 
 Playbook: deploy.yml

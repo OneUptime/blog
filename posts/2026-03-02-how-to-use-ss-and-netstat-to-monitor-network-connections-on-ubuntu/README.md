@@ -62,7 +62,7 @@ sudo ss -tlnp
 
 Output:
 
-```
+```text
 State   Recv-Q Send-Q Local Address:Port  Peer Address:Port  Process
 LISTEN  0      128    0.0.0.0:22         0.0.0.0:*          users:(("sshd",pid=1234,fd=4))
 LISTEN  0      511    0.0.0.0:80         0.0.0.0:*          users:(("nginx",pid=5678,fd=8))
@@ -139,7 +139,7 @@ ss -s
 
 Output:
 
-```
+```text
 Total: 1234
 TCP:   892 (estab 145, closed 723, orphaned 0, timewait 714)
 
@@ -200,7 +200,7 @@ netstat -s
 
 ### netstat Output Format
 
-```
+```text
 Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name
 tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN      1234/sshd: /usr/sbi
 tcp        0      0 192.168.1.100:22        192.168.1.50:54321      ESTABLISHED 5678/sshd: user@pts

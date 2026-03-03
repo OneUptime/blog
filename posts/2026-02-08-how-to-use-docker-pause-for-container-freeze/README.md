@@ -43,7 +43,7 @@ docker ps --filter name=busy-worker
 
 Output shows the paused state:
 
-```
+```text
 CONTAINER ID   IMAGE    COMMAND                  STATUS                  NAMES
 a1b2c3d4e5f6   alpine   "sh -c 'while true;..."  Up 2 minutes (Paused)  busy-worker
 ```

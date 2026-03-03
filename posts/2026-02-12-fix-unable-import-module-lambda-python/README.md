@@ -10,13 +10,13 @@ Description: Resolve the common Unable to import module error in AWS Lambda Pyth
 
 You deploy your Lambda function, invoke it, and get:
 
-```
+```text
 [ERROR] Runtime.ImportModuleError: Unable to import module 'lambda_function': No module named 'lambda_function'
 ```
 
 or
 
-```
+```text
 [ERROR] Runtime.ImportModuleError: Unable to import module 'app': No module named 'requests'
 ```
 
@@ -85,7 +85,7 @@ aws lambda update-function-configuration \
 
 If you want your handler in a subdirectory, use dots for the path:
 
-```
+```text
 my-package/
   handlers/
     __init__.py

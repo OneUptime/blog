@@ -258,7 +258,7 @@ kubectl logs deployment/istiod -n istio-system -f | \
 
 Key metrics to watch in Prometheus:
 
-```
+```text
 # Configuration push errors (could indicate attacks)
 pilot_xds_push_errors
 

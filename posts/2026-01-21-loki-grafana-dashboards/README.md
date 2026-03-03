@@ -754,7 +754,7 @@ Here is a complete dashboard example:
 
 Ensure all panels use the same time range variables:
 
-```
+```text
 [$__range]    - For aggregations over dashboard time range
 [$__interval] - For rate calculations (auto-adjusts based on resolution)
 [5m]          - For fixed-window calculations

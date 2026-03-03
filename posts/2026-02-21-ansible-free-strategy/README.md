@@ -52,7 +52,7 @@ strategy = free
 
 With the linear strategy (3 tasks, 4 hosts):
 
-```
+```text
 Time -->
 web-01: [Task 1] [wait] [Task 2] [wait] [Task 3]
 web-02: [Task 1] [wait] [Task 2] [wait] [Task 3]
@@ -63,7 +63,7 @@ web-04: [Task 1] [wait] [Task 2......] [Task 3]
 
 With the free strategy:
 
-```
+```text
 Time -->
 web-01: [Task 1] [Task 2] [Task 3] [done]
 web-02: [Task 1] [Task 2] [Task 3] [done]
@@ -107,7 +107,7 @@ The free strategy changes some assumptions that you might rely on.
 
 **Output is interleaved.** Since hosts run different tasks simultaneously, the terminal output mixes results from different tasks. This can be confusing to read:
 
-```
+```text
 ok: [web-01] TASK [Deploy config]
 ok: [web-03] TASK [Install packages]
 changed: [web-02] TASK [Deploy config]

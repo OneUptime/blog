@@ -14,7 +14,7 @@ The error message "Sub-process /usr/bin/dpkg returned an error code (1)" is one 
 
 The full error typically appears like this:
 
-```
+```text
 Setting up somepackage (1.2.3-1ubuntu1) ...
 dpkg: error processing package somepackage (--configure):
  installed somepackage package post-installation script subprocess returned error exit status 1

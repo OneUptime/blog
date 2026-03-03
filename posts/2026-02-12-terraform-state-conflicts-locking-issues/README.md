@@ -93,7 +93,7 @@ When you run `terraform plan` or `terraform apply`, Terraform acquires a lock on
 
 If a `terraform apply` is interrupted (process killed, network timeout, ctrl+c), the lock may not be released cleanly. You'll see an error like:
 
-```
+```text
 Error: Error acquiring the state lock
 
 Error message: ConditionalCheckFailedException: The conditional request failed

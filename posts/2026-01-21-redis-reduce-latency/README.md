@@ -208,7 +208,7 @@ r = redis.Redis(unix_socket_path='/var/run/redis/redis.sock')
 
 ### Why Pooling Matters
 
-```
+```text
 Without pooling (new connection per request):
 ─────────────────────────────────────────────────────
 Request 1: TCP handshake (1ms) + AUTH (0.1ms) + Command (0.1ms) = 1.2ms

@@ -358,7 +358,7 @@ service:
 
 Example HAProxy configuration using the health check:
 
-```
+```text
 # HAProxy configuration for OpenTelemetry Collector
 backend otel_collectors
     mode http

@@ -73,7 +73,7 @@ ArgoCD immediately picks up the Application resource and begins managing the dep
 
 For multiple applications, create a structured directory layout in your Git repository:
 
-```
+```text
 argocd-config/
   applications/
     production/

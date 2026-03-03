@@ -26,7 +26,7 @@ istioctl analyze --all-namespaces
 
 ## IST0102: Namespace Not Injected
 
-```
+```text
 Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection.
 ```
 
@@ -48,7 +48,7 @@ kubectl annotate namespace kube-system galley.istio.io/analyze-suppress=IST0102
 
 ## IST0101: Referenced Host Not Found
 
-```
+```text
 Warning [IST0101] (VirtualService default/my-vs) Referenced host not found: "api-service"
 ```
 
@@ -68,7 +68,7 @@ hosts:
 
 ## IST0104: Gateway Port Not On Workload
 
-```
+```text
 Warning [IST0104] (Gateway default/my-gw) The gateway refers to a port that is not exposed
 ```
 
@@ -101,7 +101,7 @@ spec:
 
 ## IST0131: VirtualService Ineffective Match
 
-```
+```text
 Warning [IST0131] (VirtualService default/my-vs) This match clause is not used because a previous match is a superset
 ```
 
@@ -135,7 +135,7 @@ http:
 
 ## IST0128: No Server Certificate Verification
 
-```
+```text
 Warning [IST0128] (DestinationRule default/my-dr) No server certificate verification for TLS
 ```
 
@@ -166,7 +166,7 @@ trafficPolicy:
 
 ## IST0108: Unknown Annotation
 
-```
+```text
 Warning [IST0108] (Deployment default/my-deploy) Unknown annotation: networking.istio.io/exportToo
 ```
 
@@ -188,7 +188,7 @@ Look up the exact annotation names in the Istio resource annotations reference.
 
 ## IST0139: Conflicting Sidecar Workload Selectors
 
-```
+```text
 Warning [IST0139] (Sidecar default/sidecar-a) Sidecar has conflicting workload selector with sidecar-b
 ```
 

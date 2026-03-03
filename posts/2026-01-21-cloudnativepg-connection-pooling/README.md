@@ -473,7 +473,7 @@ groups:
 
 ### Calculate Pool Size
 
-```
+```text
 # Base formula
 default_pool_size = max_connections / (num_databases * num_users)
 

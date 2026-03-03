@@ -56,7 +56,7 @@ apt-cache madison docker-ce
 
 This outputs a table like this:
 
-```
+```text
  docker-ce | 5:27.5.1-1~ubuntu.24.04~noble | https://download.docker.com/linux/ubuntu noble/stable amd64 Packages
  docker-ce | 5:27.4.1-1~ubuntu.24.04~noble | https://download.docker.com/linux/ubuntu noble/stable amd64 Packages
  docker-ce | 5:27.3.1-1~ubuntu.24.04~noble | https://download.docker.com/linux/ubuntu noble/stable amd64 Packages

@@ -42,14 +42,14 @@ terraform workspace show
 
 Each workspace gets its own state file. With an S3 backend, the state paths look like this:
 
-```
+```text
 s3://my-terraform-state/env:/dev/terraform.tfstate
 s3://my-terraform-state/env:/staging/terraform.tfstate
 s3://my-terraform-state/env:/production/terraform.tfstate
 ```
 
 The `default` workspace uses the root key:
-```
+```text
 s3://my-terraform-state/terraform.tfstate
 ```
 
@@ -115,7 +115,7 @@ terraform {
 
 The alternative approach uses completely separate directories for each environment, each with its own backend configuration:
 
-```
+```text
 terraform/
   modules/
     app/
@@ -248,7 +248,7 @@ variable "enable_backups" {
 
 Many teams use a combination. Workspaces work well for ephemeral environments (feature branches, testing), while directory separation works better for permanent environments:
 
-```
+```text
 terraform/
   modules/
     app/

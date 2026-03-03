@@ -110,7 +110,7 @@ restic backup /var/www/app --verbose
 
 The output shows what Restic is doing:
 
-```
+```text
 repository a1b2c3d4e5 opened successfully
 created new cache in /home/user/.cache/restic
 

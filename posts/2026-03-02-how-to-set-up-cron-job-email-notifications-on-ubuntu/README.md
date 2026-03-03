@@ -46,7 +46,7 @@ The `MAILTO` variable at the top of a crontab controls where output goes:
 crontab -e
 ```
 
-```
+```text
 # Send all cron output to this email address
 MAILTO="admin@example.com"
 

@@ -41,7 +41,7 @@ kubectl get daemonset ztunnel -n istio-system
 
 Output:
 
-```
+```text
 NAME      DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
 ztunnel   3         3         3       3             3           <none>          12d
 ```
@@ -54,7 +54,7 @@ Check the ztunnel pods:
 kubectl get pods -l app=ztunnel -n istio-system -o wide
 ```
 
-```
+```text
 NAME            READY   STATUS    NODE      IP
 ztunnel-abc12   1/1     Running   node-1    10.0.0.5
 ztunnel-def34   1/1     Running   node-2    10.0.0.6
@@ -112,7 +112,7 @@ ztunnel needs certificates for every workload identity on its node. It gets thes
 istioctl ztunnel-config certificates
 ```
 
-```
+```text
 CERTIFICATE NAME                                              TYPE     STATUS  VALID CERT  SERIAL NUMBER
 spiffe://cluster.local/ns/bookinfo/sa/bookinfo-productpage    Leaf     Active  true        abc123
 spiffe://cluster.local/ns/bookinfo/sa/bookinfo-reviews        Leaf     Active  true        def456
@@ -147,7 +147,7 @@ The `policies` command is particularly useful for debugging authorization issues
 istioctl ztunnel-config policies
 ```
 
-```
+```text
 NAMESPACE    POLICY NAME         ACTION    SCOPE
 bookinfo     allow-productpage   ALLOW     Namespace
 bookinfo     deny-ratings        DENY      Namespace
@@ -161,7 +161,7 @@ Monitor ztunnel resource usage:
 kubectl top pods -l app=ztunnel -n istio-system
 ```
 
-```
+```text
 NAME            CPU(cores)   MEMORY(bytes)
 ztunnel-abc12   15m          32Mi
 ztunnel-def34   12m          28Mi

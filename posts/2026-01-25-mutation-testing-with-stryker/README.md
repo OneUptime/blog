@@ -124,7 +124,7 @@ Stryker reports show:
 
 Example output:
 
-```
+```text
 Mutation testing  [====================] 100% (elapsed: 2m, remaining: 0s)
   Kill: 245 Survived: 12 Timeout: 3 No Coverage: 5
 

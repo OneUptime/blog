@@ -80,7 +80,7 @@ touch src/index.js src/schema/typeDefs.js src/resolvers/index.js
 
 Your project structure should look like this:
 
-```
+```text
 graphql-api/
 ├── src/
 │   ├── index.js

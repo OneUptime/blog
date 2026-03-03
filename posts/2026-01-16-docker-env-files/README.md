@@ -105,7 +105,7 @@ services:
 
 ### Directory Structure
 
-```
+```text
 project/
 ├── docker-compose.yml
 ├── .env                    # Default/development

@@ -37,14 +37,14 @@ sum(container_memory_working_set_bytes{container="istio-proxy"})
 
 Now calculate the cost. On AWS using m5.xlarge instances (4 vCPU, 16 GB memory, $0.192/hour in us-east-1):
 
-```
+```text
 Cost per CPU core per month = $0.192 / 4 cores * 730 hours = ~$35/core/month
 Cost per GB memory per month = $0.192 / 16 GB * 730 hours = ~$8.76/GB/month
 ```
 
 Example: 200 pods with sidecars requesting 100m CPU and 128Mi memory each:
 
-```
+```text
 CPU cost: 200 * 0.1 cores * $35 = $700/month
 Memory cost: 200 * 0.125 GB * $8.76 = $219/month
 Total sidecar compute cost: $919/month
@@ -52,7 +52,7 @@ Total sidecar compute cost: $919/month
 
 If you right-size to 25m CPU and 64Mi memory:
 
-```
+```text
 CPU cost: 200 * 0.025 cores * $35 = $175/month
 Memory cost: 200 * 0.0625 GB * $8.76 = $109/month
 Total: $284/month (69% reduction)
@@ -72,7 +72,7 @@ sum(kube_pod_container_resource_requests{namespace="istio-system", container="di
 
 A typical production setup with 3 istiod replicas requesting 1 CPU and 2 GB each:
 
-```
+```text
 CPU: 3 * 1 * $35 = $105/month
 Memory: 3 * 2 * $8.76 = $52.56/month
 Total control plane: ~$158/month
@@ -91,7 +91,7 @@ Plus the cost of cloud load balancers. On AWS, each Network Load Balancer costs 
 
 Example with 2 ingress gateways (500m CPU, 512Mi each) and one NLB:
 
-```
+```text
 Compute: 2 * (0.5 * $35 + 0.5 * $8.76) = $43.76/month
 Load balancer: $16 + data charges
 Total gateway cost: ~$60-80/month
@@ -105,7 +105,7 @@ Istio generates three types of telemetry data that need storage:
 
 Estimate metrics storage:
 
-```
+```text
 Metrics per sidecar: ~300 active time series
 Total time series: 200 sidecars * 300 = 60,000
 Samples per day (15s scrape interval): 60,000 * 5,760 = 345,600,000
@@ -118,7 +118,7 @@ At $0.10/GB for S3 or $0.023/GB for compressed Prometheus storage, that is $0.70
 
 **Access logs**: If enabled, each request generates an access log line of roughly 500-1000 bytes.
 
-```
+```text
 Requests per day: 10,000,000 (for a moderate platform)
 Log size per request: 750 bytes (average)
 Daily log volume: 7.5 GB
@@ -129,7 +129,7 @@ At $0.50/GB for Elasticsearch or $0.03/GB for S3, that is $6.75-112.50/month.
 
 **Traces**: Sampling rate directly controls cost. At 1% sampling:
 
-```
+```text
 Traces per day: 10,000,000 * 0.01 = 100,000
 Average trace size: 5 KB (with 3-4 spans)
 Daily trace storage: 500 MB
@@ -142,7 +142,7 @@ Sidecars add network overhead. Each request is processed twice (once by the sour
 
 For intra-AZ traffic this is usually free on cloud providers. For cross-AZ traffic, each extra byte costs money:
 
-```
+```text
 Cross-AZ data transfer: $0.01/GB on AWS
 mTLS overhead: ~3% of total traffic
 If 30% of traffic is cross-AZ: additional cost = total_traffic * 0.03 * 0.30 * $0.01
@@ -150,7 +150,7 @@ If 30% of traffic is cross-AZ: additional cost = total_traffic * 0.03 * 0.30 * $
 
 For a platform doing 10 TB/month of internal traffic:
 
-```
+```text
 Additional network cost: 10,000 GB * 0.03 * 0.30 * $0.01 = $0.90/month
 ```
 
@@ -188,7 +188,7 @@ Without right-sizing sidecars, the sidecar compute jumps to $919, bringing the t
 
 Divide the total cost by the number of services to get a per-service cost:
 
-```
+```text
 $2,456 / 50 services = ~$49/service/month
 ```
 

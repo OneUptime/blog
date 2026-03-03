@@ -89,7 +89,7 @@ kubectl get nodes -o wide
 
 Expected output shows both server and agent nodes:
 
-```
+```text
 NAME          STATUS   ROLES                  AGE   VERSION
 k3s-server    Ready    control-plane,master   2d    v1.28.4+k3s1
 k3s-agent-1   Ready    <none>                 5m    v1.28.4+k3s1

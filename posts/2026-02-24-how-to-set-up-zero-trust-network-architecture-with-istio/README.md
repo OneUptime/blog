@@ -51,7 +51,7 @@ This shows the certificates loaded by the proxy. You should see the root CA cert
 
 Istio automatically assigns SPIFFE identities to every workload based on the Kubernetes service account. The identity format is:
 
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 

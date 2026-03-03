@@ -26,7 +26,7 @@ kubectl get crd virtualservices.networking.istio.io -o jsonpath='{.spec.versions
 
 This might output:
 
-```
+```text
 v1alpha3 v1beta1 v1
 ```
 
@@ -209,7 +209,7 @@ kubectl get pods -n istio-system -l app=istiod
 
 Kubernetes 1.19+ shows deprecation warnings when you use deprecated API versions. You'll see messages like:
 
-```
+```text
 Warning: networking.istio.io/v1alpha3 VirtualService is deprecated in v1.22+, unavailable in v1.25+; use networking.istio.io/v1 VirtualService
 ```
 

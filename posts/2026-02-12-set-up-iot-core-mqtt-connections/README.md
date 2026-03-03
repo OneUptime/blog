@@ -252,7 +252,7 @@ connection.publish(
 
 Well-designed topics make rules and subscriptions easier to manage.
 
-```
+```text
 # Good topic hierarchy
 sensors/{device-id}/data          # Telemetry data
 sensors/{device-id}/status        # Device status

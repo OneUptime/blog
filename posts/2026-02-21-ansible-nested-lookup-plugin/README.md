@@ -45,7 +45,7 @@ This playbook creates directories for every combination of environment and servi
 
 This creates 9 directories (3 environments x 3 services):
 
-```
+```text
 /opt/deployments/development/web
 /opt/deployments/development/api
 /opt/deployments/development/worker
@@ -146,7 +146,7 @@ When setting up monitoring, you often need to create checks for every service on
 
 The template:
 
-```
+```text
 # templates/monitoring_check.j2
 [check]
 host = {{ target_host }}

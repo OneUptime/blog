@@ -24,7 +24,7 @@ This {# will_not_be_removed #} as a comment.
 ```
 
 Output (exactly as written):
-```
+```text
 This {{ will_not_be_interpreted }} as a variable.
 This {% will_not_be_treated %} as a tag.
 This {# will_not_be_removed #} as a comment.

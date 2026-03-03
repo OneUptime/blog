@@ -60,7 +60,7 @@ kubectl logs -n kube-system -l k8s-app=kube-dns --tail=50
 
 You'll see output like:
 
-```
+```text
 [INFO] 10.244.1.5:45678 - 12345 "A IN kubernetes.default.svc.cluster.local. udp 54 false 512" NOERROR qr,aa,rd 106 0.000123s
 ```
 
@@ -374,25 +374,25 @@ These queries provide insights into DNS performance and usage patterns.
 Common DNS issues and their log signatures:
 
 **Service not found:**
-```
+```text
 NXDOMAIN response for myservice.default.svc.cluster.local
 ```
 Solution: Verify service exists and namespace is correct.
 
 **Slow responses:**
-```
+```text
 Processing time > 100ms
 ```
 Solution: Check upstream resolver performance, increase cache, or add more CoreDNS replicas.
 
 **Timeout errors:**
-```
+```text
 SERVFAIL with long duration
 ```
 Solution: Investigate network connectivity to upstream resolvers.
 
 **Excessive NXDOMAIN:**
-```
+```text
 High rate of NXDOMAIN for similar patterns
 ```
 Solution: Misconfigured application or search domain issues.

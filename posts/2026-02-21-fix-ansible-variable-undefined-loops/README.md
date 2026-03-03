@@ -12,7 +12,7 @@ Variables becoming undefined inside loops is a common source of confusion in Ans
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "The task includes an option with an undefined variable. The error was: 'dict object' has no attribute 'port'"
 }

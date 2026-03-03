@@ -57,7 +57,7 @@ sudo nano /opt/nexus/bin/nexus.rc
 ```
 
 Set:
-```
+```text
 run_as_user="nexus"
 ```
 
@@ -67,7 +67,7 @@ Configure JVM memory settings:
 sudo nano /opt/nexus/bin/nexus.vmoptions
 ```
 
-```
+```text
 # JVM options for Nexus
 -Xms2703m
 -Xmx2703m

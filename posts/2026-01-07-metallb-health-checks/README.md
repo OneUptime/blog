@@ -941,7 +941,7 @@ kubectl describe pod <pod-name> -n production
 
 Look for the Events section which shows probe failures:
 
-```
+```text
 Events:
   Type     Reason     Age   From     Message
   ----     ------     ----  ----     -------

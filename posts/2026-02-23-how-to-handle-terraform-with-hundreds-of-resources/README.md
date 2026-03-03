@@ -75,7 +75,7 @@ terraform state list | sed 's/\[.*$//' | sort | uniq -c | sort -rn | head -20
 
 This shows you which resource types dominate your state. A typical output might look like:
 
-```
+```text
   85 aws_security_group_rule
   62 aws_iam_policy
   45 aws_route53_record

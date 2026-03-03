@@ -76,7 +76,7 @@ The adjacency list pattern stores relationships as items where one entity refere
 
 Store relationship items with this structure:
 
-```
+```text
 PK: USER#123
 SK: GROUP#456
 ```
@@ -85,7 +85,7 @@ This item represents "User 123 belongs to Group 456." To query all groups for a 
 
 To query the reverse direction (all users in a group), you need a Global Secondary Index (GSI) that inverts the keys:
 
-```
+```text
 GSI1PK: GROUP#456
 GSI1SK: USER#123
 ```

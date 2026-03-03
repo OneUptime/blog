@@ -230,7 +230,7 @@ Storing passwords in `docker-compose.yml` is a bad idea. Use a credentials file 
 sudo nano /etc/docker-smb-credentials
 ```
 
-```
+```text
 username=myuser
 password=mypassword
 domain=WORKGROUP

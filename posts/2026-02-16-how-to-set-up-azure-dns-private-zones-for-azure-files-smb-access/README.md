@@ -19,12 +19,12 @@ This guide walks through setting up private endpoints for Azure Files and config
 When a client mounts `\\mystorageaccount.file.core.windows.net\myshare`, the operating system resolves the FQDN. Here is what happens with and without private DNS zones:
 
 **Without private DNS zone (public resolution)**:
-```
+```text
 mystorageaccount.file.core.windows.net -> 52.x.x.x (public IP)
 ```
 
 **With private endpoint and private DNS zone**:
-```
+```text
 mystorageaccount.file.core.windows.net
   -> CNAME: mystorageaccount.privatelink.file.core.windows.net
   -> A record: 10.0.1.5 (private endpoint IP)

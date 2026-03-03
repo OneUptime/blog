@@ -336,7 +336,7 @@ ruler:
 
 When running Loki in multi-tenant mode, organize rules by tenant:
 
-```
+```text
 /loki/rules/
   tenant-a/
     application-alerts.yaml

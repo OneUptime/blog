@@ -100,7 +100,7 @@ talosctl get routes --nodes <node-ip> | grep kubespan
 
 The routing table on a node with KubeSpan looks something like this (conceptually):
 
-```
+```text
 # Node-to-node traffic via KubeSpan
 10.244.1.0/24 via kubespan (if advertiseKubernetesNetworks is true)
 10.244.2.0/24 via kubespan (if advertiseKubernetesNetworks is true)
@@ -113,7 +113,7 @@ fd7a:115c:a1e0::/48 via kubespan  # KubeSpan address space
 
 Each KubeSpan peer goes through several states:
 
-```
+```text
 Unknown -> Establishing -> Up -> (Down -> Establishing -> Up)
 ```
 
@@ -153,7 +153,7 @@ KubeSpan's security model is built on several layers. WireGuard provides authent
 
 The trust chain looks like this:
 
-```
+```text
 Cluster CA -> Node Certificate -> KubeSpan Identity -> WireGuard Tunnel
 ```
 

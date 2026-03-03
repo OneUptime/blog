@@ -37,7 +37,7 @@ cat /proc/mdstat
 
 Example output from `/proc/mdstat`:
 
-```
+```text
 Personalities : [raid5]
 md0 : active raid5 sda[0] sdb[1] sdc[2]
       2929000000 blocks super 1.2 level 5, 512k chunk, algorithm 2 [3/3] [UUU]
@@ -90,7 +90,7 @@ watch -n 10 cat /proc/mdstat
 
 During reshape, `/proc/mdstat` shows progress:
 
-```
+```text
 md0 : active raid5 sdd[3] sda[0] sdb[1] sdc[2]
       3905000000 blocks super 1.2 level 5, 512k chunk, algorithm 2 [4/4] [UUUU]
       [==>..................]  reshape = 12.4% (145778432/1172947200) finish=180.0min speed=95000K/sec

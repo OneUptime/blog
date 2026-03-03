@@ -149,22 +149,22 @@ az storage blob download \
 Open the downloaded .cap file in Wireshark. Here are some useful Wireshark display filters for common troubleshooting scenarios:
 
 **TCP connection failures (SYN without SYN-ACK):**
-```
+```text
 tcp.flags.syn == 1 && tcp.flags.ack == 0
 ```
 
 **Retransmissions (indicating packet loss):**
-```
+```text
 tcp.analysis.retransmission
 ```
 
 **Traffic to a specific IP:**
-```
+```text
 ip.dst == 10.0.2.50
 ```
 
 **DNS queries:**
-```
+```text
 dns
 ```
 

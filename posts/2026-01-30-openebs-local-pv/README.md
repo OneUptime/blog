@@ -109,7 +109,7 @@ kubectl get pods -n openebs
 
 Expected output:
 
-```
+```text
 NAME                                              READY   STATUS    RESTARTS   AGE
 openebs-localpv-provisioner-5b4f7d9c8b-xk2mj     1/1     Running   0          2m
 openebs-ndm-cluster-exporter-7f8c9d6b4-9pqrs     1/1     Running   0          2m
@@ -175,7 +175,7 @@ kubectl get blockdevices -n openebs
 
 Example output:
 
-```
+```text
 NAME                                           NODENAME    SIZE          CLAIMSTATE   STATUS   AGE
 blockdevice-1234567890abcdef12345678           worker-1    107374182400  Unclaimed    Active   5m
 blockdevice-abcdef1234567890abcdef12           worker-2    107374182400  Unclaimed    Active   5m

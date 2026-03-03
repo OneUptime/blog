@@ -269,7 +269,7 @@ argocd account generate-token --account ci > /dev/null 2>&1
 
 ### Use .gitignore for Local Development
 
-```
+```text
 # .gitignore
 .env
 .argocd-token

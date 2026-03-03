@@ -259,7 +259,7 @@ p, role:deployer, applications, sync, frontend/*, allow
 
 Design your application naming to work with glob patterns:
 
-```
+```text
 <team>-<service>-<environment>
 frontend-web-staging
 frontend-web-production

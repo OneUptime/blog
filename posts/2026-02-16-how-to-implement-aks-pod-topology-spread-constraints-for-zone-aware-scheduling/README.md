@@ -156,7 +156,7 @@ With 9 replicas across 3 zones, each zone gets 3 pods. The second constraint the
 
 The maxSkew value controls how uneven the distribution can be. Here is how different values affect scheduling with 6 replicas across 3 zones.
 
-```
+```text
 maxSkew: 1 (strictly even)
   Zone 1: 2 pods
   Zone 2: 2 pods

@@ -26,7 +26,7 @@ The module should create and configure:
 
 ## Module Structure
 
-```
+```text
 modules/lambda-function/
   main.tf          # Function and related resources
   iam.tf           # IAM role and policies

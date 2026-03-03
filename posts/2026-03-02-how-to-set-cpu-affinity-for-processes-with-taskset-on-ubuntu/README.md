@@ -32,7 +32,7 @@ taskset -p 1234
 
 Output:
 
-```
+```text
 pid 1234's current affinity mask: ff
 ```
 
@@ -45,7 +45,7 @@ taskset -cp 1234
 
 Output:
 
-```
+```text
 pid 1234's current affinity list: 0-7
 ```
 
@@ -219,7 +219,7 @@ sudo nano /etc/default/grub
 
 Add `isolcpus=4-7` to `GRUB_CMDLINE_LINUX`:
 
-```
+```text
 GRUB_CMDLINE_LINUX="isolcpus=4-7"
 ```
 

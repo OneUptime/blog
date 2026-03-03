@@ -34,7 +34,7 @@ Check your Harbor version to determine which mode to use.
 
 If your Harbor instance still has ChartMuseum enabled, the Helm repository URL follows this pattern:
 
-```
+```text
 https://harbor.company.com/chartrepo/{project-name}
 ```
 

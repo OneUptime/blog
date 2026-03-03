@@ -62,7 +62,7 @@ talosctl read /proc/cmdline
 
 Typical kernel parameters for Talos Linux include:
 
-```
+```text
 talos.platform=metal console=ttyS0 console=tty0 init_on_alloc=1 slab_nomerge pti=on
 ```
 

@@ -154,7 +154,7 @@ sudo chmod -R 755 /media/plex
 
 Plex performs best when media is organized following these naming conventions.
 
-```
+```text
 /media/plex/
 ├── movies/
 │   ├── The Matrix (1999)/

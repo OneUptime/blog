@@ -170,7 +170,7 @@ done
 
 Document who needs to know what:
 
-```
+```text
 Severity: Low (single resource issue)
   - Notify: On-call engineer
   - Channel: #istio-ops Slack
@@ -277,7 +277,7 @@ The DR plan is a living document. Update it when:
 
 Keep a one-page summary that's easy to find during an incident:
 
-```
+```text
 ISTIO DR QUICK REFERENCE
 
 Backup locations:

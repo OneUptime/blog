@@ -38,7 +38,7 @@ Run tasks execute in a specific phase:
 3. Click **Create run task**
 4. Fill in the details:
 
-```
+```text
 Name: Security Scanner
 Endpoint URL: https://scanner.example.com/terraform-callback
 HMAC Key: your-secret-hmac-key (for verifying webhook authenticity)
@@ -258,7 +258,7 @@ The callback result status can be:
 
 When a run has tasks, the UI shows results between the plan and apply phases:
 
-```
+```text
 Plan: 3 to add, 1 to change, 0 to destroy.
 
 --- Run Tasks ---

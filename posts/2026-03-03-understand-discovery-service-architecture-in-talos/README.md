@@ -28,7 +28,7 @@ The discovery process involves three participants: the registering node, the dis
 
 When a node registers with the discovery service:
 
-```
+```text
 1. Node generates its discovery payload:
    - Network endpoints (IP addresses, ports)
    - KubeSpan public key (if enabled)
@@ -52,7 +52,7 @@ When a node registers with the discovery service:
 
 When a node queries for other members:
 
-```
+```text
 1. Node sends HTTP GET to the discovery service:
    GET /clusters/{cluster-id}/affiliates
 
@@ -93,7 +93,7 @@ Two clusters with different secrets will have different cluster IDs and will not
 
 The encryption model is central to the discovery service's security:
 
-```
+```text
 Cluster Secrets
     |
     v
@@ -139,7 +139,7 @@ Discovery entries have a TTL (time-to-live). If a node stops refreshing its regi
 
 The lifecycle looks like this:
 
-```
+```text
 Node boots -> Register (TTL = 30 minutes)
               |
               +-- Refresh every ~5 minutes
@@ -160,7 +160,7 @@ talosctl get discoveredmembers --nodes <node-ip> --watch
 
 The discovery service exposes a simple HTTP API:
 
-```
+```text
 POST /clusters/{cluster-id}/affiliates/{affiliate-id}
   - Register or update an affiliate
   - Body: encrypted discovery data
@@ -185,7 +185,7 @@ The API is intentionally minimal. There is no authentication at the HTTP level b
 
 Talos supports two registries simultaneously:
 
-```
+```text
                     +-- Service Registry (external HTTP endpoint)
                     |   - Works before Kubernetes boots
                     |   - Requires network access to the endpoint

@@ -73,7 +73,7 @@ talosctl -n <surviving-node> logs etcd --tail=50 --follow
 
 etcd leases are the foundation of the VIP election. Here is how they work conceptually:
 
-```
+```text
 # Simplified lease flow
 
 Node A creates lease (TTL=10s) -> etcd grants lease (ID: abc123)

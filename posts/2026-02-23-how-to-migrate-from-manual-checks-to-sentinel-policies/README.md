@@ -85,7 +85,7 @@ Compare this to the manual version: instead of a reviewer eyeballing every resou
 
 Sentinel policies live in policy sets. Create a repository structure for your policies:
 
-```
+```text
 sentinel-policies/
     require-tags.sentinel
     restrict-instance-types.sentinel

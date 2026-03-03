@@ -178,7 +178,7 @@ env:
 
 And in your application connection string:
 
-```
+```text
 mysql://myuser:password@mysql.database.svc.cluster.local:3306/mydb?tls=skip-verify
 ```
 
@@ -233,7 +233,7 @@ spec:
 
 ### MongoDB Connection String
 
-```
+```text
 mongodb://admin:password@mongodb.database.svc.cluster.local:27017/mydb?ssl=false
 ```
 

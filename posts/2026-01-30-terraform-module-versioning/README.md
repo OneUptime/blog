@@ -32,7 +32,7 @@ Semantic versioning (SemVer) uses a three-part version number: MAJOR.MINOR.PATCH
 
 Here is an example of how versions progress:
 
-```
+```text
 1.0.0 - Initial stable release
 1.0.1 - Fixed incorrect default value for instance_type
 1.1.0 - Added support for custom tags variable

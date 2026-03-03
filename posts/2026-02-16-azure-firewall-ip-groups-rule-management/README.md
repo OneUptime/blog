@@ -18,13 +18,13 @@ In this post, I will show how to create IP Groups, use them in Azure Firewall ru
 
 An IP Group is an Azure resource that holds a list of individual IP addresses, IP ranges, or CIDR subnets. You can think of it as a named variable for your firewall rules. Instead of writing:
 
-```
+```text
 Source: 10.0.1.4, 10.0.1.5, 10.0.1.6, 10.0.2.0/24
 ```
 
 You write:
 
-```
+```text
 Source: ipgroup-web-servers
 ```
 

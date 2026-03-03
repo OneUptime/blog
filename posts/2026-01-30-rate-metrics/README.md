@@ -44,7 +44,7 @@ Common rate metric use cases:
 
 The simplest rate calculation uses two data points:
 
-```
+```text
 rate = (value_end - value_start) / (time_end - time_start)
 ```
 

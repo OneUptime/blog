@@ -264,12 +264,12 @@ enabled = true
 3. Check that email links point to the correct `root_url`
 
 Example email link should be:
-```
+```text
 https://grafana.example.com/alerting/list
 ```
 
 Not:
-```
+```text
 http://localhost:3000/alerting/list
 ```
 

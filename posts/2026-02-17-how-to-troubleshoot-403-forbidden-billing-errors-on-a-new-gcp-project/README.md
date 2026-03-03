@@ -16,7 +16,7 @@ This error is incredibly common for new projects and new GCP users. The problem 
 
 The typical error looks like this:
 
-```
+```text
 ERROR: (gcloud.compute.instances.create) PERMISSION_DENIED:
 Access Not Configured. Compute Engine API has not been used in project 123456789
 before or it is disabled. Enable it by visiting
@@ -29,7 +29,7 @@ Billing must be enabled for activation of service
 
 Or more directly:
 
-```
+```text
 ERROR: (gcloud.services.enable) FAILED_PRECONDITION:
 Billing must be enabled for activation of service 'compute.googleapis.com'
 in project 'my-new-project'
@@ -57,7 +57,7 @@ gcloud billing accounts list
 
 This will show something like:
 
-```
+```text
 ACCOUNT_ID            NAME                 OPEN   MASTER_ACCOUNT_ID
 0X0X0X-0X0X0X-0X0X0X  My Billing Account   True
 ```
@@ -85,7 +85,7 @@ Linking a billing account requires the `billing.resourceAssociations.create` per
 
 The error looks like:
 
-```
+```text
 ERROR: (gcloud.billing.projects.link) PERMISSION_DENIED:
 The caller does not have permission
 ```

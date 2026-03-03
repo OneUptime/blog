@@ -20,7 +20,7 @@ argocd app list
 
 This produces a table with columns for name, cluster, namespace, project, status, health, sync policy, and conditions. The output looks something like:
 
-```
+```text
 NAME              CLUSTER                         NAMESPACE    PROJECT    STATUS  HEALTH   SYNCPOLICY  CONDITIONS
 web-app           https://kubernetes.default.svc  web          default    Synced  Healthy  Auto        <none>
 api-service       https://kubernetes.default.svc  api          backend    Synced  Healthy  Auto-Prune  <none>
@@ -56,7 +56,7 @@ argocd app list -o name
 
 Outputs just the application names, one per line. This is the format you want for scripting:
 
-```
+```text
 web-app
 api-service
 payment-svc

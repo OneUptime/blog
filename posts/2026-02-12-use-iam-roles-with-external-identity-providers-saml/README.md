@@ -117,12 +117,12 @@ aws iam attach-role-policy \
 In your IdP, create a SAML application for AWS. The key configuration values are:
 
 **Assertion Consumer Service (ACS) URL:**
-```
+```text
 https://signin.aws.amazon.com/saml
 ```
 
 **Audience URI (Entity ID):**
-```
+```text
 urn:amazon:webservices
 ```
 

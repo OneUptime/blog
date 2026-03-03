@@ -119,7 +119,7 @@ The `dir` parameter loads all variable files from a directory. This is great for
 
 The directory structure:
 
-```
+```text
 vars/config/
   app.yml
   logging.yml

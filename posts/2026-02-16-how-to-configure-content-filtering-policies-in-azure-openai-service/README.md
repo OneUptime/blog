@@ -67,7 +67,7 @@ Beyond the four main harm categories, Azure OpenAI offers additional filtering o
 
 **Jailbreak detection (Prompt Shields)**: This filter detects attempts to manipulate the model into bypassing its safety guidelines. It catches techniques like "ignore your instructions and do X" or indirect prompt injection attacks embedded in user-provided documents.
 
-```
+```text
 Enable prompt shields: Yes
 - User prompt attack detection: Enabled
 - Document attack detection: Enabled

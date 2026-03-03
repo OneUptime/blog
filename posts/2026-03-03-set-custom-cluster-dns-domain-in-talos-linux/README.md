@@ -66,7 +66,7 @@ kubectl run dns-check --image=busybox --rm -it --restart=Never -- cat /etc/resol
 
 With the default domain, you see:
 
-```
+```text
 nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5
@@ -74,7 +74,7 @@ options ndots:5
 
 With a custom domain like `k8s.example.com`:
 
-```
+```text
 nameserver 10.96.0.10
 search default.svc.k8s.example.com svc.k8s.example.com k8s.example.com
 options ndots:5
@@ -91,7 +91,7 @@ kubectl get configmap coredns -n kube-system -o yaml
 
 The Corefile will show:
 
-```
+```text
 .:53 {
     kubernetes k8s.example.com in-addr.arpa ip6.arpa {
         pods insecure

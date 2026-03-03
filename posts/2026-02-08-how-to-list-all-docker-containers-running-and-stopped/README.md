@@ -23,7 +23,7 @@ docker ps
 
 The output includes these columns:
 
-```
+```text
 CONTAINER ID   IMAGE          COMMAND                  CREATED         STATUS         PORTS                  NAMES
 a1b2c3d4e5f6   nginx:latest   "/docker-entrypoint..."  2 hours ago     Up 2 hours     0.0.0.0:80->80/tcp     web
 b2c3d4e5f6a7   redis:7        "docker-entrypoint..."   3 hours ago     Up 3 hours     0.0.0.0:6379->6379/tcp redis
@@ -40,7 +40,7 @@ docker ps -a
 
 This shows running, stopped, exited, created, and paused containers. Stopped containers appear with an "Exited" status:
 
-```
+```text
 CONTAINER ID   IMAGE          STATUS                     NAMES
 a1b2c3d4e5f6   nginx:latest   Up 2 hours                 web
 c3d4e5f6a7b8   python:3.12    Exited (0) 5 hours ago     task-runner

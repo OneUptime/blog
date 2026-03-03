@@ -14,14 +14,14 @@ The "status database area is locked" error from dpkg stops all package managemen
 
 The full error message usually looks like this:
 
-```
+```text
 E: Could not get lock /var/lib/dpkg/lock-frontend - open (11: Resource temporarily unavailable)
 E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), is another process using it?
 ```
 
 Or the older form:
 
-```
+```text
 dpkg: error: dpkg status database is locked by another process
 ```
 
@@ -166,7 +166,7 @@ Unattended-upgrades is a common source of lock conflicts. Configure it to run du
 sudo nano /etc/apt/apt.conf.d/02periodic
 ```
 
-```
+```text
 # /etc/apt/apt.conf.d/02periodic
 # Run updates at 3 AM daily instead of random times
 APT::Periodic::Update-Package-Lists "1";

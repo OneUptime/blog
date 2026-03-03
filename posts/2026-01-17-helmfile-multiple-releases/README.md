@@ -460,7 +460,7 @@ Split large helmfiles into multiple files.
 
 ### Directory Structure
 
-```
+```text
 helmfile/
 ├── helmfile.yaml       # Main file
 ├── releases/

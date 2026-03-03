@@ -54,13 +54,13 @@ sudo grep "UFW" /var/log/kern.log | tail -20
 
 Each log entry has a consistent format. Here is an example:
 
-```
+```text
 Mar  2 10:15:23 server kernel: [UFW BLOCK] IN=eth0 OUT= MAC=xx:xx:xx:xx:xx:xx SRC=185.220.100.1 DST=192.168.1.100 LEN=44 TOS=0x00 PREC=0x00 TTL=242 ID=54321 PROTO=TCP SPT=52413 DPT=22 WINDOW=1024 RES=0x00 SYN URGP=0
 ```
 
 Breaking it down:
 
-```
+```text
 [UFW BLOCK]  - action taken (BLOCK = dropped, ALLOW = permitted)
 IN=eth0      - interface traffic arrived on
 OUT=         - interface traffic going out (empty for inbound)
@@ -266,7 +266,7 @@ cat /etc/logrotate.d/ufw
 sudo nano /etc/logrotate.d/ufw
 ```
 
-```
+```text
 /var/log/ufw.log {
     weekly
     rotate 13          # keep 13 weeks of logs
@@ -289,7 +289,7 @@ For environments with multiple servers, forward UFW logs to a central syslog ser
 sudo nano /etc/rsyslog.d/50-ufw-remote.conf
 ```
 
-```
+```text
 # Forward kernel messages (which include UFW logs) to central syslog
 kern.*    @192.168.1.200:514    # UDP
 # or:

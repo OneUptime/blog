@@ -42,7 +42,7 @@ ansible-config dump | grep FORKS
 
 The output will show something like:
 
-```
+```text
 DEFAULT_FORKS(default) = 5
 ```
 

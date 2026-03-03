@@ -135,7 +135,7 @@ Edit `/etc/crypttab` to auto-open the LUKS container:
 sudo nano /etc/crypttab
 ```
 
-```
+```text
 # Format: <name>  <device-UUID>  <key>  <options>
 data_encrypted  UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  none  luks
 ```
@@ -148,7 +148,7 @@ Edit `/etc/fstab` to mount the decrypted device:
 sudo nano /etc/fstab
 ```
 
-```
+```text
 # Mount the encrypted data partition
 /dev/mapper/data_encrypted  /data  ext4  defaults  0  2
 ```
@@ -244,7 +244,7 @@ sudo cryptsetup luksAddKey /dev/sdb1 /etc/luks-keys/data.key
 
 In `/etc/crypttab`:
 
-```
+```text
 data_encrypted  UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  /etc/luks-keys/data.key  luks
 ```
 

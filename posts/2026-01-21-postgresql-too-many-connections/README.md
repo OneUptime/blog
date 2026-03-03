@@ -12,7 +12,7 @@ The "too many connections" error occurs when PostgreSQL reaches its maximum conn
 
 ## Understanding the Error
 
-```
+```text
 FATAL: too many connections for role "myuser"
 FATAL: sorry, too many clients already
 ```

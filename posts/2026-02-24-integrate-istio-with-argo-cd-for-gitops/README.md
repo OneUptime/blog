@@ -52,7 +52,7 @@ argocd login localhost:8080
 
 Organize your Git repository so Istio resources are clearly separated. A good structure looks like this:
 
-```
+```text
 ├── base/
 │   ├── istio/
 │   │   ├── gateway.yaml

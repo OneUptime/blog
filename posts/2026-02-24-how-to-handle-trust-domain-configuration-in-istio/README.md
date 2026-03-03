@@ -14,7 +14,7 @@ The trust domain in Istio defines the trust boundary for your service mesh. It i
 
 A trust domain is essentially a namespace for identities. Every workload in Istio gets a SPIFFE ID that starts with the trust domain:
 
-```
+```text
 spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 
@@ -42,7 +42,7 @@ istioctl install -f istio-config.yaml
 
 After installation, all workload certificates will use this trust domain. A workload with service account `payment-svc` in namespace `finance` would get the identity:
 
-```
+```text
 spiffe://prod.mycompany.com/ns/finance/sa/payment-svc
 ```
 
@@ -214,7 +214,7 @@ istioctl proxy-config secret deploy/payment-service -n finance -o json | \
 
 The output should show:
 
-```
+```text
 URI:spiffe://prod.mycompany.com/ns/finance/sa/payment-svc
 ```
 

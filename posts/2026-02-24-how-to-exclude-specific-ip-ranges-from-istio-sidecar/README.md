@@ -158,7 +158,7 @@ kubectl logs deploy/my-app -c istio-init -n default
 
 The logs show the iptables commands that were run. Look for RETURN rules that match your excluded IP ranges:
 
-```
+```text
 -A ISTIO_OUTPUT -d 169.254.169.254/32 -j RETURN
 -A ISTIO_OUTPUT -d 10.0.0.0/8 -j RETURN
 ```

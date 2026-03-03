@@ -23,7 +23,7 @@ docker system df
 
 This outputs a table like:
 
-```
+```text
 TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
 Images          45        12        18.73GB   14.21GB (75%)
 Containers      15        3         1.234GB   892.1MB (72%)

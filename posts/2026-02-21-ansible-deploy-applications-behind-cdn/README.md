@@ -27,7 +27,7 @@ The CDN sits between your users and your origin servers. On the first request fo
 
 ## Project Structure
 
-```
+```text
 cdn-deploy/
   inventory/
     production.yml

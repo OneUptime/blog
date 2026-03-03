@@ -411,7 +411,7 @@ image:
 nodeSelector:
   kubernetes.io/arch: arm64
 ```
-```
+```text
 
 ## Handling Init Containers
 

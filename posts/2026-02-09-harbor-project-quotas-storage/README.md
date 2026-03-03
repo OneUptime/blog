@@ -220,7 +220,7 @@ chmod +x harbor-quota-manager.sh
 
 When a project hits its quota, push operations fail with HTTP 413 errors:
 
-```
+```text
 Error: failed to push image: 413 Project quota exceeded
 ```
 

@@ -12,7 +12,7 @@ IPvlan networks provide an alternative to macvlan with better performance in cer
 
 ## IPvlan vs Macvlan
 
-```
+```text
 IPvlan vs Macvlan
 ┌────────────────────────────────────────────────────────────┐
 │  Macvlan                    │  IPvlan                       │

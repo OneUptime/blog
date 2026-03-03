@@ -31,7 +31,7 @@ A typical edge architecture with Talos looks like this:
 - Edge clusters at each location, each running 1-3 Talos nodes
 - A VPN or mesh network connecting edge clusters back to the management plane
 
-```
+```text
 Central Cloud/DC
 +---------------------------+
 | Management Cluster        |

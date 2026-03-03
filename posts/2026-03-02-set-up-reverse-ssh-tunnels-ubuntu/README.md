@@ -172,14 +172,14 @@ The tunnel user's key should be restricted so it can only establish a tunnel, no
 
 On the relay server, in `~/.ssh/authorized_keys`:
 
-```
+```text
 # Restrict the tunnel key - no shell, no port forwarding beyond what's specified
 restrict,port-forwarding ssh-ed25519 AAAA... tunnel-user@home-machine
 ```
 
 Or more specifically:
 
-```
+```text
 no-pty,no-agent-forwarding,no-X11-forwarding,permitopen="localhost:2222" ssh-ed25519 AAAA... tunnel-user@home-machine
 ```
 

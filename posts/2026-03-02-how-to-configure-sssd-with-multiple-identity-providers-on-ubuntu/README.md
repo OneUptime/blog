@@ -209,7 +209,7 @@ When users come from multiple domains, configure sudo per-domain:
 sudo nano /etc/sudoers.d/multi-domain
 ```
 
-```
+```text
 # Internal LDAP group gets full access
 %sysadmins ALL=(ALL:ALL) ALL
 

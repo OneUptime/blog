@@ -33,7 +33,7 @@ Navigate to your Azure DevOps project, go to Test Plans, then click the settings
 
 Create the variables your team needs.
 
-```
+```text
 Variable: Browser
   Values: Chrome, Firefox, Safari, Edge, Chrome Mobile, Safari Mobile
 
@@ -76,7 +76,7 @@ Go to Test Plans, then click the settings gear, then "Test configurations," and 
 
 Here is a practical set of configurations for a web application:
 
-```
+```text
 Configuration 1: Chrome - Windows 11
   Browser: Chrome
   Operating System: Windows 11
@@ -240,7 +240,7 @@ Archive configurations that are no longer relevant. When you drop support for In
 
 Link your test suites to work items (user stories or requirements) to create a traceability matrix that includes configuration coverage.
 
-```
+```text
 Requirement: US-1234 "User can log in with SSO"
   Test Suite: Login - SSO
     Test Case: TC-101 "SSO login with valid credentials"

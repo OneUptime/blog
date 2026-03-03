@@ -20,7 +20,7 @@ Important: Security rules only apply to client SDK access. Server-side access us
 
 Every Firestore security rules file starts with this structure:
 
-```
+```text
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -37,7 +37,7 @@ Within this structure, you define `match` blocks that specify which documents th
 
 The most common pattern. Each user has a document in the `users` collection with their user ID as the document ID:
 
-```
+```text
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -59,7 +59,7 @@ Breaking this down:
 
 For content that anyone can read but only logged-in users can create:
 
-```
+```text
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -85,7 +85,7 @@ Here we split the permissions:
 
 Security rules can validate the data being written to prevent malformed documents:
 
-```
+```text
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -117,7 +117,7 @@ This rule validates that:
 
 For subcollections, you need nested match blocks:
 
-```
+```text
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -149,7 +149,7 @@ This gives users access to their own orders but prevents deletion. The validatio
 
 For applications with admin users, check custom claims set on the authentication token:
 
-```
+```text
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -201,7 +201,7 @@ async function makeAdmin(uid) {
 
 For collaborative applications where users belong to teams:
 
-```
+```text
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -238,7 +238,7 @@ The `get()` function reads another document within the rules. This lets you chec
 
 Prevent users from creating too many documents too quickly:
 
-```
+```text
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {

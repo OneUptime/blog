@@ -67,7 +67,7 @@ gcloud kms keys create secret-encryption-key \
 ```
 
 Note the full key resource name. It follows this format:
-```
+```text
 projects/my-project-id/locations/global/keyRings/secret-manager-keyring/cryptoKeys/secret-encryption-key
 ```
 

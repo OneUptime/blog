@@ -243,7 +243,7 @@ export default withPayload(nextConfig)
 
 Add a `.dockerignore` file.
 
-```
+```text
 # .dockerignore
 node_modules
 .next

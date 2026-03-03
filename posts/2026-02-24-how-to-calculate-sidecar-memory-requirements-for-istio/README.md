@@ -39,13 +39,13 @@ istioctl proxy-config cluster <pod-name> -n <namespace>
 
 As a rough estimate, each endpoint entry consumes about 1-2 KB of memory. So for a mesh with 1,500 endpoints:
 
-```
+```text
 1,500 endpoints x 2 KB = 3 MB just for endpoint data
 ```
 
 That sounds small, but the configuration objects around those endpoints (clusters, routes, listeners) multiply the impact. A more realistic model is:
 
-```
+```text
 Base memory: 40 MB
 Per-endpoint overhead: 5-10 KB (including associated config)
 Per-active-connection overhead: 10-50 KB
@@ -83,7 +83,7 @@ quantile(0.99, container_memory_working_set_bytes{container="istio-proxy"})
 
 Here is a practical formula for estimating sidecar memory:
 
-```
+```text
 Memory = Base + (Endpoints x Per_Endpoint) + (Connections x Per_Connection) + (RPS x Buffer_Factor)
 
 Where:
@@ -95,7 +95,7 @@ Where:
 
 Example for a pod that talks to 10 services, in a mesh with 2,000 total endpoints, handling 100 RPS with an average of 50 concurrent connections:
 
-```
+```text
 Memory = 40 MB + (2000 x 10 KB) + (50 x 30 KB) + (100 x 0.5 KB)
 Memory = 40 MB + 20 MB + 1.5 MB + 0.05 MB
 Memory = ~62 MB
@@ -181,7 +181,7 @@ spec:
 
 Services that handle a lot of traffic or maintain many concurrent connections need more memory. For a service handling 10,000 RPS with 1,000 concurrent connections:
 
-```
+```text
 Memory = 40 MB + (2000 x 10 KB) + (1000 x 30 KB) + (10000 x 0.5 KB)
 Memory = 40 MB + 20 MB + 30 MB + 5 MB
 Memory = ~95 MB

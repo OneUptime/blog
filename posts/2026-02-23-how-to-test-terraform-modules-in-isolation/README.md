@@ -20,7 +20,7 @@ Isolated module tests also run faster because they do not need to create prerequ
 
 The most common pattern for isolated module testing is the test fixture. A fixture is a minimal Terraform configuration that calls your module with test inputs:
 
-```
+```text
 modules/
   vpc/
     main.tf

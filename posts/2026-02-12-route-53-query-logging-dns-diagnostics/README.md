@@ -110,14 +110,14 @@ aws route53resolver create-resolver-query-log-config \
 
 DNS query logs include these fields:
 
-```
+```text
 version account_id region hosted_zone_id query_name query_type response_code
 protocol edge_location resolver_ip edns_client_subnet query_timestamp
 ```
 
 Here's a real example log line:
 
-```
+```text
 1.0 123456789012 us-east-1 Z1234567890 www.example.com A NOERROR UDP
 IAD89-C1 10.0.1.2 - 2026-02-12T10:30:45Z
 ```
@@ -160,7 +160,7 @@ Use CloudWatch Logs Insights to analyze the data. Here are some practical querie
 
 Find all failed DNS queries (NXDOMAIN means the domain doesn't exist, SERVFAIL means the server couldn't resolve it):
 
-```
+```text
 # Find failed DNS queries in the last hour
 fields @timestamp, qname, qtype, rcode, srcaddr
 | filter rcode != "NOERROR"
@@ -170,7 +170,7 @@ fields @timestamp, qname, qtype, rcode, srcaddr
 
 Identify the top queried domains:
 
-```
+```text
 # Top 20 most queried domain names
 fields qname
 | stats count(*) as query_count by qname
@@ -180,7 +180,7 @@ fields qname
 
 Find queries from a specific instance:
 
-```
+```text
 # All DNS queries from a specific EC2 instance
 fields @timestamp, qname, qtype, rcode
 | filter srcids.instance = "i-0abc123def456"
@@ -190,7 +190,7 @@ fields @timestamp, qname, qtype, rcode
 
 Track DNS query volume over time:
 
-```
+```text
 # DNS query volume per 5-minute interval
 fields @timestamp
 | stats count(*) as queries by bin(5m) as time_bucket
@@ -199,7 +199,7 @@ fields @timestamp
 
 Find potential DNS tunneling (unusually long domain names):
 
-```
+```text
 # Find queries with suspiciously long domain names
 fields @timestamp, qname, srcaddr, strlen(qname) as name_length
 | filter name_length > 100
@@ -251,7 +251,7 @@ aws logs put-metric-filter \
 
 Check the resolver logs for the specific hostname:
 
-```
+```text
 fields @timestamp, qname, rcode, answers.0.Rdata, srcids.instance
 | filter qname like /mydb.internal/
 | sort @timestamp desc
@@ -264,7 +264,7 @@ If you see NXDOMAIN, the record doesn't exist in your private hosted zone. If yo
 
 Look for patterns in query timing:
 
-```
+```text
 fields @timestamp, qname, rcode, srcaddr
 | filter rcode = "SERVFAIL" or rcode = "REFUSED"
 | stats count(*) as failures by bin(1m), srcaddr
@@ -277,7 +277,7 @@ This might reveal that a specific source is generating too many queries and hitt
 
 Find out what external domains your VPC resources are querying:
 
-```
+```text
 fields qname, srcids.instance
 | filter qname not like /\.internal$/ and qname not like /amazonaws\.com$/
 | stats count(*) as queries by qname

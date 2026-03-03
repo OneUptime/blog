@@ -79,7 +79,7 @@ tsig-keygen -a hmac-sha256 terraform-key
 
 This outputs something like:
 
-```
+```text
 key "terraform-key" {
     algorithm hmac-sha256;
     secret "base64-encoded-secret-here";

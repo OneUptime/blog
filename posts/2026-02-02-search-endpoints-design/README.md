@@ -56,7 +56,7 @@ There are two common patterns for search endpoints. Choose based on your use cas
 
 Use this when searching within a specific resource type.
 
-```
+```text
 GET /api/v1/products?q=laptop&category=electronics&min_price=500
 ```
 
@@ -64,7 +64,7 @@ GET /api/v1/products?q=laptop&category=electronics&min_price=500
 
 Use this for cross-resource or complex searches.
 
-```
+```text
 GET /api/v1/search?q=laptop&type=products,reviews
 ```
 
@@ -194,7 +194,7 @@ Filters narrow down search results. Design them to be intuitive and consistent.
 
 For exact matches, use straightforward key-value pairs:
 
-```
+```text
 GET /products?category=electronics
 GET /products?status=available
 ```
@@ -203,7 +203,7 @@ GET /products?status=available
 
 Use prefixes or dedicated parameters for numeric ranges:
 
-```
+```text
 # Option 1: Separate min/max parameters (recommended for clarity)
 GET /products?min_price=100&max_price=500
 
@@ -218,7 +218,7 @@ GET /products?price[gte]=100&price[lte]=500
 
 Allow filtering by multiple values with OR logic:
 
-```
+```text
 # Comma-separated values (simple, widely used)
 GET /products?brand=apple,samsung,sony
 
@@ -230,7 +230,7 @@ GET /products?brand=apple&brand=samsung&brand=sony
 
 Keep boolean filters explicit and predictable:
 
-```
+```text
 GET /products?in_stock=true
 GET /products?has_reviews=false
 GET /products?featured=true
@@ -240,7 +240,7 @@ GET /products?featured=true
 
 Use ISO 8601 format for date parameters:
 
-```
+```text
 GET /orders?created_after=2025-01-01
 GET /orders?created_before=2025-12-31T23:59:59Z
 GET /orders?created_at=[2025-01-01,2025-12-31]
@@ -306,7 +306,7 @@ Allow users to sort results by relevant fields with clear syntax.
 
 Use a consistent format that supports multiple sort criteria:
 
-```
+```text
 # Single field sort
 GET /products?sort=price:asc
 
@@ -613,7 +613,7 @@ Provide instant feedback as users type their queries.
 
 Design a fast, focused endpoint for search suggestions:
 
-```
+```text
 GET /api/v1/search/suggest?q=lap&limit=5
 ```
 

@@ -134,7 +134,7 @@ terraform init
 terraform plan
 # You should see "No changes. Your infrastructure matches the configuration."
 ```
-```
+```text
 
 ## Writing the Architecture Overview
 
@@ -293,7 +293,7 @@ formatting errors in CI, run:
 ```bash
 terraform fmt -recursive
 ```
-```
+```text
 
 ## Creating a Cheat Sheet
 

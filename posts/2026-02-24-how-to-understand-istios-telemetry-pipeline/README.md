@@ -76,7 +76,7 @@ Istio generates trace spans at each sidecar, but to stitch them into a complete 
 
 The headers your application needs to propagate:
 
-```
+```text
 x-request-id
 x-b3-traceid
 x-b3-spanid

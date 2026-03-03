@@ -144,7 +144,7 @@ After setting up either method, verify that SCC findings are appearing in Chroni
 
 Run a UDM search for SCC data.
 
-```
+```text
 metadata.product_name = "Security Command Center"
 ```
 
@@ -157,7 +157,7 @@ You should see findings appearing as UDM events. Each finding includes:
 
 For a more specific search, look for threat-type findings.
 
-```
+```text
 metadata.product_name = "Security Command Center" AND security_result.severity = "HIGH"
 ```
 
@@ -167,7 +167,7 @@ With SCC findings in Chronicle, you can write YARA-L rules that correlate findin
 
 This rule detects when someone accesses a resource that SCC has flagged as publicly accessible.
 
-```
+```text
 rule access_to_public_resource {
     meta:
         author = "security-team"
@@ -195,7 +195,7 @@ rule access_to_public_resource {
 
 Here is another rule that combines an SCC vulnerability finding with suspicious login activity targeting the vulnerable system.
 
-```
+```text
 rule exploitation_attempt_on_vulnerable_system {
     meta:
         author = "security-team"

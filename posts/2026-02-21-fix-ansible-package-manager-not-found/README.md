@@ -12,7 +12,7 @@ The "Package manager not found" error occurs when you use a package module that 
 
 ## The Error
 
-```
+```text
 fatal: [centos-server]: FAILED! => {
     "msg": "No package matching 'apt' is available"
 }
@@ -20,7 +20,7 @@ fatal: [centos-server]: FAILED! => {
 
 Or more directly:
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "Could not detect which major revision of yum is in use"
 }

@@ -68,7 +68,7 @@ resource "aws_lambda_layer_version" "python_deps" {
 
 The `requirements.txt` file for the layer:
 
-```
+```text
 requests==2.31.0
 pydantic==2.6.0
 urllib3==2.1.0
@@ -135,7 +135,7 @@ resource "aws_lambda_layer_version" "utils" {
 
 The directory structure for a Python utils layer:
 
-```
+```text
 layers/utils/package/
   python/
     utils/

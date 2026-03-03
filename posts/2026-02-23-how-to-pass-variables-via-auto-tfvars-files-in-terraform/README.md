@@ -99,7 +99,7 @@ The loading order matters because if the same variable is defined in multiple au
 
 So if you have:
 
-```
+```text
 a-defaults.auto.tfvars    # loaded first
 b-overrides.auto.tfvars   # loaded second (wins if same var)
 z-final.auto.tfvars       # loaded last (wins over everything above)
@@ -128,7 +128,7 @@ In this case, `instance_type` ends up as `"t3.large"` because `99-overrides.auto
 
 Use numbered prefixes to create clear layering:
 
-```
+```text
 project/
   main.tf
   variables.tf
@@ -197,7 +197,7 @@ deploy:
 
 Keep shared settings committed and personal overrides gitignored:
 
-```
+```text
 project/
   terraform.tfvars           # Shared team settings (committed)
   local.auto.tfvars          # Personal overrides (gitignored)

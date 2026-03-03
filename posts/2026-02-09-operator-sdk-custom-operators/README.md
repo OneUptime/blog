@@ -53,7 +53,7 @@ operator-sdk init --domain example.com --repo github.com/example/memcached-opera
 
 This creates the project structure:
 
-```
+```text
 .
 ├── Dockerfile
 ├── Makefile

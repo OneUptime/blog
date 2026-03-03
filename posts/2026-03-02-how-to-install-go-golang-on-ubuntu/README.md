@@ -132,7 +132,7 @@ rm hello
 
 After installation, Go uses a workspace model:
 
-```
+```text
 /usr/local/go/          <- GOROOT: the Go installation
   bin/
     go                  <- The go command

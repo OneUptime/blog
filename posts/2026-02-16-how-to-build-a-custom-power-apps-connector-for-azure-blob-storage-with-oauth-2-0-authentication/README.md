@@ -78,7 +78,7 @@ Now you define the API operations your connector will support. Here are three es
 
 This action lists blobs in a container using the Azure Blob Storage REST API.
 
-```
+```text
 GET /{container-name}?restype=container&comp=list&prefix={prefix}
 ```
 
@@ -94,7 +94,7 @@ The response schema should be XML. Power Apps will parse the blob list from the 
 
 This action uploads a blob to a specific container and path.
 
-```
+```text
 PUT /{container-name}/{blob-name}
 ```
 
@@ -108,7 +108,7 @@ Configure these parameters:
 
 ### Action 3: Download Blob
 
-```
+```text
 GET /{container-name}/{blob-name}
 ```
 
@@ -146,7 +146,7 @@ Test each action:
 
 Once the connector is working, you can use it in a Canvas App. Here is a typical pattern for listing blobs and displaying them in a gallery:
 
-```
+```text
 // Fetch blobs from the custom connector and store in a collection
 // The ListBlobs action returns XML that Power Apps parses automatically
 ClearCollect(
@@ -160,7 +160,7 @@ ClearCollect(
 
 For uploading, you might connect it to an attachment control:
 
-```
+```text
 // Upload each attachment from the attachment control to blob storage
 // Loop through the Attachments collection and call the upload action
 ForAll(

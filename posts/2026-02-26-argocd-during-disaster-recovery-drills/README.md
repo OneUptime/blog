@@ -279,7 +279,7 @@ spec:
 
 Store all ArgoCD configuration in Git so the DR instance can be bootstrapped from scratch.
 
-```
+```text
 argocd-config/
   argocd-dr/
     install.yaml           # ArgoCD installation manifests

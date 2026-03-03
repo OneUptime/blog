@@ -537,7 +537,7 @@ spec:
 
 ### 3. Organize Policies by Service
 
-```
+```text
 policies/
   production/
     api/

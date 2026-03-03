@@ -194,7 +194,7 @@ Or configure it in `ansible.cfg` with an SSH config file:
 ssh_args = -F ssh.config -o ForwardAgent=yes
 ```
 
-```
+```text
 # ssh.config - SSH configuration for bastion access
 Host bastion
     HostName bastion.example.com

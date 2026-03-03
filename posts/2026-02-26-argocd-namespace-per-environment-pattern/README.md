@@ -31,7 +31,7 @@ Avoid this pattern when:
 
 The structure is similar to cluster-per-environment, but destinations are namespaces rather than clusters:
 
-```
+```text
 gitops-config/
 ├── base/
 │   ├── frontend/

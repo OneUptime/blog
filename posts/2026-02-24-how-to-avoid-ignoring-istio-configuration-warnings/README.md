@@ -29,7 +29,7 @@ It checks for things like:
 
 Sample output:
 
-```
+```text
 Warning [IST0101] (VirtualService production/api-routes) Referenced host not found: "api-v3.production.svc.cluster.local"
 Warning [IST0104] (Gateway istio-system/production-gw) The gateway refers to a server that has a port that is not exposed by the Service associated with the gateway
 Error [IST0106] (VirtualService production/reviews) Referenced subset not found: "canary" in destination rule production/reviews
@@ -43,7 +43,7 @@ Let me walk through what each common warning means in practice.
 
 ### IST0101: Referenced Host Not Found
 
-```
+```text
 Warning [IST0101] (VirtualService production/api) Referenced host not found: "api-v3"
 ```
 
@@ -51,7 +51,7 @@ This means a VirtualService is trying to route traffic to a service that does no
 
 ### IST0104: Gateway Port Mismatch
 
-```
+```text
 Warning [IST0104] (Gateway istio-system/main-gw) Referenced port not found
 ```
 
@@ -59,7 +59,7 @@ Your gateway configuration references a port that the gateway service does not e
 
 ### IST0106: Subset Not Found
 
-```
+```text
 Error [IST0106] (VirtualService production/reviews) Referenced subset not found: "canary"
 ```
 
@@ -67,7 +67,7 @@ A VirtualService routes to a subset that does not exist in the DestinationRule. 
 
 ### IST0108: Unknown Annotation
 
-```
+```text
 Warning [IST0108] (Pod production/api-abc123) Unknown annotation: networking.istio.io/export
 ```
 

@@ -16,13 +16,13 @@ Before diving into fixes, it helps to understand the underlying mechanics. Every
 
 The default service account for Cloud Functions is typically:
 
-```
+```text
 PROJECT_ID@appspot.gserviceaccount.com
 ```
 
 Some extensions create their own dedicated service account with a naming pattern like:
 
-```
+```text
 ext-EXTENSION_INSTANCE_ID@PROJECT_ID.iam.gserviceaccount.com
 ```
 
@@ -36,7 +36,7 @@ Here are the most frequent permission errors you will encounter.
 
 This typically looks like:
 
-```
+```text
 Error: Missing permissions required to install this extension.
 The service account does not have permission to create resources.
 ```
@@ -52,7 +52,7 @@ The installation process itself requires elevated permissions. The account runni
 
 After a successful install, the extension starts failing with errors like:
 
-```
+```text
 Error: 7 PERMISSION_DENIED: The caller does not have permission
 ```
 
@@ -62,7 +62,7 @@ This means the extension's service account lacks permissions for what the extens
 
 This is particularly common and confusing:
 
-```
+```text
 Error: Permission 'iam.serviceAccounts.actAs' denied on service account
 ```
 

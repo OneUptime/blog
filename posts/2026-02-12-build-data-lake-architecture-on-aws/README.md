@@ -71,7 +71,7 @@ done
 
 Use a consistent path structure so Athena can partition your data efficiently:
 
-```
+```text
 s3://my-datalake-raw/
   source=webapp/
     year=2026/

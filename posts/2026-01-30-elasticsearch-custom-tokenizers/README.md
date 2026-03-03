@@ -775,7 +775,7 @@ Output: `["2", "14", "3", "beta"]`
 
 Edge n-grams expand index size significantly:
 
-```
+```text
 Original token: "elasticsearch" (13 chars)
 Edge n-grams (2-10): 9 tokens
 Index size multiplier: ~5-10x for text fields

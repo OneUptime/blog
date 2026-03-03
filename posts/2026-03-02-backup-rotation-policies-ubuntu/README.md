@@ -203,7 +203,7 @@ While `logrotate` is primarily for log files, it works equally well for managing
 sudo nano /etc/logrotate.d/backup-logs
 ```
 
-```
+```text
 /var/log/mysql-backup.log
 /var/log/postgresql-backup.log
 /var/log/backup-rotation.log {

@@ -65,7 +65,7 @@ kubectl -n argocd describe secret argocd-initial-admin-secret
 
 You will see something like:
 
-```
+```text
 Name:         argocd-initial-admin-secret
 Namespace:    argocd
 Type:         Opaque
@@ -144,7 +144,7 @@ In this case, the password is whatever you set before hashing. The `argocd-initi
 
 The initial password is typically a 16-character random string like:
 
-```
+```text
 xH2kL9mN4pQ7rS1t
 ```
 

@@ -169,7 +169,7 @@ spec:
 
 JSON Pointers follow RFC 6901. Here are the key rules:
 
-```
+```text
 /spec/replicas                          -> spec.replicas
 /metadata/annotations                   -> metadata.annotations
 /spec/template/spec/containers/0/image  -> First container's image

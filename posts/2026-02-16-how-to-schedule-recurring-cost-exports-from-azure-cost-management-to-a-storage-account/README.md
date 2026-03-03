@@ -121,7 +121,7 @@ For infrastructure-as-code:
 
 The exported files follow a consistent directory structure within the blob container:
 
-```
+```text
 cost-data/
   daily/
     daily-actual-costs/

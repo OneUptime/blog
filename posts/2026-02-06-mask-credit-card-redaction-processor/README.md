@@ -12,7 +12,7 @@ If your application handles payment data, there is a real chance that credit car
 
 Consider a payment service that creates spans with attributes like these:
 
-```
+```text
 payment.card_number: "4532015112830366"
 payment.amount: "49.99"
 db.statement: "INSERT INTO payments (card_num, amount) VALUES ('4532015112830366', 49.99)"
@@ -83,7 +83,7 @@ service:
 
 Credit card numbers appear in several formats in practice. Your regex needs to handle all of them:
 
-```
+```text
 # No separators
 4532015112830366
 

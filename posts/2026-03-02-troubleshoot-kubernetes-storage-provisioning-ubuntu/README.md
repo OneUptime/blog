@@ -36,7 +36,7 @@ kubectl describe pvc <pvc-name> -n <namespace>
 
 The events section at the bottom of `describe` output is the most useful part. Common messages:
 
-```
+```text
 Events:
   Warning  ProvisioningFailed  10s  rancher.io/local-path
              Failed to provision volume: error getting volume plugin for provisioner

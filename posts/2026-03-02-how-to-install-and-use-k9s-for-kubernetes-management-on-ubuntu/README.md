@@ -75,7 +75,7 @@ k9s --kubeconfig /path/to/custom/kubeconfig
 
 k9s uses vim-style key bindings mixed with navigation keys. The most important ones:
 
-```
+```text
 Navigation:
   :              Enter command mode (like vim)
   /              Search/filter resources
@@ -102,7 +102,7 @@ Navigation shortcuts:
 
 ## Working with Pods
 
-```
+```text
 # In k9s, type these commands to navigate to different resource types:
 :pods           List all pods
 :deploy         List deployments
@@ -117,7 +117,7 @@ Navigation shortcuts:
 
 ### Filtering Pods
 
-```
+```text
 # In pods view, press / to filter
 /running        Show only running pods
 /error          Show pods with errors
@@ -132,7 +132,7 @@ Navigation shortcuts:
 4. Press `0` to see all namespaces
 
 In the log view:
-```
+```text
 Ctrl+S          Save logs to a file
 w               Toggle log timestamps
 t               Toggle log wrapping
@@ -161,7 +161,7 @@ curl http://localhost:8080/health
 
 Or use the port-forward command mode:
 
-```
+```text
 :pf             View active port-forwards
 ```
 
@@ -293,21 +293,21 @@ kubectl config get-contexts
 
 ### Checking Node Resources
 
-```
+```text
 :no             Go to nodes view
 d               Describe a node (shows pod pressure, allocations)
 ```
 
 ### Checking Events for Issues
 
-```
+```text
 :events         Show all events
 /Warning        Filter to show only warnings
 ```
 
 ### Viewing Resource Usage (Top)
 
-```
+```text
 :pu             Pod usage/metrics
 :nu             Node usage/metrics
 ```

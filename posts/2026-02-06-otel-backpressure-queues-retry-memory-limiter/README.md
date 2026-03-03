@@ -63,7 +63,7 @@ The queue size should be large enough to handle typical backend hiccups (30-60 s
 
 Here is how to size your queue:
 
-```
+```text
 Incoming rate: 10,000 spans/second
 Batch size: 512 spans
 Batches per second: 10,000 / 512 = ~20 batches/sec

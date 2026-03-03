@@ -78,7 +78,7 @@ debug: false
 
 ### Directory Structure
 
-```
+```text
 charts/
 ├── myapp/
 │   ├── Chart.yaml

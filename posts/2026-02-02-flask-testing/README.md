@@ -304,7 +304,7 @@ This generates both a terminal report and an HTML report you can browse. Aim for
 
 For larger projects, organize your tests to mirror your application structure:
 
-```
+```text
 project/
     app/
         __init__.py

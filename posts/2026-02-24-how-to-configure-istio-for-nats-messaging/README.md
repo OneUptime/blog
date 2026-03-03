@@ -327,14 +327,14 @@ metadata:
 
 In addition to NATS-native metrics, Istio provides TCP-level metrics:
 
-```
+```text
 istio_tcp_connections_opened_total{destination_service="nats.messaging.svc.cluster.local"}
 istio_tcp_sent_bytes_total{destination_service="nats.messaging.svc.cluster.local"}
 ```
 
 And HTTP metrics for the monitoring endpoint:
 
-```
+```text
 istio_requests_total{destination_service="nats.messaging.svc.cluster.local", destination_port="8222"}
 ```
 

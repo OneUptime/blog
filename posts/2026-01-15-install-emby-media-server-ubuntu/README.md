@@ -121,7 +121,7 @@ After installation, access the Emby setup wizard through your web browser.
 
 Open your browser and navigate to the Emby web interface. Replace `your-server-ip` with your actual server IP address or use `localhost` if accessing locally.
 
-```
+```text
 http://your-server-ip:8096
 ```
 
@@ -147,7 +147,7 @@ Properly organizing and configuring your media libraries ensures Emby correctly 
 
 Organize your media files in a consistent structure for best results.
 
-```
+```text
 /media/
 ├── movies/
 │   ├── Movie Name (2024)/

@@ -12,7 +12,7 @@ When a request fails in a microservices architecture, the error you see at the A
 
 Here is a typical failure chain:
 
-```
+```text
 API Gateway: "Downstream service error" (HTTP 502)
   -> Order Service: "Failed to process payment" (gRPC INTERNAL)
     -> Payment Service: "Connection refused to card processor" (TCP error)
@@ -210,7 +210,7 @@ class ErrorChainAnalyzer:
 
 If you use Grafana Tempo, you can find traces with multiple error spans using TraceQL:
 
-```
+```text
 { status = error && resource.service.name = "api-gateway" }
   >> { status = error && resource.service.name = "order-service" }
   >> { status = error && resource.service.name = "payment-service" }

@@ -16,7 +16,7 @@ Let's build a production-ready CI/CD pipeline for Lambda functions step by step.
 
 A typical Lambda project structure:
 
-```
+```text
 my-lambda-project/
   src/
     handler.js          # Lambda function code

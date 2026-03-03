@@ -23,13 +23,13 @@ StatefulSets provide:
 
 DNS naming pattern:
 
-```
+```text
 <pod-name>.<service-name>.<namespace>.svc.cluster.local
 ```
 
 Example:
 
-```
+```text
 web-0.nginx.default.svc.cluster.local
 web-1.nginx.default.svc.cluster.local
 web-2.nginx.default.svc.cluster.local

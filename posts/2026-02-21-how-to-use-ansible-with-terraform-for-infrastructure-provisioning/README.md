@@ -322,7 +322,7 @@ jobs:
 
 A clean directory structure keeps things manageable.
 
-```
+```text
 project/
 ├── terraform/
 │   ├── main.tf

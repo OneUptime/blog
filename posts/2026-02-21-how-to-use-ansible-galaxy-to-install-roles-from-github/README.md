@@ -164,7 +164,7 @@ ansible-galaxy list -p roles/
 
 Output:
 
-```
+```text
 - nginx, v3.1.0
 - common, v2.0.0
 - postgresql, v1.2.0

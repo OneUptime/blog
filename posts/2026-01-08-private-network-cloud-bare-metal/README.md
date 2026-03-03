@@ -76,7 +76,7 @@ graph TB
 
 Before configuration, document your network topology:
 
-```
+```text
 On-Premises Network:
 - LAN CIDR: 192.168.0.0/16
 - Server Subnet: 192.168.1.0/24

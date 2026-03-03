@@ -62,7 +62,7 @@ Once enabled, Hasura exports detailed spans for each GraphQL operation:
 
 Each span carries attributes like:
 
-```
+```text
 graphql.operation.name: "GetUserOrders"
 graphql.operation.type: "query"
 db.system: "postgresql"

@@ -22,7 +22,7 @@ kubectl version --short
 
 Verify both client and server versions:
 
-```
+```text
 Client Version: v1.30.2
 Server Version: v1.30.2
 ```
@@ -207,7 +207,7 @@ istioctl x precheck
 
 This runs a comprehensive set of checks and reports any issues:
 
-```
+```text
 ✔ No issues found when checking the cluster. Istio is safe to install or upgrade!
   To get started, check out https://istio.io/latest/docs/setup/getting-started/
 ```

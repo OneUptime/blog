@@ -109,7 +109,7 @@ The query editor provides a visual builder, but you can also switch to the raw M
 
 For advanced queries, switch to MQL mode in the query editor:
 
-```
+```text
 # Average CPU utilization per instance, sampled every minute
 fetch gce_instance
 | metric 'compute.googleapis.com/instance/cpu/utilization'
@@ -129,7 +129,7 @@ Add another panel for Cloud SQL database monitoring:
 
 Or in MQL:
 
-```
+```text
 # Cloud SQL CPU utilization per database instance
 fetch cloudsql_database
 | metric 'cloudsql.googleapis.com/database/cpu/utilization'
@@ -141,7 +141,7 @@ fetch cloudsql_database
 
 For GKE cluster monitoring:
 
-```
+```text
 # GKE node CPU allocatable utilization
 fetch k8s_node
 | metric 'kubernetes.io/node/cpu/allocatable_utilization'

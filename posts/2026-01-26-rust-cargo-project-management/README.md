@@ -42,7 +42,7 @@ cd my_app
 
 This creates the following structure:
 
-```
+```text
 my_app/
 ├── Cargo.toml    # Project manifest with metadata and dependencies
 ├── src/
@@ -59,7 +59,7 @@ cargo new my_library --lib
 
 Library projects have `lib.rs` instead of `main.rs`:
 
-```
+```text
 my_library/
 ├── Cargo.toml
 ├── src/
@@ -301,7 +301,7 @@ mod tests {
 
 Integration tests live in the `tests/` directory:
 
-```
+```text
 my_library/
 ├── Cargo.toml
 ├── src/

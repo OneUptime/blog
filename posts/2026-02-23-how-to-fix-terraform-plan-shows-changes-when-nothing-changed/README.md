@@ -26,7 +26,7 @@ There are several reasons this happens:
 
 The most common phantom diff:
 
-```
+```text
 # aws_instance.web will be updated in-place
 ~ resource "aws_instance" "web" {
     ~ tags = {
@@ -37,7 +37,7 @@ The most common phantom diff:
 
 Or tag ordering changes:
 
-```
+```text
 ~ tags = {
     - "Environment" = "prod" -> null
     + "Environment" = "prod"
@@ -80,7 +80,7 @@ But be careful with this. It means Terraform will never update tags, even when y
 
 Security group rules can show changes even when nothing actually changed:
 
-```
+```text
 # aws_security_group.web will be updated in-place
 ~ resource "aws_security_group" "web" {
     ~ ingress = [
@@ -146,7 +146,7 @@ Individual rule resources do not have ordering issues.
 
 IAM policies and similar JSON fields often show changes due to whitespace or key ordering:
 
-```
+```text
 # aws_iam_role_policy.app will be updated in-place
 ~ resource "aws_iam_role_policy" "app" {
     ~ policy = jsonencode(
@@ -209,7 +209,7 @@ resource "aws_iam_role_policy" "app" {
 
 Some resources show changes because the cloud provider applies defaults that differ from what is in the state:
 
-```
+```text
 # aws_instance.web will be updated in-place
 ~ resource "aws_instance" "web" {
     ~ credit_specification {
@@ -245,7 +245,7 @@ resource "aws_instance" "web" {
 
 EC2 instances often show phantom changes for their root or attached volumes:
 
-```
+```text
 # aws_instance.web will be updated in-place
 ~ resource "aws_instance" "web" {
     ~ root_block_device {

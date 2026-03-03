@@ -56,7 +56,7 @@ The `^` symbol means `Ctrl`, and `M-` means `Alt` (or sometimes `Esc`).
 
 ## Basic Navigation
 
-```
+```text
 Arrow keys     - Move cursor
 Ctrl+A         - Go to beginning of line
 Ctrl+E         - Go to end of line
@@ -73,20 +73,20 @@ Alt+/          - Go to last line
 
 Word-by-word movement:
 
-```
+```text
 Ctrl+Space     - Move forward one word
 Alt+Space      - Move backward one word
 ```
 
 ## Saving and Exiting
 
-```
+```text
 Ctrl+O         - Write (save) file without exiting
 Ctrl+X         - Exit (prompts to save if modified)
 ```
 
 When you press `Ctrl+X` on a modified file, nano asks:
-```
+```text
 Save modified buffer?
 Y Yes
 N No
@@ -99,7 +99,7 @@ Press `Y`, then `Enter` to confirm the filename, or `N` to discard changes.
 
 Nano uses its own cut/copy buffer:
 
-```
+```text
 Ctrl+K         - Cut (kill) current line
 Alt+6          - Copy current line (without cutting)
 Ctrl+U         - Paste (uncut) previously cut text
@@ -107,7 +107,7 @@ Ctrl+U         - Paste (uncut) previously cut text
 
 For selecting a range:
 
-```
+```text
 Ctrl+6         - Mark start of selection (toggle mark)
   (then move cursor to end of selection)
 Ctrl+K         - Cut selected text
@@ -117,7 +117,7 @@ Ctrl+U         - Paste
 
 Practical workflow:
 
-```
+```text
 1. Move to the start of what you want to copy
 2. Press Ctrl+6 to set mark
 3. Move to the end of the selection
@@ -130,7 +130,7 @@ Practical workflow:
 
 ### Search
 
-```
+```text
 Ctrl+W         - Start search (forward)
 ```
 
@@ -143,26 +143,26 @@ Search options after pressing `Ctrl+W`:
 
 ### Find and Replace
 
-```
+```text
 Ctrl+\         - Find and replace
 ```
 
 Nano prompts for search term, then replacement term, then asks for each match:
-```
+```text
 Y        - Replace this occurrence
 N        - Skip
 A        - Replace all remaining
 Ctrl+C   - Cancel
 ```
 
-```
+```text
 # Replace case-insensitively by first pressing Alt+C to toggle case sensitivity
 Ctrl+\ then (search term) then (replacement)
 ```
 
 ## Undo and Redo
 
-```
+```text
 Alt+U          - Undo last action
 Alt+E          - Redo
 ```
@@ -171,7 +171,7 @@ Nano supports multiple undo levels.
 
 ## Working with Multiple Files
 
-```
+```text
 Ctrl+R         - Insert another file into current file at cursor position
 Alt+>          - Switch to next file buffer
 Alt+<          - Switch to previous file buffer
@@ -179,7 +179,7 @@ Alt+<          - Switch to previous file buffer
 
 ## Spell Checking
 
-```
+```text
 Ctrl+T         - Run spell checker (requires spell or aspell installed)
 ```
 
@@ -201,7 +201,7 @@ nano ~/.nanorc
 
 Useful settings:
 
-```
+```text
 ## ~/.nanorc
 
 # Show line numbers
@@ -248,7 +248,7 @@ set whitespace "»·"
 
 Ubuntu ships nano with syntax highlighting files for many languages:
 
-```
+```text
 # Add to ~/.nanorc
 include "/usr/share/nano/python.nanorc"
 include "/usr/share/nano/sh.nanorc"
@@ -314,7 +314,7 @@ journalctl -xe | nano -
 
 ## Quick Reference
 
-```
+```text
 Open:          nano filename
 Save:          Ctrl+O
 Exit:          Ctrl+X

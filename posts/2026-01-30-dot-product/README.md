@@ -20,7 +20,7 @@ The dot product (also called inner product or scalar product) of two vectors is 
 
 For two vectors **a** and **b** of dimension n:
 
-```
+```text
 a · b = Σ(aᵢ × bᵢ) for i = 1 to n
      = a₁b₁ + a₂b₂ + ... + aₙbₙ
 ```
@@ -29,7 +29,7 @@ a · b = Σ(aᵢ × bᵢ) for i = 1 to n
 
 The dot product has a beautiful geometric interpretation:
 
-```
+```text
 a · b = ||a|| × ||b|| × cos(θ)
 ```
 

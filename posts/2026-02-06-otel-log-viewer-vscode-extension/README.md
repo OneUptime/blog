@@ -73,7 +73,7 @@ This is particularly useful when you want to see the full picture of an HTTP req
 
 The extension supports filtering by service name, span name, and status. If you are running multiple services locally, you can filter to just the service you care about. Use the search bar at the top of the panel:
 
-```
+```text
 service.name = "my-local-service" AND status = ERROR
 ```
 

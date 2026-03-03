@@ -168,7 +168,7 @@ kubectl get pods -n my-first-app
 
 Each pod should show 2/2 in the READY column:
 
-```
+```text
 NAME                           READY   STATUS    RESTARTS   AGE
 backend-api-7c9b5d8f4-abc12   2/2     Running   0          30s
 backend-api-7c9b5d8f4-def34   2/2     Running   0          30s

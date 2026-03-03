@@ -26,7 +26,7 @@ Jenkins Shared Libraries allow you to define reusable pipeline code in an extern
 
 A shared library repository follows a specific structure:
 
-```
+```text
 (root)
 +-- src/                     # Groovy source files (classes)
 |   +-- org/
@@ -441,7 +441,7 @@ Configured in Jenkins system configuration, available to all pipelines:
 
 **Manage Jenkins > Configure System > Global Pipeline Libraries**
 
-```
+```text
 Name: company-shared-lib
 Default version: main
 Retrieval method: Modern SCM

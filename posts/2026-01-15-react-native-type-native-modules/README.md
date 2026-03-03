@@ -955,7 +955,7 @@ Organizing type declarations properly ensures maintainability and discoverabilit
 
 ### Project Structure
 
-```
+```text
 src/
   types/
     native-modules/

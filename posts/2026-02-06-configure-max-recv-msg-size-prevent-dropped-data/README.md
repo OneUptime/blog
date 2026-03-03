@@ -121,7 +121,7 @@ Look for log entries indicating gRPC errors with status code `RESOURCE_EXHAUSTED
 
 Calculate your expected maximum batch size using this formula:
 
-```
+```text
 max_batch_size = (avg_item_size * batch_size) + overhead
 ```
 
@@ -216,7 +216,7 @@ Create alerts when these metrics exceed zero, indicating data loss.
 
 Increasing `max_recv_msg_size_mib` has memory implications. Each receiver connection can potentially use up to this amount of memory. Calculate your memory requirements:
 
-```
+```text
 total_memory = max_recv_msg_size_mib * max_concurrent_streams * num_receivers
 ```
 

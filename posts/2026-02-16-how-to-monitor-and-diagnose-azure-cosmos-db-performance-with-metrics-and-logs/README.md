@@ -64,7 +64,7 @@ The Azure Portal has built-in dashboards for Cosmos DB metrics:
 
 Useful configurations:
 
-```
+```text
 Metric: Normalized RU Consumption
 Split by: PartitionKeyRangeId
 Time range: Last 24 hours
@@ -73,7 +73,7 @@ Aggregation: Maximum
 This shows you which partitions are hot
 ```
 
-```
+```text
 Metric: Total Requests
 Split by: StatusCode
 Filter: StatusCode = 429
@@ -139,7 +139,7 @@ Once logs are in Log Analytics, use Kusto Query Language (KQL) to analyze them:
 
 ### Find the Most Expensive Queries
 
-```
+```text
 // Top 20 queries by RU cost in the last 24 hours
 CDBDataPlaneRequests
 | where TimeGenerated > ago(24h)
@@ -155,7 +155,7 @@ CDBDataPlaneRequests
 
 ### Identify Throttled Requests
 
-```
+```text
 // Throttled requests (429s) over time
 CDBDataPlaneRequests
 | where TimeGenerated > ago(7d)
@@ -167,7 +167,7 @@ CDBDataPlaneRequests
 
 ### Detect Hot Partitions
 
-```
+```text
 // RU consumption by partition key range
 CDBPartitionKeyRUConsumption
 | where TimeGenerated > ago(24h)
@@ -178,7 +178,7 @@ CDBPartitionKeyRUConsumption
 
 ### Latency Analysis
 
-```
+```text
 // P50, P95, and P99 latency over time
 CDBDataPlaneRequests
 | where TimeGenerated > ago(24h)
@@ -193,7 +193,7 @@ CDBDataPlaneRequests
 
 ### Failed Operations
 
-```
+```text
 // Failed operations grouped by error type
 CDBDataPlaneRequests
 | where TimeGenerated > ago(24h)

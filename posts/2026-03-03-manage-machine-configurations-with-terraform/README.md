@@ -250,7 +250,7 @@ resource "talos_machine_configuration_apply" "worker" {
 
 For complex patches, store them as separate YAML files:
 
-```
+```text
 patches/
   common/
     network.yaml

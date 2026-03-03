@@ -14,7 +14,7 @@ Snap channels are a release management system that gives both developers and use
 
 A full channel specification has three components:
 
-```
+```text
 <track>/<risk-level>/<branch>
 ```
 
@@ -202,7 +202,7 @@ snap info firefox | grep "latest/"
 
 From a snap developer's perspective, the channel system defines the release pipeline:
 
-```
+```text
 Code commit -> Automated build -> edge
            After testing     -> beta
            Manual promotion  -> candidate

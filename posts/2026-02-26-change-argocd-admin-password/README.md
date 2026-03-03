@@ -36,7 +36,7 @@ argocd account update-password \
 
 You will see:
 
-```
+```text
 Password updated
 Context 'localhost:8080' updated
 ```

@@ -191,7 +191,7 @@ This works across any organization since it is just an HTTPS download. Set up AW
 
 For most multi-organization setups, here is what works well:
 
-```
+```text
 [Platform Team - org-platform]
   - Publishes modules to Git repositories
   - Tags releases with semantic versions

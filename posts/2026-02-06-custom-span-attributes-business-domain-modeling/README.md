@@ -16,7 +16,7 @@ Custom span attributes bridge this gap. By attaching business-specific metadata 
 
 Consider a typical e-commerce trace. Auto-instrumentation gives you spans like:
 
-```
+```text
 POST /api/orders - 450ms (http.status_code=200)
   SELECT * FROM products - 12ms (db.system=postgresql)
   POST /payments/charge - 380ms (http.status_code=200)
@@ -27,7 +27,7 @@ You can see that the request took 450ms and the payment call was the bottleneck.
 
 With custom span attributes, the same trace becomes:
 
-```
+```text
 POST /api/orders - 450ms
   order.type=wholesale, order.value=12500.00, order.item_count=150
   customer.tier=enterprise, customer.region=eu-west
@@ -49,7 +49,7 @@ Follow these principles:
 
 Use dot-separated namespaces that mirror your business domain. Start with the domain entity, then the property.
 
-```
+```text
 # Good: clear hierarchy
 order.type
 order.value
@@ -310,7 +310,7 @@ These helpers ensure that every order-related span gets the same set of attribut
 
 Once your spans carry business attributes, you can write powerful queries in your observability backend. Here are examples of the kinds of questions you can now answer:
 
-```
+```text
 # Find all slow wholesale orders over $10,000
 order.type = "wholesale" AND order.value > 10000 AND duration > 2s
 

@@ -40,7 +40,7 @@ sudo systemctl start logstash
 
 ## Logstash Directory Structure
 
-```
+```text
 /etc/logstash/
   logstash.yml          - Main Logstash configuration
   pipelines.yml         - Defines which pipeline config files to load

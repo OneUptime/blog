@@ -219,7 +219,7 @@ systemctl status cert-renew.timer
 
 Expected output for `list-timers`:
 
-```
+```text
 NEXT                        LEFT      LAST                        PASSED UNIT
 Mon 2026-03-02 12:34:00 UTC 6h left   Mon 2026-03-02 00:12:00 UTC 6h ago cert-renew.timer
 ```

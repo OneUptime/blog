@@ -337,7 +337,7 @@ Pulsar uses a hierarchical structure: Tenants contain Namespaces, which contain 
 
 ### Understanding the Hierarchy
 
-```
+```text
 Tenant (e.g., "my-company")
   └── Namespace (e.g., "my-company/payments")
         └── Topic (e.g., "persistent://my-company/payments/transactions")

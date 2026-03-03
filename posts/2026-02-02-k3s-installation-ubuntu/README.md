@@ -96,7 +96,7 @@ kubectl get nodes
 
 You should see your node listed with status "Ready" after a few seconds.
 
-```
+```text
 NAME          STATUS   ROLES                  AGE   VERSION
 ubuntu-node   Ready    control-plane,master   45s   v1.31.3+k3s1
 ```
@@ -146,7 +146,7 @@ kubectl get pods -A
 
 Expected output shows system pods running:
 
-```
+```text
 NAMESPACE     NAME                                      READY   STATUS    RESTARTS   AGE
 kube-system   coredns-7b98449c4-xvz8p                  1/1     Running   0          2m
 kube-system   local-path-provisioner-6c86858495-kfn2m  1/1     Running   0          2m
@@ -224,7 +224,7 @@ kubectl get nodes
 
 The output should show both nodes:
 
-```
+```text
 NAME            STATUS   ROLES                  AGE   VERSION
 ubuntu-server   Ready    control-plane,master   10m   v1.31.3+k3s1
 ubuntu-worker   Ready    <none>                 30s   v1.31.3+k3s1

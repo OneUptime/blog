@@ -312,7 +312,7 @@ Configure user permissions in Dashboard > Users > Select User:
 
 For families, create separate profiles with appropriate content ratings.
 
-```
+```text
 Admin Account     -> Full access, all libraries, no restrictions
 Adult User        -> Movies/TV rated R and below, no admin
 Teen User         -> Movies/TV rated PG-13 and below
@@ -339,7 +339,7 @@ Essential plugins to consider:
 
 Install a plugin from the catalog.
 
-```
+```text
 1. Dashboard > Plugins > Catalog
 2. Find desired plugin and click Install
 3. Restart Jellyfin when prompted
@@ -433,7 +433,7 @@ sudo systemctl reload nginx
 
 Update Jellyfin network settings to work with the reverse proxy.
 
-```
+```text
 Dashboard > Networking:
 - Base URL: (leave empty or set to /jellyfin if using subpath)
 - Secure connection mode: Handled by reverse proxy
@@ -463,7 +463,7 @@ Jellyfin has native apps for virtually every platform.
 
 Configure clients for optimal playback.
 
-```
+```text
 In each client app:
 1. Add server: https://jellyfin.yourdomain.com (or local IP:8096)
 2. Login with your credentials
@@ -475,7 +475,7 @@ In each client app:
 
 For Kodi integration, install the Jellyfin addon.
 
-```
+```text
 1. Download repository from repo.jellyfin.org
 2. Kodi > Settings > Add-ons > Install from zip file
 3. Install Jellyfin for Kodi from the repository

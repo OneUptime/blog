@@ -62,7 +62,7 @@ flowchart LR
 
 The most common tunneling method used by tunnel brokers is 6in4 (also known as Protocol 41). Here is a breakdown of the encapsulation:
 
-```
+```text
 Original IPv6 Packet:
 +------------------+------------------+
 |   IPv6 Header    |    IPv6 Data     |
@@ -194,7 +194,7 @@ For this guide, we will use **Hurricane Electric (HE)** as it is the most widely
 
 After creation, you will receive configuration details similar to:
 
-```
+```text
 # Example Tunnel Configuration (yours will differ)
 # ================================================
 

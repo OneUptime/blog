@@ -68,7 +68,7 @@ With YAML, you get lists and dictionaries as variable values. That `vhosts` list
 
 For anything beyond trivial setups, the `host_vars` directory is the recommended approach. Create a directory called `host_vars` next to your inventory file, and inside it, create a YAML file named after each host.
 
-```
+```text
 project/
   inventory.ini
   host_vars/
@@ -126,7 +126,7 @@ This approach keeps your inventory file clean and gives you version control hist
 
 You can also use a directory instead of a single file per host. Ansible will load all YAML files inside that directory.
 
-```
+```text
 project/
   inventory.ini
   host_vars/

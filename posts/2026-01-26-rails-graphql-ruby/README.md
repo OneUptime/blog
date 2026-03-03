@@ -38,7 +38,7 @@ rails generate graphql:install
 
 The generator creates several files:
 
-```
+```text
 app/graphql/
   types/
     base_argument.rb

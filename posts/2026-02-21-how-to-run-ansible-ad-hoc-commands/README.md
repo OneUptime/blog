@@ -39,7 +39,7 @@ This does not send an ICMP ping. It uses the Ansible `ping` module, which connec
 
 The output looks like this:
 
-```
+```text
 web1 | SUCCESS => {
     "changed": false,
     "ping": "pong"

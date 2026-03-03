@@ -202,7 +202,7 @@ sudo systemctl start serial-getty@ttyAMA0.service
 
 For Raspberry Pi, also check `/boot/firmware/cmdline.txt` (Ubuntu) or `/boot/cmdline.txt` (Raspberry Pi OS):
 
-```
+```text
 console=serial0,115200 console=tty1 root=... rootfstype=ext4 ...
 ```
 

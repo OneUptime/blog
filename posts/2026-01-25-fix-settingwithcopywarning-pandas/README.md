@@ -31,7 +31,7 @@ filtered['age'] = filtered['age'] + 1  # Warning!
 
 The warning message looks like this:
 
-```
+```text
 SettingWithCopyWarning: A value is trying to be set on a copy of a slice
 from a DataFrame. Try using .loc[row_indexer,col_indexer] = value instead.
 ```

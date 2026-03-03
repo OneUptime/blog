@@ -148,7 +148,7 @@ machine:
 
 For production air-gapped environments, a single NTP server is a single point of failure. Build redundancy:
 
-```
+```text
 GPS Receiver 1 --> NTP Server A (10.0.1.50)
 GPS Receiver 2 --> NTP Server B (10.0.1.51)
                                               --> Talos Nodes

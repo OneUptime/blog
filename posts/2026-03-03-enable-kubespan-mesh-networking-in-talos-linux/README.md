@@ -153,7 +153,7 @@ talosctl get kubespanendpoint --nodes <node-ip>
 
 The peer status output shows each peer's state. You want to see `up` for all peers:
 
-```
+```text
 NODE           NAMESPACE   TYPE                 ID                                      VERSION   LABEL               ENDPOINT             STATE
 192.168.1.10   network     KubeSpanPeerStatus   <peer-id>                               1         worker-1             192.168.1.20:51820   up
 192.168.1.10   network     KubeSpanPeerStatus   <peer-id>                               1         worker-2             192.168.1.21:51820   up

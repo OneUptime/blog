@@ -107,13 +107,13 @@ kubectl exec -it <pod-name> -c istio-proxy -- iptables -t nat -S ISTIO_OUTPUT
 
 With the metadata endpoint excluded, you'll see something like:
 
-```
+```text
 -A ISTIO_OUTPUT -d 169.254.169.254/32 -j RETURN
 ```
 
 For the include approach, you'll see the redirect only matches the included CIDR:
 
-```
+```text
 -A ISTIO_OUTPUT -d 10.96.0.0/12 -j ISTIO_REDIRECT
 -A ISTIO_OUTPUT -j RETURN
 ```

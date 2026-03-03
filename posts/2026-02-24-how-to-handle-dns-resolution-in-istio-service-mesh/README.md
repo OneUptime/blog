@@ -93,13 +93,13 @@ This works the same with Istio. However, if you're using the DNS proxy, be aware
 
 Services in other namespaces are accessible using their FQDN:
 
-```
+```text
 my-service.other-namespace.svc.cluster.local
 ```
 
 Or the shorter form:
 
-```
+```text
 my-service.other-namespace
 ```
 

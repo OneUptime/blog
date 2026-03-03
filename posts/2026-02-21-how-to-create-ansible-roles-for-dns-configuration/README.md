@@ -12,7 +12,7 @@ DNS is one of those services that works silently in the background until it brea
 
 ## Role Structure
 
-```
+```text
 roles/dns/
   defaults/main.yml
   handlers/main.yml

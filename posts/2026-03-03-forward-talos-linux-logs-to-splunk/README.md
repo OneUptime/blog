@@ -26,7 +26,7 @@ Splunk brings unique capabilities that are particularly valuable for enterprise 
 
 The recommended architecture for forwarding Talos Linux logs to Splunk uses a log collector as an intermediary:
 
-```
+```text
 Talos Linux Nodes --> Log Collector (Vector/Fluentd) --> Splunk HEC --> Splunk Indexers
 ```
 

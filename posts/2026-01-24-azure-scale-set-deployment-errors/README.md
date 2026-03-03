@@ -35,7 +35,7 @@ The most frequent deployment error involves exceeding subscription quotas.
 
 ### Error Message
 
-```
+```text
 Operation could not be completed as it results in exceeding approved
 StandardDSv3Family Cores quota. Additional details - Deployment Model:
 Resource Manager, Location: eastus, Current Limit: 100, Current Usage: 98,
@@ -75,7 +75,7 @@ Deploying with an invalid or unavailable image reference.
 
 ### Error Message
 
-```
+```text
 The platform image reference 'publisher:offer:sku:version' is not valid.
 Verify that the publisher, offer, sku, and version are correct.
 ```
@@ -130,7 +130,7 @@ Network configuration errors are common, especially with complex VNet setups.
 
 ### Error Message
 
-```
+```text
 Subnet '/subscriptions/.../subnets/vmss-subnet' referenced by resource
 '/subscriptions/.../virtualMachineScaleSets/myVMSS' was not found.
 ```
@@ -170,7 +170,7 @@ Custom script extensions and other VM extensions often fail.
 
 ### Error Message
 
-```
+```text
 VM has reported a failure when processing extension 'CustomScript'.
 Error message: "Command execution finished but failed with exit code 1"
 ```
@@ -259,7 +259,7 @@ When overprovisioning is enabled, Azure creates extra VMs to ensure the requeste
 
 ### Error Message
 
-```
+```text
 Allocation failed. We do not have sufficient capacity for the requested
 VM size in this region.
 ```
@@ -312,7 +312,7 @@ Load balancer health probes failing cause instances to be marked unhealthy.
 
 ### Error Message
 
-```
+```text
 Instances in scale set are unhealthy. 3 instances have health state: Unhealthy
 ```
 

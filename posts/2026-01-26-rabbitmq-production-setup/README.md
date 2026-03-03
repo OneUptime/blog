@@ -240,7 +240,7 @@ sudo systemctl restart rabbitmq-server
 
 Also set system-wide limits in `/etc/security/limits.conf`:
 
-```
+```text
 rabbitmq soft nofile 65536
 rabbitmq hard nofile 65536
 ```
@@ -295,7 +295,7 @@ sudo systemctl start rabbitmq-server
 
 Configure hostnames in `/etc/hosts` on all nodes:
 
-```
+```text
 192.168.1.10 rabbit1
 192.168.1.11 rabbit2
 192.168.1.12 rabbit3
@@ -466,7 +466,7 @@ management.tcp.port = 15672
 
 Use HAProxy or your cloud provider's load balancer for distributing connections:
 
-```
+```text
 # /etc/haproxy/haproxy.cfg
 # HAProxy configuration for RabbitMQ
 frontend rabbitmq_frontend

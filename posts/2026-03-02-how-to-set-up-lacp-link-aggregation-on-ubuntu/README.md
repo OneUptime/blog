@@ -156,7 +156,7 @@ cat /proc/net/bonding/bond0
 
 The output shows detailed bond status:
 
-```
+```text
 Ethernet Channel Bonding Driver: v6.x
 
 Bonding Mode: IEEE 802.3ad Dynamic link aggregation

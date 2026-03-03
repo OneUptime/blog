@@ -88,7 +88,7 @@ kubectl describe serviceaccount app-service-account -n production
 
 The output shows the attached image pull secrets:
 
-```
+```text
 Name:                app-service-account
 Namespace:           production
 ...

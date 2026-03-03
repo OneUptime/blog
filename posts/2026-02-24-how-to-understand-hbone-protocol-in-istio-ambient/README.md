@@ -18,7 +18,7 @@ The basic idea is straightforward: instead of having each pod run its own proxy 
 
 Here is what a request looks like at the network level in ambient mode:
 
-```
+```text
 App Pod (Node A)
     |
     v  [plaintext, captured by ztunnel]
@@ -66,7 +66,7 @@ You might wonder why Istio chose HTTP/2 CONNECT instead of just using raw mTLS c
 
 When L7 processing is needed (HTTP routing, header-based authorization, retries), traffic flows through a waypoint proxy. The HBONE protocol is used for the entire path:
 
-```
+```text
 App Pod (Node A)
     |
     v
@@ -107,7 +107,7 @@ kubectl logs -n istio-system -l app=ztunnel --tail=20
 
 You will see log entries showing the HBONE tunnel being established:
 
-```
+```text
 outbound tunnel request: src=10.244.1.5, dst=10.244.2.3:5000, via=10.244.2.1:15008
 ```
 

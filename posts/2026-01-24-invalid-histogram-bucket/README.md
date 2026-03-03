@@ -138,7 +138,7 @@ docker logs otel-collector 2>&1 | grep -i "histogram\|bucket\|invalid"
 
 Common error messages:
 
-```
+```text
 Error: histogram bucket bounds must be in strictly increasing order
 Error: histogram bucket count does not match boundary count
 Error: invalid histogram: negative bucket count

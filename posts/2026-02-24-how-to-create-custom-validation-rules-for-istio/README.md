@@ -165,7 +165,7 @@ deny[msg] {
 
 Conftest is the CLI tool for testing structured data against Rego policies. Install it and organize your policies:
 
-```
+```text
 policies/
   istio/
     virtualservice.rego
@@ -181,7 +181,7 @@ conftest test -p policies/istio/ k8s/istio/virtual-service.yaml
 
 Output for a failing resource:
 
-```
+```text
 FAIL - k8s/istio/virtual-service.yaml - main - VirtualService 'my-service': HTTP route 0 must define a timeout
 ```
 
@@ -285,7 +285,7 @@ conftest verify -p policies/istio/
 
 As your policy library grows, organize it by resource type and concern:
 
-```
+```text
 policies/
   istio/
     virtualservice/

@@ -14,13 +14,13 @@ Duplicate type errors in GraphQL occur when the same type name is defined more t
 
 When GraphQL encounters duplicate types, you will see errors like:
 
-```
+```text
 Error: Schema must contain uniquely named types but contains multiple types named "User".
 ```
 
 Or with Apollo Server:
 
-```
+```text
 Error: Type "Product" was defined more than once.
 ```
 
@@ -573,7 +573,7 @@ if (duplicates.size > 0) {
 
 ## Project Structure
 
-```
+```text
 src/
   schema/
     types/

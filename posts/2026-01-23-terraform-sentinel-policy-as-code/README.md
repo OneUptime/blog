@@ -61,7 +61,7 @@ all_instances_have_tags = rule {
 
 ### Policy Set Structure
 
-```
+```text
 sentinel/
 |-- sentinel.hcl         # Configuration file
 |-- policies/

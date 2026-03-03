@@ -313,7 +313,7 @@ livenessProbe:
 ```
 
 Time until restart after first failure:
-```
+```text
 periodSeconds * failureThreshold = 15 * 3 = 45 seconds
 ```
 

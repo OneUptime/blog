@@ -47,7 +47,7 @@ kubectl logs <pod-name> -c istio-proxy -n default --tail=10
 
 A typical log line looks like:
 
-```
+```text
 [2026-02-24T10:15:30.123Z] "GET /api/v1/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 15 14 "-" "Go-http-client/1.1" "abc-123" "user-service.production.svc.cluster.local:8080" "10.244.1.5:8080" inbound|8080|| 10.244.2.3:0 10.244.1.5:8080 10.244.2.3:45678 - default
 ```
 

@@ -56,14 +56,14 @@ Key disk requirements for etcd:
 
 You can estimate etcd storage needs:
 
-```
+```text
 Approximate etcd size = (number of pods x 2 KB) + (number of services x 1 KB)
                       + (number of configmaps/secrets x average size)
 ```
 
 For a cluster with 5,000 pods, 500 services, and 1,000 configmaps averaging 5 KB:
 
-```
+```text
 (5000 x 2 KB) + (500 x 1 KB) + (1000 x 5 KB) = 10 MB + 0.5 MB + 5 MB = ~16 MB
 ```
 
@@ -98,7 +98,7 @@ Worker node sizing depends entirely on your workloads. The goal is to find the r
 
 Start by inventorying your workload requirements:
 
-```
+```text
 Total CPU needed = Sum of all pod CPU requests + overhead
 Total RAM needed = Sum of all pod memory requests + overhead
 ```
@@ -195,7 +195,7 @@ Plan for growth from the start. Here are practical strategies:
 
 If you use HPA, your cluster needs headroom for pods to scale up:
 
-```
+```text
 Cluster capacity = Peak pod count x resource requests per pod x (1 + headroom percentage)
 ```
 

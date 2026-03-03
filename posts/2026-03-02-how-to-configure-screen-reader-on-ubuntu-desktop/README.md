@@ -37,7 +37,7 @@ pgrep -la orca
 
 The default keyboard shortcut to toggle the screen reader on and off:
 
-```
+```text
 Super + Alt + S
 ```
 
@@ -78,7 +78,7 @@ The Orca key (also called the Orca modifier) is the Insert key on most keyboards
 
 Orca uses a combination of the Orca modifier key and other keys.
 
-```
+```text
 Orca + F2         - List keyboard shortcuts
 Orca + F1         - Orca help
 Orca + F3         - Next element in Find

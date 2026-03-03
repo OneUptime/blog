@@ -123,7 +123,7 @@ gcloud datastream streams update mysql-to-gcs-avro \
 
 Datastream organizes files in GCS using a path structure that includes the database, schema, and table names:
 
-```
+```text
 gs://my-project-cdc-events/cdc/
   production/
     orders/

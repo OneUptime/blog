@@ -32,16 +32,16 @@ flowchart TD
 
 Typical SSL certificate error messages in .NET:
 
-```
+```text
 System.Net.Http.HttpRequestException: The SSL connection could not be established, see inner exception.
 ---> System.Security.Authentication.AuthenticationException: The remote certificate is invalid according to the validation procedure.
 ```
 
-```
+```text
 The remote certificate is invalid because of errors in the certificate chain: UntrustedRoot
 ```
 
-```
+```text
 The remote certificate is invalid because of errors in the certificate chain: NotTimeValid
 ```
 

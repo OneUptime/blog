@@ -172,7 +172,7 @@ Unlike Container Registry (gcr.io) which creates repositories automatically, Art
 
 Artifact Registry uses a different URL format than Container Registry:
 
-```
+```text
 # Container Registry (old - being deprecated)
 gcr.io/PROJECT_ID/IMAGE_NAME:TAG
 

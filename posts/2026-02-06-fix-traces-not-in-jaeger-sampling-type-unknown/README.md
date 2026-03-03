@@ -23,7 +23,7 @@ Depending on Jaeger's storage configuration, spans with unknown sampling type mi
 
 If you know a trace ID (from application logs), query it directly in Jaeger:
 
-```
+```text
 http://jaeger:16686/trace/<trace-id>
 ```
 

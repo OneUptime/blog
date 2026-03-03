@@ -33,7 +33,7 @@ inputs = {
 
 If you try to run `terragrunt plan` before the VPC and RDS modules have been applied, you get:
 
-```
+```text
 ERRO[0000] Module /infrastructure/dev/vpc has not been applied yet.
 Cannot retrieve outputs.
 ```

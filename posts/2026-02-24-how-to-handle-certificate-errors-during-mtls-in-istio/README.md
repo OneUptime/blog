@@ -14,7 +14,7 @@ mTLS certificate errors in Istio are some of the most frustrating issues to debu
 
 The number one symptom of certificate problems in Istio is connection resets. Your application sees something like:
 
-```
+```text
 upstream connect error or disconnect/reset before headers. reset reason: connection termination
 ```
 
@@ -38,7 +38,7 @@ With debug logging, you will see detailed TLS handshake information including th
 
 ### Error: Certificate Verify Failed
 
-```
+```text
 TLS error: 268435581:SSL routines:OPENSSL_internal:CERTIFICATE_VERIFY_FAILED
 ```
 
@@ -76,7 +76,7 @@ You should see at least 2 (the workload cert and the intermediate CA cert). If y
 
 ### Error: Certificate Has Expired
 
-```
+```text
 TLS error: 268435640:SSL routines:OPENSSL_internal:CERTIFICATE_HAS_EXPIRED
 ```
 
@@ -105,7 +105,7 @@ kubectl delete pod <pod-name>
 
 When Envoy expects a specific SAN but the certificate presents a different one:
 
-```
+```text
 TLS error: SAN verification failed
 ```
 
@@ -120,7 +120,7 @@ Make sure the SANs listed match the SPIFFE identity of the target service.
 
 ### Error: Handshake Timeout
 
-```
+```text
 TLS handshake timeout
 ```
 
@@ -150,7 +150,7 @@ spec:
 
 ### Error: No Certificate
 
-```
+```text
 SSL connection error: no certificate
 ```
 

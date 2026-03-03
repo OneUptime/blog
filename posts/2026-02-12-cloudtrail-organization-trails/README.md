@@ -201,7 +201,7 @@ resource "aws_cloudtrail" "organization" {
 
 Once the trail is running, your logs will land in S3 with this folder structure:
 
-```
+```text
 s3://my-org-cloudtrail-bucket/
   AWSLogs/
     o-organizationid/

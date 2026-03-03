@@ -231,7 +231,7 @@ Each team gets write access only to their own state files and read access to the
 
 When teams share state, a dependency graph emerges. The networking team's state must exist before the application team can reference it. Document and manage these dependencies:
 
-```
+```text
 # State dependency graph
 # Apply order for a new environment:
 

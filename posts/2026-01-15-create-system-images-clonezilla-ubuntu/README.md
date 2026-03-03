@@ -196,7 +196,7 @@ sudo umount /mnt
 
 When Clonezilla boots, you'll see several options:
 
-```
+```text
 # Boot menu options explained:
 
 # 1. Clonezilla live (Default settings, VGA 1024x768)

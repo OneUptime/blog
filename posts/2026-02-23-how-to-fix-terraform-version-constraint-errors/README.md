@@ -14,7 +14,7 @@ Terraform version constraints prevent configurations from running on incompatibl
 
 When your Terraform CLI version does not match the version constraint:
 
-```
+```text
 Error: Unsupported Terraform Core version
 
   on versions.tf line 3, in terraform:
@@ -142,7 +142,7 @@ terraform {
 
 The `.terraform.lock.hcl` file can contain provider version selections that are not compatible with your Terraform version:
 
-```
+```text
 Error: Failed to install provider
 
 Error while installing hashicorp/aws v5.30.0: the current version of

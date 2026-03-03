@@ -77,7 +77,7 @@ The threshold value controls how sensitive your rollback trigger is:
 
 Match the threshold to your analysis interval to control the total time before rollback:
 
-```
+```text
 Time to rollback = threshold * interval
 ```
 

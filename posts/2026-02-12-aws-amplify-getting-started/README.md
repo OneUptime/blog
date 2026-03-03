@@ -69,7 +69,7 @@ amplify init
 
 When you run `amplify init`, you'll answer a few questions:
 
-```
+```text
 ? Enter a name for the project: myamplifyapp
 ? Initialize the project with the above configuration? Yes
 ? Select the authentication method: AWS profile
@@ -279,7 +279,7 @@ Or connect a Git repository for automatic deployments. For framework-specific ho
 
 After adding a few categories, your project structure looks like this:
 
-```
+```text
 my-amplify-app/
   amplify/
     backend/

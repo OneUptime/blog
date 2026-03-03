@@ -193,7 +193,7 @@ ssh node01 "sudo grep denied /var/log/audit/audit.log | audit2why"
 
 Example denial:
 
-```
+```text
 type=AVC msg=audit(1612345678.123:456): avc:  denied  { read } for
 pid=1234 comm="nginx" name="index.html" dev="sda1" ino=5678
 scontext=system_u:system_r:container_t:s0:c100,c200

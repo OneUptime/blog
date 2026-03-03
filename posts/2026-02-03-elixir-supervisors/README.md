@@ -48,7 +48,7 @@ A Supervisor is a process whose sole job is to monitor other processes (called c
 
 The key insight is that Supervisors turn crashes from catastrophic failures into routine events. When a child crashes, the Supervisor catches it, logs what happened, and starts a fresh process to take its place.
 
-```
+```text
 Application
     |
     +-- Supervisor
@@ -278,7 +278,7 @@ When a child crashes, only that child is restarted. Other children are unaffecte
 Supervisor.init(children, strategy: :one_for_one)
 ```
 
-```
+```text
 Before crash:              After Worker2 crashes:
 +-- Supervisor             +-- Supervisor
     |-- Worker1 (running)      |-- Worker1 (running, unchanged)
@@ -296,7 +296,7 @@ When any child crashes, all children are terminated and restarted.
 Supervisor.init(children, strategy: :one_for_all)
 ```
 
-```
+```text
 Before crash:              After Worker2 crashes:
 +-- Supervisor             +-- Supervisor
     |-- Worker1 (running)      |-- Worker1 (restarted)
@@ -314,7 +314,7 @@ When a child crashes, that child and all children started after it are restarted
 Supervisor.init(children, strategy: :rest_for_one)
 ```
 
-```
+```text
 Before crash:              After Worker2 crashes:
 +-- Supervisor             +-- Supervisor
     |-- Worker1 (running)      |-- Worker1 (running, unchanged)
@@ -856,7 +856,7 @@ end
 
 Visualizing the tree:
 
-```
+```text
 MyApp.Supervisor (rest_for_one)
     |
     +-- MyApp.Repo (worker)

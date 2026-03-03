@@ -322,7 +322,7 @@ curl -s http://api-server.production:6060/debug
 
 Prometheus metrics include the destination port, so you can track mTLS adoption per port:
 
-```
+```text
 sum(rate(istio_requests_total{destination_service="api-server.production.svc.cluster.local", reporter="destination"}[5m])) by (destination_port, connection_security_policy)
 ```
 

@@ -164,7 +164,7 @@ kubectl top pods -n my-namespace --containers | grep istio-proxy
 
 Or use Prometheus to query sidecar CPU usage over time:
 
-```
+```text
 rate(container_cpu_usage_seconds_total{container="istio-proxy", namespace="my-namespace"}[5m])
 ```
 

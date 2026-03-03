@@ -21,7 +21,7 @@ GitHub-hosted runners are convenient but come with limitations:
 
 Self-hosted runners on Kubernetes solve these problems:
 
-```
+```text
 +-------------------+     +-------------------+
 |  GitHub Actions   |     |  Your Kubernetes  |
 |     Workflow      |---->|     Cluster       |

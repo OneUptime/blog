@@ -40,7 +40,7 @@ graph LR
 
 Key salting prepends a short, deterministic prefix to each row key. The prefix is computed from the key itself (usually via a hash), so the same logical key always gets the same salt. This scatters keys that would otherwise be adjacent across different regions of the key space.
 
-```
+```text
 // Without salting (all writes go to the same region):
 event#2026-02-17T10:00:01
 event#2026-02-17T10:00:02

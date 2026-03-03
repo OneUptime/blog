@@ -200,7 +200,7 @@ exporters:
 
 Once the data is in your SIEM, create correlation rules that use both traditional security data and OpenTelemetry context. For example, a Splunk search that correlates firewall blocks with application traces:
 
-```
+```text
 index=security_traces sourcetype="otel:traces"
 | join trace_id [search index=firewall action=blocked]
 | stats count by security.source_ip, span_name, service.name

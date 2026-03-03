@@ -511,7 +511,7 @@ kustomize build test/component-test/ | grep -A 5 "prometheus.io"
 
 Organize components by feature:
 
-```
+```text
 components/
 ├── monitoring/
 │   ├── kustomization.yaml

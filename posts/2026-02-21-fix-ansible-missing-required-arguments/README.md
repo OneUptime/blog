@@ -12,7 +12,7 @@ The "Missing required arguments" error occurs when you call an Ansible module wi
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "changed": false,
     "msg": "missing required arguments: name"

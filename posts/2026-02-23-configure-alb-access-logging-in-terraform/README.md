@@ -184,13 +184,13 @@ resource "aws_s3_bucket_versioning" "alb_logs" {
 
 ALB access logs are stored as gzip-compressed files in a specific S3 path structure:
 
-```
+```text
 s3://bucket-name/prefix/AWSLogs/account-id/elasticloadbalancing/region/yyyy/mm/dd/
 ```
 
 Each log entry contains fields like:
 
-```
+```text
 type timestamp elb client:port target:port request_processing_time
 target_processing_time response_processing_time elb_status_code
 target_status_code received_bytes sent_bytes "request" "user_agent"

@@ -135,7 +135,7 @@ terraform {
 
 GCS supports state locking natively. No additional configuration is needed. When Terraform starts an operation that writes state, it creates a lock file in the same bucket:
 
-```
+```text
 gs://my-terraform-state-bucket/terraform/state/default.tflock
 ```
 
@@ -271,7 +271,7 @@ terraform {
 
 Or use workspaces. With GCS, each workspace gets its own state file:
 
-```
+```text
 gs://my-terraform-state-bucket/terraform/state/default.tfstate
 gs://my-terraform-state-bucket/terraform/state/staging.tfstate
 gs://my-terraform-state-bucket/terraform/state/production.tfstate

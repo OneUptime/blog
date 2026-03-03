@@ -148,7 +148,7 @@ ansible --version
 
 The output includes a line like:
 
-```
+```text
 config file = /home/user/projects/web-platform/ansible.cfg
 ```
 
@@ -171,7 +171,7 @@ The verbose flag (`-v`) is especially useful because it tells you whether each s
 
 Here is a pattern I use for managing configurations across development, staging, and production environments. Keep a base configuration in the project root and environment-specific configs in a subdirectory:
 
-```
+```text
 my-project/
   ansible.cfg              # Base config (used by default)
   configs/

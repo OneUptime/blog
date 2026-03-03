@@ -238,7 +238,7 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", 
 
 And the requirements file.
 
-```
+```text
 # requirements.txt
 fastapi==0.109.0
 uvicorn==0.27.0

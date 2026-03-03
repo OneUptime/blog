@@ -151,7 +151,7 @@ spec:
 
 Use another "Deploy Kubernetes YAML" step with the VirtualService manifest. Set the Octopus variables:
 
-```
+```text
 StableWeight = 90
 CanaryWeight = 10
 ```
@@ -262,7 +262,7 @@ Each channel can have different variable values for traffic weights and verifica
 
 Set up Octopus variable scoping for different environments:
 
-```
+```text
 Variable: CanaryReplicas
   Development: 1
   Staging: 2

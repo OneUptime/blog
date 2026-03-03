@@ -16,7 +16,7 @@ BigQuery supports cross-region dataset copies, which is useful for disaster reco
 
 A typical error message looks something like this:
 
-```
+```text
 Error: Copy failed. Could not access the encryption key.
 Ensure that the BigQuery service account has the correct permissions
 on the Cloud KMS key.
@@ -24,7 +24,7 @@ on the Cloud KMS key.
 
 Or you might see:
 
-```
+```text
 Error: The encryption key is in a different location than the destination dataset.
 ```
 

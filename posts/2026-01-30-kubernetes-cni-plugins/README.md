@@ -84,7 +84,7 @@ Let us build a functional CNI plugin that creates a veth pair and connects conta
 
 ### Project Structure
 
-```
+```text
 my-cni-plugin/
 ├── main.go
 ├── go.mod

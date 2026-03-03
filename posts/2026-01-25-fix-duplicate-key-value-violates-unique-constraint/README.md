@@ -16,7 +16,7 @@ The "duplicate key value violates unique constraint" error is one of the most co
 
 When PostgreSQL throws this error, it looks something like this:
 
-```
+```text
 ERROR: duplicate key value violates unique constraint "users_email_key"
 DETAIL: Key (email)=(john@example.com) already exists.
 ```

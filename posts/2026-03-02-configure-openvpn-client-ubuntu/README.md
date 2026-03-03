@@ -68,7 +68,7 @@ sudo openvpn --config /path/to/client1.ovpn --verb 4
 
 If the connection succeeds, you'll see output like:
 
-```
+```text
 Initialization Sequence Completed
 ```
 

@@ -20,7 +20,7 @@ The trace context contains a trace ID that uniquely identifies the entire reques
 
 OpenTelemetry uses the W3C Trace Context standard for propagation. This format defines two HTTP headers that carry trace information.
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 tracestate: vendorname=value,other=data
 ```

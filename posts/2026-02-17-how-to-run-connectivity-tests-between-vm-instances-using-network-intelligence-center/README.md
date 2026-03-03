@@ -140,7 +140,7 @@ gcloud network-management connectivity-tests create cross-vpc-test \
 
 If peering is not configured correctly, the trace will show a step like:
 
-```
+```text
 - state: APPLY_ROUTE
   route:
     routeType: PEERING_SUBNET

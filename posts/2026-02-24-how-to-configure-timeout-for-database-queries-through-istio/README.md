@@ -16,7 +16,7 @@ This post breaks down every timeout layer between your application and database,
 
 When a query goes from your application to a database through Istio, it passes through multiple timeout checkpoints:
 
-```
+```text
 Application Query Timeout
   -> Application Connection Pool Timeout
     -> Client Sidecar Connect Timeout
@@ -80,7 +80,7 @@ Set this to at least 30 minutes (1800s) for database connections. For long-runni
 
 Your application's database driver and connection pool have their own timeout settings. Here is an example with a JDBC connection string for PostgreSQL:
 
-```
+```text
 jdbc:postgresql://postgres.database.svc.cluster.local:5432/mydb?
   connectTimeout=5&
   socketTimeout=300&
@@ -146,7 +146,7 @@ SET GLOBAL net_write_timeout = 300;
 
 The key principle: timeouts should increase as you move from the application toward the database. Here is a recommended configuration:
 
-```
+```text
 Application socket timeout:    300s
 Istio connect timeout:         10s
 Istio idle timeout:          1800s

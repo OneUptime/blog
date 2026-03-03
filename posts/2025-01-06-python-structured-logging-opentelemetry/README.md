@@ -18,7 +18,7 @@ The difference between useful logs and noise comes down to structure. Structured
 
 Traditional logging produces output like this:
 
-```
+```text
 2025-01-06 10:15:23 ERROR User login failed for john@example.com
 2025-01-06 10:15:23 INFO Database query completed in 150ms
 2025-01-06 10:15:24 ERROR Payment processing failed

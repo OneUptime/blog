@@ -10,7 +10,7 @@ Description: Fix the 'Host key verification failed' SSH error when connecting to
 
 You SSH into an EC2 instance you've connected to before and get this alarming message:
 
-```
+```text
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 @    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -58,7 +58,7 @@ ssh -i ~/.ssh/my-key.pem ec2-user@54.123.45.67
 
 You'll see the normal first-connection prompt:
 
-```
+```text
 The authenticity of host '54.123.45.67' can't be established.
 ECDSA key fingerprint is SHA256:xxxxxxxxxxx.
 Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
@@ -70,7 +70,7 @@ Type `yes` and the new host key gets saved.
 
 The error message tells you exactly which line to fix:
 
-```
+```text
 Offending ECDSA key in /Users/you/.ssh/known_hosts:47
 ```
 
@@ -144,7 +144,7 @@ aws ec2 get-console-output \
 
 The output includes lines like:
 
-```
+```text
 ec2: #############################################################
 ec2: -----BEGIN SSH HOST KEY FINGERPRINTS-----
 ec2: 256 SHA256:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (ECDSA)

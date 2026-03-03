@@ -14,7 +14,7 @@ Rolling out changes globally carries massive risk. A bug that affects one region
 
 Deploy the same application across multiple Kubernetes clusters in different regions:
 
-```
+```text
 Region: us-east-1 (Cluster A)
 Region: eu-west-1 (Cluster B)
 Region: ap-southeast-1 (Cluster C)

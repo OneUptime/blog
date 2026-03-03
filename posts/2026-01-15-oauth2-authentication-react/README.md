@@ -98,7 +98,7 @@ npm install --save-dev @types/js-cookie
 
 ### Project Structure
 
-```
+```text
 src/
   components/
     Auth/

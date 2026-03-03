@@ -17,7 +17,7 @@ This guide compares both topologies and demonstrates how to implement each for p
 In a stacked topology, etcd runs as a static pod on each control plane node alongside the API server, controller manager, and scheduler. This creates a tightly coupled architecture where control plane and state storage share the same nodes.
 
 **Stacked architecture:**
-```
+```text
 Control Plane Node 1: [API Server] [Controller Manager] [Scheduler] [etcd]
 Control Plane Node 2: [API Server] [Controller Manager] [Scheduler] [etcd]
 Control Plane Node 3: [API Server] [Controller Manager] [Scheduler] [etcd]
@@ -40,7 +40,7 @@ Control Plane Node 3: [API Server] [Controller Manager] [Scheduler] [etcd]
 External topology separates etcd onto dedicated nodes, creating independent control plane and state storage layers.
 
 **External architecture:**
-```
+```text
 Control Plane Node 1: [API Server] [Controller Manager] [Scheduler]
 Control Plane Node 2: [API Server] [Controller Manager] [Scheduler]
 Control Plane Node 3: [API Server] [Controller Manager] [Scheduler]
@@ -245,7 +245,7 @@ sudo kubeadm init --config kubeadm-external-etcd-config.yaml --upload-certs
 ## Comparing Resource Requirements
 
 **Stacked topology (3 nodes total):**
-```
+```text
 Per node:
 - CPU: 4 cores (shared by control plane + etcd)
 - RAM: 16GB (shared)
@@ -256,7 +256,7 @@ Total: 3 nodes × 4 cores = 12 cores
 ```
 
 **External topology (6 nodes total):**
-```
+```text
 Control plane nodes (3):
 - CPU: 4 cores each
 - RAM: 8GB each

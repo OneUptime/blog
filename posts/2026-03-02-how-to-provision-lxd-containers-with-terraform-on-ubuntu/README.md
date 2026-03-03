@@ -67,7 +67,7 @@ lxc config trust list
 
 ## Project Structure
 
-```
+```text
 lxd-terraform/
   main.tf
   variables.tf

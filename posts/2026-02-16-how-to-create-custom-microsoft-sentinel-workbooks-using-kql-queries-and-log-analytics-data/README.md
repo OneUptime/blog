@@ -62,7 +62,7 @@ Tiles provide at-a-glance numbers. Let us add tiles showing total sign-ins, fail
 
 Click "Add query" and enter this KQL:
 
-```
+```text
 // Total sign-ins in the selected time range
 // Uses the TimeRange parameter from the workbook
 SigninLogs
@@ -78,7 +78,7 @@ Under visualization, select "Tiles." Configure the tile:
 
 Now add a second query element for failed sign-ins:
 
-```
+```text
 // Failed sign-ins with percentage calculation
 SigninLogs
 | where TimeGenerated {TimeRange}
@@ -93,7 +93,7 @@ Set this to "Tiles" visualization with the value column as FailedSignIns and a s
 
 And a third for security alerts:
 
-```
+```text
 // Active security alerts in the time range
 SecurityAlert
 | where TimeGenerated {TimeRange}
@@ -105,7 +105,7 @@ SecurityAlert
 
 Add a time series chart showing sign-in trends. Click "Add query":
 
-```
+```text
 // Sign-in trend over time, split by success and failure
 // bin() creates time buckets for the chart
 SigninLogs
@@ -136,7 +136,7 @@ Make the workbook interactive by adding a user filter. Add a new parameter:
 
 Use this query to populate the dropdown:
 
-```
+```text
 // Get list of users with sign-in activity for the dropdown filter
 SigninLogs
 | where TimeGenerated {TimeRange}
@@ -150,7 +150,7 @@ Set "Allow multiple selections" to No and add an "All" option.
 
 Now modify your existing queries to use this parameter:
 
-```
+```text
 // Sign-in details filtered by selected user
 SigninLogs
 | where TimeGenerated {TimeRange}
@@ -169,7 +169,7 @@ SigninLogs
 
 Maps are effective for showing where sign-in attempts are coming from. Add a query:
 
-```
+```text
 // Sign-in locations for geographic map visualization
 SigninLogs
 | where TimeGenerated {TimeRange}
@@ -197,7 +197,7 @@ Set the visualization to "Map." Configure:
 
 Add a detailed table for security alerts with conditional formatting:
 
-```
+```text
 // Security alerts with severity and status
 // Color-coded by severity in the workbook visualization settings
 SecurityAlert
@@ -226,7 +226,7 @@ Set the visualization to "Grid" (table). Configure conditional formatting:
 
 Workbooks can query data across multiple Log Analytics workspaces. This is useful if you have data in different workspaces for different environments:
 
-```
+```text
 // Cross-workspace query for sign-in failures
 // Queries both production and staging workspaces
 union
@@ -273,7 +273,7 @@ Here are some KQL patterns that are particularly useful in security workbooks:
 
 **Anomaly detection with time series:**
 
-```
+```text
 // Detect sign-in volume anomalies using time series analysis
 SigninLogs
 | where TimeGenerated > ago(30d)
@@ -286,7 +286,7 @@ SigninLogs
 
 **Top risky users:**
 
-```
+```text
 // Identify users with the highest risk indicators
 SigninLogs
 | where TimeGenerated {TimeRange}

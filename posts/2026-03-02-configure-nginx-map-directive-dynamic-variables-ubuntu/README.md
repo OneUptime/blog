@@ -251,7 +251,7 @@ Create the map file:
 sudo nano /etc/nginx/redirects.map
 ```
 
-```
+```text
 # Format: source    destination
 /old-home           /;
 /about-us           /about;

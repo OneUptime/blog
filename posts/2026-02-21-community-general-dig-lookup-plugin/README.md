@@ -123,7 +123,7 @@ Use DNS lookups to discover backend servers dynamically.
 
 Template:
 
-```
+```text
 # templates/haproxy.cfg.j2
 backend app_servers
     balance roundrobin

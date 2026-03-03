@@ -32,7 +32,7 @@ kubectl exec deploy/sleep -n production -c sleep -- \
 
 A 403 Forbidden with the `RBAC: access denied` message is a clear sign of AuthorizationPolicy blocking:
 
-```
+```text
 < HTTP/1.1 403 Forbidden
 < content-length: 19
 < content-type: text/plain
@@ -133,13 +133,13 @@ kubectl logs deploy/my-service -n production -c istio-proxy --tail=30 | grep rba
 
 You'll see messages like:
 
-```
+```text
 enforced denied, matched policy none
 ```
 
 or
 
-```
+```text
 enforced allowed, matched policy ns[production]-policy[allow-frontend]-rule[0]
 ```
 

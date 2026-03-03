@@ -16,7 +16,7 @@ In this guide, we will cover how to document your custom Terraform provider usin
 
 Terraform provider documentation follows a specific structure that the Terraform Registry expects. The documentation lives in a `docs/` directory at the root of your provider repository:
 
-```
+```text
 terraform-provider-example/
   docs/
     index.md                    # Provider documentation
@@ -60,7 +60,7 @@ tfplugindocs validate
 
 You can create templates to customize the generated documentation. Place templates in the `templates/` directory:
 
-```
+```text
 terraform-provider-example/
   templates/
     index.md.tmpl               # Provider template
@@ -169,7 +169,7 @@ When writing descriptions, follow these guidelines:
 
 Examples are crucial for documentation. Create them in an `examples/` directory:
 
-```
+```text
 examples/
   provider/
     provider.tf                 # Provider configuration example

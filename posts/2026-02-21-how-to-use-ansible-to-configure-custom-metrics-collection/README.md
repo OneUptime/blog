@@ -36,7 +36,7 @@ flowchart TD
 
 ## Project Structure
 
-```
+```text
 custom-metrics/
   inventory/
     hosts.yml

@@ -14,7 +14,7 @@ As Terraform projects mature, you'll inevitably want to reorganize resources int
 
 Terraform identifies resources by their full address in state. When a resource moves between modules, its address changes:
 
-```
+```text
 # Resource at the root level
 aws_instance.web
 
@@ -237,7 +237,7 @@ terraform plan
 
 The plan should show the moves but no creates or destroys:
 
-```
+```text
 Terraform will perform the following actions:
 
   # aws_vpc.main has moved to module.networking.aws_vpc.main

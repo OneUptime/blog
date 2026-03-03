@@ -118,7 +118,7 @@ This playbook configures the load balancer with all backend servers:
 
 The HAProxy template:
 
-```
+```text
 # templates/haproxy.cfg.j2
 global
     log /dev/log local0

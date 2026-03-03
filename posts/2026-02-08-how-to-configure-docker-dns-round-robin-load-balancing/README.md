@@ -39,7 +39,7 @@ docker run --rm --network app-network alpine nslookup backend
 
 Output shows multiple IP addresses:
 
-```
+```text
 Server:    127.0.0.11
 Address:   127.0.0.11:53
 

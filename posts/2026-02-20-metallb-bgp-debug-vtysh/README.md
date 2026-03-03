@@ -12,7 +12,7 @@ When MetalLB runs in FRR mode, each speaker pod contains a full FRR routing stac
 
 This guide covers the most useful vtysh commands for debugging MetalLB BGP issues, organized by the type of problem you are trying to solve.
 
-### Accessing vtysh in a MetalLB Speaker Pod
+## Accessing vtysh in a MetalLB Speaker Pod
 
 First, identify the speaker pod and exec into the FRR container:
 
@@ -68,7 +68,7 @@ kubectl exec -n metallb-system "$SPEAKER_POD" -c frr -- \
 
 Sample output:
 
-```
+```text
 IPv4 Unicast Summary:
 BGP router identifier 10.0.1.10, local AS number 64513
 Neighbor        V   AS   MsgRcvd MsgSent   TblVer  InQ OutQ  Up/Down  State/PfxRcd

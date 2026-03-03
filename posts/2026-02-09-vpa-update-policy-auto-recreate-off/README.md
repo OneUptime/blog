@@ -323,7 +323,7 @@ kubectl set resources deployment web-app --requests=cpu=500m,memory=1Gi
 
 ## VPA Update Mode Decision Tree
 
-```
+```text
 Is the workload stateless?
   No -> Use Off mode
   Yes -> Does it have multiple replicas?

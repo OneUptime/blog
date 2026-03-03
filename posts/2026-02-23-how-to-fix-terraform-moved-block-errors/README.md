@@ -30,7 +30,7 @@ When you run `terraform plan`, Terraform recognizes that the existing `aws_insta
 
 ## Error 1: Invalid Source Address
 
-```
+```text
 Error: Invalid moved object address
 
   on main.tf line 2, in moved:
@@ -82,7 +82,7 @@ terraform state list | grep aws_instance
 
 ## Error 2: Destination Already Exists
 
-```
+```text
 Error: Moved object still exists
 
   on main.tf line 1, in moved:
@@ -125,7 +125,7 @@ moved {
 }
 ```
 
-```
+```text
 Error: Ambiguous move statements
 
 The resource aws_instance.web has been moved to both
@@ -256,7 +256,7 @@ The moved block should be placed in the configuration that contains the `to` add
 
 Moved blocks must be in the same module where the `to` resource is defined. Placing them elsewhere causes errors:
 
-```
+```text
 Error: Moved object not in configuration
 
 The object aws_instance.new is not declared in the current
@@ -302,7 +302,7 @@ terraform plan
 
 You should see output like:
 
-```
+```text
   # aws_instance.web has moved to aws_instance.application
     resource "aws_instance" "application" {
         id            = "i-abc123"

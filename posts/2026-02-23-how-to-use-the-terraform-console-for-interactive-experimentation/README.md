@@ -21,7 +21,7 @@ terraform console
 
 You see a `>` prompt where you can type expressions. Terraform evaluates each expression and prints the result:
 
-```
+```text
 > 1 + 1
 2
 > "hello, world"
@@ -51,7 +51,7 @@ The console is perfect for learning and testing Terraform's built-in functions.
 
 ### String Functions
 
-```
+```text
 > upper("hello")
 "HELLO"
 
@@ -89,7 +89,7 @@ tolist([
 
 ### Numeric Functions
 
-```
+```text
 > min(5, 3, 8, 1)
 1
 
@@ -111,7 +111,7 @@ tolist([
 
 ### Collection Functions
 
-```
+```text
 > length(["a", "b", "c"])
 3
 
@@ -182,7 +182,7 @@ tolist([
 
 ### Type Conversion Functions
 
-```
+```text
 > tostring(42)
 "42"
 
@@ -206,7 +206,7 @@ true
 
 ### Encoding Functions
 
-```
+```text
 > base64encode("hello")
 "aGVsbG8="
 
@@ -231,7 +231,7 @@ true
 
 ### IP Network Functions
 
-```
+```text
 > cidrsubnet("10.0.0.0/16", 8, 1)
 "10.0.1.0/24"
 
@@ -266,7 +266,7 @@ variable "instance_types" {
 }
 ```
 
-```
+```text
 > var.environment
 "production"
 
@@ -300,7 +300,7 @@ terraform console -var-file="staging.tfvars"
 
 If you have an existing state file (from a previous apply), the console lets you inspect resource attributes:
 
-```
+```text
 > aws_instance.web.id
 "i-abc123def456"
 
@@ -324,7 +324,7 @@ The console is where you test the tricky expressions before putting them in your
 
 ### Conditional Expressions
 
-```
+```text
 > var.environment == "production" ? "t3.large" : "t3.micro"
 "t3.large"
 
@@ -334,7 +334,7 @@ The console is where you test the tricky expressions before putting them in your
 
 ### For Expressions
 
-```
+```text
 > [for s in ["hello", "world"] : upper(s)]
 [
   "HELLO",
@@ -362,7 +362,7 @@ The console is where you test the tricky expressions before putting them in your
 
 If you have multiple resources:
 
-```
+```text
 > aws_instance.web[*].id
 [
   "i-abc123",
@@ -373,7 +373,7 @@ If you have multiple resources:
 
 ### Complex Transformations
 
-```
+```text
 > { for az in ["us-east-1a", "us-east-1b", "us-east-1c"] :
     az => cidrsubnet("10.0.0.0/16", 8, index(["us-east-1a", "us-east-1b", "us-east-1c"], az))
   }
@@ -408,14 +408,14 @@ This is useful for integrating Terraform expressions into shell scripts.
 
 When an expression in your configuration produces unexpected results, copy it into the console:
 
-```
+```text
 > format("arn:aws:s3:::%s/*", var.bucket_name)
 "arn:aws:s3:::my-bucket/*"
 ```
 
 ### Debugging for_each Keys
 
-```
+```text
 > toset(["web", "api", "worker"])
 toset([
   "api",
@@ -426,7 +426,7 @@ toset([
 
 ### Checking Type Conversions
 
-```
+```text
 > type(42)  # Not a real function, but you can test conversions
 > tostring(42)
 "42"

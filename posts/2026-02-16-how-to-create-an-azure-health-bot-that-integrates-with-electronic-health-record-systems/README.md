@@ -86,7 +86,7 @@ Create a scenario that lets patients check their upcoming appointments.
 
 The FHIR query for appointments:
 
-```
+```text
 GET /Appointment?patient={patient-id}&date=ge{today}&status=booked&_sort=date&_count=5
 ```
 
@@ -134,7 +134,7 @@ scenario.appointmentMessage = message;
 
 Query the patient's active medications:
 
-```
+```text
 GET /MedicationRequest?patient={patient-id}&status=active&_include=MedicationRequest:medication
 ```
 
@@ -171,7 +171,7 @@ scenario.medicationMessage = message;
 
 Query recent lab results:
 
-```
+```text
 GET /Observation?patient={patient-id}&category=laboratory&_sort=-date&_count=10
 ```
 

@@ -236,7 +236,7 @@ sudo -u wildfly /opt/wildfly/bin/jboss-cli.sh --connect
 
 Useful CLI commands:
 
-```
+```text
 # Check server status
 [standalone@localhost:9990 /] :read-attribute(name=server-state)
 

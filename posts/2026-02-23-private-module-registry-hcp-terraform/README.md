@@ -52,7 +52,7 @@ The easiest way to publish a module is connecting it to a VCS repository. HCP Te
 
 **Repository structure:**
 
-```
+```text
 terraform-aws-vpc/
   main.tf          # Module resources
   variables.tf     # Input variables

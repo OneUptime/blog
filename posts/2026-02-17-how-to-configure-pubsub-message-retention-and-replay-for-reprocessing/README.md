@@ -248,7 +248,7 @@ For high-volume topics, this can add up. A topic publishing 1 GB per day with 7-
 
 To estimate costs:
 
-```
+```text
 Daily message volume x retention days x storage price per GB = monthly cost
 ```
 

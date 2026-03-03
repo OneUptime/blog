@@ -16,14 +16,14 @@ One of the most confusing errors for Go beginners involves pointer receivers and
 
 You'll typically see errors like:
 
-```
+```text
 cannot use myStruct (variable of type MyStruct) as MyInterface value in argument:
     MyStruct does not implement MyInterface (method Modify has pointer receiver)
 ```
 
 Or:
 
-```
+```text
 cannot use s (variable of type S) as type I in assignment:
     S does not implement I (M method has pointer receiver)
 ```

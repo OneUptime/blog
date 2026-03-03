@@ -30,7 +30,7 @@ You need a strategy to load different values per workspace.
 
 The simplest approach is passing a variable file explicitly:
 
-```
+```text
 project/
   main.tf
   variables.tf
@@ -306,7 +306,7 @@ This lets you override any default through a var file while keeping sensible wor
 
 Good for small projects with few environments:
 
-```
+```text
 envs/
   dev.tfvars
   staging.tfvars
@@ -317,7 +317,7 @@ envs/
 
 Better for projects with many variables:
 
-```
+```text
 envs/
   dev/
     main.tfvars      # Core configuration
@@ -343,7 +343,7 @@ terraform plan \
 
 For values shared across environments:
 
-```
+```text
 envs/
   common.tfvars    # Shared across all environments
   dev.tfvars       # Dev-specific overrides

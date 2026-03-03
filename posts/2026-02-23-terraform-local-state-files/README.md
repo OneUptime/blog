@@ -93,7 +93,7 @@ terraform workspace select default
 
 The directory structure looks like this:
 
-```
+```text
 project/
   main.tf
   terraform.tfstate          # default workspace state
@@ -203,7 +203,7 @@ ls -t "$BACKUP_DIR"/*.tfstate.* 2>/dev/null | tail -n +31 | xargs rm -f
 
 The local backend does support state locking on systems that support filesystem locking. When you run `terraform apply`, Terraform creates a lock file to prevent concurrent operations:
 
-```
+```text
 project/
   .terraform.tfstate.lock.info   # Lock file during operations
   terraform.tfstate

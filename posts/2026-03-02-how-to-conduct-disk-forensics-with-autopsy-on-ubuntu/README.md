@@ -112,7 +112,7 @@ For a large image, ingestion can take hours. Run it overnight for multi-hundred-
 
 The left panel shows the directory tree from the disk image. Navigate files just like a regular file manager, but all files - including deleted ones - are visible.
 
-```
+```text
 # Deleted files appear with a red X icon
 # Unallocated space shows as "$Unalloc"
 # System directories like /proc are excluded from carved space

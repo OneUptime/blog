@@ -231,7 +231,7 @@ istioctl proxy-config cluster <pod-name> --fqdn api-service.default.svc.cluster.
 ```
 
 You should see separate cluster entries like:
-```
+```text
 outbound|80|stable|api-service.default.svc.cluster.local
 outbound|80|canary|api-service.default.svc.cluster.local
 ```

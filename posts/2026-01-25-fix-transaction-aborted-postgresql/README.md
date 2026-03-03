@@ -16,7 +16,7 @@ The error "current transaction is aborted, commands ignored until end of transac
 
 When you see this error:
 
-```
+```text
 ERROR: current transaction is aborted, commands ignored until end of transaction block
 ```
 

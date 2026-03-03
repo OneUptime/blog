@@ -29,12 +29,12 @@ Establish a consistent URL structure that maps alerts to runbooks predictably. T
 
 ### Pattern 1: Service-Based Routing
 
-```
+```text
 https://docs.company.com/runbooks/{service}/{alert-name}
 ```
 
 Example:
-```
+```text
 https://docs.company.com/runbooks/checkout-service/high-latency
 https://docs.company.com/runbooks/payment-gateway/circuit-breaker-open
 https://docs.company.com/runbooks/inventory-api/database-connection-pool-exhausted
@@ -42,24 +42,24 @@ https://docs.company.com/runbooks/inventory-api/database-connection-pool-exhaust
 
 ### Pattern 2: Alert ID Routing
 
-```
+```text
 https://docs.company.com/runbooks/alerts/{alert-id}
 ```
 
 Example:
-```
+```text
 https://docs.company.com/runbooks/alerts/SVC-CHECKOUT-001
 https://docs.company.com/runbooks/alerts/DB-PG-CONN-EXHAUST
 ```
 
 ### Pattern 3: Hierarchical Routing
 
-```
+```text
 https://docs.company.com/runbooks/{team}/{service}/{category}/{alert-name}
 ```
 
 Example:
-```
+```text
 https://docs.company.com/runbooks/platform/kubernetes/networking/pod-dns-resolution-failure
 https://docs.company.com/runbooks/payments/stripe-integration/latency/p99-threshold-breach
 ```
@@ -423,7 +423,7 @@ Runbooks should be version-controlled alongside your infrastructure code.
 
 ### Git-Based Versioning
 
-```
+```text
 runbooks/
   checkout-service/
     high-latency.md
@@ -515,7 +515,7 @@ Brief description of what this alert means and why it fires.
 **Changelog:**
 - YYYY-MM-DD: Initial version
 - YYYY-MM-DD: Updated diagnosis steps
-```
+```text
 
 ### Versioned URL Scheme
 

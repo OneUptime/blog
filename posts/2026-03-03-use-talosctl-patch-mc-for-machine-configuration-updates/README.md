@@ -254,7 +254,7 @@ JSON Patch is more explicit about what operation is being performed (add, replac
 
 For teams managing Talos Linux clusters, maintaining a library of reusable patches is a good practice:
 
-```
+```text
 patches/
     common/
         ntp-servers.yaml

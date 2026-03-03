@@ -14,7 +14,7 @@ OpenTelemetry metrics support two temporality modes:
 
 **Cumulative**: Each data point contains the total accumulated value since the process started. The backend calculates rates by computing the difference between consecutive points.
 
-```
+```text
 Time:   T1    T2    T3    T4
 Value:  10    25    40    55    <- Always increasing
 Rate:   -     15    15    15    <- Backend computes this
@@ -22,7 +22,7 @@ Rate:   -     15    15    15    <- Backend computes this
 
 **Delta**: Each data point contains only the change since the last report. The backend uses the value directly.
 
-```
+```text
 Time:   T1    T2    T3    T4
 Value:  10    15    15    15    <- Each point is the delta
 Rate:   10    15    15    15    <- Value IS the rate
@@ -34,7 +34,7 @@ Rate:   10    15    15    15    <- Value IS the rate
 
 If you send cumulative values to a backend that expects delta, the backend interprets each cumulative value as a delta. Your counter that went from 10 to 25 looks like 25 new requests instead of 15:
 
-```
+```text
 SDK sends (cumulative):   10    25    40
 Backend interprets (delta): 10    25    40  <- WAY too high!
 Actual rate should be:      10    15    15
@@ -44,7 +44,7 @@ Actual rate should be:      10    15    15
 
 Prometheus expects cumulative metrics. If you send delta values, Prometheus sees what looks like a counter reset on every scrape:
 
-```
+```text
 SDK sends (delta):          15    15    15
 Prometheus interprets:      15 -> 15 (reset?) -> 15 (reset?)
                            Treats each as a new counter starting from scratch

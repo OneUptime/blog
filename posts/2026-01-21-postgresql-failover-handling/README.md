@@ -445,7 +445,7 @@ $$ LANGUAGE plpgsql;
 
 ## Failover Decision Tree
 
-```
+```text
 Primary Unresponsive?
 ├── Yes
 │   ├── Check Replica Lag

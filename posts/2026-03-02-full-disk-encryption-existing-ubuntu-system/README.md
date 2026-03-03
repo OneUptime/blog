@@ -18,7 +18,7 @@ This guide covers the two main strategies: encrypting a secondary data partition
 
 A true full-disk setup on Ubuntu looks like:
 
-```
+```text
 /dev/sda1  ->  /boot  (unencrypted, ~512MB)
 /dev/sda2  ->  LUKS container
                └── LVM VG

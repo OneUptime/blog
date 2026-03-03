@@ -136,7 +136,7 @@ cat /var/lib/istio/envoy/cluster.env
 
 Typical contents:
 
-```
+```text
 CANONICAL_SERVICE=my-vm-workload
 CANONICAL_REVISION=v1
 ISTIO_META_CLUSTER_ID=cluster1
@@ -199,7 +199,7 @@ sudo journalctl -u istio -f
 
 You should see messages like:
 
-```
+```text
 pilot-agent - Starting proxy agent
 pilot-agent - Received new config, resetting budget
 envoy - Starting Envoy proxy

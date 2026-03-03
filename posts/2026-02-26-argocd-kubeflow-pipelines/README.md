@@ -62,7 +62,7 @@ spec:
 
 Structure your Kubeflow Pipelines manifests with Kustomize:
 
-```
+```text
 ml-platform-gitops/
   kubeflow-pipelines/
     base/

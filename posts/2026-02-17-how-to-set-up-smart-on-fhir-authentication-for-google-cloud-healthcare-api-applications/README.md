@@ -70,7 +70,7 @@ Configure the OAuth consent screen in Google Cloud Console and create OAuth 2.0 
 
 These are the common SMART on FHIR scopes you will work with:
 
-```
+```text
 # Patient-level scopes (for patient-facing apps)
 patient/Patient.read
 patient/Observation.read

@@ -44,7 +44,7 @@ screen -ls
 
 All screen commands start with the prefix `Ctrl+A` (hold Control, press a):
 
-```
+```text
 Ctrl+A d        - Detach from the session (leave it running)
 Ctrl+A c        - Create a new window
 Ctrl+A n        - Next window
@@ -141,7 +141,7 @@ tmux new -s mysession
 
 tmux uses `Ctrl+B` as its prefix by default (unlike screen's `Ctrl+A`):
 
-```
+```text
 Ctrl+B ?        - Show all keybindings (help)
 Ctrl+B d        - Detach from session
 Ctrl+B c        - Create new window

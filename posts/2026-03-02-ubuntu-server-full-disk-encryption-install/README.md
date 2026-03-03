@@ -23,7 +23,7 @@ This is still valuable for compliance (HIPAA, PCI-DSS, SOC 2), co-location scena
 
 Ubuntu's Subiquity installer supports LVM-on-LUKS out of the box. The structure looks like:
 
-```
+```text
 Physical Disk
 └── LUKS Container (encrypted)
     └── LVM Volume Group
@@ -112,7 +112,7 @@ sudo cryptsetup luksUUID /dev/sda3
 sudo nano /etc/crypttab
 ```
 
-```
+```text
 # Format: <name> <device-uuid> <keyfile-or-none> <options>
 cryptroot UUID=your-luks-uuid-here none luks,discard
 ```
@@ -143,7 +143,7 @@ sudo nano /etc/initramfs-tools/initramfs.conf
 ```
 
 Add or modify:
-```
+```text
 # Use a static IP during early boot for remote unlock
 IP=192.168.1.100::192.168.1.1:255.255.255.0::eth0:none
 ```

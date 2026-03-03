@@ -21,7 +21,7 @@ talosctl memory --nodes 192.168.1.10
 
 The output shows the standard Linux memory information, similar to what you would see from `/proc/meminfo`:
 
-```
+```text
 TOTAL         USED          FREE          SHARED        BUFFERS       CACHE
 16384 MB      8192 MB       4096 MB       256 MB        512 MB        3328 MB
 ```

@@ -94,7 +94,7 @@ The root volume must be encrypted. If you're using a custom KMS key, specify it 
 
 The root volume needs enough space for the OS, your applications, and the RAM dump. A good rule of thumb is:
 
-```
+```text
 Root volume size >= OS + application data + (2 x RAM size)
 ```
 

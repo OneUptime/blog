@@ -67,7 +67,7 @@ sudo zfs send tank/web@2026-03-02 | \
 ```
 
 mbuffer shows:
-```
+```text
  8.50 GiB  [  45.2 MiB/s] [  45.2 MiB/s]  in   3:14
 ```
 

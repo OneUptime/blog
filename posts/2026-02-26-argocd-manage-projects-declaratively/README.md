@@ -84,7 +84,7 @@ kubectl apply -f projects/team-backend.yaml
 
 Organize your project manifests alongside your application manifests:
 
-```
+```text
 argocd-config/
   projects/
     team-backend.yaml
@@ -231,7 +231,7 @@ spec:
 
 The policy format is:
 
-```
+```text
 p, <role>, <resource>, <action>, <project>/<object>, <allow/deny>
 ```
 

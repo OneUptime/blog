@@ -45,7 +45,7 @@ gh api repos/istio/istio/security-advisories --jq '.[0:5] | .[] | "\(.published_
 
 Subscribe to the Istio news feed:
 
-```
+```text
 https://istio.io/latest/news/security/index.xml
 ```
 
@@ -162,7 +162,7 @@ Not every advisory affects your deployment. Assess the impact based on:
 
 Example assessment:
 
-```
+```text
 Advisory: CVE-2025-XXXXX - JWT validation bypass in RequestAuthentication
 Affected: 1.22.0 - 1.22.1
 Our version: 1.22.1 - AFFECTED
@@ -237,7 +237,7 @@ done
 
 Document your response process so you do not have to figure it out during an emergency:
 
-```
+```text
 ## Istio Security Advisory Response Runbook
 
 ### Triage (within 1 hour of notification)

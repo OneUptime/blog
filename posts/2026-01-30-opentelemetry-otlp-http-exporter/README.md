@@ -51,7 +51,7 @@ For this guide, we focus on HTTP/JSON since it is the most accessible and debugg
 
 The OTLP HTTP specification defines three endpoints for the three telemetry signals:
 
-```
+```text
 POST /v1/traces   - Export trace spans
 POST /v1/metrics  - Export metric data points
 POST /v1/logs     - Export log records
@@ -61,13 +61,13 @@ Each request requires specific headers and follows a defined payload structure.
 
 The required headers for OTLP HTTP requests are:
 
-```
+```text
 Content-Type: application/json
 ```
 
 For authenticated endpoints (like OneUptime), you also need an authorization header:
 
-```
+```text
 x-oneuptime-token: your-service-token
 ```
 

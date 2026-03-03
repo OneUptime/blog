@@ -12,19 +12,19 @@ Redis is a critical dependency for ArgoCD. It serves as the caching layer for th
 
 The errors typically look like:
 
-```
+```text
 ERRO[0001] Failed to get connection from Redis: dial tcp 10.96.x.x:6379: connect: connection refused
 ```
 
 Or:
 
-```
+```text
 redis: connection pool timeout
 ```
 
 Or:
 
-```
+```text
 NOAUTH Authentication required
 ```
 
@@ -161,13 +161,13 @@ spec:
 
 If Redis is configured with a password but ArgoCD does not know it (or vice versa):
 
-```
+```text
 NOAUTH Authentication required
 ```
 
 Or:
 
-```
+```text
 ERR Client sent AUTH, but no password is set
 ```
 
@@ -267,7 +267,7 @@ spec:
 
 When ArgoCD creates more connections than Redis can handle:
 
-```
+```text
 redis: connection pool timeout
 ```
 

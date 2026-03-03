@@ -39,7 +39,7 @@ flowchart TD
 
 ### Symptoms
 
-```
+```text
 A network-related or instance-specific error occurred while establishing a
 connection to SQL Server. The server was not found or was not accessible.
 ```
@@ -113,7 +113,7 @@ string connectionString = builder.ConnectionString;
 
 ### Symptoms
 
-```
+```text
 Login failed for user 'username'. (Error 18456)
 ```
 
@@ -173,7 +173,7 @@ az sql server ad-admin create \
 
 ### Symptoms
 
-```
+```text
 Connection Timeout Expired. The timeout period elapsed while attempting to
 consume the pre-login handshake acknowledgement.
 ```
@@ -279,7 +279,7 @@ var result = await retryPolicy.ExecuteAsync(async () =>
 
 ### Symptoms
 
-```
+```text
 Resource ID: 1. The request limit for the database is 30 and has been reached.
 ```
 
@@ -354,7 +354,7 @@ ORDER BY improvement_measure DESC;
 
 ### Symptoms
 
-```
+```text
 A connection was successfully established with the server, but then an error
 occurred during the pre-login handshake. (provider: SSL Provider, error: 0)
 ```

@@ -52,7 +52,7 @@ kubectl rollout history deployment/api-server --revision=3
 
 Output shows the pod template for that revision:
 
-```
+```text
 deployment.apps/api-server with revision #3
 Pod Template:
   Labels:	app=api-server
@@ -98,7 +98,7 @@ kubectl rollout history deployment/api-server
 
 After rolling back to revision 2, the history shows:
 
-```
+```text
 REVISION  CHANGE-CAUSE
 1         Initial deployment
 3         Update to v1.2.0

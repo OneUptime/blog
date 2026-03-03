@@ -14,7 +14,7 @@ The error "(13: Permission denied) while connecting to upstream" is one of the m
 
 When you see this in your Nginx error log:
 
-```
+```text
 2024/12/16 10:23:45 [crit] 1234#1234: *1 connect() to 127.0.0.1:3000 failed
 (13: Permission denied) while connecting to upstream, client: 192.168.1.100,
 server: example.com, request: "GET /api/users HTTP/1.1",

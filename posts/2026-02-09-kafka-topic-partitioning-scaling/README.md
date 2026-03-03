@@ -28,7 +28,7 @@ Choosing the right partition count and key strategy directly impacts throughput,
 
 Calculate partition count based on throughput requirements:
 
-```
+```text
 Target Partitions = max(
     Target Throughput / Producer Throughput per Partition,
     Target Throughput / Consumer Throughput per Partition
@@ -43,7 +43,7 @@ For example:
 
 Consider future growth and add 20-30% headroom:
 
-```
+```text
 Final Partition Count = Calculated Partitions * 1.3
 ```
 

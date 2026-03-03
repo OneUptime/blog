@@ -66,7 +66,7 @@ A more scalable approach stores team configurations in Git, letting teams self-s
 
 Create a team config directory structure:
 
-```
+```text
 teams/
   payments/
     config.json

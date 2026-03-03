@@ -159,7 +159,7 @@ Here is a complete example deploying an application with all configuration from 
 
 The SSM parameter hierarchy:
 
-```
+```text
 /myapp/production/
   database/
     host = prod-db.internal.example.com

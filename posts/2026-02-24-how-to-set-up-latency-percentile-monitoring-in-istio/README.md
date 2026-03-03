@@ -16,7 +16,7 @@ Istio makes this straightforward because every sidecar proxy already collects de
 
 Envoy proxies in Istio emit a histogram metric called `istio_request_duration_milliseconds`. This metric uses Prometheus histogram buckets to track how long requests take. The default buckets cover a wide range:
 
-```
+```text
 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000
 ```
 

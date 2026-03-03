@@ -16,7 +16,7 @@ Choosing the right log management solution is critical for effective observabili
 
 Elasticsearch indexes the full content of every log line:
 
-```
+```text
 Log Entry -> Tokenization -> Inverted Index -> Distributed Storage
 ```
 
@@ -30,7 +30,7 @@ Key components:
 
 Loki indexes only metadata (labels), storing log content compressed:
 
-```
+```text
 Log Entry -> Label Extraction -> Chunk Storage -> Metadata Index
 ```
 
@@ -61,7 +61,7 @@ Key components:
 
 ### Elasticsearch Storage
 
-```
+```text
 Storage = Raw Logs + Inverted Index + Replicas
 ```
 
@@ -74,7 +74,7 @@ Example for 100GB/day raw logs:
 
 ### Loki Storage
 
-```
+```text
 Storage = Compressed Logs + Label Index
 ```
 

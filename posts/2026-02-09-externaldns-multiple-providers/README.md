@@ -581,7 +581,7 @@ args:
 
 This creates TXT records like:
 
-```
+```text
 k8s-api.example.com TXT "heritage=external-dns,external-dns/owner=cluster-1-route53"
 ```
 

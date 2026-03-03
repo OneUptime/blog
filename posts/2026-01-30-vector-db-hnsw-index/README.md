@@ -179,7 +179,7 @@ graph LR
 
 `ef_construction` determines how many candidates are considered when inserting each vector.
 
-```
+```text
 ef_construction = 64:  Consider 64 potential neighbors per insertion
 ef_construction = 200: Consider 200 potential neighbors per insertion (better quality, slower build)
 ```
@@ -196,7 +196,7 @@ ef_construction = 200: Consider 200 potential neighbors per insertion (better qu
 
 `ef_search` controls how many candidates to explore during search. It can be tuned per query without rebuilding the index.
 
-```
+```text
 ef_search = 10:  Fast but lower recall
 ef_search = 100: Balanced speed and recall
 ef_search = 500: High recall but slower
@@ -638,7 +638,7 @@ quadrantChart
 
 ### Build Time vs Index Quality
 
-```
+```text
 Build Time Impact:
 
 ef_construction = 64   |████████                        | Fast
@@ -651,7 +651,7 @@ Higher ef_construction = Better neighbor selection = Higher recall
 
 ### Search Time vs Recall
 
-```
+```text
                     Recall vs Latency
 
 Recall %  |                                    ****
@@ -800,7 +800,7 @@ HNSW indexes require additional memory beyond the raw vector data.
 
 ### Memory Formula
 
-```
+```text
 Total Memory = Vector Memory + Graph Memory + Overhead
 
 Vector Memory = num_vectors * dimension * 4 bytes (float32)
@@ -873,7 +873,7 @@ for num_vectors, dimension, M in examples:
 ```
 
 Output:
-```
+```text
 Memory Estimates for HNSW Indexes
 
      Vectors    Dim    M   Total GB   Per Vector
@@ -1194,7 +1194,7 @@ if __name__ == "__main__":
 ```
 
 Sample Output:
-```
+```text
 ================================================================================
 BENCHMARK RESULTS
 ================================================================================
@@ -1248,7 +1248,7 @@ HNSW_CONFIG = {
 
 ### Decision Tree Summary
 
-```
+```text
 Dataset < 10K vectors?
   -> Use brute force (simple, 100% accurate)
 

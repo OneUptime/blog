@@ -210,7 +210,7 @@ Create a separate tsconfig for tests:
 
 Organize your tests consistently:
 
-```
+```text
 src/
 ├── components/
 │   ├── Button/

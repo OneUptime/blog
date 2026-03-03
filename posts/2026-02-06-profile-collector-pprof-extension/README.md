@@ -137,7 +137,7 @@ go tool pprof cpu.prof
 
 The pprof tool opens an interactive prompt for analysis:
 
-```
+```text
 File: otelcol-contrib
 Type: cpu
 Time: Feb 6, 2026 at 10:30am (PST)
@@ -152,7 +152,7 @@ Common pprof commands for CPU analysis:
 
 **Show top CPU consumers**:
 
-```
+```text
 (pprof) top
 Showing nodes accounting for 8.5s, 68% of 12.5s total
 Dropped 45 nodes (cum <= 0.06s)
@@ -175,7 +175,7 @@ This output shows:
 
 **Examine specific function**:
 
-```
+```text
 (pprof) list batchProcessor.processItem
 Total: 12.5s
 ROUTINE ======================== batchProcessor.processItem
@@ -258,7 +258,7 @@ go tool pprof heap.prof
 
 ### Analyzing Heap Profiles
 
-```
+```text
 (pprof) top
 Showing nodes accounting for 450MB, 90% of 500MB total
       flat  flat%   sum%        cum   cum%
@@ -288,7 +288,7 @@ go tool pprof -base heap1.prof heap2.prof
 
 Growing allocations between profiles indicate potential memory leaks:
 
-```
+```text
 (pprof) top
 Showing nodes accounting for 150MB, 100% of 150MB total
       flat  flat%   sum%        cum   cum%
@@ -311,7 +311,7 @@ go tool pprof allocs.prof
 
 Allocs profiles reveal allocation frequency, useful for identifying functions that allocate excessively:
 
-```
+```text
 (pprof) top
 Showing nodes accounting for 2.5GB, 85% of 3GB total
       flat  flat%   sum%        cum   cum%
@@ -341,7 +341,7 @@ go tool pprof goroutine.prof
 
 ### Analyzing Goroutine Profiles
 
-```
+```text
 (pprof) top
 Showing nodes accounting for 1250 goroutines, 100% of 1250 total
       flat  flat%   sum%        cum   cum%
@@ -369,7 +369,7 @@ curl -s http://localhost:1777/debug/pprof/goroutine | head -1
 
 Growing goroutine counts indicate leaks. Examine the profile to find where goroutines are created:
 
-```
+```text
 (pprof) list leakyFunction
 Total: 2500 goroutines
 ROUTINE ======================== leakyFunction
@@ -400,7 +400,7 @@ less goroutines.txt
 
 Output shows each goroutine with its full stack trace:
 
-```
+```text
 goroutine 1245 [chan receive]:
 go.opentelemetry.io/collector/processor/batchprocessor.(*batchProcessor).startLoop(...)
     /workspace/processor/batchprocessor/batch_processor.go:156
@@ -451,7 +451,7 @@ go tool pprof block.prof
 
 ### Analyzing Block Profiles
 
-```
+```text
 (pprof) top
 Showing nodes accounting for 45s, 90% of 50s total
       flat  flat%   sum%        cum   cum%
@@ -499,7 +499,7 @@ go tool pprof mutex.prof
 
 ### Analyzing Mutex Profiles
 
-```
+```text
 (pprof) top
 Showing nodes accounting for 8000 mutex waits, 100% of 8000 total
       flat  flat%   sum%        cum   cum%
@@ -773,7 +773,7 @@ Use profiling data to guide optimization efforts:
 
 **Initial profile** shows high CPU usage in batch processor:
 
-```
+```text
 (pprof) top
       flat  flat%   sum%        cum   cum%
      2.5s 50.0% 50.0%      3.0s 60.0%  batchprocessor.(*batchProcessor).addItem
@@ -781,7 +781,7 @@ Use profiling data to guide optimization efforts:
 
 **Investigation** with list command:
 
-```
+```text
 (pprof) list addItem
 Total: 5.0s
 ROUTINE ======================== batchprocessor.addItem
@@ -806,7 +806,7 @@ processors:
 
 **Re-profile** to verify improvement:
 
-```
+```text
 (pprof) top
       flat  flat%   sum%        cum   cum%
      0.8s 20.0% 20.0%      1.0s 25.0%  batchprocessor.(*batchProcessor).addItem
@@ -854,7 +854,7 @@ For comprehensive troubleshooting, use profiling alongside:
 
 **Profile shows**:
 
-```
+```text
 (pprof) top
       flat  flat%   sum%        cum   cum%
      3.0s 60.0% 60.0%      3.5s 70.0%  proto.Unmarshal
@@ -870,7 +870,7 @@ For comprehensive troubleshooting, use profiling alongside:
 
 **Profile shows**:
 
-```
+```text
 (pprof) top
       flat  flat%   sum%        cum   cum%
     200MB 80.0% 80.0%    200MB 80.0%  batchprocessor.(*batchProcessor).traces
@@ -890,7 +890,7 @@ processors:
 
 **Profile shows**:
 
-```
+```text
 goroutine profile: total 5000
 4500 @ 0x... 0x... 0x...
 #   4500 running
@@ -906,7 +906,7 @@ goroutine profile: total 5000
 
 **Profile shows**:
 
-```
+```text
 (pprof) top
       flat  flat%   sum%        cum   cum%
       8000 80.0% 80.0%       8000 80.0%  receiver.(*receiver).Lock

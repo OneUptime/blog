@@ -16,7 +16,7 @@ Flow Logs don't capture packet contents - they record connection-level metadata 
 
 Each flow log record contains fields like the source address, destination address, source port, destination port, protocol number, number of packets, number of bytes, and the action taken (ACCEPT or REJECT). Here's what a typical record looks like:
 
-```
+```text
 2 123456789012 eni-abc123de 10.0.1.5 10.0.2.15 443 49152 6 25 5000 1620140661 1620140720 ACCEPT OK
 ```
 
@@ -177,7 +177,7 @@ LIMIT 50;
 
 If your flow logs go to CloudWatch, you can use CloudWatch Logs Insights for quick analysis without setting up Athena.
 
-```
+```text
 # Find rejected SSH attempts in the last hour
 fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, action
 | filter action = "REJECT" and dstPort = 22
@@ -185,7 +185,7 @@ fields @timestamp, srcAddr, dstAddr, srcPort, dstPort, action
 | limit 50
 ```
 
-```
+```text
 # Calculate bytes transferred per source IP
 fields srcAddr, bytes
 | stats sum(bytes) as totalBytes by srcAddr

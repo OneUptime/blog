@@ -265,7 +265,7 @@ def upload_file(file_data, filename):
 
 Remove the old `lib/` directory and `appengine_config.py`. Create a `requirements.txt`:
 
-```
+```text
 # requirements.txt - Python 3 dependencies
 Flask==3.0.0
 gunicorn==21.2.0

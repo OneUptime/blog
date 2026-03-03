@@ -197,7 +197,7 @@ The Docker setup for hybrid mode is identical to the SSR Dockerfile since the No
 
 ## The .dockerignore File
 
-```
+```text
 # .dockerignore
 node_modules
 dist

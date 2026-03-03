@@ -122,7 +122,7 @@ After completing the wizard, the admin dashboard becomes available at the port y
 
 AdGuard Home ships with a default blocklist, but you can add more for broader coverage. Navigate to Filters > DNS Blocklists in the web UI and add these popular lists:
 
-```
+```text
 # Commonly used blocklists - add these via the web UI
 https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
 https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt
@@ -136,7 +136,7 @@ Each list targets different categories of ads, trackers, and malware domains. Th
 
 You can write custom rules directly in the UI under Filters > Custom filtering rules. The syntax follows AdBlock-style patterns:
 
-```
+```text
 # Block a specific domain entirely
 ||example-ads.com^
 
@@ -154,7 +154,7 @@ You can write custom rules directly in the UI under Filters > Custom filtering r
 
 By default, AdGuard Home forwards queries to public DNS resolvers. You can change these in Settings > DNS settings. Here are solid upstream choices:
 
-```
+```text
 # Privacy-focused upstream DNS servers
 # Cloudflare DNS-over-HTTPS
 https://dns.cloudflare.com/dns-query

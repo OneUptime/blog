@@ -307,7 +307,7 @@ spec:
 
 Estimate how many applications and clusters you will have in 6 and 12 months.
 
-```
+```text
 Current: 100 apps, 5 clusters
 6 months: 200 apps, 8 clusters
 12 months: 400 apps, 15 clusters
@@ -329,7 +329,7 @@ Multiply by projected application count and add a 30% buffer.
 
 ### Step 3: Plan Scaling Milestones
 
-```
+```text
 At 150 apps: Scale repo server to 2 replicas
 At 200 apps: Enable HA installation
 At 300 apps: Enable controller sharding (3 shards)

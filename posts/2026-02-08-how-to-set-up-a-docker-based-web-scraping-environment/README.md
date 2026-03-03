@@ -20,7 +20,7 @@ Beyond consistency, Docker also makes it easy to scale scrapers horizontally. Ne
 
 Here is the directory layout for our scraping environment:
 
-```
+```text
 scraper/
   Dockerfile
   docker-compose.yml

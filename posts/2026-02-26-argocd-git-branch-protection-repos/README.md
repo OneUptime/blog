@@ -89,7 +89,7 @@ rules:
 
 CODEOWNERS ensures the right people review changes to the right files:
 
-```
+```text
 # CODEOWNERS for GitOps config repo
 
 # Platform team owns all infrastructure

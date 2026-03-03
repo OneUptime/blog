@@ -36,7 +36,7 @@ docker system df
 ```
 
 Output:
-```
+```text
 TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
 Images          47        12        8.234GB   5.1GB (61%)
 Containers      23        3         2.145GB   2.0GB (93%)
@@ -317,7 +317,7 @@ Exclude unnecessary files from build context:
 
 A proper .dockerignore reduces build context size and prevents accidentally including sensitive files:
 
-```
+```text
 # .dockerignore
 # Dependencies are installed fresh in container
 node_modules

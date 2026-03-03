@@ -14,7 +14,7 @@ Readiness in an Istio-enabled pod has two dimensions: the application needs to b
 
 The Istio sidecar proxy has its own health check endpoint:
 
-```
+```text
 http://localhost:15021/healthz/ready
 ```
 

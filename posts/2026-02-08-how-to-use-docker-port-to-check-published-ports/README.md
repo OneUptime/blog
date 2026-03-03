@@ -23,7 +23,7 @@ docker port my-container
 
 Output:
 
-```
+```text
 80/tcp -> 0.0.0.0:8080
 80/tcp -> [::]:8080
 443/tcp -> 0.0.0.0:8443
@@ -43,7 +43,7 @@ docker port my-container 80
 
 Output:
 
-```
+```text
 0.0.0.0:8080
 [::]:8080
 ```
@@ -104,7 +104,7 @@ docker ps --format "table {{.Names}}\t{{.Ports}}"
 
 Output:
 
-```
+```text
 NAMES          PORTS
 web            0.0.0.0:8080->80/tcp, 0.0.0.0:8443->443/tcp
 redis          6379/tcp
@@ -169,7 +169,7 @@ docker port dynamic-ports
 
 Output:
 
-```
+```text
 80/tcp -> 0.0.0.0:32768
 80/tcp -> [::]:32768
 ```
@@ -293,7 +293,7 @@ docker port multi-port
 
 Output:
 
-```
+```text
 8000/tcp -> 0.0.0.0:8000
 8001/tcp -> 0.0.0.0:8001
 8002/tcp -> 0.0.0.0:8002

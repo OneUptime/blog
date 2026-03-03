@@ -139,7 +139,7 @@ update-deployment:
 
 ## Deployment Repository Structure
 
-```
+```text
 k8s-deployments/
   apps/
     api-service/

@@ -74,7 +74,7 @@ Or just double-click the .rdp file you downloaded.
 
 For a better experience, you can adjust settings before connecting:
 
-```
+```text
 Display tab: Set resolution to match your monitor
 Local Resources tab: Enable clipboard sharing and local drive access
 Experience tab: Choose your connection speed for optimal performance

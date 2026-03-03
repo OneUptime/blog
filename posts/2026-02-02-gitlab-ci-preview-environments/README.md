@@ -496,7 +496,7 @@ Preview environments need accessible URLs. Wildcard DNS makes management simple.
 
 Set up a wildcard A record pointing to your ingress controller.
 
-```
+```text
 *.preview.example.com    A    203.0.113.10
 ```
 

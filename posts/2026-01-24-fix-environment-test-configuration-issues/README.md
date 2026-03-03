@@ -107,7 +107,7 @@ export type Config = z.infer<typeof configSchema>;
 
 Organize environment files clearly:
 
-```
+```text
 project/
 ├── .env                    # Local development (gitignored)
 ├── .env.example            # Template with dummy values (committed)

@@ -289,7 +289,7 @@ az monitor diagnostic-settings create \
 
 Query the logs to find denied connections - these tell you what additional rules you might need.
 
-```
+```text
 AzureFirewallApplicationRule
 | where msg_s contains "Deny"
 | project TimeGenerated, msg_s

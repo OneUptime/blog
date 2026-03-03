@@ -127,7 +127,7 @@ Select the USB drive from the boot menu. If you do not see it, you may need to e
 
 Talos supports both UEFI and legacy BIOS boot. Modern hardware almost always uses UEFI. If your server has Secure Boot enabled, you may need to disable it since Talos does not currently ship with signed bootloaders for all platforms.
 
-```
+```text
 # In your server's UEFI settings, check:
 # - Secure Boot: Disabled (or enroll Talos keys if supported)
 # - Boot Mode: UEFI

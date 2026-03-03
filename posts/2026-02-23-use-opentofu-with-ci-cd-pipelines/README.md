@@ -20,7 +20,7 @@ A typical OpenTofu CI/CD pipeline has these stages:
 4. **Apply** - Execute the approved changes
 5. **Verify** - Post-deployment checks
 
-```
+```text
 PR Created -> Validate -> Plan -> Comment Plan on PR
 PR Merged  -> Plan -> Approve -> Apply -> Verify
 ```

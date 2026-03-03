@@ -76,7 +76,7 @@ require (
 
 Contains cryptographic checksums:
 
-```
+```text
 github.com/gorilla/mux v1.8.0 h1:i40aqfkR1h2SlN9hojwV5ZA91wcXFOvkdNIeFDP5koI=
 github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB71So=
 ```
@@ -133,7 +133,7 @@ Go selects the **minimum version** that satisfies all requirements.
 
 Go modules follow semver:
 
-```
+```text
 v1.2.3
  │ │ └── Patch (bug fixes)
  │ └──── Minor (new features, backward compatible)

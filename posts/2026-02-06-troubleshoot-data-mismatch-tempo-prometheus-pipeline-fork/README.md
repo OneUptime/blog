@@ -145,7 +145,7 @@ This is usually fine, but it can confuse dashboards that compare metric counts w
 
 Write a query that compares trace counts in Tempo with metric counts in Prometheus:
 
-```
+```text
 # Prometheus: total calls for a service in the last hour
 sum(increase(traces_spanmetrics_calls_total{service_name="my-service"}[1h]))
 

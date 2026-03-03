@@ -39,7 +39,7 @@ sequenceDiagram
 
 ## Project Layout
 
-```
+```text
 nginx-websocket/
   inventory/
     hosts.yml

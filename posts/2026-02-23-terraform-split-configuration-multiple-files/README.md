@@ -16,7 +16,7 @@ This post covers strategies for splitting your configuration effectively.
 
 Every file ending in `.tf` in the same directory is part of the same Terraform module. Terraform loads them all, merges them, and processes the combined result. The filenames do not matter to Terraform - they are for human organization only.
 
-```
+```text
 # All of these files are treated as one configuration
 project/
   main.tf
@@ -31,7 +31,7 @@ Is functionally identical to having everything in a single `main.tf`. Terraform 
 
 Most Terraform projects follow a conventional file layout. While not required, it helps anyone reading your code find what they need quickly:
 
-```
+```text
 project/
   versions.tf      # terraform block (required_version, required_providers)
   providers.tf     # provider configuration blocks
@@ -135,7 +135,7 @@ output "public_subnet_ids" {
 
 For medium-sized projects, splitting by resource type or service works well:
 
-```
+```text
 project/
   versions.tf
   providers.tf
@@ -219,7 +219,7 @@ resource "aws_iam_instance_profile" "app" {
 
 For larger projects, group resources by the feature or service they support:
 
-```
+```text
 project/
   versions.tf
   providers.tf
@@ -243,7 +243,7 @@ At some point, splitting files is not enough. If you find yourself with:
 
 It is time to extract into modules:
 
-```
+```text
 project/
   versions.tf
   providers.tf
@@ -322,7 +322,7 @@ resource "aws_security_group" "web" {
 
 Variable values go in separate `.tfvars` files:
 
-```
+```text
 project/
   variables.tf           # variable declarations
   terraform.tfvars       # default variable values (auto-loaded)

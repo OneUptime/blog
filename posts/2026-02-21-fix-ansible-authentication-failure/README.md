@@ -12,7 +12,7 @@ Authentication failure errors in Ansible mean the credentials provided (SSH key,
 
 ## The Error
 
-```
+```text
 fatal: [server1]: UNREACHABLE! => {
     "msg": "Failed to connect to the host via ssh: Permission denied (publickey,password)."
 }
@@ -20,7 +20,7 @@ fatal: [server1]: UNREACHABLE! => {
 
 Or for privilege escalation:
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "Incorrect sudo password"
 }

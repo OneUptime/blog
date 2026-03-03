@@ -76,7 +76,7 @@ npx @grafana/create-plugin@latest
 
 After scaffolding, your project structure looks like this:
 
-```
+```text
 my-monitoring-app/
 ├── src/
 │   ├── components/        # React components

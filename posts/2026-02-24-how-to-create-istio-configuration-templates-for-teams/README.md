@@ -23,7 +23,7 @@ Both work well. Helm is more powerful but more complex. Kustomize is simpler but
 
 Create a Helm chart that generates all the Istio resources a service needs:
 
-```
+```text
 istio-service-template/
   Chart.yaml
   values.yaml
@@ -257,7 +257,7 @@ helm install checkout-istio ./istio-service-template -f team-checkout-values.yam
 
 For teams that prefer Kustomize, create a base that they can overlay:
 
-```
+```text
 istio-base/
   kustomization.yaml
   virtualservice.yaml
@@ -301,7 +301,7 @@ spec:
 
 Teams create overlays:
 
-```
+```text
 my-service/
   kustomization.yaml
   patches/

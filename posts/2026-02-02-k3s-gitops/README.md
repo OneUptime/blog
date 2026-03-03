@@ -283,7 +283,7 @@ flowchart TB
 
 Organize your GitOps repository to separate cluster configurations, applications, and infrastructure:
 
-```
+```text
 k3s-gitops/
 ├── clusters/
 │   ├── production/

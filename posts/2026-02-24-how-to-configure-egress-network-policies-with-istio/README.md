@@ -244,7 +244,7 @@ spec:
 
 With egress policies in place, monitor what's actually going out. Use Prometheus to track external requests:
 
-```
+```text
 sum(rate(istio_requests_total{destination_service_namespace="unknown",reporter="source"}[5m])) by (destination_service, source_workload)
 ```
 

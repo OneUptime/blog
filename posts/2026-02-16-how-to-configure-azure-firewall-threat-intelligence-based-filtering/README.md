@@ -123,7 +123,7 @@ The `AzureFirewallThreatIntelLog` category specifically captures threat intellig
 
 Once logging is enabled, query the logs in Log Analytics to see threat intelligence activity:
 
-```
+```text
 // KQL query for threat intelligence hits
 AzureFirewallThreatIntelLog
 | where TimeGenerated > ago(24h)
@@ -139,7 +139,7 @@ AzureFirewallThreatIntelLog
 
 For a summary of the most frequently blocked threats:
 
-```
+```text
 // KQL query for top threats by frequency
 AzureFirewallThreatIntelLog
 | where TimeGenerated > ago(7d)
@@ -150,7 +150,7 @@ AzureFirewallThreatIntelLog
 
 To identify which internal VMs are triggering the most alerts:
 
-```
+```text
 // KQL query for internal machines hitting threat indicators
 AzureFirewallThreatIntelLog
 | where TimeGenerated > ago(24h)

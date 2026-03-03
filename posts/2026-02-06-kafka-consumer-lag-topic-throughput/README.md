@@ -52,7 +52,7 @@ service:
 
 ## Key Consumer Lag Metrics
 
-```
+```text
 kafka.consumer_group.lag          - Offset lag per partition per consumer group
 kafka.consumer_group.offset       - Current consumer group offset
 kafka.consumer_group.members      - Number of members in the consumer group
@@ -62,7 +62,7 @@ kafka.consumer_group.members      - Number of members in the consumer group
 
 Total lag for a consumer group is the sum of lag across all assigned partitions:
 
-```
+```text
 total_lag = sum(kafka.consumer_group.lag{group="my-consumer-group"})
 ```
 
@@ -70,7 +70,7 @@ total_lag = sum(kafka.consumer_group.lag{group="my-consumer-group"})
 
 The rate of lag change tells you if consumers are catching up or falling further behind:
 
-```
+```text
 lag_rate = rate(kafka.consumer_group.lag[5m])
 ```
 
@@ -78,7 +78,7 @@ A positive rate means lag is growing. A negative rate means consumers are catchi
 
 ## Per-Topic Throughput Metrics
 
-```
+```text
 kafka.topic.partitions           - Number of partitions per topic
 kafka.partition.current_offset   - Latest offset per partition (high watermark)
 kafka.partition.oldest_offset    - Earliest available offset per partition
@@ -86,7 +86,7 @@ kafka.partition.oldest_offset    - Earliest available offset per partition
 
 ### Calculate Production Rate
 
-```
+```text
 production_rate = rate(kafka.partition.current_offset[5m])
 ```
 
@@ -107,7 +107,7 @@ receivers:
 
 Consumer JMX metrics include:
 
-```
+```text
 # Consumer fetch performance
 kafka.consumer.fetch_rate              - Fetch requests per second
 kafka.consumer.records_consumed_rate   - Records consumed per second
@@ -185,7 +185,7 @@ services:
 
 Frequent consumer group rebalancing causes lag spikes. Track rebalancing through:
 
-```
+```text
 kafka.consumer.join_rate  - How often the consumer joins the group
 ```
 

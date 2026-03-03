@@ -318,7 +318,7 @@ spec:
 
 The recommended repository structure for managing ArgoCD applications:
 
-```
+```text
 argocd-apps/
   apps/
     nginx-demo.yaml

@@ -127,7 +127,7 @@ paths:
 
 Your templates can also reference the path variables:
 
-```
+```text
 # apache.conf.j2 - Works across distributions
 ServerRoot "{{ paths.apache.main_config | dirname | dirname }}"
 
@@ -186,7 +186,7 @@ For paths that vary even within the same distribution family (like PHP versions)
 
 In roles, use the `vars/` directory for OS-specific overrides:
 
-```
+```text
 roles/webserver/
   vars/
     Debian.yml

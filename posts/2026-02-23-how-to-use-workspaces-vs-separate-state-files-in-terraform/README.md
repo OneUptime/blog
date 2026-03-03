@@ -16,7 +16,7 @@ When your Terraform project needs to manage multiple environments, two main stra
 
 One set of Terraform files, multiple state files managed through `terraform workspace` commands:
 
-```
+```text
 project/
   main.tf
   variables.tf
@@ -39,7 +39,7 @@ terraform apply -var-file=envs/prod.tfvars
 
 Each environment gets its own directory with its own Terraform configuration:
 
-```
+```text
 project/
   modules/
     app/
@@ -144,7 +144,7 @@ The upside: production can have completely different resources without condition
 
 All workspaces typically share the same backend configuration. State files live in the same bucket or storage account, differentiated by key prefix:
 
-```
+```text
 s3://my-state-bucket/env:/dev/app/terraform.tfstate
 s3://my-state-bucket/env:/prod/app/terraform.tfstate
 ```
@@ -354,7 +354,7 @@ Separate state files win when:
 
 Some teams use both:
 
-```
+```text
 project/
   modules/
     core/          # Shared across all envs

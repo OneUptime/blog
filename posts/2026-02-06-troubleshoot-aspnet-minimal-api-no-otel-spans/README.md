@@ -124,7 +124,7 @@ tracing.AddAspNetCoreInstrumentation(options =>
 
 By default, the span name includes the HTTP method and route template. For minimal APIs, the route template should be the pattern you defined, not the actual URL with parameter values:
 
-```
+```text
 // Expected span name: GET /api/orders/{customerId}
 // Not: GET /api/orders/cust-12345
 ```

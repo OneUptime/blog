@@ -12,7 +12,7 @@ Windowed aggregations allow you to group and aggregate events over time periods.
 
 ## Window Types Overview
 
-```
+```text
 Tumbling Windows (fixed, non-overlapping):
 |-------|-------|-------|
    5m      5m      5m

@@ -312,7 +312,7 @@ output "gke_service_range_name" {
 
 Planning your IP address space is critical. Here is a template for a medium-sized organization:
 
-```
+```text
 10.0.0.0/8 (entire private space)
   10.0.0.0/16  - US Central region
     10.0.0.0/20  - Compute subnet

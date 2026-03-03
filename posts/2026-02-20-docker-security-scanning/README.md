@@ -69,7 +69,7 @@ trivy config ./Dockerfile
 
 ### Trivy Output
 
-```
+```text
 myapp:latest (alpine 3.19.1)
 
 Total: 3 (HIGH: 2, CRITICAL: 1)

@@ -52,7 +52,7 @@ go get -u github.com/spf13/viper@latest
 
 A well-organized Cobra project follows a specific structure. This layout separates concerns and makes the codebase maintainable.
 
-```
+```text
 taskctl/
 ├── cmd/
 │   ├── root.go           # Root command and global configuration

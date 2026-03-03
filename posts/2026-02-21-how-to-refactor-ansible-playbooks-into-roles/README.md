@@ -246,7 +246,7 @@ Take each group of tasks and move them into the appropriate role's `tasks/main.y
 
 Templates go from the playbook's `templates/` directory into each role's `templates/` directory. Update any variable references to use the role's variable names.
 
-```
+```text
 # Before (flat structure)
 templates/
   nginx.conf.j2

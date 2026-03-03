@@ -61,7 +61,7 @@ stringData:
 2. Go to Repository settings > Webhooks > Add webhook
 3. Configure:
 
-```
+```text
 Title: ArgoCD Webhook
 URL: https://argocd.example.com/api/webhook
 Status: Active
@@ -141,7 +141,7 @@ stringData:
 2. Go to Repository settings > Webhooks > Create webhook
 3. Configure:
 
-```
+```text
 Name: ArgoCD Webhook
 URL: https://argocd.example.com/api/webhook
 Secret: <your-generated-secret>

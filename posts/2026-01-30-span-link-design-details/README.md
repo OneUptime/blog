@@ -43,7 +43,7 @@ A parent-child relationship represents **direct causation within a single trace*
 - Has timing that falls within the parent's duration
 - Represents work that blocks or is awaited by the parent
 
-```
+```text
 Trace A
 └── Parent Span (HTTP Request)
     ├── Child Span (Auth Check)
@@ -59,7 +59,7 @@ A span link represents **causal or correlational relationships across trace boun
 - Do not imply the linked span "belongs to" the linking span
 - Preserve correlation without forcing artificial hierarchies
 
-```
+```text
 Trace A                          Trace B
 └── Producer Span ─────link────> └── Consumer Span
     (publishes message)              (processes message)
@@ -267,7 +267,7 @@ Batch processing is one of the most common and valuable use cases for span links
 
 ### The Batch Processing Challenge
 
-```
+```text
 Request A (Trace 1) ──> Queue ──┐
 Request B (Trace 2) ──> Queue ──┼──> Batch Processor ──> Database
 Request C (Trace 3) ──> Queue ──┘
@@ -1220,7 +1220,7 @@ Understanding how span links appear in observability tools is crucial for effect
 
 ### Trace Visualization Concepts
 
-```
+```text
 Traditional Parent-Child View:
 ================================
 Trace: abc123

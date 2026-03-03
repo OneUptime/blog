@@ -72,7 +72,7 @@ service:
 
 MongoDB replica set members can be in several states:
 
-```
+```text
 PRIMARY (1)    - The writable member
 SECONDARY (2)  - Read-only replica, in sync with primary
 RECOVERING (3) - Catching up to the primary
@@ -89,7 +89,7 @@ rs.status()
 
 ### Replication Lag
 
-```
+```text
 mongodb.replication.lag - Seconds behind the primary
 ```
 
@@ -133,7 +133,7 @@ print("Oplog used: " + (stats.size / 1024 / 1024) + " MB");
 
 ### Cache Usage
 
-```
+```text
 mongodb.cache.operations{type="read_into"}   - Pages read into cache
 mongodb.cache.operations{type="written_from"} - Pages written from cache (evictions)
 mongodb.memory.usage{type="resident"}         - Resident memory
@@ -157,7 +157,7 @@ print("Written from cache: " + wt["pages written from cache"]);
 
 ### Cache Hit Ratio
 
-```
+```text
 cache_hit_ratio = 1 - (pages_read_into_cache / (pages_read_into_cache + pages_found_in_cache))
 ```
 

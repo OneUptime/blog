@@ -18,7 +18,7 @@ This guide provides an in-depth examination of DNSSEC downgrade attacks, their m
 
 DNSSEC adds a layer of trust on top of DNS by digitally signing DNS records. When a resolver queries for a domain, it receives not only the DNS record but also a digital signature (RRSIG) that proves the record has not been tampered with.
 
-```
+```text
 Traditional DNS Query Flow:
 Client -> Resolver -> Root -> TLD -> Authoritative
 
@@ -63,7 +63,7 @@ Attackers target DNSSEC because:
 
 The most straightforward downgrade attack involves an attacker in a man-in-the-middle position stripping DNSSEC records from DNS responses.
 
-```
+```text
 Normal Response:
   example.com. 300 IN A 93.184.216.34
   example.com. 300 IN RRSIG A 13 2 300 20260201000000 20260115000000 ...
@@ -84,7 +84,7 @@ Stripped Response:
 
 Attackers can forge NSEC or NSEC3 records to falsely claim that DNSSEC records do not exist for a domain.
 
-```
+```text
 Legitimate Query: Does example.com have DNSKEY?
 Expected Response: Yes, here is the DNSKEY and RRSIG
 

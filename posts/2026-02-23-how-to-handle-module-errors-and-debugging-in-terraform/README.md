@@ -14,7 +14,7 @@ Terraform modules add a layer of abstraction that can make debugging harder. Whe
 
 Terraform error messages include the module path, which tells you exactly where in the module hierarchy the error occurred.
 
-```
+```text
 Error: Invalid value for variable
 
   on modules/networking/main.tf line 15, in module "subnets":
@@ -207,7 +207,7 @@ terraform apply -target=module.database
 
 ### Error: Cycle Detected
 
-```
+```text
 Error: Cycle: module.a.output.id, module.b.var.a_id, module.b.output.id, module.a.var.b_id
 ```
 
@@ -236,7 +236,7 @@ module "b" {
 
 ### Error: Module Not Found
 
-```
+```text
 Error: Module not installed
   module.networking: This module is not yet installed.
   Run "terraform init" to install all modules.

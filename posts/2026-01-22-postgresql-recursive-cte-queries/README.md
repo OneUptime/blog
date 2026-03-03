@@ -92,7 +92,7 @@ ORDER BY level, name;
 ```
 
 Result:
-```
+```text
  level |    org_chart        |        title
 -------+---------------------+----------------------
      1 | Bob Smith           | CTO
@@ -125,7 +125,7 @@ WHERE manager_id IS NULL;  -- CEO has no manager
 ```
 
 Result:
-```
+```text
 Alice Chen > Bob Smith > David Lee > Frank Brown > Henry Miller
 ```
 
@@ -280,7 +280,7 @@ ORDER BY total_weight;
 ```
 
 Result:
-```
+```text
          path          | total_weight
 -----------------------+--------------
  {A,B,D,G}             |            8

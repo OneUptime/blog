@@ -16,7 +16,7 @@ This guide explains what eventual consistency looks like in Terraform, which res
 
 The classic symptom is an error that occurs after a resource was successfully created. Terraform creates resource A, then immediately tries to create resource B which references A, but the API says A does not exist yet.
 
-```
+```text
 Error: error creating ECS Service (my-service): InvalidParameterException:
 Unable to find task definition 'arn:aws:ecs:us-east-1:123456789012:task-definition/my-app:5'
 ```
@@ -25,7 +25,7 @@ The task definition was just created in the previous step. But the ECS service A
 
 Other common manifestations:
 
-```
+```text
 Error: error creating IAM Role Policy: NoSuchEntity: The role with name my-role cannot be found
 
 Error: error creating Lambda Function: InvalidParameterValueException:

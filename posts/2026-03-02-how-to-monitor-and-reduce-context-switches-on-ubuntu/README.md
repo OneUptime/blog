@@ -34,7 +34,7 @@ vmstat 1
 
 Sample output:
 
-```
+```text
 procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
  r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
  4  0      0 2048576  81920 4194304   0    0     5    12 5234 45678  35  15  48  2   0
@@ -51,7 +51,7 @@ sudo perf stat -e context-switches,cpu-migrations -a sleep 10
 
 Output:
 
-```
+```text
 Performance counter stats for 'system wide':
 
          4,567,890      context-switches
@@ -86,7 +86,7 @@ pidstat -w -p $(pgrep nginx | head -1) 1
 
 Output:
 
-```
+```text
 Linux 5.15.0-91-generic    03/02/2026    _x86_64_
 
 14:23:45      UID       PID   cswch/s nvcswch/s  Command

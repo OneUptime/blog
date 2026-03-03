@@ -455,7 +455,7 @@ latest, develop, commit-sha
 
 Keep image tags in a dedicated config repo:
 
-```
+```text
 app-code/          # Application source code
 app-config/        # Kubernetes manifests with image tags
 ```

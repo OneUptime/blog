@@ -105,7 +105,7 @@ istioctl proxy-status
 
 Output example:
 
-```
+```text
 NAME                          CLUSTER        CDS        LDS        EDS        RDS        ECDS
 productpage-v1-abc123.default Kubernetes     SYNCED     SYNCED     SYNCED     SYNCED     NOT SENT
 reviews-v1-def456.default     Kubernetes     SYNCED     SYNCED     SYNCED     SYNCED     NOT SENT

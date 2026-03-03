@@ -289,7 +289,7 @@ sudo -u postgres pg_rewind \
 
 Replicas can stream from other replicas:
 
-```
+```text
 Primary -> Replica1 -> Replica2
                     -> Replica3
 ```

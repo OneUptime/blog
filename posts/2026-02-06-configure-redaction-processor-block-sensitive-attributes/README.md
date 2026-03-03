@@ -65,7 +65,7 @@ processors:
 
 With this configuration, a span that arrives with these attributes:
 
-```
+```text
 http.method: GET
 http.status_code: 200
 http.route: /api/users
@@ -76,7 +76,7 @@ custom.payment_token: tok_abc123
 
 Would be exported with only:
 
-```
+```text
 http.method: GET
 http.status_code: 200
 http.route: /api/users

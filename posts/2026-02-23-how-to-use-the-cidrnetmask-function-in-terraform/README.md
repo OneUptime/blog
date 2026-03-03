@@ -218,7 +218,7 @@ resource "local_file" "dhcp_config" {
 
 And in `templates/dhcpd.conf.tpl`:
 
-```
+```text
 %{ for name, subnet in subnets ~}
 # ${name} subnet
 subnet ${subnet.network} netmask ${subnet.netmask} {

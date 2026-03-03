@@ -26,7 +26,7 @@ As an **open source observability platform**, OneUptime's integration with MCP r
 ### **🤖 Natural Language Operations**
 Replace complex CLI commands and dashboard navigation with simple conversations:
 
-```
+```text
 Human: "Are there any incidents in our production project right now?"
 
 AI: Let me check your OneUptime incidents...
@@ -42,7 +42,7 @@ Would you like me to get more details or take any actions?
 ### **🌊 Workflow Automation**
 Chain multiple operations together through natural conversation:
 
-```
+```text
 Human: "Something's wrong with our checkout service"
 
 AI: I'll help you investigate. Let me:
@@ -68,7 +68,7 @@ The MCP server provides **complete access** to OneUptime's functionality through
 - **Status Checking**: Real-time status of services and infrastructure
 - **Probe Management**: Configure and monitor global probe locations
 
-```
+```text
 AI Tools Available:
 - oneuptime_create_monitor
 - oneuptime_list_onitors  
@@ -84,7 +84,7 @@ AI Tools Available:
 - **Communication**: Add notes, updates, and status changes
 - **Post-Mortems**: Document resolution and lessons learned
 
-```
+```text
 Example Conversation:
 Human: "Create a critical incident for our API being down"
 
@@ -107,7 +107,7 @@ The incident has been automatically escalated to your on-call policy.
 - **Trace Investigation**: Analyze distributed traces and spans
 - **Error Investigation**: Deep-dive into exceptions and errors
 
-```
+```text
 Human: "Show me all error logs from the checkout service in the last hour"
 
 AI: [Queries logs via MCP]
@@ -131,7 +131,7 @@ Would you like me to create an incident or investigate any specific error?
 ## Real-World Use Cases
 
 ### **1. Intelligent Incident Response**
-```
+```text
 Human: "Our customers are reporting the website is slow"
 
 AI: Let me investigate this issue for you:
@@ -159,7 +159,7 @@ Recommended actions:
 ```
 
 ### **2. Proactive Monitoring Setup**
-```
+```text
 Human: "We're launching a new microservice called 'user-auth' at https://api.example.com/auth/health. Can you set up monitoring for it?"
 
 AI: I'll set up comprehensive monitoring for your new user-auth service:
@@ -179,7 +179,7 @@ The service is also visible on your public status page.
 ```
 
 ### **3. Operational Reporting**
-```
+```text
 Human: "Give me a summary of our infrastructure health this week"
 
 AI: Here's your infrastructure health summary for this week:

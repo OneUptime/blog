@@ -69,7 +69,7 @@ export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
 
 After setting up Fastlane, your React Native project will have the following structure:
 
-```
+```text
 my-react-native-app/
 ├── android/
 │   └── fastlane/

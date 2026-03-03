@@ -128,7 +128,7 @@ resource "aws_instance" "web" {
 
 The resulting tags on this instance will be:
 
-```
+```text
 Environment = "production"
 Project     = "my-app"
 ManagedBy   = "terraform"

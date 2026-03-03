@@ -196,7 +196,7 @@ The nested list (list of lists) syntax tells Ansible to try each file in order a
 
 Here is a practical project structure that uses `vars_files` effectively.
 
-```
+```text
 project/
   playbook.yml
   vars/

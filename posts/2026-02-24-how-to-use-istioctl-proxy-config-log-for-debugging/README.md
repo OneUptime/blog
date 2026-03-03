@@ -20,7 +20,7 @@ istioctl proxy-config log productpage-v1-6b746f74dc-9rlmh.bookinfo
 
 Output:
 
-```
+```text
 active loggers:
   admin: warning
   alternate_protocols_cache: warning
@@ -147,7 +147,7 @@ With router debug enabled, you will see detailed output for every request showin
 
 Example log lines:
 
-```
+```text
 [debug][router] router_rq_route_config_update: 9080
 [debug][router] route match for request path '/productpage' method 'GET'
 [debug][router] cluster 'outbound|9080||reviews.bookinfo.svc.cluster.local' match
@@ -169,7 +169,7 @@ kubectl logs productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -f --tai
 
 You will see connection establishment, pooling, and failure details:
 
-```
+```text
 [debug][connection] connecting to 10.244.0.17:9080
 [debug][connection] connection established
 [debug][pool] creating new connection to cluster
@@ -191,7 +191,7 @@ kubectl logs productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo -f --tai
 
 You will see certificate loading and TLS negotiation details:
 
-```
+```text
 [debug][secret] loaded certificate chain from SDS
 [debug][connection] TLS handshake: cipher=TLS_AES_256_GCM_SHA384
 [debug][secret] certificate is valid: serial=abc123, expires=2026-02-25
@@ -214,7 +214,7 @@ kubectl logs reviews-v1-5984b4b776-7kqvz -c istio-proxy -n bookinfo -f --tail=10
 
 You will see RBAC evaluation details:
 
-```
+```text
 [debug][rbac] checking request: path=/reviews/0, method=GET
 [debug][rbac] policy ns[bookinfo]-policy[allow-productpage]-rule[0]: matched
 [debug][rbac] decision: ALLOW

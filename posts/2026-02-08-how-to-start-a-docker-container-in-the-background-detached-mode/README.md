@@ -23,7 +23,7 @@ docker run -d nginx:latest
 
 Docker prints the full container ID and returns to your prompt:
 
-```
+```text
 a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2
 ```
 
@@ -85,7 +85,7 @@ docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
 
 The output shows each container's status:
 
-```
+```text
 NAMES       IMAGE              STATUS          PORTS
 web         nginx:latest       Up 2 minutes    0.0.0.0:8080->80/tcp
 postgres    postgres:16        Up 5 minutes    0.0.0.0:5432->5432/tcp

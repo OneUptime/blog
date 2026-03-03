@@ -263,7 +263,7 @@ kubectl describe vpa api-server-vpa -n production
 
 Output:
 
-```
+```text
 Status:
   Conditions:
     Last Transition Time:  2026-01-25T10:00:00Z

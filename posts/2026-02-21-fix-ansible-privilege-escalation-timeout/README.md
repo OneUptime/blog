@@ -12,7 +12,7 @@ The "Timeout waiting for privilege escalation" error means Ansible tried to esca
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "Timeout (12s) waiting for privilege escalation prompt:"
 }
@@ -69,7 +69,7 @@ sudo visudo
 
 Or add an exception for your Ansible user:
 
-```
+```text
 Defaults:ansible_user !requiretty
 ```
 

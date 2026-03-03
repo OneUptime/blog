@@ -35,7 +35,7 @@ Kustomize clones the remote repository, checks out the specified reference, and 
 
 The remote base URL follows this pattern:
 
-```
+```text
 https://<host>/<owner>/<repo>//<path>?ref=<tag-or-branch-or-sha>
 ```
 
@@ -124,7 +124,7 @@ data:
 
 Without this, you get errors like:
 
-```
+```text
 security; file 'https://github.com/...' is not in or below '/tmp/...'
 ```
 

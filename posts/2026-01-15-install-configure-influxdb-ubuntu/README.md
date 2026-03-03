@@ -217,13 +217,13 @@ influx write \
 
 ### Line Protocol Format
 
-```
+```text
 measurement,tag1=value1,tag2=value2 field1=value1,field2=value2 timestamp
 ```
 
 Example:
 
-```
+```text
 temperature,location=office,sensor=dht22 value=23.5,humidity=45.2 1609459200000000000
 ```
 

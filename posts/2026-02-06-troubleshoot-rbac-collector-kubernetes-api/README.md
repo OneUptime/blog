@@ -22,7 +22,7 @@ kubectl logs -n observability deployment/otel-collector | grep -i "forbidden\|rb
 
 Or the k8sattributes processor might log warnings about missing metadata:
 
-```
+```text
 warn  k8sattributesprocessor: pod not found in cache, cannot add k8s attributes
 ```
 

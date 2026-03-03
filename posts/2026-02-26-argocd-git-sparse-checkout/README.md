@@ -16,7 +16,7 @@ Git sparse checkout solves this by telling Git to only check out specific direct
 
 Consider a monorepo with this structure:
 
-```
+```text
 infrastructure-repo/
   apps/
     frontend/

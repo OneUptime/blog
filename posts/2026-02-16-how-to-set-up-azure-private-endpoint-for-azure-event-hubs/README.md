@@ -134,7 +134,7 @@ az network private-endpoint dns-zone-group create \
 
 This automatically creates an A record in the private DNS zone:
 
-```
+```text
 myEventHubNamespace.privatelink.servicebus.windows.net -> 10.0.5.4
 ```
 

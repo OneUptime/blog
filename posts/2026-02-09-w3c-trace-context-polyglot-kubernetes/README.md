@@ -18,7 +18,6 @@ Distributed tracing is essential for observability in modern Kubernetes deployme
 
 Detailed implementation with code examples and configuration.
 
-## Deployment Configuration
 
 
 

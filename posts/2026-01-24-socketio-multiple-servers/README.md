@@ -247,7 +247,7 @@ server {
 
 ### HAProxy Configuration
 
-```
+```text
 # /etc/haproxy/haproxy.cfg
 
 global

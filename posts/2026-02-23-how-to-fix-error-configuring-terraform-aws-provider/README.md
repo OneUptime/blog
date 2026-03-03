@@ -14,7 +14,7 @@ One of the first errors you might encounter when starting with Terraform and AWS
 
 You will typically see this error when running `terraform init`, `terraform plan`, or `terraform apply`:
 
-```
+```text
 Error: error configuring Terraform AWS Provider: no valid credential sources for
 Terraform AWS Provider found.
 
@@ -26,7 +26,7 @@ Error: no valid credential sources found for AWS Provider.
 
 Or sometimes a more specific variant:
 
-```
+```text
 Error: error configuring Terraform AWS Provider: failed to get shared config profile, default
 ```
 

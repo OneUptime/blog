@@ -104,13 +104,13 @@ processors:
 
 Calculate limit as a percentage of available memory:
 
-```
+```text
 limit_mib = (container_memory_limit × 0.8) - baseline_overhead
 ```
 
 For example, with a 2 GiB container:
 
-```
+```text
 limit_mib = (2048 × 0.8) - 200 = 1438 MiB
 ```
 
@@ -202,7 +202,7 @@ Note the p95 and p99 memory usage during normal operations.
 
 Add headroom for expected traffic growth:
 
-```
+```text
 projected_memory = baseline_p95 × growth_factor
 ```
 
@@ -402,7 +402,7 @@ curl http://localhost:8888/metrics | grep memory_limiter
 
 **Healthy memory limiter operation**:
 
-```
+```text
 otelcol_processor_refused_spans: 0
 otelcol_processor_refused_metric_points: 0
 process_runtime_go_mem_heap_alloc_bytes: ~70% of limit_mib
@@ -412,7 +412,7 @@ Memory stays well below limits, no refusals occur. System is stable.
 
 **Warning signs**:
 
-```
+```text
 otelcol_processor_refused_spans: increasing
 process_runtime_go_mem_heap_alloc_bytes: consistently near limit_mib
 ```
@@ -424,7 +424,7 @@ The limiter is actively refusing data. This indicates:
 
 **Critical issues**:
 
-```
+```text
 otelcol_processor_refused_spans: rapidly increasing
 Container restarted: OOMKilled
 ```

@@ -16,14 +16,14 @@ Quota errors are especially common with GPU resources, which have strict default
 
 The error typically looks like this:
 
-```
+```text
 ERROR: (gcloud.compute.instances.create) Could not fetch resource:
  - Quota 'CPUS' exceeded. Limit: 24.0 in region us-central1.
 ```
 
 For GPU resources, it looks slightly different:
 
-```
+```text
 ERROR: (gcloud.compute.instances.create) Could not fetch resource:
  - Quota 'NVIDIA_T4_GPUS' exceeded. Limit: 0.0 in region us-central1.
 ```

@@ -75,7 +75,7 @@ go get go.mongodb.org/mongo-driver/mongo
 
 Organize your project with a clean structure that separates concerns:
 
-```
+```text
 gin-mongodb-api/
 ├── main.go              # Application entry point
 ├── config/

@@ -122,7 +122,7 @@ sudo rkhunter --list tests
 
 The output has several categories:
 
-```
+```text
 [ Rootkit checks ]
   Checking for known rootkit files and directories       [ OK ]
   Checking for Suckit rootkit                            [ OK ]
@@ -206,7 +206,7 @@ sudo chkrootkit -r /mnt/suspect-system/
 
 ## Interpreting chkrootkit Output
 
-```
+```text
 ROOTDIR is `/'
 Checking `amd'...                                          not infected
 Checking `basename'...                                     not infected

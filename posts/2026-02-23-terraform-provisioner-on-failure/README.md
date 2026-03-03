@@ -50,7 +50,7 @@ If `apt-get install` fails (maybe a package repository is down), Terraform marks
 
 A tainted resource exists in your cloud provider but Terraform considers it broken. It shows up in `terraform plan` as needing replacement:
 
-```
+```text
 # aws_instance.web is tainted, so must be replaced
 -/+ resource "aws_instance" "web" {
     ...

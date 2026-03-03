@@ -25,7 +25,7 @@ ZONE:.metadata.labels.topology\\.kubernetes\\.io/zone
 
 Expected output:
 
-```
+```text
 NAME       REGION       ZONE
 node-1     us-east-1    us-east-1a
 node-2     us-east-1    us-east-1b
@@ -50,7 +50,7 @@ istioctl proxy-config endpoint <source-pod-name> \
 
 The output should show a LOCALITY column:
 
-```
+```text
 ENDPOINT          STATUS    OUTLIER   CLUSTER     PRIORITY   LOCALITY
 10.0.1.5:8080     HEALTHY   OK        outbound..  0          us-east-1/us-east-1a
 10.0.2.5:8080     HEALTHY   OK        outbound..  1          us-east-1/us-east-1b

@@ -14,7 +14,7 @@ Handlers are one of the more elegant features in Ansible. They let you define ac
 
 Handlers go in `handlers/main.yml` inside your role:
 
-```
+```text
 roles/
   nginx/
     handlers/

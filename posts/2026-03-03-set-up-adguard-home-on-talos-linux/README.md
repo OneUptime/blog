@@ -267,7 +267,7 @@ AdGuard Home supports DNS rewrites, which let you create custom DNS entries for 
 
 Through the web UI at http://192.168.1.53, go to Filters > DNS rewrites and add entries:
 
-```
+```text
 jellyfin.home.lab  -> 192.168.1.210
 grafana.home.lab   -> 192.168.1.211
 ha.home.lab        -> 192.168.1.212
@@ -282,7 +282,7 @@ The default AdGuard DNS filter catches most ads. For better coverage, add more b
 
 Popular block lists to add:
 
-```
+```text
 # Steven Black's Unified Hosts (already in our config)
 https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
 

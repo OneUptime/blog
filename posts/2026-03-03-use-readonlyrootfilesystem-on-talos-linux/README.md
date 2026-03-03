@@ -290,7 +290,7 @@ kubectl run debug --image=myapp:latest --rm -it --restart=Never -- sh
 
 ### Common Error Messages
 
-```
+```text
 Error: open /var/run/app.pid: read-only file system
 # Solution: Mount an emptyDir at /var/run
 

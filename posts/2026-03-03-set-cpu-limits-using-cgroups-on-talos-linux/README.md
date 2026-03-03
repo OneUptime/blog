@@ -16,7 +16,7 @@ On Talos Linux with cgroup v2, CPU limits are enforced through the `cpu.max` fil
 
 When you set a CPU limit of 1 core on a container, Kubernetes translates this into CFS bandwidth parameters:
 
-```
+```text
 cpu.max = quota period
 Example: cpu.max = 100000 100000
 
@@ -28,13 +28,13 @@ Effectively: 1 full CPU core
 ```
 
 For a limit of 500m (half a core):
-```
+```text
 cpu.max = 50000 100000
 quota = 50000 microseconds (50ms per 100ms period)
 ```
 
 For a limit of 2 cores:
-```
+```text
 cpu.max = 200000 100000
 quota = 200000 microseconds (200ms per 100ms period)
 ```
@@ -163,7 +163,7 @@ A shorter period (like 50ms or even 20ms) can reduce the burstiness of throttlin
 
 There is a growing movement in the Kubernetes community to not set CPU limits, only CPU requests. Here is why:
 
-```
+```text
 With CPU limits:
 - Container gets throttled even when the node has spare CPU
 - Latency spikes during throttling periods

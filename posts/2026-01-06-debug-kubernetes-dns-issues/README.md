@@ -122,7 +122,7 @@ kubectl exec -it <pod-name> -- cat /etc/resolv.conf
 ```
 
 Expected output:
-```
+```text
 nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5
@@ -177,7 +177,7 @@ Default Corefile:
 
 This is a typical CoreDNS configuration. Each plugin handles a specific aspect of DNS resolution.
 
-```
+```text
 .:53 {
     errors                           # Log errors to stdout
     health {                         # Health check endpoint
@@ -261,7 +261,7 @@ Fix: Update forward directive in Corefile:
 
 If the node's resolv.conf is misconfigured, explicitly set reliable upstream DNS servers.
 
-```
+```text
 forward . 8.8.8.8 8.8.4.4 {
    max_concurrent 1000
 }

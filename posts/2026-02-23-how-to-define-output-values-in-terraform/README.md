@@ -37,7 +37,7 @@ output "load_balancer_dns" {
 
 After running `terraform apply`, these values are printed:
 
-```
+```text
 Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
 
 Outputs:
@@ -198,7 +198,7 @@ output "instance_details" {
 
 The convention is to put outputs in a file called `outputs.tf`:
 
-```
+```text
 project/
   main.tf          # Resources
   variables.tf     # Input variables
@@ -209,7 +209,7 @@ project/
 
 For larger projects, you can colocate outputs with related resources:
 
-```
+```text
 project/
   network.tf       # Network resources
   network_outputs.tf  # Network outputs

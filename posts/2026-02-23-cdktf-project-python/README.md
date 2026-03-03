@@ -23,7 +23,7 @@ cdktf init --template=python --local
 
 This creates a virtual environment and installs the base dependencies. The project structure looks like:
 
-```
+```text
 cdktf-python-demo/
   main.py                # Entry point
   cdktf.json             # CDKTF configuration

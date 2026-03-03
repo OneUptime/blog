@@ -12,7 +12,7 @@ Docker Desktop's licensing changes have led many developers to seek alternatives
 
 ## Comparison Overview
 
-```
+```text
 Docker Desktop Alternatives
 ┌──────────────────────────────────────────────────────────────┐
 │  Feature        │ Colima │ Rancher Desktop │ Podman Desktop │

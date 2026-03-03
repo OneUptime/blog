@@ -30,7 +30,7 @@ You will need the AWS CDK v2 installed, an AWS account bootstrapped for CDK, and
 
 ## Project Structure
 
-```
+```text
 my-ecs-pipeline/
   lib/
     pipeline-stack.ts       # The pipeline itself

@@ -52,7 +52,7 @@ sudo nano /etc/GeoIP.conf
 
 Add your account details:
 
-```
+```text
 # Your MaxMind Account ID
 AccountID YOUR_ACCOUNT_ID
 

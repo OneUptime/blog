@@ -81,7 +81,7 @@ spec:
 ```
 
 The kubelet enforces these limits by monitoring:
-```
+```text
 Total ephemeral usage = writable layer + logs + emptyDir volumes
 ```
 
@@ -103,7 +103,7 @@ watch -n 60 'kubectl exec '$POD_NAME' -c '$CONTAINER_NAME' -- du -sh /var/log/'
 
 For high-logging applications, calculate storage needs:
 
-```
+```text
 Log rate: 100 MB/hour
 Retention: 24 hours
 Required storage: 100 MB/hour * 24 = 2.4 GB
@@ -429,12 +429,12 @@ kubectl exec <pod> -- du -sh /
 ```
 
 2. **Calculate P95 usage**:
-```
+```text
 P95 usage from metrics: 1.8 GB
 ```
 
 3. **Add buffer for growth**:
-```
+```text
 Request: P95 * 1.2 = 2.16 GB → 2.5 GB
 Limit: P95 * 2.0 = 3.6 GB → 4 GB
 ```

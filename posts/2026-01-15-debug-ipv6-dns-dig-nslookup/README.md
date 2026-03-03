@@ -56,7 +56,7 @@ Before debugging IPv6 DNS issues, it is important to understand the relevant DNS
 
 AAAA records (also known as "quad-A" records) are the IPv6 equivalent of A records. They map a domain name to an IPv6 address.
 
-```
+```text
 example.com.    IN    AAAA    2001:db8::1
 ```
 
@@ -87,7 +87,7 @@ dig AAAA example.com
 
 Example output:
 
-```
+```text
 ; <<>> DiG 9.18.18-0ubuntu0.22.04.1-Ubuntu <<>> AAAA example.com
 ;; global options: +cmd
 ;; Got answer:
@@ -165,7 +165,7 @@ dig +short AAAA example.com
 
 Example output:
 
-```
+```text
 2606:2800:220:1:248:1893:25c8:1946
 ```
 
@@ -179,7 +179,7 @@ dig +trace AAAA example.com
 
 This shows the complete delegation chain from root servers to authoritative nameservers:
 
-```
+```text
 ; <<>> DiG 9.18.18 <<>> +trace AAAA example.com
 ;; global options: +cmd
 .                       518400  IN      NS      a.root-servers.net.
@@ -277,7 +277,7 @@ nslookup -type=AAAA example.com
 
 Example output:
 
-```
+```text
 Server:         127.0.0.53
 Address:        127.0.0.53#53
 
@@ -382,7 +382,7 @@ dig AAAA nonexistent.example.com
 
 Output:
 
-```
+```text
 ;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 54321
 ```
 

@@ -10,7 +10,7 @@ Description: Diagnose and fix OSProvisioningTimedOut errors when deploying Azure
 
 You create a new Azure Linux VM, wait for it to provision, and after 20-40 minutes, you get the dreaded error:
 
-```
+```text
 OSProvisioningTimedOut: OS Provisioning for VM 'myVM' did not finish in the
 allotted time. The VM may still finish provisioning successfully. Please check
 provisioning state later.

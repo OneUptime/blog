@@ -18,7 +18,7 @@ Before you can fix the issue, you need to recognize it. Here are the most common
 
 **Certificate-related errors**: TLS certificates have validity periods. If a node's clock is ahead of the actual time, certificates may appear expired. If it is behind, certificates may appear not yet valid.
 
-```
+```text
 x509: certificate has expired or is not yet valid
 ```
 

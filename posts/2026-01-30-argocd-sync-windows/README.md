@@ -69,7 +69,7 @@ This blocks all syncs to production namespaces during business hours (9 AM to 5 
 
 Sync window schedules use cron syntax:
 
-```
+```text
 ┌───────────── minute (0 - 59)
 │ ┌───────────── hour (0 - 23)
 │ │ ┌───────────── day of month (1 - 31)

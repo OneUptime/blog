@@ -227,7 +227,7 @@ spec:
 
 ### Directory Structure
 
-```
+```text
 helm-charts/
 ├── base/
 │   └── myapp/

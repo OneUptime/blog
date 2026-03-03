@@ -16,7 +16,7 @@ This guide walks through installing Fluentd on Ubuntu, configuring Docker to sen
 
 The basic setup looks like this:
 
-```
+```text
 Containers (Docker) --> Fluentd (collector) --> Destinations
                          - parse logs
                          - filter events

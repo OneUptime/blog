@@ -187,7 +187,7 @@ output "bucket_region" {
 
 Your project should now look like this:
 
-```
+```text
 my-first-terraform/
   main.tf           # Provider config and resources
   variables.tf      # Input variables
@@ -223,7 +223,7 @@ Terraform shows the plan again and asks for confirmation. Type `yes` to proceed.
 
 The output values are displayed at the end:
 
-```
+```text
 Apply complete! Resources: 2 added, 0 changed, 0 destroyed.
 
 Outputs:
@@ -318,7 +318,7 @@ Terraform automatically loads `terraform.tfvars` and `*.auto.tfvars` files.
 
 Before committing to Git, create a `.gitignore`:
 
-```
+```text
 # .gitignore for Terraform projects
 
 # Local .terraform directories

@@ -16,7 +16,7 @@ This guide shows you how to build a comprehensive auto-recovery system using wat
 
 A well-designed auto-recovery system has multiple layers, each handling different types of failures:
 
-```
+```text
 Layer 5: Application Level
   Tool: Kubernetes liveness probes
   Recovers: Application crashes, deadlocks

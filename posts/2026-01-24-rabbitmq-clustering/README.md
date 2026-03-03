@@ -162,7 +162,7 @@ sudo rabbitmqctl cluster_status
 
 Expected output after successful clustering:
 
-```
+```text
 Cluster status of node rabbit@rabbit2 ...
 Basics
 

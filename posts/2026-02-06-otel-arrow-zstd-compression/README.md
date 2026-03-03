@@ -14,7 +14,7 @@ Arrow's columnar format produces output that is highly compressible. Columns of 
 
 Compared to compressing row-oriented protobuf (where field types alternate constantly), compressing columnar Arrow data gives Zstd much longer match distances and better compression ratios.
 
-```
+```text
 Compression ratios on typical telemetry data:
   gzip on protobuf OTLP:    3:1 to 5:1
   zstd on protobuf OTLP:    4:1 to 6:1
@@ -43,7 +43,7 @@ That single line, `compression: zstd`, enables Zstd compression on the gRPC tran
 
 Zstd supports compression levels from 1 to 22. Higher levels produce smaller output but use more CPU:
 
-```
+```text
 Level  | Compression Speed | Ratio  | CPU Usage
 -------|-------------------|--------|----------
   1    | ~500 MB/s         | 2.8:1  | Very low
@@ -150,7 +150,7 @@ exporters:
 
 Typical results:
 
-```
+```text
 Arrow + gzip:   6:1 compression, 15% CPU overhead
 Arrow + zstd:   8:1 compression, 10% CPU overhead
 Arrow + snappy: 4:1 compression, 5% CPU overhead
@@ -162,7 +162,7 @@ Zstd wins on both compression ratio and CPU efficiency compared to gzip. Snappy 
 
 Zstd uses a sliding window for compression. The default window size is 8 MB. For the Collector, this means each Arrow stream's Zstd compressor uses approximately 8 MB of memory. With 4 streams:
 
-```
+```text
 Zstd memory per exporter = num_streams * window_size
                          = 4 * 8 MB
                          = 32 MB

@@ -32,7 +32,7 @@ EOF
 ```
 
 Output:
-```
+```text
 This is line one
 This is line two
 This is line three
@@ -58,7 +58,7 @@ EOF
 ```
 
 Output:
-```
+```text
 System: Ubuntu 22.04
 Date: 2026-03-02
 Home: /home/user
@@ -82,7 +82,7 @@ EOF
 ```
 
 Output:
-```
+```text
 Variable: $HOME
 Command: $(whoami)
 Literal dollar sign: $1

@@ -32,7 +32,7 @@ graph TD
 
 ## Project Structure
 
-```
+```text
 health-checks/
   inventory/
     hosts.yml

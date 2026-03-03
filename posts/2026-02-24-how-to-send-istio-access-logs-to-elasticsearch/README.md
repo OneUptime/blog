@@ -327,7 +327,7 @@ service:
 
 Once logs are in Elasticsearch, query them in Kibana:
 
-```
+```text
 # Find all 503 errors
 response_code: "503"
 

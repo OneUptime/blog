@@ -145,7 +145,7 @@ tail -f /var/log/dpkg.log
 
 One of the most important decisions during the upgrade is what to do with modified configuration files. The tool presents diffs and asks:
 
-```
+```text
 Configuration file '/etc/ssh/sshd_config'
  ==> Modified (by you or by a script) since installation.
  ==> Package distributor has shipped an updated version.
@@ -236,7 +236,7 @@ cat /etc/update-manager/release-upgrades
 
 The release-upgrades file controls the upgrade channel:
 
-```
+```text
 [DEFAULT]
 # Options: never, normal (includes non-LTS), lts (LTS only)
 Prompt=lts

@@ -122,7 +122,7 @@ This ID is a content-addressable hash of the schematic. This has several importa
 
 Treat your schematics as infrastructure code. Store them alongside your cluster configurations:
 
-```
+```text
 # Repository structure
 infrastructure/
   clusters/

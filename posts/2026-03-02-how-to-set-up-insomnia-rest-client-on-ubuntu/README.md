@@ -159,7 +159,7 @@ Insomnia supports common authentication methods via the "Auth" tab:
 2. Select "Bearer Token"
 3. Enter your token
 
-```
+```text
 Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
@@ -235,14 +235,14 @@ Insomnia can extract values from one response and use them in subsequent request
 
 First, make a login request that returns a token:
 
-```
+```text
 POST {{ base_url }}/auth/login
 Body: { "username": "admin", "password": "secret" }
 ```
 
 In a subsequent request, reference the response:
 
-```
+```text
 Authorization: Bearer {% response 'body', 'req_login', '$.token' %}
 ```
 

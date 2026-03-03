@@ -27,7 +27,7 @@ When you see unexpected behavior, the question is always: did the VirtualService
 istioctl proxy-config routes productpage-v1-abc123.default
 ```
 
-```
+```text
 NAME                                                  DOMAINS                                   MATCH     VIRTUAL SERVICE
 80                                                    istio-ingressgateway.istio-system, *       /*
 9080                                                  details, details.default + 1 more...       /*

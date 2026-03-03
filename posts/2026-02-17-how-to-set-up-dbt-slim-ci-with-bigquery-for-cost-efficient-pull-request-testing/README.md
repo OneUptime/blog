@@ -263,7 +263,7 @@ This means your CI build reads unchanged data directly from production, which is
 
 Here is a rough comparison of full CI vs. Slim CI for a typical project:
 
-```
+```text
 Project: 300 models, 50TB total data
 
 Full CI (every PR):

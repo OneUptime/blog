@@ -21,7 +21,7 @@ This guide covers installing and configuring Tomcat with Ansible, including JVM 
 
 ## Project Structure
 
-```
+```text
 tomcat-setup/
   inventory/
     hosts.yml

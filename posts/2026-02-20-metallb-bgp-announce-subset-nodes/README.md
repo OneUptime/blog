@@ -8,7 +8,7 @@ Description: Learn how to configure MetalLB to announce service routes from only
 
 ---
 
-### Why Announce from a Subset of Nodes?
+## Why Announce from a Subset of Nodes?
 
 When MetalLB runs in BGP mode, every node with a MetalLB speaker will announce routes for allocated service IPs by default. In many environments, you want to restrict announcements to specific nodes for several reasons:
 

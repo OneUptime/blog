@@ -240,7 +240,7 @@ protoc \
 
 ### Generated Files Structure
 
-```
+```text
 gen/go/
 └── user/
     └── v1/
@@ -346,7 +346,7 @@ python -m grpc_tools.protoc \
 
 ### Generated Files Structure
 
-```
+```text
 gen/python/
 └── user/
     └── v1/

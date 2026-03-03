@@ -84,7 +84,7 @@ kubectl get svc -n istio-system istio-ingressgateway
 
 You should see an EXTERNAL-IP assigned from the MetalLB pool:
 
-```
+```text
 NAME                   TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)
 istio-ingressgateway   LoadBalancer   10.43.50.100   192.168.1.200   15021:30521/TCP,80:30080/TCP,443:30443/TCP
 ```

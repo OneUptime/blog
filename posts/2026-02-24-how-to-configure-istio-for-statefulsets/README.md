@@ -117,7 +117,7 @@ This makes the Kubernetes kubelet wait for the sidecar's readiness probe to pass
 
 StatefulSet pods get stable DNS names in the format `pod-name.service-name.namespace.svc.cluster.local`:
 
-```
+```text
 redis-0.redis.cache.svc.cluster.local
 redis-1.redis.cache.svc.cluster.local
 redis-2.redis.cache.svc.cluster.local

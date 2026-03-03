@@ -166,7 +166,7 @@ This returns paths for each supported streaming protocol. A typical output looks
 
 To construct the full URL, prepend your streaming endpoint hostname. For example:
 
-```
+```text
 https://myMediaServicesAccount-usea.streaming.media.azure.net/locator-guid/manifest(format=mpd-time-cmaf)
 ```
 

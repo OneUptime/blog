@@ -210,7 +210,7 @@ Suppose you have a VPC, an RDS database, and an ECS cluster, and you need all th
 
 With plain Terraform, your directory structure might look like:
 
-```
+```text
 infrastructure/
   dev/
     vpc/
@@ -246,7 +246,7 @@ That is 9 directories, each with duplicated backend configuration and provider s
 
 With Terragrunt:
 
-```
+```text
 infrastructure/
   terragrunt.hcl       # root config with remote state + provider
   dev/

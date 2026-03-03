@@ -244,7 +244,7 @@ func NewLogger() *slog.Logger {
 
 Once trace context is in your logs, you can query in both directions:
 
-```
+```text
 # From a trace: find all logs for this trace
 trace_id="abc123456789abcdef0123456789abcd"
 

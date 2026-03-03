@@ -161,7 +161,7 @@ kubectl describe vpa resource-test-vpa
 
 The output includes a recommendation section.
 
-```
+```text
 Recommendation:
   Container Recommendations:
     Container Name: app

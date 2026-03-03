@@ -162,7 +162,7 @@ Maestro can find elements by text, testID, accessibility label, or other attribu
 
 Create a dedicated folder for your Maestro flows:
 
-```
+```text
 your-react-native-app/
   src/
   android/
@@ -234,7 +234,7 @@ maestro test maestro/flows/login.yaml
 
 You will see Maestro execute each step, with real-time output showing what is happening:
 
-```
+```text
 Running flow: login.yaml
  - launchApp
  - tapOn: Sign In
@@ -911,7 +911,7 @@ maestro cloud --config maestro-cloud.yaml
 
 ### 1. Organize Flows by Feature
 
-```
+```text
 maestro/
   flows/
     auth/

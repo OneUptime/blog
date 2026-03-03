@@ -21,7 +21,7 @@ diff file1.txt file2.txt
 ```
 
 Output:
-```
+```text
 3c3
 < old line in file1
 ---

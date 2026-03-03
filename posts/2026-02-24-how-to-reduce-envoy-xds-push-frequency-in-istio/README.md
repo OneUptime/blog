@@ -185,7 +185,7 @@ kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/metrics | 
 
 Prometheus queries for dashboards:
 
-```
+```text
 # Push rate per second
 sum(rate(pilot_xds_pushes[5m]))
 

@@ -200,7 +200,7 @@ sudo nano /etc/default/grub
 
 Add `module.sig_enforce=1` to `GRUB_CMDLINE_LINUX_DEFAULT`:
 
-```
+```text
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash module.sig_enforce=1"
 ```
 

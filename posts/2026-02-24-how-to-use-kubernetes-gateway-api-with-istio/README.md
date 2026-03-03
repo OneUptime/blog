@@ -43,7 +43,7 @@ kubectl get crd | grep gateway
 
 You should see:
 
-```
+```text
 gatewayclasses.gateway.networking.k8s.io
 gateways.gateway.networking.k8s.io
 httproutes.gateway.networking.k8s.io
@@ -83,7 +83,7 @@ A GatewayClass defines which controller implements the Gateway. Istio automatica
 kubectl get gatewayclass
 ```
 
-```
+```text
 NAME    CONTROLLER                    ACCEPTED   AGE
 istio   istio.io/gateway-controller   True       5m
 ```

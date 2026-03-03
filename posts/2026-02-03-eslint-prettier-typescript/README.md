@@ -129,7 +129,7 @@ Create `.prettierrc` for formatting preferences. Keep it simple - Prettier's def
 
 Create `.prettierignore` to skip files that should not be formatted.
 
-```
+```text
 dist/
 build/
 coverage/

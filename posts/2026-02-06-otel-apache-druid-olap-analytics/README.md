@@ -14,7 +14,7 @@ Druid excels at queries like "show me the p99 latency for all services, broken d
 
 ## Architecture
 
-```
+```text
 OTel Collector -> Kafka -> Druid (real-time ingestion) -> Analytics Queries
 ```
 

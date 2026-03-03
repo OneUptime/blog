@@ -161,7 +161,7 @@ def fetch_data(url):
 review = review_chain.invoke({"code": code_to_review})
 print(f"Score: {review['score']}")
 print(f"Issues: {review['issues']}")
-```
+```text
 
 ## Retrieval-Augmented Generation (RAG)
 

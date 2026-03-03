@@ -393,7 +393,7 @@ kafka-consumer-perf-test.sh \
 
 Sample output for tuned cluster:
 
-```
+```text
 10000000 records sent, 1052631.5 records/sec (100.38 MB/sec),
   15.2 ms avg latency, 245.0 ms max latency,
   12 ms 50th, 28 ms 95th, 78 ms 99th, 198 ms 99.9th.

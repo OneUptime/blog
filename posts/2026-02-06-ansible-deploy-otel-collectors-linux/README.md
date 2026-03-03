@@ -10,7 +10,7 @@ When you manage dozens or hundreds of Linux servers, manually installing and con
 
 ## Ansible Role Structure
 
-```
+```text
 roles/otel-collector/
   tasks/
     main.yml

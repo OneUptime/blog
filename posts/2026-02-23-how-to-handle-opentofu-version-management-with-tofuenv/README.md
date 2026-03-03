@@ -69,7 +69,7 @@ tofuenv list
 
 The output of `tofuenv list` shows all locally installed versions with an asterisk next to the active one:
 
-```
+```text
   1.7.0-alpha1
 * 1.6.2 (set by /home/user/.tofuenv/version)
   1.6.1

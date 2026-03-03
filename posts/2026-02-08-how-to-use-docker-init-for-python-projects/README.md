@@ -63,7 +63,7 @@ docker init
 
 Docker init detects the requirements.txt and identifies the project as Python:
 
-```
+```text
 ? What application platform does your project use? Python
 ? What version of Python do you want to use? 3.12
 ? What port does your server listen on? 8000
@@ -358,7 +358,7 @@ This approach keeps build-essential and compiler headers out of the production i
 
 Extend the generated .dockerignore for Python projects:
 
-```
+```text
 # Virtual environments
 venv
 .venv

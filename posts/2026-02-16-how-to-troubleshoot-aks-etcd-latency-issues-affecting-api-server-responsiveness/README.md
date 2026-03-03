@@ -71,7 +71,7 @@ If simple queries (like listing namespaces) are slow, the issue is likely at the
 
 If you have diagnostic logging enabled (you should), query the API server logs for etcd-related errors.
 
-```
+```text
 // KQL query: Find etcd timeout errors in API server logs
 AzureDiagnostics
 | where Category == "kube-apiserver"
@@ -81,7 +81,7 @@ AzureDiagnostics
 | take 50
 ```
 
-```
+```text
 // KQL query: Find slow API requests that indicate etcd latency
 AzureDiagnostics
 | where Category == "kube-apiserver"
@@ -109,7 +109,7 @@ az monitor metrics list \
 
 If you have Prometheus monitoring set up (via Azure Monitor managed Prometheus or your own), query these metrics:
 
-```
+```text
 # PromQL: API server request duration by verb (shows read vs write latency)
 histogram_quantile(0.99,
   sum(rate(apiserver_request_duration_seconds_bucket{job="apiserver"}[5m])) by (le, verb)

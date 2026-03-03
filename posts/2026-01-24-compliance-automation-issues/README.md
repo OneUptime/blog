@@ -120,7 +120,7 @@ exceptions: |
 references:
   - https://wiki.company.com/labeling-standards
   - https://wiki.company.com/cost-allocation
-```
+```text
 
 ## Automated Security Scanning
 

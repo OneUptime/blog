@@ -14,7 +14,7 @@ The EHOSTUNREACH error means Node.js cannot establish a network connection to th
 
 When you see this error:
 
-```
+```text
 Error: connect EHOSTUNREACH 192.168.1.100:3000
     at TCPConnectWrap.afterConnect [as oncomplete] (net.js:1141:16)
 ```

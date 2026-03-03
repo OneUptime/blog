@@ -34,7 +34,7 @@ lsattr -d /etc/
 
 Example output:
 
-```
+```text
 ----i--------e-- /etc/passwd
 --------------e-- /etc/hostname
 ```

@@ -27,7 +27,7 @@ ansible-galaxy collection download community.general:8.1.0 -p ./offline-packages
 
 This creates a directory with the collection tarball and a `requirements.yml` file:
 
-```
+```text
 offline-packages/
     community-general-8.1.0.tar.gz
     requirements.yml
@@ -60,7 +60,7 @@ collections:
 
 The download directory will contain:
 
-```
+```text
 offline-packages/
     community-general-8.1.0.tar.gz
     amazon-aws-7.2.0.tar.gz

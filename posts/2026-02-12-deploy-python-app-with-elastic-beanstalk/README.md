@@ -26,7 +26,7 @@ Before we start, make sure you have:
 
 Elastic Beanstalk expects a specific project layout. Here's what a typical Flask project looks like.
 
-```
+```text
 my-flask-app/
 ├── application.py
 ├── requirements.txt
@@ -228,7 +228,7 @@ For production monitoring, you'll want something more robust. Setting up [applic
 
 If you need more control over how your application starts, use a `Procfile`.
 
-```
+```text
 # Procfile - Custom startup command
 web: gunicorn --bind :8000 --workers 3 --threads 2 application:application
 ```
@@ -243,7 +243,7 @@ There are a few things that trip people up regularly:
 
 **Large deployments**: If your deployment package exceeds 512 MB, you'll hit issues. Use `.ebignore` to exclude test files, documentation, and anything else that doesn't need to be on the server.
 
-```
+```text
 # .ebignore - Files to exclude from deployment
 .git
 __pycache__

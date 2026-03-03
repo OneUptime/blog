@@ -21,7 +21,7 @@ The core components are:
 3. **TriggerBinding** - Extracts data from events and passes it to templates
 4. **Interceptors** - Filter and process events before triggering
 
-```
+```text
                                  +------------------+
 GitHub/GitLab Webhook ------>    | EventListener    |
                                  +------------------+
@@ -650,7 +650,7 @@ spec:
 
 3. Configure the webhook in GitHub:
 
-```
+```text
 Repository Settings > Webhooks > Add webhook
 
 Payload URL: https://webhooks.example.com
@@ -750,7 +750,7 @@ spec:
 
 Configure in GitLab:
 
-```
+```text
 Settings > Webhooks
 
 URL: https://webhooks.example.com

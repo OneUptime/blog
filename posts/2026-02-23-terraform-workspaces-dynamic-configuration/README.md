@@ -274,7 +274,7 @@ echo "Deploying to workspace: $WORKSPACE"
 terraform apply -var-file="config/${WORKSPACE}.tfvars"
 ```
 
-```
+```text
 config/
   dev.tfvars
   staging.tfvars

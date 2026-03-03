@@ -65,7 +65,7 @@ cat /etc/apt/apt.conf.d/20auto-upgrades
 
 Expected output:
 
-```
+```text
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 ```
@@ -412,7 +412,7 @@ sudo pro status
 
 Expected output:
 
-```
+```text
 SERVICE          ENTITLED  STATUS       DESCRIPTION
 esm-apps         yes       enabled      Expanded Security Maintenance for Applications
 esm-infra        yes       enabled      Expanded Security Maintenance for Infrastructure

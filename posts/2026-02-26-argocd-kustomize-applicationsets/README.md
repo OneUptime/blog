@@ -51,7 +51,7 @@ spec:
 
 If your repository has:
 
-```
+```text
 apps/my-api/overlays/
   dev/
   staging/

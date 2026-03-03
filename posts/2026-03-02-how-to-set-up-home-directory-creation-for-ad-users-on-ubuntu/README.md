@@ -38,7 +38,7 @@ grep mkhomedir /etc/pam.d/common-session
 
 Expected output:
 
-```
+```text
 session optional    pam_mkhomedir.so skel=/etc/skel umask=0077
 ```
 
@@ -52,7 +52,7 @@ sudo nano /etc/pam.d/common-session
 
 Add after the existing `session` lines:
 
-```
+```text
 # Create home directory on first login
 session required    pam_mkhomedir.so skel=/etc/skel umask=0022
 ```
@@ -93,14 +93,14 @@ sudo nano /etc/pam.d/common-session
 
 Replace or complement the existing mkhomedir line:
 
-```
+```text
 # Use oddjob for home directory creation
 session optional    pam_oddjob_mkhomedir.so skel=/etc/skel umask=0022
 ```
 
 Or use both (oddjob falls back to mkhomedir if D-Bus is not available):
 
-```
+```text
 session optional    pam_oddjob_mkhomedir.so skel=/etc/skel umask=0022
 session optional    pam_mkhomedir.so skel=/etc/skel umask=0022
 ```
@@ -226,7 +226,7 @@ sudo apt install -y nfs-common
 sudo nano /etc/fstab
 ```
 
-```
+```text
 # NFS home directories
 nfs.corp.example.com:/exports/homes  /home  nfs  defaults,_netdev,nfsvers=4  0  0
 ```
@@ -248,7 +248,7 @@ sudo apt install -y autofs
 sudo nano /etc/auto.master
 ```
 
-```
+```text
 /home   /etc/auto.home  --timeout=60
 ```
 
@@ -256,7 +256,7 @@ sudo nano /etc/auto.master
 sudo nano /etc/auto.home
 ```
 
-```
+```text
 *   nfs.corp.example.com:/exports/homes/&
 ```
 

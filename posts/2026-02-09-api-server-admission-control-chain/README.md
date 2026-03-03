@@ -16,7 +16,7 @@ This guide covers how to configure admission controllers, understand execution o
 
 The API server processes requests through this pipeline:
 
-```
+```text
 1. Authentication
 2. Authorization
 3. Admission Control

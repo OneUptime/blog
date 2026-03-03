@@ -126,7 +126,7 @@ Let me break down the important parameters:
 
 The `--schedule` field uses standard Unix cron format with five fields.
 
-```
+```text
 # Cron expression format:
 # MIN  HOUR  DAY  MONTH  WEEKDAY
 #  0    2     *     *       *

@@ -16,7 +16,7 @@ This post covers the full process of adding a module to an existing collection: 
 
 Modules go in the `plugins/modules/` directory of your collection:
 
-```
+```text
 my_namespace/my_collection/
   galaxy.yml
   plugins/

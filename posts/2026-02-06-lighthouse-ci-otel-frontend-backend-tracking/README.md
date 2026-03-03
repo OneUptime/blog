@@ -140,7 +140,7 @@ module.exports = { pageTrackingMiddleware };
 
 With both Lighthouse metrics and backend traces flowing into the same observability platform, you can build dashboards that show the full picture. In Grafana, create a dashboard with these panels:
 
-```
+```text
 Panel 1: Lighthouse Performance Scores by Page
   Query: lighthouse_score_performance{url=~".*"}
 

@@ -29,7 +29,7 @@ ansible-galaxy collection init my_namespace.my_collection
 
 This creates the following structure:
 
-```
+```text
 my_namespace/my_collection/
     docs/
     meta/
@@ -88,7 +88,7 @@ Important fields:
 
 Place your content in the appropriate directories:
 
-```
+```text
 my_namespace/my_collection/
     plugins/
         modules/

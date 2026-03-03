@@ -207,14 +207,14 @@ There are edge cases where auto mTLS does not behave as expected:
 
 Track the effectiveness of auto mTLS with Prometheus:
 
-```
+```text
 # Percentage of traffic using mTLS
 sum(rate(istio_requests_total{connection_security_policy="mutual_tls"}[5m]))
 /
 sum(rate(istio_requests_total[5m]))
 ```
 
-```
+```text
 # Traffic NOT using mTLS (should decrease over time)
 sum(rate(istio_requests_total{connection_security_policy="none"}[5m])) by (source_workload, destination_service)
 ```

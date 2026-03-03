@@ -76,7 +76,7 @@ Create the password file for authenticating to the relay:
 sudo nano /etc/postfix/sasl_passwd
 ```
 
-```
+```text
 # Format: [relay_host]:port  username:password
 [smtp.example.com]:587  relayuser@example.com:yourpassword
 ```
@@ -126,7 +126,7 @@ sudo postqueue -f
 ```
 
 Look for lines in the log that show:
-```
+```text
 postfix/smtp[...]: relay=smtp.example.com[x.x.x.x]:587, status=sent (250 OK)
 ```
 
@@ -163,7 +163,7 @@ sender_canonical_maps = hash:/etc/postfix/sender_canonical
 sudo nano /etc/postfix/sender_canonical
 ```
 
-```
+```text
 # Map server-local addresses to real addresses
 root@app1.internal    admin@example.com
 www-data@app1.internal  noreply@example.com
@@ -251,7 +251,7 @@ smtp_header_checks = regexp:/etc/postfix/header_checks
 sudo nano /etc/postfix/header_checks
 ```
 
-```
+```text
 # Remove internal headers that reveal infrastructure
 /^Received: from internal\.hostname/ IGNORE
 /^X-Mailer:.*internal/ IGNORE

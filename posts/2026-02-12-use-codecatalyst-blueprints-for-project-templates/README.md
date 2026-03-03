@@ -76,7 +76,7 @@ aws codecatalyst create-project \
 
 When you create a project from the Serverless API blueprint with TypeScript, you get a repository with this structure:
 
-```
+```text
 order-api/
   .codecatalyst/
     workflows/
@@ -172,7 +172,7 @@ cd my-company-api-blueprint
 
 The blueprint project structure looks like this:
 
-```
+```text
 my-company-api-blueprint/
   src/
     blueprint.ts              # Main blueprint logic
@@ -352,7 +352,7 @@ This means when you update your organization's standard CI/CD pipeline or add a 
 
 Create blueprints at different layers:
 
-```
+```text
 Base Blueprint (security, logging, monitoring)
   + API Blueprint (API Gateway, Lambda, database)
     = Complete Service Blueprint

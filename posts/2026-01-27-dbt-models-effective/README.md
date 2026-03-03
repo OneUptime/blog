@@ -210,7 +210,7 @@ Benefits of ref():
 
 Follow the staging, intermediate, marts pattern for clean architecture.
 
-```
+```text
 models/
   staging/
     _sources.yml
@@ -694,7 +694,7 @@ group by 1, 2
 
 ### Project Structure
 
-```
+```text
 dbt_project/
   dbt_project.yml
   packages.yml
@@ -710,7 +710,7 @@ dbt_project/
 
 ### .gitignore
 
-```
+```text
 # dbt artifacts
 target/
 dbt_packages/

@@ -497,12 +497,12 @@ Choose appropriate timeout values:
 
 Calculate timeout from SLA requirements:
 
-```
+```text
 Required timeout = P99 latency + (retry_attempts * P99 latency) + buffer
 ```
 
 Example for API with P99 = 2s, 2 retries:
-```
+```text
 Timeout = 2s + (2 * 2s) + 2s buffer = 8s
 ```
 

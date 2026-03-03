@@ -12,7 +12,7 @@ You installed MetalLB on your Kubernetes cluster. Everything seemed to go smooth
 
 This guide walks you through a step-by-step verification process to confirm that MetalLB is fully operational. We will check every layer, from pods to network reachability.
 
-### Verification Flow Overview
+## Verification Flow Overview
 
 Here is the full verification flow we will follow:
 
@@ -46,7 +46,7 @@ kubectl get pods -n metallb-system -o wide
 
 You should see output similar to this:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE   NODE
 controller-7f5b8d6c4d-x9k2l  1/1     Running   0          2d    node-1
 speaker-abc12                 1/1     Running   0          2d    node-1
@@ -194,7 +194,7 @@ kubectl get svc metallb-test-svc -w
 
 Expected output:
 
-```
+```text
 NAME               TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
 metallb-test-svc   LoadBalancer   10.152.183.5   192.168.1.200   80:31234/TCP   10s
 ```
@@ -219,7 +219,7 @@ curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://192.168.1.200
 
 Expected output:
 
-```
+```text
 HTTP Status: 200
 ```
 

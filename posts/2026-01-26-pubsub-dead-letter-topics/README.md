@@ -894,7 +894,7 @@ graph TB
 
 Use these queries in Cloud Monitoring dashboards:
 
-```
+```text
 # Dead letters per minute
 fetch pubsub_topic
 | metric 'pubsub.googleapis.com/topic/send_message_operation_count'

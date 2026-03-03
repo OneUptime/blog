@@ -121,7 +121,7 @@ spec:
 With erasure coding, usable capacity is less than raw capacity. Calculate as follows:
 
 For EC:N configuration (N parity drives):
-```
+```text
 Usable Capacity = Raw Capacity × ((Total Drives - N) / Total Drives)
 ```
 

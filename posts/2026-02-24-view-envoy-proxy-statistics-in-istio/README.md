@@ -46,14 +46,14 @@ kubectl exec <pod-name> -c istio-proxy -- curl -s "localhost:15000/stats?format=
 
 Envoy stats follow a hierarchical naming pattern:
 
-```
+```text
 <category>.<subcategory>.<metric_name>
 ```
 
 For Istio, the most important categories are:
 
 **Cluster stats** (outbound traffic):
-```
+```text
 cluster.outbound|8080||my-service.default.svc.cluster.local.upstream_rq_total
 cluster.outbound|8080||my-service.default.svc.cluster.local.upstream_rq_200
 cluster.outbound|8080||my-service.default.svc.cluster.local.upstream_rq_5xx
@@ -61,13 +61,13 @@ cluster.outbound|8080||my-service.default.svc.cluster.local.upstream_cx_active
 ```
 
 **Listener stats** (inbound traffic):
-```
+```text
 listener.0.0.0.0_8080.downstream_cx_total
 listener.0.0.0.0_8080.downstream_cx_active
 ```
 
 **HTTP stats**:
-```
+```text
 http.inbound_0.0.0.0_8080.downstream_rq_total
 http.inbound_0.0.0.0_8080.downstream_rq_2xx
 http.inbound_0.0.0.0_8080.downstream_rq_5xx
@@ -131,7 +131,7 @@ kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/stats | grep "
 
 The output shows histogram buckets:
 
-```
+```text
 cluster.outbound|8080||my-service.default.svc.cluster.local.upstream_rq_time: P0(1,1) P25(3,3) P50(5,5) P75(12,12) P90(25,25) P95(50,50) P99(100,100) P99.5(200,200) P99.9(500,500) P100(1000,1000)
 ```
 
@@ -155,7 +155,7 @@ kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15090/stats/promethe
 
 This includes Istio-specific metrics:
 
-```
+```text
 istio_requests_total{} - Total requests
 istio_request_duration_milliseconds{} - Request latency
 istio_request_bytes{} - Request body size

@@ -25,7 +25,7 @@ Before starting, ensure you have:
 
 Traditional syslog format:
 
-```
+```text
 <PRI>TIMESTAMP HOSTNAME TAG: MESSAGE
 <34>Oct 11 22:14:15 server01 sshd[12345]: Failed password for root
 ```
@@ -34,7 +34,7 @@ Traditional syslog format:
 
 Structured syslog format:
 
-```
+```text
 <PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID STRUCTURED-DATA MSG
 <165>1 2024-01-15T10:30:00.000Z server01 sshd 12345 - - Failed password
 ```
@@ -447,7 +447,7 @@ labels.app = "{{ app }}"
 
 ### Network Devices (Cisco)
 
-```
+```text
 ! Cisco IOS
 logging host 192.168.1.100 transport tcp port 1514
 logging trap informational

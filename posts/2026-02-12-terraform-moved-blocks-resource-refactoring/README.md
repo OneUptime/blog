@@ -59,7 +59,7 @@ resource "aws_instance" "app_server" {
 
 Run `terraform plan` and you'll see:
 
-```
+```text
   # aws_instance.web has moved to aws_instance.app_server
     resource "aws_instance" "app_server" {
         id                                   = "i-0123456789abcdef0"

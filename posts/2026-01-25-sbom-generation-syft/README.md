@@ -60,7 +60,7 @@ syft docker-archive:nginx.tar
 
 Default output shows package names, versions, and types:
 
-```
+```text
 NAME                   VERSION        TYPE
 adduser                3.134          deb
 apt                    2.6.1          deb

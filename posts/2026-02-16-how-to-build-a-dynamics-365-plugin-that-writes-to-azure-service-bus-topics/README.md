@@ -216,7 +216,7 @@ Register the plugin step using the Plugin Registration Tool:
 
 For additional entities, register the same plugin with different message/entity combinations:
 
-```
+```text
 Step 1: opportunity.Create - Post-Operation - Async
 Step 2: opportunity.Update - Post-Operation - Async
 Step 3: opportunity.Delete - Post-Operation - Async

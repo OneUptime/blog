@@ -105,7 +105,7 @@ kubectl apply -f peer-auth.yaml
 
 Think of each AuthorizationPolicy as a firewall rule. Start by defining your service communication map:
 
-```
+```text
 frontend -> order-service (GET, POST /api/orders/*)
 order-service -> payment-service (POST /api/charge)
 order-service -> inventory-service (GET, PUT /api/inventory/*)

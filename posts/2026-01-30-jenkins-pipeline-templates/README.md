@@ -33,7 +33,7 @@ Pipeline templates work best when you have:
 
 Jenkins shared libraries follow a specific directory structure. Your template library repository should look like this:
 
-```
+```text
 jenkins-pipeline-templates/
 ├── vars/
 │   ├── standardPipeline.groovy

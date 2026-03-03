@@ -244,7 +244,7 @@ argocd app sync -l argocd.argoproj.io/instance=my-app-set --async
 
 ### Immutable Field Error
 
-```
+```text
 error: Deployment.apps "my-app" is invalid: spec.selector: Invalid value: ...: field is immutable
 ```
 
@@ -256,7 +256,7 @@ argocd app sync my-app --force --resource 'apps:Deployment:my-app'
 
 ### Resource Already Exists
 
-```
+```text
 error: the object already exists
 ```
 
@@ -268,7 +268,7 @@ argocd app sync my-app --replace
 
 ### Namespace Does Not Exist
 
-```
+```text
 error: namespace "my-app-ns" not found
 ```
 

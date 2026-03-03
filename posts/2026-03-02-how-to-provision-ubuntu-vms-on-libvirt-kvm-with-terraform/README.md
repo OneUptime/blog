@@ -81,7 +81,7 @@ The libvirt provider is installed automatically when you run `terraform init` wi
 
 ## Project Structure
 
-```
+```text
 libvirt-terraform/
   main.tf
   variables.tf

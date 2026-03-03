@@ -111,7 +111,7 @@ React DevTools Profiler offers multiple ways to visualize performance data:
 
 The flame graph is the default visualization that shows a hierarchical view of component renders.
 
-```
+```text
 Flame Graph Structure:
 =====================
 
@@ -145,7 +145,7 @@ Flame Graph Structure:
 
 #### Flame Graph Color Legend
 
-```
+```text
 Color Interpretation:
 ====================
 
@@ -161,7 +161,7 @@ Red         -> Critical (> 50ms, causes frame drops)
 
 The ranked chart displays components sorted by render time, making it easy to identify the slowest components.
 
-```
+```text
 Ranked Chart Example:
 ====================
 
@@ -455,7 +455,7 @@ npx react-scripts build --profile
 
 ### Pattern 1: Wide Single Component
 
-```
+```text
 [===================================]
             ComponentA
 
@@ -465,7 +465,7 @@ Action: Optimize this component's render logic
 
 ### Pattern 2: Wide Cascading Components
 
-```
+```text
 [=====================================]
               Parent
     [=======================]
@@ -479,7 +479,7 @@ Action: Consider memoization at appropriate level
 
 ### Pattern 3: Many Small Components
 
-```
+```text
 [=] [=] [=] [=] [=] [=] [=] [=] [=] [=]
  A   B   C   D   E   F   G   H   I   J
 
@@ -489,7 +489,7 @@ Action: Identify common ancestor causing re-renders
 
 ### Pattern 4: Infrequent But Heavy Renders
 
-```
+```text
 Commit 1: [=] (2ms)
 Commit 2: [============================] (150ms)
 Commit 3: [=] (2ms)

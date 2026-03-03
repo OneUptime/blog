@@ -72,7 +72,7 @@ The number of PGs affects cluster performance significantly. Too few PGs lead to
 
 The recommended formula for calculating the total number of PGs for a pool is:
 
-```
+```text
 Total PGs = (Target PGs per OSD * Number of OSDs * Pool Data Percentage) / Replication Factor
 ```
 
@@ -152,7 +152,7 @@ ceph osd pool autoscale-status
 
 Example output:
 
-```
+```text
 POOL                     SIZE  TARGET SIZE  RATE  RAW CAPACITY   RATIO  TARGET RATIO  EFFECTIVE RATIO  BIAS  PG_NUM  NEW PG_NUM  AUTOSCALE
 device_health_metrics      0                 3.0        20.0T   0.0000                                  1.0       1              on
 rbd                     1.5T                 3.0        20.0T   0.2250                                  1.0     128         256  on

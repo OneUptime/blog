@@ -33,7 +33,7 @@ Every deployment is a Git merge. Every merge has a PR. Every PR has a review. Th
 
 Organize your config repository for PR-based workflows:
 
-```
+```text
 config-repo/
   environments/
     dev/

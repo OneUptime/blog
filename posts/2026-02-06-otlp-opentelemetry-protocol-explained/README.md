@@ -192,14 +192,14 @@ When you configure an OTLP exporter, you specify an endpoint URL. Each signal ty
 ### Default endpoint paths
 
 For OTLP/gRPC:
-```
+```text
 opentelemetry.proto.collector.trace.v1.TraceService/Export
 opentelemetry.proto.collector.metrics.v1.MetricsService/Export
 opentelemetry.proto.collector.logs.v1.LogsService/Export
 ```
 
 For OTLP/HTTP:
-```
+```text
 POST /v1/traces
 POST /v1/metrics
 POST /v1/logs
@@ -499,14 +499,14 @@ export OTEL_LOG_LEVEL=debug
 
 You'll see logs like:
 
-```
+```text
 [OTLP Trace Exporter] Sending 42 spans to https://oneuptime.com/otlp/v1/traces
 [OTLP Trace Exporter] Export succeeded (HTTP 200)
 ```
 
 Or error messages:
 
-```
+```text
 [OTLP Trace Exporter] Export failed: connection refused
 [OTLP Trace Exporter] Export failed: HTTP 401 Unauthorized
 ```

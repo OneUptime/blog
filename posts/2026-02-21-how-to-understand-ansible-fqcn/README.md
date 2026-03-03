@@ -16,13 +16,13 @@ This post breaks down what FQCNs are, how to read them, and how to update your e
 
 Every FQCN follows a three-part structure:
 
-```
+```text
 <namespace>.<collection_name>.<content_name>
 ```
 
 Let me break that down with a real example:
 
-```
+```text
 community.postgresql.postgresql_db
     |          |            |
     |          |            +-- Module/plugin name
@@ -138,7 +138,7 @@ ansible-lint playbooks/
 
 The `fqcn` rule will flag every task that uses a short module name and tell you the correct FQCN to use. The output looks something like this:
 
-```
+```text
 playbooks/webserver.yml:12: fqcn[action-core]: Use FQCN for builtin module actions (yum).
 Use `ansible.builtin.yum` or `ansible.legacy.yum` instead.
 ```

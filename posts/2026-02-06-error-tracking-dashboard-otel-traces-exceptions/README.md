@@ -152,7 +152,7 @@ Grafana supports data links that let you jump from a metrics panel to the trace 
 
 In the panel settings, add a data link with this URL template:
 
-```
+```text
 /explore?orgId=1&left={"datasource":"Tempo","queries":[{"queryType":"traceqlSearch","filters":[{"id":"status","tag":"status","operator":"=","value":["error"],"type":"static","scope":"intrinsic"},{"id":"service","tag":"service.name","operator":"=","value":["${__field.labels.service_name}"],"type":"static","scope":"resource"}]}]}
 ```
 

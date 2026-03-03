@@ -173,7 +173,7 @@ creation_rules:
 
 Separate secrets from regular values for clarity.
 
-```
+```text
 my-chart/
 ├── Chart.yaml
 ├── values.yaml           # Non-sensitive defaults

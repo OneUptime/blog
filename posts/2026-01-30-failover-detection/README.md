@@ -632,7 +632,7 @@ quadrantChart
 
 ### Formula for Detection Time
 
-```
+```text
 Detection Time = (Check Interval × Failure Threshold) + Network Latency + Processing Time
 ```
 

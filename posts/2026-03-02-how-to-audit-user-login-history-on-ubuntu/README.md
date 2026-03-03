@@ -30,7 +30,7 @@ last
 
 Example output:
 
-```
+```text
 alice    pts/1        192.168.1.42     Mon Mar  2 09:15   still logged in
 bob      pts/0        10.0.0.5         Mon Mar  2 08:30 - 09:00  (00:30)
 root     tty1                          Sun Mar  1 23:45 - 00:02  (00:17)
@@ -79,7 +79,7 @@ sudo lastb
 
 Example output:
 
-```
+```text
 admin    ssh:notty    203.0.113.45     Mon Mar  2 03:15 - 03:15  (00:00)
 root     ssh:notty    203.0.113.45     Mon Mar  2 03:14 - 03:14  (00:00)
 ubuntu   ssh:notty    198.51.100.22    Mon Mar  2 03:13 - 03:13  (00:00)
@@ -101,7 +101,7 @@ who
 
 Output:
 
-```
+```text
 alice    pts/0        2026-03-02 09:15 (192.168.1.42)
 bob      pts/1        2026-03-02 08:30 (10.0.0.5)
 ```
@@ -114,7 +114,7 @@ w
 
 Output:
 
-```
+```text
  09:30:00 up 10:45,  2 users,  load average: 0.12, 0.08, 0.05
 USER     TTY      FROM             LOGIN@   IDLE JCPU   PCPU WHAT
 alice    pts/0    192.168.1.42     09:15    2:00  0.05s  0.02s bash
@@ -241,7 +241,7 @@ By default, `wtmp` rotates monthly and keeps one archive. To retain more history
 sudo nano /etc/logrotate.d/wtmp
 ```
 
-```
+```text
 /var/log/wtmp {
     missingok
     monthly

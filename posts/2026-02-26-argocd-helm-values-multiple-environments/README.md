@@ -16,7 +16,7 @@ Here are the patterns that work well with ArgoCD, from simplest to most sophisti
 
 The most straightforward approach. One values file per environment, each containing the complete set of values.
 
-```
+```text
 charts/myapp/
   Chart.yaml
   templates/
@@ -142,7 +142,7 @@ autoscaling:
 
 Keep the Helm chart in one repository and the values files in a separate config repository. This allows you to update values without changing the chart.
 
-```
+```text
 # Chart repository
 helm-charts/
   myapp/
@@ -194,7 +194,7 @@ The `ref: values` creates a reference that can be used in `$values/` paths. This
 
 For services with many environments that share most values, use a layered approach:
 
-```
+```text
 config/myapp/
   values-common.yaml       # Shared across ALL environments
   values-nonprod.yaml      # Shared by dev and staging

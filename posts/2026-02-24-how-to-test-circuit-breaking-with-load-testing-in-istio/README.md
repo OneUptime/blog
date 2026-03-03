@@ -82,7 +82,7 @@ With `maxConnections: 1` and `http1MaxPendingRequests: 1`, only 2 requests can b
 
 Look at the output for something like:
 
-```
+```text
 Code 200 : 20 (66.7 %)
 Code 503 : 10 (33.3 %)
 ```

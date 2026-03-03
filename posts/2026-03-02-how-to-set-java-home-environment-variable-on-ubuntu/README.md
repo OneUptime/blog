@@ -59,7 +59,7 @@ sudo nano /etc/environment
 
 Add or modify the line:
 
-```
+```text
 JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
 ```
 
@@ -243,7 +243,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 crontab -e
 ```
 
-```
+```text
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 PATH=/usr/lib/jvm/java-21-openjdk-amd64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 

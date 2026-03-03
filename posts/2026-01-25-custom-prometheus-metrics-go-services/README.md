@@ -310,7 +310,7 @@ func init() {
 
 **Naming conventions matter.** Use lowercase with underscores. Include a unit suffix (_seconds, _bytes, _total). Prefix with your service or subsystem name:
 
-```
+```text
 myservice_http_requests_total
 myservice_order_processing_duration_seconds
 myservice_cache_size_bytes

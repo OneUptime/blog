@@ -24,7 +24,7 @@ Let us work through each layer with practical examples.
 
 If your plugins are in a collection, follow this layout:
 
-```
+```text
 collections/ansible_collections/myorg/myutils/
   plugins/
     filter/

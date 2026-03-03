@@ -59,7 +59,7 @@ Build validation runs your CI pipeline on every PR targeting the protected branc
 
 Click "Add build policy" and configure:
 
-```
+```text
 Build pipeline: Select your CI pipeline
 Trigger: Automatic
 Policy requirement: Required
@@ -136,7 +136,7 @@ For certain file paths, you might want specific people to automatically be added
 
 Click "Add automatic reviewers" and configure:
 
-```
+```text
 Reviewer: Platform Team (group) or specific users
 Path filter: /infra/*
 Policy requirement: Required
@@ -157,7 +157,7 @@ Go to Project Settings, then Repositories, then select your repo, then Security.
 
 For the main branch specifically:
 
-```
+```text
 Contributors group:
   - Force push (rewrite history, delete branches): Deny
   - Bypass policies when completing pull requests: Not set (or Deny)

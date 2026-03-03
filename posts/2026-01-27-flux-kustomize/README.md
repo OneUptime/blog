@@ -638,7 +638,7 @@ flowchart TB
 
 ### Repository Structure
 
-```
+```text
 fleet-infra/
 ├── clusters/
 │   ├── development/

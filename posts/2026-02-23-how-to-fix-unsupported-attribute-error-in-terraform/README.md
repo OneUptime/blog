@@ -10,7 +10,7 @@ Description: How to fix Unsupported Attribute errors in Terraform caused by refe
 
 You run `terraform plan` and Terraform tells you:
 
-```
+```text
 Error: Unsupported attribute
 
 on main.tf line 20, in resource "aws_instance" "web":

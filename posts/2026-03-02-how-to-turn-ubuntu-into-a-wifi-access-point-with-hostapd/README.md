@@ -199,7 +199,7 @@ Tell hostapd where to find this configuration:
 sudo nano /etc/default/hostapd
 ```
 
-```
+```text
 DAEMON_CONF="/etc/hostapd/hostapd.conf"
 ```
 

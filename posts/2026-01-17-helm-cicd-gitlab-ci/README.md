@@ -32,7 +32,7 @@ flowchart LR
 
 ## Repository Structure
 
-```
+```text
 helm-charts/
 ├── .gitlab-ci.yml
 ├── charts/

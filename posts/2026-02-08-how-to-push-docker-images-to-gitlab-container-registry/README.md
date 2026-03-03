@@ -14,19 +14,19 @@ GitLab Container Registry is built into every GitLab project. You do not need to
 
 Each GitLab project has a container registry accessible at:
 
-```
+```text
 registry.gitlab.com/NAMESPACE/PROJECT
 ```
 
 For subgroups:
 
-```
+```text
 registry.gitlab.com/GROUP/SUBGROUP/PROJECT
 ```
 
 You can store multiple images per project using different paths:
 
-```
+```text
 registry.gitlab.com/mygroup/myproject/frontend:v1.0
 registry.gitlab.com/mygroup/myproject/backend:v1.0
 registry.gitlab.com/mygroup/myproject/worker:v1.0

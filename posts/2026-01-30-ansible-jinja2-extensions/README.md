@@ -90,7 +90,7 @@ flowchart LR
 
 A well-organized project with custom plugins looks like this:
 
-```
+```text
 ansible-project/
 ├── ansible.cfg
 ├── inventory/
@@ -917,7 +917,7 @@ For reusable, distributable extensions, package them as an Ansible Collection.
 
 ### Collection Structure
 
-```
+```text
 collections/
 └── ansible_collections/
     └── mycompany/

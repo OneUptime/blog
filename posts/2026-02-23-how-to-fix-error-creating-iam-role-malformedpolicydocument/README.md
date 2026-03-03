@@ -14,7 +14,7 @@ The `MalformedPolicyDocument` error is one of the more cryptic errors you will e
 
 When running `terraform apply`, you get:
 
-```
+```text
 Error: error creating IAM Role (my-role): MalformedPolicyDocument:
 Has prohibited field Resource
     status code: 400, request id: abc123-def456

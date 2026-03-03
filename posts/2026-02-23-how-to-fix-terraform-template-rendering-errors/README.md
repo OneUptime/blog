@@ -39,7 +39,7 @@ data "template_file" "init" {
 
 The most common error:
 
-```
+```text
 Error: Error in function call
 
   on main.tf line 12, in resource "aws_instance" "web":
@@ -112,7 +112,7 @@ echo $$MY_VAR
 
 Terraform templates support a subset of HCL syntax, including directives. Syntax errors in these directives cause rendering failures:
 
-```
+```text
 Error: Error in function call
 
 Call to function "templatefile" failed:
@@ -122,7 +122,7 @@ be a sequence like %{ if ... }, %{ for ... }, or %{ endif }.
 
 Common syntax mistakes in templates:
 
-```
+```text
 # Wrong - missing spaces in directives
 %{if condition}
 %{for item in list}
@@ -136,7 +136,7 @@ Common syntax mistakes in templates:
 
 Another common mistake is mismatched directives:
 
-```
+```text
 # Wrong - for without endfor
 %{ for s in subnets }
 subnet: ${s}
@@ -189,7 +189,7 @@ resource "aws_instance" "web" {
 
 You cannot nest `${}` inside another `${}`:
 
-```
+```text
 # Wrong - nested interpolation
 ${lookup(var.config, "${var.env}-key")}
 ```
@@ -211,7 +211,7 @@ templatefile("config.tpl", {
 
 The template file path must be resolvable at plan time:
 
-```
+```text
 Error: Error in function call
 
 Call to function "templatefile" failed: no file exists at
@@ -236,7 +236,7 @@ user_data = templatefile("${path.root}/templates/init.sh", {})
 
 Generating JSON or YAML from templates is error-prone. A missing comma or incorrect indentation breaks everything:
 
-```
+```text
 # config.json.tpl - Error-prone approach
 {
   "servers": [
@@ -269,7 +269,7 @@ resource "aws_instance" "web" {
 
 Template directives often produce unwanted blank lines:
 
-```
+```text
 %{ for s in subnets }
 ${s.cidr}
 %{ endfor }
@@ -277,7 +277,7 @@ ${s.cidr}
 
 This produces:
 
-```
+```text
 
 10.0.1.0/24
 
@@ -287,7 +287,7 @@ This produces:
 
 Use the tilde `~` to strip whitespace:
 
-```
+```text
 %{ for s in subnets ~}
 ${s.cidr}
 %{ endfor ~}
@@ -295,7 +295,7 @@ ${s.cidr}
 
 This produces clean output:
 
-```
+```text
 10.0.1.0/24
 10.0.2.0/24
 ```

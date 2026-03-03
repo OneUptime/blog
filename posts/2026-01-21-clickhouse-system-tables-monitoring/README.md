@@ -466,7 +466,7 @@ scrape_configs:
 
 ### Key Prometheus Metrics
 
-```
+```text
 # Query rate
 rate(ClickHouseProfileEvents_Query[5m])
 

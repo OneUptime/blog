@@ -300,7 +300,7 @@ If you still need SSH (for tools like SCP), you can tunnel SSH through Session M
 
 Add this to your `~/.ssh/config`:
 
-```
+```text
 # SSH through Session Manager
 Host i-*
     ProxyCommand sh -c "aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters 'portNumber=%p'"

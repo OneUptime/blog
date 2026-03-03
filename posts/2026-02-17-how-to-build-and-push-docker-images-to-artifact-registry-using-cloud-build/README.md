@@ -79,13 +79,13 @@ gcloud artifacts repositories add-iam-policy-binding my-docker-repo \
 
 Artifact Registry image paths follow this format:
 
-```
+```text
 LOCATION-docker.pkg.dev/PROJECT_ID/REPOSITORY/IMAGE:TAG
 ```
 
 For example:
 
-```
+```text
 us-central1-docker.pkg.dev/my-project/my-docker-repo/my-app:v1.0.0
 ```
 

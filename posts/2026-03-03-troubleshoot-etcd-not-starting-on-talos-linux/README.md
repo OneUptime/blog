@@ -34,13 +34,13 @@ The logs will usually contain a clear error message pointing to the root cause.
 
 etcd stores its data on disk. On Talos Linux, this is typically at `/var/lib/etcd`. If the disk is missing, corrupted, or was wiped during a reset, etcd will fail to start:
 
-```
+```text
 {"level":"fatal","msg":"open wal error: fileutil: file already locked"}
 ```
 
 Or:
 
-```
+```text
 {"level":"fatal","msg":"rafthttp: failed to find member in cluster"}
 ```
 
@@ -57,7 +57,7 @@ If the directory is empty or missing, etcd needs to be bootstrapped again. For a
 
 If you reset a control plane node but did not remove it from the etcd cluster first, the new etcd instance will try to join with a different cluster ID. This causes:
 
-```
+```text
 {"level":"fatal","msg":"etcdmain: member has been permanently removed from the cluster"}
 ```
 
@@ -85,7 +85,7 @@ talosctl apply-config --insecure -n <broken-cp-ip> --file controlplane.yaml
 
 etcd requires disk space for its write-ahead log (WAL) and snapshots. If the disk fills up, etcd will refuse to accept writes and may not start at all:
 
-```
+```text
 {"level":"warn","msg":"database space exceeded"}
 ```
 
@@ -117,7 +117,7 @@ ETCDCTL_API=3 etcdctl --endpoints=https://<cp-ip>:2379 \
 
 etcd uses TLS certificates for peer-to-peer communication and client connections. If certificates are expired or misconfigured, etcd will fail to start with errors like:
 
-```
+```text
 {"level":"fatal","msg":"transport: authentication handshake failed: remote error: tls: bad certificate"}
 ```
 
@@ -170,7 +170,7 @@ talosctl -n <surviving-cp-ip> etcd snapshot /tmp/etcd-snapshot.db
 
 etcd is very sensitive to disk latency. If your disk is slow (spinning HDDs, overloaded shared storage), etcd will miss heartbeat deadlines and fail:
 
-```
+```text
 {"level":"warn","msg":"etcdserver: read-only range request took too long"}
 {"level":"warn","msg":"etcdserver: failed to send out heartbeat on time"}
 ```

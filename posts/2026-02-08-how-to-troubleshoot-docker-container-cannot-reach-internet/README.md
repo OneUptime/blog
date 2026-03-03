@@ -121,7 +121,7 @@ sudo iptables -t nat -L POSTROUTING -v -n | grep -i docker
 
 You should see something like:
 
-```
+```text
 MASQUERADE  all  --  172.17.0.0/16    0.0.0.0/0
 ```
 

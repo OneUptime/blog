@@ -1025,7 +1025,7 @@ export const ingressHostname = `${appName}.example.com`;
 
 ### Project Structure
 
-```
+```text
 my-pulumi-project/
 ├── Pulumi.yaml              # Project definition
 ├── Pulumi.dev.yaml          # Dev stack config

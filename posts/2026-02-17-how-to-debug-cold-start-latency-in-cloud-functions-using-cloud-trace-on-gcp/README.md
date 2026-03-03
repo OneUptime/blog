@@ -319,7 +319,7 @@ resource "google_cloudfunctions2_function" "my_function" {
 
 Build a dashboard that tracks cold start frequency and duration:
 
-```
+```text
 # MQL: Cold start percentage over time
 fetch cloud_function
 | metric 'cloudfunctions.googleapis.com/function/execution_count'

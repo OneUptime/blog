@@ -65,7 +65,7 @@ spec:
 
 When `FailOnSharedResource=true` is set and ArgoCD detects that a resource is already managed by another application, the sync fails with an error message like:
 
-```
+```text
 ComparisonError: shared resource found: ConfigMap shared/redis is already managed
 by application team-b-services
 ```

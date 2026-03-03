@@ -20,7 +20,7 @@ This is important to understand: a database connection pool that opens 10 connec
 
 The metric carries familiar Istio labels:
 
-```
+```text
 istio_tcp_connections_opened_total{
   reporter="destination",
   source_workload="order-service",
@@ -40,7 +40,7 @@ Since this is TCP traffic, you won't see HTTP-specific labels like `response_cod
 
 This metric tracks when TCP connections are closed. Together with `opened`, you can derive connection patterns:
 
-```
+```text
 istio_tcp_connections_closed_total{
   reporter="destination",
   source_workload="order-service",

@@ -127,7 +127,7 @@ The dashboard provides filtering options:
 
 Sort by savings percentage to identify the biggest optimization opportunities:
 
-```
+```text
 Workload          Current CPU  Recommended  Savings
 analytics-worker  2000m        500m         75%
 batch-processor   1000m        300m         70%

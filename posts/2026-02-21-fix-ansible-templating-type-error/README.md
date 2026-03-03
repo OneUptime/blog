@@ -12,7 +12,7 @@ The "Unexpected templating type error" occurs when Jinja2 template rendering pro
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "Unexpected templating type error occurred on ({{ some_variable | some_filter }}): expected string or bytes-like object"
 }

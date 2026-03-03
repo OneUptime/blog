@@ -14,7 +14,7 @@ Platform engineering is about building internal developer platforms that make it
 
 A well-designed platform has three layers of abstraction:
 
-```
+```text
 Level 3: Self-Service Modules (simplest interface, most opinionated)
   - "I want a web app"
   - "I want a database"

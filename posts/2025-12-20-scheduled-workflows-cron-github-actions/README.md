@@ -14,7 +14,7 @@ Not all CI/CD tasks should be triggered by code changes. Security scans, depende
 
 GitHub Actions uses standard cron syntax with five fields:
 
-```
+```text
 * * * * *
 | | | | |
 | | | | +-- Day of week (0-6, Sunday=0)

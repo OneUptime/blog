@@ -63,7 +63,7 @@ journalctl -u acpid --no-pager | tail -20
 ```
 
 When you press buttons or change power states, you'll see events like:
-```
+```text
 button/power PBTN 00000080 00000001
 button/sleep SBTN 00000080 00000001
 ac_adapter ACAD 00000000 00000001

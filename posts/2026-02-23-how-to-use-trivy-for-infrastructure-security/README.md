@@ -62,7 +62,7 @@ trivy config --format json --output trivy-results.json .
 
 Example output:
 
-```
+```text
 main.tf (terraform)
 ===================
 Tests: 45 (SUCCESSES: 37, FAILURES: 8, EXCEPTIONS: 0)
@@ -117,7 +117,7 @@ trivy fs --scanners misconfig,secret .
 
 The secret scanner uses pattern matching and entropy analysis to find credentials that should not be in your codebase:
 
-```
+```text
 secrets.tf (secrets)
 ====================
 Total: 2 (HIGH: 1, CRITICAL: 1)

@@ -361,7 +361,7 @@ export async function trackApiCall<T>(
 
 Once data flows in, you can query it in the Azure Portal using Kusto Query Language (KQL):
 
-```
+```text
 // Find the most common JavaScript errors
 exceptions
 | where timestamp > ago(24h)

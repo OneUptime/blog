@@ -79,7 +79,7 @@ If you find yourself using `-target` constantly, it is a sign your state is too 
 
 ### Before: One Giant State
 
-```
+```text
 infrastructure/
   main.tf           # Everything in one config
   terraform.tfstate  # 500+ resources in one state
@@ -87,7 +87,7 @@ infrastructure/
 
 ### After: Split by Domain
 
-```
+```text
 infrastructure/
   networking/       # VPCs, subnets, route tables
     main.tf
@@ -198,7 +198,7 @@ terraform apply application.plan
 
 If you use Terragrunt, it naturally splits state by directory:
 
-```
+```text
 live/
   production/
     vpc/

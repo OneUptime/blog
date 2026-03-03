@@ -116,7 +116,7 @@ The `--substitutions` flag maps values from the GitLab webhook payload to Cloud 
 
 After creating the trigger, gcloud will output a webhook URL that looks like:
 
-```
+```text
 https://cloudbuild.googleapis.com/v1/projects/PROJECT_ID/triggers/TRIGGER_NAME:webhook?key=API_KEY&secret=SECRET_VALUE
 ```
 

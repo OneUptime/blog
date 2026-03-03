@@ -252,7 +252,7 @@ jobs:
 
 Different source types have different caching behavior:
 
-```
+```text
 | Source Type       | Cached? | -update Behavior           |
 |-------------------|---------|----------------------------|
 | Local path        | No      | Always uses latest files   |
@@ -283,7 +283,7 @@ module "vpc" {
 
 2. **Add .terraform/ to .gitignore.** The module cache should not be committed.
 
-```
+```text
 # .gitignore
 .terraform/
 ```

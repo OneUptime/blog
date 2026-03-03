@@ -50,7 +50,7 @@ The `maximum-pool-size` setting caps how many connections HikariCP will open to 
 
 A common mistake is setting this too high. More connections don't automatically mean better performance. The HikariCP wiki famously recommends a formula based on the number of CPU cores:
 
-```
+```text
 connections = ((core_count * 2) + effective_spindle_count)
 ```
 

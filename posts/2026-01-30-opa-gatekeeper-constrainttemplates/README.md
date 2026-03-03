@@ -771,7 +771,7 @@ kubectl get k8srequiredlabels require-team-label-dryrun -o yaml | grep -A 50 vio
 
 ### Organize Templates and Constraints
 
-```
+```text
 policies/
   templates/
     k8srequiredlabels.yaml

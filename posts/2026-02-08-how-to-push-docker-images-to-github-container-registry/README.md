@@ -16,7 +16,7 @@ GHCR is part of GitHub Packages. It hosts OCI-compliant container images at `ghc
 
 The image naming convention:
 
-```
+```text
 ghcr.io/OWNER/IMAGE_NAME:TAG
 ```
 

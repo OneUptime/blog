@@ -94,7 +94,7 @@ aws lambda update-function-configuration \
 
 Here's where it gets interesting. Let's say a function takes 10 seconds at 128 MB. If you double the memory to 256 MB, it might only take 5 seconds. The cost calculation:
 
-```
+```text
 128 MB for 10s = 128/1024 * 10 = 1.25 GB-seconds
 256 MB for 5s  = 256/1024 * 5  = 1.25 GB-seconds
 ```
@@ -168,7 +168,7 @@ aws cloudwatch get-metric-statistics \
 
 You can also check the `REPORT` line in CloudWatch Logs, which appears after every invocation:
 
-```
+```text
 REPORT RequestId: abc-123 Duration: 245.31 ms Billed Duration: 246 ms Memory Size: 512 MB Max Memory Used: 87 MB Init Duration: 412.08 ms
 ```
 
@@ -247,7 +247,7 @@ aws lambda update-function-configuration \
 
 If your function exceeds its memory allocation, Lambda kills it immediately with this error:
 
-```
+```text
 Runtime exited with error: signal: killed
 ```
 

@@ -137,7 +137,7 @@ Once connected, the supervisor will register with the server and begin reporting
 
 After starting supervisors on multiple hosts, you can verify connectivity through the server logs. Each agent registers with a unique instance ID, and you will see connection events like:
 
-```
+```text
 Agent connecting from 10.0.1.15:43210
 Received message from agent: a1b2c3d4-e5f6-7890-abcd-ef1234567890
 Agent connecting from 10.0.1.16:43211

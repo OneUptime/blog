@@ -29,7 +29,7 @@ docker inspect --format '{{.Os}}/{{.Architecture}}' nginx:latest
 
 The output looks like:
 
-```
+```text
 linux/amd64
 ```
 
@@ -111,7 +111,7 @@ docker buildx imagetools inspect nginx:latest
 
 This outputs something like:
 
-```
+```text
 Name:      docker.io/library/nginx:latest
 MediaType: application/vnd.oci.image.index.v1+json
 Digest:    sha256:abc123...
@@ -226,7 +226,7 @@ graph LR
 
 When you see this error, it means the image does not support your platform:
 
-```
+```text
 WARNING: The requested image's platform (linux/amd64) does not match the detected host platform (linux/arm64/v8)
 ```
 

@@ -103,7 +103,7 @@ The Java profiler captures several types of events:
 
 CPU samples show where your application spends processing time. Each sample contains a full stack trace captured at the configured interval:
 
-```
+```text
 Sample at 2026-02-06T10:15:32.123Z (trace_id=abc123, span_id=def456):
   com.yourorg.order.service.OrderService.processOrder(OrderService.java:45)
   com.yourorg.order.service.PricingEngine.calculateTotal(PricingEngine.java:112)
@@ -115,7 +115,7 @@ Sample at 2026-02-06T10:15:32.123Z (trace_id=abc123, span_id=def456):
 
 Allocation profiling shows where your application creates objects. This is crucial for finding memory pressure and garbage collection issues:
 
-```
+```text
 Allocation event at 2026-02-06T10:15:32.456Z:
   Type: byte[]
   Size: 1048576 bytes

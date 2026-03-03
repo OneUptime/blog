@@ -48,7 +48,7 @@ Key settings:
 
 Use CODEOWNERS to route reviews based on what is being changed:
 
-```
+```text
 # CODEOWNERS
 
 # Any changes to base require SRE review

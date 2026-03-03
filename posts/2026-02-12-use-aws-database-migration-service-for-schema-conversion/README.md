@@ -43,7 +43,7 @@ Download the AWS Schema Conversion Tool from the AWS website. It's a desktop app
 
 After installation, configure database drivers.
 
-```
+```text
 # Download required JDBC drivers:
 # Oracle: ojdbc8.jar
 # SQL Server: mssql-jdbc-12.4.2.jre11.jar

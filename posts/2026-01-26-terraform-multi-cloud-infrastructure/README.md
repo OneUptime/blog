@@ -472,7 +472,7 @@ module "aws_eu" {
 
 Use separate state files per cloud or region:
 
-```
+```text
 terraform-state/
 ├── aws/
 │   ├── us-east-1/terraform.tfstate

@@ -36,7 +36,7 @@ Navigate to Azure Portal > Azure Active Directory > App registrations > New regi
 
 Configure the registration with these settings:
 
-```
+```text
 Name: Grafana SSO
 Supported account types: Accounts in this organizational directory only
 Redirect URI: https://grafana.example.com/login/azuread
@@ -48,7 +48,7 @@ After creation, note down the Application (client) ID and Directory (tenant) ID 
 
 Navigate to Certificates & secrets > New client secret.
 
-```
+```text
 Description: Grafana OAuth Secret
 Expires: 24 months (or per your security policy)
 ```
@@ -63,7 +63,7 @@ Navigate to API permissions > Add a permission > Microsoft Graph.
 
 Add these delegated permissions:
 
-```
+```text
 - openid
 - email
 - profile
@@ -94,7 +94,7 @@ For large organizations with many groups, use group filtering to include only re
 
 Create security groups in Azure AD that map to Grafana roles.
 
-```
+```text
 Group Name                    | Grafana Role
 -----------------------------|-------------
 Grafana-Admins               | Admin
@@ -139,7 +139,7 @@ skip_org_role_sync = false
 
 Replace the placeholder values:
 
-```
+```text
 YOUR_APPLICATION_CLIENT_ID  -> Application (client) ID from Azure
 YOUR_CLIENT_SECRET          -> Client secret value
 YOUR_TENANT_ID              -> Directory (tenant) ID from Azure
@@ -245,7 +245,7 @@ Ensure:
 
 The redirect URI must exactly match what is configured in Azure AD:
 
-```
+```text
 Azure AD: https://grafana.example.com/login/azuread
 Grafana root_url: https://grafana.example.com/
 ```
@@ -262,7 +262,7 @@ filters = auth.azuread:debug
 
 Check the logs for group membership arrays:
 
-```
+```text
 logger=auth.azuread groups=[abc123 def456 ghi789]
 ```
 

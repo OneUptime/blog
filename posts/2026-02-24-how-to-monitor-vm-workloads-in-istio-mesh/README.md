@@ -239,7 +239,7 @@ Create dashboards that show VM-specific metrics:
 
 ### VM Workload Request Rate
 
-```
+```text
 sum(rate(istio_requests_total{
   source_workload_namespace="vm-apps",
   reporter="source"
@@ -248,7 +248,7 @@ sum(rate(istio_requests_total{
 
 ### VM to Kubernetes Traffic
 
-```
+```text
 sum(rate(istio_requests_total{
   source_workload_namespace="vm-apps",
   destination_workload_namespace!="vm-apps",
@@ -258,7 +258,7 @@ sum(rate(istio_requests_total{
 
 ### VM Error Rate
 
-```
+```text
 sum(rate(istio_requests_total{
   destination_workload_namespace="vm-apps",
   response_code=~"5..",
@@ -273,7 +273,7 @@ sum(rate(istio_requests_total{
 
 ### VM Latency P99
 
-```
+```text
 histogram_quantile(0.99,
   sum(rate(istio_request_duration_milliseconds_bucket{
     destination_workload_namespace="vm-apps",

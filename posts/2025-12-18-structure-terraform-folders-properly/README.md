@@ -49,7 +49,7 @@ flowchart TD
 
 For projects with a single environment and few resources, a flat structure works well.
 
-```
+```text
 terraform/
 ├── main.tf           # Resource definitions
 ├── variables.tf      # Variable declarations
@@ -105,7 +105,7 @@ resource "aws_vpc" "main" {
 
 As projects grow, separate environments and introduce modules.
 
-```
+```text
 terraform/
 ├── environments/
 │   ├── dev/
@@ -286,7 +286,7 @@ output "public_subnet_ids" {
 
 For large organizations with multiple teams and complex infrastructure.
 
-```
+```text
 terraform/
 ├── infrastructure/           # Core infrastructure
 │   ├── networking/
@@ -391,7 +391,7 @@ module "eks" {
 
 For very large projects, Terragrunt reduces duplication.
 
-```
+```text
 terragrunt/
 ├── terragrunt.hcl            # Root config
 ├── environments/
@@ -476,7 +476,7 @@ inputs = {
 
 Consistent naming makes navigation easier:
 
-```
+```text
 # Files
 main.tf          # Primary resource definitions
 variables.tf     # Input variable declarations

@@ -1035,7 +1035,7 @@ Manage AWX configurations as code using GitOps principles.
 
 ### Directory Structure
 
-```
+```text
 awx-config/
 ├── inventories/
 │   ├── production.yml

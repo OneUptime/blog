@@ -121,7 +121,7 @@ Elasticsearch's JVM memory settings are in `/etc/elasticsearch/jvm.options.d/`. 
 sudo nano /etc/elasticsearch/jvm.options.d/custom.options
 ```
 
-```
+```text
 # Set heap size to approximately half of available RAM
 # Do NOT exceed 31GB (avoids compressed ordinary object pointer issues)
 # Minimum: do not go below 2GB for production
@@ -179,7 +179,7 @@ LimitFSIZE=infinity
 
 Or edit `/etc/security/limits.conf`:
 
-```
+```text
 elasticsearch soft nofile 65535
 elasticsearch hard nofile 65535
 elasticsearch soft nproc 4096

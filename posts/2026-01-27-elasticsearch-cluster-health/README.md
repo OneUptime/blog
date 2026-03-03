@@ -213,7 +213,7 @@ curl -X GET "localhost:9200/_cat/nodes?v&h=name,heap.percent,ram.percent,cpu,loa
 
 Example output:
 
-```
+```text
 name         heap.percent ram.percent cpu load_1m disk.used_percent node.role
 data-node-1            65          82  12    1.24                45 cdfhilmrstw
 data-node-2            58          78   8    0.89                43 cdfhilmrstw
@@ -313,7 +313,7 @@ curl -X GET "localhost:9200/_cat/shards?v&s=node,index"
 
 Example balanced output:
 
-```
+```text
 shards disk.indices disk.used disk.avail disk.total disk.percent host        node
    100       45.2gb    89.1gb    410.9gb      500gb           17 10.0.0.1   data-node-1
     98       44.8gb    88.5gb    411.5gb      500gb           17 10.0.0.2   data-node-2

@@ -30,7 +30,7 @@ HISTTIMEFORMAT="%F %T " history
 
 These shortcuts work in the default readline editing mode (Emacs-style):
 
-```
+```text
 Ctrl+R     - Reverse search: type to search backwards through history
 Ctrl+S     - Forward search (may conflict with terminal flow control)
 Up arrow   - Previous command
@@ -44,7 +44,7 @@ Ctrl+G     - Cancel reverse search, restore current line
 
 `Ctrl+R` is the most powerful history shortcut. Press it, start typing, and Bash finds the most recent matching command:
 
-```
+```text
 (reverse-i-search)`dock': docker ps -a --format "table {{.Names}}\t{{.Status}}"
 ```
 
@@ -110,7 +110,7 @@ Be careful with name-based expansion - it runs the command immediately. Use `:p`
 
 After the `!` event designator, you can specify which word from the command to use:
 
-```
+```text
 !!      - the entire previous command
 !!:0    - the command name only (first word)
 !!:1    - first argument
@@ -172,7 +172,7 @@ Beyond history navigation, these shortcuts speed up editing the current command:
 
 ### Cursor Movement
 
-```
+```text
 Ctrl+A     - Move to beginning of line
 Ctrl+E     - Move to end of line
 Alt+F      - Move forward one word
@@ -183,7 +183,7 @@ Ctrl+B     - Move backward one character
 
 ### Editing
 
-```
+```text
 Ctrl+K     - Delete from cursor to end of line (kill)
 Ctrl+U     - Delete from cursor to beginning of line
 Ctrl+W     - Delete word before cursor
@@ -195,7 +195,7 @@ Ctrl+H     - Delete character before cursor (same as Backspace)
 
 ### Case Modification
 
-```
+```text
 Alt+U      - Uppercase word from cursor
 Alt+L      - Lowercase word from cursor
 Alt+C      - Capitalize word from cursor
@@ -203,7 +203,7 @@ Alt+C      - Capitalize word from cursor
 
 ### Miscellaneous
 
-```
+```text
 Ctrl+T     - Swap current character with previous (fix typos)
 Alt+T      - Swap current word with previous word
 Ctrl+L     - Clear screen (like 'clear' command)
@@ -280,7 +280,7 @@ With `fzf`, pressing `Ctrl+R` opens an interactive list where you can type to fu
 
 ## Summary of Most Useful Shortcuts
 
-```
+```text
 Ctrl+R     - Search history
 !!         - Last command
 !$         - Last argument of last command

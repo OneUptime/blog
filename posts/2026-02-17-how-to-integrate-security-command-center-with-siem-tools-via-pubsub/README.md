@@ -106,7 +106,7 @@ Splunk has a Google Cloud Platform add-on that can pull directly from Pub/Sub.
 
 In Splunk, configure the input like this:
 
-```
+```text
 [pubsub://scc-findings]
 google_credentials_name = gcp_siem_connector
 google_project_id = my-security-project

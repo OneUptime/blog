@@ -23,7 +23,7 @@ This runs `df -h` on every host in your inventory and returns human-readable out
 
 Output looks like:
 
-```
+```text
 web1 | CHANGED | rc=0 >>
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/sda1        50G   32G   16G  67% /
@@ -57,7 +57,7 @@ ansible all -m shell -a "df -h / | awk 'NR==2 {print \$5}'" --one-line
 
 The `--one-line` flag gives compact output that is easy to scan:
 
-```
+```text
 web1 | CHANGED | rc=0 | (stdout) 67%
 web2 | CHANGED | rc=0 | (stdout) 99%
 db1 | CHANGED | rc=0 | (stdout) 45%

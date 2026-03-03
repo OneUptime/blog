@@ -49,7 +49,7 @@ pluto detect-all-in-cluster --target-versions k8s=v1.28.0 -o json > deprecated-a
 
 Example output:
 
-```
+```text
 NAME                KIND         VERSION              REPLACEMENT   REMOVED   DEPRECATED
 cert-manager        Deployment   apps/v1beta2         apps/v1       1.16      1.9
 ingress-nginx       Ingress      extensions/v1beta1   networking.k8s.io/v1   1.22   1.14

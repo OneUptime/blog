@@ -41,7 +41,7 @@ Dragonfly was created in 2022 by former Google and Amazon engineers with the goa
 
 ### Redis Architecture
 
-```
+```text
 Clients --> Event Loop (Single Thread) --> Memory
                |                            |
                v                            v
@@ -53,7 +53,7 @@ Redis processes commands in a single thread, ensuring atomicity but limiting thr
 
 ### Dragonfly Architecture
 
-```
+```text
         Thread 1 --> Shard 1 --> Local Memory
        /
 Clients --> Thread 2 --> Shard 2 --> Local Memory

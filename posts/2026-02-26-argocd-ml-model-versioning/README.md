@@ -28,7 +28,7 @@ When you deploy a new model version, all of these need to change together atomic
 
 The key insight is that your Git repository should describe the desired state of your model serving infrastructure, not the model artifacts themselves. Model weights are too large for Git. Instead, reference them by version:
 
-```
+```text
 model-serving/
   base/
     kustomization.yaml

@@ -62,7 +62,7 @@ top -p 1234,5678,9012
 
 ### Understanding the top Display
 
-```
+```text
 top - 14:30:00 up 45 days,  3:22,  2 users,  load average: 0.52, 0.58, 0.59
 Tasks: 287 total,   1 running, 286 sleeping,   0 stopped,   0 zombie
 %Cpu(s):  5.3 us,  2.1 sy,  0.0 ni, 92.0 id,  0.5 wa,  0.0 hi,  0.1 si,  0.0 st
@@ -135,7 +135,7 @@ MiB Swap:   4096.0 total,   4000.0 free,     96.0 used.   6543.2 avail Mem
 
 While top is running, use these keys:
 
-```
+```text
 Navigation:
   Up/Down      Scroll through processes
   PgUp/PgDn    Scroll one page
@@ -310,7 +310,7 @@ Memory bar colors:
 
 ### Interactive htop Commands
 
-```
+```text
 Navigation:
   Up/Down/j/k  Scroll through processes
   PgUp/PgDn    Scroll one page
@@ -355,7 +355,7 @@ Configuration:
 
 Press F2 (Setup) to access the configuration menu:
 
-```
+```text
 ┌─────────────────────────────────────────┐
 │ Setup                                   │
 ├─────────────────────────────────────────┤

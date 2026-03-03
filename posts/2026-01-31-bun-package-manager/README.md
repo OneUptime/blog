@@ -138,7 +138,7 @@ Create a root package.json with workspaces configuration:
 
 Here is an example monorepo structure with multiple packages:
 
-```
+```text
 my-monorepo/
 ├── package.json
 ├── bun.lockb

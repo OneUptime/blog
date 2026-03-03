@@ -1851,7 +1851,7 @@ npm publish --access public
 
 Here's the final project structure:
 
-```
+```text
 my-mcp-server/
 ├── src/
 │   ├── index.ts          # Main server entry point

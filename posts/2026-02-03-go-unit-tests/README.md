@@ -675,7 +675,7 @@ go test -bench=. -benchtime=5s
 
 Sample output:
 
-```
+```text
 BenchmarkFibRecursive-8       31264    38419 ns/op
 BenchmarkFibIterative-8    69529411       17.24 ns/op
 ```
@@ -713,7 +713,7 @@ The coverage modes determine how coverage is tracked:
 
 Example coverage output:
 
-```
+```text
 github.com/yourorg/pkg/mathutil/math.go:8:     Sum         100.0%
 github.com/yourorg/pkg/mathutil/math.go:18:    Average      80.0%
 github.com/yourorg/pkg/mathutil/math.go:28:    Max           0.0%
@@ -744,7 +744,7 @@ flowchart TD
 
 Recommended project structure for tests:
 
-```
+```text
 project/
     mathutil/
         math.go           # Production code

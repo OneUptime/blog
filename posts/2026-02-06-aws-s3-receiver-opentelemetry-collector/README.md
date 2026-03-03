@@ -823,7 +823,7 @@ OneUptime seamlessly ingests logs from the S3 receiver. Once configured, you can
 
 Example OneUptime query for S3-sourced logs:
 
-```
+```text
 source.type = "s3" AND log.level = "ERROR" AND s3.bucket = "production-logs"
 ```
 

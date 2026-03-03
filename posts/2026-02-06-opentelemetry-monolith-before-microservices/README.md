@@ -28,7 +28,7 @@ Teams often think: "We're just a monolith, we don't need distributed tracing yet
 
 Consider a typical monolith: an Express.js application with multiple modules handling different domains.
 
-```
+```text
 monolith-app/
   src/
     auth/
@@ -450,7 +450,7 @@ Run the instrumented monolith for a few weeks. Then analyze traces to understand
 
 Query your tracing backend:
 
-```
+```text
 Show me all spans where:
   - Tracer name is "orders-module"
   - Span contains calls to other modules

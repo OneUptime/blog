@@ -31,7 +31,7 @@ flowchart LR
 
 ## Project Structure
 
-```
+```text
 infrastructure/
   cloudbuild/
     plan.yaml          # Cloud Build config for plan

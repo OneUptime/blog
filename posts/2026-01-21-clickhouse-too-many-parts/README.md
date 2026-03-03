@@ -49,7 +49,7 @@ Each INSERT creates a new part. ClickHouse merges parts in the background. If in
 
 ### Error Messages
 
-```
+```text
 DB::Exception: Too many parts (600). Merges are processing significantly slower than inserts.
 
 DB::Exception: Too many parts (305) in all partitions in total.

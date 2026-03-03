@@ -120,7 +120,7 @@ Extend macro conditions using `and` or `or` logic.
 
 The final macro condition becomes:
 
-```
+```text
 proc.name = confd or proc.name = myconfig-agent or proc.name = vault-agent
 ```
 
@@ -236,7 +236,7 @@ rules_file:
 
 Keep your customizations in dedicated files:
 
-```
+```text
 /etc/falco/
   falco_rules.yaml              # Do not modify (upstream rules)
   falco_rules.local.yaml        # Your overrides and appends

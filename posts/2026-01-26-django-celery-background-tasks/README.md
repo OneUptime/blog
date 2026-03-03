@@ -51,7 +51,7 @@ The `django-celery-results` package stores task results in your database, and `d
 
 Here's a typical Django project structure with Celery:
 
-```
+```text
 myproject/
     myproject/
         __init__.py

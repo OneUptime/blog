@@ -153,7 +153,7 @@ Kubecost calculates costs by combining resource usage data from Prometheus with 
 
 ### How Cost Calculation Works
 
-```
+```text
 Cost = (CPU_Usage * CPU_Price) + (Memory_Usage * Memory_Price) + (Storage_Usage * Storage_Price) + Network_Costs
 ```
 
@@ -363,7 +363,7 @@ curl -s "http://localhost:9090/model/savings/abandonedWorkloads?window=7d" | jq 
 
 Kubecost calculates an efficiency score for each workload:
 
-```
+```text
 Efficiency = (Resource Usage / Resource Requests) * 100
 ```
 

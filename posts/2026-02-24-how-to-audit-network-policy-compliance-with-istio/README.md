@@ -107,7 +107,7 @@ Your policies define what should be allowed. Your actual traffic tells you what'
 
 Query Prometheus for all active service-to-service communication:
 
-```
+```text
 sum(rate(istio_requests_total{reporter="destination"}[24h])) by (source_workload, source_workload_namespace, destination_workload, destination_workload_namespace, response_code) > 0
 ```
 
@@ -119,7 +119,7 @@ Export this data and compare it against your authorization policies. Look for:
 
 3. **Denied traffic (403 responses)**: Expected denials confirm your policies are working. Unexpected denials might indicate misconfigured policies that are breaking legitimate traffic.
 
-```
+```text
 sum(rate(istio_requests_total{response_code="403",reporter="destination"}[24h])) by (source_workload, destination_workload) > 0
 ```
 

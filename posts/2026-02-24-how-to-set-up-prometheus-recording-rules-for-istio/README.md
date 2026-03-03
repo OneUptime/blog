@@ -258,7 +258,7 @@ These alert rules are much cheaper to evaluate because they're working with pre-
 
 Follow a consistent naming pattern for your recording rules. The standard convention is:
 
-```
+```text
 level:metric:operations
 ```
 

@@ -16,7 +16,7 @@ Enforcing commit message conventions through Git hooks catches bad messages befo
 
 Conventional Commits is a specification for structuring commit messages. The format is:
 
-```
+```text
 <type>(<scope>): <description>
 
 [optional body]
@@ -38,7 +38,7 @@ Where `type` is one of:
 
 Examples of well-formatted messages:
 
-```
+```text
 feat(auth): add password reset flow via email
 
 fix(api): handle null response from payment gateway
@@ -288,7 +288,7 @@ git config commit.template .gitmessage
 
 Create the template file in your repository.
 
-```
+```text
 # .gitmessage
 # <type>(<scope>): <description>
 #

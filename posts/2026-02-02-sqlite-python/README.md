@@ -69,7 +69,7 @@ Let's start with a proper project structure that separates concerns and makes te
 
 The following project structure organizes your SQLite-based application into logical components. The database module handles all database operations, while models define your data structures.
 
-```
+```text
 myapp/
     __init__.py
     database/

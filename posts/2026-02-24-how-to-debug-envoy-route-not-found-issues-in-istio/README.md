@@ -22,7 +22,7 @@ kubectl logs my-app-xxxxx -c istio-proxy --tail=100
 
 An Envoy route-not-found looks like:
 
-```
+```text
 "GET /api/data HTTP/1.1" 404 NR route_not_found - "-" 0 0 0 - ...
 ```
 
@@ -33,7 +33,7 @@ The key indicators:
 
 Compare this with an application 404:
 
-```
+```text
 "GET /api/data HTTP/1.1" 404 - via_upstream - "-" 0 45 12 11 ...
 ```
 

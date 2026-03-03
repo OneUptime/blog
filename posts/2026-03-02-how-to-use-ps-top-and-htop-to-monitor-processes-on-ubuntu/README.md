@@ -37,7 +37,7 @@ ps axjf
 ps aux
 ```
 
-```
+```text
 USER       PID  %CPU %MEM    VSZ    RSS TTY      STAT START   TIME COMMAND
 root         1   0.0  0.1 167988  9428 ?        Ss   Mar01   0:05 /sbin/init
 root         2   0.0  0.0      0     0 ?        S    Mar01   0:00 [kthreadd]
@@ -120,7 +120,7 @@ top -b -n 1  # Batch mode, one iteration (good for scripting)
 
 ### Reading the top Header
 
-```
+```text
 top - 10:35:22 up 2 days,  4:12,  2 users,  load average: 0.23, 0.18, 0.15
 Tasks: 234 total,   1 running, 233 sleeping,   0 stopped,   0 zombie
 %Cpu(s):  2.3 us,  0.8 sy,  0.0 ni, 96.7 id,  0.2 wa,  0.0 hi,  0.0 si,  0.0 st
@@ -141,7 +141,7 @@ MiB Swap:   2048.0 total,   2047.5 free,      0.5 used.   3876.4 avail Mem
 
 While top is running, press these keys:
 
-```
+```text
 q       - Quit
 h       - Help
 M       - Sort by memory usage
@@ -205,7 +205,7 @@ Color meanings in the process list:
 
 ### htop Keyboard Shortcuts
 
-```
+```text
 F1     - Help
 F2     - Setup (configure display options)
 F3     - Search for a process by name

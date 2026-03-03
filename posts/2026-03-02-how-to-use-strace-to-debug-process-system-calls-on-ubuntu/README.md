@@ -36,7 +36,7 @@ strace ls /tmp
 
 The output can be overwhelming at first. Each line shows a system call, its arguments, and its return value:
 
-```
+```text
 openat(AT_FDCWD, "/tmp", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 3
 getdents64(3, /* 12 entries */, 32768) = 376
 close(3) = 0
@@ -130,7 +130,7 @@ timeout 10 sudo strace -p 1234 -c
 
 Example output:
 
-```
+```text
 % time     seconds  usecs/call     calls    errors syscall
 ------ ----------- ----------- --------- --------- ----------------
  45.23    0.000892         89        10           openat

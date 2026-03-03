@@ -12,7 +12,7 @@ Resource detectors automatically populate the `Resource` that gets attached to e
 
 When your application starts, resource detectors run and discover attributes about the environment:
 
-```
+```text
 Resource: {
   "service.name": "payment-service",
   "service.version": "2.4.1",

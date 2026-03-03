@@ -84,7 +84,7 @@ cargo bench
 
 Criterion outputs something like this:
 
-```
+```text
 sum_comparison/iterator time:   [2.4521 µs 2.4598 µs 2.4682 µs]
 sum_comparison/manual_loop
                         time:   [2.4489 µs 2.4567 µs 2.4651 µs]
@@ -150,7 +150,7 @@ The perf report interface is interactive. Use arrow keys to navigate and Enter t
 
 Here's what a typical perf report looks like:
 
-```
+```text
 Samples: 15K of event 'cycles', Event count (approx.): 12847293847
 Overhead  Command    Shared Object       Symbol
   45.23%  my_prog    my_prog             [.] expensive_function

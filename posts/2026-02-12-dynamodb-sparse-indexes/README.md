@@ -291,7 +291,7 @@ async function getFailedOrders() {
 
 The cost savings of sparse indexes can be significant:
 
-```
+```text
 Scenario: 10 million orders, 0.1% need attention (10,000 items)
 
 Full GSI on status:

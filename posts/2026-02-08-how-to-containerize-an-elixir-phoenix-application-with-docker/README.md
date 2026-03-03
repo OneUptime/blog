@@ -223,7 +223,7 @@ end
 
 The BEAM VM needs specific settings for container environments. Create a `rel/vm.args.eex` file:
 
-```
+```text
 # rel/vm.args.eex - BEAM VM arguments for containers
 
 # Set the node name using the hostname

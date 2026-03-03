@@ -29,7 +29,7 @@ If Talos boots up and cannot find `/dev/sda` (or whatever device you specified),
 
 The most common cause is simply specifying the wrong device path. Different hardware and virtualization platforms name their disks differently:
 
-```
+```text
 Common disk naming patterns:
   /dev/sda        - SATA, SAS, and some SCSI disks
   /dev/nvme0n1    - NVMe drives

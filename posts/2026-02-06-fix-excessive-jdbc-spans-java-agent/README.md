@@ -12,7 +12,7 @@ The OpenTelemetry Java agent instruments JDBC calls by default, creating a span 
 
 A single API request that loads a user with their orders and order items might generate:
 
-```
+```text
 GET /api/users/123                               [========================] 150ms
   SELECT * FROM users WHERE id = ?               [=]  3ms
   SELECT * FROM user_preferences WHERE user_id=? [=]  2ms
@@ -169,7 +169,7 @@ Hibernate spans group related queries under a single operation, reducing span co
 
 Before deploying, estimate your JDBC span volume:
 
-```
+```text
 JDBC spans/sec = requests/sec x queries/request
 Cost = JDBC spans/sec x 86400 x bytes/span x $/byte
 

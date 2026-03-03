@@ -34,7 +34,7 @@ flowchart LR
 
 Organize your chart repository for GitHub Actions.
 
-```
+```text
 helm-charts/
 ├── .github/
 │   └── workflows/

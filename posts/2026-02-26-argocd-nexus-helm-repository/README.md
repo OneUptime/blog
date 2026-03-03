@@ -68,7 +68,7 @@ To aggregate your hosted and proxy repos behind a single URL:
 
 The repository URL follows this pattern:
 
-```
+```text
 https://nexus.example.com/repository/helm-hosted/
 ```
 
@@ -93,7 +93,7 @@ argocd repo list
 
 You should see output similar to:
 
-```
+```text
 TYPE  NAME        REPO                                                    INSECURE  OCI    LFS    CREDS  STATUS
 helm  nexus-helm  https://nexus.example.com/repository/helm-hosted/       false     false  false  false  Successful
 ```

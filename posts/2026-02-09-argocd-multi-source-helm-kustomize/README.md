@@ -192,7 +192,7 @@ spec:
 
 Repository structure for monitoring-config:
 
-```
+```text
 monitoring-config/
 └── grafana/
     ├── values-production.yaml
@@ -203,7 +203,7 @@ monitoring-config/
 
 Repository structure for grafana-dashboards:
 
-```
+```text
 grafana-dashboards/
 └── dashboards/
     ├── application-metrics.json

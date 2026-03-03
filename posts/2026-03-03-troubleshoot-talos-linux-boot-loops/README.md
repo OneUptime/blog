@@ -55,7 +55,7 @@ If you cannot connect at all, you may need to use the console or a rescue boot t
 
 Kernel panics cause immediate reboots. Check the console output (physical console, IPMI, or cloud console) for messages like:
 
-```
+```text
 Kernel panic - not syncing: VFS: Unable to mount root fs
 ```
 

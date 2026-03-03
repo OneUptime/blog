@@ -12,7 +12,7 @@ A single-threshold alert on your SLO is a blunt instrument. It either fires or i
 
 Burn rate measures how fast you are consuming your error budget relative to a steady-state consumption. A burn rate of 1 means you will exhaust your budget exactly at the end of the SLO window (e.g., 30 days). A burn rate of 10 means you are consuming budget 10x faster - you would exhaust it in 3 days. A burn rate of 0.5 means you are running at half the allowed error rate.
 
-```
+```text
 Burn Rate = Observed Error Rate / Allowed Error Rate
 Allowed Error Rate = 1 - SLO Target
 ```

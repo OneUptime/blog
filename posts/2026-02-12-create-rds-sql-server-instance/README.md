@@ -46,7 +46,7 @@ SQL Server on RDS has some specific constraints:
 
 Pick your instance class based on workload.
 
-```
+```text
 Edition     | Min Instance    | Typical Production
 ------------|-----------------|-------------------
 Express     | db.t3.micro     | db.t3.medium
@@ -75,7 +75,7 @@ Standard RDS networking applies here. SQL Server uses port 1433 by default.
 
 This security group rule allows SQL Server connections from your application tier.
 
-```
+```text
 Type: MSSQL
 Protocol: TCP
 Port: 1433
@@ -137,7 +137,7 @@ sqlcmd -S my-app-sqlserver.abc123.us-east-1.rds.amazonaws.com,1433 \
 
 From your application, a typical connection string looks like this.
 
-```
+```text
 Server=my-app-sqlserver.abc123.us-east-1.rds.amazonaws.com,1433;
 Database=MyAppDB;
 User Id=admin;

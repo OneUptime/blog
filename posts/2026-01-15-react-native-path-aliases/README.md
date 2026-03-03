@@ -310,7 +310,7 @@ Establishing consistent alias patterns helps maintain a clean and organized code
 
 ### Standard Project Structure
 
-```
+```text
 src/
 ├── api/                 # @api - API clients and endpoints
 ├── assets/              # @assets - Images, fonts, etc.
@@ -775,7 +775,7 @@ import { Input } from '@components/forms/inputs/text/Input';
 
 Alias names should mirror your directory structure:
 
-```
+```text
 src/
 ├── components/  ->  @components
 ├── hooks/       ->  @hooks
@@ -951,7 +951,7 @@ Setting up path aliases in a monorepo requires additional configuration.
 
 For a monorepo using Yarn workspaces:
 
-```
+```text
 monorepo/
 ├── packages/
 │   ├── mobile/              # React Native app

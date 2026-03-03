@@ -597,7 +597,7 @@ flowchart LR
 
 ### 1. Organize Your Test Directory Structure
 
-```
+```text
 project/
 ├── policies/
 │   ├── validation/

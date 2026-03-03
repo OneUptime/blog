@@ -178,7 +178,7 @@ If you specify multiple tool types (which is technically possible but incorrect)
 
 Your directory has both a Helm chart and Kustomize overlays, and you want Kustomize:
 
-```
+```text
 my-app/
   Chart.yaml            # Helm marker - would normally trigger Helm
   kustomization.yaml    # You want this to win
@@ -202,7 +202,7 @@ spec:
 
 Your directory has Jsonnet configuration files but also plain YAML manifests. You want ArgoCD to use the YAML files directly:
 
-```
+```text
 my-app/
   deployment.yaml
   service.yaml

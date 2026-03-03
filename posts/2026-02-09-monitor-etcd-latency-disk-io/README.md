@@ -117,7 +117,7 @@ iostat -x 1 /dev/sda1
 
 Example output:
 
-```
+```text
 Device    r/s    w/s    rMB/s    wMB/s  avgrq-sz  avgqu-sz  await  r_await  w_await  svctm  %util
 sda1     12.0   89.0     0.05     2.34     48.51      0.15   1.45     0.82     1.56   0.65   6.52
 ```

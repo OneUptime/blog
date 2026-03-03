@@ -89,7 +89,7 @@ docker context create custom-key \
 
 For complex SSH setups, configure `~/.ssh/config`:
 
-```
+```text
 # ~/.ssh/config
 Host staging-docker
     HostName staging.example.com
@@ -345,7 +345,7 @@ sudo chown root:docker /var/run/docker.sock
 
 ### Use Jump Hosts
 
-```
+```text
 # ~/.ssh/config
 Host prod-docker
     HostName 10.0.0.5

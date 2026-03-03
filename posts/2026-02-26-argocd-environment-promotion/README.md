@@ -32,7 +32,7 @@ Each step updates a Git repository, and ArgoCD picks up the change to sync the t
 
 Organize your configuration repository so each environment has its own directory with a clear specification of which version to deploy:
 
-```
+```text
 config-repo/
   apps/
     my-app/

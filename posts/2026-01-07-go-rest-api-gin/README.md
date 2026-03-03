@@ -42,7 +42,7 @@ go get -u github.com/google/uuid
 
 A well-organized project structure is crucial for maintainability. Here is the recommended structure for a Gin-based API:
 
-```
+```text
 go-gin-api/
 ├── cmd/
 │   └── api/

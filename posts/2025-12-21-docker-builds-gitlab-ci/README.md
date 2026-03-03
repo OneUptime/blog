@@ -473,7 +473,7 @@ after_script:
 
 ### 4. Use .dockerignore
 
-```
+```text
 node_modules
 .git
 .env

@@ -250,7 +250,7 @@ With the connection established, build your report:
 
 In DirectQuery mode, you can still create DAX measures, but not all DAX functions work:
 
-```
+```text
 // Measure: Total Revenue
 // Simple aggregation works well in DirectQuery mode
 Total Revenue = SUM(Orders[TotalAmount])

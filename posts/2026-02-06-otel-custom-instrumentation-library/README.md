@@ -198,7 +198,7 @@ def get_users(headers, body):
 
 Structure your instrumentation as a proper Python package:
 
-```
+```text
 opentelemetry-instrumentation-internalhttp/
     pyproject.toml
     src/

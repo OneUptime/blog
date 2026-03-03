@@ -274,7 +274,7 @@ kubectl logs -n kube-system -l app=descheduler --tail=50
 
 Expected output:
 
-```
+```text
 I0209 14:22:10.123456 1 lownodeutilization.go:156] Node "worker-node-1" is overutilized
 I0209 14:22:10.234567 1 lownodeutilization.go:157] Usage: cpu=70%, memory=75%, pods=45%
 I0209 14:22:10.345678 1 lownodeutilization.go:189] Node "worker-node-2" is underutilized

@@ -10,7 +10,7 @@ Description: How to fix the Error Creating Resource Already Exists in Terraform 
 
 You run `terraform apply` and get:
 
-```
+```text
 Error: error creating S3 Bucket (my-bucket): BucketAlreadyExists: The
 requested bucket name is not available. The bucket namespace is shared by
 all users of the system. Please select a different name and try again.
@@ -18,7 +18,7 @@ all users of the system. Please select a different name and try again.
 
 Or with other resource types:
 
-```
+```text
 Error: error creating Security Group (web-sg): InvalidGroup.Duplicate:
 The security group 'web-sg' already exists for VPC 'vpc-abc123'
 

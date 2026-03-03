@@ -222,7 +222,7 @@ Kexample.com.+013+12345.private  # Private key (for signing)
 
 ### File Naming Convention
 
-```
+```text
 K<zone>+<algorithm>+<key-tag>.<extension>
 
 Where:
@@ -240,7 +240,7 @@ Where:
 cat Kexample.com.+013+12345.key
 ```
 
-```
+```text
 ; This is a key-signing key, keyid 12345, for example.com.
 ; Created: 20260108120000 (Thu Jan  8 12:00:00 2026)
 ; Publish: 20260108120000 (Thu Jan  8 12:00:00 2026)
@@ -259,7 +259,7 @@ example.com. IN DNSKEY 257 3 13 (
 cat Kexample.com.+013+12345.private
 ```
 
-```
+```text
 Private-key-format: v1.3
 Algorithm: 13 (ECDSAP256SHA256)
 PrivateKey: [base64-encoded private key material]
@@ -449,7 +449,7 @@ dnssec-dsfromkey -a SHA-256 -a SHA-384 Kexample.com.+013+12345.key
 
 ### DS Record Output
 
-```
+```text
 # SHA-256 DS record
 example.com. IN DS 12345 13 2 (
     49FD46E6C4B45C55D4AC69CBD3CD34AC1AFE51DE

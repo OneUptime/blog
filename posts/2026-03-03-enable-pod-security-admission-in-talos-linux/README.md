@@ -198,7 +198,7 @@ When PSA blocks a pod, it returns an error message explaining the violation. Her
 
 ### Violation: Privileged Container
 
-```
+```text
 Error: pods "my-pod" is forbidden: violates PodSecurity "baseline:latest":
   privileged (container "app" must not set securityContext.privileged=true)
 ```
@@ -215,7 +215,7 @@ containers:
 
 ### Violation: Host Namespace
 
-```
+```text
 Error: pods "my-pod" is forbidden: violates PodSecurity "baseline:latest":
   hostNetwork (must not set spec.hostNetwork=true)
 ```
@@ -232,7 +232,7 @@ spec:
 
 ### Violation: Running as Root
 
-```
+```text
 Error: pods "my-pod" is forbidden: violates PodSecurity "restricted:latest":
   runAsNonRoot (pod or container must set securityContext.runAsNonRoot=true)
 ```
@@ -253,7 +253,7 @@ spec:
 
 ### Violation: Capabilities
 
-```
+```text
 Error: pods "my-pod" is forbidden: violates PodSecurity "restricted:latest":
   unrestricted capabilities (container "app" must set securityContext.capabilities.drop=["ALL"])
 ```

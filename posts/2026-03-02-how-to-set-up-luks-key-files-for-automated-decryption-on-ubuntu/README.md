@@ -94,7 +94,7 @@ sudo nano /etc/crypttab
 ```
 
 The format is:
-```
+```text
 # name    device           keyfile           options
 cryptdata /dev/sda3        /root/luks-keyfile  luks
 ```
@@ -108,14 +108,14 @@ sudo blkid /dev/sda3
 ```
 
 Then use the UUID in crypttab:
-```
+```text
 # Using UUID for reliability
 cryptdata   UUID=abc123...your-uuid-here   /root/luks-keyfile   luks
 ```
 
 After the LUKS device is opened as `cryptdata`, you can mount the filesystem inside it. Add to `/etc/fstab`:
 
-```
+```text
 # Mount the decrypted volume
 /dev/mapper/cryptdata   /mnt/data   ext4   defaults   0   2
 ```
@@ -165,7 +165,7 @@ sudo blkid /dev/sdb1
 ```
 
 Edit `/etc/crypttab`:
-```
+```text
 # keyfile-timeout=10 means wait 10 seconds for the USB to appear
 cryptroot   UUID=root-luks-uuid   /dev/disk/by-uuid/usb-uuid-here:/luks-keyfile   luks,keyfile-timeout=10
 ```

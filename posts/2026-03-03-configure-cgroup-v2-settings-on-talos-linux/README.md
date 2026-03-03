@@ -128,7 +128,7 @@ machine:
 
 With memory QoS enabled, the cgroup hierarchy uses these controls:
 
-```
+```text
 memory.min  - Guaranteed minimum memory (from resource requests)
 memory.low  - Best-effort memory protection
 memory.high - Throttling threshold (soft limit)

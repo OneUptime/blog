@@ -232,7 +232,7 @@ The root module reads from `terraform.tfvars`. Child modules receive values thro
 
 Here is a standard file layout:
 
-```
+```text
 project/
   variables.tf          # Variable definitions (committed)
   outputs.tf            # Output definitions (committed)
@@ -260,7 +260,7 @@ terraform plan -var-file="production.tfvars" -var-file="secrets.tfvars"
 
 Files ending in `.auto.tfvars` are loaded automatically without needing `-var-file`:
 
-```
+```text
 project/
   variables.tf
   main.tf

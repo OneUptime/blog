@@ -1,6 +1,6 @@
 # Service Graph post
 
-# How to implement OpenTelemetry service graph generation from traces
+## How to implement OpenTelemetry service graph generation from traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

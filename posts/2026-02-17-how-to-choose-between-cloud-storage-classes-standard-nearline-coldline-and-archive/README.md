@@ -31,7 +31,7 @@ Let's say you store 1 TB of data for a year and read the entire dataset once per
 
 This comparison shows the monthly cost breakdown for each scenario:
 
-```
+```text
 Standard: 1000 GB x $0.020 + 1000 GB x $0.00 x 12 reads = $20.00/month
 Nearline: 1000 GB x $0.010 + 1000 GB x $0.01 = $10.00 + $10.00 = $20.00/month
 Coldline: 1000 GB x $0.004 + 1000 GB x $0.02 = $4.00 + $20.00 = $24.00/month
@@ -40,7 +40,7 @@ Archive:  1000 GB x $0.0012 + 1000 GB x $0.05 = $1.20 + $50.00 = $51.20/month
 
 For data read monthly, Nearline breaks even with Standard, and Coldline is actually more expensive. Now compare the same 1 TB with only one read per year:
 
-```
+```text
 Standard: $20.00/month x 12 = $240.00/year + $0.00 retrieval = $240.00/year
 Nearline: $10.00/month x 12 = $120.00/year + $10.00 retrieval = $130.00/year
 Coldline: $4.00/month x 12 = $48.00/year + $20.00 retrieval = $68.00/year

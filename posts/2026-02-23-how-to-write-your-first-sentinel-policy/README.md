@@ -161,7 +161,7 @@ has_small_instance = rule {
 
 Before deploying your policy, you should test it locally using the Sentinel CLI. Create a test directory structure like this:
 
-```
+```text
 my-policy/
   restrict-instance-types.sentinel
   test/

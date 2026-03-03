@@ -14,7 +14,7 @@ The `host_vars` directory is the counterpart to `group_vars`. While `group_vars`
 
 Create a `host_vars` directory alongside your inventory file. Inside it, create a YAML file named after each host that needs custom variables.
 
-```
+```text
 project/
   ansible.cfg
   inventory.ini
@@ -98,7 +98,7 @@ read_only: true
 
 For hosts with many variables, replace the single YAML file with a directory containing multiple files.
 
-```
+```text
 host_vars/
   db-primary.example.com/
     connection.yml
@@ -249,7 +249,7 @@ Everything else goes in `host_vars/` files. This keeps the inventory file scanna
 
 Here is a realistic host_vars layout for a Kubernetes cluster where each node has a different role and configuration:
 
-```
+```text
 host_vars/
   k8s-master-01.example.com/
     connection.yml

@@ -228,7 +228,7 @@ A powerful pattern is using extract to cross-reference between different data st
 ```
 
 Output:
-```
+```text
 alice has permissions: ['delete', 'manage_users', 'read', 'write']
 bob has permissions: ['deploy', 'read', 'rollback', 'write']
 charlie has permissions: ['read']

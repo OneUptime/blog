@@ -265,7 +265,7 @@ spec:
 
 The actual concurrency for each level:
 
-```
+```text
 Concurrency = (assuredConcurrencyShares / sum of all shares) * max-requests-inflight
 
 Example with max-requests-inflight=800:

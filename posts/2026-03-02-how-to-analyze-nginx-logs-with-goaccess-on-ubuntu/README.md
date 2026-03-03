@@ -35,7 +35,7 @@ goaccess --version
 
 Before analyzing logs, GoAccess needs to know the log format. The default Nginx combined log format looks like:
 
-```
+```text
 192.168.1.100 - - [02/Mar/2026:10:15:30 +0000] "GET /api/users HTTP/1.1" 200 1234 "https://example.com" "Mozilla/5.0..."
 ```
 

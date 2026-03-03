@@ -249,7 +249,7 @@ module.exports = parsed.data;
 
 Use different files for different environments:
 
-```
+```text
 .env                # Default/shared settings
 .env.local          # Local overrides (gitignored)
 .env.development    # Development-specific

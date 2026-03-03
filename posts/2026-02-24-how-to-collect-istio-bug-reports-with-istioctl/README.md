@@ -20,7 +20,7 @@ istioctl bug-report
 
 This collects data from the entire mesh and creates a compressed tar.gz file in the current directory:
 
-```
+```text
 Creating an Istio bug report...
 Collecting cluster information...
 Collecting Istio control plane information...
@@ -38,7 +38,7 @@ The bug report archive contains several directories of information:
 
 ### Cluster Information
 
-```
+```text
 cluster-info/
   nodes.yaml
   namespaces.yaml
@@ -52,7 +52,7 @@ General Kubernetes cluster state that provides context for the Istio-specific da
 
 ### Istio Control Plane
 
-```
+```text
 istio-system/
   istiod-*/
     logs.txt
@@ -68,7 +68,7 @@ Istiod logs, gateway logs, and control plane configuration. This is the most imp
 
 ### Per-Pod Proxy Data
 
-```
+```text
 default/
   httpbin-abc123/
     istio-proxy-logs.txt
@@ -81,7 +81,7 @@ For each pod with a sidecar, the report collects proxy logs, full Envoy configur
 
 ### Istio Resources
 
-```
+```text
 istio-resources/
   virtualservices.yaml
   destinationrules.yaml

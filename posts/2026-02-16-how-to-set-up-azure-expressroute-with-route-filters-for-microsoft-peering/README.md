@@ -175,7 +175,7 @@ show ip bgp neighbors 10.0.0.1 routes
 
 On your on-premises routers, you should apply additional filtering to ensure only expected routes are accepted and that traffic is routed optimally:
 
-```
+```text
 ! Cisco IOS example - accept only specific communities from Microsoft peering
 ip community-list standard MSFT-EXCHANGE permit 12076:5100
 ip community-list standard MSFT-SHAREPOINT permit 12076:5110

@@ -124,13 +124,13 @@ kubectl get receiver github-receiver -n flux-system -o jsonpath='{.status.webhoo
 
 You'll see something like:
 
-```
+```text
 /hook/6d1d7f8e9c0b1a2b3c4d5e6f7a8b9c0d
 ```
 
 Your full webhook URL is:
 
-```
+```text
 https://flux.yourdomain.com/hook/6d1d7f8e9c0b1a2b3c4d5e6f7a8b9c0d
 ```
 
@@ -295,7 +295,7 @@ kubectl logs -n flux-system deploy/notification-controller -f
 
 You'll see webhook events:
 
-```
+```text
 Handling request from GitHub for flux-system/flux-system
 Triggering reconciliation for GitRepository/flux-system/flux-system
 ```

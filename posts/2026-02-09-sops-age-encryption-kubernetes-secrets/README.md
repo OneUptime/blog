@@ -61,7 +61,7 @@ cat key.txt
 
 Output:
 
-```
+```text
 # created: 2026-02-09T10:00:00Z
 # public key: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 AGE-SECRET-KEY-1GFPYYYYY...

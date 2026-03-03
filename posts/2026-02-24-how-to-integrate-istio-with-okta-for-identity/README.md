@@ -229,7 +229,7 @@ For user-facing services, implement the authorization code flow. Here is the flo
 
 The authorization URL:
 
-```
+```text
 https://mycompany.okta.com/oauth2/aus1234567/v1/authorize?
   client_id=your-client-id&
   response_type=code&

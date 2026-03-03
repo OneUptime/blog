@@ -152,7 +152,7 @@ terraform init
 
 For larger organizations, structure your state keys consistently. Here's a pattern that works well.
 
-```
+```text
 mycompany-terraform-state/
   production/
     networking/terraform.tfstate

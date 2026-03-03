@@ -23,7 +23,7 @@ This guide builds a complete expense tracker application with a React frontend a
 
 The project uses a monorepo structure with the frontend and backend in the same repository:
 
-```
+```text
 expense-tracker/
   client/           # React frontend
     src/

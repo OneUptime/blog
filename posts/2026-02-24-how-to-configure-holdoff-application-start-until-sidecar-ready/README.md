@@ -16,7 +16,7 @@ In a standard Kubernetes pod, all containers start at roughly the same time. The
 
 The timeline looks like this:
 
-```
+```text
 t=0:   Pod scheduled
 t=0.1: istio-init container runs (sets up iptables)
 t=0.5: istio-init completes
@@ -95,7 +95,7 @@ spec:
 
 With this enabled, Istio injects the proxy as a native sidecar init container instead of a regular container. The startup sequence becomes:
 
-```
+```text
 t=0:   Pod scheduled
 t=0.1: istio-init runs (iptables setup)
 t=0.5: istio-init completes

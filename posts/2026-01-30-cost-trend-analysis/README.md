@@ -137,7 +137,7 @@ for date, value in forecasts:
 ```
 
 Output:
-```
+```text
 Trend Direction: increasing
 Daily Growth: $22.42/day
 Monthly Growth: $672.73/month

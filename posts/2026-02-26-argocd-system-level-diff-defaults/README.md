@@ -30,7 +30,7 @@ If you manage ArgoCD with Helm or Kustomize, include these settings in your Argo
 
 The key format for system-level diff defaults follows this pattern:
 
-```
+```text
 resource.customizations.ignoreDifferences.<group>_<kind>
 ```
 

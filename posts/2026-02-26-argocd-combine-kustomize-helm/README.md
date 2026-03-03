@@ -206,7 +206,7 @@ Let us say you deploy the Prometheus stack but need to add custom annotations an
 
 Directory structure:
 
-```
+```text
 apps/prometheus-stack/
   kustomization.yaml
   values.yaml

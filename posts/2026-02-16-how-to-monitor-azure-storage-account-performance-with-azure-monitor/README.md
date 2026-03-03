@@ -167,7 +167,7 @@ Once diagnostic logs are flowing to Log Analytics, you can run KQL queries to an
 
 Find the slowest blob operations in the last 24 hours:
 
-```
+```text
 StorageBlobLogs
 | where TimeGenerated > ago(24h)
 | where DurationMs > 500
@@ -178,7 +178,7 @@ StorageBlobLogs
 
 Identify which clients are generating the most traffic:
 
-```
+```text
 StorageBlobLogs
 | where TimeGenerated > ago(1h)
 | summarize RequestCount = count(), TotalBytes = sum(ResponseBodySize) by CallerIpAddress
@@ -188,7 +188,7 @@ StorageBlobLogs
 
 Detect failed authentication attempts:
 
-```
+```text
 StorageBlobLogs
 | where TimeGenerated > ago(24h)
 | where StatusCode == 403
@@ -198,7 +198,7 @@ StorageBlobLogs
 
 Find throttled requests and their patterns:
 
-```
+```text
 StorageBlobLogs
 | where TimeGenerated > ago(6h)
 | where StatusCode == 503 or StatusCode == 429

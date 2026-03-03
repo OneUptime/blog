@@ -86,7 +86,7 @@ ansible all -m ping -vvv 2>&1 | grep -i "control"
 
 You should see lines like:
 
-```
+```text
 <web-01> SSH: EXEC ssh -o ControlMaster=auto -o ControlPersist=300s ...
 ```
 

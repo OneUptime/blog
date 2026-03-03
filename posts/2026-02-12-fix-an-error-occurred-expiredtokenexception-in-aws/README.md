@@ -12,7 +12,7 @@ The ExpiredTokenException means exactly what it says - the temporary security cr
 
 Here's what the error looks like:
 
-```
+```text
 An error occurred (ExpiredTokenException) when calling the ListBuckets operation:
 The security token included in the request is expired
 ```

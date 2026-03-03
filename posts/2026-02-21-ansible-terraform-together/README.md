@@ -31,7 +31,7 @@ graph TD
 
 ## Project Structure
 
-```
+```text
 infrastructure/
   terraform/
     main.tf

@@ -327,7 +327,7 @@ Tomcat logs go to `/opt/tomcat/logs/`. Configure log rotation:
 sudo nano /etc/logrotate.d/tomcat
 ```
 
-```
+```text
 /opt/tomcat/logs/*.log
 /opt/tomcat/logs/*.txt {
     daily

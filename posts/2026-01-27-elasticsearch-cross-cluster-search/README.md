@@ -927,7 +927,7 @@ echo "=== Health Check Complete ==="
 
 Use consistent, descriptive cluster names:
 
-```
+```text
 <environment>_<region>_<purpose>
 
 Examples:

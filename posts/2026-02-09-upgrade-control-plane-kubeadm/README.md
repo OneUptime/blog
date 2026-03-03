@@ -65,7 +65,7 @@ sudo kubeadm upgrade plan
 
 The upgrade plan shows:
 
-```
+```text
 Components that must be upgraded manually after you have upgraded the control plane with 'kubeadm upgrade apply':
 COMPONENT   CURRENT       TARGET
 kubelet     1.27.8        1.28.4
@@ -100,7 +100,7 @@ sudo kubeadm upgrade apply v1.28.4
 
 Monitor the upgrade progress. You'll see output like:
 
-```
+```text
 [upgrade/config] Making sure the configuration is correct:
 [upgrade/config] Reading configuration from the cluster...
 [upgrade/config] FYI: You can look at this config file with 'kubectl -n kube-system get cm kubeadm-config -o yaml'

@@ -78,7 +78,7 @@ go get github.com/falcosecurity/plugin-sdk-go@latest
 
 A well-organized plugin project looks like this:
 
-```
+```text
 falco-github-plugin/
 ├── go.mod
 ├── go.sum

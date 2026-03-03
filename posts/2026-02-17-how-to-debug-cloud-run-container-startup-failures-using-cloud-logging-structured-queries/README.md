@@ -28,7 +28,7 @@ Before we get into debugging, here are the most common reasons a container fails
 
 Start with this query to see all startup-related logs for your service:
 
-```
+```text
 resource.type = "cloud_run_revision"
 resource.labels.service_name = "my-service"
 severity >= ERROR
@@ -161,7 +161,7 @@ The gcloud CLI is good for quick checks, but the Log Explorer in the Cloud Conso
 
 ### All Logs from a Specific Revision
 
-```
+```text
 resource.type = "cloud_run_revision"
 resource.labels.service_name = "my-service"
 resource.labels.revision_name = "my-service-00005-abc"
@@ -169,7 +169,7 @@ resource.labels.revision_name = "my-service-00005-abc"
 
 ### System Logs (from Cloud Run platform, not your app)
 
-```
+```text
 resource.type = "cloud_run_revision"
 resource.labels.service_name = "my-service"
 logName = "projects/MY_PROJECT/logs/run.googleapis.com%2Frequests"
@@ -178,7 +178,7 @@ httpRequest.status >= 500
 
 ### Combining Application and System Logs
 
-```
+```text
 resource.type = "cloud_run_revision"
 resource.labels.service_name = "my-service"
 (severity >= ERROR OR httpRequest.status >= 500)

@@ -59,7 +59,7 @@ kubectl exec deploy/caller-app -c istio-proxy -- curl -s localhost:15000/stats |
 
 Use Prometheus for historical data:
 
-```
+```text
 # Peak active connections over the last 24 hours
 max_over_time(envoy_cluster_upstream_cx_active{cluster_name="outbound|8080||my-service.my-namespace.svc.cluster.local"}[24h])
 

@@ -198,7 +198,7 @@ This tries the most specific match first (like `Ubuntu-22.yml`), then the distri
 
 Sometimes you need finer granularity than OS family. Different versions of the same distribution might need different settings:
 
-```
+```text
 roles/postgresql/vars/
   Debian.yml          # Generic Debian family
   Ubuntu.yml          # Ubuntu-specific overrides

@@ -34,7 +34,7 @@ talosctl -n <node-ip> logs kubelet --tail 100
 
 One of the most frequent kubelet errors looks like this in the logs:
 
-```
+```text
 E0303 10:15:42.123456 kubelet.go:2347] "Error getting node" err="Get \"https://10.0.0.10:6443/api/v1/nodes/talos-worker-1\": dial tcp 10.0.0.10:6443: connect: connection refused"
 ```
 
@@ -62,7 +62,7 @@ curl -k https://<control-plane-endpoint>:6443/healthz
 
 Kubelet uses client certificates to authenticate with the API server. If the certificates are expired or do not match, you will see errors like:
 
-```
+```text
 E0303 10:20:00.000000 kubelet.go:2347] "Error getting node" err="Unauthorized"
 ```
 
@@ -85,7 +85,7 @@ talosctl -n <node-ip> get certificate
 
 The kubelet depends on the container runtime (containerd on Talos) being functional. If containerd is not ready, the kubelet will fail with messages like:
 
-```
+```text
 E0303 10:25:00.000000 kubelet.go:2347] "Container runtime not ready" msg="runtime status check failed"
 ```
 

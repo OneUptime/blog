@@ -285,7 +285,7 @@ func main() {
 
 Go also supports `internal` packages for restricted visibility:
 
-```
+```text
 myproject/
 ├── internal/
 │   └── secret/

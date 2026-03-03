@@ -165,7 +165,7 @@ sudo visudo
 
 Add:
 
-```
+```text
 # Allow acme user to reload nginx
 acme ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload nginx
 ```
@@ -216,7 +216,7 @@ crontab -l | grep acme
 
 You should see something like:
 
-```
+```text
 5 0 * * * "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" > /dev/null
 ```
 
@@ -228,7 +228,7 @@ crontab -e
 
 Replace the line with:
 
-```
+```text
 5 0 * * * "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" >> /var/log/acme-renew.log 2>&1
 ```
 

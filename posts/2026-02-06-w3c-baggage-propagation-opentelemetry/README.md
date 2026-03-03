@@ -14,7 +14,7 @@ When you work with distributed systems, you often need to carry more than just t
 
 W3C Baggage is a companion specification to W3C Trace Context. While Trace Context carries trace-id, span-id, and trace-flags, Baggage carries user-defined key-value pairs. These pairs propagate through the `baggage` HTTP header.
 
-```
+```text
 baggage: userId=12345,tenantId=acme-corp,region=us-east-1
 ```
 

@@ -177,7 +177,7 @@ spec:
 
 The `nominalConcurrencyShares` field does not directly specify the number of concurrent requests. Instead, it represents shares in a pool. The actual concurrency limit is calculated based on:
 
-```
+```text
 actual_concurrency = (nominalConcurrencyShares / total_shares) * server_concurrency_limit
 ```
 

@@ -206,7 +206,7 @@ ffmpeg \
 
 Playback URLs:
 
-```
+```text
 # RTMP playback (VLC, FFmpeg)
 rtmp://YOUR_SERVER_IP/live/stream1
 
@@ -310,7 +310,7 @@ vhost __defaultVhost__ {
 
 WebRTC playback URL:
 
-```
+```text
 webrtc://YOUR_PUBLIC_IP/live/stream1
 ```
 

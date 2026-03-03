@@ -63,7 +63,7 @@ vnstat
 
 Sample output:
 
-```
+```text
                       rx      /      tx      /     total    /   estimated
  enp0s3:
        2026-02      45.21 GiB  /   12.83 GiB  /   58.04 GiB
@@ -227,7 +227,7 @@ Add this to cron for hourly checks:
 crontab -e
 ```
 
-```
+```text
 # Check bandwidth every hour
 0 * * * * /usr/local/bin/check-bandwidth.sh
 ```

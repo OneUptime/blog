@@ -39,7 +39,7 @@ Before deploying OneUptime with ArgoCD, ensure you have:
 
 ## Repository Structure
 
-```
+```text
 observability/
   oneuptime/
     Chart.yaml

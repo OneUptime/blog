@@ -39,7 +39,7 @@ A prerequisite is a flag that must be enabled before another flag can take effec
 
 Real-world example: You're rolling out a new AI-powered search feature. It depends on the new search infrastructure being enabled, which itself depends on the new database being active.
 
-```
+```text
 new_database (prerequisite)
     └── new_search_infra (prerequisite)
             └── ai_search (dependent feature)
@@ -1182,7 +1182,7 @@ ml_ranking_model
 search_infra_v2
     |
 ai_search <-- YOU ARE HERE
-```
+```text
 
 ### Rollout Plan
 1. Enable `search_infra_v2` for all users (done)

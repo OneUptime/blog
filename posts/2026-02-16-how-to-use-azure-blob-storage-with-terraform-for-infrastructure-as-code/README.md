@@ -312,7 +312,7 @@ terraform apply tfplan
 
 Azure Blob Storage backend supports state locking using blob leases. When one team member is running `terraform apply`, others will see a lock message if they try to modify the same state:
 
-```
+```text
 Error: Error locking state: Error acquiring the state lock
 Lock Info:
   ID:        xxxxx-xxxx-xxxx-xxxx

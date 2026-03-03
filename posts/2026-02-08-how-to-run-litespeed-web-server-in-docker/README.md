@@ -205,7 +205,7 @@ docker exec ls-wordpress bash -c \
 
 Customize the virtual host settings for better performance.
 
-```
+```text
 # vhconf/vhconf.conf
 docRoot                   /var/www/vhosts/localhost/html
 enableGzip                1
@@ -292,7 +292,7 @@ docker exec ls-wordpress bash -c \
 
 For non-WordPress PHP applications, use LiteSpeed's built-in cache directives.
 
-```
+```text
 # .htaccess cache rules for LiteSpeed
 <IfModule LiteSpeed>
     # Enable public cache for static content

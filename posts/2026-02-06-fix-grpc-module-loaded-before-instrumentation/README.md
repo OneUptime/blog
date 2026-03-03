@@ -37,7 +37,7 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
 You will see:
 
-```
+```text
 @opentelemetry/instrumentation-grpc Module @grpc/grpc-js has been loaded before
 @opentelemetry/instrumentation-grpc can patch it.
 ```
@@ -120,13 +120,13 @@ This gives you protobuf efficiency without the gRPC dependency conflict.
 
 After applying any of the fixes above, restart your application with debug logging and confirm you see:
 
-```
+```text
 @opentelemetry/instrumentation-grpc Applying instrumentation patch for module @grpc/grpc-js
 ```
 
 Then make a gRPC call and verify that spans appear. A successful gRPC call should produce spans like:
 
-```
+```text
 grpc.unary/mypackage.MyService/MyMethod    [========] 25ms
 ```
 

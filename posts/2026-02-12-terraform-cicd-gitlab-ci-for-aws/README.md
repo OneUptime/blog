@@ -29,7 +29,7 @@ graph LR
 
 ## Project Structure
 
-```
+```text
 infrastructure/
   environments/
     dev/

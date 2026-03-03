@@ -37,7 +37,7 @@ The inheritance rules allow you to:
 
 The constraint for restricting resource locations is:
 
-```
+```text
 constraints/gcp.resourceLocations
 ```
 
@@ -315,7 +315,7 @@ gcloud logging metrics create location-policy-violations \
 
 For organizations that operate in multiple countries with different data residency requirements:
 
-```
+```text
 Organization
   Folder: US Operations
     Policy: in:us-locations

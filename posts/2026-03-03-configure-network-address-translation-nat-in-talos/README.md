@@ -20,7 +20,7 @@ Kubernetes uses several types of NAT:
 
 When a pod communicates with the external world, its private pod IP address is translated to the node's IP address. This is called source NAT or masquerading:
 
-```
+```text
 Pod (10.244.1.5) -> [SNAT to 192.168.1.10] -> Internet
 ```
 
@@ -40,7 +40,7 @@ spec:
 
 When external traffic reaches a NodePort or LoadBalancer service, the destination address is translated to a pod IP:
 
-```
+```text
 Client -> Node:30080 -> [DNAT to 10.244.1.5:8080] -> Pod
 ```
 

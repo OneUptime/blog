@@ -39,7 +39,7 @@ argocd app resources my-app | grep -v Healthy
 
 You will see output like:
 
-```
+```text
 GROUP  KIND        NAMESPACE   NAME       STATUS  HEALTH       MESSAGE
 apps   Deployment  production  my-api     Synced  Progressing  Waiting for rollout to finish
        Service     production  my-api     Synced  Healthy

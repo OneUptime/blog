@@ -16,7 +16,7 @@ This guide covers battle-tested patterns for structuring Node.js applications th
 
 Most Node.js tutorials show you how to build a CRUD app in 50 lines. That's fine for learning, but real applications end up looking like this:
 
-```
+```text
 app/
   index.js        # 2000 lines of routes, business logic, and database calls
   utils.js        # 800 lines of "helper" functions
@@ -38,7 +38,7 @@ There are two main approaches to organizing a Node.js codebase: by technical rol
 
 Group code by what it does technically - controllers, services, repositories.
 
-```
+```text
 src/
   controllers/
     user.controller.ts
@@ -75,7 +75,7 @@ This works well for smaller applications where the team is comfortable with MVC 
 
 Group code by business domain - everything related to users lives together.
 
-```
+```text
 src/
   modules/
     users/
@@ -615,7 +615,7 @@ When your application grows into multiple services, you need to decide how to or
 
 Everything in one repository.
 
-```
+```text
 my-app/
   src/
   package.json
@@ -628,7 +628,7 @@ my-app/
 
 Multiple packages in one repository.
 
-```
+```text
 my-platform/
   packages/
     api/
@@ -650,7 +650,7 @@ my-platform/
 
 Each service in its own repository.
 
-```
+```text
 api-service/        (separate repo)
 worker-service/     (separate repo)
 shared-library/     (separate repo, published to npm)

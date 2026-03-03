@@ -100,7 +100,7 @@ sudo lvm version
 
 You should see output showing the LVM version and library information:
 
-```
+```text
   LVM version:     2.03.16(2) (2022-05-18)
   Library version: 1.02.185 (2022-05-18)
   Driver version:  4.47.0
@@ -124,7 +124,7 @@ sudo parted -l
 
 Example output from `lsblk`:
 
-```
+```text
 NAME   MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
 sda      8:0    0   100G  0 disk
 ├─sda1   8:1    0     1G  0 part /boot
@@ -218,7 +218,7 @@ sudo vgdisplay vg_storage
 
 Example `vgdisplay` output:
 
-```
+```text
   --- Volume group ---
   VG Name               vg_storage
   System ID

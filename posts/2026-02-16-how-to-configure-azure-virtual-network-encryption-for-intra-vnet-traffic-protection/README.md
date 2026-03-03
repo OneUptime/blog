@@ -201,7 +201,7 @@ az network watcher flow-log create \
 
 You can also verify encryption at the packet level using traffic analytics:
 
-```
+```text
 // KQL query to check traffic encryption status
 AzureNetworkAnalytics_CL
 | where FlowType_s == "IntraVNet"

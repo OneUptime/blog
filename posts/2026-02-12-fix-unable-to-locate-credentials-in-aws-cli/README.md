@@ -10,7 +10,7 @@ Description: Diagnose and fix the 'Unable to locate credentials' error in AWS CL
 
 You run an AWS CLI command and get hit with this:
 
-```
+```text
 Unable to locate credentials. You can configure credentials by running "aws configure".
 ```
 

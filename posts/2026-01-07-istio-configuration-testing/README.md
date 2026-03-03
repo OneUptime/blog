@@ -1248,7 +1248,7 @@ deny[msg] {
 
 Structure your Istio configurations for maintainability:
 
-```
+```text
 istio/
 ├── base/                           # Base configurations shared across environments
 │   ├── gateway.yaml

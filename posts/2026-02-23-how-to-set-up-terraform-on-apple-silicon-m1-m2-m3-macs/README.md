@@ -47,7 +47,7 @@ terraform -version
 
 You should see output like:
 
-```
+```text
 Terraform v1.7.5
 on darwin_arm64
 ```

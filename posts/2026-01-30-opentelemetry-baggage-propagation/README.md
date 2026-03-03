@@ -145,7 +145,7 @@ sequenceDiagram
 
 The W3C Baggage specification defines the header format:
 
-```
+```text
 baggage: key1=value1,key2=value2;metadata,key3=value3
 ```
 
@@ -1552,7 +1552,7 @@ curl -X POST http://localhost:3000/api/orders \
 
 Expected output showing baggage propagation:
 
-```
+```text
 # Gateway logs:
 API Gateway running on port 3000
 

@@ -129,7 +129,7 @@ This creates or updates a `.gitattributes` file:
 cat .gitattributes
 ```
 
-```
+```text
 *.psd filter=lfs diff=lfs merge=lfs -text
 *.zip filter=lfs diff=lfs merge=lfs -text
 *.mp4 filter=lfs diff=lfs merge=lfs -text
@@ -159,7 +159,7 @@ Here is a recommended `.gitattributes` for various project types:
 
 ### General Purpose
 
-```
+```text
 # Archives
 *.7z filter=lfs diff=lfs merge=lfs -text
 *.br filter=lfs diff=lfs merge=lfs -text
@@ -191,7 +191,7 @@ Here is a recommended `.gitattributes` for various project types:
 
 ### Data Science Projects
 
-```
+```text
 # Datasets
 *.csv filter=lfs diff=lfs merge=lfs -text
 *.parquet filter=lfs diff=lfs merge=lfs -text
@@ -213,7 +213,7 @@ Here is a recommended `.gitattributes` for various project types:
 
 ### Game Development
 
-```
+```text
 # Unity
 *.asset filter=lfs diff=lfs merge=lfs -text
 *.cubemap filter=lfs diff=lfs merge=lfs -text

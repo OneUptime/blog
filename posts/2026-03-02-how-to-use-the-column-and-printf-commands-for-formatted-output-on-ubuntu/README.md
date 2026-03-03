@@ -22,7 +22,7 @@ echo -e "name age city\nAlice 30 London\nBob 25 Tokyo\nCharlie 35 Paris" | colum
 ```
 
 Output:
-```
+```text
 name     age  city
 Alice    30   London
 Bob      25   Tokyo
@@ -111,7 +111,7 @@ printf FORMAT [ARGUMENTS...]
 
 ### Format Specifiers
 
-```
+```text
 %s    - string
 %d    - decimal integer
 %f    - floating point number

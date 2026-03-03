@@ -53,7 +53,7 @@ Save these files in your Git repository. You will need them for the ArgoCD Appli
 
 Create a Git repo structure that ArgoCD can consume:
 
-```
+```text
 k8s-deployments/
   apps/
     my-app/

@@ -182,7 +182,7 @@ ansible-playbook site.yml -vvvv
 
 Look for lines like these in the output:
 
-```
+```text
 EXEC /bin/sh -c 'sudo -H -S -n -u root /bin/sh -c '"'"'echo BECOME-SUCCESS-... ; /usr/bin/python3'"'"''
 ```
 

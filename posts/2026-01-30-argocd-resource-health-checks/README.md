@@ -83,7 +83,7 @@ data:
 ### Health Check Naming Convention
 
 The key format is:
-```
+```text
 resource.customizations.health.<group>_<kind>
 ```
 
@@ -759,7 +759,7 @@ Complex health checks slow down sync operations. Aim for scripts that:
 
 Store health checks in Git alongside your ArgoCD configuration:
 
-```
+```text
 argocd-config/
   base/
     argocd-cm.yaml

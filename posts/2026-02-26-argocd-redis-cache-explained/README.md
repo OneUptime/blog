@@ -48,7 +48,7 @@ Redis in ArgoCD caches several categories of data:
 
 The most frequently accessed cache. For each tracked repository and branch, Redis stores the latest commit SHA. Instead of doing a `git ls-remote` on every reconciliation, the controller checks Redis first.
 
-```
+```text
 Key pattern: git-ls-remote|<repo-url>|<branch>
 Value: commit SHA
 TTL: configurable, default varies by polling interval
@@ -58,7 +58,7 @@ TTL: configurable, default varies by polling interval
 
 After the Repo Server generates manifests for a specific commit, the result is cached in Redis. This is keyed by repository URL, commit SHA, path, and any parameters (Helm values, Kustomize options).
 
-```
+```text
 Key pattern: mfst|<repo-url>|<revision>|<path>|<params-hash>
 Value: serialized manifest list
 TTL: 24 hours by default

@@ -14,7 +14,7 @@ Naming conventions might seem trivial, but on a team of five engineers working o
 
 Role names should be lowercase with underscores separating words. They should describe the software or function they manage, not the action they perform.
 
-```
+```text
 # GOOD role names
 roles/
   nginx/
@@ -35,7 +35,7 @@ roles/
 
 If a role is specific to an application, prefix it with the application name:
 
-```
+```text
 roles/
   myapp_backend/
   myapp_frontend/
@@ -175,7 +175,7 @@ When a role might be included multiple times, prefix handlers with the role name
 
 Playbook files should use lowercase with hyphens. They should describe what they target or accomplish:
 
-```
+```text
 playbooks/
   site.yml                    # Master playbook
   webservers.yml              # Targets web servers
@@ -187,7 +187,7 @@ playbooks/
 
 Template files should match the configuration file they produce, with a `.j2` extension:
 
-```
+```text
 roles/nginx/templates/
   nginx.conf.j2
   default-site.conf.j2

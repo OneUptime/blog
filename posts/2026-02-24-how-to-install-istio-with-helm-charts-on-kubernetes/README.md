@@ -97,7 +97,7 @@ Check that istiod is running:
 kubectl get pods -n istio-system
 ```
 
-```
+```text
 NAME                      READY   STATUS    RESTARTS   AGE
 istiod-6c8d5f7b8-x9k2m   1/1     Running   0          45s
 ```

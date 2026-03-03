@@ -348,7 +348,7 @@ echo "=== Build log saved to build.log ==="
 
 BuildKit errors follow a pattern. Here is how to decode them:
 
-```
+```text
 #12 [builder 4/5] RUN npm run build
 #12 ERROR: process "/bin/sh -c npm run build" did not complete successfully: exit code: 1
 ------

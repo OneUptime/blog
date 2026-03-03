@@ -23,7 +23,7 @@ Before you publish, you need:
 
 Ensure your role follows the standard structure:
 
-```
+```text
 ansible-role-nginx/
   defaults/
     main.yml
@@ -153,7 +153,7 @@ MIT
 ## Author Information
 
 Created by [nawazdhandala](https://github.com/nawazdhandala).
-```
+```text
 
 ## Step 4: Add a LICENSE File
 

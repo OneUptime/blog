@@ -181,7 +181,7 @@ Explore's time controls work across split views:
 
 ### Keyboard Shortcuts
 
-```
+```text
 Shift + Click + Drag: Zoom to selection
 Ctrl + Z: Undo time range change
 Arrow keys: Navigate through time (when time picker is focused)
@@ -276,7 +276,7 @@ Found a useful query? Click "Add to dashboard" to create a panel on an existing 
 
 The URL in Explore includes your query, time range, and data source. Share it with teammates:
 
-```
+```text
 https://grafana.example.com/explore?orgId=1&left={"datasource":"prometheus","queries":[{"expr":"rate(http_requests_total[5m])"}],"range":{"from":"now-1h","to":"now"}}
 ```
 

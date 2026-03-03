@@ -12,7 +12,7 @@ Smaller Docker images lead to faster deployments, reduced bandwidth costs, small
 
 ## Image Size Comparison
 
-```
+```text
 Common Base Image Sizes
 ┌────────────────────────────────────────────────────────────┐
 │  ubuntu:22.04          │████████████████████████│   77 MB  │

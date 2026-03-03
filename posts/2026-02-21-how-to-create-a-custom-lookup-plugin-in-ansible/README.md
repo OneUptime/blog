@@ -268,7 +268,7 @@ def test_missing_key_returns_none(config_file):
 
 If you want to share your lookup plugin with others, package it in an Ansible collection. The directory structure looks like this:
 
-```
+```text
 my_namespace/my_collection/
     galaxy.yml
     plugins/

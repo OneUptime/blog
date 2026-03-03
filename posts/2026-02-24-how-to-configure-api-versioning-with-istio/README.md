@@ -303,14 +303,14 @@ This lets internal testers force a specific version with a header while regular 
 
 Track traffic distribution between versions with Prometheus:
 
-```
+```text
 sum(rate(istio_requests_total{destination_workload="user-service-v1",reporter="destination"}[5m]))
 sum(rate(istio_requests_total{destination_workload="user-service-v2",reporter="destination"}[5m]))
 ```
 
 Monitor error rates per version to catch regressions:
 
-```
+```text
 sum(rate(istio_requests_total{destination_workload="user-service-v2",response_code=~"5..",reporter="destination"}[5m])) /
 sum(rate(istio_requests_total{destination_workload="user-service-v2",reporter="destination"}[5m]))
 ```

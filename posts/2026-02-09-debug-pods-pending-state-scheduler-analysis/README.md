@@ -57,7 +57,7 @@ kubectl describe pod pending-pod
 
 Look for messages like:
 
-```
+```text
 Events:
   Type     Reason            Message
   ----     ------            -------
@@ -68,17 +68,17 @@ This tells you exactly what is wrong: no nodes have enough CPU.
 
 Other common event messages:
 
-```
+```text
 0/3 nodes are available: 3 node(s) didn't match node selector.
 ```
 Node selector mismatch.
 
-```
+```text
 0/3 nodes are available: 3 node(s) had taints that the pod didn't tolerate.
 ```
 Taint/toleration issue.
 
-```
+```text
 0/3 nodes are available: 1 Insufficient memory, 2 node(s) didn't match pod affinity rules.
 ```
 Multiple issues: some nodes lack memory, others do not match affinity rules.
@@ -95,7 +95,7 @@ kubectl top nodes
 
 Output:
 
-```
+```text
 NAME           CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
 worker-node-1  1900m        95%    7500Mi          93%
 worker-node-2  1950m        97%    7800Mi          97%
@@ -112,7 +112,7 @@ kubectl describe node worker-node-1
 
 Look for the "Allocated resources" section:
 
-```
+```text
 Allocated resources:
   (Total limits may be over 100 percent, i.e., overcommitted.)
   Resource           Requests      Limits
@@ -230,7 +230,7 @@ kubectl describe node worker-node-1 | grep Taints
 
 Output:
 
-```
+```text
 Taints:  gpu=true:NoSchedule
 ```
 
@@ -330,7 +330,7 @@ kubectl get pvc my-pvc
 
 Output:
 
-```
+```text
 NAME     STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
 my-pvc   Pending                                      standard       5m
 ```
@@ -345,7 +345,7 @@ kubectl describe pvc my-pvc
 
 Look for events:
 
-```
+```text
 Events:
   Type     Reason              Message
   ----     ------              -------
@@ -402,7 +402,7 @@ kubectl describe resourcequota my-quota -n my-namespace
 
 Output:
 
-```
+```text
 Name:            my-quota
 Resource         Used   Hard
 --------         ----   ----
@@ -444,7 +444,7 @@ kubectl logs -n kube-system kube-scheduler-master-node
 
 Look for messages about your pending pod:
 
-```
+```text
 I0209 10:15:30.123456 1 schedule_one.go:100] "Attempting to schedule pod" pod="default/my-pod"
 I0209 10:15:30.234567 1 schedule_one.go:200] "Pod cannot be scheduled" pod="default/my-pod" err="0/3 nodes available: insufficient cpu"
 ```

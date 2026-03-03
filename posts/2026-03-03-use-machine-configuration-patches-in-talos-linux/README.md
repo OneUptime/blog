@@ -279,7 +279,7 @@ talosctl validate --config patched-config.yaml --mode metal
 
 A well-organized patch repository makes cluster management much easier:
 
-```
+```text
 cluster-config/
   Makefile                    # Automation for config generation
   secrets.enc.yaml            # Encrypted secrets

@@ -21,12 +21,12 @@ This comprehensive guide walks you through configuring BIND for IPv6 DNS, focusi
 AAAA records (pronounced "quad-A") are DNS resource records that map a domain name to an IPv6 address. While A records map to 32-bit IPv4 addresses, AAAA records map to 128-bit IPv6 addresses.
 
 **IPv4 A Record Example:**
-```
+```text
 www.example.com.    IN    A       192.0.2.1
 ```
 
 **IPv6 AAAA Record Example:**
-```
+```text
 www.example.com.    IN    AAAA    2001:db8:85a3::8a2e:370:7334
 ```
 
@@ -34,7 +34,7 @@ www.example.com.    IN    AAAA    2001:db8:85a3::8a2e:370:7334
 
 IPv6 addresses consist of eight groups of four hexadecimal digits, separated by colons:
 
-```
+```text
 2001:0db8:85a3:0000:0000:8a2e:0370:7334
 ```
 
@@ -42,7 +42,7 @@ They can be abbreviated by:
 - Removing leading zeros in each group
 - Replacing consecutive groups of zeros with `::`
 
-```
+```text
 2001:db8:85a3::8a2e:370:7334
 ```
 
@@ -79,7 +79,7 @@ ip -6 addr show
 
 You should see output similar to:
 
-```
+```text
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 state UNKNOWN qlen 1000
     inet6 ::1/128 scope host
        valid_lft forever preferred_lft forever
@@ -492,7 +492,7 @@ sudo named-checkzone 1.168.192.in-addr.arpa /etc/bind/zones/db.192.168.1
 
 Expected output for zone checks:
 
-```
+```text
 zone example.com/IN: loaded serial 2026011501
 OK
 ```

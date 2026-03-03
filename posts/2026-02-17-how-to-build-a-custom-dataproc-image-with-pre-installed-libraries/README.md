@@ -177,7 +177,7 @@ python3 generate_custom_image.py \
 
 Keep a changelog that records what changed in each version.
 
-```
+```text
 # Image Changelog
 
 ## v2.0.1 (2026-02-17)

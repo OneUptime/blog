@@ -39,7 +39,7 @@ terragrunt graph-dependencies
 
 This outputs a DOT-format graph:
 
-```
+```text
 digraph {
   "vpc" ;
   "rds" ;
@@ -63,7 +63,7 @@ terragrunt graph-dependencies | dot -Tpng -o deps.png
 
 Terragrunt organizes modules into execution groups based on the graph:
 
-```
+```text
 Group 1 (no dependencies):      vpc, iam-roles, kms
 Group 2 (depends on Group 1):   rds, ecs-cluster, security-groups
 Group 3 (depends on Group 2):   app, worker, cron
@@ -80,7 +80,7 @@ For destroy operations, the groups execute in reverse order: Group 4 first, Grou
 
 The simplest pattern - each module depends on the previous:
 
-```
+```text
 vpc -> subnets -> security-groups -> ecs-cluster -> app
 ```
 
@@ -104,7 +104,7 @@ This results in purely sequential execution. No parallelism is possible.
 
 One module fans out to many independent modules:
 
-```
+```text
 vpc --> rds
     --> elasticache
     --> ecs-cluster
@@ -122,7 +122,7 @@ After the VPC is applied, all four modules run in parallel.
 
 Multiple modules converge on one:
 
-```
+```text
 vpc --------\
 rds ---------+--> app
 ecs-cluster -/
@@ -141,7 +141,7 @@ The app module waits for all three dependencies to complete.
 
 A combination of fan-out and fan-in:
 
-```
+```text
      vpc
     /   \
   rds   ecs
@@ -167,7 +167,7 @@ This is the most common pattern. VPC applies first, then RDS and ECS in parallel
 
 A production environment often has layers:
 
-```
+```text
 Layer 1: vpc, iam-roles, kms-keys
 Layer 2: subnets, security-groups
 Layer 3: rds, elasticache, ecs-cluster
@@ -182,7 +182,7 @@ Each layer depends on the one above. Within a layer, modules can run in parallel
 
 Terragrunt requires the dependency graph to be acyclic. If module A depends on B and B depends on A, you get an error:
 
-```
+```text
 Found a dependency cycle between modules:
   /path/to/live/dev/a
   /path/to/live/dev/b
@@ -193,13 +193,13 @@ Found a dependency cycle between modules:
 If you have a legitimate circular relationship, you need to restructure:
 
 **Before (cyclic):**
-```
+```text
 security-groups --> ecs-service (needs SG ID)
 ecs-service --> security-groups (needs service IP for ingress rule)
 ```
 
 **After (acyclic):**
-```
+```text
 security-groups --> ecs-service --> sg-rules
 ```
 
@@ -287,7 +287,7 @@ terragrunt render-json | jq '.dependency'
 
 A deep chain (A -> B -> C -> D -> E) means sequential execution. If possible, flatten the graph:
 
-```
+```text
 # Deep chain (slow)
 vpc -> subnets -> security-groups -> ecs-cluster -> service
 

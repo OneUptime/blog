@@ -79,7 +79,7 @@ spec:
 
 Given this repository structure:
 
-```
+```text
 platform/
 ├── services/
 │   ├── api/

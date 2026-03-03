@@ -286,7 +286,7 @@ feature_gap:
 
 Here is a side-by-side template:
 
-```
+```text
 TCO Comparison: 12-Month Projection
 ====================================
 

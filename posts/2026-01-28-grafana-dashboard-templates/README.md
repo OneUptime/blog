@@ -290,7 +290,7 @@ Provisioning allows you to deploy dashboards from files, enabling version contro
 
 ### Directory Structure
 
-```
+```text
 /etc/grafana/provisioning/
   dashboards/
     default.yaml           # Dashboard provider config
@@ -930,7 +930,7 @@ template.new(
 
 ### Dashboard Organization
 
-```
+```text
 dashboards/
   _templates/           # Base templates
     base-service.jsonnet

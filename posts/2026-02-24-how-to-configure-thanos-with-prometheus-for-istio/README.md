@@ -315,13 +315,13 @@ Istio generates high-cardinality metrics. Here are tuning tips specific to Istio
 
 Set a store API series limit to prevent runaway queries:
 
-```
+```text
 --store.grpc.series-max-size=50000
 ```
 
 Enable index caching on the Store Gateway for faster lookups:
 
-```
+```text
 --index-cache-size=1GB
 ```
 

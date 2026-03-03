@@ -33,7 +33,7 @@ flowchart LR
 
 ## Project Structure
 
-```
+```text
 datadog/
   inventory/
     hosts.yml

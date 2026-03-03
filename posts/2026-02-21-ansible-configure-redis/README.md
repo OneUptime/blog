@@ -20,7 +20,7 @@ Redis uses a single configuration file, typically at `/etc/redis/redis.conf`. It
 
 Organize your Ansible project like this.
 
-```
+```text
 redis-config/
   inventory/
     redis.ini

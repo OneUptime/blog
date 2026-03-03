@@ -59,7 +59,7 @@ The key insight here is that versioning happens at the API layer, not the busine
 
 A well-organized project structure makes managing multiple versions easier. Here is a structure that scales:
 
-```
+```text
 src/
   middleware/
     version.js          # Version extraction middleware

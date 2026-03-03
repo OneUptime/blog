@@ -42,7 +42,7 @@ The flow is:
 
 The app code repo contains only what is needed to build and test the application:
 
-```
+```text
 my-app/
 ├── src/
 │   └── main.py
@@ -97,7 +97,7 @@ jobs:
 
 The config repo contains all deployment configuration:
 
-```
+```text
 my-app-config/
 ├── base/
 │   ├── deployment.yaml
@@ -347,7 +347,7 @@ git log --oneline overlays/production/
 
 You can put multiple services in one config repo:
 
-```
+```text
 multi-service-config/
 ├── services/
 │   ├── api/

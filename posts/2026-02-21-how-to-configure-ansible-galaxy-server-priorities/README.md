@@ -52,7 +52,7 @@ By putting your private server first, internal content always takes precedence.
 
 The recommended priority order for most organizations:
 
-```
+```text
 1. Private Automation Hub (internal content)
 2. Red Hat Automation Hub (certified content)
 3. Public Galaxy (community content)
@@ -141,7 +141,7 @@ ansible-galaxy collection install community.general -vvv
 
 The output will show each server being tried:
 
-```
+```text
 ...
 Searching for 'community.general' in configured galaxy servers
 Checking private_hub (https://hub.internal.com/...)

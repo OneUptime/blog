@@ -20,7 +20,7 @@ Every Lambda function runs on a managed runtime that includes the language inter
 
 A runtime version is identified by an ARN like:
 
-```
+```text
 arn:aws:lambda:us-east-1::runtime:python3.12:20240101
 ```
 

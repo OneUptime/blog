@@ -104,7 +104,7 @@ lpstat -p OfficePrinter -l
 sudo nano /etc/cups/cupsd.conf
 ```
 
-```
+```text
 # Allow access from your IP range
 <Location /admin>
   Order allow,deny
@@ -166,7 +166,7 @@ You can share Ubuntu printers to Apple devices using CUPS' built-in AirPrint sup
 sudo nano /etc/cups/cupsd.conf
 ```
 
-```
+```text
 # Enable Bonjour printer discovery
 BrowseLocalProtocols dnssd
 

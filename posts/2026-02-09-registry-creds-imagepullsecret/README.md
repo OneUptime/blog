@@ -281,7 +281,7 @@ kubectl logs -n registry-creds deployment/registry-creds -f
 
 Successful propagation produces log entries like:
 
-```
+```text
 Successfully created secret dockerhub-secret in namespace test-namespace
 Successfully patched serviceaccount default in namespace test-namespace
 AWS ECR token refreshed for account 123456789012

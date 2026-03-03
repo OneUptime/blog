@@ -288,7 +288,7 @@ output "existing_rules" {
 
 For real-world projects, organize your files like this:
 
-```
+```text
 akamai-terraform/
   main.tf            # Provider configuration
   variables.tf       # Input variables

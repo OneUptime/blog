@@ -602,7 +602,7 @@ Automate plugin configuration using Grafana's provisioning system.
 
 Organize your provisioning files in a clear structure:
 
-```
+```text
 grafana/
 ├── provisioning/
 │   ├── datasources/

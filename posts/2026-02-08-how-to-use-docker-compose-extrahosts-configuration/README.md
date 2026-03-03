@@ -214,7 +214,7 @@ docker exec my-container getent hosts api.local
 
 Example output from `cat /etc/hosts`:
 
-```
+```text
 127.0.0.1       localhost
 ::1             localhost ip6-localhost ip6-loopback
 192.168.1.100   myhost

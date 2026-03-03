@@ -22,7 +22,7 @@ istioctl profile list
 
 As of Istio 1.24, you'll see:
 
-```
+```text
 default
 demo
 empty

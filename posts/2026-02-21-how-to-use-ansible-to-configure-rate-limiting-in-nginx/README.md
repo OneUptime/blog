@@ -25,7 +25,7 @@ The rate is expressed in requests per second (r/s) or requests per minute (r/m).
 
 Here is how I organize the Ansible project for this task:
 
-```
+```text
 nginx-rate-limit/
   inventory/
     hosts.yml

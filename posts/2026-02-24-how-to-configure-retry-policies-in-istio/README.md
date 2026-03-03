@@ -221,7 +221,7 @@ kubectl exec deploy/frontend -c istio-proxy -n production -- curl -s localhost:1
 
 Output includes:
 
-```
+```text
 cluster.outbound|8080||product-service.production.svc.cluster.local.upstream_rq_retry: 47
 cluster.outbound|8080||product-service.production.svc.cluster.local.upstream_rq_retry_success: 41
 cluster.outbound|8080||product-service.production.svc.cluster.local.upstream_rq_retry_overflow: 0

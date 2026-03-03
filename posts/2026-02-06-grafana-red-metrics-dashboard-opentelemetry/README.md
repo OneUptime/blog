@@ -265,7 +265,7 @@ providers:
 
 One of the strengths of building RED metrics from span data is that you can link back to the traces. In Grafana, configure a data link on each panel that opens Tempo filtered to the same service and time range. This lets an operator click on a latency spike in the RED dashboard and immediately see the actual traces that caused it. Set the data link URL to:
 
-```
+```text
 /explore?left={"datasource":"Tempo","queries":[{"refId":"A","queryType":"traceqlsearch","serviceName":"${__field.labels.service_name}"}],"range":{"from":"${__from}","to":"${__to}"}}
 ```
 

@@ -252,7 +252,7 @@ spec:
 
 A well-organized policy repository makes life easier for everyone.
 
-```
+```text
 cluster-policies/
   base/
     constraint-templates/

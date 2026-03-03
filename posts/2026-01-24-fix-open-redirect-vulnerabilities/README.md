@@ -264,7 +264,7 @@ Attackers will try to bypass your validation. Here are common bypasses and how t
 
 ### Bypass Attempt 1: Protocol-Relative URLs
 
-```
+```text
 // Attacker tries: //evil.com
 // This becomes https://evil.com when followed
 ```
@@ -283,7 +283,7 @@ function preventProtocolRelative(url) {
 
 ### Bypass Attempt 2: URL Encoding
 
-```
+```text
 // Attacker tries: %2F%2Fevil.com (URL-encoded //evil.com)
 // Or: https://example.com%2F@evil.com
 ```
@@ -308,7 +308,7 @@ function sanitizeUrl(url) {
 
 ### Bypass Attempt 3: Domain Confusion
 
-```
+```text
 // Attacker tries: https://example.com.evil.com
 // Or: https://exampleXcom.evil.com (where X is a special char)
 ```
@@ -325,7 +325,7 @@ function validateHost(host) {
 
 ### Bypass Attempt 4: IPv6 and IP Addresses
 
-```
+```text
 // Attacker tries: https://[::1]/ or https://127.0.0.1/
 ```
 

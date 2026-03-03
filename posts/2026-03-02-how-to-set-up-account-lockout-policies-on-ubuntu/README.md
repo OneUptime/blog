@@ -86,7 +86,7 @@ sudo nano /etc/pam.d/common-auth
 
 Add the faillock lines around the primary authentication module:
 
-```
+```text
 # Check if account is locked BEFORE attempting authentication
 auth  required  pam_faillock.so preauth
 
@@ -112,7 +112,7 @@ sudo nano /etc/pam.d/common-account
 
 Add the account check:
 
-```
+```text
 # pam_faillock account phase enforces the lockout
 account  required  pam_faillock.so
 
@@ -142,7 +142,7 @@ sudo faillock --user testlockout
 
 The output from `faillock` shows:
 
-```
+```text
 testlockout:
 When                Type  Source                                           Valid
 2026-03-02 10:15:22 RHOST 192.168.1.50                                    V
@@ -191,7 +191,7 @@ sudo nano /etc/pam.d/sshd
 
 Add at the top:
 
-```
+```text
 # SSH-specific faillock - lock after 3 failures, unlock after 30 minutes
 auth  required  pam_faillock.so preauth deny=3 unlock_time=1800
 
@@ -219,7 +219,7 @@ cat /etc/pam.d/sudo
 
 If you use `@include common-auth`, faillock applies to sudo too. To exclude sudo, add a direct auth line that bypasses faillock:
 
-```
+```text
 auth  sufficient  pam_unix.so
 ```
 

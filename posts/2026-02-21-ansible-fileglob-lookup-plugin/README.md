@@ -248,7 +248,7 @@ Inside roles, fileglob searches relative to the role's `files` directory. This m
 
 The role directory structure would look like:
 
-```
+```text
 roles/myapp/
   files/
     app.conf

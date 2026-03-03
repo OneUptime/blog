@@ -38,7 +38,7 @@ Ansible processes each source in order and merges the results. Hosts from all so
 
 When you point Ansible at a directory instead of a file, it processes every valid inventory source in that directory:
 
-```
+```text
 inventory/
   01_static.yml         # Static hosts
   02_aws_ec2.yml        # AWS EC2 dynamic plugin
@@ -232,7 +232,7 @@ ansible-playbook -i inventory/static.yml -i scripts/custom_inventory.py site.yml
 
 When using a directory-based inventory, `group_vars` and `host_vars` directories at the inventory level apply to all sources:
 
-```
+```text
 inventory/
   01_static.yml
   02_aws_ec2.yml
@@ -245,7 +245,7 @@ inventory/
 
 If you use multiple `-i` flags pointing to separate directories, each directory can have its own `group_vars` and `host_vars`:
 
-```
+```text
 static_inventory/
   hosts.yml
   group_vars/
@@ -283,7 +283,7 @@ ansible -i inventory/ all --list-hosts | wc -l
 
 Name your inventory files with numeric prefixes to control processing order:
 
-```
+```text
 inventory/
   01_base.yml            # Base infrastructure (processed first)
   10_aws.yml             # Cloud resources

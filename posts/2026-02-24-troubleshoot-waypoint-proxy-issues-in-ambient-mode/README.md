@@ -20,7 +20,7 @@ Start by checking if the waypoint proxy is actually deployed and healthy:
 kubectl get gateways -n bookinfo
 ```
 
-```
+```text
 NAME                CLASS            ADDRESS       PROGRAMMED   AGE
 bookinfo-waypoint   istio-waypoint   10.96.10.50   True         5d
 ```
@@ -92,7 +92,7 @@ kubectl logs deploy/bookinfo-waypoint -n bookinfo --tail=50
 
 Look for upstream connection failures:
 
-```
+```text
 upstream connect error or disconnect/reset before headers. reset reason: connection failure
 ```
 

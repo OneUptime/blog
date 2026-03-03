@@ -76,7 +76,7 @@ kubectl get pods -n metallb-system
 
 Expected output:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-5f7b9b6b4f-xxxxx   1/1     Running   0          2m
 speaker-xxxxx                 1/1     Running   0          2m
@@ -393,7 +393,7 @@ MetalLB only handles the Kubernetes side. You need to configure your upstream ro
 
 FRRouting is popular for software-defined networking and is often used in bare-metal environments:
 
-```
+```text
 ! /etc/frr/frr.conf
 frr version 8.4
 frr defaults traditional
@@ -453,7 +453,7 @@ bfd
 
 ### Cisco IOS-XE Configuration
 
-```
+```text
 ! BGP Configuration for IPv6 with MetalLB
 router bgp 64513
  bgp router-id 10.0.0.1
@@ -497,7 +497,7 @@ interface GigabitEthernet0/0
 
 ### Juniper JunOS Configuration
 
-```
+```text
 # BGP Configuration for IPv6 with MetalLB
 set routing-options router-id 10.0.0.1
 set routing-options autonomous-system 64513

@@ -62,7 +62,7 @@ WHERE o.created_at > '2024-01-01'
 
 Sample output:
 
-```
+```text
 Hash Join  (cost=125.50..2890.75 rows=1523 width=48)
            (actual time=2.451..45.832 rows=1489 loops=1)
   Hash Cond: (o.customer_id = c.id)
@@ -172,7 +172,7 @@ ORDER BY day;
 
 Execution plan shows:
 
-```
+```text
 Sort  (cost=45000.00..45000.50 rows=365 width=48)
       (actual time=12456.234..12456.890 rows=365 loops=1)
   ->  HashAggregate  (cost=44900.00..44950.00 rows=365 width=48)
@@ -197,7 +197,7 @@ SELECT pg_prewarm('orders');
 
 After optimization (0.3 seconds):
 
-```
+```text
 Sort  (cost=1500.00..1500.50 rows=365 width=48)
       (actual time=298.234..298.456 rows=365 loops=1)
   ->  HashAggregate  (cost=1400.00..1450.00 rows=365 width=48)

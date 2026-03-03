@@ -14,7 +14,7 @@ Terraform is a statically-typed language when it comes to variables. Every varia
 
 Here is what a typical type mismatch error looks like:
 
-```
+```text
 Error: Invalid value for variable
 
   on main.tf line 5, in module "web":
@@ -26,7 +26,7 @@ required.
 
 Or with complex types:
 
-```
+```text
 Error: Invalid value for variable
 
   on main.tf line 10, in module "network":

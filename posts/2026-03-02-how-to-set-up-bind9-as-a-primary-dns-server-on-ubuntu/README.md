@@ -47,7 +47,7 @@ Edit the global options file to set appropriate settings for an authoritative se
 sudo nano /etc/bind/named.conf.options
 ```
 
-```
+```text
 options {
     directory "/var/cache/bind";
 
@@ -89,7 +89,7 @@ Edit the local configuration file to define your zones:
 sudo nano /etc/bind/named.conf.local
 ```
 
-```
+```text
 // Primary zone for example.com
 zone "example.com" {
     type master;
@@ -257,7 +257,7 @@ sudo nano /etc/bind/named.conf.local
 
 Append at the end:
 
-```
+```text
 logging {
     channel default_log {
         file "/var/log/named/default.log" versions 3 size 10m;

@@ -274,7 +274,7 @@ print(f"ROI: {result['roi_percentage']}%")
 
 Organize tests by type and feature:
 
-```
+```text
 tests/
 ├── unit/                    # Unit tests (fast, isolated)
 │   ├── services/

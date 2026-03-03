@@ -12,7 +12,7 @@ The UNREACHABLE error means Ansible could not establish a connection to the targ
 
 ## The Error
 
-```
+```text
 fatal: [server1]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: ssh: connect to host 10.0.1.10 port 22: No route to host",

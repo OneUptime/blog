@@ -276,7 +276,7 @@ flowchart LR
 
 CoreDNS can be configured to accept DoH queries:
 
-```
+```text
 # Corefile
 . {
     # Enable DoH on port 443

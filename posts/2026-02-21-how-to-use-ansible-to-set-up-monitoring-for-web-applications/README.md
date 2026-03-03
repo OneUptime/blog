@@ -27,7 +27,7 @@ flowchart TD
 
 ## Project Structure
 
-```
+```text
 monitoring-setup/
   inventory/
     hosts.yml

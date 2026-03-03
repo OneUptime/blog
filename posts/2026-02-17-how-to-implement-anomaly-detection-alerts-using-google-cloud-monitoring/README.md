@@ -77,7 +77,7 @@ resource "google_monitoring_alert_policy" "latency_anomaly" {
 
 MQL provides more control over anomaly detection through its built-in functions:
 
-```
+```text
 # Detect anomalies in request rate using standard deviation
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_count'
@@ -91,7 +91,7 @@ This query calculates the mean and standard deviation of request rate over a 7-d
 
 For a more sophisticated approach that accounts for time-of-day patterns:
 
-```
+```text
 # Anomaly detection with time-of-day awareness
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_count'

@@ -28,7 +28,7 @@ Extensions are applied during the installation or upgrade process and become par
 
 Every Talos extension follows a specific directory structure inside the container image.
 
-```
+```text
 /
 ├── manifest.yaml          # Extension metadata
 ├── rootfs/               # Files to overlay onto the root filesystem

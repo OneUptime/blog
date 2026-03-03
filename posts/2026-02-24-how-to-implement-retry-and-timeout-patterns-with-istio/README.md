@@ -94,7 +94,7 @@ This sets a 10-second overall timeout for requests to the inventory service. If 
 
 When you use retries and timeouts together, the math matters. The total time a request can take is roughly:
 
-```
+```text
 total time = attempts * perTryTimeout
 ```
 

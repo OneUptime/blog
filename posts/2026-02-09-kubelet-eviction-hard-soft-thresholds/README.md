@@ -137,7 +137,7 @@ This prevents flapping:
 
 Use this formula for memory thresholds:
 
-```
+```text
 Hard threshold = max(500Mi, node_memory * 0.02)
 Soft threshold = max(1.5Gi, node_memory * 0.05)
 ```

@@ -41,7 +41,7 @@ vim newfile.txt
 
 The single most important concept in Vim is that it has distinct modes. Commands work differently depending on which mode you are in.
 
-```
+```text
 Normal mode   - For navigation and commands (default when you open Vim)
 Insert mode   - For typing text (like a regular editor)
 Visual mode   - For selecting text
@@ -54,7 +54,7 @@ Most problems beginners have come from not knowing which mode they are in. Look 
 
 Before anything else, know how to escape:
 
-```
+```text
 Esc         - Return to normal mode from any other mode
 Esc Esc     - Definitely in normal mode now
 ```
@@ -67,7 +67,7 @@ If you get completely lost:
 
 ### Exiting Vim
 
-```
+```text
 :q          - Quit (fails if you have unsaved changes)
 :q!         - Quit and discard all changes (force quit)
 :w          - Save (write) the file
@@ -79,7 +79,7 @@ ZQ          - Quit without saving (same as :q!)
 
 ### Navigation
 
-```
+```text
 h           - Move left
 j           - Move down
 k           - Move up
@@ -88,7 +88,7 @@ l           - Move right
 
 Arrow keys also work, but h/j/k/l are faster once you build the habit.
 
-```
+```text
 w           - Forward one word (start of next word)
 b           - Backward one word
 e           - Forward to end of current word
@@ -106,7 +106,7 @@ Ctrl+U      - Half page up
 
 ## Entering Insert Mode
 
-```
+```text
 i           - Insert before cursor
 a           - Insert after cursor (append)
 I           - Insert at beginning of line
@@ -120,7 +120,7 @@ s           - Delete character under cursor and enter insert mode
 
 These commands operate without entering insert mode:
 
-```
+```text
 x           - Delete character under cursor
 X           - Delete character before cursor
 dd          - Delete (cut) current line
@@ -137,7 +137,7 @@ r           - Replace single character (then type the replacement)
 
 Vim commands combine operators with motions. The pattern is `operator + motion`:
 
-```
+```text
 dw          - Delete word
 d$          - Delete to end of line
 d0          - Delete to start of line
@@ -150,7 +150,7 @@ cc          - Change entire line (delete and enter insert mode)
 
 Count prefixes work with most commands:
 
-```
+```text
 3dd         - Delete 3 lines
 5j          - Move down 5 lines
 10yy        - Copy 10 lines
@@ -158,7 +158,7 @@ Count prefixes work with most commands:
 
 ## Searching
 
-```
+```text
 /pattern    - Search forward for pattern
 ?pattern    - Search backward for pattern
 n           - Next match (in search direction)
@@ -179,7 +179,7 @@ N           - Previous match (opposite direction)
 
 Command mode substitution is one of Vim's most powerful features:
 
-```
+```text
 :s/old/new/         - Replace first occurrence on current line
 :s/old/new/g        - Replace all on current line
 :%s/old/new/g       - Replace all in file
@@ -191,7 +191,7 @@ Command mode substitution is one of Vim's most powerful features:
 
 Visual mode lets you select text before applying operations:
 
-```
+```text
 v           - Enter character visual mode
 V           - Enter line visual mode
 Ctrl+V      - Enter block visual mode
@@ -199,7 +199,7 @@ Ctrl+V      - Enter block visual mode
 
 After selecting, apply operations:
 
-```
+```text
 d           - Delete selection
 y           - Copy selection
 c           - Change selection (delete and enter insert)
@@ -209,7 +209,7 @@ c           - Change selection (delete and enter insert)
 
 ## Working with Multiple Files
 
-```
+```text
 :e filename         - Open another file
 :n                  - Next file (when opened with vim file1 file2)
 :prev               - Previous file
@@ -225,7 +225,7 @@ Ctrl+W+H/J/K/L      - Move between splits directionally
 
 You can enable these temporarily from command mode:
 
-```
+```text
 :set number         - Show line numbers
 :set relativenumber - Show relative line numbers
 :set hlsearch       - Highlight search results
@@ -252,7 +252,7 @@ syntax on
 
 ## Quick Reference Card
 
-```
+```text
 Mode entry:   i (before) a (after) o (new line below) O (new line above)
 Exit mode:    Esc
 

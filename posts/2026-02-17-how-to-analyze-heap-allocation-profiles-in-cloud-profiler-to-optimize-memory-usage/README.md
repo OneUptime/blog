@@ -44,7 +44,7 @@ A function with high self allocation is the one actually creating objects. A fun
 
 You open Cloud Profiler, select your Python service, and choose "Heap (allocated)." The flame graph shows:
 
-```
+```text
 handle_request()                   (total: 100%)
   process_data()                   (total: 70%)
     parse_json()                   (total: 45%, self: 45%)

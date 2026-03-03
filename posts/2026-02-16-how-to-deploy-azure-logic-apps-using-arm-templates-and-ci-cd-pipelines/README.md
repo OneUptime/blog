@@ -232,7 +232,7 @@ az deployment group create \
 
 ### Repository Structure
 
-```
+```text
 logic-apps/
   approval-workflow/
     template.json

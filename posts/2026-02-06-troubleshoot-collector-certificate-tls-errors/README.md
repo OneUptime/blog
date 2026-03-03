@@ -48,7 +48,7 @@ Each connection requires:
 
 ### Error 1: Unknown Certificate Authority
 
-```
+```text
 Error: failed to export traces: rpc error: code = Unavailable desc = connection error:
 desc = "transport: authentication handshake failed: x509: certificate signed by unknown authority"
 ```
@@ -57,7 +57,7 @@ desc = "transport: authentication handshake failed: x509: certificate signed by 
 
 ### Error 2: Certificate Expired
 
-```
+```text
 Error: x509: certificate has expired or is not yet valid
 ```
 
@@ -65,7 +65,7 @@ Error: x509: certificate has expired or is not yet valid
 
 ### Error 3: Hostname Mismatch
 
-```
+```text
 Error: x509: certificate is valid for example.com, not oneuptime.com
 ```
 
@@ -73,7 +73,7 @@ Error: x509: certificate is valid for example.com, not oneuptime.com
 
 ### Error 4: Self-Signed Certificate
 
-```
+```text
 Error: x509: certificate signed by unknown authority (self-signed certificate)
 ```
 
@@ -81,7 +81,7 @@ Error: x509: certificate signed by unknown authority (self-signed certificate)
 
 ### Error 5: Certificate Chain Incomplete
 
-```
+```text
 Error: x509: certificate signed by unknown authority (intermediate certificate missing)
 ```
 

@@ -210,7 +210,7 @@ CMD ["python", "server.py"]
 
 The requirements:
 
-```
+```text
 grpcio==1.60.*
 grpcio-tools==1.60.*
 grpcio-health-checking==1.60.*

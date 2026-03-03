@@ -113,7 +113,7 @@ SHOW VARIABLES LIKE 'long_query_time';
 
 The slow query log contains detailed information about each slow query. Here is an example entry:
 
-```
+```text
 # Time: 2026-01-30T10:15:32.456789Z
 # User@Host: app_user[app_user] @ app-server [192.168.1.100]  Id: 12345
 # Query_time: 5.234567  Lock_time: 0.000123 Rows_sent: 1000  Rows_examined: 5000000

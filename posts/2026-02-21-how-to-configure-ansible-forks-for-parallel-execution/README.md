@@ -82,7 +82,7 @@ ulimit -n
 
 A reasonable starting formula is:
 
-```
+```text
 forks = min(number_of_hosts, control_node_cpu_cores * 10)
 ```
 

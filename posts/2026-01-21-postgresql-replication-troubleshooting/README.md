@@ -85,7 +85,7 @@ psql "host=primary port=5432 user=replicator dbname=postgres"
 
 ### Symptoms
 
-```
+```text
 FATAL: requested WAL segment 000000010000000000000005 has already been removed
 ```
 
@@ -171,7 +171,7 @@ SELECT pg_reload_conf();
 
 ### Symptoms
 
-```
+```text
 ERROR: canceling statement due to conflict with recovery
 DETAIL: User query might have needed to see row versions that must be removed.
 ```
@@ -220,7 +220,7 @@ SELECT pg_reload_conf();
 
 ### Symptoms
 
-```
+```text
 FATAL: timeline 2 of the primary does not match recovery target timeline 1
 ```
 

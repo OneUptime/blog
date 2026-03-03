@@ -23,7 +23,7 @@ The flow is straightforward:
 5. Reviewers use the URL to test the changes
 6. When the PR is closed or merged, the cluster is destroyed
 
-```
+```text
 PR Opened --> Create Cluster --> Deploy App --> Post URL
 PR Closed --> Destroy Cluster
 PR Updated --> Update Deployment
@@ -38,7 +38,7 @@ For preview environments at scale, you need:
 - Automatic cleanup when PRs are closed
 - Resource limits to prevent runaway costs
 
-```
+```text
 GitHub/GitLab
     |
     v

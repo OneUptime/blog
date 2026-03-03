@@ -277,7 +277,7 @@ On the application side, use a connection pool that validates connections before
 
 Track your Cloud SQL connections through Istio metrics:
 
-```
+```text
 istio_tcp_connections_opened_total{destination_service="cloud-sql-postgres.database.internal"}
 istio_tcp_connections_closed_total{destination_service="cloud-sql-postgres.database.internal"}
 istio_tcp_sent_bytes_total{destination_service="cloud-sql-postgres.database.internal"}

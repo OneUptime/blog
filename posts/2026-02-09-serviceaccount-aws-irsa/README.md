@@ -157,7 +157,7 @@ kubectl exec s3-reader -n production -- env | grep AWS
 
 You should see environment variables like:
 
-```
+```text
 AWS_ROLE_ARN=arn:aws:iam::123456789012:role/s3-app-role
 AWS_WEB_IDENTITY_TOKEN_FILE=/var/run/secrets/eks.amazonaws.com/serviceaccount/token
 AWS_REGION=us-east-1

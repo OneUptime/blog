@@ -14,7 +14,7 @@ Templates are where Ansible gets really powerful. Instead of copying static conf
 
 The `templates/` directory sits alongside `tasks/`, `handlers/`, and the rest:
 
-```
+```text
 roles/
   webserver/
     templates/
@@ -168,7 +168,7 @@ haproxy_backend_servers:
 
 The rendered output would be:
 
-```
+```text
 backend http_back
     balance roundrobin
     server app01 10.0.1.10:8080 check
@@ -226,7 +226,7 @@ API_KEY={{ app_api_key | b64encode }}
 
 For roles with many templates, you can use subdirectories:
 
-```
+```text
 roles/webserver/templates/
   nginx/
     nginx.conf.j2

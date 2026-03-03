@@ -14,7 +14,7 @@ YAML's boolean handling is one of the most common sources of bugs in Ansible pla
 
 In YAML 1.1, all of these are interpreted as boolean `true`:
 
-```
+```text
 true, True, TRUE
 yes, Yes, YES
 on, On, ON
@@ -22,7 +22,7 @@ on, On, ON
 
 And all of these are boolean `false`:
 
-```
+```text
 false, False, FALSE
 no, No, NO
 off, Off, OFF

@@ -289,7 +289,7 @@ ansible webservers -m shell -a "sudo -l" -v
 
 Common sudo problems:
 
-```
+```text
 # Error: "sudo: a password is required"
 # Fix: Provide the password with -K or ansible_become_pass
 
@@ -304,7 +304,7 @@ Common sudo problems:
 
 Here is a sudoers entry that works well with Ansible.
 
-```
+```text
 # /etc/sudoers.d/ansible on the remote host
 # Allow the deploy user to sudo without a password
 deploy ALL=(ALL) NOPASSWD: ALL
@@ -312,7 +312,7 @@ deploy ALL=(ALL) NOPASSWD: ALL
 
 For more restrictive access, limit what commands the user can run.
 
-```
+```text
 # Allow only specific commands without a password
 deploy ALL=(ALL) NOPASSWD: /usr/bin/apt-get, /usr/bin/systemctl, /usr/bin/cp, /usr/bin/mv, /usr/bin/mkdir
 ```

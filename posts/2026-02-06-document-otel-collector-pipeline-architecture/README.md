@@ -22,7 +22,7 @@ Your documentation needs to answer five questions:
 
 Create a visual representation of your collector topology. You do not need fancy tools. A text-based diagram in your runbook works fine:
 
-```
+```text
 Applications (SDK)
     |
     v  (OTLP gRPC :4317)

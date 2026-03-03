@@ -211,7 +211,7 @@ Connect them with success dependency arrows so each stage runs only after the pr
 
 Add error handling:
 
-```
+```text
 Pipeline Activities:
   1. Extract_Sales_Data (Copy Activity)
      |-- On Success --> Transform_Sales (Notebook Activity)
@@ -250,7 +250,7 @@ Make your pipeline reusable by adding parameters.
 
 Use these parameters in activities with expressions:
 
-```
+```text
 @pipeline().parameters.LastRunTimestamp
 @formatDateTime(pipeline().parameters.TargetDate, 'yyyy-MM-dd')
 ```

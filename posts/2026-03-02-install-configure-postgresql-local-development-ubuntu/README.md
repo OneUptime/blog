@@ -146,7 +146,7 @@ sudo nano /etc/postgresql/16/main/pg_hba.conf
 
 For local development, a permissive setup works well. The default file looks like:
 
-```
+```text
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
 local   all             postgres                                peer
 local   all             all                                     peer
@@ -156,7 +156,7 @@ host    all             all             ::1/128                 scram-sha-256
 
 To allow password-based connections from localhost without the `peer` restriction:
 
-```
+```text
 # Changed to md5 for simplicity in development
 local   all             all                                     md5
 host    all             all             127.0.0.1/32            md5

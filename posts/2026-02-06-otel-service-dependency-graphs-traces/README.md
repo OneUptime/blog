@@ -87,7 +87,7 @@ service:
 
 The Service Graph Connector produces these metrics for each service-to-service edge:
 
-```
+```text
 # Request count between services
 traces_service_graph_request_total{
   client="checkout-service",
@@ -196,7 +196,7 @@ connectors:
 
 This means your service graph will show edges like:
 
-```
+```text
 checkout-service -> postgresql (db.name="orders")
 checkout-service -> redis (db.system="redis")
 order-service -> kafka (messaging.system="kafka")

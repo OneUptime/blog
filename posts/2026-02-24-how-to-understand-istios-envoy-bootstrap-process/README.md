@@ -190,7 +190,7 @@ kubectl logs deploy/my-app -c istio-proxy | head -20
 
 You will see lines like:
 
-```
+```text
 info  cache  generated new workload certificate
 info  ads    ADS: new]connection for node:sidecar~10.244.1.5~my-app-xyz.default~default.svc.cluster.local
 info  ads    CDS: PUSH

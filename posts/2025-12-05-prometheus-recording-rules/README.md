@@ -57,7 +57,7 @@ groups:
 
 Follow the standard naming convention for clarity:
 
-```
+```text
 level:metric:operations
 ```
 

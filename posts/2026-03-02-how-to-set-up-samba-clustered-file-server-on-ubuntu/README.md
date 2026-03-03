@@ -108,7 +108,7 @@ Create the nodes file listing all cluster members:
 sudo nano /etc/ctdb/nodes
 ```
 
-```
+```text
 192.168.1.10
 192.168.1.11
 ```
@@ -123,7 +123,7 @@ Public (virtual) addresses are the IPs that float between nodes:
 sudo nano /etc/ctdb/public_addresses
 ```
 
-```
+```text
 192.168.1.20/24 enp3s0
 192.168.1.21/24 enp3s0
 ```
@@ -230,7 +230,7 @@ sudo ctdb recmaster
 
 Expected output from `ctdb status`:
 
-```
+```text
 Number of nodes:2
 pnn:0 192.168.1.10    OK (THIS NODE)
 pnn:1 192.168.1.11    OK

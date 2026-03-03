@@ -16,7 +16,7 @@ Certificate-related outages happen when istiod goes down during a rotation windo
 
 Istio's certificate chain looks like this:
 
-```
+```text
 Root CA Certificate (10 years default)
   └── Intermediate CA Certificate (used by istiod)
         └── Workload Certificate (24 hours default)
@@ -44,7 +44,7 @@ istioctl proxy-config secret <pod-name> -n <namespace> -o json | \
 
 Output:
 
-```
+```text
 notBefore=Feb 24 10:00:00 2026 GMT
 notAfter=Feb 25 10:00:00 2026 GMT
 ```
@@ -73,7 +73,7 @@ Istio exposes metrics about certificate health that you can scrape with Promethe
 
 The Envoy sidecar exposes a metric for certificate expiration:
 
-```
+```text
 envoy_server_days_until_first_cert_expiring
 ```
 
@@ -83,7 +83,7 @@ This metric reports the number of days until the sidecar's certificate expires. 
 
 istiod exposes metrics about certificate signing:
 
-```
+```text
 # Number of certificate signing requests received
 citadel_server_csr_count
 
@@ -151,7 +151,7 @@ Create a Grafana dashboard for certificate monitoring with these panels:
 
 ### Panel 1: Root CA Expiry Countdown
 
-```
+```text
 (citadel_server_root_cert_expiry_timestamp - time()) / 86400
 ```
 
@@ -159,7 +159,7 @@ Display as a stat panel showing days until root CA expiry.
 
 ### Panel 2: Certificate Signing Rate
 
-```
+```text
 rate(citadel_server_success_cert_issuance_count[5m])
 ```
 
@@ -167,7 +167,7 @@ This should be roughly constant. A drop to zero means istiod stopped issuing cer
 
 ### Panel 3: Certificate Signing Errors
 
-```
+```text
 rate(citadel_server_csr_signing_error_count[5m])
 ```
 
@@ -175,7 +175,7 @@ This should be zero. Any non-zero value needs investigation.
 
 ### Panel 4: Workload Certificate Expiry Distribution
 
-```
+```text
 histogram_quantile(0.99, envoy_server_days_until_first_cert_expiring)
 ```
 

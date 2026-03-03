@@ -100,7 +100,7 @@ cdktf get
 
 The generated output structure looks like this:
 
-```
+```text
 .gen/
   providers/
     aws/

@@ -522,7 +522,7 @@ deny contains res if {
 
 Organize your policies in a structured directory:
 
-```
+```text
 policies/
   dockerfile/
     no-root.rego

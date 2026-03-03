@@ -82,7 +82,7 @@ spec:
 
 Applying this gives you:
 
-```
+```text
 Error from server: error when creating "bad-route.yaml": admission webhook "validation.istio.io" denied the request: configuration is invalid: port number -1 is not valid
 ```
 
@@ -120,7 +120,7 @@ The analyzer checks for things the webhook can't, like:
 
 Example output:
 
-```
+```text
 Warning [IST0101] (VirtualService default/reviews-route) Referenced host not found: "reviews-v3"
 Warning [IST0108] (DestinationRule default/reviews) No matching subsets for labels {version: v4}
 Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection.

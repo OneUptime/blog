@@ -29,7 +29,7 @@ This separation lets you scale reads and writes independently, use different sto
 
 Let's start with a well-organized project structure:
 
-```
+```text
 src/
 ├── commands/        # Command definitions and handlers
 │   ├── mod.rs

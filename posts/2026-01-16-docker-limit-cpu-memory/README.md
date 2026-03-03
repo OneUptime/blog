@@ -197,7 +197,7 @@ docker stats --no-stream
 
 Example output:
 
-```
+```text
 CONTAINER ID   NAME      CPU %     MEM USAGE / LIMIT   MEM %     NET I/O          BLOCK I/O
 a1b2c3d4e5f6   my-app    45.32%    234.5MiB / 512MiB   45.80%    1.23MB / 456kB   12.3MB / 0B
 ```

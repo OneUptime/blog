@@ -152,7 +152,7 @@ spec:
 
 If you also have ResourceQuotas, create the LimitRange in the same wave or just after:
 
-```
+```text
 Wave -5: Namespace
 Wave -4: ResourceQuota + LimitRange
 Wave -3: NetworkPolicies
@@ -379,7 +379,7 @@ spec:
 
 When a pod spec violates the LimitRange, Kubernetes rejects the creation. ArgoCD shows this as a sync error:
 
-```
+```text
 Error: pods "myapp-xyz" is forbidden:
   maximum cpu usage per Container is 4, but limit is 8
 ```

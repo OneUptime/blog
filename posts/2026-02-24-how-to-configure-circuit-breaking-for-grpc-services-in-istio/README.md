@@ -227,7 +227,7 @@ kubectl exec deploy/grpc-service -c istio-proxy -- \
 
 For Prometheus, the key gRPC metrics are:
 
-```
+```text
 # gRPC request rate by status
 sum(rate(istio_requests_total{destination_service="grpc-service.default.svc.cluster.local",grpc_response_status!="0"}[5m])) by (grpc_response_status)
 

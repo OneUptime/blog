@@ -343,7 +343,7 @@ For high-traffic servers, tune the kernel networking stack:
 sudo nano /etc/sysctl.d/99-apache-performance.conf
 ```
 
-```
+```text
 # Increase maximum number of connection requests in listen queue
 net.core.somaxconn = 65535
 

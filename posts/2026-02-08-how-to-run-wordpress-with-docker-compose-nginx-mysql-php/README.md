@@ -48,7 +48,7 @@ cd wordpress-docker
 
 The final directory structure will look like this:
 
-```
+```text
 wordpress-docker/
   docker-compose.yml
   .env

@@ -36,7 +36,7 @@ You only need to target one control plane node. The command will discover the re
 
 A healthy cluster produces output like:
 
-```
+```text
 discovered nodes: ["10.0.0.1" "10.0.0.2" "10.0.0.3" "10.0.0.4" "10.0.0.5"]
 waiting for etcd to be healthy: OK
 waiting for etcd members to be consistent across nodes: OK
@@ -97,7 +97,7 @@ When a health check fails, the output tells you which check failed and why:
 
 ### etcd Not Healthy
 
-```
+```text
 waiting for etcd to be healthy: FAILED
   1 error(s) occurred:
     10.0.0.2: etcd: member not healthy
@@ -115,7 +115,7 @@ talosctl logs etcd --nodes 10.0.0.2
 
 ### Nodes Not Ready
 
-```
+```text
 waiting for all k8s nodes to report ready: FAILED
   1 error(s) occurred:
     10.0.0.4: node not ready
@@ -133,7 +133,7 @@ kubectl describe node <node-name> | grep -A10 "Conditions"
 
 ### System Pods Not Running
 
-```
+```text
 waiting for all control plane static pods to be running: FAILED
 ```
 

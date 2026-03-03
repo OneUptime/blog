@@ -130,7 +130,7 @@ echo "test" | sudo tee -a /var/log/syslog
 
 The `inotifywait` command will output something like:
 
-```
+```text
 /var/log/syslog MODIFY
 ```
 

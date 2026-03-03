@@ -181,7 +181,7 @@ gcloud monitoring time-series list \
 
 Monitoring Query Language (MQL) supports operations that are hard to express in the builder.
 
-```
+```text
 # Ratio of 5xx to total requests
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_count'

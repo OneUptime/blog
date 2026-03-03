@@ -61,7 +61,7 @@ kubectl get policyreports -A -o jsonpath='{range .items[*]}{.metadata.name}{"\t"
 
 Example output:
 
-```
+```text
 polr-ns-default	{"error":0,"fail":3,"pass":12,"skip":0,"warn":2}
 polr-ns-production	{"error":0,"fail":0,"pass":45,"skip":1,"warn":0}
 ```

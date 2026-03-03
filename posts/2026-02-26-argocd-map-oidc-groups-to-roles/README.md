@@ -19,7 +19,7 @@ ArgoCD uses a Casbin-based RBAC system with two types of rules:
 - **`p` rules** (policies) - Define what a role can do
 - **`g` rules** (group mappings) - Map users or groups to roles
 
-```
+```text
 # Policy: role can perform action on resource
 p, <role>, <resource>, <action>, <object>, <effect>
 

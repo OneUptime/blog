@@ -855,7 +855,7 @@ Here is a complete logging framework that combines everything discussed above.
 
 ### Project Structure
 
-```
+```text
 src/
   logger/
     index.js          # Main logger export

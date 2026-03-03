@@ -35,7 +35,7 @@ Install required Jenkins plugins and tools:
 
 ## Repository Structure
 
-```
+```text
 helm-charts/
 ├── Jenkinsfile
 ├── charts/

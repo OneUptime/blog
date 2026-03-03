@@ -17,7 +17,7 @@ This guide provides production-ready Fluent Bit configurations for parsing Java 
 Java and Python exceptions follow distinct patterns:
 
 **Java Exception**:
-```
+```text
 2026-02-09 10:15:32 ERROR com.example.Service - Database connection failed
 java.sql.SQLException: Connection refused
     at com.mysql.jdbc.SQLError.createSQLException(SQLError.java:1084)
@@ -29,7 +29,7 @@ Caused by: java.net.ConnectException: Connection refused
 ```
 
 **Python Exception**:
-```
+```text
 2026-02-09 10:15:32 ERROR root - Request processing failed
 Traceback (most recent call last):
   File "/app/service.py", line 45, in process_request

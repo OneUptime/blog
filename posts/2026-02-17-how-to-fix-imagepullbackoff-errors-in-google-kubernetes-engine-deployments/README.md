@@ -26,7 +26,7 @@ kubectl describe pod my-pod-abc123 -n my-namespace
 
 Look in the Events section for messages like:
 
-```
+```text
 Warning  Failed   pull image "us-docker.pkg.dev/my-project/my-repo/my-app:v1.2.3":
   rpc error: code = NotFound desc = failed to pull and unpack image
 Warning  Failed   Error: ImagePullBackOff
@@ -34,7 +34,7 @@ Warning  Failed   Error: ImagePullBackOff
 
 Or:
 
-```
+```text
 Warning  Failed   Failed to pull image "us-docker.pkg.dev/my-project/my-repo/my-app:v1.2.3":
   unauthorized: failed to authorize
 ```
@@ -57,7 +57,7 @@ gcloud container images list-tags gcr.io/my-project/my-app
 
 Double-check the full image URL format:
 
-```
+```text
 # Artifact Registry format
 LOCATION-docker.pkg.dev/PROJECT/REPOSITORY/IMAGE:TAG
 

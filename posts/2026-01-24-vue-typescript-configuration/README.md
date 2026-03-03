@@ -60,7 +60,7 @@ npm run dev
 
 ## Project Structure
 
-```
+```text
 my-vue-app/
   src/
     components/

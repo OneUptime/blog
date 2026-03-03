@@ -20,7 +20,7 @@ In this comprehensive guide, we will explore how to implement JWT authentication
 
 A JSON Web Token (JWT) is a compact, URL-safe means of representing claims between two parties. It consists of three parts separated by dots:
 
-```
+```text
 header.payload.signature
 ```
 

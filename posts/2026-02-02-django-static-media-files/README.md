@@ -95,7 +95,7 @@ STATICFILES_FINDERS = [
 
 Understanding where to place your static files is crucial for proper organization.
 
-```
+```text
 myproject/
     manage.py
     myproject/

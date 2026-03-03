@@ -119,7 +119,7 @@ ansible-playbook -i inventory.ini setup-webserver.yml
 
 You will see output like this:
 
-```
+```text
 PLAY [Set up a basic web server] **********************************************
 
 TASK [Gathering Facts] ********************************************************

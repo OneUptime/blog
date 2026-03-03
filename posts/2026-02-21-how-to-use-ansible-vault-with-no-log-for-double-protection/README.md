@@ -56,7 +56,7 @@ Here is the same task with `no_log` applied:
 
 Now the output will show something like:
 
-```
+```text
 TASK [Configure database connection] *******
 ok: [webserver1] => {"censored": "the output has been hidden due to the fact that 'no_log: true' was specified for this result"}
 ```

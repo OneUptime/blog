@@ -14,7 +14,7 @@ OpenTelemetry can trace individual frames through this pipeline and collect late
 
 A typical autonomous driving stack processes data in this flow:
 
-```
+```text
 Lidar Point Cloud --> Object Detection --> |
 Camera Frames    --> Image Detection   --> | --> Sensor Fusion --> Prediction --> Planning --> Control
 Radar Returns    --> Radar Processing  --> |

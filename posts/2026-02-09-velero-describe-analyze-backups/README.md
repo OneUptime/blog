@@ -24,7 +24,7 @@ velero backup describe production-backup-20260209
 
 The output shows:
 
-```
+```text
 Name:         production-backup-20260209
 Namespace:    velero
 Labels:       velero.io/schedule-name=production-daily
@@ -56,7 +56,7 @@ velero backup describe production-backup-20260209 --details
 
 This displays a complete resource inventory:
 
-```
+```text
 Resource List:
   apps/v1/Deployment:
     - production/api-server
@@ -89,7 +89,7 @@ velero backup describe production-backup-20260209 --warnings
 
 Common warnings include:
 
-```
+```text
 Warnings: 2
   Could not get volume info for persistent volume claim production/cache-pvc: volume not found
   Resource production/old-deployment has 0 replicas, skipping
@@ -131,7 +131,7 @@ velero backup describe production-backup-20260209 --errors
 
 Example errors:
 
-```
+```text
 Errors: 1
   Error backing up production/failing-pvc: snapshot failed: volume snapshot timeout
 ```
@@ -155,7 +155,7 @@ velero backup logs production-backup-20260209 | grep "api-server"
 
 Logs show the backup process step by step:
 
-```
+```text
 time="2026-02-09T02:00:15Z" level=info msg="Backing up namespace" namespace=production
 time="2026-02-09T02:00:16Z" level=info msg="Backing up resource" resource=deployments
 time="2026-02-09T02:00:17Z" level=info msg="Backed up 3 deployments"
@@ -281,7 +281,7 @@ velero backup describe production-backup-20260209 | \
 
 Expected output:
 
-```
+```text
 Persistent Volumes:
   pv-12345:
     Snapshot ID:        snap-abc123

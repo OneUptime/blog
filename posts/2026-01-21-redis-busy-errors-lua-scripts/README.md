@@ -14,7 +14,7 @@ Redis Lua scripts provide atomic operations but come with a critical limitation:
 
 When you see this error:
 
-```
+```text
 BUSY Redis is busy running a script. You can only call SCRIPT KILL or SHUTDOWN NOSAVE.
 ```
 

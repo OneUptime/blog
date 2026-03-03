@@ -39,7 +39,7 @@ sequenceDiagram
 
 A JWT consists of three parts:
 
-```
+```text
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.
 eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWUsImlhdCI6MTUxNjIzOTAyMn0.
 POstGetfAytaZS82wHcjoTyoqhMyxXiWdR7Nn7A28cM

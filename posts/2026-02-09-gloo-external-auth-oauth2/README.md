@@ -397,7 +397,7 @@ spec:
 
 Backend receives headers:
 
-```
+```text
 X-User-ID: user-12345
 X-User-Email: user@example.com
 X-User-Roles: ["admin", "user"]

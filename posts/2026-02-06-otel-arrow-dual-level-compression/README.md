@@ -20,7 +20,7 @@ Here is what happens when a batch of telemetry is exported:
 
 Each layer targets a different type of redundancy:
 
-```
+```text
 Raw OTLP data:           100%
 After Arrow encoding:     40-60% (dictionary + columnar layout)
 After Zstd compression:   15-30% (general-purpose compression)
@@ -121,7 +121,7 @@ rate(otelcol_exporter_sent_bytes_total[5m])
 
 Typical results from a microservices workload with repetitive attributes:
 
-```
+```text
 Standard OTLP + gzip:     100% (baseline)
 OTel Arrow + no compression: 45-55%
 OTel Arrow + zstd:          20-30%

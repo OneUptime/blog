@@ -29,7 +29,7 @@ java -javaagent:opentelemetry-javaagent.jar \
 
 Look for:
 
-```
+```text
 # Good - correct namespace detected
 Transformed class jakarta/servlet/http/HttpServlet
 

@@ -129,7 +129,7 @@ You definitely do not want to copy `node_modules` or other unnecessary files int
 
 This file tells Docker which files and directories to exclude:
 
-```
+```text
 node_modules
 dist
 .git

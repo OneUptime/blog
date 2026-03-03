@@ -1005,7 +1005,7 @@ test
 
 ### Organizing Mutations
 
-```
+```text
 mutations/
   00-priorities.md          # Document priority scheme
   01-resource-defaults/     # Resource requests and limits

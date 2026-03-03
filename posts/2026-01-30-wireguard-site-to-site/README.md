@@ -134,7 +134,7 @@ flowchart LR
 
 Example key output (these are examples, generate your own):
 
-```
+```text
 Site A Public Key: aB3CdEfGhIjKlMnOpQrStUvWxYz1234567890abcdef=
 Site B Public Key: bC4DeFgHiJkLmNoPqRsTuVwXyZ2345678901bcdefg=
 Site C Public Key: cD5EfGhIjKlMnOpQrStUvWxYz3456789012cdefgh=
@@ -446,7 +446,7 @@ sudo wg show
 
 ### Expected Output from wg show
 
-```
+```text
 interface: wg0
   public key: aB3CdEfGhIjKlMnOpQrStUvWxYz1234567890abcdef=
   private key: (hidden)

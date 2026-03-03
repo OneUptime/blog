@@ -77,7 +77,7 @@ This generates an `amplifyconfiguration.json` file and GraphQL model files.
 
 In Xcode, go to File > Add Package Dependencies and add:
 
-```
+```text
 https://github.com/aws-amplify/amplify-swift
 ```
 

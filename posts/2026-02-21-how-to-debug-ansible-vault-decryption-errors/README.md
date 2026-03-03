@@ -14,7 +14,7 @@ Ansible Vault encrypts sensitive data like passwords, API keys, and certificates
 
 Vault decryption failures typically produce one of these errors:
 
-```
+```text
 ERROR! Decryption failed on /home/deploy/group_vars/production/vault.yml
 
 ERROR! Attempting to decrypt but no vault secrets found
@@ -68,7 +68,7 @@ chmod 600 .vault_pass
 
 ## Cause 2: No Vault Password Provided
 
-```
+```text
 ERROR! Attempting to decrypt but no vault secrets found
 ```
 
@@ -103,7 +103,7 @@ ansible-playbook deploy.yml
 
 If you use multiple vault IDs (different passwords for different environments), a mismatch produces:
 
-```
+```text
 ERROR! Decryption failed (no vault secrets were found that could decrypt)
 ```
 
@@ -145,7 +145,7 @@ head -1 group_vars/production/vault.yml
 
 If a vault file was partially edited, merged with git conflicts, or truncated:
 
-```
+```text
 ERROR! input is not vault encrypted data
 ```
 
@@ -224,7 +224,7 @@ ansible-vault edit group_vars/production/vault.yml
 
 **Best practice: Separate vault files from variable files:**
 
-```
+```text
 group_vars/
   production/
     vars.yml        # Plain text, references vault variables

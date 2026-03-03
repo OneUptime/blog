@@ -108,7 +108,7 @@ func worker(ctx context.Context, name string) {
 ```
 
 **Output:**
-```
+```text
 Root-Worker: running
 Child-Worker: running
 Grandchild-Worker: running
@@ -190,7 +190,7 @@ func worker(ctx context.Context, name string) {
 ```
 
 **Output:**
-```
+```text
 Starting workers...
 Grandchild cancelled after 1000ms: context deadline exceeded
 Parent cancelled after 3000ms: context deadline exceeded

@@ -30,7 +30,7 @@ The Terraform Registry has specific requirements for provider repositories:
 
 Your repository must follow this naming pattern:
 
-```
+```text
 terraform-provider-<NAME>
 ```
 
@@ -40,7 +40,7 @@ For example, `terraform-provider-example`. The `<NAME>` portion becomes the prov
 
 Your repository should have this structure:
 
-```
+```text
 terraform-provider-example/
   main.go                       # Entry point
   internal/
@@ -262,7 +262,7 @@ This triggers the GitHub Actions workflow, which builds binaries, signs checksum
 
 After the release is published on GitHub, it may take a few minutes for the Terraform Registry to index it. You can verify by visiting:
 
-```
+```text
 https://registry.terraform.io/providers/<NAMESPACE>/<NAME>/latest
 ```
 

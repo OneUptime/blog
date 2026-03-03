@@ -182,7 +182,7 @@ fn compute_avg_duration(batch: &RecordBatch) -> Result<RecordBatch, Error> {
 
 Putting it all together, an end-to-end Arrow pipeline looks like this:
 
-```
+```text
 [SDK] --OTLP--> [Arrow Converter] --Arrow IPC--> [Arrow Processor] --Arrow IPC--> [Arrow-Native Backend]
                   (Phase 2 lib)                   (Phase 2 lib)                   (ClickHouse, etc.)
 ```

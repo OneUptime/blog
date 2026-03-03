@@ -84,7 +84,7 @@ For values spanning multiple lines, use a delimiter:
 ```
 
 The pattern is:
-```
+```text
 name<<DELIMITER
 content
 DELIMITER

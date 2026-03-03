@@ -44,7 +44,7 @@ flowchart LR
 
 The formula is simple:
 
-```
+```text
 Change Failure Rate = (Failed Deployments / Total Deployments) * 100
 ```
 

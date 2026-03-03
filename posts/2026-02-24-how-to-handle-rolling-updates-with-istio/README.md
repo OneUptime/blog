@@ -114,7 +114,7 @@ spec:
 
 Make sure the timing works:
 
-```
+```text
 terminationGracePeriodSeconds (60s) > preStop sleep (10s) + terminationDrainDuration (30s)
 ```
 
@@ -283,7 +283,7 @@ kubectl exec deploy/istio-ingressgateway -n istio-system -c istio-proxy -- \
 
 Set up a Grafana dashboard or Prometheus query to watch error rates in real time:
 
-```
+```text
 # Prometheus query for error rate during rollout
 sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local",response_code=~"5.."}[1m])) /
 sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local"}[1m]))

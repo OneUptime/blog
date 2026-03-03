@@ -12,7 +12,7 @@ The "failed to generate manifests" error in ArgoCD is a broad error that means t
 
 The error usually appears as:
 
-```
+```text
 ComparisonError: failed to generate manifests for source 1 of 1:
 rpc error: code = Unknown desc = <specific reason>
 ```
@@ -44,7 +44,7 @@ The failure can happen at any stage: cloning the repo, detecting the tool type, 
 
 If ArgoCD cannot clone or fetch from Git:
 
-```
+```text
 failed to generate manifests: failed to ls-remote: authentication required
 ```
 
@@ -68,7 +68,7 @@ See our guide on [fixing repository not accessible errors](https://oneuptime.com
 
 The application points to a directory that does not exist in the repo:
 
-```
+```text
 failed to generate manifests: path 'deploy/kubernetes' does not exist in repository
 ```
 
@@ -94,7 +94,7 @@ argocd app set my-app --path correct/path
 
 ArgoCD cannot determine whether to use Helm, Kustomize, or plain YAML:
 
-```
+```text
 failed to generate manifests: tool detection failed
 ```
 
@@ -133,7 +133,7 @@ spec:
 
 The specified path exists but contains no YAML files:
 
-```
+```text
 failed to generate manifests: no YAML or JSON files found
 ```
 
@@ -149,7 +149,7 @@ git ls-tree HEAD deploy/
 
 The repo server pod does not have enough memory to process the manifests:
 
-```
+```text
 failed to generate manifests: signal: killed
 ```
 
@@ -180,7 +180,7 @@ resources:
 
 Large repos or complex charts can exceed the default timeout:
 
-```
+```text
 failed to generate manifests: context deadline exceeded
 ```
 
@@ -199,7 +199,7 @@ See our detailed guide on [fixing context deadline exceeded errors](https://oneu
 
 If using a custom plugin, the plugin process might fail:
 
-```
+```text
 failed to generate manifests: plugin error: exit status 1
 ```
 
@@ -231,7 +231,7 @@ your-plugin-command generate ./
 
 When using multiple sources, one of the sources might fail:
 
-```
+```text
 failed to generate manifests for source 2 of 3: <error>
 ```
 
@@ -261,7 +261,7 @@ argocd repo get https://github.com/org/repo2
 
 When using the directory source type, invalid files will cause generation failure:
 
-```
+```text
 failed to generate manifests: error unmarshaling JSON:
 json: cannot unmarshal string into Go value
 ```

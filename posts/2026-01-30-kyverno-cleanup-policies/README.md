@@ -361,7 +361,7 @@ Kyverno cleanup policies use cron expressions for scheduling. Understanding cron
 
 ### Cron Expression Format
 
-```
+```text
 # Cron format: minute hour day-of-month month day-of-week
 #              0-59   0-23 1-31         1-12  0-6 (0=Sunday)
 

@@ -41,7 +41,7 @@ This gives you immediate context about which node you are looking at and what ro
 
 The CPU section shows real-time utilization:
 
-```
+```text
 CPU: [||||||||                  ] 32%
   user:   25%
   system:  7%
@@ -60,7 +60,7 @@ High system CPU might indicate I/O bottlenecks or excessive context switching. H
 
 Memory usage shows:
 
-```
+```text
 Memory: [||||||||||||||          ] 55%
   Total:     32.0 GB
   Used:      17.6 GB
@@ -81,7 +81,7 @@ The "Available" number is what matters most. If it drops very low, the OOM kille
 
 The bottom section lists running processes sorted by resource usage:
 
-```
+```text
 PID    CPU%   MEM%   COMMAND
 1234   15.2   8.4    kube-apiserver
 2345    8.7   3.2    etcd

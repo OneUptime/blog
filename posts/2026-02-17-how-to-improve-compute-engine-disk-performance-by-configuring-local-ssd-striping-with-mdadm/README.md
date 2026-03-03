@@ -51,7 +51,7 @@ lsblk | grep nvme
 
 You should see output like:
 
-```
+```text
 nvme0n1    259:0    0  375G  0 disk
 nvme0n2    259:1    0  375G  0 disk
 nvme0n3    259:2    0  375G  0 disk

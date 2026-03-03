@@ -277,14 +277,14 @@ If you're running on a cloud provider, you might already have logging infrastruc
 
 **Google Cloud Logging**: GKE automatically ships all container logs to Cloud Logging. You just need to use log-based filters to find Istio logs:
 
-```
+```text
 resource.type="k8s_container"
 resource.labels.container_name="istio-proxy"
 ```
 
 **Azure Monitor**: AKS with Container Insights automatically collects container logs. You can query them in Log Analytics with KQL:
 
-```
+```text
 ContainerLog
 | where Name contains "istio-proxy"
 | where LogEntry contains "response_code"

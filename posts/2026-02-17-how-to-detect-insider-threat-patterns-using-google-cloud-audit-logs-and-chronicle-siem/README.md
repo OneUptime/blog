@@ -87,7 +87,7 @@ Chronicle uses YARA-L 2.0 for detection rules. Here are several rules targeting 
 
 This rule detects when someone grants themselves a privileged role:
 
-```
+```text
 // Rule: Self-Privilege Escalation
 // Detects when a user grants themselves an elevated IAM role
 rule insider_self_privilege_escalation {
@@ -128,7 +128,7 @@ rule insider_self_privilege_escalation {
 
 This rule detects unusual data download volumes from Cloud Storage:
 
-```
+```text
 // Rule: Abnormal Data Download Volume
 // Triggers when a user downloads significantly more data than usual
 rule insider_abnormal_download_volume {
@@ -163,7 +163,7 @@ rule insider_abnormal_download_volume {
 
 This rule detects service account key creation outside of CI/CD:
 
-```
+```text
 // Rule: Manual Service Account Key Creation
 // Service account keys should only be created by Terraform/CI
 rule insider_manual_sa_key_creation {
@@ -195,7 +195,7 @@ rule insider_manual_sa_key_creation {
 
 This rule detects after-hours access patterns:
 
-```
+```text
 // Rule: Unusual After-Hours Activity
 // Detects significant cloud activity outside normal business hours
 rule insider_after_hours_activity {
@@ -235,7 +235,7 @@ rule insider_after_hours_activity {
 
 The real power comes from combining multiple weak signals into a strong detection. This rule triggers when multiple insider threat indicators fire for the same user:
 
-```
+```text
 // Rule: Multiple Insider Threat Indicators
 // Correlates multiple low-severity signals into a high-severity alert
 rule insider_threat_correlation {

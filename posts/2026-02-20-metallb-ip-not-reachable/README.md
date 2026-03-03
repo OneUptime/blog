@@ -19,7 +19,7 @@ The service has an IP, but connections time out:
 kubectl get svc my-service
 ```
 
-```
+```text
 NAME         TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
 my-service   LoadBalancer   10.96.50.100   192.168.1.150   80:31234/TCP   10m
 ```

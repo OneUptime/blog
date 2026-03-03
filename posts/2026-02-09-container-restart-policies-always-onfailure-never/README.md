@@ -260,7 +260,7 @@ kubectl describe pod my-pod
 
 Look for the "Restart Count" and "Last State" sections:
 
-```
+```text
 Restart Count:  5
 Last State:     Terminated
   Reason:       Error
@@ -281,7 +281,7 @@ kubectl get pods
 
 Output:
 
-```
+```text
 NAME           READY   STATUS             RESTARTS   AGE
 crashing-pod   0/1     CrashLoopBackOff   10         30m
 ```

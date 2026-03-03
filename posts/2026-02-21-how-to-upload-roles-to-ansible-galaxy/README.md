@@ -23,7 +23,7 @@ Before you begin, make sure you have:
 
 Galaxy expects a specific directory layout. Your repository should look like this:
 
-```
+```text
 ansible-role-myapp/
     defaults/
         main.yml          # Default variables users can override

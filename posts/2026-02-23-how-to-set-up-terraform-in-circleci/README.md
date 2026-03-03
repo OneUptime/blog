@@ -62,7 +62,7 @@ CircleCI contexts store environment variables that are shared across projects. C
 
 In each context, add the relevant environment variables:
 
-```
+```text
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
 AWS_DEFAULT_REGION=us-east-1

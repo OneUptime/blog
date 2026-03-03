@@ -151,7 +151,7 @@ The flexible time window is a nice touch. Instead of all your scheduled tasks fi
 
 AWS cron expressions have six fields, which is slightly different from the standard Unix five-field format.
 
-```
+```text
 ┌───────────── minute (0-59)
 │ ┌───────────── hour (0-23)
 │ │ ┌───────────── day of month (1-31)
@@ -164,7 +164,7 @@ AWS cron expressions have six fields, which is slightly different from the stand
 
 Some common patterns:
 
-```
+```text
 cron(0 9 * * ? *)       - Every day at 9 AM UTC
 cron(0 */4 * * ? *)     - Every 4 hours
 cron(0 9 ? * MON-FRI *) - Weekdays at 9 AM UTC

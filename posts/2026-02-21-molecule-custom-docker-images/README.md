@@ -161,7 +161,7 @@ The `pre_build_image: true` flag is important. Without it, Molecule will try to 
 
 Alternatively, you can let Molecule build the image as part of the create step. Put a Dockerfile in your scenario directory.
 
-```
+```text
 molecule/
   default/
     Dockerfile.j2

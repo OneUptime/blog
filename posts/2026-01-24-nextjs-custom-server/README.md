@@ -44,7 +44,7 @@ Avoid custom servers when possible because you lose:
 
 ### Project Structure
 
-```
+```text
 my-app/
   server/
     index.ts

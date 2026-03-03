@@ -31,7 +31,7 @@ The distinction between `total_latencies` and `backend_latencies` is important. 
 
 Start with a chart showing requests per second. This gives you a baseline for what normal traffic looks like:
 
-```
+```text
 # Total request rate across all URL map rules
 fetch https_lb_rule
 | metric 'loadbalancing.googleapis.com/https/request_count'
@@ -43,7 +43,7 @@ fetch https_lb_rule
 
 Track 4xx and 5xx responses separately. A spike in 4xx might indicate a bad deployment with broken URLs, while 5xx means your backends are failing:
 
-```
+```text
 # 5xx error rate by URL path
 fetch https_lb_rule
 | metric 'loadbalancing.googleapis.com/https/request_count'
@@ -58,7 +58,7 @@ Create separate panels for total latency and backend latency. This helps you dis
 
 For p50 backend latency:
 
-```
+```text
 # P50 backend latency per URL path
 fetch https_lb_rule
 | metric 'loadbalancing.googleapis.com/https/backend_latencies'
@@ -69,7 +69,7 @@ fetch https_lb_rule
 
 For p95 total latency:
 
-```
+```text
 # P95 total latency including network time
 fetch https_lb_rule
 | metric 'loadbalancing.googleapis.com/https/total_latencies'
@@ -188,7 +188,7 @@ Set up an alert for when 5xx errors exceed a threshold:
 
 Load balancer metrics can be broken down by backend service, which is useful when you have multiple services behind a single load balancer. Use the `backend_target_name` label:
 
-```
+```text
 # Backend latency broken down by backend service
 fetch https_lb_rule
 | metric 'loadbalancing.googleapis.com/https/backend_latencies'

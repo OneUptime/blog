@@ -94,7 +94,7 @@ deriv(
 
 A healthy service has a sawtooth memory pattern: memory grows as objects are allocated, then drops sharply when garbage collection runs. A leaking service shows a sawtooth with an upward trend, where each GC cycle reclaims less and less memory.
 
-```
+```text
 Healthy memory pattern:
   /\    /\    /\    /\
  /  \  /  \  /  \  /  \

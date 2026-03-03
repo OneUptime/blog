@@ -72,7 +72,7 @@ For a reduce function to work correctly in a distributed stream processing envir
 
 Associativity means the grouping of operations does not affect the result:
 
-```
+```text
 (a + b) + c = a + (b + c)
 ```
 
@@ -94,7 +94,7 @@ This property is essential because stream processors may combine elements in dif
 
 Commutativity means the order of operands does not affect the result:
 
-```
+```text
 a + b = b + a
 ```
 
@@ -256,7 +256,7 @@ sequenceDiagram
 
 When processing is distributed across multiple partitions, reduce combines partial results:
 
-```
+```text
 Partition 1: [1, 2, 3] -> reduce(reduce(1, 2), 3) = 6
 Partition 2: [4, 5]    -> reduce(4, 5) = 9
                            |

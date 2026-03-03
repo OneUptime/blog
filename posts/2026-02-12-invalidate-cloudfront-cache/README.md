@@ -217,7 +217,7 @@ The best invalidation is the one you never have to do. Here are strategies that 
 
 Include a hash or version in your file names:
 
-```
+```text
 /static/app.a1b2c3d4.js
 /static/styles.e5f6g7h8.css
 /images/logo.v2.png

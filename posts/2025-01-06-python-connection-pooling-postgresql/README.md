@@ -17,14 +17,14 @@ Connection pooling maintains a set of reusable connections, eliminating the over
 ## Why Connection Pooling Matters
 
 Without pooling:
-```
+```text
 Request 1: Create connection (50ms) → Query (5ms) → Close (5ms) = 60ms
 Request 2: Create connection (50ms) → Query (5ms) → Close (5ms) = 60ms
 ...
 ```
 
 With pooling:
-```
+```text
 Request 1: Get connection (0.1ms) → Query (5ms) → Return to pool (0.1ms) = 5.2ms
 Request 2: Get connection (0.1ms) → Query (5ms) → Return to pool (0.1ms) = 5.2ms
 ...
@@ -587,12 +587,12 @@ The optimal pool size depends on:
 - Database server resources
 
 General formula:
-```
+```text
 pool_size = (concurrent_requests * avg_query_duration) / response_time_target + buffer
 ```
 
 Example calculation:
-```
+```text
 - 100 concurrent requests
 - 10ms average query duration
 - 50ms response time target

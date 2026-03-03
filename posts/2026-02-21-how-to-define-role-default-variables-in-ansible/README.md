@@ -14,7 +14,7 @@ When you build an Ansible role, you want it to work out of the box with zero con
 
 Role defaults live in `defaults/main.yml` inside your role directory:
 
-```
+```text
 roles/
   myapp/
     defaults/
@@ -221,7 +221,7 @@ myapp_user: "myapp"
 
 Actually, Ansible only auto-loads `defaults/main.yml` (or `defaults/main/` as a directory of YAML files since Ansible 2.11+). If you want to split defaults, the cleanest approach since Ansible 2.11 is to use a directory:
 
-```
+```text
 roles/myapp/defaults/main/
   core.yml
   database.yml

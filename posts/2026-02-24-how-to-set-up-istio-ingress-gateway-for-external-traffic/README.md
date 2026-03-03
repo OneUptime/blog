@@ -37,7 +37,7 @@ kubectl get pods -n istio-system -l istio=ingressgateway
 
 You should see something like:
 
-```
+```text
 NAME                                    READY   STATUS    RESTARTS   AGE
 istio-ingressgateway-7b6d5d8d4f-x2k4n  1/1     Running   0          5d
 ```
@@ -289,7 +289,7 @@ spec:
 
 The ingress gateway generates Istio metrics just like any other sidecar:
 
-```
+```text
 # Request rate at the ingress
 sum(rate(istio_requests_total{source_workload="istio-ingressgateway"}[5m]))
 

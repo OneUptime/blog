@@ -54,7 +54,7 @@ sudo lvs
 
 Example output:
 
-```
+```text
 NAME        MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
 sda           8:0    0   500G  0 disk
 ├─sda1        8:1    0   512M  0 part    <- EFI partition (if UEFI)
@@ -171,7 +171,7 @@ update-grub
 
 This scans for all installed kernels and generates a fresh boot menu. The output should list the kernels it found:
 
-```
+```text
 Sourcing file '/etc/default/grub'
 Generating grub configuration file ...
 Found linux image: /boot/vmlinuz-5.15.0-91-generic
@@ -257,7 +257,7 @@ update-grub
 
 If you see `grub rescue>` at boot, GRUB can still boot manually:
 
-```
+```text
 grub rescue> ls
 (hd0) (hd0,msdos1) (hd0,msdos2) (hd0,msdos3)
 

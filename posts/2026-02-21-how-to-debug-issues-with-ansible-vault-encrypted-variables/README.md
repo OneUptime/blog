@@ -67,7 +67,7 @@ head -1 group_vars/production/vault.yml
 ```
 
 Valid headers look like:
-```
+```text
 $ANSIBLE_VAULT;1.1;AES256
 $ANSIBLE_VAULT;1.2;AES256;prod
 ```

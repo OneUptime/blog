@@ -14,7 +14,7 @@ The "OCI runtime create failed" error is Docker's way of telling you that the lo
 
 The full error typically looks like:
 
-```
+```text
 OCI runtime create failed: container_linux.go:380: starting container process caused:
 exec: "/app/start.sh": permission denied: unknown
 ```

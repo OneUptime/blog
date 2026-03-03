@@ -182,7 +182,7 @@ The LFU algorithm uses two parameters that significantly affect behavior:
 
 Controls how quickly the frequency counter grows:
 
-```
+```text
 factor=0:  Counter saturates very quickly
 factor=1:  After 5 hits, counter is ~93% of max
 factor=10: After 1000 hits, counter is ~93% of max (default)
@@ -336,7 +336,7 @@ def setup_eviction_monitoring(redis_client: redis.Redis, interval: int = 60):
 
 Decision flowchart:
 
-```
+```text
 Start
   |
   v

@@ -48,7 +48,7 @@ cat /etc/resolv.conf
 
 The `/etc/resolv.conf` should look like this:
 
-```
+```text
 search default.svc.cluster.local svc.cluster.local cluster.local
 nameserver 10.0.0.10
 options ndots:5
@@ -114,7 +114,7 @@ kubectl get configmap coredns -n kube-system -o yaml
 
 The default Corefile looks something like this:
 
-```
+```text
 .:53 {
     errors
     ready

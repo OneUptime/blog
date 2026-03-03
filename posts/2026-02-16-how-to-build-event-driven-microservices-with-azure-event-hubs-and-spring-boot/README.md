@@ -69,7 +69,7 @@ az eventhubs namespace authorization-rule keys list \
 
 We will build three microservices: Order Service (producer), Payment Service (consumer and producer), and Notification Service (consumer).
 
-```
+```text
 event-driven-demo/
   order-service/
   payment-service/

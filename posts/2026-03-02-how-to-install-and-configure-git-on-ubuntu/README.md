@@ -216,7 +216,7 @@ A global gitignore file prevents OS and editor junk from appearing in every repo
 nano ~/.gitignore_global
 ```
 
-```
+```text
 # macOS
 .DS_Store
 .AppleDouble

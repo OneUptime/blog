@@ -170,7 +170,7 @@ kubectl logs -n argocd deployment/argocd-server | grep "policy"
 ```
 
 You should see messages like:
-```
+```text
 time="2024-01-15T10:00:00Z" level=info msg="RBAC policy reloaded"
 ```
 

@@ -151,7 +151,7 @@ istioctl install -f istio-config.yaml -y
 
 Expected output:
 
-```
+```text
 ✔ Istio core installed
 ✔ Istiod installed
 ✔ Ingress gateways installed

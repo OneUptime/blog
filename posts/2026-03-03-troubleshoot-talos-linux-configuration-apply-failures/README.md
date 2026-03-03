@@ -43,7 +43,7 @@ Common validation errors include:
 
 **Missing required fields:**
 
-```
+```text
 1 error occurred:
     * machine.type: required field is missing
 ```
@@ -64,7 +64,7 @@ cluster:
 
 **Invalid field values:**
 
-```
+```text
 1 error occurred:
     * machine.network.interfaces[0].interface: invalid interface name
 ```
@@ -120,7 +120,7 @@ talosctl config info
 
 If the node has a configuration but your talosconfig does not match, you will get authentication errors:
 
-```
+```text
 rpc error: code = Unavailable desc = connection error: desc = "transport: authentication handshake failed"
 ```
 

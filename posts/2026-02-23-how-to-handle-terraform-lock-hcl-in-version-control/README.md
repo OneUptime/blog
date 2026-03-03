@@ -220,7 +220,7 @@ Add a comment template for lock file PRs:
 
 In mono-repos with multiple Terraform root modules, each root module has its own lock file:
 
-```
+```text
 infrastructure/
   networking/
     .terraform.lock.hcl    # Lock file for networking
@@ -263,7 +263,7 @@ echo "All lock files updated"
 
 ### Hash mismatch on CI/CD
 
-```
+```text
 Error: Failed to install provider
   The checksums for provider [...] don't match any of the checksums
   recorded in the dependency lock file.

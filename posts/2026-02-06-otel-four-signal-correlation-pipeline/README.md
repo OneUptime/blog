@@ -12,7 +12,7 @@ The OpenTelemetry Collector has evolved from handling just traces to supporting 
 
 The collector sits at the center, receiving all four signals from your applications and routing them to the appropriate backends:
 
-```
+```text
 Applications
   |
   |-- traces -----> [OTLP Receiver] --+

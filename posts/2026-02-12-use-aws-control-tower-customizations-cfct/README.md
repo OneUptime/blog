@@ -67,7 +67,7 @@ This creates a CodePipeline, CodeBuild projects, an S3 bucket for your configura
 
 CfCT uses a manifest file (`manifest.yaml`) that defines what to deploy and where. The configuration package has this structure:
 
-```
+```text
 custom-control-tower-configuration/
   manifest.yaml
   templates/

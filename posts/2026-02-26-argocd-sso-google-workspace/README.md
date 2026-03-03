@@ -203,7 +203,7 @@ If you do not need group-based RBAC and are fine with per-user role assignments,
 
 Same as Method 1, Step 1, but use this redirect URI:
 
-```
+```text
 https://argocd.example.com/auth/callback
 ```
 

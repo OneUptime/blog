@@ -153,7 +153,7 @@ Here is how to estimate a complete application:
 
 Add each component to the calculator one by one:
 
-```
+```text
 Component                        | Estimated Monthly Cost
 ---------------------------------|----------------------
 3x e2-standard-4 VMs             | ~$290
@@ -167,7 +167,7 @@ Total                            | ~$737/month
 ```
 
 With a 1-year CUD on the VMs:
-```
+```text
 3x e2-standard-4 with 1yr CUD    | ~$232
 Savings on VMs                    | ~$58/month
 New Total                         | ~$679/month

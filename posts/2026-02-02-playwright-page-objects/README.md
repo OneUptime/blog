@@ -827,7 +827,7 @@ export class SelectorExamples {
 
 Organize page objects in a clear directory structure.
 
-```
+```text
 tests/
   e2e/
     login.spec.ts

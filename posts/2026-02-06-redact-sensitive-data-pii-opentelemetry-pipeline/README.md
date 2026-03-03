@@ -154,7 +154,7 @@ curl -X POST http://localhost:4317/v1/logs \
 
 Check the exported log. It should read something like:
 
-```
+```text
 User [EMAIL_REDACTED] made payment with card [CARD_REDACTED], token Bearer [TOKEN_REDACTED]
 ```
 

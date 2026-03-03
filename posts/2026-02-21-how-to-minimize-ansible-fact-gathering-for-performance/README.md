@@ -32,7 +32,7 @@ With a playbook like this:
 
 You will see output like:
 
-```
+```text
 Gathering Facts ------------------------------------------ 18.43s
 Ping all hosts -------------------------------------------- 1.22s
 ```

@@ -56,7 +56,7 @@ sudo pro fix CVE-2024-1086
 Example output scenarios:
 
 **Scenario 1: Already Fixed**
-```
+```text
 CVE-2024-1086: Linux kernel vulnerability
 https://ubuntu.com/security/CVE-2024-1086
 
@@ -69,7 +69,7 @@ CVE-2024-1086 is resolved.
 ```
 
 **Scenario 2: Fix Available via Standard Updates**
-```
+```text
 CVE-2024-1086: Linux kernel vulnerability
 https://ubuntu.com/security/CVE-2024-1086
 
@@ -84,7 +84,7 @@ Do you want to try upgrading now? (y/N)
 ```
 
 **Scenario 3: Requires Ubuntu Pro (ESM)**
-```
+```text
 CVE-2024-XXXX: OpenSSL vulnerability
 https://ubuntu.com/security/CVE-2024-XXXX
 

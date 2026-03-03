@@ -28,7 +28,7 @@ Alertmanager's routing is tree-based. Each alert enters at the root route and tr
 
 ## Project Structure
 
-```
+```text
 alertmanager/
   inventory/
     hosts.yml

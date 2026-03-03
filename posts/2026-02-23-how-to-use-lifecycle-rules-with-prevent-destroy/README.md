@@ -31,7 +31,7 @@ resource "aws_db_instance" "main" {
 
 If someone runs `terraform destroy` or changes the configuration in a way that requires the database to be replaced, Terraform shows an error:
 
-```
+```text
 Error: Instance cannot be destroyed
 
   on main.tf line 1:

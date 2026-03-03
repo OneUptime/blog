@@ -31,12 +31,12 @@ sudo nano /etc/default/grub
 ```
 
 For Intel CPUs:
-```
+```text
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash intel_iommu=on iommu=pt"
 ```
 
 For AMD CPUs:
-```
+```text
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash amd_iommu=on iommu=pt"
 ```
 

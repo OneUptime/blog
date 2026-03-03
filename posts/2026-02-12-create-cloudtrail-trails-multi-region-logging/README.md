@@ -66,7 +66,7 @@ flowchart TD
 
 Log files are organized by region in S3:
 
-```
+```text
 s3://cloudtrail-central-logs-123456789012/
   AWSLogs/
     123456789012/
@@ -159,7 +159,7 @@ The S3 bucket needs a policy that allows CloudTrail to write logs for all accoun
 
 Note the organization ID (`o-abc123def4`) in the resource path. CloudTrail uses this structure for organization-wide logs:
 
-```
+```text
 s3://cloudtrail-org-logs-management/
   AWSLogs/
     o-abc123def4/

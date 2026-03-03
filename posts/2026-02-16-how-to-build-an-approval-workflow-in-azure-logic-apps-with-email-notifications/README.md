@@ -100,7 +100,7 @@ Configure the approval:
 - **Assigned to**: Use dynamic content: `[approverEmail]`
 - **Details**: Build a descriptive message using dynamic content:
 
-```
+```text
 A new approval request has been submitted.
 
 Request ID: [requestId]
@@ -212,7 +212,7 @@ For requests that need multiple approvals (for example, anything over $5,000 nee
 
 After the initial trigger, add a condition that checks the amount:
 
-```
+```text
 If amount is greater than 5000:
   - Send approval to manager
   - If manager approves, send approval to VP

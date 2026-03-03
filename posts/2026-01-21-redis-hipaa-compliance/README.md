@@ -14,7 +14,7 @@ HIPAA (Health Insurance Portability and Accountability Act) sets strict requirem
 
 ### Key HIPAA Rules
 
-```
+```text
 +------------------------+------------------------------------------+
 | Rule                   | Key Requirements for Redis               |
 +------------------------+------------------------------------------+
@@ -28,7 +28,7 @@ HIPAA (Health Insurance Portability and Accountability Act) sets strict requirem
 
 ### Protected Health Information (PHI)
 
-```
+```text
 PHI Identifiers:
 - Names
 - Geographic data (smaller than state)
@@ -123,7 +123,7 @@ aclfile /etc/redis/users.acl
 
 ### Role-Based Access Control
 
-```
+```text
 # /etc/redis/users.acl
 
 # Admin user - full access with audit

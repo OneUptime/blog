@@ -105,7 +105,7 @@ Each imported playbook is a complete, standalone playbook:
 
 ## Project Structure
 
-```
+```text
 project/
   site.yml                    # Master playbook
   playbooks/

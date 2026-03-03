@@ -10,7 +10,7 @@ Description: Practical solutions for resolving HTTP 409 Conflict errors when dep
 
 You run `terraform apply`, wait a few minutes, and get slapped with a 409 Conflict error. Something along the lines of:
 
-```
+```text
 Error: creating/updating Resource Group "my-rg":
 resources.GroupsClient#CreateOrUpdate: Failure responding to request:
 StatusCode=409 -- Original Error: autorest/azure: Service returned an error.

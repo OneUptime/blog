@@ -244,7 +244,7 @@ For production workloads with high bandwidth requirements, ExpressRoute provides
 
 VMs in other subnets within the same VNet can connect to the Managed Instance directly using the private endpoint hostname:
 
-```
+```text
 Server=mi-instance.abc123.database.windows.net,1433
 ```
 

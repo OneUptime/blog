@@ -18,7 +18,7 @@ Make sure you have Docker Engine 20.10+ and Docker Compose V2 installed. You wil
 
 ## Project Structure
 
-```
+```text
 nextjs-postgres-redis/
 ├── docker-compose.yml
 ├── Dockerfile
@@ -95,7 +95,7 @@ module.exports = nextConfig;
 
 Keep your build context small with a proper `.dockerignore`:
 
-```
+```text
 # Exclude files not needed in the Docker build
 node_modules
 .next

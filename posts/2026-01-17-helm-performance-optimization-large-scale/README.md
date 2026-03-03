@@ -444,7 +444,7 @@ Track these metrics:
 
 ## Example: Optimized Chart Structure
 
-```
+```text
 optimized-chart/
 ├── Chart.yaml
 ├── values.yaml

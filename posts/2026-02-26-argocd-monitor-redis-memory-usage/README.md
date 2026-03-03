@@ -34,7 +34,7 @@ kubectl exec -n argocd deploy/argocd-redis -- redis-cli INFO memory
 
 This returns output like:
 
-```
+```text
 used_memory:48293216
 used_memory_human:46.06M
 used_memory_rss:55410688

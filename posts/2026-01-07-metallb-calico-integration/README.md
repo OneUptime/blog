@@ -245,7 +245,7 @@ calicoctl node status
 
 Expected output showing established BGP sessions:
 
-```
+```text
 Calico process is running.
 
 IPv4 BGP status
@@ -296,7 +296,7 @@ kubectl get pods -n metallb-system -w
 
 Wait until you see the controller and speaker pods in Running state:
 
-```
+```text
 NAME                                  READY   STATUS    RESTARTS   AGE
 metallb-controller-7d9c8c8b9f-xxxxx   1/1     Running   0          2m
 metallb-speaker-xxxxx                 4/4     Running   0          2m

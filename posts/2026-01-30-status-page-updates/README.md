@@ -71,7 +71,7 @@ Standardized templates help responders post updates quickly without worrying abo
 
 ### Initial update template
 
-```
+```text
 We are investigating reports of [issue description] affecting [component/service].
 
 Affected: [list of impacted services or regions]
@@ -81,7 +81,7 @@ Next update: Within [timeframe]
 
 ### Progress update template
 
-```
+```text
 Update: We have identified the root cause as [brief explanation].
 
 Our team is [action being taken]. We expect [outcome or next milestone].
@@ -93,7 +93,7 @@ Next update: Within [timeframe]
 
 ### Resolution update template
 
-```
+```text
 Resolved: The issue affecting [component/service] has been fixed.
 
 Root cause: [one-sentence explanation]
@@ -175,7 +175,7 @@ Maintenance updates follow a different rhythm than incident updates. Customers e
 
 ### Maintenance announcement template
 
-```
+```text
 Scheduled Maintenance: [Component/Service]
 
 We will perform maintenance on [component] on [date] from [start time] to [end time] ([timezone]).

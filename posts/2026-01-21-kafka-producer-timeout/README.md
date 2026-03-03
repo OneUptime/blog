@@ -14,7 +14,7 @@ Producer timeout errors are among the most common issues in Kafka deployments. T
 
 ### Common Timeout Errors
 
-```
+```text
 org.apache.kafka.common.errors.TimeoutException:
 Failed to update metadata after 60000 ms
 

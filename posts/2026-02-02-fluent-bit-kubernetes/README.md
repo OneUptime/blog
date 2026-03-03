@@ -364,7 +364,7 @@ curl http://localhost:2020/api/v1/health
 
 You should see output like:
 
-```
+```text
 NAME               READY   STATUS    RESTARTS   NODE
 fluent-bit-abc12   1/1     Running   0          node-1
 fluent-bit-def34   1/1     Running   0          node-2

@@ -131,7 +131,7 @@ kubectl -n kube-system get configmap coredns -o yaml
 
 The default Corefile should look something like:
 
-```
+```text
 .:53 {
     errors
     health {
@@ -174,7 +174,7 @@ kubectl -n kube-system edit configmap coredns
 
 Change the `forward` directive to point to specific servers:
 
-```
+```text
 forward . 8.8.8.8 8.8.4.4 {
     max_concurrent 1000
 }

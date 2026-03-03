@@ -99,7 +99,7 @@ This distinction matters in practice. With traditional CI/CD, answering "what is
 
 Traditional CI/CD requires your CI system to have credentials for every target environment. Your Jenkins server or GitHub Actions needs kubeconfig files, service account tokens, or cloud provider credentials. This creates a large attack surface:
 
-```
+```text
 Traditional CI/CD Credential Flow:
 CI System --> needs credentials for --> Dev Cluster
 CI System --> needs credentials for --> Staging Cluster
@@ -108,7 +108,7 @@ CI System --> needs credentials for --> Production Cluster
 
 GitOps inverts this. ArgoCD runs inside the cluster and only needs read access to Git repositories. No external system holds cluster credentials:
 
-```
+```text
 GitOps Credential Flow:
 ArgoCD (in cluster) --> reads from --> Git Repository (read-only)
 ```
@@ -169,7 +169,7 @@ deploy-production:
 
 GitOps enforces consistency through identical tooling for all environments. The only difference is the configuration data, not the deployment mechanism:
 
-```
+```text
 gitops-repo/
   base/
     deployment.yaml

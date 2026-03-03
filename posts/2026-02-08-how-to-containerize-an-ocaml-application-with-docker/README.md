@@ -94,7 +94,7 @@ let () =
 
 Create the opam file:
 
-```
+```text
 # ocaml_docker_demo.opam - package dependencies
 opam-version: "2.0"
 name: "ocaml_docker_demo"
@@ -235,7 +235,7 @@ The opam dependency installation step is often the slowest part of the build. He
 
 Pin exact versions in your opam file for reproducibility:
 
-```
+```text
 depends: [
   "ocaml" {= "5.1.1"}
   "dune" {= "3.12.1"}

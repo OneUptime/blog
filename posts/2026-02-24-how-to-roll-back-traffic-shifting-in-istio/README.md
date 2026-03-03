@@ -168,7 +168,7 @@ But keep at least one replica warm. If something goes wrong with v2 that only sh
 
 Keep your rollback configurations version-controlled:
 
-```
+```text
 istio-config/
   my-service/
     virtualservice-v1-100.yaml
@@ -259,7 +259,7 @@ kubectl get virtualservice my-service -o yaml
 
 **Verify traffic distribution in Kiali or with Prometheus:**
 
-```
+```text
 sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local"}[1m])) by (destination_version)
 ```
 
@@ -271,7 +271,7 @@ watch -n 2 "kubectl logs -l app=my-service,version=v2 --tail=5"
 
 **Check that error rates are recovering:**
 
-```
+```text
 sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local",response_code=~"5.*"}[1m]))
 ```
 

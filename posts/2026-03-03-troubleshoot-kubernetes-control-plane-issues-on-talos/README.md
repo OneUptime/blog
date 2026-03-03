@@ -62,7 +62,7 @@ Common API server issues:
 
 **etcd connection failure:**
 
-```
+```text
 Error: connection error: desc = "transport: Error while dialing: dial tcp 127.0.0.1:2379: connect: connection refused"
 ```
 
@@ -70,7 +70,7 @@ Fix etcd first - the API server cannot function without it.
 
 **Bind address in use:**
 
-```
+```text
 listen tcp 0.0.0.0:6443: bind: address already in use
 ```
 

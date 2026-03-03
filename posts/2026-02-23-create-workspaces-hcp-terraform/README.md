@@ -25,14 +25,14 @@ The simplest way to get started:
 
 4. Configure the workspace:
 
-```
+```text
 Workspace Name: production-networking
 Description: Production VPC, subnets, and routing configuration
 Project: Production Infrastructure
 ```
 
 5. If you chose VCS workflow, select the repository and configure:
-```
+```text
 VCS repository: myorg/infrastructure
 Branch: main
 Terraform Working Directory: environments/production/networking
@@ -282,7 +282,7 @@ How you organize workspaces depends on your team structure and infrastructure. H
 
 ### Per-Environment
 
-```
+```text
 production-app
 staging-app
 dev-app
@@ -292,7 +292,7 @@ Same configuration, different variable values. Simple and works for small teams.
 
 ### Per-Component Per-Environment
 
-```
+```text
 production-networking
 production-compute
 production-database
@@ -305,7 +305,7 @@ Separates concerns so network changes do not require replanning compute resource
 
 ### Per-Team
 
-```
+```text
 platform-shared-services
 team-alpha-app
 team-beta-app

@@ -12,7 +12,7 @@ ALSA (Advanced Linux Sound Architecture) is the kernel-level audio subsystem on 
 
 ## How ALSA Fits in the Stack
 
-```
+```text
 Applications (VLC, Firefox, etc.)
         |
 PulseAudio / PipeWire / JACK  (sound servers)

@@ -81,7 +81,7 @@ If the build succeeds locally but fails in ArgoCD, the issue is likely a version
 
 ## Common Error: Missing Resources
 
-```
+```text
 Error: accumulating resources: accumulation err='accumulating resources from '../../base':
 read /tmp/..../base/deployment.yaml: no such file or directory'
 ```
@@ -100,7 +100,7 @@ Fix: Check that every file and directory listed in `resources` exists. Check for
 
 ## Common Error: Invalid YAML
 
-```
+```text
 Error: accumulating resources: accumulation err='merging resources from 'deployment.yaml':
 yaml: line 15: did not find expected key'
 ```
@@ -123,7 +123,7 @@ Common YAML mistakes:
 
 ## Common Error: Duplicate Resources
 
-```
+```text
 Error: accumulating resources: may not add resource with
 an already registered id: apps_v1_Deployment|~|my-app|my-api
 ```
@@ -150,7 +150,7 @@ patches:
 
 ## Common Error: Unknown Field
 
-```
+```text
 Error: json: unknown field "replacements"
 ```
 
@@ -165,7 +165,7 @@ Fix: Either upgrade Kustomize in ArgoCD or use an older equivalent feature. For 
 
 ## Common Error: Load Restrictions
 
-```
+```text
 Error: accumulating resources: security; file '/absolute/path' is not in or below '/working/dir'
 ```
 
@@ -179,7 +179,7 @@ data:
 
 ## Common Error: Helm Chart Inflation
 
-```
+```text
 Error: unable to find plugin ... helmCharts
 ```
 

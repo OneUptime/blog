@@ -10,7 +10,7 @@ Description: Resolve the EADDRINUSE error when your Node.js server fails to star
 
 You start your Node.js server and get hit with this error:
 
-```
+```text
 Error: listen EADDRINUSE: address already in use :::3000
 ```
 

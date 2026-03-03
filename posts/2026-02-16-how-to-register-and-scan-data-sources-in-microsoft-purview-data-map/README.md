@@ -276,7 +276,7 @@ When a scan runs, Purview extracts several types of metadata:
 
 Collections provide a hierarchical way to organize your registered data sources. Think of them like folders:
 
-```
+```text
 Root Collection
   |-- Production
   |     |-- Databases

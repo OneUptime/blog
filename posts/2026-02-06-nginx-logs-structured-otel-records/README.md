@@ -12,13 +12,13 @@ NGINX writes access and error logs in specific formats. The access log uses a co
 
 The default combined access log format:
 
-```
+```text
 10.0.0.5 - alice [06/Feb/2026:10:30:00 +0000] "GET /api/users HTTP/1.1" 200 1234 "https://example.com/" "Mozilla/5.0"
 ```
 
 The error log format:
 
-```
+```text
 2026/02/06 10:30:00 [error] 12345#0: *67890 connect() failed (111: Connection refused) while connecting to upstream, client: 10.0.0.5, server: example.com, request: "GET /api/users HTTP/1.1", upstream: "http://10.0.0.10:8080/api/users"
 ```
 

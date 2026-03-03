@@ -45,7 +45,7 @@ sslyze 203.0.113.1
 
 A basic scan produces extensive output covering all TLS aspects. The key sections are:
 
-```
+```text
  * SCAN RESULTS FOR EXAMPLE.COM - 203.0.113.1:443
 
  * SSL 2.0 Cipher Suites:
@@ -104,7 +104,7 @@ sslyze --certinfo example.com 2>&1 | head -80
 
 Key certificate fields to check:
 
-```
+```text
  * Certificate Information:
      Content
        SHA1 Fingerprint:         a1b2c3d4e5f6...

@@ -49,7 +49,7 @@ flowchart TD
 
 Use dot notation to access object properties:
 
-```
+```text
 .metadata.name                          -> metadata.name
 .spec.template.spec                     -> nested object
 .metadata.annotations                   -> annotations object
@@ -59,7 +59,7 @@ Use dot notation to access object properties:
 
 Use `[]` to iterate over all elements in an array:
 
-```
+```text
 .spec.template.spec.containers[]        -> each container
 .spec.template.spec.volumes[]           -> each volume
 .status.conditions[]                    -> each condition
@@ -69,7 +69,7 @@ Use `[]` to iterate over all elements in an array:
 
 Use `select()` to filter array elements by a condition:
 
-```
+```text
 .spec.template.spec.containers[] | select(.name == "sidecar")
 .status.conditions[] | select(.type == "Ready")
 .spec.template.spec.volumes[] | select(.name | startswith("vault-"))
@@ -79,7 +79,7 @@ Use `select()` to filter array elements by a condition:
 
 Chain field access after filtering:
 
-```
+```text
 # Select a container and then ignore just its resources
 .spec.template.spec.containers[] | select(.name == "app") | .resources
 

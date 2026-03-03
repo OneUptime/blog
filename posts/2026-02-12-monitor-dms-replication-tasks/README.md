@@ -140,7 +140,7 @@ For troubleshooting, set severity to `LOGGER_SEVERITY_DETAILED_DEBUG` on the com
 
 Once logs are flowing, use Logs Insights to search them efficiently.
 
-```
+```text
 # Find all error messages in DMS task logs from the last 24 hours
 fields @timestamp, @message
 | filter @message like /ERROR/
@@ -148,7 +148,7 @@ fields @timestamp, @message
 | limit 50
 ```
 
-```
+```text
 # Count errors by component to identify the problem area
 fields @timestamp, @message
 | filter @message like /ERROR/

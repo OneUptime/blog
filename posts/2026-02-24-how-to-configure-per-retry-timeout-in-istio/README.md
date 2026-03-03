@@ -96,7 +96,7 @@ With this configuration:
 
 What happens at the boundary:
 
-```
+```text
 Attempt 1: starts at 0s, times out at 2s -> retry
 Attempt 2: starts at 2s, times out at 4s -> retry
 Attempt 3: starts at 4s, times out at 6s -> retry
@@ -113,7 +113,7 @@ http:
       perTryTimeout: 2s
 ```
 
-```
+```text
 Attempt 1: 0s-2s (uses full perTryTimeout)
 Attempt 2: 2s-4s (uses full perTryTimeout)
 Attempt 3: 4s-5s (gets only 1s before overall timeout)

@@ -35,7 +35,7 @@ sudo bpftrace -l 'kprobe:tcp_*'
 
 bpftrace supports several probe types:
 
-```
+```text
 kprobe:function      - Kernel function entry point
 kretprobe:function   - Kernel function return
 tracepoint:cat:name  - Kernel tracepoints (more stable API than kprobes)
@@ -87,7 +87,7 @@ For more complex analysis, write a `.bt` script file:
 # Measure latency of read() system calls per process
 ```
 
-```
+```text
 #!/usr/bin/env bpftrace
 
 BEGIN {
@@ -120,7 +120,7 @@ sudo bpftrace syscall-latency.bt
 
 ## Tracing Disk I/O
 
-```
+```text
 #!/usr/bin/env bpftrace
 // File: disk-io.bt
 // Trace disk I/O latency and size
@@ -157,7 +157,7 @@ interval:s:10 {
 
 ## Tracing Network Activity
 
-```
+```text
 #!/usr/bin/env bpftrace
 // File: tcp-connections.bt
 // Show TCP connections being made
@@ -229,7 +229,7 @@ uprobe:/usr/bin/nginx:ngx_event_accept
 
 ## Memory Leak Detection
 
-```
+```text
 #!/usr/bin/env bpftrace
 // File: malloc-track.bt
 // Track allocations without matching frees (potential leaks)
@@ -268,7 +268,7 @@ sudo bpftrace malloc-track.bt 12345
 
 ## Security Monitoring with bpftrace
 
-```
+```text
 #!/usr/bin/env bpftrace
 // File: security-monitor.bt
 // Monitor for suspicious activity
@@ -301,7 +301,7 @@ tracepoint:syscalls:sys_enter_execve {
 
 ## Useful bpftrace Built-ins
 
-```
+```text
 Variables available in bpftrace:
   pid         - Process ID
   tid         - Thread ID

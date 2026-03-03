@@ -176,7 +176,7 @@ Key indicators of N+1 problems in traces:
 
 When you examine the trace in your observability platform, look for these attributes in the Ecto spans:
 
-```
+```text
 Span: my_app.repo.query
 Duration: 1.2ms
 Attributes:

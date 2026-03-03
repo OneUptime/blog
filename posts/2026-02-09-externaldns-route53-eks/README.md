@@ -335,7 +335,7 @@ args:
 
 This creates TXT records like:
 
-```
+```text
 externaldns-web.example.com TXT "heritage=external-dns,external-dns/owner=my-cluster"
 ```
 

@@ -14,7 +14,7 @@ This guide covers querying logs with LogCLI, writing alert rules, and setting up
 
 ## Architecture
 
-```
+```text
 Applications / Promtail
       |
    [Loki] - log storage and query engine

@@ -23,7 +23,7 @@ We will cover both approaches.
 
 ## Project Structure
 
-```
+```text
 git-deploy/
   inventory/
     hosts.yml

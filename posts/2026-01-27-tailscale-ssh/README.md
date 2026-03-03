@@ -236,7 +236,7 @@ Tailscale SSH integrates seamlessly with VS Code Remote SSH. You can develop on 
 
 First, ensure your VS Code SSH config uses Tailscale hostnames. Edit `~/.ssh/config`:
 
-```
+```text
 # Use Tailscale SSH for all tailnet hosts
 Host *.your-tailnet.ts.net
     ProxyCommand /usr/bin/tailscale ssh --accept-risks=lose-ssh %h
@@ -246,7 +246,7 @@ Host *.your-tailnet.ts.net
 
 Alternatively, configure individual hosts:
 
-```
+```text
 # Production web server via Tailscale
 Host prod-web
     HostName prod-web.your-tailnet.ts.net

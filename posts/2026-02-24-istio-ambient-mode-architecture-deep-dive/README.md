@@ -60,13 +60,13 @@ Ambient mode introduces HBONE (HTTP Based Overlay Network Encapsulation) as its 
 
 The HBONE tunnel looks like this at the network level:
 
-```
+```text
 [Source Pod] -> [Source ztunnel] --HBONE/mTLS--> [Dest ztunnel] -> [Dest Pod]
 ```
 
 When a waypoint is involved:
 
-```
+```text
 [Source Pod] -> [Source ztunnel] --HBONE--> [Waypoint] --HBONE--> [Dest ztunnel] -> [Dest Pod]
 ```
 

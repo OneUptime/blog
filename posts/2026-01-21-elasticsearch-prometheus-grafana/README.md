@@ -12,7 +12,7 @@ Effective monitoring is essential for maintaining healthy Elasticsearch clusters
 
 ## Architecture Overview
 
-```
+```text
 Elasticsearch Cluster -> Elasticsearch Exporter -> Prometheus -> Grafana
                                                       |
                                                       v

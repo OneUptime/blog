@@ -28,7 +28,7 @@ Before starting, you should have:
 
 When two users edit a document simultaneously, their changes can conflict. Consider this scenario:
 
-```
+```text
 Original text: "Hello World"
 
 User A deletes "World" -> "Hello "

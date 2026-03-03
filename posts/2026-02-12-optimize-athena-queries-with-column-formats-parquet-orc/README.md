@@ -16,7 +16,7 @@ Let's dig into why columnar formats matter and how to use them effectively.
 
 Traditional formats like CSV and JSON store data row by row:
 
-```
+```text
 Row 1: user_id=1, name="Alice", email="alice@example.com", age=30, city="NYC"
 Row 2: user_id=2, name="Bob", email="bob@example.com", age=25, city="SF"
 Row 3: user_id=3, name="Carol", email="carol@example.com", age=35, city="NYC"
@@ -26,7 +26,7 @@ If you only need the `name` and `city` columns, Athena still has to read every b
 
 Columnar formats like Parquet and ORC store data column by column:
 
-```
+```text
 Column: user_id -> [1, 2, 3]
 Column: name -> ["Alice", "Bob", "Carol"]
 Column: email -> ["alice@example.com", "bob@example.com", "carol@example.com"]

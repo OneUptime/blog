@@ -16,7 +16,7 @@ Understanding how to read, modify, and apply these settings is a core skill for 
 
 The `/proc/sys/` filesystem is a virtual filesystem maintained by the running kernel. Each file under it corresponds to a kernel parameter:
 
-```
+```text
 /proc/sys/net/core/rmem_max  ->  net.core.rmem_max (in sysctl notation)
 /proc/sys/kernel/hostname    ->  kernel.hostname
 /proc/sys/vm/swappiness      ->  vm.swappiness

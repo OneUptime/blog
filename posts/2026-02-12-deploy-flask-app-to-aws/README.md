@@ -51,7 +51,7 @@ Elastic Beanstalk is the easiest way to deploy a Flask app on AWS. It handles pr
 
 Your project should look something like this:
 
-```
+```text
 my-flask-app/
   application.py
   requirements.txt

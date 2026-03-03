@@ -38,7 +38,7 @@ networkctl list
 
 Sample output:
 
-```
+```text
 IDX LINK    TYPE     OPERATIONAL SETUP
   1 lo      loopback carrier     unmanaged
   2 eth0    ether    routable    configured
@@ -80,7 +80,7 @@ networkctl status eth0
 
 Output includes:
 
-```
+```text
 * 2: eth0
        Link File: /usr/lib/systemd/network/99-default.link
     Network File: /etc/systemd/network/20-wired.network

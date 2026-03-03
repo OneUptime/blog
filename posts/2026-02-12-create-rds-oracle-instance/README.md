@@ -45,7 +45,7 @@ Oracle is memory-intensive. Choose r-class instances for production workloads.
 
 Here are typical instance recommendations by workload size.
 
-```
+```text
 Workload      | Instance Class   | vCPUs | Memory
 --------------|------------------|-------|-------
 Dev/Test      | db.m6i.large     | 2     | 8 GB
@@ -75,7 +75,7 @@ Standard RDS networking. Oracle uses port 1521 by default.
 
 This security group rule allows Oracle connections from your application.
 
-```
+```text
 Type: Oracle-RDS
 Protocol: TCP
 Port: 1521

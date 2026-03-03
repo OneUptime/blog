@@ -28,7 +28,7 @@ RDB creates point-in-time snapshots of your dataset at specified intervals. Thin
 
 ### How RDB Works
 
-```
+```text
 Time ─────────────────────────────────────────────────────►
 
      │         │         │         │
@@ -106,7 +106,7 @@ AOF logs every write operation, allowing you to replay the log to reconstruct th
 
 ### How AOF Works
 
-```
+```text
 Client Commands          AOF File
       │                     │
       ▼                     │
@@ -151,7 +151,7 @@ auto-aof-rewrite-min-size 64mb
 
 ### AOF Fsync Policies Explained
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │ Policy      │ Durability       │ Performance    │ Use Case      │
 ├─────────────────────────────────────────────────────────────────┤
@@ -193,7 +193,7 @@ The AOF file grows as operations are logged. Rewrite compacts it by generating t
 
 ### Before Rewrite
 
-```
+```text
 SET counter 1
 INCR counter
 INCR counter
@@ -206,7 +206,7 @@ DEL name
 
 ### After Rewrite
 
-```
+```text
 SET counter 5
 ```
 
@@ -248,7 +248,7 @@ auto-aof-rewrite-min-size 64mb
 
 ### How Hybrid Works
 
-```
+```text
 ┌──────────────────────────────────────────────┐
 │              AOF File (Hybrid)               │
 ├──────────────────────────────────────────────┤
@@ -273,7 +273,7 @@ auto-aof-rewrite-min-size 64mb
 
 ### Choosing the Right Strategy
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────────────┐
 │ Use Case                 │ Recommendation        │ Data Loss Risk      │
 ├────────────────────────────────────────────────────────────────────────┤

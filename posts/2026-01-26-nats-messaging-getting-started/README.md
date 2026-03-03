@@ -571,7 +571,7 @@ Here are some things I've learned from using NATS in production:
 
 Use a hierarchical naming scheme. This makes wildcards useful and keeps things organized:
 
-```
+```text
 # Good - hierarchical and descriptive
 orders.created
 orders.updated

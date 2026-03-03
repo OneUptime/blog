@@ -66,7 +66,7 @@ machine:
 
 After saving and closing the editor, you will see output like:
 
-```
+```text
 Applied machine configuration on node 10.0.1.10
 ```
 
@@ -166,7 +166,7 @@ For production changes, prefer the patch-based workflow where changes are versio
 
 When you save and exit the editor, talosctl validates the configuration before applying. If validation fails, it shows the error and gives you the option to re-edit:
 
-```
+```text
 Error validating configuration: machine.network.interfaces[0].addresses[0]:
 invalid CIDR address: 10.0.1.10
 Would you like to edit the file again? [y/n]:
@@ -247,7 +247,7 @@ Here is a comparison of the different ways to change Talos configurations:
 Talos machine configurations can be several hundred lines long. Here are some tips for navigating them:
 
 In vim:
-```
+```text
 # Search for a section
 /machine.kubelet
 
@@ -260,7 +260,7 @@ za  # Toggle fold at cursor
 ```
 
 In nano:
-```
+```text
 # Search
 Ctrl+W then type the search term
 

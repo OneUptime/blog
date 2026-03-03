@@ -56,7 +56,7 @@ This is why the network label must be accurate. If you label two clusters as the
 
 Beyond the network label, Istio uses Kubernetes node topology labels for locality-aware routing:
 
-```
+```text
 topology.kubernetes.io/region    -> e.g., us-east-1
 topology.kubernetes.io/zone      -> e.g., us-east-1a
 ```

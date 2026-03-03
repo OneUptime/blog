@@ -63,7 +63,7 @@ haproxy -v
 ```
 
 You should see output similar to:
-```
+```text
 HAProxy version 2.8.x-xxxxxx-xx
 ```
 
@@ -189,7 +189,7 @@ sudo haproxy -c -f /etc/haproxy/haproxy.cfg
 ```
 
 If the configuration is valid, you will see:
-```
+```text
 Configuration file is valid
 ```
 
@@ -926,7 +926,7 @@ defaults
 ```
 
 ### Log format field descriptions
-```
+```text
 # %ci - Client IP
 # %cp - Client port
 # %tr - Time request was accepted

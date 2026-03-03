@@ -12,7 +12,7 @@ The "mismatched types" error is one of the most frequent errors in Rust. It occu
 
 ## Understanding the Error
 
-```
+```text
 error[E0308]: mismatched types
  --> src/main.rs:3:20
   |

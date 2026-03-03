@@ -44,7 +44,7 @@ The key principle: shared infrastructure is owned and managed by the platform te
 
 ## Repository Structure
 
-```
+```text
 platform-infra/
 ├── apps/
 │   ├── root.yaml                    # Root App-of-Apps for all infra

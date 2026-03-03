@@ -45,7 +45,7 @@ Look for response flags that indicate a reset:
 
 A log line with the `UC` flag looks like:
 
-```
+```text
 [2026-02-24T10:00:00.000Z] "GET /api/data HTTP/1.1" 503 UC upstream_reset_before_response_started{connection_termination} - "-" 0 91 5 - "-" "curl/7.88.1" "abc-123" "my-service:8080" "10.244.0.20:8080" outbound|8080||my-service.default.svc.cluster.local 10.244.0.15:48372 10.0.10.50:8080 10.244.0.15:48370 - default
 ```
 

@@ -37,7 +37,7 @@ Ansible modules are standalone scripts that receive input as JSON, perform their
 
 A well-organized module follows this structure:
 
-```
+```text
 my_ansible_collection/
 ├── plugins/
 │   └── modules/

@@ -673,7 +673,7 @@ When evaluating state management solutions, consider these key criteria:
 
 ### 1. Bundle Size
 
-```
+```text
 Context API: 0KB (built into React)
 Redux Toolkit: ~10KB minified + gzipped
 Zustand: ~1KB minified + gzipped
@@ -773,7 +773,7 @@ For frequent updates (animations, real-time data):
 
 #### Context API Structure
 
-```
+```text
 src/
   contexts/
     AuthContext.tsx
@@ -788,7 +788,7 @@ src/
 
 #### Redux Structure
 
-```
+```text
 src/
   store/
     index.ts (configureStore)
@@ -804,7 +804,7 @@ src/
 
 #### Zustand Structure
 
-```
+```text
 src/
   stores/
     useAuthStore.ts

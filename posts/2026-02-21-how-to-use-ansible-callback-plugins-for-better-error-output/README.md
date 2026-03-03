@@ -71,13 +71,13 @@ stdout_callback = yaml
 
 Default output (hard to read):
 
-```
+```text
 ok: [web-01] => {"ansible_facts": {"ansible_distribution": "Ubuntu", "ansible_distribution_version": "22.04"}, "changed": false}
 ```
 
 YAML callback output (much better):
 
-```
+```text
 ok: [web-01] =>
   ansible_facts:
     ansible_distribution: Ubuntu
@@ -97,7 +97,7 @@ stdout_callback = debug
 
 When a task fails, the output looks like:
 
-```
+```text
 TASK [Run database migration] *************************************************
 FAILED - RETRYING: Run database migration (3 retries left).
 
@@ -144,7 +144,7 @@ callbacks_enabled = timer
 
 Output at the end of the run:
 
-```
+```text
 PLAY RECAP ********************************************************************
 web-01  : ok=15   changed=3    unreachable=0    failed=0    skipped=2
 
@@ -163,7 +163,7 @@ callbacks_enabled = profile_tasks
 
 Output:
 
-```
+```text
 PLAY RECAP ********************************************************************
 
 Wednesday 21 February 2026  10:15:00 +0000 (0:00:01.234) 0:02:34.567 *********

@@ -158,12 +158,12 @@ This self-service model means IT does not need to generate configs manually for 
 By default, Firezone routes all traffic through the VPN. To configure split tunneling, go to Settings > Default Client Config and modify the "Allowed IPs":
 
 For full tunnel:
-```
+```text
 0.0.0.0/0, ::/0
 ```
 
 For split tunnel (only route corporate networks through VPN):
-```
+```text
 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
 ```
 

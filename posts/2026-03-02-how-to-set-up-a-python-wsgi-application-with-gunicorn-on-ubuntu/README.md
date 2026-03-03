@@ -101,7 +101,7 @@ curl --unix-socket /run/gunicorn/myapp.sock http://localhost/
 
 Gunicorn's recommended formula for synchronous workers is:
 
-```
+```text
 workers = (2 * CPU cores) + 1
 ```
 

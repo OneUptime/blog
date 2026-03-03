@@ -71,7 +71,7 @@ func new --name hello --template "HTTP trigger"
 
 This creates a project structure with the function ready to go:
 
-```
+```text
 my-api/
   host.json           # Global configuration
   local.settings.json # Local environment variables
@@ -169,7 +169,7 @@ Let's build a proper REST API with multiple endpoints, request validation, and e
 
 Organize your functions by resource:
 
-```
+```text
 my-api/
   host.json
   local.settings.json

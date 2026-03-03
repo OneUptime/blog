@@ -100,7 +100,7 @@ const users = await prisma.user.findMany();
 
 You should see spans like:
 
-```
+```text
 prisma:client:operation  findMany   [========] 15ms
   prisma:engine:query    SELECT ... [======]   12ms
 ```
@@ -161,7 +161,7 @@ The instrumentation package typically supports Prisma 4.x and 5.x. Check the pac
 
 When everything is working, a typical Prisma operation generates these spans:
 
-```
+```text
 prisma:client:operation user.findMany    [==============] 25ms
   prisma:client:serialize                [=]               2ms
   prisma:engine:connection               [=]               3ms

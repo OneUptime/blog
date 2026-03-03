@@ -77,7 +77,7 @@ Key characteristics of Scan:
 Let's put real numbers to this. Consider a table with 1 million items, each 1KB in size.
 
 **Query for one customer's 25 orders:**
-```
+```text
 Items read: 25
 Data read: 25 KB
 RCUs consumed: ~7 (eventually consistent)
@@ -86,7 +86,7 @@ Latency: ~5ms
 ```
 
 **Scan for all active users (500,000 of 1,000,000):**
-```
+```text
 Items read: 1,000,000 (reads everything first)
 Data read: ~1 GB
 RCUs consumed: ~125,000 (eventually consistent)

@@ -97,12 +97,12 @@ machine:
 
 The allocatable memory for pods is calculated as:
 
-```
+```text
 Allocatable = Total Memory - system-reserved - kube-reserved - eviction-threshold
 ```
 
 For a 64GB node with the settings above:
-```
+```text
 Allocatable = 64GB - 1GB - 1GB - 0.5GB = 61.5GB
 ```
 
@@ -217,7 +217,7 @@ talosctl read /proc/meminfo --nodes 10.0.0.1
 
 In Prometheus, track these metrics:
 
-```
+```text
 # Available memory on each node
 node_memory_MemAvailable_bytes
 

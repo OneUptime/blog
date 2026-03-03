@@ -61,7 +61,7 @@ aws iam create-saml-provider \
 
 This returns the provider ARN, which you'll need for role trust policies:
 
-```
+```text
 arn:aws:iam::123456789012:saml-provider/CompanyIdP
 ```
 
@@ -138,7 +138,7 @@ Your IdP needs to include specific attributes in the SAML assertion for AWS to k
 
 ### Role Attribute
 
-```
+```text
 Name: https://aws.amazon.com/SAML/Attributes/Role
 Value: arn:aws:iam::123456789012:role/SAML-Developer,arn:aws:iam::123456789012:saml-provider/CompanyIdP
 ```
@@ -147,7 +147,7 @@ Notice it's a comma-separated pair of role ARN and provider ARN. If a user can a
 
 ### RoleSessionName Attribute
 
-```
+```text
 Name: https://aws.amazon.com/SAML/Attributes/RoleSessionName
 Value: user.email (or user.username)
 ```
@@ -156,7 +156,7 @@ This appears in CloudTrail logs, so use something that identifies the user.
 
 ### Optional: Session Duration
 
-```
+```text
 Name: https://aws.amazon.com/SAML/Attributes/SessionDuration
 Value: 28800 (seconds - this is 8 hours)
 ```

@@ -26,7 +26,7 @@ sudo tune2fs -l /dev/sda1 | grep -E "Mount count|Maximum mount|Last checked|Chec
 
 Output:
 
-```
+```text
 Mount count:              47
 Maximum mount count:      -1
 Last checked:             Mon Mar  2 09:00:00 2026
@@ -51,14 +51,14 @@ sudo xfs_repair -n /dev/sdb1
 
 Output from a clean ext4 filesystem:
 
-```
+```text
 e2fsck 1.46.5 (30-Dec-2021)
 /dev/sdb1: clean, 11/1310720 files, 5243100/5242880 blocks
 ```
 
 Output when problems exist:
 
-```
+```text
 /dev/sdb1: UNEXPECTED INCONSISTENCY; RUN fsck MANUALLY.
 	(i.e., without -n or -p options)
 ```
@@ -79,7 +79,7 @@ The `-f` flag forces a full check even if the filesystem appears clean.
 
 Interactive output with problems:
 
-```
+```text
 e2fsck 1.46.5 (30-Dec-2021)
 ext2fs_open2: Bad magic number in super-block
 fsck.ext2: Superblock invalid, trying backup blocks...
@@ -178,7 +178,7 @@ sudo mke2fs -n /dev/sdb1  # Dry run shows superblock locations without formattin
 
 Output:
 
-```
+```text
 Superblock backups stored on blocks:
 	32768, 98304, 163840, 229376, 294912, ...
 ```

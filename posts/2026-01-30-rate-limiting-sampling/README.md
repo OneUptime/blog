@@ -69,13 +69,13 @@ The tokens per second (TPS) rate determines your baseline sampling throughput. T
 
 Consider these factors:
 
-```
+```text
 TPS = (Monthly Budget / Cost Per Trace) / Seconds Per Month
 ```
 
 Example calculation:
 
-```
+```text
 Monthly budget: $500
 Cost per trace: $0.0001 (typical for managed backends)
 Seconds per month: 2,592,000
@@ -87,13 +87,13 @@ TPS = ~1.9 traces/second
 
 For a more practical approach, consider:
 
-```
+```text
 TPS = Target Traces Per Day / 86,400
 ```
 
 If you want 1 million traces per day:
 
-```
+```text
 TPS = 1,000,000 / 86,400 = ~11.6 traces/second
 ```
 
@@ -139,7 +139,7 @@ flowchart LR
 
 With `tokens_per_second: 10` and `burst: 100`:
 
-```
+```text
 Time 0s:   Bucket has 100 tokens (full)
 Time 0-5s: Burst of 50 requests, all sampled (50 tokens consumed)
 Time 5s:   Bucket has 50 + 50 refilled = 100 tokens (capped at max)
@@ -177,13 +177,13 @@ sequenceDiagram
 
 ### Choosing Burst Size
 
-```
+```text
 Recommended burst = tokens_per_second * expected_spike_duration_seconds
 ```
 
 If your traffic typically spikes for 30 seconds:
 
-```
+```text
 burst = 10 * 30 = 300 tokens
 ```
 

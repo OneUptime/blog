@@ -412,7 +412,7 @@ flowchart TD
 
 Keep your policies in Git alongside your infrastructure code.
 
-```
+```text
 vault-policies/
   base/
     admin.hcl

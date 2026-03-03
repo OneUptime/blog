@@ -339,14 +339,14 @@ build:
 
 Check the job logs for cache extraction and archive messages. Look for patterns like:
 
-```
+```text
 Checking cache for main...
 Successfully extracted cache
 ```
 
 versus:
 
-```
+```text
 Checking cache for feature-branch...
 No URL provided, cache will not be downloaded
 ```

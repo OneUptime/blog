@@ -706,7 +706,7 @@ Having pre-approved templates accelerates response time and ensures consistent m
 
 ### Initial Incident Notification
 
-```
+```text
 Subject: [Investigating] <Service Name> - <Brief Issue Description>
 
 We are currently investigating an issue affecting <service/feature>.
@@ -724,7 +724,7 @@ Current Status: Investigating
 
 ### Root Cause Identified
 
-```
+```text
 Subject: [Identified] <Service Name> - <Brief Issue Description>
 
 We have identified the root cause of the issue affecting <service/feature>.
@@ -745,7 +745,7 @@ Current Status: Identified
 
 ### Resolution Notification
 
-```
+```text
 Subject: [Resolved] <Service Name> - <Brief Issue Description>
 
 The issue affecting <service/feature> has been resolved.
@@ -768,7 +768,7 @@ Current Status: Resolved
 
 ### Internal Executive Summary
 
-```
+```text
 Subject: [INTERNAL] Incident Summary: <Incident ID>
 
 EXECUTIVE SUMMARY
@@ -1368,7 +1368,7 @@ Track these metrics to continuously improve your incident communication:
 
 After each major incident, gather feedback from stakeholders:
 
-```
+```text
 INCIDENT COMMUNICATION FEEDBACK FORM
 
 Incident ID: _______________

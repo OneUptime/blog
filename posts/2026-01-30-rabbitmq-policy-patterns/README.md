@@ -414,7 +414,7 @@ rabbitmqctl list_queues name policy arguments durable auto_delete
 
 Example output:
 
-```
+```text
 Listing policies for vhost "/" ...
 name            pattern         apply-to    definition                                  priority
 default-dlx     ^app\.          queues      {"dead-letter-exchange":"dlx.default"}      1

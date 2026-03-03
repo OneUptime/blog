@@ -25,7 +25,7 @@ flowchart TD
 
 ## Project Structure
 
-```
+```text
 deploy-compose/
   inventory/
     hosts.yml

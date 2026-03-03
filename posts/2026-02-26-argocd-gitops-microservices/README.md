@@ -18,7 +18,7 @@ The first decision is how to organize your Git repositories. There are three com
 
 ### Pattern 1: Monorepo (All Config in One Repo)
 
-```
+```text
 k8s-config/
   apps/
     user-service/
@@ -40,7 +40,7 @@ k8s-config/
 
 ### Pattern 2: One Repo Per Service
 
-```
+```text
 user-service-config/       # Separate repo
 order-service-config/      # Separate repo
 payment-service-config/    # Separate repo
@@ -51,7 +51,7 @@ payment-service-config/    # Separate repo
 
 ### Pattern 3: One Repo Per Team
 
-```
+```text
 team-checkout-config/       # order-service, payment-service, cart-service
 team-platform-config/       # user-service, auth-service, notification-service
 ```

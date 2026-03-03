@@ -110,7 +110,7 @@ A reasonable formula: `terminationDrainDuration = max(p99_latency * 3, 10s)`
 
 The Kubernetes `terminationGracePeriodSeconds` is the hard limit on how long a pod has to shut down. Your drain duration must fit within this window, along with any preStop hooks:
 
-```
+```text
 terminationGracePeriodSeconds >= preStop_duration + terminationDrainDuration + buffer
 ```
 

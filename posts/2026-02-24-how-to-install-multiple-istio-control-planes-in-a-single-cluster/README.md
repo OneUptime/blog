@@ -59,7 +59,7 @@ kubectl get deploy -n istio-system
 
 You should see:
 
-```
+```text
 NAME            READY   UP-TO-DATE   AVAILABLE
 istiod-stable   1/1     1            1
 ```
@@ -94,7 +94,7 @@ Now you have two control planes:
 kubectl get deploy -n istio-system
 ```
 
-```
+```text
 NAME            READY   UP-TO-DATE   AVAILABLE
 istiod-stable   1/1     1            1
 istiod-canary   1/1     1            1

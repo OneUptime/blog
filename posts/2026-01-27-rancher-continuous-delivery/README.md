@@ -508,7 +508,7 @@ keepResources: false
 
 ### Repository Structure for Fleet
 
-```
+```text
 myapp-fleet/
 ├── README.md
 ├── fleet.yaml                    # Root fleet configuration

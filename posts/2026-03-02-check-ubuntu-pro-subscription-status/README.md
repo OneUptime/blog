@@ -22,7 +22,7 @@ ua status
 
 A fully attached system shows output like:
 
-```
+```text
 SERVICE          ENTITLED  STATUS    DESCRIPTION
 anbox-cloud      yes       disabled  Scalable Android in the cloud
 cc-eal           yes       disabled  Common Criteria EAL2 Provisioning Packages
@@ -164,7 +164,7 @@ pro status --debug 2>&1 | grep -E "contract|network|error"
 
 An unattached system shows:
 
-```
+```text
 SERVICE         AVAILABLE  DESCRIPTION
 anbox-cloud     yes        Scalable Android in the cloud
 cc-eal          no         Common Criteria EAL2 Provisioning Packages
@@ -304,7 +304,7 @@ fi
 crontab -e
 ```
 
-```
+```text
 # Check Pro expiration daily at 9 AM
 0 9 * * * /usr/local/bin/check-pro-expiry.sh
 ```

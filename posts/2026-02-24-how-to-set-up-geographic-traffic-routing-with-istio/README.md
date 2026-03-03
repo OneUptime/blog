@@ -276,7 +276,7 @@ If the local region's pods are returning errors, Istio will failover traffic to 
 
 Track where your traffic is coming from and where it is going:
 
-```
+```text
 # Requests by ingress gateway region
 sum(rate(istio_requests_total{
   destination_service_name="user-service",
@@ -286,7 +286,7 @@ sum(rate(istio_requests_total{
 
 Build a Grafana dashboard showing traffic per region:
 
-```
+```text
 # Traffic heatmap by region
 sum(rate(istio_requests_total{reporter="source"}[5m])) by (source_workload, destination_workload)
 ```

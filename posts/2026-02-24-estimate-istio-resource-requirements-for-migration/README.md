@@ -118,7 +118,7 @@ In practice, a typical sidecar at rest uses about 30-50MB of memory and minimal 
 
 Here is a formula for estimating total sidecar resource overhead:
 
-```
+```text
 Total sidecar memory = Number of pods * Per-sidecar memory
 Total sidecar CPU = Number of pods * Per-sidecar CPU
 
@@ -128,7 +128,7 @@ Per-sidecar CPU (baseline): 10m idle, 50-100m under moderate load
 
 Example for a cluster with 200 pods:
 
-```
+```text
 Memory overhead = 200 * 128Mi (requests) = 25.6 Gi of requested memory
 CPU overhead = 200 * 100m (requests) = 20 CPU cores requested
 ```
@@ -198,13 +198,13 @@ This gives you real numbers for your specific workloads. You can also query Prom
 
 A useful query to get average sidecar memory usage across all pods:
 
-```
+```text
 avg(container_memory_working_set_bytes{container="istio-proxy"}) by (namespace)
 ```
 
 And for CPU:
 
-```
+```text
 avg(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])) by (namespace)
 ```
 
@@ -223,7 +223,7 @@ kubectl exec -it client-pod -- curl -w "@curl-format.txt" -o /dev/null -s http:/
 
 Create a file called `curl-format.txt`:
 
-```
+```text
      time_namelookup:  %{time_namelookup}s\n
         time_connect:  %{time_connect}s\n
      time_appconnect:  %{time_appconnect}s\n

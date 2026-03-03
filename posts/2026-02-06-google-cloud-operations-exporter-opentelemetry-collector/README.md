@@ -521,7 +521,7 @@ fetch k8s_container
 
 Use Log Explorer with filter expressions:
 
-```
+```text
 resource.type="k8s_container"
 resource.labels.namespace_name="production"
 severity>=WARNING

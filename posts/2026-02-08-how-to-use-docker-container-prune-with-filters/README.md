@@ -23,7 +23,7 @@ docker container prune
 
 Docker asks for confirmation:
 
-```
+```text
 WARNING! This will remove all stopped containers.
 Are you sure you want to continue? [y/N]
 ```
@@ -258,7 +258,7 @@ docker system df -v
 
 Output:
 
-```
+```text
 TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
 Images          15        5         4.2GB     2.1GB (50%)
 Containers      23        3         1.8GB     1.6GB (88%)

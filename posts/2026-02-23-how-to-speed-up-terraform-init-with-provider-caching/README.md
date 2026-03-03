@@ -54,7 +54,7 @@ With the plugin cache enabled, `terraform init` in a new project directory will 
 
 ### How It Works
 
-```
+```text
 # First init - downloads and caches
 $ time terraform init
 Initializing provider plugins...
@@ -107,7 +107,7 @@ terraform providers mirror \
 
 The mirror directory structure looks like:
 
-```
+```text
 /opt/terraform/providers/
   registry.terraform.io/
     hashicorp/

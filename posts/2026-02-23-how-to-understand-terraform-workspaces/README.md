@@ -16,7 +16,7 @@ At its core, a Terraform workspace is a named instance of state within a single 
 
 Think of it this way. You have one set of Terraform code. Workspaces let you apply that code multiple times, each time tracking the results separately.
 
-```
+```text
 my-terraform-project/
   main.tf
   variables.tf
@@ -38,7 +38,7 @@ When you create a new workspace, Terraform does not copy your configuration file
 
 Here is the key mental model:
 
-```
+```text
 Configuration (shared)     State (per workspace)
 +------------------+       +------------------+
 | main.tf          |  ---> | default.tfstate  |

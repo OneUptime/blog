@@ -36,7 +36,7 @@ ansible-vault rekey secrets.yml
 
 The output looks like this:
 
-```
+```text
 Vault password:
 New Vault password:
 Confirm New Vault password:
@@ -179,7 +179,7 @@ done
 
 The header line tells you the vault format version, the cipher used, and optionally the vault ID:
 
-```
+```text
 $ANSIBLE_VAULT;1.1;AES256
 $ANSIBLE_VAULT;1.2;AES256;prod
 ```

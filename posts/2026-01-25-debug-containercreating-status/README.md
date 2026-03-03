@@ -49,7 +49,7 @@ kubectl describe pod <pod-name> -n <namespace>
 
 Example output with issues:
 
-```
+```text
 Events:
   Type     Reason       Age   From               Message
   ----     ------       ----  ----               -------
@@ -61,7 +61,7 @@ Events:
 
 ### Symptoms
 
-```
+```text
 Events:
   Warning  Failed     1m   kubelet  Failed to pull image "myregistry.io/myapp:latest": rpc error: code = Unknown desc = Error response from daemon: pull access denied
 ```
@@ -121,7 +121,7 @@ curl -u user:password https://myregistry.io/v2/myapp/tags/list
 
 ### Symptoms
 
-```
+```text
 Events:
   Warning  FailedMount  1m  kubelet  Unable to attach or mount volumes: timed out waiting for the condition
   Warning  FailedMount  1m  kubelet  MountVolume.SetUp failed for volume "data": hostPath type check failed
@@ -193,7 +193,7 @@ kubectl get secret <name> -n <namespace>
 
 ### Symptoms
 
-```
+```text
 Events:
   Warning  FailedCreatePodSandBox  1m  kubelet  Failed to create pod sandbox: rpc error: code = Unknown desc = failed to set up sandbox container network
 ```
@@ -279,7 +279,7 @@ journalctl -u docker -f
 
 ### Symptoms
 
-```
+```text
 Events:
   Warning  Failed  1m  kubelet  Error: container has runAsNonRoot and image will run as root
 ```

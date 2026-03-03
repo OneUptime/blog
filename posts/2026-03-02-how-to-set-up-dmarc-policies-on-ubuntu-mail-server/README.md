@@ -31,7 +31,7 @@ sudo opendkim-testkey -d example.com -s mail -v
 
 A DMARC record is a DNS TXT record published at `_dmarc.yourdomain.com`:
 
-```
+```text
 v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@example.com; ruf=mailto:forensic@example.com; pct=100; adkim=s; aspf=r
 ```
 
@@ -84,7 +84,7 @@ Run in this mode for at least 2-4 weeks. You will receive XML aggregate reports 
 
 After reviewing reports and confirming all legitimate mail passes:
 
-```
+```text
 v=DMARC1; p=quarantine; pct=20; rua=mailto:dmarc-reports@example.com; fo=1
 ```
 
@@ -94,7 +94,7 @@ Start with `pct=20` (apply to 20% of failing mail) and increase gradually. Mail 
 
 Full enforcement - mail that fails DMARC is rejected outright:
 
-```
+```text
 v=DMARC1; p=reject; rua=mailto:dmarc-reports@example.com; fo=1
 ```
 
@@ -200,7 +200,7 @@ sudo systemctl restart postfix
 
 By default, the `p=` policy also applies to subdomains. You can set different policies:
 
-```
+```text
 # Allow marketing subdomain emails more leniency
 v=DMARC1; p=reject; sp=quarantine; rua=mailto:dmarc-reports@example.com
 

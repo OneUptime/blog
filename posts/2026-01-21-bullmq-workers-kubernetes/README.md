@@ -600,7 +600,7 @@ spec:
 
 Organize your Kubernetes manifests with Helm:
 
-```
+```text
 bullmq-worker/
   Chart.yaml
   values.yaml

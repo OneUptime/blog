@@ -97,7 +97,7 @@ graph TD
 ```
 
 **Error Message:**
-```
+```text
 Error: Unable to merge type "User" - fields do not match
 ```
 
@@ -196,7 +196,7 @@ const gatewaySchema = stitchSchemas({
 When a type references another type that does not exist in the stitched schema.
 
 **Error Message:**
-```
+```text
 Error: Unknown type "Review" referenced in type "Product"
 ```
 
@@ -357,7 +357,7 @@ const gatewaySchema = stitchSchemas({
 Multiple schemas defining the same root query field.
 
 **Error Message:**
-```
+```text
 Error: Duplicate root field "search" from multiple schemas
 ```
 
@@ -494,7 +494,7 @@ const gatewaySchema = stitchSchemas({
 When the same enum is defined differently across services.
 
 **Error Message:**
-```
+```text
 Error: Enum "Status" has conflicting values across schemas
 ```
 
@@ -560,7 +560,7 @@ const gatewaySchema = stitchSchemas({
 Directives with the same name but different definitions.
 
 **Error Message:**
-```
+```text
 Error: Directive "@auth" is defined differently across schemas
 ```
 
@@ -634,7 +634,7 @@ class AuthDirective extends SchemaDirectiveVisitor {
 Remote schema loading failures.
 
 **Error Message:**
-```
+```text
 Error: Failed to load schema from http://users-service:4001/graphql - ECONNREFUSED
 ```
 
@@ -733,7 +733,7 @@ module.exports = { loadSchemaWithRetry, loadSchemaWithFallback };
 Subscriptions require special handling in schema stitching.
 
 **Error Message:**
-```
+```text
 Error: Subscriptions are not supported in stitched schemas
 ```
 

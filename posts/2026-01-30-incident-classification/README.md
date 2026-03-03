@@ -159,7 +159,7 @@ Consider these dimensions when assessing impact:
 
 ### Combined Impact Formula
 
-```
+```text
 Total Impact Score = (User Impact * 0.4) + (Business Impact * 0.4) + (Data Risk * 0.2)
 ```
 

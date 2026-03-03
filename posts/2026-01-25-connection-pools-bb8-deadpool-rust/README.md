@@ -314,7 +314,7 @@ Choose bb8 if you need flexibility or work with custom connection types. Choose 
 
 The optimal pool size depends on your workload. A common formula:
 
-```
+```text
 pool_size = (core_count * 2) + effective_spindle_count
 ```
 

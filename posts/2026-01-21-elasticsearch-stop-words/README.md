@@ -116,7 +116,7 @@ curl -X PUT "https://localhost:9200/articles" \
 
 Create `/etc/elasticsearch/analysis/stopwords.txt`:
 
-```
+```text
 # English stop words
 the
 a

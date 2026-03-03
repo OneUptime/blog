@@ -19,7 +19,7 @@ docker build -t myapp .
 
 Docker packages everything in the current directory (`.`) and sends it to the Docker daemon. Only then does it start processing your Dockerfile.
 
-```
+```text
 Sending build context to Docker daemon  2.54GB
 ```
 
@@ -31,7 +31,7 @@ Create a `.dockerignore` file in your project root (same location as your Docker
 
 ### Basic Syntax
 
-```
+```text
 # Comments start with #
 pattern
 !exception
@@ -400,7 +400,7 @@ docker build -f Dockerfile.prod -t myapp:prod .
 
 Structure your project so the Dockerfile is in a subdirectory with only what's needed.
 
-```
+```text
 project/
 ├── src/
 │   ├── Dockerfile
@@ -445,7 +445,7 @@ Time: 18s
 
 ### Project Structure
 
-```
+```text
 myapp/
 ├── .git/              # 150MB
 ├── node_modules/      # 500MB

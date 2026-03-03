@@ -246,7 +246,7 @@ talosctl -n 10.0.1.10 read /etc/kubernetes/pki/apiserver.crt | \
 
 Since CAs are not auto-renewed, establish a rotation schedule:
 
-```
+```text
 Year 1: Initial cluster deployment (10-year CA)
 Year 3: First rotation drill in staging
 Year 5: First production CA rotation (midpoint of CA lifetime)

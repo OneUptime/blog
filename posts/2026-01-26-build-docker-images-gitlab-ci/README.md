@@ -353,7 +353,7 @@ RUN npm run build
 
 Use `.dockerignore` to exclude unnecessary files:
 
-```
+```text
 # .dockerignore
 node_modules
 .git

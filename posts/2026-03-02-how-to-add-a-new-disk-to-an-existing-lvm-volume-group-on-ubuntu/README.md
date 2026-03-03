@@ -97,7 +97,7 @@ sudo vgextend data_vg /dev/sdc
 ```
 
 Output:
-```
+```text
   Volume group "data_vg" successfully extended
 ```
 
@@ -115,7 +115,7 @@ sudo vgextend data_vg /dev/sdc /dev/sdd /dev/sde
 sudo vgs data_vg
 ```
 
-```
+```text
   VG       #PV #LV #SN Attr   VSize    VFree
   data_vg    2   3   0 wz--n-   1.50t  500.00g
 ```
@@ -128,7 +128,7 @@ Full details:
 sudo vgdisplay data_vg
 ```
 
-```
+```text
   --- Volume group ---
   VG Name               data_vg
   ...
@@ -147,7 +147,7 @@ Confirm the new PV shows up and is properly assigned to the VG:
 sudo pvs
 ```
 
-```
+```text
   PV         VG       Fmt  Attr PSize    PFree
   /dev/sdb   data_vg  lvm2 a--  500.00g      0
   /dev/sdc   data_vg  lvm2 a--  500.00g 500.00g
@@ -191,7 +191,7 @@ LVM distributes extents across PVs according to its allocation policy. To see wh
 sudo lvdisplay -m /dev/data_vg/db_data
 ```
 
-```
+```text
   --- Logical volume ---
   LV Path                /dev/data_vg/db_data
   ...

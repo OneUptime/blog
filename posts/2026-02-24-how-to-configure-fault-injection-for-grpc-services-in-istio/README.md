@@ -114,7 +114,7 @@ spec:
 
 When the client makes a gRPC call and hits the abort, it receives:
 
-```
+```text
 ERROR:
   Code: Unavailable
   Message: fault filter abort

@@ -14,7 +14,7 @@ When a production incident hits, every minute counts. Engineers scrambling to re
 
 Organize playbooks by incident type:
 
-```
+```text
 incident-response/
 ├── playbooks/
 │   ├── security-breach.yml

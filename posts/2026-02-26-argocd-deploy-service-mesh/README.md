@@ -176,7 +176,7 @@ data:
 
 Structure your repository to separate mesh configs by environment:
 
-```
+```text
 mesh-config/
   base/
     kustomization.yaml

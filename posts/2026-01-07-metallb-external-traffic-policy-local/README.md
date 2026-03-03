@@ -66,7 +66,7 @@ kubectl get pods -n metallb-system
 
 You should see output similar to:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-7dcc8764f4-k8xzp   1/1     Running   0          2d
 speaker-8xk7j                 1/1     Running   0          2d
@@ -200,7 +200,7 @@ kubectl get svc nginx-service
 
 Expected output:
 
-```
+```text
 NAME            TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)        AGE
 nginx-service   LoadBalancer   10.96.123.45    192.168.1.241   80:32000/TCP   30s
 ```
@@ -249,7 +249,7 @@ kubectl logs -l app=nginx --tail=10
 
 You should see log entries with your actual client IP address:
 
-```
+```text
 192.168.1.100 - - [07/Jan/2026:10:30:45 +0000] "GET / HTTP/1.1" 200 615 "-" "curl/8.1.2"
 ```
 

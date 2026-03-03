@@ -12,7 +12,7 @@ The "Too many connections" error occurs when MySQL reaches its maximum allowed s
 
 ## Understanding the Error
 
-```
+```text
 ERROR 1040 (HY000): Too many connections
 ```
 

@@ -72,7 +72,7 @@ Key metrics to monitor:
 
 **pilot_services**: The total number of services in the registry.
 
-```
+```text
 pilot_services
 ```
 
@@ -80,13 +80,13 @@ Track this over time. A sudden drop could mean a namespace was accidentally dele
 
 **pilot_virt_services**: The number of virtual services.
 
-```
+```text
 pilot_virt_services
 ```
 
 **pilot_xds_pushes**: The total number of xDS config pushes to proxies.
 
-```
+```text
 sum(rate(pilot_xds_pushes[5m])) by (type)
 ```
 
@@ -94,7 +94,7 @@ A high push rate might indicate frequent config changes (which is normal during 
 
 **pilot_xds_push_time**: How long config pushes take.
 
-```
+```text
 histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket[5m])) by (le))
 ```
 
@@ -102,13 +102,13 @@ If push times are increasing, istiod might be struggling under load.
 
 **pilot_proxy_convergence_time**: How long it takes for proxy configurations to converge after a change.
 
-```
+```text
 histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
 ```
 
 **pilot_conflict_inbound_listener** and **pilot_conflict_outbound_listener_tcp_over_current_tcp**: Configuration conflicts that can cause routing issues.
 
-```
+```text
 pilot_conflict_inbound_listener
 pilot_conflict_outbound_listener_tcp_over_current_tcp
 ```
@@ -216,7 +216,7 @@ spec:
 
 Monitor the pilot_xds metric to see configuration sizes across the mesh:
 
-```
+```text
 pilot_xds{type="cds"}
 ```
 
@@ -232,7 +232,7 @@ Set up a liveness check in your monitoring system that hits this endpoint. If is
 
 Monitor istiod resource usage:
 
-```
+```text
 container_memory_working_set_bytes{container="discovery", namespace="istio-system"}
 container_cpu_usage_seconds_total{container="discovery", namespace="istio-system"}
 ```

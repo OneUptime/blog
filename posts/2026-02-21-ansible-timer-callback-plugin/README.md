@@ -31,7 +31,7 @@ ANSIBLE_CALLBACK_WHITELIST=timer ansible-playbook site.yml
 
 With the timer callback enabled, your playbook output gains a line at the very end:
 
-```
+```text
 PLAY RECAP *******************************************************************
 web-01  : ok=5  changed=2  unreachable=0  failed=0
 web-02  : ok=5  changed=2  unreachable=0  failed=0
@@ -64,7 +64,7 @@ stdout_callback = yaml
 
 Output:
 
-```
+```text
 PLAY RECAP *******************************************************************
 web-01  : ok=5  changed=2  unreachable=0  failed=0
 
@@ -105,7 +105,7 @@ exit $exit_code
 
 Over time, your timing log builds a history:
 
-```
+```text
 2026-02-18T10:15:00+00:00 | deploy.yml | exit=0 | Playbook run took 0 days, 0 hours, 3 minutes, 47 seconds
 2026-02-19T10:15:00+00:00 | deploy.yml | exit=0 | Playbook run took 0 days, 0 hours, 3 minutes, 52 seconds
 2026-02-20T10:15:00+00:00 | deploy.yml | exit=0 | Playbook run took 0 days, 0 hours, 5 minutes, 23 seconds

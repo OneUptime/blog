@@ -129,7 +129,7 @@ docker pull myregistry/myapp:tag
 
 **Symptoms**:
 
-```
+```text
 Error: cannot open /data/config: permission denied
 ```
 
@@ -169,7 +169,7 @@ spec:
 
 **Symptoms**:
 
-```
+```text
 Warning  Unhealthy  Liveness probe failed: HTTP probe failed
 ```
 
@@ -220,7 +220,7 @@ kubectl describe pod <pod-name> | grep -A 5 "Last State"
 ```
 
 Output:
-```
+```text
 Last State:     Terminated
   Reason:       OOMKilled
   Exit Code:    137

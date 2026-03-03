@@ -173,7 +173,7 @@ async function runInPool(taskData) {
 
 After implementing context propagation, your trace looks like:
 
-```
+```text
 process_data       [========================] 500ms  (main thread)
   worker_process     [====================]   480ms  (worker thread)
 ```

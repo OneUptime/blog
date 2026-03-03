@@ -38,7 +38,7 @@ Important: resource actions modify the live resource directly in the cluster. Th
 
 Custom actions are defined in the `argocd-cm` ConfigMap using the key pattern:
 
-```
+```text
 resource.customizations.actions.<group>_<kind>
 ```
 

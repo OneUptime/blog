@@ -100,7 +100,7 @@ resource "google_bigquery_data_transfer_config" "daily_revenue" {
 
 BigQuery uses a custom schedule syntax. Here are the most common patterns.
 
-```
+```text
 every day 06:00              -- Daily at 6 AM UTC
 every day 14:30              -- Daily at 2:30 PM UTC
 every monday 09:00           -- Weekly on Mondays

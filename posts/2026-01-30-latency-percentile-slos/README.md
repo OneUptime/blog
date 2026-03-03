@@ -87,7 +87,7 @@ A latency SLO has three components:
 
 ### SLO Formula
 
-```
+```text
 [Percentile] latency of [service/endpoint] will be under [threshold] for [target]% of requests over [time window]
 ```
 
@@ -225,7 +225,7 @@ Error budgets quantify how much "bad" latency you can tolerate before breaching 
 
 ### The Math
 
-```
+```text
 Error Budget = (1 - SLO Target) * Total Requests * Time Window
 ```
 
@@ -236,7 +236,7 @@ Given:
 - Time window: 28 days
 - Average requests per day: 1,000,000
 
-```
+```text
 Allowed slow requests = (1 - 0.995) * 1,000,000 * 28
                       = 0.005 * 28,000,000
                       = 140,000 requests over 28 days

@@ -145,7 +145,7 @@ eu_west_web
 
 Instead of putting SSH options in the inventory, you can define them in your SSH config file and keep the inventory clean:
 
-```
+```text
 # ~/.ssh/config
 # Bastion host configuration
 Host bastion
@@ -209,7 +209,7 @@ The comma-separated list in ProxyJump creates a chain: your workstation connects
 
 With SSH config:
 
-```
+```text
 # ~/.ssh/config
 Host external-bastion
     HostName 203.0.113.10

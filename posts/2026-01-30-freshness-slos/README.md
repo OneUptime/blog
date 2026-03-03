@@ -24,7 +24,7 @@ A Freshness Service Level Indicator (SLI) measures how current your data is rela
 
 The formal definition:
 
-```
+```text
 Freshness SLI = (Time periods where data age < threshold) / (Total time periods) * 100
 ```
 

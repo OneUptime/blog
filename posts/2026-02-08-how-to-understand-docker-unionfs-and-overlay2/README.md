@@ -59,7 +59,7 @@ docker info | grep "Storage Driver"
 
 The output should show:
 
-```
+```text
  Storage Driver: overlay2
 ```
 

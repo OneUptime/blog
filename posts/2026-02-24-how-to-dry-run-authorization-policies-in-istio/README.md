@@ -83,7 +83,7 @@ kubectl logs -n my-app deploy/my-service -c istio-proxy | grep "shadow"
 
 Dry-run policy results appear in the `rbac_access_logged_only` response flag. You'll see entries like:
 
-```
+```text
 [2026-02-24T10:15:30.000Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 15 14 "-" "curl/7.68.0" "abc-123" "my-service:8080" "10.0.0.5:8080" inbound|8080|| 10.0.0.1:54321 10.0.0.5:8080 10.0.0.1:54321 - default ALLOW shadow_denied
 ```
 

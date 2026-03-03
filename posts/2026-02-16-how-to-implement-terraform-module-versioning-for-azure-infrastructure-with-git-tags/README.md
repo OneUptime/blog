@@ -22,7 +22,7 @@ With versioning, those fifteen projects stay on their current version until they
 
 Each Terraform module lives in its own Git repository. This is the standard convention that the Terraform Registry uses, and it works well for private modules too.
 
-```
+```text
 terraform-azurerm-aks/
   main.tf
   variables.tf

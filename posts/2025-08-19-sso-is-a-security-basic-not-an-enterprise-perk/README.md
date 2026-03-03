@@ -8,7 +8,7 @@ Description: SSO, SCIM, and 2FA are baseline security hygiene -  not enterprise 
 
 Too many (even “open source”) SaaS products still lock SSO behind an enterprise tier. That’s not clever packaging, it’s pushing smaller teams towards weaker security. Entire sites like [sso.tax](https://sso.tax/) exist because this pattern has worn out its welcome.
 
-### Why SSO Must Be Baseline
+## Why SSO Must Be Baseline
 
 SSO reduces credential sprawl and orphaned accounts, centralizes disable/offboarding in the IdP, cuts phishing and password‑reuse risk, and costs very little to implement today thanks to mature libraries and standard flows.
 

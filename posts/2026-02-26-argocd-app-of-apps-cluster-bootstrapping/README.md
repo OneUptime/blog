@@ -32,7 +32,7 @@ The root application watches a directory in Git. Every YAML file in that directo
 
 ## Repository Structure
 
-```
+```text
 cluster-bootstrap/
   apps/                          # Root application watches this directory
     00-namespaces.yaml           # Namespace definitions
@@ -290,7 +290,7 @@ spec:
 
 Use the same app-of-apps structure across environments with Kustomize overlays:
 
-```
+```text
 cluster-bootstrap/
   base/
     apps/

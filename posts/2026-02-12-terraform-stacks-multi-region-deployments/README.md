@@ -24,7 +24,7 @@ The key concepts are:
 
 Here's what a multi-region Terraform Stack looks like:
 
-```
+```text
 stack/
   components/
     networking/
@@ -297,7 +297,7 @@ component "dns" {
 
 Each deployment within a Stack gets its own state file automatically. The state structure looks like:
 
-```
+```text
 stacks/
   us_east_1/
     networking.tfstate

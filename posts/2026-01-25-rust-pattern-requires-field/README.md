@@ -39,7 +39,7 @@ fn main() {
 
 The error message looks like this:
 
-```
+```text
 error[E0027]: pattern does not mention field `email`
  --> src/main.rs:13:9
   |

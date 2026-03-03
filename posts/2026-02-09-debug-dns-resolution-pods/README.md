@@ -208,7 +208,7 @@ kubectl get configmap coredns -n kube-system -o jsonpath='{.data.Corefile}'
 
 Standard CoreDNS configuration looks like:
 
-```
+```text
 .:53 {
     errors
     health {

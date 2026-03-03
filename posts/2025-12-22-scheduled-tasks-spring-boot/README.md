@@ -186,7 +186,7 @@ public class CronScheduler {
 
 ## Cron Expression Reference
 
-```
+```text
  ┌───────────── second (0-59)
  │ ┌───────────── minute (0-59)
  │ │ ┌───────────── hour (0-23)

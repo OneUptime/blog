@@ -103,7 +103,7 @@ flowchart TB
 
 A well-organized project structure is critical for maintainability:
 
-```
+```text
 microservices-platform/
 ├── docker-compose.yml           # Local development orchestration
 ├── docker-compose.prod.yml      # Production overrides

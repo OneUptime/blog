@@ -8,7 +8,7 @@ Description: Learn how to fix context canceled errors in OpenTelemetry Go when r
 
 If you have been running OpenTelemetry in a Go service for any length of time, you have probably seen this error in your logs:
 
-```
+```text
 error: context canceled
 ```
 

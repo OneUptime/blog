@@ -107,7 +107,7 @@ kubectl get configmanagement config-management -o yaml
 
 For unstructured repositories, organize configurations logically:
 
-```
+```text
 k8s-configs/
 ├── clusters/
 │   ├── production/
@@ -128,7 +128,7 @@ k8s-configs/
 
 For hierarchical repositories, use the required directory structure:
 
-```
+```text
 k8s-configs/
 ├── system/
 │   └── repo.yaml

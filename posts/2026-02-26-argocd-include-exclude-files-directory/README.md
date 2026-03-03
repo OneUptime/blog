@@ -110,7 +110,7 @@ graph TD
 
 You can keep environment-specific files in the same directory and use include patterns to deploy only what belongs to each environment:
 
-```
+```text
 apps/my-api/
   base-deployment.yaml
   base-service.yaml
@@ -215,7 +215,7 @@ spec:
 
 With this configuration and a directory like:
 
-```
+```text
 apps/platform/
   backend/
     deployment.yaml      # Included

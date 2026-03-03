@@ -161,7 +161,7 @@ sudo nano /etc/apparmor.d/local/usr.sbin.smbd
 
 Add lines like:
 
-```
+```text
 # Allow Samba to access custom share paths
 /srv/samba/** rwk,
 /data/shares/** rwk,

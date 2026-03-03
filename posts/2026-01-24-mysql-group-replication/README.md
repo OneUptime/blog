@@ -143,7 +143,7 @@ SELECT * FROM performance_schema.replication_group_members;
 
 Expected output:
 
-```
+```text
 +---------------------------+--------------------------------------+-------------------+-------------+--------------+-------------+----------------+----------------------------+
 | CHANNEL_NAME              | MEMBER_ID                            | MEMBER_HOST       | MEMBER_PORT | MEMBER_STATE | MEMBER_ROLE | MEMBER_VERSION | MEMBER_COMMUNICATION_STACK |
 +---------------------------+--------------------------------------+-------------------+-------------+--------------+-------------+----------------+----------------------------+
@@ -384,7 +384,7 @@ systemctl start mysqlrouter
 
 Application connection string:
 
-```
+```text
 # Read-write connections (port 6446)
 mysql://app_user:password@localhost:6446/mydb
 

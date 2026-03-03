@@ -389,7 +389,7 @@ After verifying the compliance results look correct, switch to deny mode for enf
 
 For a large organization with many policies, structure matters:
 
-```
+```text
 policies/
   definitions/
     tags/

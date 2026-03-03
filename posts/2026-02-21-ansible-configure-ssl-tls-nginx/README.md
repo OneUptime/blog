@@ -21,7 +21,7 @@ This guide covers configuring Nginx with SSL/TLS using Ansible, with both commer
 
 ## Project Structure
 
-```
+```text
 ssl-nginx/
   inventory/
     hosts.yml

@@ -188,7 +188,7 @@ This configuration exposes OTLP endpoints externally while keeping zPages access
 
 The zPages main page provides links to all available debugging pages:
 
-```
+```text
 OpenTelemetry Collector zPages
 
 Available Pages:
@@ -207,7 +207,7 @@ Each page provides specific insights into different aspects of collector operati
 
 ServiceZ displays overall collector health, version information, and uptime:
 
-```
+```text
 ServiceZ - Service Information
 
 Version: 0.96.0
@@ -239,7 +239,7 @@ High goroutine counts may indicate goroutine leaks or high concurrency. Compare 
 
 PipelineZ provides the most detailed debugging information, showing real-time statistics for each pipeline:
 
-```
+```text
 PipelineZ - Pipeline Statistics
 
 Pipeline: traces/main
@@ -286,7 +286,7 @@ PipelineZ statistics directly indicate common issues:
 
 **Issue: Data not reaching backend**
 
-```
+```text
 Pipeline: traces/main
 
 Receivers:
@@ -310,7 +310,7 @@ Exporters:
 
 **Issue: Memory limiter refusing data**
 
-```
+```text
 Pipeline: traces/main
 
 Receivers:
@@ -329,7 +329,7 @@ Processors:
 
 **Issue: Processing bottleneck**
 
-```
+```text
 Pipeline: traces/main
 
 Receivers:
@@ -418,7 +418,7 @@ service:
 
 PipelineZ displays statistics for both pipelines:
 
-```
+```text
 PipelineZ - Pipeline Statistics
 
 Pipeline: traces/high_priority
@@ -464,7 +464,7 @@ Each component's statistics appear in PipelineZ, allowing you to trace data thro
 
 ExtensionZ displays status for all enabled extensions:
 
-```
+```text
 ExtensionZ - Extension Status
 
 Extension: zpages
@@ -489,7 +489,7 @@ ExtensionZ confirms extensions are running and accessible. If an extension shows
 
 FeatureZ lists enabled features and capabilities:
 
-```
+```text
 FeatureZ - Feature Information
 
 Enabled Features:
@@ -691,7 +691,7 @@ Understanding what different statistics indicate helps diagnose issues:
 
 Check PipelineZ during a traffic spike:
 
-```
+```text
 Before Spike:
   Receivers: 1,000 spans/min
   Queue Size: 10/1000
@@ -712,7 +712,7 @@ PipelineZ confirms the collector handled the spike appropriately, temporarily bu
 
 Monitor PipelineZ during backend downtime:
 
-```
+```text
 Backend Available:
   Exporter Queue: 50/1000
   Data Failed: 0
@@ -732,7 +732,7 @@ This shows the collector buffering data during the outage and resuming normal op
 
 Compare PipelineZ before and after configuration changes:
 
-```
+```text
 Before (batch timeout: 10s, size: 100):
   Batches Sent: 1,000/hour
   Average Batch Size: 100 spans

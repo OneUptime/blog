@@ -12,7 +12,7 @@ If you have custom modules in a library/ directory, migrating them to a collecti
 
 ## Current Structure (Before)
 
-```
+```text
 project/
   library/
     my_module.py
@@ -25,7 +25,7 @@ project/
 
 ## Collection Structure (After)
 
-```
+```text
 collections/
   ansible_collections/
     my_namespace/

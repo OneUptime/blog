@@ -62,7 +62,7 @@ layers:
 
 This generates the following hosts:
 
-```
+```text
 web-prod-web01.example.com
 web-prod-web02.example.com
 web-prod-web03.example.com
@@ -147,7 +147,7 @@ ansible-inventory -i inventory/generator.yml --host us-east-1-frontend-01.infra.
 
 The `--graph` output will show you the group hierarchy:
 
-```
+```text
 @all:
   |--@ungrouped:
   |--@frontend:

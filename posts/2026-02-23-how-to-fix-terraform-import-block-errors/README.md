@@ -30,7 +30,7 @@ When you run `terraform plan`, Terraform reads the actual state of `i-1234567890
 
 ## Error 1: Invalid Resource ID
 
-```
+```text
 Error: Cannot import to nonexistent resource address
 
   on imports.tf line 1:
@@ -65,7 +65,7 @@ import {
 
 Every resource type expects a specific format for its import ID. Using the wrong format is a very common mistake:
 
-```
+```text
 Error: Cannot import
 
   Cannot import aws_security_group_rule.ingress_http with the given ID
@@ -104,7 +104,7 @@ Check the Terraform provider documentation for each resource type. Scroll to the
 
 ## Error 3: Resource Already in State
 
-```
+```text
 Error: Resource already managed by Terraform
 
   The resource aws_instance.web already has an object in the state.
@@ -124,7 +124,7 @@ terraform state rm aws_instance.web
 
 After importing, Terraform compares the real resource state with your configuration. Mismatches produce a plan with changes:
 
-```
+```text
   # aws_instance.web will be updated in-place
   ~ resource "aws_instance" "web" {
       ~ instance_type = "t3.large" -> "t3.micro"
@@ -223,7 +223,7 @@ The import block should be in the root module, not inside the child module.
 
 If the resource requires a specific provider configuration, the import might fail:
 
-```
+```text
 Error: missing provider configuration
 
 The provider configuration for the resource being imported has not

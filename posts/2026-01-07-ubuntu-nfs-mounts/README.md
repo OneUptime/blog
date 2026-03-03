@@ -86,7 +86,7 @@ showmount -e nfs-server-ip
 ```
 
 Example output:
-```
+```text
 Export list for nfs-server-ip:
 /srv/nfs/shared    192.168.1.0/24
 /srv/nfs/backups   192.168.1.0/24
@@ -152,7 +152,7 @@ For production environments, you want NFS shares to mount automatically at boot 
 ### Understanding fstab Format
 
 The `/etc/fstab` file uses the following format:
-```
+```text
 <device>        <mount_point>    <type>    <options>    <dump>    <pass>
 ```
 
@@ -176,19 +176,19 @@ sudo nano /etc/fstab
 ```
 
 ### Basic fstab entry for NFSv4
-```
+```text
 # NFS share from file server - general shared storage
 nfs-server-ip:/shared    /mnt/nfs/shared    nfs4    defaults    0    0
 ```
 
 ### fstab entry with common recommended options
-```
+```text
 # NFS share with reliability and performance options
 nfs-server-ip:/shared    /mnt/nfs/shared    nfs4    rw,hard,intr,rsize=131072,wsize=131072,timeo=600    0    0
 ```
 
 ### fstab entry for read-only share
-```
+```text
 # Read-only NFS share for configuration files
 nfs-server-ip:/configs    /mnt/nfs/configs    nfs4    ro,hard,intr    0    0
 ```
@@ -226,7 +226,7 @@ Choosing the right mount options significantly impacts performance, reliability,
 | `retrans=n` | Number of retries before soft mount fails | 3 |
 
 ### fstab entry demonstrating connection options
-```
+```text
 # Hard mount with interrupt capability - best for important data
 nfs-server-ip:/data    /mnt/nfs/data    nfs4    hard,timeo=600,retrans=3    0    0
 ```
@@ -243,7 +243,7 @@ nfs-server-ip:/data    /mnt/nfs/data    nfs4    hard,timeo=600,retrans=3    0   
 | `nodiratime` | Don't update directory access time | Recommended |
 
 ### High-performance fstab entry for large file transfers
-```
+```text
 # Optimized for large sequential reads/writes (video editing, backups)
 nfs-server-ip:/media    /mnt/nfs/media    nfs4    rw,hard,rsize=1048576,wsize=1048576,noatime,nodiratime    0    0
 ```
@@ -261,7 +261,7 @@ nfs-server-ip:/media    /mnt/nfs/media    nfs4    rw,hard,rsize=1048576,wsize=10
 | `nodev` | Ignore device files | Security hardening |
 
 ### Security-hardened fstab entry
-```
+```text
 # Secure mount with execution restrictions
 nfs-server-ip:/uploads    /mnt/nfs/uploads    nfs4    rw,hard,nosuid,noexec,nodev    0    0
 ```
@@ -277,7 +277,7 @@ nfs-server-ip:/uploads    /mnt/nfs/uploads    nfs4    rw,hard,nosuid,noexec,node
 | `clientaddr=IP` | Specify client callback address |
 
 ### fstab entry forcing specific NFS version
-```
+```text
 # Force NFSv4.2 for latest features
 nfs-server-ip:/data    /mnt/nfs/data    nfs4    nfsvers=4.2,rw,hard    0    0
 ```
@@ -287,13 +287,13 @@ nfs-server-ip:/data    /mnt/nfs/data    nfs4    nfsvers=4.2,rw,hard    0    0
 Modern Ubuntu uses systemd, which can cause issues with NFS mounts if the network isn't ready at boot time.
 
 ### Method 1: Use _netdev option
-```
+```text
 # The _netdev option tells systemd this is a network filesystem
 nfs-server-ip:/shared    /mnt/nfs/shared    nfs4    _netdev,rw,hard    0    0
 ```
 
 ### Method 2: Use x-systemd options for fine-grained control
-```
+```text
 # Wait for network and add timeout for mount attempts
 nfs-server-ip:/shared    /mnt/nfs/shared    nfs4    _netdev,x-systemd.automount,x-systemd.mount-timeout=30    0    0
 ```
@@ -353,7 +353,7 @@ sudo nano /etc/auto.master
 ```
 
 ### Add entry to auto.master to define a mount point base
-```
+```text
 # Format: mount-point-base    map-file    options
 /mnt/nfs    /etc/auto.nfs    --timeout=300 --ghost
 ```
@@ -368,7 +368,7 @@ sudo nano /etc/auto.nfs
 ```
 
 ### Content for the auto.nfs map file
-```
+```text
 # Format: mount-directory    mount-options    server:/export
 # Each line creates a subdirectory under /mnt/nfs
 
@@ -413,7 +413,7 @@ sudo nano /etc/auto.nfs
 ```
 
 ### Wildcard configuration to mount any export from a server
-```
+```text
 # The asterisk matches any directory name
 # Accessing /mnt/nfs/anyshare mounts server:/anyshare automatically
 *    -fstype=nfs4,rw,hard    nfs-server-ip:/&
@@ -431,7 +431,7 @@ sudo nano /etc/auto.direct
 ```
 
 ### Content for direct map - mounts at exact paths specified
-```
+```text
 # Direct mounts appear at the exact path specified
 /data/shared    -fstype=nfs4,rw,hard    nfs-server-ip:/shared
 /var/backups/nfs    -fstype=nfs4,rw,hard,sync    nfs-server-ip:/backups
@@ -617,7 +617,7 @@ sudo nano /etc/idmapd.conf
 ```
 
 ### Ensure the Domain matches your network's domain
-```
+```text
 [General]
 Domain = example.com
 ```
@@ -635,7 +635,6 @@ sudo umount /mnt/nfs/shared
 sudo mount /mnt/nfs/shared
 ```
 
-### Debug Mode for Persistent Issues
 
 ### Enable verbose NFS mounting
 ```bash
@@ -676,13 +675,13 @@ dmesg | tail -100
 Securing NFS is crucial, especially in environments with sensitive data.
 
 ### Use NFSv4 with Kerberos authentication
-```
+```text
 # fstab entry with Kerberos authentication
 nfs-server-ip:/secure    /mnt/nfs/secure    nfs4    sec=krb5p,rw,hard    0    0
 ```
 
 ### Restrict mount options for untrusted content
-```
+```text
 # Prevent execution of files from NFS share
 nfs-server-ip:/uploads    /mnt/nfs/uploads    nfs4    rw,nosuid,noexec,nodev    0    0
 ```
@@ -713,7 +712,7 @@ find /mnt/nfs -type d -perm -0002 2>/dev/null
 Here's a comprehensive example putting together everything we've covered.
 
 ### Complete fstab configuration for a typical setup
-```
+```text
 # /etc/fstab - NFS mount configuration
 # <server:/export>    <mount_point>    <type>    <options>    <dump>    <pass>
 

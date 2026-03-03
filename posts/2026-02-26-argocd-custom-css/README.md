@@ -127,7 +127,7 @@ data:
 
 Make sure the hosting server includes proper CORS headers if it is on a different domain:
 
-```
+```text
 Access-Control-Allow-Origin: *
 Content-Type: text/css
 Cache-Control: public, max-age=3600

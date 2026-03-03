@@ -143,7 +143,7 @@ spec:
 
 Establishing a namespace naming convention early helps with policy management. A pattern that works well:
 
-```
+```text
 <team>-<environment>-<purpose>
 ```
 

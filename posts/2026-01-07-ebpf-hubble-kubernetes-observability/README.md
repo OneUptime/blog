@@ -106,7 +106,7 @@ kubectl get pods -n kube-system -l app.kubernetes.io/part-of=cilium
 
 Expected output showing healthy pods:
 
-```
+```text
 NAME                                READY   STATUS    RESTARTS   AGE
 cilium-operator-69b677f97c-lg9xm    1/1     Running   0          2m
 cilium-xwkz7                        1/1     Running   0          2m
@@ -238,7 +238,7 @@ hubble status
 
 Expected status output:
 
-```
+```text
 Healthcheck (via localhost:4245): Ok
 Current/Max Flows: 16,384/16,384 (100.00%)
 Flows/s: 24.89

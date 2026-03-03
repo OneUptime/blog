@@ -274,7 +274,7 @@ kubectl get pvc -n database
 
 Output:
 
-```
+```text
 NAME              STATUS   VOLUME                                     CAPACITY
 data-mongodb-0    Bound    pvc-123...                                 100Gi
 data-mongodb-1    Bound    pvc-456...                                 100Gi

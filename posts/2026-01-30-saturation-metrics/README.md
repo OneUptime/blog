@@ -32,7 +32,7 @@ Most teams nail the first three and ignore the fourth. That's a mistake.
 
 Every saturation metric follows the same formula:
 
-```
+```text
 Saturation = (Current Usage / Maximum Capacity) * 100
 ```
 

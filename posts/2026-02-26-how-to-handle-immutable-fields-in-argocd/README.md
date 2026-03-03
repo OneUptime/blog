@@ -106,7 +106,7 @@ The `BeforeHookCreation` delete policy ensures the old Job is deleted before a n
 
 Jobs are the most common source of immutable field errors. The selector is generated at creation time and cannot be changed:
 
-```
+```text
 The Job "my-job" is invalid: spec.selector: Invalid value: ...: field is immutable
 ```
 
@@ -151,7 +151,7 @@ argocd app sync my-app --resource batch:Job:my-job --replace
 
 StatefulSet volumeClaimTemplates are immutable. You cannot change the storage size, access mode, or storage class:
 
-```
+```text
 The StatefulSet "my-db" is invalid: spec: Forbidden: updates to statefulset spec for fields other than ...
 ```
 
@@ -205,7 +205,7 @@ argocd app sync my-app
 
 Deployment selectors are immutable after creation:
 
-```
+```text
 The Deployment "my-app" is invalid: spec.selector: Invalid value: ...: field is immutable
 ```
 

@@ -32,7 +32,7 @@ This task will always fail and print the given message:
 
 When you run this, Ansible stops immediately and prints:
 
-```
+```text
 TASK [Stop execution with a message] ******************************************
 fatal: [localhost]: FAILED! => {"changed": false, "msg": "This playbook requires manual confirmation before running in production."}
 ```
@@ -159,7 +159,7 @@ For larger projects, you can wrap your validation checks in a reusable role. Thi
 
 Here is the role structure:
 
-```
+```text
 roles/
   validate_deploy/
     tasks/

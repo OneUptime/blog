@@ -267,7 +267,7 @@ This progression prevents breaking applications while moving toward maximum rest
 
 When seccomp blocks syscalls, applications see errors:
 
-```
+```text
 Error: Operation not permitted
 ```
 

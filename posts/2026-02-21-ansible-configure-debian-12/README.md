@@ -167,7 +167,7 @@ Debian 12 uses ifupdown by default (not Netplan like Ubuntu):
 
 Template for `interfaces.j2`:
 
-```
+```text
 # interfaces.j2 - Network configuration
 auto lo
 iface lo inet loopback

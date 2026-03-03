@@ -511,7 +511,7 @@ As your organization grows, you will want to share pipeline code across projects
 
 ### Library Structure
 
-```
+```text
 vars/
   buildApp.groovy      # Global variables (callable from pipelines)
   deployToK8s.groovy

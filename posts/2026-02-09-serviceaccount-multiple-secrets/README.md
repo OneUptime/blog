@@ -300,7 +300,7 @@ spec:
 
 All credentials appear in a single organized directory structure:
 
-```
+```text
 /credentials/
 ├── auth/
 │   └── token

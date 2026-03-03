@@ -50,7 +50,7 @@ For each case study, identify:
 
 Here is an example of how I break down a case study.
 
-```
+```text
 Case Study: EHR Healthcare
 
 Business Drivers:

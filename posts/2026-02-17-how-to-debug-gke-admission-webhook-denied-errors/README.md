@@ -45,7 +45,7 @@ kubectl apply -f your-resource.yaml 2>&1
 
 A typical error looks like:
 
-```
+```text
 Error from server: error when creating "your-resource.yaml": admission webhook
 "validate.kyverno.svc" denied the request: resource Deployment/default/my-app
 was blocked due to the following policies: require-labels: autogen-require-labels:

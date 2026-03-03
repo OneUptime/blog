@@ -67,7 +67,7 @@ Generate a lockfile for Python dependencies.
 pip-compile requirements.in --generate-hashes --output-file requirements.lock
 ```
 
-```
+```text
 # requirements.lock - every package pinned with hash verification
 scikit-learn==1.3.2 \
     --hash=sha256:a2f54c76accc15a34bfb9066846c0d6af86e916206e199b2b3fe4b8fa2b1ca5

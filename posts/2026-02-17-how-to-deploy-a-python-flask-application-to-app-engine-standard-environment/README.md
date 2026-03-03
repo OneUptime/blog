@@ -60,7 +60,7 @@ App Engine Standard expects an `app` variable in your `main.py` file. It uses th
 
 App Engine installs dependencies from a `requirements.txt` file during deployment. Create one that lists your Flask dependency and anything else your app needs:
 
-```
+```text
 # requirements.txt - Python dependencies for the application
 Flask==3.0.0
 gunicorn==21.2.0
@@ -108,7 +108,7 @@ A few things worth noting here. The `instance_class: F1` is the smallest (and ch
 
 Similar to `.gitignore`, the `.gcloudignore` file tells the deployment process which files to skip. This keeps your deployment package small and fast:
 
-```
+```text
 # .gcloudignore - Files to exclude from deployment
 .gcloudignore
 .git

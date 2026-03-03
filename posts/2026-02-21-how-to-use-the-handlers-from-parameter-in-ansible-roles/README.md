@@ -69,7 +69,7 @@ The tasks file notifies these handlers:
 
 Now let's add handler files for different scenarios:
 
-```
+```text
 roles/nginx/
   handlers/
     main.yml           # Default - systemd-based handlers

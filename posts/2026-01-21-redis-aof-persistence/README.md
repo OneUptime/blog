@@ -390,7 +390,7 @@ redis-cli INFO persistence | grep aof_rewrite
 
 Output:
 
-```
+```text
 aof_rewrite_in_progress:0
 aof_rewrite_scheduled:0
 aof_last_rewrite_time_sec:5

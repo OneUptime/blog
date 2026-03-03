@@ -142,7 +142,7 @@ Compactor creates downsampled blocks using these aggregations:
 For example, 10 samples at 30s resolution become 1 sample at 5m resolution.
 
 Original (30s):
-```
+```text
 metric_value 10
 metric_value 12
 metric_value 15
@@ -156,7 +156,7 @@ metric_value 15
 ```
 
 Downsampled (5m average):
-```
+```text
 metric_value 13.1
 ```
 
@@ -201,7 +201,7 @@ The `--wait` flag makes Compactor run continuously. Remove it for one-time compa
 
 Calculate storage savings from downsampling:
 
-```
+```text
 Original storage (30s for 1 year):
 - 1,051,200 samples per metric per year
 - 100,000 metrics

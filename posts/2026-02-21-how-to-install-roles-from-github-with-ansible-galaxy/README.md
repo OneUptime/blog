@@ -185,7 +185,7 @@ This approach does not require Git on the target system since it downloads a pla
 
 If you are creating your own roles to host on GitHub, follow this directory structure so `ansible-galaxy` recognizes them properly:
 
-```
+```text
 ansible-role-myapp/
     defaults/
         main.yml

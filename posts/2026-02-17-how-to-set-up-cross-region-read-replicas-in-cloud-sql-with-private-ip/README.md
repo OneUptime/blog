@@ -247,7 +247,7 @@ gcloud sql instances create replica-europe-2 \
 
 Document your disaster recovery plan:
 
-```
+```text
 Disaster Recovery Runbook:
 1. Verify primary region is actually down (not just a transient issue)
 2. Check replication lag on the cross-region replica

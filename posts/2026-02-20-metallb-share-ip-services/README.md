@@ -122,7 +122,7 @@ kubectl get svc web-http web-https
 
 Expected output:
 
-```
+```text
 NAME        TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)
 web-http    LoadBalancer   10.96.10.5     192.168.1.200   80:31001/TCP
 web-https   LoadBalancer   10.96.10.8     192.168.1.200   443:31002/TCP

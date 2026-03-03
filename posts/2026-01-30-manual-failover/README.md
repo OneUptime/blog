@@ -730,7 +730,7 @@ flowchart TD
 
 Print this and keep it near the on-call station:
 
-```
+```text
 ============================================
        MANUAL FAILOVER QUICK REFERENCE
 ============================================

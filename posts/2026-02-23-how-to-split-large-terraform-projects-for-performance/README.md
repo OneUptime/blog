@@ -36,7 +36,7 @@ The most important decision is where to draw the lines. Good boundaries follow t
 
 Here is a typical split for a medium-sized AWS setup:
 
-```
+```text
 infrastructure/
   networking/        # VPCs, subnets, route tables, NAT gateways
   security/          # IAM roles, security groups, KMS keys
@@ -190,7 +190,7 @@ This approach provides better isolation between projects. Each project only sees
 
 When projects depend on each other, you need a clear order for applies:
 
-```
+```text
 1. networking (no dependencies)
 2. security (depends on networking)
 3. data (depends on networking, security)

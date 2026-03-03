@@ -14,7 +14,7 @@ If you have worked with MySQL long enough, you have probably encountered the dre
 
 The error message usually looks something like this:
 
-```
+```text
 ERROR 1366 (HY000): Incorrect string value: '\xF0\x9F\x98\x80...' for column 'content' at row 1
 ```
 

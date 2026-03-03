@@ -32,7 +32,7 @@ NestJS provides these through its modular architecture and dependency injection 
 
 A well-organized project structure is critical when multiple teams work on the same codebase. Here is a structure that scales well:
 
-```
+```text
 src/
 ├── common/                 # Shared utilities and base classes
 │   ├── decorators/

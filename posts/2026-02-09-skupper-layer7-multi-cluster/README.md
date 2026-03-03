@@ -67,7 +67,7 @@ skupper status
 
 Output:
 
-```
+```text
 Skupper is enabled for namespace "default" in interior mode.
 It is connected to 0 other sites.
 ```
@@ -111,7 +111,7 @@ skupper link status
 
 Output:
 
-```
+```text
 Link link-to-public is connected
 ```
 
@@ -187,7 +187,7 @@ skupper service status
 
 Output:
 
-```
+```text
 Services exposed through Skupper:
 ┌─────────────┬───────────┬─────────────────────┬───────┐
 │    NAME     │ ADDRESS   │       PROTOCOL      │ TARGETS │
@@ -301,7 +301,7 @@ skupper service status
 
 Output shows targets from both clusters:
 
-```
+```text
 ┌─────────┬───────────┬──────────┬──────────────────┐
 │  NAME   │  ADDRESS  │ PROTOCOL │     TARGETS      │
 ├─────────┼───────────┼──────────┼──────────────────┤

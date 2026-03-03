@@ -137,7 +137,7 @@ curl -X POST http://localhost:8181/v1/data/authz/allow \
 
 ### Trace Output Example
 
-```
+```text
 Enter data.authz.allow = _
 | Eval data.authz.allow = _
 | Index data.authz.allow (matched 1 rule)
@@ -196,7 +196,7 @@ opa run -s http://localhost:8181
 
 ### REPL Debugging Session
 
-```
+```text
 OPA 0.60.0 (commit abcdef)
 
 Run 'help' to see a list of commands.

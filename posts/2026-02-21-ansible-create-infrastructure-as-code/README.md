@@ -29,7 +29,7 @@ For many teams, using Ansible for IaC makes sense because they already use it fo
 
 A well-organized Ansible IaC project looks like this:
 
-```
+```text
 infrastructure/
   ansible.cfg
   inventory/

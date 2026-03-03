@@ -54,7 +54,7 @@ graph LR
 
 The label format follows this pattern:
 
-```
+```text
 pod-security.kubernetes.io/<MODE>: <PROFILE>
 pod-security.kubernetes.io/<MODE>-version: <VERSION>
 ```
@@ -234,7 +234,7 @@ kubectl get pods -n metallb-system
 
 Expected output:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-7cf77c64f-x2k9p   1/1     Running   0          5m
 speaker-abc12                 1/1     Running   0          5m
@@ -266,7 +266,7 @@ kubectl run psa-test \
 
 If the namespace labels are correct, the dry-run should succeed with:
 
-```
+```text
 pod/psa-test created (server dry run)
 ```
 
@@ -276,7 +276,7 @@ pod/psa-test created (server dry run)
 
 ### Error: Pods Stuck in CreateContainerError
 
-```
+```text
 Error: container has runAsNonRoot and image will run as root
 ```
 
@@ -293,7 +293,7 @@ kubectl label namespace metallb-system \
 
 ### Error: Warning Messages During Helm Install
 
-```
+```text
 Warning: would violate PodSecurity "baseline:latest": host namespaces
 (hostNetwork=true), unrestricted capabilities (container "speaker"
 must not include "NET_RAW" in securityContext.capabilities.add)

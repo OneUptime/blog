@@ -34,7 +34,7 @@ terragrunt run-all apply
 
 Terragrunt scans for all `terragrunt.hcl` files, resolves dependencies, and applies in order. You will see a confirmation prompt showing which modules will be affected:
 
-```
+```text
 Are you sure you want to run 'terragrunt apply' in each folder of the stack described above?
   Module /path/to/live/dev/vpc
   Module /path/to/live/dev/rds
@@ -96,7 +96,7 @@ dependency "rds" {
 
 The apply order becomes:
 
-```
+```text
 Step 1: vpc (no dependencies)
 Step 2: rds, ecs (both depend on vpc, run in parallel)
 Step 3: app (depends on rds and ecs)
@@ -110,7 +110,7 @@ After the VPC is applied, its real outputs (not mocks) are available for the RDS
 
 If a module fails, all modules that depend on it are skipped:
 
-```
+```text
 vpc  -> SUCCESS
 rds  -> FAILED (some API error)
 ecs  -> SUCCESS

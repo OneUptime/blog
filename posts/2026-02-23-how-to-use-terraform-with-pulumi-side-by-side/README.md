@@ -24,7 +24,7 @@ You need Terraform version 1.0 or later, Pulumi CLI installed with your preferre
 
 The most common pattern is to split by infrastructure layer. Terraform handles foundational resources and Pulumi handles application-level resources, or vice versa.
 
-```
+```text
 Infrastructure Layers:
 Layer 1 (Terraform): VPC, Networking, IAM, Core Services
 Layer 2 (Pulumi): Application Deployments, Kubernetes Resources, Dynamic Configs

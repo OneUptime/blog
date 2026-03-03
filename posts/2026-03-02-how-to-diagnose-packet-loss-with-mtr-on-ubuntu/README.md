@@ -48,7 +48,7 @@ mtr -r -n -c 100 google.com
 
 The report output looks like this:
 
-```
+```text
 Start: 2026-03-02T10:15:00+0000
 HOST: server                      Loss%   Snt   Last   Avg  Best  Wrst StDev
   1.|-- 192.168.1.1               0.0%    100    1.2   1.3   1.0   2.1   0.2
@@ -77,7 +77,7 @@ Every hop shows 0.0% loss and latency increases incrementally as packets travel 
 
 ### Loss That Stops at an Intermediate Hop
 
-```
+```text
   3.|-- 10.4.5.1                  0.0%    100   12.1  12.4  11.8  14.2   0.4
   4.|-- 203.0.113.2              50.0%    100   15.2  15.8  14.9  45.2   3.1
   5.|-- 198.51.100.5              0.0%    100   17.3  17.5  16.8  20.1   0.5
@@ -90,7 +90,7 @@ Hop 4 shows 50% loss, but all subsequent hops show 0% loss. This is a **false po
 
 ### Real Packet Loss at a Specific Hop
 
-```
+```text
   3.|-- 10.4.5.1                  0.0%    100   12.1  12.4  11.8  14.2   0.4
   4.|-- 203.0.113.2              50.0%    100   15.2  15.8  14.9  45.2   3.1
   5.|-- 198.51.100.5             50.0%    100   45.3  48.1  42.2  80.1  11.3
@@ -103,7 +103,7 @@ Here, loss at hop 4 **propagates** through all subsequent hops at the same rate.
 
 ### High Latency at One Hop
 
-```
+```text
   4.|-- 203.0.113.2               0.0%    100   150.2  155.8  149.1  200.4  11.2
   5.|-- 198.51.100.5              0.0%    100   153.5  158.2  151.8  205.1  12.3
 ```

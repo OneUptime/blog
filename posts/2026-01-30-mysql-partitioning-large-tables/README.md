@@ -264,7 +264,7 @@ WHERE YEAR(order_date) = 2025;
 
 Sample output showing partition pruning in action:
 
-```
+```text
 +----+-------------+--------+------------+------+---------------+------+
 | id | select_type | table  | partitions | type | possible_keys | rows |
 +----+-------------+--------+------------+------+---------------+------+

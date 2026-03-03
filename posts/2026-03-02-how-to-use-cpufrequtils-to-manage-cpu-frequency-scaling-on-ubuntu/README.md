@@ -41,7 +41,7 @@ cpufreq-info -c 0  # CPU 0
 
 Output for `cpufreq-info -c 0`:
 
-```
+```text
 cpufrequtils 008: cpufreq-info (C) Dominik Brodowski 2004-2009
 analyzing CPU 0:
   driver: intel_pstate

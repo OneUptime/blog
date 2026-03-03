@@ -37,7 +37,7 @@ Before diving into the installation, it is important to understand the core conc
 
 A realm is the top-level container in Keycloak that manages a set of users, credentials, roles, and groups. Think of a realm as a tenant in a multi-tenant system. Each realm is isolated from other realms, meaning users and configurations in one realm do not affect another.
 
-```
+```text
 Keycloak Instance
 ├── Master Realm (administrative)
 ├── Production Realm

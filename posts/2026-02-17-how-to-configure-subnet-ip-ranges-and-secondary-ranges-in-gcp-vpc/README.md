@@ -114,7 +114,7 @@ gcloud compute networks subnets describe prod-us-central1 \
 
 Sample output:
 
-```
+```text
 ipCidrRange: 10.10.0.0/20
 secondaryIpRanges:
 - ipCidrRange: 10.10.64.0/18

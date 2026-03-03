@@ -105,7 +105,7 @@ Create a new canvas app in Power Apps. The student app has three main screens: M
 
 The courses screen shows only courses the current student is enrolled in.
 
-```
+```text
 // Gallery Items formula for the Courses screen
 // Filter courses to show only active ones the student is enrolled in
 Filter(
@@ -117,7 +117,7 @@ Filter(
 
 The assignment list screen shows assignments for a selected course with their status.
 
-```
+```text
 // Gallery Items for the Assignments screen
 // Show assignments for the selected course, sorted by due date
 SortByColumns(
@@ -142,7 +142,7 @@ SortByColumns(
 
 For the submission screen, create a form with a file upload control and a text area for comments.
 
-```
+```text
 // Submit button OnSelect formula
 // Create a submission record and upload the file
 Set(
@@ -196,7 +196,7 @@ Navigate(AssignmentListScreen, ScreenTransition.Cover)
 
 The instructor app shows pending submissions and provides a grading interface.
 
-```
+```text
 // Gallery Items for pending submissions
 // Show all ungraded submissions for courses the instructor teaches
 Filter(
@@ -214,7 +214,7 @@ Filter(
 
 The grading form lets instructors enter a score, provide feedback, and mark the submission as graded.
 
-```
+```text
 // Grade submission button OnSelect
 Patch(
     Submissions,

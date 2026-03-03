@@ -158,7 +158,7 @@ function trackCursorPagination(req: any) {
 
 With the metrics flowing, build a dashboard that answers these questions:
 
-```
+```text
 # Queries for your metrics backend (PromQL examples)
 
 # Traffic percentage by version
@@ -197,7 +197,7 @@ function trackConsumerVersion(consumerId: string, version: string) {
 
 This lets you generate a report like:
 
-```
+```text
 Consumer    | v1 calls | v2 calls | v3 calls | Migration status
 -----------+-----------+----------+----------+-----------------
 client-abc  | 0         | 1,200    | 45,000   | Migrating to v3

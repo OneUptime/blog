@@ -728,7 +728,7 @@ app.listen(3000, () => {
 
 Once you have parameters in your traces, you can filter by them:
 
-```
+```text
 # Find all requests for user 123
 trace.where("route.param.userId", "123")
 

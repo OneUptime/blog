@@ -16,7 +16,7 @@ This guide covers installing, using, and creating collections for your automatio
 
 Collections provide a namespace for organizing related content:
 
-```
+```text
 namespace.collection_name
 ├── docs/                    # Documentation
 ├── galaxy.yml               # Collection metadata

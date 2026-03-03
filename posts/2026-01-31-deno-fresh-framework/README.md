@@ -35,7 +35,7 @@ deno run -A -r https://fresh.deno.dev my-fresh-app
 
 This command creates a new directory with the following structure:
 
-```
+```text
 my-fresh-app/
 ├── components/
 │   └── Button.tsx

@@ -45,7 +45,7 @@ kubectl get events -n production --sort-by='.lastTimestamp' | grep nginx-7d8f9c5
 
 Example output:
 
-```
+```text
 Events:
   Type     Reason            Age   From               Message
   ----     ------            ----  ----               -------
@@ -55,7 +55,7 @@ Events:
 ## Interpreting Common Error Messages
 
 **Insufficient Resources**:
-```
+```text
 0/5 nodes are available: 3 Insufficient cpu, 2 Insufficient memory
 ```
 
@@ -73,7 +73,7 @@ kubectl describe node <node-name> | grep -A 20 "Allocated resources"
 ```
 
 **Taint-Related Failures**:
-```
+```text
 0/5 nodes are available: 5 node(s) had taint {dedicated: gpu}, that the pod didn't tolerate
 ```
 
@@ -90,7 +90,7 @@ spec:
 ```
 
 **Node Selector Mismatch**:
-```
+```text
 0/5 nodes are available: 5 node(s) didn't match Pod's node affinity/selector
 ```
 
@@ -108,7 +108,7 @@ kubectl get nodes -l disktype=ssd
 ```
 
 **Topology Spread Violations**:
-```
+```text
 0/5 nodes are available: 3 node(s) didn't match pod topology spread constraints, 2 Insufficient cpu
 ```
 

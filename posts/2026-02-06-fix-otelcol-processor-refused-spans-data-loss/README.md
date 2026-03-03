@@ -106,7 +106,7 @@ spec:
 
 The relationship between these values matters:
 
-```
+```text
 Container memory limit > memory_limiter limit_mib + spike_limit_mib
          2048 MiB      >        1536 MiB          +     512 MiB
          2048 MiB      >                2048 MiB

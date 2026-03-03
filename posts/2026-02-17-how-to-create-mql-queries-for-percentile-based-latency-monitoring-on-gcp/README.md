@@ -22,7 +22,7 @@ MQL provides the `percentile()` function for distribution-valued metrics. Most G
 
 Here is the simplest possible percentile query.
 
-```
+```text
 # P95 latency for HTTP load balancer requests
 fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
 | percentile(val(), 95)
@@ -35,7 +35,7 @@ This fetches the total latency distribution from your HTTPS load balancer, calcu
 
 To see P50, P95, and P99 on the same chart, use the `union` operation.
 
-```
+```text
 # Multiple percentile lines on a single chart
 {
   # P50 - median latency
@@ -60,7 +60,7 @@ To see P50, P95, and P99 on the same chart, use the `union` operation.
 
 In real deployments, you usually want to see latency broken down by service.
 
-```
+```text
 # P95 latency broken down by backend service
 fetch https_lb_rule::loadbalancing.googleapis.com/https/backend_latencies
 | filter resource.url_map_name = "my-url-map"
@@ -70,7 +70,7 @@ fetch https_lb_rule::loadbalancing.googleapis.com/https/backend_latencies
 
 You can also filter by response code to separate successful request latency from error latency.
 
-```
+```text
 # P95 latency for successful requests only
 fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
 | filter metric.response_code_class = 200
@@ -82,7 +82,7 @@ fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
 
 If you are running on GKE and exporting custom metrics via OpenTelemetry or Prometheus, you can query percentiles on those too.
 
-```
+```text
 # P99 latency from a custom histogram metric
 fetch k8s_container::workload.googleapis.com/http_request_duration_ms
 | group_by [resource.namespace_name, resource.pod_name],
@@ -92,7 +92,7 @@ fetch k8s_container::workload.googleapis.com/http_request_duration_ms
 
 For Prometheus-style histograms exported via Google Managed Prometheus, use the prometheus target type.
 
-```
+```text
 # P95 from Prometheus histogram buckets exported to GCP
 fetch prometheus_target::prometheus.googleapis.com/http_request_duration_seconds/histogram
 | group_by [metric.job], percentile(val(), 95)
@@ -226,7 +226,7 @@ EOF
 
 A useful debugging technique is comparing total latency (what the client sees) with backend latency (just the time your server spent processing). The difference is infrastructure overhead like load balancer processing, TLS termination, and network transit.
 
-```
+```text
 # Compare total vs backend latency at P95
 {
   # Total latency - what the client experiences
@@ -263,7 +263,7 @@ graph TD
 
 **Track latency by geographic region** to identify location-specific issues.
 
-```
+```text
 # P95 latency broken down by client country
 fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
 | filter metric.client_country != ""
@@ -274,7 +274,7 @@ fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
 
 **Detect latency regressions** by comparing current values to a rolling baseline.
 
-```
+```text
 # Current P95 vs 7-day average P95
 {
   fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies

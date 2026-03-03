@@ -21,13 +21,13 @@ cat /sys/kernel/mm/transparent_hugepage/enabled
 
 Output shows the available options with the current setting in brackets:
 
-```
+```text
 [always] madvise never
 ```
 
 Or:
 
-```
+```text
 always madvise [never]
 ```
 
@@ -42,7 +42,7 @@ Also check the defragmentation mode:
 cat /sys/kernel/mm/transparent_hugepage/defrag
 ```
 
-```
+```text
 always defer defer+madvise [madvise] never
 ```
 
@@ -113,7 +113,7 @@ sudo nano /etc/default/grub
 
 Add `transparent_hugepage=never` to `GRUB_CMDLINE_LINUX`:
 
-```
+```text
 GRUB_CMDLINE_LINUX="transparent_hugepage=never"
 ```
 
@@ -163,7 +163,7 @@ grep -i "hugepages\|thp" /proc/meminfo
 
 Key fields:
 
-```
+```text
 AnonHugePages:   1234567 kB    # Memory in anonymous THP
 ShmemHugePages:    12345 kB    # Shared memory in THP
 HugePages_Total:       0       # Static huge pages (different from THP)

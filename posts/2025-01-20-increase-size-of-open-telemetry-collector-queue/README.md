@@ -6,7 +6,7 @@ Tags: OpenTelemetry
 
 Description: Sometimes your OpenTelemetry Collector might not be able to send all the data to the backend. This is because the sending queue is full. This post will help you increase the size of the sending queue.
 
-### How to increase the size of OpenTelemetry Collector Sending Queue?
+## How to increase the size of OpenTelemetry Collector Sending Queue?
 
 In the OpenTelemetry Collector, the sending queue is used to buffer the data before sending it to the backend. If the sending queue is full, the Collector will start dropping the data. This can happen if the backend is slow or if the network is slow. 
 

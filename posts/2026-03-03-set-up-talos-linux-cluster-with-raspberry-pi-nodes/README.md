@@ -67,7 +67,7 @@ Set static IPs directly in the Talos machine configuration (covered in Step 3).
 
 Plan your IP allocation:
 
-```
+```text
 192.168.1.100 - Control Plane 1
 192.168.1.101 - Worker 1
 192.168.1.102 - Worker 2

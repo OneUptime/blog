@@ -16,7 +16,7 @@ When enabled, the tree callback creates a file for each host after the playbook 
 
 The result is a directory that looks like this:
 
-```
+```text
 tree_output/
   web-01
   web-02

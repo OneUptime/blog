@@ -96,7 +96,7 @@ Key points:
 
 A well-organized Lambda project structure:
 
-```
+```text
 lambda-project/
 ├── src/
 │   ├── handlers/

@@ -14,19 +14,19 @@ The `NotAuthorizedException` in AWS Cognito is one of those errors that can mean
 
 You'll typically see something like this:
 
-```
+```text
 NotAuthorizedException: Incorrect username or password.
 ```
 
 Or sometimes:
 
-```
+```text
 NotAuthorizedException: Unable to verify secret hash for client <client_id>
 ```
 
 Or even:
 
-```
+```text
 NotAuthorizedException: Access Token has been revoked
 ```
 

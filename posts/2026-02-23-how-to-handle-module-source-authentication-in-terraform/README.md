@@ -44,7 +44,7 @@ ssh -T git@github.com
 
 If you work with multiple Git organizations, use SSH config to route to the correct key:
 
-```
+```text
 # ~/.ssh/config
 
 # Default GitHub account

@@ -238,7 +238,7 @@ For ADFS, you need to configure issuance transform rules on the relying party tr
 
 ### Send Email
 
-```
+```text
 Rule name: Email
 Rule type: Send LDAP Attributes as Claims
 Attribute store: Active Directory
@@ -248,7 +248,7 @@ Outgoing Claim Type: E-Mail Address
 
 ### Send Name
 
-```
+```text
 Rule name: Name
 Rule type: Send LDAP Attributes as Claims
 Attribute store: Active Directory
@@ -258,7 +258,7 @@ Outgoing Claim Type: Name
 
 ### Send Groups
 
-```
+```text
 Rule name: Groups
 Rule type: Send LDAP Attributes as Claims
 Attribute store: Active Directory

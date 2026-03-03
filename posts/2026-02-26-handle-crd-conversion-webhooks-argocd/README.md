@@ -360,7 +360,7 @@ The CRD conversion configuration does not have a failurePolicy like admission we
 
 Putting it all together, here is the recommended sync wave ordering:
 
-```
+```text
 Wave -3: Namespace, ClusterIssuer (cert-manager prereqs)
 Wave -2: Webhook Deployment, Service, Certificate, PDB
 Wave -1: (wait for webhook to be healthy)

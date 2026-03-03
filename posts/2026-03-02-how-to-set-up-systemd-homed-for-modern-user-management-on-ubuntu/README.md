@@ -200,7 +200,7 @@ If not present, add it:
 sudo nano /etc/pam.d/common-auth
 ```
 
-```
+```text
 # Existing auth rules...
 # Add before or after existing lines:
 auth    sufficient  pam_unix.so
@@ -222,7 +222,7 @@ grep pam_systemd_home /etc/pam.d/sshd
 
 A minimal `/etc/pam.d/sshd` with homed support:
 
-```
+```text
 # Standard authentication
 @include common-auth
 

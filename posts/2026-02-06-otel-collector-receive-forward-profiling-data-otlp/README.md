@@ -12,7 +12,7 @@ OpenTelemetry's profiling signal is the newest addition to the observability tri
 
 Profiling data enters the Collector through the OTLP receiver, just like traces and metrics. The data flow looks like this:
 
-```
+```text
 Application/Agent  -->  OTLP Receiver  -->  Processors  -->  OTLP Exporter  -->  Backend
 ```
 

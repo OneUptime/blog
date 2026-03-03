@@ -62,7 +62,7 @@ flowchart TB
 
 ### The Error
 
-```
+```text
 io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException:
 Schema being registered is incompatible with an earlier schema for subject "orders-value";
 error code: 409
@@ -205,7 +205,7 @@ curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 
 ### The Error
 
-```
+```text
 org.apache.kafka.common.errors.SerializationException:
 Error retrieving Avro schema for id 42
 io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException:
@@ -315,7 +315,7 @@ def restore_schemas_from_backup(backup_file):
 
 ### The Error
 
-```
+```text
 org.apache.kafka.common.errors.SerializationException:
 Error deserializing Avro message for id 15
 Caused by: org.apache.avro.AvroTypeException:
@@ -441,7 +441,7 @@ def consume_with_error_handling(consumer, topic):
 
 ### The Error
 
-```
+```text
 io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException:
 Connect timed out; error code: 500
 ```
@@ -550,7 +550,7 @@ echo "Registry mode: ${kafka_mode}"
 
 ### The Error
 
-```
+```text
 io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException:
 Subject 'my-topic-value' not found; error code: 40401
 ```

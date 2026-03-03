@@ -153,7 +153,7 @@ dig example.com | grep -E "^example" | awk '{print "TTL:", $2, "seconds"}'
 
 A zone file defines all the DNS records for a domain. Understanding the format helps when managing DNS directly.
 
-```
+```text
 ; Zone file for example.com
 ; SOA record defines zone authority and timing
 $TTL 300
@@ -215,7 +215,7 @@ mail2   IN  A     203.0.113.41
 
 ### Weighted DNS for Gradual Rollouts
 
-```
+```text
 ; Route 90% of traffic to stable, 10% to canary
 ; Using weighted routing (supported by Route53, Cloudflare, etc.)
 api     IN  A     10.0.1.10  ; weight: 90

@@ -193,7 +193,7 @@ Look at the `loadBalancingWeight` field for each endpoint group. The weights sho
 
 To see actual traffic distribution, query Prometheus:
 
-```
+```text
 sum(rate(istio_requests_total{
   destination_service="notification-service.default.svc.cluster.local",
   reporter="source"

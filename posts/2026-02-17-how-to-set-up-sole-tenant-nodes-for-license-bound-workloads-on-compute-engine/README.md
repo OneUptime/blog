@@ -33,7 +33,7 @@ gcloud compute sole-tenancy node-types list --zone=us-central1-a
 
 This returns something like:
 
-```
+```text
 NAME             ZONE             CPUS  MEMORY_MB
 n1-node-96-624   us-central1-a   96    649216
 n2-node-80-640   us-central1-a   80    655360

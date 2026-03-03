@@ -44,7 +44,7 @@ The app starts with a frontend on port 3000 and backend on port 7007.
 
 A Backstage application has this structure:
 
-```
+```text
 my-backstage/
 ├── app-config.yaml          # Main configuration
 ├── app-config.local.yaml    # Local overrides (gitignored)
@@ -231,7 +231,7 @@ metadata:
 
 Create documentation structure:
 
-```
+```text
 payment-service/
 ├── catalog-info.yaml
 ├── docs/

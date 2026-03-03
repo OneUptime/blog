@@ -125,7 +125,7 @@ Each revision gets its own unique URL, even if it receives 0% of the main traffi
 
 The revision-specific URL looks like this:
 
-```
+```text
 https://my-api--v2.happyocean-abc123.eastus.azurecontainerapps.io
 ```
 

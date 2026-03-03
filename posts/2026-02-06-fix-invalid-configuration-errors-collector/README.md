@@ -127,7 +127,7 @@ receivers:
 ```
 
 **Error Message:**
-```
+```text
 Error: yaml: line 5: mapping values are not allowed in this context
 ```
 
@@ -168,7 +168,7 @@ service:
 ```
 
 **Error Message:**
-```
+```text
 Error: pipeline "traces" references processor "batch" which is not configured
 ```
 
@@ -211,7 +211,7 @@ exporters:
 ```
 
 **Error Message:**
-```
+```text
 Error: exporter "otlphttp" has invalid configuration: endpoint must be specified
 ```
 
@@ -237,7 +237,7 @@ processors:
 ```
 
 **Error Message:**
-```
+```text
 Error: failed to parse duration: time: invalid duration "5"
 ```
 
@@ -271,7 +271,7 @@ exporters:
 ```
 
 **Error Message:**
-```
+```text
 Error: yaml: unmarshal errors: line 5: key "otlphttp" already defined at line 2
 ```
 
@@ -304,7 +304,7 @@ service:
 ```
 
 **Error Message:**
-```
+```text
 Error: pipeline "traces" must have at least one receiver
 ```
 
@@ -429,7 +429,7 @@ receivers:
 ```
 
 **Error Message:**
-```
+```text
 Error: unknown receivers type "kafka"
 ```
 

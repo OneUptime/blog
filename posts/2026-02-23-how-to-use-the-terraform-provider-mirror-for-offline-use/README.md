@@ -53,7 +53,7 @@ terraform providers mirror \
 
 This creates a directory structure like:
 
-```
+```text
 /path/to/mirror/
   registry.terraform.io/
     hashicorp/

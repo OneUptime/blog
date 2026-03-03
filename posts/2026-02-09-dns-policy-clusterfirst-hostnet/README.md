@@ -260,7 +260,7 @@ kubectl logs test-hostnet-dns
 
 Expected resolv.conf with ClusterFirstWithHostNet:
 
-```
+```text
 nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5

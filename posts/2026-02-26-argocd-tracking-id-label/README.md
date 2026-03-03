@@ -24,13 +24,13 @@ ArgoCD supports three tracking methods:
 
 The tracking-id value follows a specific format:
 
-```
+```text
 <application-name>:<group>/<kind>:<namespace>/<name>
 ```
 
 For example:
 
-```
+```text
 my-app:apps/Deployment:production/web-server
 my-app:/Service:production/web-server-svc
 my-app:networking.k8s.io/Ingress:production/web-ingress
@@ -38,7 +38,7 @@ my-app:networking.k8s.io/Ingress:production/web-ingress
 
 For cluster-scoped resources (no namespace):
 
-```
+```text
 my-app:rbac.authorization.k8s.io/ClusterRole:/my-cluster-role
 ```
 

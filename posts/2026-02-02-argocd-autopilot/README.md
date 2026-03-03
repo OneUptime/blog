@@ -97,7 +97,7 @@ Generate a personal access token with repository permissions for your Git provid
 
 For GitHub, navigate to Settings > Developer settings > Personal access tokens > Tokens (classic) and create a token with the following scopes:
 
-```
+```text
 repo (Full control of private repositories)
   - repo:status
   - repo_deployment
@@ -164,7 +164,7 @@ argocd-autopilot repo bootstrap --installation-mode normal
 
 The bootstrap process generates several directories and files in your repository.
 
-```
+```text
 gitops-repo/
 ├── bootstrap/
 │   ├── argo-cd/
@@ -393,7 +393,7 @@ argocd-autopilot app create redis \
 
 Autopilot creates a structured layout for each application in the apps directory.
 
-```
+```text
 apps/
 └── my-api/
     ├── base/
@@ -984,7 +984,7 @@ Follow these recommendations for successful Autopilot implementations.
 
 Maintain a clean and logical repository structure.
 
-```
+```text
 gitops-repo/
 ├── README.md                    # Document your GitOps setup
 ├── bootstrap/

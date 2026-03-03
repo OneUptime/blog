@@ -211,7 +211,7 @@ This telemetry lets you build dashboards showing plan duration trends, identify 
 
 For more control over the telemetry pipeline, point the agent at a local OpenTelemetry Collector:
 
-```
+```text
 Agent -> OTel Collector -> Backend
 ```
 

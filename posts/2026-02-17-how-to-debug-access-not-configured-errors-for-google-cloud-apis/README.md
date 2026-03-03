@@ -16,7 +16,7 @@ Let me walk through all the reasons this happens and how to fix each one.
 
 The error comes in several forms:
 
-```
+```text
 {
   "error": {
     "code": 403,
@@ -28,7 +28,7 @@ The error comes in several forms:
 
 Or from gcloud:
 
-```
+```text
 ERROR: (gcloud.compute.instances.list) HttpError accessing
 https://compute.googleapis.com/...:
 Access Not Configured. Cloud Resource Manager API has not been used in project

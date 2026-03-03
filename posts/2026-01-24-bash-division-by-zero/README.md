@@ -38,7 +38,7 @@ echo "Result: $result"  # Never reached
 ```
 
 Output:
-```
+```text
 bash: 10 / 0: division by zero (error token is "0")
 ```
 

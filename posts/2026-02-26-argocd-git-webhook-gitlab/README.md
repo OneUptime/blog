@@ -69,7 +69,7 @@ kubectl rollout restart deployment argocd-server -n argocd
 2. Go to Settings > Webhooks
 3. Fill in the webhook form:
 
-```
+```text
 URL: https://argocd.example.com/api/webhook
 Secret token: <your-generated-secret>
 Trigger: Push events
@@ -129,7 +129,7 @@ kubectl logs -n argocd deployment/argocd-server -f | grep -i "webhook\|gitlab\|r
 
 You should see:
 
-```
+```text
 level=info msg="Received push event repo: https://gitlab.com/org/repo, revision: abc1234, ref: refs/heads/main"
 ```
 
@@ -200,7 +200,7 @@ If GitLab is behind a reverse proxy, ensure the `X-Forwarded-For` and `X-Forward
 
 GitLab subgroups inherit group-level webhooks. If you have a structure like:
 
-```
+```text
 org/
   platform/
     service-a/

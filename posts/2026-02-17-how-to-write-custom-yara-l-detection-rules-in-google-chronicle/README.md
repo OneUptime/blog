@@ -16,7 +16,7 @@ In this guide, I will cover the YARA-L syntax, walk through writing rules of inc
 
 Every YARA-L rule follows the same basic structure. Here is the skeleton you will work with.
 
-```
+```text
 rule rule_name {
     meta:
         // Metadata about the rule
@@ -45,7 +45,7 @@ The four main sections are:
 
 Let me start with something straightforward. This rule detects multiple failed logins from the same IP address.
 
-```
+```text
 rule multiple_failed_logins {
     meta:
         author = "security-team"
@@ -80,7 +80,7 @@ Let me break down what is happening:
 
 The real power of YARA-L shows up when you correlate multiple event types. This rule detects a successful login followed by a privilege escalation - a common attack pattern.
 
-```
+```text
 rule login_then_privilege_escalation {
     meta:
         author = "security-team"
@@ -120,7 +120,7 @@ YARA-L supports regex matching and reference lists, which are useful for writing
 
 This rule detects access to sensitive GCS buckets from unusual locations.
 
-```
+```text
 rule sensitive_bucket_access_from_unusual_location {
     meta:
         author = "security-team"
@@ -148,7 +148,7 @@ The `%corporate_ips` reference is a Chronicle reference list. You create these i
 
 This more advanced rule looks for a user downloading an unusually high volume of files from Cloud Storage.
 
-```
+```text
 rule possible_data_exfiltration_gcs {
     meta:
         author = "security-team"
@@ -179,7 +179,7 @@ rule possible_data_exfiltration_gcs {
 
 YARA-L lets you define outcomes that enrich your alerts with additional context. This is incredibly useful for triage.
 
-```
+```text
 rule suspicious_service_account_key_creation {
     meta:
         author = "security-team"

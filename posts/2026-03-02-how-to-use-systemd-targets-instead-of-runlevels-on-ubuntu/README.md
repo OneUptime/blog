@@ -110,7 +110,7 @@ ls -la /etc/systemd/system/default.target
 
 You can override the default target at boot without changing the configuration. At the GRUB menu, press `e` to edit the boot entry, then find the line starting with `linux` and append your target:
 
-```
+```text
 # Add one of these to the kernel command line in GRUB
 systemd.unit=multi-user.target
 systemd.unit=rescue.target

@@ -181,7 +181,7 @@ spec:
 
 Your repository structure would look like:
 
-```
+```text
 production/my-app/
   rollout.yaml
   services.yaml

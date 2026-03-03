@@ -92,7 +92,7 @@ sshfs -o IdentityFile=~/.ssh/id_ed25519,port=2222,reconnect,Compression=yes \
 
 If you have hosts defined in `~/.ssh/config`, SSHFS respects them:
 
-```
+```text
 # ~/.ssh/config
 Host myserver
     HostName remote-server.example.com
@@ -133,7 +133,7 @@ sudo nano /etc/fstab
 
 Add an entry:
 
-```
+```text
 # /etc/fstab entry for SSHFS mount
 # user@host:remote_path  local_mountpoint  fuse.sshfs  options  0  0
 user@server:/remote/path /home/user/mnt/remote fuse.sshfs defaults,_netdev,allow_other,IdentityFile=/home/user/.ssh/id_ed25519,reconnect,ServerAliveInterval=15 0 0

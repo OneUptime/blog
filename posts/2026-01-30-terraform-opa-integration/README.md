@@ -81,7 +81,7 @@ opa version
 
 Organize your project for maintainability:
 
-```
+```text
 terraform-opa-project/
 ├── terraform/
 │   ├── main.tf
@@ -733,7 +733,7 @@ flowchart TB
 
 ### 1. Organize Policies by Domain
 
-```
+```text
 policies/
 ├── security/
 │   ├── encryption.rego

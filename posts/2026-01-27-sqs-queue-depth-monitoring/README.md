@@ -1344,7 +1344,7 @@ Set thresholds relative to your baseline, not arbitrary round numbers.
 
 A queue with 1000 messages that's draining is healthy. A queue with 100 messages that's growing is a problem. Use CloudWatch Math expressions to alert on rate of change:
 
-```
+```text
 RATE(METRICS("ApproximateNumberOfMessages")) > 10  # Growing by 10 msg/min
 ```
 

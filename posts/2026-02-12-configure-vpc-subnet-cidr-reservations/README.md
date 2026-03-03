@@ -145,7 +145,7 @@ aws ec2 delete-subnet-cidr-reservation \
 
 A well-planned subnet uses CIDR reservations to create a predictable IP layout.
 
-```
+```text
 Subnet: 10.0.1.0/24 (254 usable IPs)
 ========================================
 10.0.1.0     - AWS reserved (network address)

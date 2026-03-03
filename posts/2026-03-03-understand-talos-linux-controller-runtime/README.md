@@ -146,7 +146,7 @@ Controllers have dependencies on each other. The network controllers must run be
 
 machined handles these dependencies by ordering controller execution and ensuring that controllers wait for their dependencies to produce outputs before they start processing.
 
-```
+```text
 Configuration Controller
     |
     v

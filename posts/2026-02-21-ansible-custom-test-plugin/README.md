@@ -20,7 +20,7 @@ Test plugins are different from filter plugins. Filters transform data (e.g., `v
 
 Test plugins go into a `test_plugins/` directory either in your project root or inside an Ansible collection. Here is the basic layout:
 
-```
+```text
 my_project/
   test_plugins/
     network_tests.py
@@ -30,7 +30,7 @@ my_project/
 
 Or inside a collection:
 
-```
+```text
 collections/
   ansible_collections/
     myorg/

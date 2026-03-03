@@ -42,7 +42,7 @@ sequenceDiagram
 
 ## Common Error Messages
 
-```
+```text
 HTTP Status 403 - Invalid CSRF token 'null' was found on the request parameter '_csrf' or header 'X-CSRF-TOKEN'.
 
 Could not verify the provided CSRF token because your session was not found.

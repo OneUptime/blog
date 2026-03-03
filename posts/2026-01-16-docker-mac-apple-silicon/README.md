@@ -59,7 +59,7 @@ docker info | grep Architecture
 
 Open Docker Desktop > Settings > Resources:
 
-```
+```text
 Recommended Settings for Development:
 - CPUs: 4-6 (leave 2 for macOS)
 - Memory: 8-12 GB (depending on total RAM)
@@ -69,7 +69,7 @@ Recommended Settings for Development:
 
 ### VirtioFS (Recommended)
 
-```
+```text
 Docker Desktop > Settings > General
 [x] Use Virtualization framework
 [x] Use VirtioFS for file sharing
@@ -79,7 +79,7 @@ VirtioFS provides significantly faster file sharing than gRPC FUSE.
 
 ### Resource Saver
 
-```
+```text
 Settings > Resources > Advanced
 [x] Resource Saver
 ```
@@ -132,7 +132,7 @@ CMD ["node", "index.js"]
 
 ### Enable Rosetta
 
-```
+```text
 Docker Desktop > Settings > General
 [x] Use Rosetta for x86_64/amd64 emulation on Apple Silicon
 ```

@@ -168,7 +168,7 @@ Edit the slapd defaults:
 sudo nano /etc/default/slapd
 ```
 
-```
+```text
 SLAPD_SERVICES="ldap:/// ldapi:/// ldaps:///"
 ```
 
@@ -251,7 +251,7 @@ For the LDAP client tools specifically, configure `/etc/ldap/ldap.conf`:
 sudo nano /etc/ldap/ldap.conf
 ```
 
-```
+```text
 BASE    dc=example,dc=com
 URI     ldaps://ldap.example.com
 TLS_CACERT /etc/ssl/certs/ca-certificates.crt

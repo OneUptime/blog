@@ -49,7 +49,7 @@ The Flink Web UI is your first stop for debugging. Access it at `http://jobmanag
 
 ### Key Sections to Check
 
-```
+```text
 Dashboard
 ├── Running Jobs
 │   └── Click on failed job

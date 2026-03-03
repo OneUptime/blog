@@ -14,7 +14,7 @@ The `path_relative_to_include()` function is one of the most important functions
 
 Consider this directory layout:
 
-```
+```text
 live/
   terragrunt.hcl                 # root config (the "included" file)
   dev/
@@ -181,7 +181,7 @@ remote_state {
 
 With a structure like:
 
-```
+```text
 live/
   terragrunt.hcl
   us-east-1/

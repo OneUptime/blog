@@ -16,7 +16,7 @@ This post covers static inventory separation, dynamic inventories, inventory plu
 
 The simplest approach is one inventory directory per environment.
 
-```
+```text
 inventories/
   dev/
     hosts.yml

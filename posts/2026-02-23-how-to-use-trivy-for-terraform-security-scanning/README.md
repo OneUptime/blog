@@ -64,7 +64,7 @@ trivy config --severity HIGH,CRITICAL .
 
 The output shows each finding with its severity, rule ID, description, and the file/line where the issue was found:
 
-```
+```text
 main.tf (terraform)
 ===================
 
@@ -124,7 +124,7 @@ trivy config --misconfig-scanners terraform .
 
 Create a `.trivyignore` file to suppress known false positives:
 
-```
+```text
 # .trivyignore
 # Skip public read access check for the static website bucket
 AVD-AWS-0088

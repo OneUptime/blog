@@ -1068,7 +1068,7 @@ console.log(generateMermaidDiagram(fetchTransitions));
 
 Output:
 
-```
+```text
 stateDiagram-v2
     idle --> loading: FETCH
     loading --> success: SUCCESS

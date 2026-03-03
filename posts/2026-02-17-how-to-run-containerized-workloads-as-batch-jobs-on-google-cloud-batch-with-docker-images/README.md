@@ -35,7 +35,7 @@ Create a Docker image for your batch processing workload. This example builds a 
 
 The directory structure:
 
-```
+```text
 batch-processor/
   Dockerfile
   requirements.txt
@@ -138,7 +138,7 @@ CMD ["python", "process.py"]
 
 The requirements file:
 
-```
+```text
 google-cloud-storage==2.14.0
 ```
 

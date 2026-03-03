@@ -125,7 +125,7 @@ service:
 
 The `limit_mib` value should be set based on your Collector's total available memory, leaving room for the Go runtime overhead:
 
-```
+```text
 limit_mib = (total_container_memory * 0.8) - go_runtime_overhead
 
 # Example: 2 GiB container

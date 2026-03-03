@@ -14,7 +14,7 @@ This post covers a complete Ansible role for PostgreSQL configuration, including
 
 ## Role Structure
 
-```
+```text
 roles/postgresql_config/
   defaults/main.yml
   tasks/main.yml
@@ -152,7 +152,7 @@ lc_time = 'en_US.UTF-8'
 
 ## The pg_hba.conf Template
 
-```
+```text
 # roles/postgresql_config/templates/pg_hba.conf.j2
 # PostgreSQL Client Authentication Configuration
 # Managed by Ansible - do not edit manually

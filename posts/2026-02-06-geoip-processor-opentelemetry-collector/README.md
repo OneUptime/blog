@@ -656,7 +656,7 @@ spec:
 
 Query traces by geographic region to identify performance issues:
 
-```
+```text
 # Find slow requests by country
 span.duration > 500ms
 GROUP BY geo.country_code
@@ -672,7 +672,7 @@ GROUP BY geo.continent_code
 
 Analyze traffic patterns by location:
 
-```
+```text
 # Request volume by city
 COUNT(spans)
 WHERE span.kind = "server"

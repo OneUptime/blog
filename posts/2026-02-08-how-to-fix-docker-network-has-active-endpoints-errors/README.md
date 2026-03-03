@@ -10,7 +10,7 @@ Description: Resolve the 'network has active endpoints' error in Docker by ident
 
 You try to remove a Docker network and get hit with this:
 
-```
+```text
 Error response from daemon: error while removing network: network mynetwork id abc123 has active endpoints
 ```
 

@@ -209,7 +209,7 @@ Looker Studio supports calculated fields for custom metrics:
 
 ### Cost Per Day Average
 
-```
+```text
 net_cost / DATE_DIFF(MAX(date), MIN(date))
 ```
 
@@ -221,7 +221,7 @@ Create a calculated field that compares current month cost to the previous month
 
 If you have a fixed monthly budget, add a calculated field:
 
-```
+```text
 SUM(net_cost) / 10000
 ```
 

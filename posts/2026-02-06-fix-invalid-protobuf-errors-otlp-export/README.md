@@ -40,7 +40,7 @@ This is the single most common cause. The gRPC port (default 4317) and the HTTP 
 
 The error typically looks like this:
 
-```
+```text
 # Error from the receiver when it gets HTTP data on the gRPC port
 rpc error: code = Internal desc = grpc: failed to unmarshal the received message:
 proto: cannot parse invalid wire-format data
@@ -85,7 +85,7 @@ exporters:
 
 When using HTTP transport, the Content-Type header tells the receiver how to decode the body. If the header says JSON but the body is protobuf (or vice versa), you get a parsing error.
 
-```
+```text
 # Error when Content-Type doesn't match the payload format
 Failed to unmarshal: proto: syntax error (line 1:1): unexpected token {
 ```
@@ -133,7 +133,7 @@ location /v1/ {
 
 OpenTelemetry's protobuf definitions evolve between versions. If the sender is using a newer proto definition than the receiver supports, or if there are incompatible changes, you will see serialization errors.
 
-```
+```text
 # Error indicating proto schema mismatch
 proto: wrong wireframe type for field
 Cannot parse message: unknown field number
@@ -201,7 +201,7 @@ export OTEL_EXPORTER_OTLP_CERTIFICATE=/path/to/ca.pem
 
 Protobuf has no built-in size limit, but gRPC does. The default maximum message size in gRPC is 4MB. If you are sending very large batches, they may exceed this limit and fail with what looks like a protobuf error.
 
-```
+```text
 # Error when message exceeds gRPC size limit
 rpc error: code = ResourceExhausted desc = grpc: received message larger than max (5242880 vs 4194304)
 ```

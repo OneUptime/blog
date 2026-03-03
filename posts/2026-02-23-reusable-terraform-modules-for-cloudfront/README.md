@@ -24,7 +24,7 @@ At its core, the module needs to support:
 
 ## Module Structure
 
-```
+```text
 modules/cloudfront/
   main.tf
   variables.tf

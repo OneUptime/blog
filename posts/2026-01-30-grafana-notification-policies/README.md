@@ -140,7 +140,7 @@ group_by:
 
 Consider three alerts firing:
 
-```
+```text
 Alert 1: {alertname="HighCPU", instance="server-1", env="prod"}
 Alert 2: {alertname="HighCPU", instance="server-2", env="prod"}
 Alert 3: {alertname="HighMemory", instance="server-1", env="prod"}

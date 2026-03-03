@@ -26,7 +26,7 @@ For a Spring Boot application, steps 4 and 5 alone can take 3-8 seconds. That's 
 
 Here's what a typical Java Lambda cold start looks like in the logs:
 
-```
+```text
 REPORT RequestId: abc-123
   Duration: 234.56 ms
   Billed Duration: 235 ms
@@ -253,7 +253,7 @@ aws logs filter-log-events \
 
 With SnapStart, you'll see `Restore Duration` instead of `Init Duration`:
 
-```
+```text
 REPORT RequestId: abc-123
   Duration: 123.45 ms
   Billed Duration: 173 ms

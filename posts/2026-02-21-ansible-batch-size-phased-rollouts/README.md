@@ -93,7 +93,7 @@ The most powerful option is a list of batch sizes that increase progressively:
 
 The progression for 100 hosts:
 
-```
+```text
 Batch 1: 1 host     (canary - test on a single host)
 Batch 2: 5 hosts    (small group - build confidence)
 Batch 3: 10 hosts   (medium group - verify at scale)

@@ -21,7 +21,7 @@ ansible-inventory -i inventory/hosts.yml --graph
 
 Output:
 
-```
+```text
 @all:
   |--@ungrouped:
   |--@webservers:
@@ -57,7 +57,7 @@ ansible-inventory -i inventory/hosts.yml --graph webservers
 
 Output:
 
-```
+```text
 @webservers:
   |--web01
   |--web02
@@ -77,7 +77,7 @@ ansible-inventory -i inventory/hosts.yml --graph --vars
 
 Output:
 
-```
+```text
 @all:
   |--@webservers:
   |  |--web01

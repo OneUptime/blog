@@ -196,7 +196,7 @@ WHERE is_caller_dependent = 0;
 
 The connection string format for Managed Instance is slightly different from Azure SQL Database.
 
-```
+```text
 -- Azure SQL Database connection string
 Server=myserver.database.windows.net;Database=mydb;User=admin;Password=secret;
 

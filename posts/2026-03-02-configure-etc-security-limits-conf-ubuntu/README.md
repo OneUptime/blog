@@ -25,7 +25,7 @@ grep pam_limits /etc/pam.d/sshd
 
 You should see a line like:
 
-```
+```text
 session required pam_limits.so
 ```
 
@@ -35,7 +35,7 @@ If this line is missing, limits won't be applied for that login method.
 
 Each line in `limits.conf` follows this format:
 
-```
+```text
 <domain>  <type>  <item>  <value>
 ```
 
@@ -92,7 +92,7 @@ The most common limit issue on servers. The default of 1024 is far too low for n
 sudo nano /etc/security/limits.conf
 ```
 
-```
+```text
 # Increase file descriptor limit for web servers
 www-data        soft    nofile    65536
 www-data        hard    nofile    65536
@@ -114,7 +114,7 @@ After editing, the new limits apply on next login. For running services managed 
 
 ### Process Limits for Build Systems
 
-```
+```text
 # Allow build users to spawn many processes
 *               soft    nproc     65536
 *               hard    nproc     65536
@@ -124,7 +124,7 @@ After editing, the new limits apply on next login. For running services managed 
 
 Databases like Elasticsearch and Redis need to lock memory to prevent swapping:
 
-```
+```text
 # Allow elasticsearch to lock all its memory
 elasticsearch   soft    memlock   unlimited
 elasticsearch   hard    memlock   unlimited
@@ -136,7 +136,7 @@ redis           hard    memlock   unlimited
 
 ### Core Dumps for Debugging
 
-```
+```text
 # Allow all users to create unlimited core dumps
 *               soft    core      unlimited
 *               hard    core      unlimited
@@ -155,7 +155,7 @@ Modern Ubuntu uses `/etc/security/limits.d/` for additional limit files, process
 sudo nano /etc/security/limits.d/nginx.conf
 ```
 
-```
+```text
 www-data        soft    nofile    65536
 www-data        hard    nofile    131072
 ```
@@ -239,7 +239,7 @@ sudo prlimit --pid $(pgrep -o nginx)
 
 Expected output for nofile:
 
-```
+```text
 RESOURCE   DESCRIPTION              SOFT      HARD UNITS
 NOFILE     max number of open files 65536    65536 files
 ```
@@ -252,7 +252,7 @@ MySQL on a busy server needs increased file descriptors, process limits, and mem
 sudo nano /etc/security/limits.d/mysql.conf
 ```
 
-```
+```text
 # MySQL resource limits
 mysql           soft    nofile    65536
 mysql           hard    nofile    65536

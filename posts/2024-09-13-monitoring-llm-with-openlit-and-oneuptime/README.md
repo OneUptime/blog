@@ -6,7 +6,7 @@ Tags: LLM Observability, OpenLIT, OpenTelemetry
 
 Description: How to monitor LLMs using tools like Openlit & OpenTelemetry to ensure accurate outputs, improve data retrieval, and optimize costs, with OneUptime for visualizing performance metrics.
 
-# Overview
+## Overview
 
 Keeping an eye on large language models (LLMs) is key to understanding how they operate. This involves monitoring everything from their applications and prompts to their data sources and outputs. It's crucial because it ensures that LLMs perform accurately and reliably.
 

@@ -12,7 +12,7 @@ Having a local observability stack lets you test instrumentation changes quickly
 
 Create a directory for your playground:
 
-```
+```text
 otel-playground/
   docker-compose.yml
   otel-collector-config.yaml

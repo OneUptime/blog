@@ -71,7 +71,7 @@ pgrep -a pimd
 
 ### Simple Two-Router Setup
 
-```
+```text
 Network:
   Router A: eth0=10.0.1.1 (connects to sender), eth1=10.0.12.1
   Router B: eth0=10.0.12.2, eth1=10.0.2.1 (connects to receivers)
@@ -85,7 +85,7 @@ Network:
 sudo vtysh
 ```
 
-```
+```text
 configure terminal
 
 ! Enable PIM on interfaces
@@ -114,7 +114,7 @@ write memory
 
 ### Router B Configuration
 
-```
+```text
 configure terminal
 
 interface eth0
@@ -243,7 +243,7 @@ bridge mdb show
 
 Multicast scope is controlled by the TTL field in IP headers:
 
-```
+```text
 TTL   Scope
 0     Same host
 1     Same subnet (link-local)

@@ -112,7 +112,7 @@ def handle_order(request):
 
 Two spans instead of eight. The trace shows:
 
-```
+```text
 handle_order  [========================] 45ms
   save_order    [==================]      38ms
 ```
@@ -148,7 +148,7 @@ def handle_order(request):
 
 For each function you are considering instrumenting:
 
-```
+```text
 Does it involve I/O (network, disk, database)?
   YES -> Create a span
   NO  -> Does it represent a meaningful business step?

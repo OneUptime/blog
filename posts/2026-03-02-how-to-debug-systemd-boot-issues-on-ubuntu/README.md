@@ -20,7 +20,7 @@ systemd-analyze time
 ```
 
 Example output:
-```
+```text
 Startup finished in 2.987s (firmware) + 1.234s (loader) + 5.567s (kernel) + 12.345s (initrd) + 23.456s (userspace) = 45.589s
 graphical.target reached after 23.101s in userspace
 ```
@@ -38,7 +38,7 @@ systemd-analyze blame | head -20
 ```
 
 Output example:
-```
+```text
 10.234s NetworkManager-wait-online.service
  5.678s snapd.service
  3.456s apt-daily-upgrade.service
@@ -163,7 +163,7 @@ systemd-analyze critical-chain nginx.service
 ```
 
 Example output:
-```
+```text
 graphical.target @23.101s
 └─multi-user.target @23.101s
   └─nginx.service @22.890s +0.211s

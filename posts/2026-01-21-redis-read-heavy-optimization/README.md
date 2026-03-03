@@ -33,7 +33,7 @@ Common use cases:
 
 ### Setting Up Read Replicas
 
-```
+```text
 Primary (Writes) -----> Replica 1 (Reads)
                   |---> Replica 2 (Reads)
                   |---> Replica 3 (Reads)

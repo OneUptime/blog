@@ -98,7 +98,7 @@ helm package ./my-chart --sign --key "email@example.com" --keyring ~/.gnupg/pubr
 
 The `.prov` file contains the signature and metadata:
 
-```
+```text
 -----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA512
 

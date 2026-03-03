@@ -125,7 +125,7 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 
 Organize your repo with a clear structure. I recommend the unstructured format, which mirrors how you would normally organize Kubernetes manifests.
 
-```
+```text
 cluster-config/
   clusters/
     my-cluster/
@@ -243,7 +243,7 @@ You should see output indicating the sync is successful and showing the latest c
 
 Config Sync really shines when managing multiple clusters. You can have shared configuration and cluster-specific overrides.
 
-```
+```text
 cluster-config/
   base/
     # Shared configuration applied to all clusters

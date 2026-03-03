@@ -194,7 +194,7 @@ cargo bench -- --verbose
 
 Criterion outputs look like this:
 
-```
+```text
 fib 20                  time:   [24.892 us 25.034 us 25.189 us]
                         change: [-2.1234% -0.8412% +0.5765%] (p = 0.23 > 0.05)
                         No change in performance detected.

@@ -40,7 +40,7 @@ Each RI comes with three payment options that affect the total discount:
 
 Here's a real example for an m5.large in us-east-1 (1-year term):
 
-```
+```text
 On-Demand:      $0.096/hr  = $840.96/year
 All Upfront:    $505/year   = $0.058/hr  (40% savings)
 Partial Upfront: $265 + $22.63/mo = $536.56/year (36% savings)

@@ -38,7 +38,7 @@ node --inspect=0.0.0.0:9230 app.js
 
 You'll see output like:
 
-```
+```text
 Debugger listening on ws://127.0.0.1:9229/a1b2c3d4-e5f6-7890-abcd-ef1234567890
 For help, see: https://nodejs.org/en/docs/inspector
 ```
@@ -164,7 +164,7 @@ async function getUsers(ids) {
 
 A CPU profile would show:
 
-```
+```text
 getUsers        |████████████████████████████████████████| 100%
   db.query      |████████████████████████████████████████| 95%
     tcp.write   |████████████████████                    | 45%

@@ -16,7 +16,7 @@ Most teams pick an observability backend based on demos and marketing materials.
 
 The idea is straightforward. You define one receiver, one or more processors, and multiple exporters. The collector sends the same processed data to every exporter listed in the pipeline. There is no special connector or plugin needed for this pattern.
 
-```
+```text
 [Application] --> [OTLP Receiver] --> [Batch Processor] --> [Exporter A (Backend 1)]
                                                         --> [Exporter B (Backend 2)]
 ```

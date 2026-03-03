@@ -37,7 +37,7 @@ output "database_endpoint" {
 
 After running `terraform apply`, these outputs are displayed:
 
-```
+```text
 Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
 
 Outputs:
@@ -208,7 +208,7 @@ output "database_password" {
 
 Sensitive outputs are hidden in the terminal:
 
-```
+```text
 Outputs:
 
 database_password = <sensitive>

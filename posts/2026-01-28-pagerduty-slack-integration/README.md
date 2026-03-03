@@ -100,26 +100,26 @@ def configure_slack_extension(api_key, service_id, slack_channel_id):
 
 ### Trigger an Incident
 
-```
+```text
 /pd trigger "Database connection timeout" on Database Service
 ```
 
 ### Acknowledge an Incident
 
-```
+```text
 /pd ack 123
 # or click the "Acknowledge" button on the incident message
 ```
 
 ### Resolve an Incident
 
-```
+```text
 /pd resolve 123 "Root cause: connection pool exhaustion. Fixed by increasing pool size."
 ```
 
 ### Check Who Is On-Call
 
-```
+```text
 /pd oncall
 # Shows current on-call responders for all your services
 
@@ -129,13 +129,13 @@ def configure_slack_extension(api_key, service_id, slack_channel_id):
 
 ### Add a Note to an Incident
 
-```
+```text
 /pd note 123 "Restarted the service, monitoring for recurrence"
 ```
 
 ### Escalate an Incident
 
-```
+```text
 /pd escalate 123
 # Escalates to the next level in the escalation policy
 ```
@@ -209,7 +209,7 @@ def setup_incident_channel_creation(api_key, service_id):
 
 ### Channel Naming Convention
 
-```
+```text
 #inc-2026-01-28-database-timeout
 #inc-2026-01-28-api-latency
 #inc-2026-01-27-payment-failures
@@ -336,7 +336,7 @@ The PagerDuty Slack message includes interactive buttons. Tap "Acknowledge" dire
 
 ### Multiple Responders Coordinating
 
-```
+```text
 # In the incident thread:
 @alice I'm looking at the database metrics
 @bob Can you check the API logs?
@@ -350,7 +350,7 @@ The PagerDuty Slack message includes interactive buttons. Tap "Acknowledge" dire
 
 ### Escalating to Leadership
 
-```
+```text
 /pd add-responder 123 @vp-engineering
 # or
 /pd run-play 123 "Major Incident Response"
@@ -366,7 +366,7 @@ The PagerDuty Slack message includes interactive buttons. Tap "Acknowledge" dire
 
 ### Commands Not Working
 
-```
+```text
 # Re-authenticate your connection
 /pd connect
 

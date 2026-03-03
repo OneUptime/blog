@@ -36,13 +36,13 @@ sequenceDiagram
 
 The exponential backoff algorithm increases the wait time between retries exponentially. The formula is:
 
-```
+```text
 wait_time = min(base_delay * 2^attempt, max_delay)
 ```
 
 Adding jitter helps prevent the "thundering herd" problem where all clients retry simultaneously:
 
-```
+```text
 wait_time = min(base_delay * 2^attempt, max_delay) * (0.5 + random(0, 0.5))
 ```
 

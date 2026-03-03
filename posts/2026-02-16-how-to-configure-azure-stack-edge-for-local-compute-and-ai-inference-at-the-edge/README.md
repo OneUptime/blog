@@ -65,7 +65,7 @@ Log in to the local web UI with the device password (found on a label attached t
 
 Configure the network interfaces for your environment.
 
-```
+```text
 Port 1 (Management):
   IP: 10.0.0.100
   Subnet: 255.255.255.0

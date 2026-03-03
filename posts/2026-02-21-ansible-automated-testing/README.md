@@ -242,7 +242,7 @@ The idempotence check runs your playbook twice and verifies that the second run 
 
 If the idempotence check fails, you will see output like:
 
-```
+```text
 CRITICAL Idempotence test failed because of the following tasks:
 * [ubuntu-test] => nginx : Generate dhparam file
 ```

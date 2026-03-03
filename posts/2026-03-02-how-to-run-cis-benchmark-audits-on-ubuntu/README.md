@@ -56,7 +56,7 @@ sudo lynis audit system --quick
 
 The audit takes a few minutes and produces output like:
 
-```
+```text
 ================================================================================
   Lynis Security Audit
 

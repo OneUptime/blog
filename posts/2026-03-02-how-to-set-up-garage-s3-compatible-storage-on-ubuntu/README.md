@@ -176,7 +176,7 @@ sudo -u garage garage -c /etc/garage/garage.toml node id
 
 The output will look like:
 
-```
+```text
 Garage node ID: a1b2c3d4e5f6...@<your-ip>:3900
 ```
 
@@ -228,7 +228,7 @@ sudo -u garage garage -c /etc/garage/garage.toml key create my-key
 
 Example output:
 
-```
+```text
 Key name: my-key
 Key ID: GK3514...
 Secret key: 7a9b2c...

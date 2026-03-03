@@ -20,7 +20,7 @@ Without split-horizon DNS, you would need different hostnames for internal and e
 
 The approach involves configuring CoreDNS inside the cluster to serve internal responses for your domains while external DNS (Route53, Cloudflare, etc.) serves the public responses. Pods in the cluster query CoreDNS, which returns internal addresses. External clients query public DNS, which returns external addresses.
 
-```
+```text
 Internal pod -> CoreDNS -> Internal IP (10.96.1.100)
 External user -> Public DNS -> External IP (203.0.113.10)
 ```
@@ -194,7 +194,7 @@ data:
 
 Reference the zone file in the Corefile:
 
-```
+```text
 # Internal zone for split-horizon
 example.com:53 {
     errors

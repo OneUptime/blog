@@ -118,7 +118,7 @@ Most teams use Markdown as the default and keep the Visual Editor enabled for us
 
 Click the "New Page" button, choose your editor, and start writing. Wiki.js uses a path-based structure for pages:
 
-```
+```text
 # Example page paths
 /home                         # Root homepage
 /engineering/getting-started  # Nested under engineering
@@ -137,7 +137,7 @@ Configure Git storage in Administration > Storage:
 1. Click "Git" in the storage targets list
 2. Enable it and fill in the connection details:
 
-```
+```text
 # Git synchronization settings
 Authentication Type: SSH
 Repository URL: git@github.com:your-org/wiki-content.git
@@ -180,7 +180,7 @@ Control who can read and edit pages using groups and page rules:
 1. Create groups in Administration > Groups (e.g., "Engineers," "Marketing," "Contractors")
 2. Define page rules for each group:
 
-```
+```text
 # Example page rules for the Engineers group
 Allow READ on /engineering/*
 Allow WRITE on /engineering/*

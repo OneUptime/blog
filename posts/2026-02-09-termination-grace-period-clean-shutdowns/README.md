@@ -79,7 +79,7 @@ The grace period must be long enough for your application to complete shutdown t
 
 Example calculation:
 
-```
+```text
 PreStop hook: 10 seconds (deregister from load balancer)
 Stop accepting connections: 2 seconds
 Drain active connections: 20 seconds (max request duration)

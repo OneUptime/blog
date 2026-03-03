@@ -147,7 +147,7 @@ psql -h hostname -U username -d database 2>&1
 
 ### Common Errors
 
-```
+```text
 FATAL: no pg_hba.conf entry for host "x.x.x.x"
 # Add appropriate rule to pg_hba.conf
 

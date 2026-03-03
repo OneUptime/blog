@@ -179,7 +179,7 @@ Latency histograms are the heart of span metrics. They let you answer questions 
 
 Tempo counts how many spans fall into each duration bucket:
 
-```
+```text
 Bucket: 0-2ms    -> 1,234 spans
 Bucket: 2-4ms    -> 5,678 spans
 Bucket: 4-8ms    -> 3,456 spans

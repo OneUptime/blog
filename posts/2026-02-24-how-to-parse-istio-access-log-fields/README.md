@@ -16,7 +16,7 @@ This guide is a practical reference for parsing and understanding Istio access l
 
 The default Istio access log format produces lines like this:
 
-```
+```text
 [2026-02-24T14:23:15.456Z] "POST /api/orders HTTP/1.1" 503 UC via_upstream - "-" 156 91 30004 - "-" "python-requests/2.31.0" "f47ac10b-58cc-4372-a567-0e02b2c3d479" "order-service.production.svc.cluster.local" "10.244.3.12:8080" outbound|8080||order-service.production.svc.cluster.local 10.244.1.5:54321 10.96.45.67:8080 10.244.1.5:33210 - default
 ```
 
@@ -24,7 +24,7 @@ Here is every field broken down with its position:
 
 ### Field 1: Timestamp
 
-```
+```text
 [2026-02-24T14:23:15.456Z]
 ```
 
@@ -32,20 +32,20 @@ The time when Envoy started processing the request. Uses ISO 8601 format with mi
 
 ### Field 2: Request Line
 
-```
+```text
 "POST /api/orders HTTP/1.1"
 ```
 
 Contains the HTTP method, the request path (or the original path before any rewriting), and the HTTP protocol version. Enclosed in double quotes.
 
 For gRPC requests, this shows as:
-```
+```text
 "POST /package.ServiceName/MethodName HTTP/2"
 ```
 
 ### Field 3: Response Code
 
-```
+```text
 503
 ```
 
@@ -53,7 +53,7 @@ The HTTP status code returned to the client. For gRPC, this is usually 200 even 
 
 ### Field 4: Response Flags
 
-```
+```text
 UC
 ```
 
@@ -61,7 +61,7 @@ This is one of the most important fields for debugging. Response flags indicate 
 
 ### Field 5: Response Code Details
 
-```
+```text
 via_upstream
 ```
 
@@ -72,7 +72,7 @@ Explains how the response code was determined:
 
 ### Field 6: Connection Termination Details
 
-```
+```text
 -
 ```
 
@@ -80,7 +80,7 @@ Details about why a connection was terminated. Usually a dash unless something w
 
 ### Field 7: Upstream Transport Failure Reason
 
-```
+```text
 "-"
 ```
 
@@ -88,7 +88,7 @@ If the connection to the upstream failed, this explains why (e.g., TLS handshake
 
 ### Field 8: Bytes Received
 
-```
+```text
 156
 ```
 
@@ -96,7 +96,7 @@ The number of bytes in the request body received from the downstream client.
 
 ### Field 9: Bytes Sent
 
-```
+```text
 91
 ```
 
@@ -104,7 +104,7 @@ The number of bytes in the response body sent to the downstream client.
 
 ### Field 10: Duration
 
-```
+```text
 30004
 ```
 
@@ -112,7 +112,7 @@ Total duration of the request in milliseconds, from when Envoy received the firs
 
 ### Field 11: Upstream Service Time
 
-```
+```text
 -
 ```
 
@@ -122,7 +122,7 @@ The difference between Duration and Upstream Service Time represents the network
 
 ### Field 12: X-Forwarded-For
 
-```
+```text
 "-"
 ```
 
@@ -130,7 +130,7 @@ The X-Forwarded-For header value, showing the client IP chain. A dash means it w
 
 ### Field 13: User Agent
 
-```
+```text
 "python-requests/2.31.0"
 ```
 
@@ -138,7 +138,7 @@ The User-Agent header from the request.
 
 ### Field 14: Request ID
 
-```
+```text
 "f47ac10b-58cc-4372-a567-0e02b2c3d479"
 ```
 
@@ -146,7 +146,7 @@ The unique request ID assigned by Istio. This is propagated through the entire c
 
 ### Field 15: Authority
 
-```
+```text
 "order-service.production.svc.cluster.local"
 ```
 
@@ -154,7 +154,7 @@ The value of the Host header (HTTP/1.1) or the :authority pseudo-header (HTTP/2)
 
 ### Field 16: Upstream Host
 
-```
+```text
 "10.244.3.12:8080"
 ```
 
@@ -162,7 +162,7 @@ The IP address and port of the actual upstream pod that handled the request. Thi
 
 ### Field 17: Upstream Cluster
 
-```
+```text
 outbound|8080||order-service.production.svc.cluster.local
 ```
 
@@ -174,7 +174,7 @@ The Envoy cluster name. This tells you the routing context:
 
 ### Field 18: Upstream Local Address
 
-```
+```text
 10.244.1.5:54321
 ```
 
@@ -182,7 +182,7 @@ The local address of the connection to the upstream.
 
 ### Field 19: Downstream Local Address
 
-```
+```text
 10.96.45.67:8080
 ```
 
@@ -190,7 +190,7 @@ The local address where the downstream connection was received. Often a ClusterI
 
 ### Field 20: Downstream Remote Address
 
-```
+```text
 10.244.1.5:33210
 ```
 
@@ -198,7 +198,7 @@ The remote address of the downstream client (the caller).
 
 ### Field 21: Requested Server Name
 
-```
+```text
 -
 ```
 
@@ -206,7 +206,7 @@ The SNI (Server Name Indication) from the TLS handshake. Useful for debugging mT
 
 ### Field 22: Route Name
 
-```
+```text
 default
 ```
 

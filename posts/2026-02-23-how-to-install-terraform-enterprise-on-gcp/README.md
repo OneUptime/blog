@@ -20,7 +20,7 @@ The GCP deployment architecture includes:
 - HTTPS Load Balancer for external access
 - VPC network with private subnets
 
-```
+```text
 [Internet]
     |
 [HTTPS Load Balancer]

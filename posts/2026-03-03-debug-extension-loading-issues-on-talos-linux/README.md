@@ -14,7 +14,7 @@ System extensions are supposed to work seamlessly - install the right image, reb
 
 Understanding how extensions are loaded helps you debug failures. Here is what happens during boot:
 
-```
+```text
 1. Bootloader loads the Talos kernel and initramfs
 2. machined starts and reads the machine configuration
 3. The installer image is unpacked, including extensions
@@ -332,7 +332,7 @@ diff diag-192.168.1.10.txt diag-192.168.1.20.txt
 
 When you encounter an extension issue, follow this structured workflow:
 
-```
+```text
 1. IDENTIFY: What extension is affected?
    - talosctl get extensions
 

@@ -596,7 +596,7 @@ sudo mkdir -p /etc/X11/xorg.conf.d/
 sudo nano /etc/X11/xorg.conf.d/10-monitor.conf
 ```
 
-```
+```text
 # /etc/X11/xorg.conf.d/10-monitor.conf
 # Persistent multi-monitor configuration for X11
 
@@ -634,7 +634,7 @@ Automatically configure displays when connected:
 sudo nano /etc/udev/rules.d/95-monitor-hotplug.rules
 ```
 
-```
+```text
 # /etc/udev/rules.d/95-monitor-hotplug.rules
 # Trigger display configuration on monitor connect/disconnect
 
@@ -676,7 +676,7 @@ sudo apt install xserver-xorg-video-dummy
 sudo nano /etc/X11/xorg.conf.d/20-virtual.conf
 ```
 
-```
+```text
 # /etc/X11/xorg.conf.d/20-virtual.conf
 # Virtual monitor configuration using dummy driver
 

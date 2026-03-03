@@ -198,7 +198,7 @@ talosctl --context eu-west version
 
 Maintaining consistency across regions is one of the biggest challenges. Use a shared patch system:
 
-```
+```text
 multi-region-config/
   secrets/
     us-east.enc.yaml

@@ -78,7 +78,7 @@ sudo tcpdump -i any -A -n port 4318
 
 The ASCII output from tcpdump will show you HTTP headers clearly, which is often enough to diagnose content-type mismatches and routing issues:
 
-```
+```text
 # Example tcpdump ASCII output for OTLP HTTP export
 # You can see the POST request, Content-Type, and response code
 POST /v1/traces HTTP/1.1
@@ -99,7 +99,7 @@ Wireshark provides a graphical interface for deep protocol analysis. Open your c
 
 For gRPC traffic:
 
-```
+```text
 # Wireshark display filter for gRPC on port 4317
 tcp.port == 4317
 
@@ -116,7 +116,7 @@ http2.header.value contains "opentelemetry.proto.collector"
 
 For HTTP OTLP traffic:
 
-```
+```text
 # Wireshark display filter for HTTP OTLP
 tcp.port == 4318
 

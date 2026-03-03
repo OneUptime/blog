@@ -87,7 +87,7 @@ argocd app sync --selector cluster=production --prune --force
 
 Add a new endpoint or extend the existing sync endpoint:
 
-```
+```text
 POST /api/v1/applications/bulk-sync
 {
   "selector": "cluster=production",
@@ -102,7 +102,7 @@ POST /api/v1/applications/bulk-sync
 
 Add a "Sync Selected" button to the Applications list view when
 applications are selected via checkboxes.
-```
+```text
 
 ### Explain the Impact
 

@@ -14,7 +14,7 @@ Jinja2 template errors are among the most frustrating issues in Ansible because 
 
 When a Jinja2 template fails, Ansible produces an error that typically looks like this:
 
-```
+```text
 fatal: [web-01]: FAILED! => {"changed": false, "msg": "AnsibleUndefinedVariable:
   'app_port' is undefined. 'app_port' is undefined\n
   The error appears to be in '/home/deploy/roles/webapp/templates/nginx.conf.j2': line 15, column 22"}
@@ -29,7 +29,7 @@ Key parts of this message:
 
 This is by far the most common template error:
 
-```
+```text
 AnsibleUndefinedVariable: 'database_host' is undefined
 ```
 
@@ -80,7 +80,7 @@ listen {{ listen_port | default(80) }};
 
 Jinja2 syntax errors produce messages like:
 
-```
+```text
 AnsibleError: template error while templating string: expected token 'end of print statement', got '='
 ```
 
@@ -108,7 +108,7 @@ ssl on;
 
 Type errors happen when you try to use a filter or operation on the wrong type:
 
-```
+```text
 AnsibleFilterError: int() argument must be a string, a bytes-like object or a number, not 'AnsibleUndefined'
 ```
 
@@ -148,7 +148,7 @@ allowed_hosts = {{ (allowed_hosts if allowed_hosts is iterable and allowed_hosts
 
 When a variable references itself or creates a circular reference:
 
-```
+```text
 AnsibleError: recursive loop detected in template string
 ```
 
@@ -246,13 +246,13 @@ You can test template rendering inline without a separate file:
 
 Filters that do not exist or receive wrong input:
 
-```
+```text
 AnsibleFilterError: No filter named 'to_yaml'
 ```
 
 or
 
-```
+```text
 AnsibleFilterError: |combine expects dictionaries
 ```
 

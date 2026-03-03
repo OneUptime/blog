@@ -327,7 +327,7 @@ CMD ["node", "dist/main"]
 
 Add a `.dockerignore` file to keep the image small.
 
-```
+```text
 node_modules
 dist
 .git

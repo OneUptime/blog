@@ -252,7 +252,7 @@ aws cloudwatch put-metric-alarm \
 
 Container Insights stores performance data as structured log events. You can query them with CloudWatch Logs Insights:
 
-```
+```text
 # Find pods using the most CPU
 STATS avg(pod_cpu_utilization) as avg_cpu by PodName
 | filter Type = "Pod"
@@ -260,7 +260,7 @@ STATS avg(pod_cpu_utilization) as avg_cpu by PodName
 | limit 20
 ```
 
-```
+```text
 # Find nodes with high memory pressure
 fields NodeName, node_memory_utilization
 | filter Type = "Node"

@@ -79,7 +79,7 @@ This architecture provides high availability, scalability, and proper separation
 
 Before deploying, your application needs to be production-ready. Here is a sample application structure that follows best practices:
 
-```
+```text
 bun-app/
 ├── src/
 │   ├── index.ts

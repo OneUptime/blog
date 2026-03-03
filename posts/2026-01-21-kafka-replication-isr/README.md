@@ -22,7 +22,7 @@ Replication is Kafka's core mechanism for fault tolerance and durability. Unders
 
 ### Replication Flow
 
-```
+```text
 Producer -> Leader Broker -> Follower Brokers (async replication)
                 |
                 v
@@ -108,7 +108,7 @@ A replica stays in ISR if it:
 
 ### ISR Shrink and Expand
 
-```
+```text
 Initial ISR: [broker-1 (leader), broker-2, broker-3]
 
 Broker-2 falls behind:
@@ -255,7 +255,7 @@ leader.imbalance.per.broker.percentage=10
 
 ### Combining acks and min.insync.replicas
 
-```
+```text
 Replication Factor = 3
 min.insync.replicas = 2
 acks = all

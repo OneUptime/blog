@@ -14,7 +14,7 @@ When five engineers write Ansible code without a style guide, you get five diffe
 
 Your style guide should live in the repository and evolve with your practices:
 
-```
+```text
 ansible-project/
 ├── docs/
 │   └── STYLE_GUIDE.md

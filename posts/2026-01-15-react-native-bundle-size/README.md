@@ -323,7 +323,7 @@ optimizeImages();
 
 React Native automatically selects the appropriate resolution:
 
-```
+```text
 assets/
   icon.png      # @1x (mdpi)
   icon@2x.png   # @2x (xhdpi)
@@ -443,7 +443,7 @@ end
 
 Enable dead code stripping in Xcode:
 
-```
+```text
 Build Settings:
   - Dead Code Stripping: Yes
   - Strip Debug Symbols During Copy: Yes

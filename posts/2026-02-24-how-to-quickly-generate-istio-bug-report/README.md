@@ -117,7 +117,7 @@ ls bug-report/
 
 The directory structure typically looks like:
 
-```
+```text
 bug-report/
   cluster/
     cluster-info.yaml
@@ -213,7 +213,7 @@ When filing an issue on the Istio GitHub repository, include the following with 
 
 A good issue template:
 
-```
+```text
 **Istio version:** 1.22.0
 **Kubernetes version:** 1.29.1
 **Cloud provider:** AWS EKS

@@ -16,7 +16,7 @@ This post covers the most common causes of Redis timeouts in Azure and how to fi
 
 A timeout error from Azure Redis Cache typically looks like this:
 
-```
+```text
 StackExchange.Redis.RedisTimeoutException: Timeout performing GET mykey,
 inst: 1, qu: 0, qs: 1, in: 0, serverEndpoint: myredis.redis.cache.windows.net:6380,
 mgr: 10 of 10 available, IOCP: (Busy=0, Free=1000, Min=8, Max=1000),

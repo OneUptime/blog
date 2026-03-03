@@ -295,7 +295,7 @@ Your application connects to `localhost:6432` instead of the database directly. 
 
 A common mistake is making the pool too large. More connections does not mean more performance. There is a formula from the PostgreSQL wiki:
 
-```
+```text
 Optimal pool size = (number of CPU cores * 2) + effective_spindle_count
 ```
 

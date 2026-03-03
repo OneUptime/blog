@@ -51,7 +51,7 @@ public class ScheduledCleanup
 
 Azure Functions uses six-field CRON expressions (not the standard five-field Linux cron format). The fields are:
 
-```
+```text
 {second} {minute} {hour} {day} {month} {day-of-week}
 ```
 

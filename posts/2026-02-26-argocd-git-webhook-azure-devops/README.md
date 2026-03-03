@@ -64,7 +64,7 @@ kubectl rollout restart deployment argocd-server -n argocd
 4. Select "Web Hooks" as the service
 5. Configure the trigger:
 
-```
+```text
 Trigger: Code pushed
 Repository: <select your repo or "Any">
 Branch: <select branch or leave blank for all>
@@ -73,7 +73,7 @@ Pushed by: <leave blank for all>
 
 6. Configure the action:
 
-```
+```text
 URL: https://argocd.example.com/api/webhook
 HTTP headers:
   Content-Type: application/json

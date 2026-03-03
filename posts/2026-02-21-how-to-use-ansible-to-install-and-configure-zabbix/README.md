@@ -26,7 +26,7 @@ flowchart TD
 
 ## Project Structure
 
-```
+```text
 zabbix/
   inventory/
     hosts.yml

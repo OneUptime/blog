@@ -178,7 +178,7 @@ Create the allow list:
 sudo nano /etc/vsftpd.userlist
 ```
 
-```
+```text
 ftpuser1
 ftpuser2
 backupuser
@@ -251,7 +251,7 @@ sudo cat /var/log/vsftpd.log | tail -50
 
 The vsftpd log format:
 
-```
+```text
 Fri Mar 01 10:23:45 2026 [pid 12345] CONNECT: Client "192.168.1.100"
 Fri Mar 01 10:23:46 2026 [pid 12345] OK LOGIN: Client "192.168.1.100", "ftpuser1"
 Fri Mar 01 10:23:50 2026 [pid 12345] OK UPLOAD: Client "192.168.1.100", "/home/ftpuser1/uploads/report.csv"
@@ -281,7 +281,7 @@ sudo apt install db-util -y
 sudo nano /tmp/virtual-users.txt
 ```
 
-```
+```text
 ftpvuser1
 passwordfor1
 ftpvuser2
@@ -298,7 +298,7 @@ sudo rm /tmp/virtual-users.txt  # remove plaintext passwords
 sudo nano /etc/pam.d/vsftpd-virtual
 ```
 
-```
+```text
 auth    required  pam_userdb.so db=/etc/vsftpd/virtual-users
 account required  pam_userdb.so db=/etc/vsftpd/virtual-users
 ```

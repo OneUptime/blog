@@ -79,7 +79,7 @@ If your network uses DHCP, make sure the VIP is outside the DHCP server's addres
 
 Check your DHCP server configuration:
 
-```
+```text
 # Example DHCP range
 # Pool: 192.168.1.50 - 192.168.1.199
 #
@@ -101,7 +101,7 @@ A common practice is to reserve a block of IPs at the beginning or end of the su
 
 Do not use the first or last address in a subnet:
 
-```
+```text
 # For 192.168.1.0/24:
 # 192.168.1.0   - Network address (cannot use)
 # 192.168.1.255 - Broadcast address (cannot use)
@@ -112,7 +112,7 @@ Do not use the first or last address in a subnet:
 
 If you might add more control plane nodes or clusters in the future, reserve a small block of IPs for VIPs rather than just picking one:
 
-```
+```text
 # Reserved VIP block for Kubernetes clusters
 # 192.168.1.100 - Production cluster VIP
 # 192.168.1.101 - Staging cluster VIP
@@ -208,7 +208,7 @@ Beyond just picking an available IP, consider reserving it formally:
 
 Add a reservation or exclusion for the VIP address so the DHCP server never assigns it:
 
-```
+```text
 # ISC DHCP example
 host talos-vip {
   hardware ethernet 00:00:00:00:00:00;  # Dummy MAC
@@ -220,7 +220,7 @@ host talos-vip {
 
 Create a DNS record for the VIP so you can reference it by name:
 
-```
+```text
 # DNS record
 k8s-api.example.com    A    192.168.1.50
 ```

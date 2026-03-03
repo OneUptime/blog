@@ -185,7 +185,7 @@ aws ec2 describe-vpc-endpoints \
 ```
 
 This returns DNS names like:
-```
+```text
 vpce-abc123.vpce-svc-def456.us-east-1.vpce.amazonaws.com
 vpce-abc123-us-east-1a.vpce-svc-def456.us-east-1.vpce.amazonaws.com
 ```
@@ -303,7 +303,7 @@ aws ec2 describe-vpc-endpoint-connections \
 
 ## PrivateLink vs. VPC Peering
 
-```
+```text
 Feature                  PrivateLink           VPC Peering
 Network exposure         Single service        Entire VPC
 CIDR overlap support     Yes                   No

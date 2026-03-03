@@ -60,7 +60,7 @@ sudo nano /etc/ssh/sshd_config
 
 Add at the end of the file:
 
-```
+```text
 # SFTP-only access for sftpuser1
 Match User sftpuser1
     ForceCommand internal-sftp
@@ -87,7 +87,7 @@ sudo usermod -aG sftponly sftpuser2
 
 In `/etc/ssh/sshd_config`:
 
-```
+```text
 # SFTP-only access for all users in the sftponly group
 Match Group sftponly
     ForceCommand internal-sftp
@@ -179,7 +179,7 @@ sudo sh -c 'cat ~/.ssh/sftpuser1_key.pub >> /home/sftpuser1/.ssh/authorized_keys
 
 Update the sshd_config Match block to use the authorized_keys path relative to the chroot:
 
-```
+```text
 Match User sftpuser1
     ForceCommand internal-sftp
     ChrootDirectory /home/sftpuser1
@@ -237,7 +237,7 @@ sudo nano /etc/fstab
 ```
 
 Add:
-```
+```text
 /srv/sftp/shared  /home/alice/shared  none  bind  0  0
 /srv/sftp/shared  /home/bob/shared    none  bind  0  0
 /srv/sftp/shared  /home/charlie/shared  none  bind  0  0
@@ -262,7 +262,7 @@ sudo journalctl -u ssh | grep sftpuser1
 
 For more detailed SFTP logging in the Match block:
 
-```
+```text
 Match Group sftponly
     ForceCommand internal-sftp -l VERBOSE
     ...

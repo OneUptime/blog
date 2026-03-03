@@ -97,7 +97,7 @@ sudo nano /etc/postfix/sasl_passwd
 
 Add your Gmail credentials. Replace with your actual Gmail address and the App Password you generated:
 
-```
+```text
 # Gmail SMTP relay authentication
 [smtp.gmail.com]:587    youraccount@gmail.com:your-app-password-here
 ```
@@ -137,7 +137,7 @@ sudo tail -f /var/log/mail.log
 
 A successful relay looks like this in the log:
 
-```
+```text
 postfix/smtp[1234]: to=<recipient@example.com>, relay=smtp.gmail.com[74.125.x.x]:587,
   delay=1.5, delays=0.1/0.01/0.8/0.6, dsn=2.0.0, status=sent (250 2.0.0 OK ...)
 ```
@@ -196,7 +196,7 @@ sender_canonical_maps = hash:/etc/postfix/sender_canonical
 sudo nano /etc/postfix/sender_canonical
 ```
 
-```
+```text
 # Map any local sender to the Gmail account
 root            youraccount@gmail.com
 www-data        youraccount@gmail.com

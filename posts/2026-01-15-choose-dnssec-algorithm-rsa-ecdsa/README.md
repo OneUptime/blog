@@ -454,7 +454,7 @@ Practical steps for implementing DNSSEC with your chosen algorithm.
 
 #### RSASHA256 Configuration
 
-```
+```text
 // dnssec-policy for RSASHA256
 dnssec-policy "rsasha256-policy" {
     dnskey-ttl 3600;
@@ -474,7 +474,7 @@ dnssec-policy "rsasha256-policy" {
 
 #### ECDSAP256SHA256 Configuration
 
-```
+```text
 // dnssec-policy for ECDSAP256SHA256
 dnssec-policy "ecdsa256-policy" {
     dnskey-ttl 3600;

@@ -52,7 +52,7 @@ kubectl get crd | grep external-secrets
 ```
 
 You should see:
-```
+```text
 clustersecretstores.external-secrets.io
 externalsecrets.external-secrets.io
 secretstores.external-secrets.io
@@ -475,7 +475,7 @@ kubectl describe externalsecret database-credentials -n production
 
 A healthy ExternalSecret shows:
 
-```
+```text
 Status:
   Conditions:
     Last Transition Time:  2026-02-09T10:00:00Z

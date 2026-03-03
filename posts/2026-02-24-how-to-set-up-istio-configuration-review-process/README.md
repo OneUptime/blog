@@ -27,7 +27,7 @@ These characteristics mean that standard code review practices are not enough. Y
 
 Use GitHub's CODEOWNERS file to require reviews from people who understand Istio:
 
-```
+```text
 # .github/CODEOWNERS
 
 # Mesh-wide configuration requires platform team review

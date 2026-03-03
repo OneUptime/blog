@@ -132,7 +132,7 @@ _supported_os_families:
 
 Organize variables by scope using inventory structure.
 
-```
+```text
 inventory/
   group_vars/
     all.yml           # Variables for all hosts

@@ -24,7 +24,7 @@ The `update-ca-certificates` command rebuilds the bundle and symlinks in `/etc/s
 
 Your CA certificate file should be in PEM format - a base64-encoded certificate that looks like:
 
-```
+```text
 -----BEGIN CERTIFICATE-----
 MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
 ...
@@ -66,7 +66,7 @@ sudo update-ca-certificates
 
 Expected output:
 
-```
+```text
 Updating certificates in /etc/ssl/certs...
 1 added, 0 removed; done.
 Running hooks in /etc/ssl/certs...

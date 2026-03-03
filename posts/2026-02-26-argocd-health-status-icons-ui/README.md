@@ -81,7 +81,7 @@ flowchart TD
 
 The resource tree shows parent-child relationships:
 
-```
+```text
 Application (my-app)
   |-- Deployment (my-app)
   |     |-- ReplicaSet (my-app-7d8f9)
@@ -109,7 +109,7 @@ During a sync operation, additional icons appear:
 
 When using sync phases (PreSync, Sync, PostSync):
 
-```
+```text
 PreSync Phase:  [Hook running] -> [Hook succeeded] or [Hook failed]
 Sync Phase:     [Resources applying] -> [Resources applied]
 PostSync Phase: [Hook running] -> [Hook succeeded] or [Hook failed]
@@ -199,7 +199,7 @@ Different resources have different statuses. Click into the application and look
 
 The application list supports filtering:
 
-```
+```text
 # Filter by health status
 Health: Degraded     -> Shows only unhealthy applications
 Health: Progressing  -> Shows only rolling out applications

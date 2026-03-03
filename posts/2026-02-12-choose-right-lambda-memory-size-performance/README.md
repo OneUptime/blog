@@ -14,7 +14,7 @@ Picking the right memory size for a Lambda function is part science, part experi
 
 Lambda doesn't let you configure CPU independently. CPU scales linearly with memory:
 
-```
+```text
 CPU allocation = (memory_mb / 1769) vCPUs
 ```
 
@@ -38,7 +38,7 @@ aws logs filter-log-events \
 
 Each REPORT line tells you:
 
-```
+```text
 REPORT RequestId: abc-123
   Duration: 1523.45 ms
   Billed Duration: 1524 ms
@@ -117,7 +117,7 @@ done
 
 A typical result might look like:
 
-```
+```text
 Memory(MB),AvgDuration(ms),MaxMemUsed(MB),EstCostPerInvoke
 128,3245.50,98,0.0000683245
 256,1622.75,98,0.0000683245

@@ -382,7 +382,7 @@ sudo certbot renew --dry-run
 
 Ensure both DNS records point to your server:
 
-```
+```text
 # DNS A Records
 example.com.        A     123.45.67.89
 www.example.com.    A     123.45.67.89

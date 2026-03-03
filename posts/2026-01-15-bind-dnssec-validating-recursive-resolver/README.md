@@ -78,7 +78,7 @@ named -v
 
 Before configuring, understand where BIND stores its files:
 
-```
+```text
 /etc/bind/                    # Debian/Ubuntu
 /etc/named/                   # RHEL/CentOS
 |-- named.conf                # Main configuration
@@ -445,7 +445,7 @@ dig @localhost example.com +dnssec
 
 Expected output:
 
-```
+```text
 ; <<>> DiG 9.18.18 <<>> @localhost example.com +dnssec
 ;; global options: +cmd
 ;; Got answer:
@@ -477,7 +477,7 @@ dig @localhost dnssec-failed.org +dnssec
 
 Expected output:
 
-```
+```text
 ;; Got answer:
 ;; ->>HEADER<<- opcode: QUERY, status: SERVFAIL, id: 54321
 ```
@@ -619,7 +619,7 @@ options {
 
 Create the RPZ zone file `/etc/bind/zones/rpz.local.zone`:
 
-```
+```text
 $TTL 300
 @       IN      SOA     localhost. root.localhost. (
                         2024010101      ; Serial
@@ -727,7 +727,7 @@ cat /var/cache/bind/named.stats | grep -A 20 "DNSSEC"
 
 Create `/etc/logrotate.d/named`:
 
-```
+```text
 /var/log/named/*.log {
     daily
     rotate 14

@@ -91,7 +91,7 @@ The key principles:
 
 We will use sbt (Scala Build Tool) to manage our project. Here is the project structure:
 
-```
+```text
 user-service/
   src/
     main/
@@ -147,7 +147,7 @@ libraryDependencies ++= Seq(
 
 Set the sbt version in project/build.properties:
 
-```
+```text
 sbt.version=1.9.7
 ```
 

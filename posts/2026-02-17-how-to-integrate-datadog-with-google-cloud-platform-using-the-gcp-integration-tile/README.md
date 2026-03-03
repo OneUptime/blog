@@ -105,7 +105,7 @@ If you only want to monitor specific GCE instances, use host filters to limit th
 
 In the Datadog GCP integration tile, you can set filters like:
 
-```
+```text
 # Only monitor instances with specific labels
 tags:env:production
 

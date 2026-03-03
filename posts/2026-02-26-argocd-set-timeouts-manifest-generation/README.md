@@ -53,7 +53,7 @@ data:
 
 When this timeout is too short, you see errors like:
 
-```
+```text
 rpc error: code = DeadlineExceeded desc = context deadline exceeded
 ```
 
@@ -240,13 +240,13 @@ spec:
 
 Your timeouts should follow this hierarchy to ensure proper error messages:
 
-```
+```text
 controller.repo.server.timeout.seconds > reposerver.git.request.timeout > internal tool timeouts
 ```
 
 For example:
 
-```
+```text
 Controller timeout: 180s
   Git request timeout: 120s
     CMP tool timeout: 90s

@@ -35,7 +35,7 @@ Talos Linux adopted systemd-boot for several reasons:
 
 On a Talos Linux system, systemd-boot lives on the EFI System Partition. The layout looks like this:
 
-```
+```text
 /boot/EFI/
   ├── BOOT/
   │   └── BOOTX64.EFI     # Fallback boot entry

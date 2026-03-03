@@ -46,7 +46,7 @@ istioctl proxy-status
 
 Output:
 
-```
+```text
 NAME                                    CDS    LDS    EDS    RDS    ECDS   ISTIOD                     VERSION
 frontend-7b9d8c5f66-abc12.production    SYNCED SYNCED SYNCED SYNCED        istiod-5d4f8b6c99-xyz      1.24.0
 backend-6c7d9e4f55-def34.production     SYNCED SYNCED SYNCED SYNCED        istiod-5d4f8b6c99-xyz      1.24.0

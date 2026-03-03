@@ -41,7 +41,7 @@ kubectl get pods -n istio-operator
 
 You should see:
 
-```
+```text
 NAME                              READY   STATUS    RESTARTS   AGE
 istio-operator-7c8b6d9f4-abc12   1/1     Running   0          30s
 ```
@@ -133,7 +133,7 @@ Check the installation status:
 kubectl get istiooperator -n istio-system
 ```
 
-```
+```text
 NAME                  REVISION   STATUS    AGE
 istio-control-plane              HEALTHY   2m
 ```
@@ -232,7 +232,7 @@ spec:
 
 Your repo structure might look like:
 
-```
+```text
 istio-config/
   base/
     istio-operator.yaml

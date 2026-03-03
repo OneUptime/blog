@@ -140,7 +140,7 @@ The standalone output includes its own `node_modules` with only production depen
 
 Prevent unnecessary files from entering the build context:
 
-```
+```text
 # .dockerignore
 node_modules
 .next

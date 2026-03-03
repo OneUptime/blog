@@ -94,7 +94,7 @@ lzd
 
 The lazydocker interface is split into panels:
 
-```
+```text
 +------------------+---------------------------+
 | Containers       |                           |
 |                  |    Main Panel             |
@@ -114,7 +114,7 @@ The lazydocker interface is split into panels:
 
 ### Global Navigation
 
-```
+```text
 Tab / Shift+Tab    Cycle between left panel sections
 Arrow keys         Navigate within a section
 Enter             Select item / toggle
@@ -125,7 +125,7 @@ q                 Quit lazydocker
 
 ### Container Actions
 
-```
+```text
 u                 View container's CPU and memory usage
 l                 View logs
 e                 Exec into container (opens a shell)
@@ -140,14 +140,14 @@ m                 View full container details
 
 ### Image Actions
 
-```
+```text
 d                 Remove image
 p                 Pull latest version of the image
 ```
 
 ### Scrolling in Log View
 
-```
+```text
 Page Up/Down      Scroll through logs
 G                 Jump to end of logs (latest)
 g                 Jump to beginning of logs
@@ -169,7 +169,7 @@ lazydocker
 
 In the containers panel, Compose services are grouped by project name. When a Compose service is selected:
 
-```
+```text
 u                 Bring up the service (docker-compose up)
 d                 Bring down the service
 r                 Restart the service
@@ -264,7 +264,7 @@ This is equivalent to `docker stats` but within the lazydocker interface.
 
 lazydocker makes cleanup straightforward:
 
-```
+```text
 # Navigate to Images section
 # Select an unused image and press 'd' to remove it
 

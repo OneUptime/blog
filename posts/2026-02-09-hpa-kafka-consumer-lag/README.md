@@ -249,7 +249,7 @@ You should see the current metric value and the desired replica count adjusting 
 
 The target lag value depends on your processing rate and latency requirements. Calculate it using:
 
-```
+```text
 Target Lag = (Acceptable Latency in seconds) × (Messages per second per replica)
 ```
 

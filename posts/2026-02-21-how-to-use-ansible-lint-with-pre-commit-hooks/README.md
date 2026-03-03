@@ -182,7 +182,7 @@ Pre-commit caches its environments automatically in `~/.cache/pre-commit/`. If y
 
 When the pre-commit hook blocks a commit, you will see output like this:
 
-```
+```text
 ansible-lint.........................................................Failed
 - hook id: ansible-lint
 - exit code: 2

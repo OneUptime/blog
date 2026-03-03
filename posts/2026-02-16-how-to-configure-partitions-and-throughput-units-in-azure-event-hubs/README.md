@@ -27,7 +27,7 @@ Key properties of partitions:
 
 The partition count determines the maximum number of parallel consumers you can have. Here is the formula to think about:
 
-```
+```text
 Max parallel consumers = Number of partitions
 ```
 
@@ -108,7 +108,7 @@ Here is a practical example. Suppose your workload has these characteristics:
 
 Calculate ingress TUs needed:
 
-```
+```text
 Events per second: 5000
 Data per second: 5000 * 500 bytes = 2.5 MB/s
 
@@ -120,7 +120,7 @@ Ingress TUs needed: max(5, 3) = 5 TUs
 
 Calculate egress TUs needed:
 
-```
+```text
 Each consumer group reads the full stream:
 Egress data: 2.5 MB/s * 3 consumer groups = 7.5 MB/s
 TUs needed for egress: 7.5 / 2 = 3.75 (round up to 4)
@@ -217,7 +217,7 @@ You can have 32 partitions with 2 TUs - this means you can have 32 parallel cons
 
 The ideal configuration balances both:
 
-```
+```text
 Partitions >= Expected number of parallel consumers
 TUs >= (Peak ingress MB/s) with some headroom
 ```

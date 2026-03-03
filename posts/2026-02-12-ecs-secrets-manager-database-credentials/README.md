@@ -171,7 +171,7 @@ In your task definition, use the `secrets` field instead of `environment` to ref
 
 The `valueFrom` format for referencing specific JSON keys is:
 
-```
+```text
 arn:aws:secretsmanager:REGION:ACCOUNT:secret:SECRET_NAME:JSON_KEY:VERSION_STAGE:VERSION_ID
 ```
 

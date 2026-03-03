@@ -96,7 +96,7 @@ This mode is particularly powerful for large environments where resources span m
 
 After running the export, the tool generates several files in your output directory:
 
-```
+```text
 terraform-output/
   main.tf              # All resource configurations
   provider.tf          # Azure provider configuration

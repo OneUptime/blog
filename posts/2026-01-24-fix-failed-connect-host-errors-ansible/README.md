@@ -36,7 +36,7 @@ flowchart TD
 
 ### Error: "Failed to connect to the host via ssh"
 
-```
+```text
 fatal: [server1]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: ssh: connect to host server1 port 22: Connection refused",
@@ -46,7 +46,7 @@ fatal: [server1]: UNREACHABLE! => {
 
 ### Error: "Permission denied"
 
-```
+```text
 fatal: [server1]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: Permission denied (publickey,password).",
@@ -56,7 +56,7 @@ fatal: [server1]: UNREACHABLE! => {
 
 ### Error: "Host key verification failed"
 
-```
+```text
 fatal: [server1]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: Host key verification failed.",
@@ -442,7 +442,7 @@ ansible_ssh_common_args='-o ProxyJump=user@bastion.example.com'
 
 Or using SSH config:
 
-```
+```text
 # ~/.ssh/config
 Host bastion
     HostName bastion.example.com

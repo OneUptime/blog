@@ -34,7 +34,7 @@ A JWT is a compact, URL-safe token format defined in RFC 7519. It lets you trans
 
 Here's what a JWT looks like in the wild:
 
-```
+```text
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
 ```
 
@@ -46,7 +46,7 @@ Looks like gibberish, right? But there's a clear structure here. Notice the two 
 
 Every JWT consists of three parts separated by dots (`.`):
 
-```
+```text
 HEADER.PAYLOAD.SIGNATURE
 ```
 
@@ -201,7 +201,7 @@ The signature is created by:
 3. Adding the encoded payload
 4. Signing that string with a secret key using the algorithm specified in the header
 
-```
+```text
 HMACSHA256(
   base64UrlEncode(header) + "." + base64UrlEncode(payload),
   secret
@@ -291,7 +291,7 @@ console.log(jwt);
 
 Running this produces something like:
 
-```
+```text
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNzA2ODg0ODAwLCJleHAiOjE3MDY4ODg0MDB9.abc123signature...
 ```
 

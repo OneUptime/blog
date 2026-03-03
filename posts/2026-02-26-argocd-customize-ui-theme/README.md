@@ -312,7 +312,7 @@ Open the ArgoCD UI in your browser and do a hard refresh (Ctrl+Shift+R or Cmd+Sh
 
 **CORS errors**: If hosting CSS on a different domain, ensure the hosting server sends proper CORS headers:
 
-```
+```text
 Access-Control-Allow-Origin: https://argocd.example.com
 ```
 

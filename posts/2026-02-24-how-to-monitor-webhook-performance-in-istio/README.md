@@ -26,14 +26,14 @@ Key metrics include:
 
 **sidecar_injection_requests_total**: Total number of injection requests received, labeled by success or failure.
 
-```
+```text
 sidecar_injection_requests_total{success="true"} 15234
 sidecar_injection_requests_total{success="false"} 3
 ```
 
 **sidecar_injection_time_seconds**: Histogram of injection processing time.
 
-```
+```text
 sidecar_injection_time_seconds_bucket{le="0.001"} 120
 sidecar_injection_time_seconds_bucket{le="0.005"} 14500
 sidecar_injection_time_seconds_bucket{le="0.01"} 15200

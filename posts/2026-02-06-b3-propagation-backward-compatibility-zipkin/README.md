@@ -14,7 +14,7 @@ If you are migrating from Zipkin to OpenTelemetry, or if parts of your system st
 
 B3 propagation comes in two flavors: multi-header and single-header. The multi-header format uses four separate HTTP headers to carry trace context.
 
-```
+```text
 X-B3-TraceId: 463ac35c9f6413ad48485a3953bb6124
 X-B3-SpanId: 0020000000000001
 X-B3-ParentSpanId: 0010000000000001
@@ -23,7 +23,7 @@ X-B3-Sampled: 1
 
 The single-header format packs all the same information into one header.
 
-```
+```text
 b3: 463ac35c9f6413ad48485a3953bb6124-0020000000000001-1-0010000000000001
 ```
 

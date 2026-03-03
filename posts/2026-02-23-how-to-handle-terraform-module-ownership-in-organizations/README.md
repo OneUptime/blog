@@ -26,7 +26,7 @@ There are several ownership models. Choose the one that fits your organization.
 
 A single platform or infrastructure team owns all modules:
 
-```
+```text
 # Ownership: Platform Team owns everything
 modules/
   networking/     # Platform Team
@@ -42,7 +42,7 @@ This works well for small organizations with a dedicated infrastructure team. Th
 
 Teams own modules related to their domain:
 
-```
+```text
 # Ownership: Each team owns their domain's modules
 modules/
   networking/     # Network Engineering Team
@@ -59,7 +59,7 @@ This distributes the maintenance burden and puts module development in the hands
 
 Some teams produce modules that other teams consume:
 
-```
+```text
 # Producers create and maintain modules
 # Consumers use modules through a published interface
 
@@ -122,7 +122,7 @@ Create a module registry that documents ownership:
 
 Back up documented ownership with automated enforcement:
 
-```
+```text
 # .github/CODEOWNERS
 
 # Module ownership
@@ -269,7 +269,7 @@ Sometimes the right answer is to fork a module. If two teams have fundamentally 
 
 As your organization grows beyond 10-15 teams, you need additional structure:
 
-```
+```text
 # Module ownership tiers
 
 Tier 1: Core Platform Modules

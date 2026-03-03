@@ -108,7 +108,7 @@ Terraform Cloud needs AWS credentials to manage your resources. There are two ap
 
 In the Terraform Cloud workspace settings, add environment variables.
 
-```
+```text
 AWS_ACCESS_KEY_ID     = AKIAIOSFODNN7EXAMPLE     (sensitive)
 AWS_SECRET_ACCESS_KEY = wJalrXUtnFEMI/K7MDENG... (sensitive)
 ```
@@ -158,7 +158,7 @@ resource "aws_iam_role_policy_attachment" "tfc_admin" {
 
 Then configure the workspace to use dynamic credentials. In workspace settings, add these environment variables:
 
-```
+```text
 TFC_AWS_PROVIDER_AUTH = true
 TFC_AWS_RUN_ROLE_ARN  = arn:aws:iam::123456789012:role/TerraformCloudRole
 ```
@@ -167,7 +167,7 @@ TFC_AWS_RUN_ROLE_ARN  = arn:aws:iam::123456789012:role/TerraformCloudRole
 
 Set Terraform variables in the workspace for environment-specific values.
 
-```
+```text
 # Terraform Variables (in workspace settings)
 aws_region     = us-east-1
 environment    = production
@@ -199,7 +199,7 @@ terraform {
 
 Or use the project feature to group related workspaces.
 
-```
+```text
 my-company (organization)
   aws-infrastructure (project)
     aws-dev-networking (workspace)
@@ -212,7 +212,7 @@ my-company (organization)
 
 Connect workspaces so changes cascade through your infrastructure layers.
 
-```
+```text
 Networking Workspace (changes trigger) --> Compute Workspace
                                       --> Database Workspace
 ```
@@ -277,7 +277,7 @@ This is enabled by default for paid plans and requires no configuration.
 
 Set up teams with different permissions.
 
-```
+```text
 Platform Team:
   - All workspaces: admin
 

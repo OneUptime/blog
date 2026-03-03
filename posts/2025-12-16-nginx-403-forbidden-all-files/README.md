@@ -58,7 +58,7 @@ grep -i "permission\|forbidden\|denied" /var/log/nginx/error.log
 
 Common error messages:
 
-```
+```text
 # Permission denied
 directory index of "/var/www/html/" is forbidden
 

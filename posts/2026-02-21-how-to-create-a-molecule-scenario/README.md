@@ -14,7 +14,7 @@ A Molecule scenario is a complete test configuration for your Ansible role. It d
 
 A Molecule scenario is a directory under `molecule/` in your role. Each scenario contains configuration files that control the test lifecycle.
 
-```
+```text
 my_role/
   defaults/
   handlers/

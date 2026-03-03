@@ -26,7 +26,7 @@ sudo ufw status verbose
 
 Output shows the logging level:
 
-```
+```text
 Status: active
 Logging: on (low)
 Default: deny (incoming), allow (outgoing), deny (forwarded)
@@ -77,7 +77,7 @@ sudo journalctl -f -k | grep UFW
 
 UFW log entries are kernel log messages with a specific format:
 
-```
+```text
 Mar  2 14:35:22 hostname kernel: [UFW BLOCK] IN=eth0 OUT= MAC=aa:bb:cc:00:11:22:33:44:... SRC=203.0.113.100 DST=192.168.1.10 LEN=44 TOS=0x00 PREC=0x00 TTL=54 ID=12345 PROTO=TCP SPT=54321 DPT=22 WINDOW=65535 RES=0x00 SYN URGP=0
 ```
 
@@ -190,7 +190,7 @@ If not present, create it:
 sudo nano /etc/logrotate.d/ufw
 ```
 
-```
+```text
 /var/log/ufw.log
 {
     rotate 14
@@ -214,7 +214,7 @@ For servers sending logs to a central SIEM or log management system, configure r
 sudo nano /etc/rsyslog.d/20-ufw.conf
 ```
 
-```
+```text
 # Forward UFW kernel messages to a separate file
 :msg, contains, "UFW" /var/log/ufw.log
 :msg, contains, "UFW" stop

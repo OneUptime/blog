@@ -16,7 +16,7 @@ Unlike ztunnels which run as a DaemonSet on every node, waypoint proxies are dep
 
 A waypoint proxy sits in the traffic path between ztunnels when L7 processing is needed:
 
-```
+```text
 ztunnel (source) --HBONE--> Waypoint Proxy --HBONE--> ztunnel (destination)
 ```
 

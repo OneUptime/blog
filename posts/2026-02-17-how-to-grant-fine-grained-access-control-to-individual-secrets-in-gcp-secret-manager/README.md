@@ -212,7 +212,7 @@ If a service account has project-level `secretAccessor` but only accesses two sp
 
 A good naming convention helps with access management. Include the owning service and the purpose in the secret name:
 
-```
+```text
 {service}-{type}-{environment}
 ```
 

@@ -14,7 +14,7 @@ If you are coming from traditional Linux administration, Talos Linux's disk layo
 
 When Talos installs onto a disk, it creates a specific set of partitions in a fixed order. Here is what a typical system disk looks like on a UEFI-based system:
 
-```
+```text
 /dev/sda
   |- /dev/sda1  EFI     (100 MB)   - EFI System Partition
   |- /dev/sda2  BIOS    (1 MB)     - BIOS Boot Partition (for legacy boot)
@@ -127,7 +127,7 @@ The order of partitions on the system disk is fixed and determined by Talos. You
 
 The partition layout is:
 
-```
+```text
 Partition 1: EFI (or BIOS boot on legacy systems)
 Partition 2: BIOS (compatibility)
 Partition 3: BOOT

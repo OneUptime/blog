@@ -76,7 +76,7 @@ The last rule allows health check traffic on the Istio health port.
 
 When using source principals in your policy, the format must be exact. The principal comes from the mTLS certificate and follows this pattern:
 
-```
+```text
 cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
@@ -160,13 +160,13 @@ kubectl logs <pod-name> -c istio-proxy -n my-namespace | grep rbac
 
 You'll see messages like:
 
-```
+```text
 enforced denied, matched policy none
 ```
 
 or
 
-```
+```text
 enforced allowed, matched policy ns[my-namespace]-policy[allow-frontend]-rule[0]
 ```
 

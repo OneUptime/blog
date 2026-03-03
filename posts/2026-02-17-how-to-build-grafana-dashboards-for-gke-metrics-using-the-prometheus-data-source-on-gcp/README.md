@@ -95,7 +95,7 @@ If you used the kube-prometheus-stack, Grafana comes pre-configured with Prometh
 
 For Google Managed Prometheus, the data source URL is different:
 
-```
+```text
 https://monitoring.googleapis.com/v1/projects/YOUR_PROJECT_ID/location/global/prometheus
 ```
 

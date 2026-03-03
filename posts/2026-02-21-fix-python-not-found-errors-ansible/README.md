@@ -14,7 +14,7 @@ Few things are more frustrating than running an Ansible playbook and seeing "Pyt
 
 When you see an error like this:
 
-```
+```text
 web01 | FAILED! => {
     "changed": false,
     "module_stderr": "/bin/sh: /usr/bin/python: No such file or directory\n",
@@ -186,7 +186,7 @@ However, the better fix is to set `ansible_python_interpreter` correctly rather 
 
 Some Ansible modules require specific Python packages. For example, the `apt` module needs `python3-apt`, and the `dnf` module needs the `dnf` Python bindings.
 
-```
+```text
 web01 | FAILED! => {
     "msg": "No module named 'apt'"
 }

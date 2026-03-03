@@ -25,7 +25,7 @@ terraform plan
 
 A successful import with matching configuration shows:
 
-```
+```text
 No changes. Your infrastructure matches the configuration.
 
 Terraform has compared your real infrastructure against your configuration
@@ -48,7 +48,7 @@ Common categories of differences:
 
 ### Harmless Differences - Safe to Apply
 
-```
+```text
 # aws_instance.web will be updated in-place
 ~ resource "aws_instance" "web" {
     ~ tags = {
@@ -59,7 +59,7 @@ Common categories of differences:
 
 ### Configuration Gaps - Need Config Updates
 
-```
+```text
 # aws_instance.web will be updated in-place
 ~ resource "aws_instance" "web" {
     ~ monitoring = true -> false  # Config missing monitoring = true
@@ -77,7 +77,7 @@ resource "aws_instance" "web" {
 
 ### Destructive Changes - Require Immediate Attention
 
-```
+```text
 # aws_instance.web must be replaced
 -/+ resource "aws_instance" "web" {
     ~ ami = "ami-old123" -> "ami-new456"  # Forces replacement!
@@ -104,7 +104,7 @@ terraform state show aws_instance.web
 
 This outputs all attributes stored in state:
 
-```
+```text
 # aws_instance.web:
 resource "aws_instance" "web" {
     ami                          = "ami-0abcdef1234567890"

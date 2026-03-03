@@ -35,7 +35,7 @@ Benefits:
 
 A typical Kustomize structure for multiple environments:
 
-```
+```text
 myapp/
 ├── base/
 │   ├── kustomization.yaml
@@ -574,7 +574,7 @@ kubectl apply -k base/
 
 Follow a naming convention for overlays:
 
-```
+```text
 overlays/
 ├── development/
 ├── staging/

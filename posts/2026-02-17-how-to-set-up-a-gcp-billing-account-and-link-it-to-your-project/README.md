@@ -50,7 +50,7 @@ gcloud billing projects describe my-project
 
 The output should show:
 
-```
+```text
 billingAccountName: billingAccounts/0X0X0X-0X0X0X-0X0X0X
 billingEnabled: true
 name: projects/my-project/billingInfo

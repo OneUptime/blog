@@ -26,7 +26,7 @@ graph TD
 
 ## Directory Structure for Multiple Environments
 
-```
+```text
 ansible-project/
   ansible.cfg
   site.yml

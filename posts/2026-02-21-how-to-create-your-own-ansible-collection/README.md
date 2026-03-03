@@ -23,7 +23,7 @@ ansible-galaxy collection init my_company.infrastructure
 
 This creates a directory structure under `my_company/infrastructure/`:
 
-```
+```text
 my_company/infrastructure/
   galaxy.yml           # Collection metadata
   README.md            # Documentation

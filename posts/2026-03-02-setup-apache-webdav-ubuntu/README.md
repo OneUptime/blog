@@ -287,7 +287,7 @@ mount_webdav https://webdav.example.com/files/ /mnt/webdav
 
 For HTTP WebDAV (not HTTPS), Windows requires a registry change to allow non-HTTPS:
 
-```
+```text
 HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\WebClient\Parameters
 BasicAuthLevel = 2
 ```

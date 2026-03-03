@@ -14,7 +14,7 @@ A monorepo puts all your infrastructure code in a single repository. Ansible pla
 
 Structure the repo so each tool has its own directory but shares common configuration:
 
-```
+```text
 infrastructure/
 ├── ansible/
 │   ├── ansible.cfg
@@ -265,7 +265,7 @@ graph TD
 
 ## CODEOWNERS for Monorepo
 
-```
+```text
 # .github/CODEOWNERS
 # Different teams own different parts of the monorepo
 
@@ -301,7 +301,7 @@ collections:
     version: 3.6.0
 ```
 
-```
+```text
 # requirements.txt at repo root
 # Shared Python dependencies
 ansible-core==2.16.2

@@ -21,7 +21,7 @@ Many resource attributes are only determined by the cloud provider at creation t
 
 During `terraform plan`, these values do not exist yet, so Terraform marks them as "(known after apply)":
 
-```
+```text
 # aws_instance.web will be created
 + resource "aws_instance" "web" {
     + ami                    = "ami-0c55b159cbfafe1f0"

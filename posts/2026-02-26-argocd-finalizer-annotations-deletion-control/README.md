@@ -14,7 +14,7 @@ Deleting an ArgoCD Application is not as simple as running `kubectl delete`. Wha
 
 The ArgoCD finalizer is a metadata entry on the Application resource that tells Kubernetes (and ArgoCD) to perform cleanup actions before the Application resource is actually removed. The specific finalizer ArgoCD uses is:
 
-```
+```text
 resources-finalizer.argocd.argoproj.io
 ```
 

@@ -23,7 +23,7 @@ terraform state list
 
 The output looks something like this:
 
-```
+```text
 aws_instance.web
 aws_instance.api
 aws_security_group.web
@@ -63,7 +63,7 @@ terraform state show aws_instance.web
 
 This outputs all attributes including computed values like IDs, ARNs, and IP addresses:
 
-```
+```text
 # aws_instance.web:
 resource "aws_instance" "web" {
     ami                          = "ami-0abcdef1234567890"

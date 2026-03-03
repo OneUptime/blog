@@ -29,7 +29,7 @@ ip rule list
 
 Default output:
 
-```
+```text
 0:      from all lookup local
 32766:  from all lookup main
 32767:  from all lookup default
@@ -108,7 +108,7 @@ ip rule list
 
 Output now shows your added rules:
 
-```
+```text
 0:      from all lookup local
 100:    from 192.168.1.100 lookup isp1
 200:    from 10.0.0.100 lookup isp2

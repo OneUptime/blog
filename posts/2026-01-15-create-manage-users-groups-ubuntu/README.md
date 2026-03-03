@@ -302,7 +302,7 @@ sudo visudo -c
 
 ### Understanding Permission Notation
 
-```
+```text
 -rwxr-xr-- 1 owner group size date filename
 │├─┤├─┤├─┤
 ││  │  │

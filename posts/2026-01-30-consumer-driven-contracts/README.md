@@ -185,7 +185,7 @@ npm install --save-dev @pact-foundation/pact @pact-foundation/pact-node
 
 Create a directory structure that keeps contracts organized:
 
-```
+```text
 project/
 ├── src/
 │   └── services/

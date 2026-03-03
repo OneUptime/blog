@@ -24,7 +24,7 @@ The Kubernetes control plane costs differ dramatically between providers.
 
 Cost comparison for 5 development clusters and 2 production clusters:
 
-```
+```text
 EKS:   7 clusters × $73 = $511/month
 GKE:   7 clusters × $0  = $0/month (standard mode)
 AKS:   7 clusters × $0  = $0/month (free tier)
@@ -39,7 +39,7 @@ Compute costs form the largest portion of Kubernetes expenses. Compare equivalen
 
 **4 CPU cores, 16GB RAM nodes** (prices per month):
 
-```
+```text
 AWS (t3.xlarge):      ~$121
 GCP (n2-standard-4):  ~$145
 Azure (D4s v5):       ~$140
@@ -48,7 +48,7 @@ DigitalOcean (8GB):   ~$96
 
 AWS offers the lowest compute pricing with reserved instances:
 
-```
+```text
 AWS 1-year reserved:   ~$76/month (37% discount)
 AWS 3-year reserved:   ~$49/month (60% discount)
 GCP 1-year committed:  ~$100/month (31% discount)
@@ -59,7 +59,7 @@ Azure 3-year reserved: ~$55/month (61% discount)
 
 Spot/preemptible instances reduce costs further:
 
-```
+```text
 AWS Spot:          60-90% discount (highly variable)
 GCP Preemptible:   ~$44/month (70% discount, max 24h runtime)
 Azure Spot:        60-90% discount (variable)
@@ -67,7 +67,7 @@ Azure Spot:        60-90% discount (variable)
 
 For a production cluster with 10 nodes running 24/7:
 
-```
+```text
 AWS on-demand:         $1,210/month + $73 control plane = $1,283
 AWS 3-year reserved:   $490/month + $73 control plane = $563
 GCP on-demand:         $1,450/month
@@ -108,7 +108,7 @@ External service exposure costs vary significantly:
 
 For a cluster with 3 services exposed via load balancers:
 
-```
+```text
 AWS (ALB):      3 × $40 = $120/month
 GCP:            3 × $45 = $135/month
 Azure:          3 × $35 = $105/month
@@ -121,7 +121,7 @@ Using an Ingress controller reduces this to a single load balancer across all se
 
 Block storage costs (per GB/month):
 
-```
+```text
 AWS EBS gp3:           $0.08
 GCP Persistent Disk:   $0.10 (standard), $0.17 (SSD)
 Azure Managed Disk:    $0.05 (standard), $0.15 (premium SSD)
@@ -130,7 +130,7 @@ DigitalOcean Volumes:  $0.10
 
 For 1TB of SSD storage:
 
-```
+```text
 AWS:             $80/month
 GCP:             $170/month
 Azure Premium:   $150/month
@@ -141,7 +141,7 @@ AWS offers the best storage pricing. Azure standard disks are cheapest but provi
 
 Snapshot costs:
 
-```
+```text
 AWS EBS snapshots:     $0.05/GB/month
 GCP snapshots:         $0.026/GB/month
 Azure snapshots:       $0.05/GB/month
@@ -176,7 +176,7 @@ Egress charges can become significant for high-traffic applications:
 
 For 5TB monthly egress:
 
-```
+```text
 AWS:              5,000GB × $0.09 = $450/month
 GCP:              5,000GB × $0.12 = $600/month
 Azure:            5,000GB × $0.087 = $435/month
@@ -235,7 +235,7 @@ DigitalOcean provides the best value for data-intensive applications due to incl
 - 3-year commitment
 
 **AWS EKS**:
-```
+```text
 Control plane:        $73/month
 Nodes (reserved):     $490/month
 Load balancers:       $120/month
@@ -247,7 +247,7 @@ Total:                $1,173/month ($14,076/year)
 ```
 
 **GCP GKE**:
-```
+```text
 Control plane:        $0/month
 Nodes (committed):    $640/month
 Load balancers:       $135/month
@@ -259,7 +259,7 @@ Total:                $1,455/month ($17,460/year)
 ```
 
 **Azure AKS**:
-```
+```text
 Control plane:        $0/month
 Nodes (reserved):     $550/month
 Load balancers:       $105/month
@@ -271,7 +271,7 @@ Total:                $1,259/month ($15,108/year)
 ```
 
 **DigitalOcean DOKS**:
-```
+```text
 Control plane:        $0/month
 Nodes:                $960/month
 Load balancers:       $30/month

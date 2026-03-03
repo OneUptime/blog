@@ -33,7 +33,7 @@ graph TD
 
 Organize your database files in Git:
 
-```
+```text
 database/
   migrations/
     001_create_users.up.sql
@@ -141,7 +141,7 @@ jobs:
 
 The `VERSION` file contains the current migration version:
 
-```
+```text
 # database/VERSION
 42
 ```

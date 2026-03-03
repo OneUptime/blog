@@ -70,7 +70,7 @@ graph TD
 
 Let's break down each component:
 
-```
+```text
 myproject/
 ├── app/
 │   ├── __init__.py          # Application factory lives here

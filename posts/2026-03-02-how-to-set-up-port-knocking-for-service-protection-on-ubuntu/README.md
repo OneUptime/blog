@@ -142,7 +142,7 @@ sudo nano /etc/default/knockd
 
 Change `START_KNOCKD=0` to `START_KNOCKD=1`:
 
-```
+```text
 # Set to 1 to start knockd on boot
 START_KNOCKD=1
 

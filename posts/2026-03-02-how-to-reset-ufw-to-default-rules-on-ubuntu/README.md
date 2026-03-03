@@ -47,7 +47,7 @@ sudo ufw reset
 
 Output:
 
-```
+```text
 Resetting all rules to installed defaults. Proceed with operation (y|n)? y
 Backing up 'user.rules' to '/etc/ufw/user.rules.20260302_143022'
 Backing up 'before.rules' to '/etc/ufw/before.rules.20260302_143022'
@@ -63,7 +63,7 @@ After the reset, UFW is disabled:
 sudo ufw status
 ```
 
-```
+```text
 Status: inactive
 ```
 

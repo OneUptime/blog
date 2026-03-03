@@ -88,7 +88,7 @@ For simple projects or when you need maximum control, you can manage migrations 
 
 Organize your migration files with a clear naming convention that ensures proper ordering.
 
-```
+```text
 project/
 ├── migrations/
 │   ├── V001__create_users_table.sql

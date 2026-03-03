@@ -228,7 +228,7 @@ kubectl patch deployment argocd-repo-server -n argocd --patch-file repo-server-p
 
 Set up a Jsonnet project structure:
 
-```
+```text
 apps/myapp/
 ├── jsonnetfile.json
 ├── jsonnetfile.lock.json

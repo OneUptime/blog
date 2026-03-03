@@ -196,7 +196,7 @@ kubectl set image deploy/payment-api \
 
 Check the fortio output. You should see:
 
-```
+```text
 Code 200 : XXXX (100.0 %)
 ```
 

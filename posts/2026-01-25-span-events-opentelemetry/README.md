@@ -474,7 +474,7 @@ Follow consistent naming conventions for events:
 - Use consistent prefixes within a service
 
 Example naming structure:
-```
+```text
 {domain}.{subject}.{action}
 
 cache.item.hit
@@ -491,7 +491,7 @@ order.validation.failed
 
 When you view a trace in an observability backend, events appear as points along the span timeline:
 
-```
+```text
 [Span: process-order] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                       │         │              │         │
                       │         │              │         └─ payment.complete

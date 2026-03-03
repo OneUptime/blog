@@ -29,19 +29,19 @@ A common mistake is setting the container memory limit equal to the max heap siz
 
 Use this formula to calculate appropriate container limits:
 
-```
+```text
 Container Limit = Heap + Metaspace + CodeCache + ThreadStacks + DirectBuffers + Overhead
 ```
 
 For a typical Spring Boot application:
 
-```
+```text
 Container Limit = Xmx + 256MB (metaspace) + 256MB (code cache) + (threads * 1MB) + 256MB (buffers) + 512MB (overhead)
 ```
 
 Example: For a 2GB heap application with 100 threads:
 
-```
+```text
 Container Limit = 2048MB + 256MB + 256MB + 100MB + 256MB + 512MB = 3378MB ≈ 3.5GB
 ```
 
@@ -150,7 +150,7 @@ env:
 
 Default stack size is typically 1MB. Reducing to 256KB saves memory with hundreds of threads:
 
-```
+```text
 100 threads * 1MB = 100MB (default)
 100 threads * 256KB = 25.6MB (optimized)
 Savings: 74.4MB

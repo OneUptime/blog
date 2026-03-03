@@ -31,7 +31,7 @@ sudo lsof | head -20
 
 Output format:
 
-```
+```text
 COMMAND     PID   TID TASKCMD     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
 systemd       1                   root  cwd    DIR    8,1     4096    2 /
 systemd       1                   root  rtd    DIR    8,1     4096    2 /

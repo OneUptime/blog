@@ -15,7 +15,7 @@ FRRouting (FRR) is an open-source routing suite that provides production-grade i
 Before touching configuration, establish what you are trying to accomplish. BGP is complex enough that working without a diagram leads to mistakes.
 
 For this guide, the setup is:
-```
+```text
 Router A: AS 65001, loopback 10.255.0.1/32, connects to 192.168.10.0/30
 Router B: AS 65002, loopback 10.255.0.2/32, connects to 192.168.10.0/30
 
@@ -83,7 +83,7 @@ sudo vtysh
 
 ### Router A Configuration (AS 65001)
 
-```
+```text
 ! Enter configuration mode
 configure terminal
 
@@ -126,7 +126,7 @@ write memory
 
 ### Router B Configuration (AS 65002)
 
-```
+```text
 configure terminal
 
 router bgp 65002
@@ -176,7 +176,7 @@ Production BGP always includes route filtering. Never peer with an external AS w
 sudo vtysh
 ```
 
-```
+```text
 configure terminal
 
 ! Create a prefix list to filter acceptable routes
@@ -208,7 +208,7 @@ write memory
 
 Default BGP timers are conservative. For lab or direct-connected peers, tighten them up:
 
-```
+```text
 configure terminal
 
 router bgp 65001
@@ -226,7 +226,7 @@ write memory
 
 When peers are not directly connected (loopback-to-loopback peering), you need to set the TTL:
 
-```
+```text
 configure terminal
 
 router bgp 65001

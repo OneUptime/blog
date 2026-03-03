@@ -104,7 +104,7 @@ monthly_calculation:
 
 ### Cost Comparison at Scale
 
-```
+```text
 Daily Volume | CloudWatch/month | Loki/month | Savings
 -------------|------------------|------------|--------
 10 GB        | $165            | $150       | 9%
@@ -544,7 +544,7 @@ kinesis_firehose:
 
 ### Scoring Matrix
 
-```
+```text
 Factor                   | Weight | Loki | CloudWatch
 -------------------------|--------|------|----------
 Total Cost of Ownership  | 25%    | 9    | 5
@@ -560,7 +560,7 @@ Weighted Score:                   | 7.5  | 6.4
 
 ### Decision Tree
 
-```
+```text
 Start
   │
   ├─ High log volume (>100 GB/day)?

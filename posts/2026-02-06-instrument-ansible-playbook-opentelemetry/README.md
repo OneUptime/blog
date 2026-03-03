@@ -295,7 +295,7 @@ You can then add `ansible.task.role` as an attribute on each task span, which le
 
 Once spans are flowing, you will start seeing traces like this in your backend:
 
-```
+```text
 playbook: site.yml                    [14.2s]
   play: Configure web servers         [8.7s]
     task: Install nginx               [3.1s]

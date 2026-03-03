@@ -390,7 +390,7 @@ containers:
 
 When you deploy to staging first and then production, your smoke test configuration should adapt per environment. Use Kustomize overlays:
 
-```
+```text
 smoke-tests/
   base/
     job.yaml

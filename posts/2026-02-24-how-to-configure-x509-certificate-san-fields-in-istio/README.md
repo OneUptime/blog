@@ -16,13 +16,13 @@ Istio uses SPIFFE-formatted URIs as the primary SAN type for workload certificat
 
 By default, Istio sets the SAN field on workload certificates to a SPIFFE URI based on the workload's Kubernetes identity:
 
-```
+```text
 URI: spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 
 For a pod running in the `production` namespace with the `payment-api` service account and a trust domain of `cluster.local`:
 
-```
+```text
 URI: spiffe://cluster.local/ns/production/sa/payment-api
 ```
 
@@ -36,7 +36,7 @@ istioctl proxy-config secret <pod-name> -n <namespace> -o json | \
 
 The output will look something like:
 
-```
+```text
 X509v3 Subject Alternative Name: critical
     URI:spiffe://cluster.local/ns/production/sa/payment-api
 ```
@@ -74,7 +74,7 @@ spec:
 
 After this change, workload certificates will have SANs like:
 
-```
+```text
 URI: spiffe://mycompany.example.com/ns/production/sa/payment-api
 ```
 

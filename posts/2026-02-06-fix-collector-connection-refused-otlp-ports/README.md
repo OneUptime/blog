@@ -68,7 +68,7 @@ ss -tuln | grep -E '4317|4318'
 ```
 
 Expected output should show:
-```
+```text
 tcp    0    0 0.0.0.0:4317    0.0.0.0:*    LISTEN
 tcp    0    0 0.0.0.0:4318    0.0.0.0:*    LISTEN
 ```

@@ -38,7 +38,7 @@ Each plugin has its own scope. `pluginA` cannot access `dbB` and vice versa. Thi
 
 OpenTelemetry's Fastify instrumentation hooks into Fastify's lifecycle at a global level. When it creates spans for hooks (onRequest, preHandler, etc.), those spans can become parents for spans in other plugins:
 
-```
+```text
 GET /api/a                          [========================] 50ms
   onRequest (global auth hook)      [===]                      5ms
   preHandler (pluginA hook)           [===]                    5ms

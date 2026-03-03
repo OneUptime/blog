@@ -119,7 +119,7 @@ def create_bigtable_backup(request):
 
 And here is the `requirements.txt`:
 
-```
+```text
 google-cloud-bigtable>=2.0.0
 ```
 

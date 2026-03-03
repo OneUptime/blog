@@ -31,7 +31,7 @@ These files are stored separately on the boot partition, and the boot loader ass
 
 A UKI solves all of these by combining everything into a single PE (Portable Executable) binary:
 
-```
+```text
 UKI Binary (.efi):
   ├── Linux kernel
   ├── Initramfs
@@ -47,7 +47,7 @@ This single binary is placed on the EFI System Partition and can be directly exe
 
 Talos Linux generates UKI binaries during installation and upgrades. When you install Talos on a UEFI system, the installer creates UKI binaries for both the A and B boot slots:
 
-```
+```text
 /boot/EFI/Linux/
   ├── talos-A.efi    # Active boot entry (UKI)
   └── talos-B.efi    # Standby boot entry (UKI, for upgrades)

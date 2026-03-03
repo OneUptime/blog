@@ -38,7 +38,7 @@ flowchart TD
 
 ## Common Error Messages
 
-```
+```text
 BeanInstantiationException: Failed to instantiate [com.example.MyService]:
 No default constructor found
 
@@ -72,7 +72,7 @@ public class UserService {
 ```
 
 Error message:
-```
+```text
 BeanInstantiationException: Failed to instantiate [com.example.UserService]:
 No default constructor found
 ```
@@ -150,7 +150,7 @@ public class PaymentGateway {
 ```
 
 Error message:
-```
+```text
 UnsatisfiedDependencyException: Error creating bean with name 'orderService':
 Unsatisfied dependency expressed through constructor parameter 0;
 nested exception is NoSuchBeanDefinitionException:
@@ -215,7 +215,7 @@ public class ServiceB {
 ```
 
 Error message:
-```
+```text
 BeanCurrentlyInCreationException: Error creating bean with name 'serviceA':
 Requested bean is currently in creation:
 Is there an unresolvable circular reference?
@@ -320,7 +320,7 @@ public class ConfigService {
 ```
 
 Error message:
-```
+```text
 BeanInstantiationException: Failed to instantiate [com.example.ConfigService]:
 Constructor threw exception; nested exception is java.io.FileNotFoundException
 ```
@@ -437,7 +437,7 @@ public class ExternalApiService {
 ```
 
 Error when properties are missing:
-```
+```text
 BeanCreationException: Error creating bean with name 'externalApiService':
 Could not resolve placeholder 'external.api.url' in value "${external.api.url}"
 ```

@@ -26,7 +26,7 @@ resource "aws_instance" "web" {
 
 Terraform responds with:
 
-```
+```text
 Error: Invalid combination of "count" and "for_each"
 
   on main.tf line 1, in resource "aws_instance" "web":

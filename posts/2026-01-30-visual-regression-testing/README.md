@@ -604,7 +604,7 @@ test('debug visual differences', async ({ page }) => {
 
 Structure tests by feature and component for maintainability.
 
-```
+```text
 tests/
   visual/
     components/

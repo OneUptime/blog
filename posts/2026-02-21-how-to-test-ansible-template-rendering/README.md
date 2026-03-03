@@ -292,7 +292,7 @@ def test_network_template():
 
 Here is how I organize template tests in my projects:
 
-```
+```text
 roles/
   nginx/
     templates/

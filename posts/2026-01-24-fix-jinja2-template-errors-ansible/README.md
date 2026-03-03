@@ -53,7 +53,7 @@ The most common Jinja2 error occurs when referencing a variable that does not ex
 
 ### Error Message
 
-```
+```text
 fatal: [host]: FAILED! => {"msg": "The task includes an option with an undefined variable.
 The error was: 'app_version' is undefined"}
 ```
@@ -115,7 +115,7 @@ config_value: "{{ optional_setting | default('') }}"
 
 ### Error Message
 
-```
+```text
 AnsibleUndefinedVariable: 'dict object' has no attribute 'port'
 ```
 
@@ -159,7 +159,7 @@ server_port = {{ database.get('port', 5432) }}
 
 ### Error Message
 
-```
+```text
 TemplateSyntaxError: unexpected '}'
 ```
 
@@ -204,7 +204,7 @@ shell: "echo {{ '{{' }} literal braces {{ '}}' }}"
 
 ### Error Message
 
-```
+```text
 expected token 'end of statement block', got 'string'
 ```
 
@@ -242,7 +242,7 @@ Usually mixing Jinja2 syntax incorrectly.
 
 ### Error Message
 
-```
+```text
 Unexpected templating type error occurred on ({{ items }}): 'int' object is not iterable
 ```
 
@@ -271,13 +271,13 @@ Trying to iterate over a non-iterable value.
 
 ### Error Message
 
-```
+```text
 could not determine a constructor for the tag '!vault'
 ```
 
 Or
 
-```
+```text
 found character that cannot start any token
 ```
 
@@ -321,7 +321,7 @@ value: "{{ my_dict | to_json }}"
 
 ### Error Message
 
-```
+```text
 recursive loop detected in template string
 ```
 

@@ -160,7 +160,7 @@ Note the `%25` encoding for the percent sign in INI format. Some versions of Ans
 
 Make sure your SSH configuration supports IPv6. Add these settings to `~/.ssh/config` or configure them through Ansible:
 
-```
+```text
 # ~/.ssh/config
 # Enable IPv6 for SSH connections
 Host *
@@ -169,7 +169,7 @@ Host *
 
 Or if you want to prefer IPv6 but fall back to IPv4:
 
-```
+```text
 Host *
     AddressFamily any
 ```

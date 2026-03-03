@@ -154,7 +154,7 @@ tombstone_failure_threshold: 100000
 
 When limits are exceeded, you will see errors like this:
 
-```
+```text
 ReadFailureException: Operation timed out - received 0 responses
 Caused by: TombstoneOverwhelmingException:
   Scanned over 100000 tombstones during query

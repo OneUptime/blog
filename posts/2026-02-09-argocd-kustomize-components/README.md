@@ -515,7 +515,7 @@ This ensures component compositions produce expected results before syncing to c
 
 Organize components with versioning for controlled rollouts:
 
-```
+```text
 components/
 ├── monitoring/
 │   ├── v1/

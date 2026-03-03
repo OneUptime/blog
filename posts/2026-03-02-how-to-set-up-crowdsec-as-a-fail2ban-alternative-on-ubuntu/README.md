@@ -37,7 +37,7 @@ cscli version
 
 ## Understanding the Architecture
 
-```
+```text
 Log Files
     |
 CrowdSec Agent (reads logs, parses events, detects attacks)

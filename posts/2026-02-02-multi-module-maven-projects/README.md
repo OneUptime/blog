@@ -16,7 +16,7 @@ Multi-module Maven projects solve this by letting you split your codebase into l
 
 Here's what a typical multi-module project looks like on disk:
 
-```
+```text
 my-application/
 ├── pom.xml                    # Parent POM - coordinates everything
 ├── api/

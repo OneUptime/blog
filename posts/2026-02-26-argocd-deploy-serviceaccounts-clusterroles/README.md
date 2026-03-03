@@ -161,7 +161,7 @@ spec:
 
 Application-specific RBAC should live with the application:
 
-```
+```text
 apps/
   myapp/
     deployment.yaml

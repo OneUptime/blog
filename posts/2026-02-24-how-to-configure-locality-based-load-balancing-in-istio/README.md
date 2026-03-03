@@ -22,7 +22,7 @@ kubectl get nodes --show-labels | grep -E "topology.kubernetes.io"
 
 You will see labels like:
 
-```
+```text
 topology.kubernetes.io/region=us-east-1
 topology.kubernetes.io/zone=us-east-1a
 ```
@@ -33,7 +33,7 @@ Istio reads these labels automatically. When a sidecar proxy needs to route a re
 
 Istio uses a three-level locality hierarchy:
 
-```
+```text
 Region / Zone / Sub-zone
 ```
 
@@ -206,7 +206,7 @@ istioctl proxy-config endpoint <pod-name> --cluster "outbound|80||user-profile.d
 
 The output includes a `LOCALITY` column showing the region/zone for each endpoint and a `PRIORITY` column. Lower priority numbers are preferred:
 
-```
+```text
 ENDPOINT            STATUS   OUTLIER  CLUSTER   PRIORITY  LOCALITY
 10.0.1.5:8080       HEALTHY  OK       ...       0         us-east-1/us-east-1a
 10.0.1.6:8080       HEALTHY  OK       ...       0         us-east-1/us-east-1a

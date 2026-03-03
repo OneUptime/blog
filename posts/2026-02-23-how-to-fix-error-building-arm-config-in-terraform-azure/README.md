@@ -14,7 +14,7 @@ The "Error building ARM config" message is a generic error from the Terraform Az
 
 The error can appear in several forms:
 
-```
+```text
 Error: building AzureRM Client: please ensure you have installed
 Azure CLI version 2.0.79 or newer
 

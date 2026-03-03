@@ -14,14 +14,14 @@ Automated backups are your safety net for Cloud SQL instances, so when they star
 
 In your Cloud SQL operations log or Cloud Logging, you will see something like:
 
-```
+```text
 The instance or operation is not in an appropriate state to handle the request.
 Another operation is already in progress for this instance.
 ```
 
 Or from the gcloud command line:
 
-```
+```text
 ERROR: (gcloud.sql.backups.create) HTTPError 409:
 The instance or operation is not in an appropriate state to handle the request.
 ```

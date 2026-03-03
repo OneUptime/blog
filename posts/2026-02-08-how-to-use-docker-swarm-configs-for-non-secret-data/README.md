@@ -213,7 +213,7 @@ docker config create templated-conf --template-driver golang ./config.tmpl
 
 The template file can use Swarm-provided variables:
 
-```
+```text
 # config.tmpl - Go template with Swarm variables
 hostname={{ .Service.Name }}-{{ .Task.Slot }}
 node={{ .Node.Hostname }}

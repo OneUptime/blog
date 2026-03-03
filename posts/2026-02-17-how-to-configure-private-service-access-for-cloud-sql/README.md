@@ -309,7 +309,7 @@ gcloud dns record-sets create postgres-staging.db.internal. \
 
 ### Cannot Create Cloud SQL with Private IP
 
-```
+```text
 Error: private service access not configured
 ```
 

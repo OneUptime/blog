@@ -16,7 +16,7 @@ etcd timeout errors appear in several places:
 
 In the etcd logs:
 
-```
+```text
 {"level":"warn","msg":"etcdserver: request timed out"}
 {"level":"warn","msg":"etcdserver: failed to send out heartbeat on time (exceeded the 500ms timeout for 1.2s)"}
 {"level":"warn","msg":"apply request took too long (2.5s)"}
@@ -24,13 +24,13 @@ In the etcd logs:
 
 In the API server logs:
 
-```
+```text
 etcdserver: request timed out
 ```
 
 In kubectl output:
 
-```
+```text
 Error from server: etcdserver: request timed out
 ```
 

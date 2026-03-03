@@ -205,7 +205,7 @@ The Zipkin UI has a clean search interface:
 
 Click on a trace to see the span waterfall. Each row is a span:
 
-```
+```text
 productpage  |-----------200ms-----------|
   reviews         |-------150ms-------|
     ratings            |---50ms---|

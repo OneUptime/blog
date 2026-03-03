@@ -119,7 +119,7 @@ aws s3 ls s3://myorg-terraform-modules/vpc/
 
 A good directory structure in S3 looks like this:
 
-```
+```text
 myorg-terraform-modules/
   vpc/
     v1.0.0.zip
@@ -352,7 +352,7 @@ output "cluster_id" {
 
 Since S3 does not have built-in semantic versioning like the Terraform Registry, you need to establish a convention. The path-based approach shown above works well:
 
-```
+```text
 s3://bucket/module-name/v1.0.0.zip   # Major.Minor.Patch
 s3://bucket/module-name/v1.0.1.zip   # Patch release
 s3://bucket/module-name/v1.1.0.zip   # Minor release

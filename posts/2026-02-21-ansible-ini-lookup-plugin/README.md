@@ -177,7 +177,7 @@ One pattern I use frequently is keeping per-environment INI files and reading fr
 
 Here is the directory structure:
 
-```
+```text
 configs/
   production.ini
   staging.ini

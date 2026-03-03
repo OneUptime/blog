@@ -52,7 +52,7 @@ app.get('/fetch-url', async (req, res) => {
 
 ### Attack Payloads
 
-```
+```text
 # AWS metadata (most common SSRF target)
 http://169.254.169.254/latest/meta-data/iam/security-credentials/
 

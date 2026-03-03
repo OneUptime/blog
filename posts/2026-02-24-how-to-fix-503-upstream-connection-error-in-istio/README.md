@@ -16,13 +16,13 @@ This guide breaks down every common cause of 503 errors in Istio and shows you h
 
 When Envoy returns a 503, it means the sidecar proxy could not successfully connect to the upstream (destination) service. The full error usually looks something like:
 
-```
+```text
 upstream connect error or disconnect/reset before headers. reset reason: connection failure
 ```
 
 Or:
 
-```
+```text
 no healthy upstream
 ```
 

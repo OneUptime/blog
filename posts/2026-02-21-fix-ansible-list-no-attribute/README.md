@@ -12,7 +12,7 @@ This error shows up when you try to access a dictionary attribute on a variable 
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "'list object' has no attribute 'name'"
 }

@@ -127,7 +127,7 @@ For production, use a sealed secret or an external secrets operator to manage th
 
 Create your Terraform configurations in the repository. The tf-controller will watch these and apply them:
 
-```
+```text
 azure-infrastructure/
   clusters/
     production/

@@ -271,7 +271,7 @@ Origin Shield adds an incremental cost per request that flows through it. As of 
 
 Calculate the ROI:
 
-```
+```text
 Origin requests before Origin Shield: 1,000,000/day
 Origin Shield hit ratio: 60%
 Origin requests after: 400,000/day

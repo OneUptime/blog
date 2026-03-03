@@ -51,7 +51,7 @@ kubectl get clusterissuer selfsigned-issuer
 
 You should see output indicating the issuer is ready:
 
-```
+```text
 NAME                READY   AGE
 selfsigned-issuer   True    5s
 ```

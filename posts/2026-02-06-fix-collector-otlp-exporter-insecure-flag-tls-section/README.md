@@ -8,7 +8,7 @@ Description: Fix Collector configuration errors caused by the OTLP exporter inse
 
 You upgrade the Collector and your configuration that worked perfectly before now produces an error:
 
-```
+```text
 Error: failed to get config: 1 error(s) decoding:
   'exporters.otlp.insecure' has invalid keys: insecure
 ```

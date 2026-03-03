@@ -164,7 +164,7 @@ The first startup is slow because the ARK server binary is approximately 30GB. O
 
 Open the in-game console and type:
 
-```
+```text
 open YOUR_IP:7777
 ```
 

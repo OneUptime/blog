@@ -87,7 +87,7 @@ The progress deadline should be longer than your longest expected pod startup ti
 
 Here is a formula for calculating a reasonable deadline.
 
-```
+```text
 progressDeadlineSeconds =
     (image pull time) +
     (init container time) +

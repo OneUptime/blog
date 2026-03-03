@@ -26,7 +26,7 @@ A Crossplane package is an OCI image with a specific directory structure. At its
 
 For a Configuration package:
 
-```
+```text
 my-platform/
 ├── crossplane.yaml
 ├── apis/

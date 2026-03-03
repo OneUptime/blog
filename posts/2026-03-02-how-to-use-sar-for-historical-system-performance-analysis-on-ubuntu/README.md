@@ -52,13 +52,13 @@ sudo nano /etc/cron.d/sysstat
 
 Change:
 
-```
+```text
 5-55/10 * * * * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 ```
 
 To collect every 2 minutes:
 
-```
+```text
 */2 * * * * root command -v debian-sa1 > /dev/null && debian-sa1 1 1
 ```
 
@@ -72,7 +72,7 @@ sar
 
 Output:
 
-```
+```text
 Linux 5.15.0-91-generic (ubuntu-server)  03/02/2026  _x86_64_    (4 CPU)
 
 00:00:01        CPU     %user     %nice   %system   %iowait    %steal     %idle
@@ -260,13 +260,13 @@ sudo nano /etc/sysstat/sysstat
 
 Change:
 
-```
+```text
 HISTORY=7
 ```
 
 To keep 30 days:
 
-```
+```text
 HISTORY=30
 ```
 

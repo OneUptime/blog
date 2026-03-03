@@ -218,7 +218,7 @@ module "vpc" {
 
 Getting your CIDR blocks right from the start is important. Here's a typical layout.
 
-```
+```text
 10.0.0.0/16 (65,536 IPs total)
 
 Public Subnets:

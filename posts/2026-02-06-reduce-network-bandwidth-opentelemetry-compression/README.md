@@ -372,7 +372,7 @@ Real-world performance data comparing compression algorithms:
 
 ### Bandwidth Reduction
 
-```
+```text
 Test scenario: 10,000 spans, average 2 KB each
 Uncompressed total: 20 MB
 
@@ -386,7 +386,7 @@ Results:
 
 ### CPU Overhead
 
-```
+```text
 CPU usage to compress 20 MB of telemetry data:
 
 - No compression:  0 ms CPU
@@ -398,7 +398,7 @@ CPU usage to compress 20 MB of telemetry data:
 
 ### Latency Impact
 
-```
+```text
 Additional latency introduced by compression:
 
 - No compression:  0 ms
@@ -466,7 +466,7 @@ service:
 
 Key metrics to track:
 
-```
+```text
 # Bytes received (uncompressed)
 otelcol_receiver_accepted_spans * avg_span_size
 

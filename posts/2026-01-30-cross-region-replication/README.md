@@ -110,7 +110,7 @@ synchronous_standby_names = 'replica_eu'
 
 **Primary pg_hba.conf**
 
-```
+```text
 # Allow replication connections from replica
 host replication replicator 10.0.0.0/8 scram-sha-256
 host replication replicator replica-eu.example.com scram-sha-256

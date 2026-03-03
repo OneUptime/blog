@@ -55,7 +55,7 @@ Alloy uses a component-based configuration language. The config file lives at `/
 
 The basic pattern is:
 
-```
+```text
 source_component "name" {
   // reads data from somewhere
 }

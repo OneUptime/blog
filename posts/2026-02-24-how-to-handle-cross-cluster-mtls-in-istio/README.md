@@ -16,7 +16,7 @@ Getting cross-cluster mTLS right is non-negotiable. If the certificate trust cha
 
 When Istiod starts, it creates a CA (or uses one you provide). It then issues short-lived X.509 certificates to every sidecar proxy through the SDS (Secret Discovery Service) API. These certificates contain the workload's SPIFFE identity in the SAN (Subject Alternative Name) field, formatted as:
 
-```
+```text
 spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 
@@ -31,7 +31,7 @@ In a multi-cluster mesh, the challenge is #1. Both clusters need to trust certif
 
 The standard approach is to use a shared root CA with per-cluster intermediate CAs. Here is the hierarchy:
 
-```
+```text
 Root CA (shared)
 ├── Intermediate CA (cluster1)
 │   └── Workload cert (cluster1 pods)

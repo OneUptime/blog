@@ -37,7 +37,7 @@ The most common reason to use Replace is when you need to change an immutable fi
 
 Common immutable field errors:
 
-```
+```text
 The Deployment "web" is invalid: spec.selector:
   Invalid value: field is immutable
 
@@ -54,7 +54,7 @@ When you hit these errors, `kubectl apply` will fail. Replace forces a recreatio
 
 Sometimes resources get into a bad state where apply cannot reconcile them:
 
-```
+```text
 # Resource has conflicting field managers
 # Strategic merge patch cannot resolve the conflict
 ```

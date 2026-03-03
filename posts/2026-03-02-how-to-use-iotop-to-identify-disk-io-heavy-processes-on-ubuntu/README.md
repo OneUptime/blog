@@ -28,7 +28,7 @@ sudo iotop
 
 The display updates every second and shows:
 
-```
+```text
 Total DISK READ:       12.34 M/s | Total DISK WRITE:      45.67 M/s
 Current DISK READ:     12.34 M/s | Current DISK WRITE:    45.67 M/s
     TID    PRIO    USER    DISK READ    DISK WRITE    SWAPIN    IO>    COMMAND

@@ -37,7 +37,7 @@ terraform plan
 
 Resources that appear in the plan with a `-` (destroy) action, and you don't recognize why Terraform wants to destroy them, are likely orphans. Terraform wants to destroy them because they exist in state but not in your configuration.
 
-```
+```text
 # Example plan output showing an orphaned resource
   # aws_instance.old_web will be destroyed
   # (because aws_instance.old_web is not in configuration)

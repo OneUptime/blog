@@ -38,7 +38,7 @@ flowchart TD
 
 A fully qualified image reference consists of several components:
 
-```
+```text
 registry.example.com/namespace/repository:tag
 ```
 

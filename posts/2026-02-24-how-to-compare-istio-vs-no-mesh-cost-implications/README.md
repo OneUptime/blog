@@ -22,7 +22,7 @@ These are the costs that show up on your cloud bill.
 
 For a cluster with 200 pods, with sidecars requesting 50m CPU and 64Mi memory each (right-sized):
 
-```
+```text
 CPU: 200 * 0.05 cores = 10 cores
 Memory: 200 * 0.0625 GB = 12.5 GB
 Monthly cost (AWS m5.xlarge pricing): 10 * $35 + 12.5 * $8.76 = $460/month
@@ -30,7 +30,7 @@ Monthly cost (AWS m5.xlarge pricing): 10 * $35 + 12.5 * $8.76 = $460/month
 
 With default requests (100m CPU, 128Mi memory):
 
-```
+```text
 CPU: 200 * 0.1 = 20 cores
 Memory: 200 * 0.125 = 25 GB
 Monthly cost: 20 * $35 + 25 * $8.76 = $919/month
@@ -40,7 +40,7 @@ Monthly cost: 20 * $35 + 25 * $8.76 = $919/month
 
 Three istiod replicas with 500m CPU and 1 GB memory each:
 
-```
+```text
 CPU: 3 * 0.5 = 1.5 cores = $52.50/month
 Memory: 3 * 1 GB = 3 GB = $26.28/month
 Total: ~$79/month
@@ -50,7 +50,7 @@ Total: ~$79/month
 
 Two ingress gateway pods plus a cloud load balancer:
 
-```
+```text
 Compute: 2 * (0.25 cores + 0.5 GB) = ~$22/month
 Load balancer: ~$16/month
 Total: ~$38/month
@@ -98,7 +98,7 @@ For comparison: **~$0-320/month** in additional infrastructure, depending on you
 
 Istio adds operational overhead. Upgrades need to be planned and tested. Sidecar injection issues need debugging. Configuration errors can cause outages. Budget 10-20% of a platform engineer's time.
 
-```
+```text
 At $150,000/year fully loaded: 15% = $22,500/year = $1,875/month
 ```
 
@@ -106,7 +106,7 @@ At $150,000/year fully loaded: 15% = $22,500/year = $1,875/month
 
 Getting a team productive with Istio takes 2-4 weeks of focused learning. Ongoing training for new team members.
 
-```
+```text
 Initial training: 3 engineers * 2 weeks * $75/hour * 40 hours = $18,000 (one-time)
 ```
 
@@ -147,7 +147,7 @@ Without mesh-level metrics, each service has its own level of instrumentation. S
 
 Without Istio, traffic management (canary releases, traffic splitting, mirroring) requires custom tooling or is done at the load balancer level. This limits your deployment flexibility.
 
-```
+```text
 Custom canary deployment tooling: 1-2 engineer-months to build
 Ongoing maintenance: 5-10% of one engineer's time
 ```

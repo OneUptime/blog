@@ -18,7 +18,7 @@ JWTs are powerful but require careful implementation. This guide covers the secu
 
 ### What's in a JWT?
 
-```
+```text
 Header.Payload.Signature
 
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.

@@ -144,7 +144,7 @@ sudo systemctl status myapp.service
 
 You should see output like:
 
-```
+```text
 myapp.service - My Node.js Application
      Loaded: loaded (/etc/systemd/system/myapp.service; enabled)
      Active: active (running) since Mon 2026-03-02 10:00:00 UTC; 5s ago

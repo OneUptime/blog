@@ -31,7 +31,7 @@ tcpdump --version
 
 You should see output similar to:
 
-```
+```text
 tcpdump version 4.99.4
 libpcap version 1.10.4 (with TPACKET_V3)
 OpenSSL 3.0.13 30 Jan 2024
@@ -99,7 +99,7 @@ sudo tcpdump -i eth0 -nn -v -c 100
 
 A typical tcpdump output line looks like this:
 
-```
+```text
 14:32:15.123456 IP 192.168.1.100.54321 > 93.184.216.34.443: Flags [S], seq 1234567890, win 65535, options [mss 1460,sackOK,TS val 123456789 ecr 0,nop,wscale 7], length 0
 ```
 

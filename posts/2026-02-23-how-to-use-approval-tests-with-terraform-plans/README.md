@@ -23,7 +23,7 @@ The workflow is:
 5. If they differ, the test fails and shows the diff
 6. A human reviews the diff and either approves the new plan or fixes the issue
 
-```
+```text
 Developer changes code
     |
     v

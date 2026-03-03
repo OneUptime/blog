@@ -124,7 +124,7 @@ Launch Wizard is primarily a console-based experience, but you can also configur
 
 **Instance sizing** - Launch Wizard recommends instance types based on your inputs:
 
-```
+```text
 Workload characteristics you provide:
 - Number of users: 500
 - Database size: 200 GB

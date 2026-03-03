@@ -283,7 +283,7 @@ terraform {
 
 By convention, the `terraform` block goes in a file called `versions.tf` or `providers.tf`. Either name works - the community is split on this. What matters is consistency within your project.
 
-```
+```text
 project/
   versions.tf     # terraform block with required_version and required_providers
   providers.tf    # provider configuration blocks

@@ -294,7 +294,7 @@ Each new line represents another piece of functionality extracted from the monol
 
 Track how much traffic still goes to the legacy system:
 
-```
+```text
 # Percentage of traffic still going to legacy
 sum(rate(istio_requests_total{destination_service="legacy.internal.example.com"}[5m])) /
 sum(rate(istio_requests_total{destination_service=~".*"}[5m])) * 100

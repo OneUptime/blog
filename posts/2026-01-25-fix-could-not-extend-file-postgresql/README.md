@@ -16,7 +16,7 @@ The "could not extend file" error in PostgreSQL occurs when the database cannot 
 
 When you see this error, it usually looks like:
 
-```
+```text
 ERROR: could not extend file "base/16384/16385": No space left on device
 HINT: Check free disk space.
 
@@ -376,7 +376,7 @@ ALTER TABLE large_table SET TABLESPACE extended_storage;
 
 ### Size Planning
 
-```
+```text
 Minimum recommended space:
 - Base installation: 100MB
 - Per database: 2x expected data size (for vacuum overhead)

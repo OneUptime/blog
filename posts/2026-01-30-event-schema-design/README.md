@@ -483,7 +483,7 @@ flowchart TD
 
 **Semantic Versioning (Recommended)**
 
-```
+```text
 event_type: com.example.orders.OrderCreated
 schema_version: 2.1.0
 
@@ -494,13 +494,13 @@ Patch: Documentation or metadata only
 
 **URL-Based Versioning**
 
-```
+```text
 event_type: com.example.orders.v2.OrderCreated
 ```
 
 **Header-Based Versioning**
 
-```
+```text
 schema_version: 2
 content_type: application/vnd.example.order-created.v2+json
 ```

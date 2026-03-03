@@ -22,7 +22,7 @@ Unlike Terraform, which focuses on cloud resource provisioning, Ansible handles 
 
 A well-organized Ansible IaC project looks like this:
 
-```
+```text
 infrastructure/
   inventories/
     production/

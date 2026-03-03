@@ -476,7 +476,7 @@ curl -X GET "https://localhost:9200/data-tenant-1/_search" \
 
 Never have applications point directly to indices:
 
-```
+```text
 # Bad
 https://localhost:9200/products-2024.01.15/_search
 
@@ -486,7 +486,7 @@ https://localhost:9200/products/_search
 
 ### 2. Use Naming Conventions
 
-```
+```text
 Index:  products-v1, products-v2
 Alias:  products (points to active version)
 

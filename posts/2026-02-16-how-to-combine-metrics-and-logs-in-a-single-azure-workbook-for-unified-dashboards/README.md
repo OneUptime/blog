@@ -30,7 +30,7 @@ Workbooks can query all of these in a single page.
 
 A good unified dashboard follows this structure:
 
-```
+```text
 [Time Range Parameter] [Subscription Parameter] [Resource Parameter]
 
 Row 1: Health Summary (Metrics-based stat panels)

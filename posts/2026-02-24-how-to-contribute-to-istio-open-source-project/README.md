@@ -74,7 +74,7 @@ Istio is split across several repositories:
 
 For most contributions, you will work in `istio/istio`:
 
-```
+```text
 istio/
   pilot/           # Traffic management, service discovery
   security/        # Authentication, authorization, certificates

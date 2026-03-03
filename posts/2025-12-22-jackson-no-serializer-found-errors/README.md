@@ -12,7 +12,7 @@ The "No serializer found for class" error occurs when Jackson cannot figure out 
 
 ## Understanding the Error
 
-```
+```text
 com.fasterxml.jackson.databind.exc.InvalidDefinitionException:
 No serializer found for class com.example.User and no properties discovered
 to create BeanSerializer (to avoid exception, disable SerializationFeature.FAIL_ON_EMPTY_BEANS)

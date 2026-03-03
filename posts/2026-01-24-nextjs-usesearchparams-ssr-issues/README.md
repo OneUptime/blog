@@ -33,7 +33,7 @@ sequenceDiagram
 
 You might encounter these errors when using `useSearchParams` incorrectly:
 
-```
+```text
 Error: useSearchParams() should be wrapped in a suspense boundary at page "/search".
 Read more: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
 

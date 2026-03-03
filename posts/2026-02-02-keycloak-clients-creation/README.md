@@ -56,7 +56,7 @@ The Admin Console provides the most visual way to create and configure clients.
 
 Navigate to your Keycloak instance and log in with admin credentials.
 
-```
+```text
 https://your-keycloak-domain/admin/master/console/
 ```
 
@@ -110,13 +110,13 @@ For a **service account** (machine-to-machine):
 Set the valid redirect URIs and web origins.
 
 Example redirect URIs for development:
-```
+```text
 http://localhost:3000/*
 http://localhost:8080/callback
 ```
 
 Example for production:
-```
+```text
 https://app.example.com/auth/callback
 https://app.example.com/silent-renew
 ```

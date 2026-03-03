@@ -147,7 +147,7 @@ istioctl analyze -n default
 
 Look for messages like:
 
-```
+```text
 Warning [IST0118] (Service my-service.default) Port name backend
 (on service my-service.default) doesn't follow the naming convention
 of Istio port.

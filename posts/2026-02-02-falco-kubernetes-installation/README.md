@@ -116,7 +116,7 @@ kubectl logs -n falco -l app.kubernetes.io/name=falco --tail=50
 
 You should see output similar to this.
 
-```
+```text
 2026-02-02T10:00:00.000000Z: Falco version 0.37.0
 2026-02-02T10:00:00.000001Z: Falco initialized with configuration...
 2026-02-02T10:00:00.000002Z: Loading rules from /etc/falco/falco_rules.yaml

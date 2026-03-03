@@ -16,7 +16,7 @@ This post covers how to set up a professional version control workflow for Senti
 
 A well-organized repository makes it easy to find, modify, and test policies. Here is a structure that scales from a handful of policies to hundreds:
 
-```
+```text
 sentinel-policies/
     README.md
     sentinel.hcl
@@ -201,7 +201,7 @@ Sentinel policy changes deserve the same review rigor as application code. Estab
 
 **Require security team review.** For policies in the security category, require approval from at least one security team member. Use GitHub CODEOWNERS:
 
-```
+```text
 # .github/CODEOWNERS
 # Security policies require security team review
 /policies/security/    @myorg/security-team
@@ -257,7 +257,7 @@ In your Terraform Enterprise policy set configuration, reference a specific tag:
 
 Maintain a CHANGELOG in your repository:
 
-```
+```text
 # CHANGELOG
 
 ## v1.5.0 - 2026-02-23
@@ -280,7 +280,7 @@ Maintain a CHANGELOG in your repository:
 
 Large organizations often need multiple policy sets with different scopes. Use a monorepo with subdirectories:
 
-```
+```text
 sentinel-policies/
     global/
         sentinel.hcl

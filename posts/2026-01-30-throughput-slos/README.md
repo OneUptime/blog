@@ -24,7 +24,7 @@ Common throughput SLI examples include:
 
 The formula for a throughput SLI is straightforward:
 
-```
+```text
 Throughput SLI = Actual Throughput / Target Throughput
 ```
 

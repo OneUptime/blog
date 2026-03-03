@@ -62,7 +62,7 @@ Branch: ^main$
 
 The branch field accepts regular expressions. `^main$` matches exactly the `main` branch. Here are some common patterns:
 
-```
+```text
 # Match only the main branch
 ^main$
 
@@ -120,7 +120,7 @@ This creates the same trigger as the UI configuration above. The gcloud approach
 
 Let's put together a full example. Your repository has this structure:
 
-```
+```text
 my-app/
   Dockerfile
   cloudbuild.yaml

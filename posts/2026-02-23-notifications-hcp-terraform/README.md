@@ -83,7 +83,7 @@ resource "tfe_notification_configuration" "dev_slack" {
 
 When a notification fires, HCP Terraform sends a formatted Slack message:
 
-```
+```text
 HCP Terraform - production-networking
 Run errored in workspace production-networking
 Run ID: run-abc123

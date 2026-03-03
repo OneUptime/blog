@@ -146,7 +146,7 @@ For Java applications with stack traces:
 
 A sample log where this pattern works:
 
-```
+```text
 2026-02-12T10:30:15 ERROR com.myapp.OrderService - Failed to process order
 java.lang.NullPointerException: null
     at com.myapp.OrderService.processOrder(OrderService.java:42)

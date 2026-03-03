@@ -14,7 +14,7 @@ The EPHEMERAL partition is where Talos Linux stores all the data that Kubernetes
 
 During installation, Talos creates several partitions on the system disk. The EPHEMERAL partition is always the last one, and it automatically fills all remaining space on the disk after the other partitions (EFI/BIOS, BOOT, META, STATE) are created.
 
-```
+```text
 Typical Talos Disk Layout:
   EFI/BIOS - ~100MB / ~1MB
   BOOT     - ~1GB

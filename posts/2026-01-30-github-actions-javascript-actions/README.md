@@ -25,7 +25,7 @@ JavaScript actions excel when you need speed, cross-platform support, or direct 
 
 A minimal JavaScript action requires three files:
 
-```
+```text
 my-action/
   action.yml       # Action metadata and interface definition
   index.js         # Entry point for the action
@@ -34,7 +34,7 @@ my-action/
 
 For production actions, you will also add:
 
-```
+```text
 my-action/
   action.yml
   dist/

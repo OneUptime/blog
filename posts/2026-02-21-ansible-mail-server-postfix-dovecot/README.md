@@ -20,7 +20,7 @@ You need a server with a public IP, a domain name with proper MX records, and th
 
 Before running the playbook, set up these DNS records:
 
-```
+```text
 # Required DNS records for your mail server
 MX    example.com       mail.example.com    10
 A     mail.example.com  203.0.113.50
@@ -185,7 +185,7 @@ mail_spam_threshold: 5.0
 
 ## Postfix Main Configuration Template
 
-```
+```text
 # roles/mailserver/templates/postfix_main.cf.j2 - Postfix main configuration
 smtpd_banner = $myhostname ESMTP
 biff = no
@@ -240,7 +240,7 @@ message_size_limit = 26214400
 
 ## Dovecot Configuration Template
 
-```
+```text
 # roles/mailserver/templates/dovecot.conf.j2 - Dovecot main config
 protocols = imap lmtp sieve
 

@@ -10,7 +10,7 @@ Description: How to resolve the Provider Configuration Not Present error in Terr
 
 You run `terraform plan` or `terraform destroy` and encounter:
 
-```
+```text
 Error: Provider configuration not present
 
 To work with aws_instance.web its original provider configuration at
@@ -128,7 +128,7 @@ When you remove a module block from your configuration, Terraform needs the prov
 # }
 ```
 
-```
+```text
 Error: Provider configuration not present
 
 To work with module.old_app.aws_instance.web its original provider
@@ -184,7 +184,7 @@ terraform providers
 
 This shows output like:
 
-```
+```text
 Providers required by configuration:
 .
   - hashicorp/aws ~> 5.0
@@ -250,7 +250,7 @@ terraform state pull | jq '.resources[].provider' | sort -u
 
 This gives you a list of all unique provider addresses in your state:
 
-```
+```text
 "provider[\"registry.terraform.io/hashicorp/aws\"]"
 "provider[\"registry.terraform.io/hashicorp/aws\"].west"
 "provider[\"registry.terraform.io/hashicorp/random\"]"

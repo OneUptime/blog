@@ -175,7 +175,7 @@ COMMIT;
 
 When lock timeout triggers:
 
-```
+```text
 ERROR: canceling statement due to lock timeout
 ```
 

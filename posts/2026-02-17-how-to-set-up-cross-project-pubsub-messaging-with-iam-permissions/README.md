@@ -310,7 +310,7 @@ Common issues and how to fix them:
 
 ### Permission Denied on Publish
 
-```
+```text
 google.api_core.exceptions.PermissionDenied: 403 User not authorized to perform this action
 ```
 

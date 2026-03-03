@@ -17,12 +17,12 @@ This guide covers two popular approaches: SQLx's built-in pool and Deadpool for 
 ## Why Connection Pooling?
 
 Without pooling:
-```
+```text
 Request → Connect (50-100ms) → Query (5ms) → Disconnect → Response
 ```
 
 With pooling:
-```
+```text
 Request → Get Connection (0.1ms) → Query (5ms) → Return to Pool → Response
 ```
 

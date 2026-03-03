@@ -19,7 +19,7 @@ systemd-analyze time
 
 Example output:
 
-```
+```text
 Startup finished in 3.156s (firmware) + 1.532s (loader) + 2.456s (kernel) + 8.234s (userspace) = 15.378s
 graphical.target reached after 8.193s in userspace.
 ```
@@ -32,7 +32,7 @@ This breaks down as:
 
 On cloud instances and VMs, the firmware phase is often absent or minimal:
 
-```
+```text
 Startup finished in 1.234s (kernel) + 4.567s (userspace) = 5.801s
 ```
 
@@ -45,7 +45,7 @@ systemd-analyze blame
 
 Example output:
 
-```
+```text
           5.231s mysql.service
           3.456s snapd.service
           2.890s apt-daily-upgrade.service
@@ -73,7 +73,7 @@ systemd-analyze critical-chain multi-user.target
 
 Example output:
 
-```
+```text
 The time when unit became active or started is printed after the "@" character.
 The time the unit took to start is printed after the "+" character.
 
@@ -140,7 +140,7 @@ systemd-analyze security myapp.service
 
 The `security` subcommand scores your service unit's security posture:
 
-```
+```text
 NAME                 DESCRIPTION                             EXPOSURE
 PrivateNetwork=      Service has access to the host's network    0.5
 PrivateTmp=          Service has access to the host's temporary files 0.1

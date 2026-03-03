@@ -40,14 +40,14 @@ flowchart TB
 
 ## Common Quota Error Messages
 
-```
+```text
 Operation could not be completed as it results in exceeding approved
 standardDSv3Family Cores quota. Additional details - Deployment Model:
 Resource Manager, Location: eastus, Current Limit: 100, Current Usage:
 98, Additional Required: 8, (Minimum) New Limit Required: 106.
 ```
 
-```
+```text
 The subscription policy limit for resource type 'cores count' was exceeded.
 The limit for resource type 'Regional vCPUs' is 350 per region.
 ```

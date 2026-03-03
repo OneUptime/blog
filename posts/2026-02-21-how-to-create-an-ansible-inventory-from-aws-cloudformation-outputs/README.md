@@ -217,7 +217,7 @@ ansible-inventory -i inventory/aws_ec2_cfn.yml --graph
 
 The output shows groups based on stack names:
 
-```
+```text
 @all:
   |--@cfn_stack_production_web_stack:
   |  |--ec2-10-0-1-10.compute.internal

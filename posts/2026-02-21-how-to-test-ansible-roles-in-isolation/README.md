@@ -43,7 +43,7 @@ molecule init scenario --driver-name docker
 
 This creates:
 
-```
+```text
 roles/nginx/
   molecule/
     default/
@@ -317,7 +317,7 @@ Create different scenarios for different configurations:
 molecule init scenario --scenario-name tls --driver-name docker
 ```
 
-```
+```text
 roles/nginx/molecule/
   default/
     molecule.yml

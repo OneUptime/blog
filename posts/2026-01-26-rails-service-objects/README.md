@@ -638,7 +638,7 @@ end
 
 As your application grows, organize services by domain:
 
-```
+```text
 app/services/
 ├── application_service.rb
 ├── service_result.rb

@@ -107,7 +107,7 @@ kubectl get pods -n tekton-pipelines
 
 You should see output similar to:
 
-```
+```text
 NAME                                           READY   STATUS    RESTARTS   AGE
 tekton-pipelines-controller-7c4d5b5d8f-abcde   1/1     Running   0          60s
 tekton-pipelines-webhook-6f8f8d5c7b-fghij      1/1     Running   0          60s

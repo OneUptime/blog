@@ -189,7 +189,7 @@ kubectl exec <pod-name> -c istio-proxy -- \
 
 Example output:
 
-```
+```text
 listener.0.0.0.0_8080.ssl.versions.TLSv1.2: 0
 listener.0.0.0.0_8080.ssl.versions.TLSv1.3: 1523
 ```

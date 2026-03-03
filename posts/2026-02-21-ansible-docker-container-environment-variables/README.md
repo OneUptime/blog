@@ -219,7 +219,7 @@ In practice, you often need to combine environment variables from multiple sourc
 
 Structure your inventory so each environment has its own variable file:
 
-```
+```text
 inventory/
   production/
     hosts.ini

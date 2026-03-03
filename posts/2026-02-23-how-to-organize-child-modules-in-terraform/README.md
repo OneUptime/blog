@@ -33,7 +33,7 @@ There are three main approaches to organizing child modules, and the right choic
 
 Best for small to medium projects with fewer than 15 modules.
 
-```
+```text
 project/
   main.tf
   variables.tf
@@ -61,7 +61,7 @@ project/
 
 Better for larger projects where related modules should be grouped together.
 
-```
+```text
 project/
   main.tf
   modules/
@@ -102,7 +102,7 @@ project/
 
 Best for modules shared across multiple projects or teams.
 
-```
+```text
 # Each module in its own repository
 github.com/myorg/terraform-aws-vpc
 github.com/myorg/terraform-aws-ecs-cluster
@@ -188,7 +188,7 @@ output "service_name" {
 
 Good naming conventions prevent confusion as your module library grows.
 
-```
+```text
 # Module directory naming
 # Use lowercase with hyphens
 modules/security-groups/     # Good
@@ -285,7 +285,7 @@ module "load_balancer" {
 
 Sometimes a child module needs to encapsulate repeated logic that does not make sense as a standalone module. Internal helper modules work well for this.
 
-```
+```text
 modules/
   compute/
     main.tf

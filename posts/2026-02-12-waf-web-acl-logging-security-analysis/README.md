@@ -144,7 +144,7 @@ CloudWatch Insights is where WAF logging gets really powerful. Here are some que
 
 This query finds the top IP addresses getting blocked in the last 24 hours.
 
-```
+```text
 # Top 10 blocked IPs in the last 24 hours
 fields @timestamp, httpRequest.clientIp, httpRequest.uri
 | filter action = "BLOCK"
@@ -155,7 +155,7 @@ fields @timestamp, httpRequest.clientIp, httpRequest.uri
 
 This next query helps you identify which rules are firing the most, so you can tune them.
 
-```
+```text
 # Rule match frequency - which rules are doing the most work
 fields @timestamp, terminatingRuleId
 | filter action = "BLOCK"
@@ -166,7 +166,7 @@ fields @timestamp, terminatingRuleId
 
 When investigating a specific IP, this query pulls all their requests.
 
-```
+```text
 # Investigate a specific suspicious IP
 fields @timestamp, httpRequest.uri, httpRequest.httpMethod,
        terminatingRuleId, action, httpRequest.country
@@ -177,7 +177,7 @@ fields @timestamp, httpRequest.uri, httpRequest.httpMethod,
 
 And this one helps detect potential SQL injection or XSS attempts by looking at query strings.
 
-```
+```text
 # Find requests with suspicious query strings
 fields @timestamp, httpRequest.clientIp, httpRequest.uri,
        httpRequest.args

@@ -22,7 +22,7 @@ The simplest approach is to keep all your roles in a single `roles/` directory a
 
 Here is a typical layout:
 
-```
+```text
 project/
   roles/
     common/
@@ -61,7 +61,7 @@ Now your playbooks can live anywhere in the project and still find the roles.
 
 Here is an example with playbooks in a subdirectory:
 
-```
+```text
 project/
   ansible.cfg
   roles/

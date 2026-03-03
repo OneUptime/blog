@@ -20,7 +20,7 @@ The subscription model in ArgoCD notifications has three components:
 
 The annotation format follows this pattern:
 
-```
+```text
 notifications.argoproj.io/subscribe.<trigger-name>.<service-name>: <recipient>
 ```
 

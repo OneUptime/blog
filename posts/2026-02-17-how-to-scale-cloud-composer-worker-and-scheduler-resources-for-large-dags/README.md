@@ -159,7 +159,7 @@ core-max_active_runs_per_dag=5"
 
 The relationship between these settings:
 
-```
+```text
 Total capacity = min(
     core-parallelism,                         # Environment-wide cap
     max_workers * celery-worker_concurrency    # Worker capacity
@@ -216,7 +216,7 @@ If specific DAGs take a long time to parse, optimize them or split them into sep
 
 ### Organize DAGs Efficiently
 
-```
+```text
 # Good: Flat structure with focused files
 dags/
   sales_etl.py          # One or a few related DAGs per file

@@ -12,7 +12,7 @@ Container runtimes like CRI-O and containerd split long log lines into multiple 
 
 CRI-O and containerd both follow the CRI logging format:
 
-```
+```text
 2026-02-06T14:23:45.123456789Z stdout F This is a complete log line
 2026-02-06T14:23:45.123456789Z stdout P This is the first part of a very long log line that exceeds the
 2026-02-06T14:23:45.123456790Z stdout P buffer size and gets split across multiple entries by the container
@@ -184,13 +184,13 @@ The recombine operator has several important parameters:
 While both use the CRI format, there are subtle differences:
 
 ### containerd (newer versions)
-```
+```text
 2026-02-06T14:23:45.123456789Z stdout P partial line content
 2026-02-06T14:23:45.123456790Z stdout F remaining content
 ```
 
 ### CRI-O (some versions)
-```
+```text
 2026-02-06T14:23:45.123456789+00:00 stdout P partial line content
 2026-02-06T14:23:45.123456790+00:00 stdout F remaining content
 ```

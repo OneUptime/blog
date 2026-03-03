@@ -14,7 +14,7 @@ Istio's sidecar proxy runs the Envoy-based `proxyv2` image. By default, every si
 
 When you install Istio, the sidecar injector is configured with a default proxy image. Every injected pod gets this image unless you override it. The image is typically:
 
-```
+```text
 docker.io/istio/proxyv2:<istio-version>
 ```
 

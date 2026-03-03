@@ -45,7 +45,7 @@ Before writing any code, let us establish the vocabulary you will encounter thro
 
 Topics are named channels where messages flow. Producers write messages to topics, and consumers read from them. In Pulsar, topics follow a hierarchical naming scheme:
 
-```
+```text
 persistent://tenant/namespace/topic-name
 ```
 

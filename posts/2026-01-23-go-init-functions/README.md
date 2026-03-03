@@ -29,7 +29,7 @@ func main() {
 ```
 
 **Output:**
-```
+```text
 1. init() called
 2. main() called
 ```
@@ -69,7 +69,7 @@ func main() {
 ```
 
 **Output:**
-```
+```text
 First init
 Second init
 Third init
@@ -142,7 +142,7 @@ func main() {
 ```
 
 **Output:**
-```
+```text
 Initializing a
 Initializing b
 Initializing c
@@ -194,7 +194,7 @@ func main() {
 ```
 
 **Output:**
-```
+```text
 database init
 cache init
 main init

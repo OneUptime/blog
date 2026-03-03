@@ -20,7 +20,7 @@ The Logging query language uses a simple structure of field comparisons combined
 
 The simplest query matches a field value exactly:
 
-```
+```text
 severity=ERROR
 ```
 
@@ -30,7 +30,7 @@ This finds all log entries with ERROR severity.
 
 Use quotes for values with spaces or special characters:
 
-```
+```text
 textPayload="Connection refused"
 ```
 
@@ -54,7 +54,7 @@ Available operators:
 
 The `:` operator is one of the most useful. It performs a substring match within a field:
 
-```
+```text
 textPayload:"connection timeout"
 ```
 
@@ -62,7 +62,7 @@ This finds log entries where `textPayload` contains "connection timeout" anywher
 
 For nested fields, `:` checks if the parent field contains the value anywhere in its structure:
 
-```
+```text
 jsonPayload:"database error"
 ```
 
@@ -74,14 +74,14 @@ This searches through all fields within `jsonPayload` for the string "database e
 
 Multiple expressions on separate lines or separated by spaces are implicitly ANDed:
 
-```
+```text
 resource.type="cloud_run_revision"
 severity>=ERROR
 ```
 
 This is the same as:
 
-```
+```text
 resource.type="cloud_run_revision" AND severity>=ERROR
 ```
 
@@ -89,7 +89,7 @@ resource.type="cloud_run_revision" AND severity>=ERROR
 
 Use `OR` explicitly:
 
-```
+```text
 severity=ERROR OR severity=CRITICAL
 ```
 
@@ -97,13 +97,13 @@ severity=ERROR OR severity=CRITICAL
 
 Negate a condition:
 
-```
+```text
 NOT severity=DEBUG
 ```
 
 Or:
 
-```
+```text
 severity!=DEBUG
 ```
 
@@ -111,7 +111,7 @@ severity!=DEBUG
 
 Combine complex conditions:
 
-```
+```text
 resource.type="cloud_run_revision" AND (severity=ERROR OR severity=CRITICAL)
 ```
 
@@ -119,7 +119,7 @@ resource.type="cloud_run_revision" AND (severity=ERROR OR severity=CRITICAL)
 
 ### By Resource Type
 
-```
+```text
 # Compute Engine instances
 resource.type="gce_instance"
 
@@ -140,7 +140,7 @@ resource.type="cloud_function"
 
 Severity levels in order: DEFAULT, DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY.
 
-```
+```text
 # Exact severity
 severity=ERROR
 
@@ -153,7 +153,7 @@ severity=ERROR OR severity=CRITICAL
 
 ### By Log Name
 
-```
+```text
 # Specific log
 logName="projects/my-project/logs/cloudaudit.googleapis.com%2Factivity"
 
@@ -166,7 +166,7 @@ logName:"syslog"
 
 ### By Timestamp
 
-```
+```text
 # After a specific time
 timestamp>="2026-02-17T10:00:00Z"
 
@@ -181,7 +181,7 @@ timestamp>="2026-02-17T10:00:00Z" AND timestamp<="2026-02-17T12:00:00Z"
 
 ### By Resource Labels
 
-```
+```text
 # Specific VM instance
 resource.labels.instance_id="1234567890"
 
@@ -199,7 +199,7 @@ resource.labels.cluster_name="prod-cluster"
 
 ### Text Payload Searches
 
-```
+```text
 # Exact match
 textPayload="Error: connection refused"
 
@@ -217,7 +217,7 @@ textPayload=~"(?i)fatal error"
 
 When your application writes structured JSON logs, you can filter on specific fields:
 
-```
+```text
 # Exact field value
 jsonPayload.user_id="12345"
 
@@ -238,7 +238,7 @@ jsonPayload.is_retry=true
 
 Audit logs use `protoPayload`:
 
-```
+```text
 # Specific API method
 protoPayload.methodName="SetIamPolicy"
 
@@ -256,7 +256,7 @@ protoPayload.status.code!=0
 
 For logs that include HTTP request data:
 
-```
+```text
 # Specific status code
 httpRequest.status=500
 
@@ -282,7 +282,7 @@ httpRequest.latency.seconds>5
 
 Find errors in a specific service:
 
-```
+```text
 resource.type="cloud_run_revision"
 resource.labels.service_name="payment-service"
 severity>=ERROR
@@ -293,7 +293,7 @@ jsonPayload.error.type="PaymentDeclined"
 
 Use the time range with content filters:
 
-```
+```text
 resource.type="gce_instance"
 resource.labels.instance_id="1234567890"
 timestamp>="2026-02-17T10:25:00Z"
@@ -302,7 +302,7 @@ timestamp<="2026-02-17T10:35:00Z"
 
 ### Searching Across Multiple Resource Types
 
-```
+```text
 (resource.type="cloud_run_revision" OR resource.type="k8s_container")
 severity>=ERROR
 textPayload:"database"
@@ -310,7 +310,7 @@ textPayload:"database"
 
 ### Using Regular Expressions for Pattern Matching
 
-```
+```text
 # Match IP addresses in logs
 textPayload=~"\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}"
 
@@ -323,7 +323,7 @@ textPayload=~"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
 
 ### Excluding Noise from Search Results
 
-```
+```text
 # Find errors but exclude health check noise
 severity>=ERROR
 NOT httpRequest.requestUrl="/healthz"
@@ -334,7 +334,7 @@ NOT textPayload:"health check"
 
 When you have too many results and want a representative subset:
 
-```
+```text
 resource.type="cloud_run_revision"
 sample(insertId, 0.1)
 ```

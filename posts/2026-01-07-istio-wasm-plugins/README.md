@@ -135,7 +135,7 @@ tinygo version
 
 A well-organized WASM plugin project follows this structure. The separation of concerns helps maintain clean code and simplifies the build process:
 
-```
+```text
 my-wasm-plugin/
 ├── Cargo.toml          # Rust dependencies and metadata
 ├── src/

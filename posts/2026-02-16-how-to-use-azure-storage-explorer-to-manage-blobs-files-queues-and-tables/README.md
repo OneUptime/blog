@@ -110,13 +110,13 @@ When you click on a table, Storage Explorer shows the first page of entities. Th
 
 To find specific entities, use the query builder. You can filter by PartitionKey, RowKey, or any other property. For example, to find all entities in a specific partition:
 
-```
+```text
 PartitionKey eq 'customer-123'
 ```
 
 Or to combine conditions:
 
-```
+```text
 PartitionKey eq 'orders' and Timestamp gt datetime'2026-02-01T00:00:00Z'
 ```
 

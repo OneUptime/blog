@@ -263,7 +263,7 @@ jobs:
 
 Create a rules file to customize severity thresholds:
 
-```
+```text
 # zap-rules.tsv
 # Rule ID    Action (IGNORE, WARN, FAIL)
 10021       WARN    # X-Content-Type-Options Header Missing

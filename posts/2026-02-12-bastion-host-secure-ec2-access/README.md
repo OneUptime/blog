@@ -224,7 +224,7 @@ ssh ec2-user@10.0.2.50
 
 Or configure it permanently in your SSH config:
 
-```
+```text
 # ~/.ssh/config
 
 Host bastion

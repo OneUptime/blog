@@ -29,7 +29,7 @@ docker scout quickview myregistry.example.com/myapp:v2.3.1
 
 Typical output looks something like this:
 
-```
+```text
   Target     myapp:latest
   Digest     sha256:abc123...
   Base image node:20-alpine

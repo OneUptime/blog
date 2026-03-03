@@ -70,7 +70,7 @@ If you had local state before, Terraform will ask if you want to migrate it to t
 
 For a single project, a single prefix works fine. But most organizations run multiple Terraform configurations. Here is a structure that scales:
 
-```
+```text
 gs://my-terraform-state-bucket/
   network/terraform.tfstate
   compute/terraform.tfstate

@@ -10,7 +10,7 @@ Test-Driven Development (TDD) is a software development process that relies on t
 
 However, very few developers follow this approach religiously (and we at [OneUptime](https://oneuptime.com) certainly don't). Here’s why:
 
-### Commitment to an API
+## Commitment to an API
 
 TDD requires you to commit to an API before you fully understand what you want from it. This can be a significant drawback, especially in the early stages of development when you’re still exploring different possibilities.
 

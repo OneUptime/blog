@@ -21,7 +21,7 @@ terraform apply
 
 When you run `terraform apply` without a saved plan, Terraform first generates a plan (just like `terraform plan`) and displays it. It then asks for confirmation before proceeding:
 
-```
+```text
 Plan: 2 to add, 0 to change, 0 to destroy.
 
 Do you want to perform these actions?
@@ -80,7 +80,7 @@ When Terraform applies changes, it follows this process:
 
 Real-time output during apply looks like:
 
-```
+```text
 aws_security_group.web_sg: Creating...
 aws_security_group.web_sg: Creation complete after 2s [id=sg-abc123]
 aws_instance.web: Creating...

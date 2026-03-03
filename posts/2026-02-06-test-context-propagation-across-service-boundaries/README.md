@@ -18,7 +18,7 @@ Before testing propagation, it helps to understand what is actually being propag
 
 The W3C Trace Context standard defines two headers for this:
 
-```
+```text
 traceparent: 00-<trace-id>-<span-id>-<trace-flags>
 tracestate: <vendor-specific-data>
 ```

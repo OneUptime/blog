@@ -77,7 +77,7 @@ spec:
 
 If you organize your Istio configs in a directory:
 
-```
+```text
 istio-config/
   gateway.yaml
   virtual-service.yaml
@@ -260,7 +260,7 @@ Be cautious with broad deletes. Removing a VirtualService or DestinationRule can
 
 Kustomize works well with Istio configurations for environment-specific overlays:
 
-```
+```text
 istio-config/
   base/
     kustomization.yaml

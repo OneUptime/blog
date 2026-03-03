@@ -14,7 +14,7 @@ The `/etc/exports` file controls which directories the NFS server shares, who ca
 
 Each line in `/etc/exports` defines one export:
 
-```
+```text
 /path/to/export  client_spec(option1,option2,...) [client_spec2(options...)]
 ```
 
@@ -46,7 +46,7 @@ sudo nano /etc/exports
 
 A minimal working export:
 
-```
+```text
 /srv/nfs/shared  192.168.1.0/24(rw,sync,no_subtree_check)
 ```
 
@@ -54,7 +54,7 @@ A minimal working export:
 
 ### Read/Write vs Read-Only
 
-```
+```text
 # Read-write export
 /srv/nfs/data    192.168.1.0/24(rw,sync,no_subtree_check)
 
@@ -70,7 +70,7 @@ A minimal working export:
 
 Root squashing controls how the root user on NFS clients is treated:
 
-```
+```text
 # Default: root on client maps to nobody on server (secure)
 /srv/nfs/shared  192.168.1.0/24(rw,sync,no_subtree_check,root_squash)
 
@@ -89,13 +89,13 @@ sudo useradd --system --no-create-home --shell /usr/sbin/nologin nfsanon
 id nfsanon  # Note the UID/GID to use in exports
 ```
 
-```
+```text
 /srv/nfs/public  *(ro,sync,no_subtree_check,all_squash,anonuid=999,anongid=999)
 ```
 
 ## Synchronization Options
 
-```
+```text
 # sync: Write operations complete only after data is written to disk
 # More reliable but slower
 /srv/nfs/important  192.168.1.0/24(rw,sync,no_subtree_check)
@@ -109,7 +109,7 @@ Always use `sync` for production data. Use `async` only for scratch/temporary sp
 
 ## Subtree Checking
 
-```
+```text
 # subtree_check: Server verifies requested files are within the exported subtree
 # Slight security benefit but can cause issues with renamed files
 /srv/nfs/shared  192.168.1.0/24(rw,sync,subtree_check)
@@ -122,7 +122,7 @@ Use `no_subtree_check` as the default. The `subtree_check` option was historical
 
 ## Port and Protocol Options
 
-```
+```text
 # insecure: Allow connections from unprivileged ports (>1023)
 # Needed for some NFS client implementations
 /srv/nfs/shared  *(rw,sync,no_subtree_check,insecure)
@@ -133,7 +133,7 @@ Use `no_subtree_check` as the default. The `subtree_check` option was historical
 
 ## Locking Options
 
-```
+```text
 # no_wdelay: Disable write delay (write immediately, don't batch)
 # Improves small write latency but may reduce throughput
 /srv/nfs/realtime  192.168.1.0/24(rw,sync,no_subtree_check,no_wdelay)
@@ -143,7 +143,7 @@ Use `no_subtree_check` as the default. The `subtree_check` option was historical
 
 A powerful feature of `/etc/exports` is specifying different options for different clients:
 
-```
+```text
 # Main export:
 # - Backup server gets read-write with no root squash
 # - Admin workstations get read-write with root squash
@@ -163,7 +163,7 @@ With NFSv4, clients typically mount the "export root" - a pseudo-filesystem that
 sudo nano /etc/default/nfs-kernel-server
 ```
 
-```
+```text
 # The NFSv4 pseudo-root (all exports bind-mount under here)
 RPCNFSDARGS="--nfs-version 4.1 --syslog"
 ```
@@ -187,7 +187,7 @@ sudo nano /etc/fstab
 ```
 
 Add to fstab:
-```
+```text
 /srv/nfs/data     /srv/nfs4/data     none  bind  0  0
 /srv/nfs/backup   /srv/nfs4/backup   none  bind  0  0
 /srv/nfs/archive  /srv/nfs4/archive  none  bind  0  0
@@ -253,7 +253,7 @@ For NFSv4 only, only port 2049 is needed. NFSv3 requires additional ports for mo
 
 ## Complete Example /etc/exports
 
-```
+```text
 # NFSv4 root (pseudo-filesystem)
 /srv/nfs4                   192.168.1.0/24(rw,sync,fsid=0,no_subtree_check,crossmnt,root_squash)
 

@@ -285,7 +285,7 @@ For variable workloads, this can be much cheaper than provisioned MSK because yo
 
 Here's a rough comparison for a moderate workload (5 MB/sec average, 12 partitions).
 
-```
+```text
 MSK Serverless:
 - Cluster: $0.75/hr x 730 = $547.50
 - Partitions: 12 x $0.0015/hr x 730 = $13.14

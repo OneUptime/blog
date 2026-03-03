@@ -148,7 +148,7 @@ curl -X GET "http://elasticsearch:9200/_cat/nodeattrs?v&h=node,attr,value" | gre
 
 Expected output shows each node in a different zone:
 
-```
+```text
 node                        attr value
 elasticsearch-0             zone us-east-1a
 elasticsearch-1             zone us-east-1b

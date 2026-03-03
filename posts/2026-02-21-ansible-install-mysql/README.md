@@ -14,7 +14,7 @@ This post walks through a complete Ansible role that installs MySQL from the off
 
 ## Role Structure
 
-```
+```text
 roles/mysql_install/
   defaults/main.yml
   tasks/

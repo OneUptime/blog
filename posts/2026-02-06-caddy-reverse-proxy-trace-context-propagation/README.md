@@ -12,7 +12,7 @@ When Caddy sits between your clients and backend services, it needs to propagate
 
 The `traceparent` header carries the trace ID, parent span ID, and sampling flag:
 
-```
+```text
 traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
              |  |                                |                |
              v  v                                v                v
@@ -20,12 +20,12 @@ traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
 ```
 
 The `tracestate` header carries vendor-specific data:
-```
+```text
 tracestate: vendor1=value1,vendor2=value2
 ```
 
 The `baggage` header carries application-defined key-value pairs:
-```
+```text
 baggage: userId=alice,requestPriority=high
 ```
 
@@ -37,7 +37,7 @@ When you enable the `tracing` directive, Caddy automatically:
 2. Creates a child span linked to the parent trace
 3. Forwards updated `traceparent`, `tracestate`, and `baggage` headers to the upstream
 
-```
+```text
 # Caddyfile
 {
     tracing {
@@ -53,7 +53,7 @@ When you enable the `tracing` directive, Caddy automatically:
 
 With this configuration, a request flowing through Caddy looks like:
 
-```
+```text
 Client                   Caddy                    Backend
   |                        |                         |
   |-- traceparent: A-B --> |                         |
@@ -85,7 +85,7 @@ The backend receives both the updated `traceparent` (with Caddy's span ID) and t
 
 When Caddy proxies to multiple backends, each upstream gets its own child span:
 
-```
+```text
 # Caddyfile
 {
     tracing {
@@ -151,7 +151,7 @@ The response should show the `traceparent` with the same trace ID but a new pare
 
 If your frontend sends tracing headers from the browser, configure CORS in Caddy to allow them:
 
-```
+```text
 :80 {
     tracing
 
@@ -173,7 +173,7 @@ Without this, browsers will strip the tracing headers in preflight checks.
 
 Caddy often handles TLS termination. Tracing works with both HTTP and HTTPS:
 
-```
+```text
 example.com {
     tracing
 
@@ -191,7 +191,7 @@ The trace span will show `http.scheme: https` for the client-facing connection.
 
 After setting everything up, verify the trace chain in your tracing backend. You should see:
 
-```
+```text
 [Trace ID: abc123...]
   |-- Client request (if instrumented)
       |-- Caddy proxy span (caddy-proxy)

@@ -31,7 +31,7 @@ A solid cross-region backup setup looks like this:
 - Replication copies backups to object storage in Region B
 - Optionally, a third copy goes to Region C for additional safety
 
-```
+```text
 Region A (Primary)           Region B (Backup)          Region C (Archive)
 +------------------+        +------------------+       +------------------+
 | Talos Cluster    |        | S3 Bucket        |       | S3 Bucket        |

@@ -18,7 +18,7 @@ You need Ansible 2.12+ on your control machine and a target server with a public
 
 ## Project Structure
 
-```
+```text
 wireguard-vpn/
   inventory/
     hosts.ini

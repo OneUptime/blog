@@ -16,7 +16,7 @@ This guide shows you how to implement production-grade structured logging in Go 
 
 Traditional log format:
 
-```
+```text
 2026-02-09 14:23:45 INFO User john logged in from 192.168.1.10
 ```
 

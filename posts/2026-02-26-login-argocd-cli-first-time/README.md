@@ -66,7 +66,7 @@ Let us break down the flags:
 
 If the login succeeds, you will see:
 
-```
+```text
 'admin:login' logged in successfully
 Context 'localhost:8080' updated
 ```

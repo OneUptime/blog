@@ -28,7 +28,7 @@ CUPS consists of several interconnected components:
 
 When a document is printed, it flows through CUPS as follows:
 
-```
+```text
 Application → CUPS Scheduler → Filters → Backend → Printer
      ↓              ↓             ↓          ↓
   PostScript    Job Queue    PDF/Raster   USB/IPP/LPD

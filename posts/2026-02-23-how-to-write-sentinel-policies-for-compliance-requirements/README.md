@@ -416,7 +416,7 @@ main = rule {
 
 For organizations with multiple compliance requirements, organize your policies into a library:
 
-```
+```text
 sentinel-policies/
   cis/
     cis-cloudtrail.sentinel

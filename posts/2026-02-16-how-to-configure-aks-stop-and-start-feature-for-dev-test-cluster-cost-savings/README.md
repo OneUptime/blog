@@ -266,7 +266,7 @@ jobs:
 
 Here is a simple formula:
 
-```
+```text
 Monthly savings = (hourly VM cost) x (number of nodes) x (hours stopped per month)
 ```
 

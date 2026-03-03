@@ -54,7 +54,7 @@ kill -3 <pid>
 
 Look for patterns like this in the dump:
 
-```
+```text
 "http-thread-42" BLOCKED
   waiting to lock <0x00000007aaf85e90> (a java.util.HashMap)
   at com.example.CacheService.get(CacheService.java:45)

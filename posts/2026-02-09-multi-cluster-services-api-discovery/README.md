@@ -84,7 +84,7 @@ kubectl get serviceimports -n production --context cluster-2
 
 Output:
 
-```
+```text
 NAME       TYPE        IP                  AGE
 database   ClusterSetIP   242.254.1.10       30s
 ```
@@ -178,7 +178,7 @@ nslookup cassandra.database.svc.clusterset.local
 
 Returns:
 
-```
+```text
 cassandra.database.svc.clusterset.local has address 10.1.2.3
 cassandra.database.svc.clusterset.local has address 10.1.2.4
 cassandra.database.svc.clusterset.local has address 10.2.3.5

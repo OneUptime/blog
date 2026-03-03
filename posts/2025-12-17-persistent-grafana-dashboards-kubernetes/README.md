@@ -265,7 +265,7 @@ Store dashboards in Git and sync automatically.
 
 ### Repository Structure
 
-```
+```text
 monitoring/
   grafana/
     dashboards/

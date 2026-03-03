@@ -14,7 +14,7 @@ Not every file you deploy needs variable substitution. Static configuration file
 
 The `files/` directory is a standard part of the Ansible role structure:
 
-```
+```text
 roles/
   myapp/
     files/
@@ -113,7 +113,7 @@ If you need to deploy a tarball or zip file, put it in `files/` and use `unarchi
 
 For roles with many static files, you can organize them into subdirectories:
 
-```
+```text
 roles/myapp/files/
   certs/
     ca-bundle.crt
@@ -180,7 +180,7 @@ The decision is simple:
 
 Here are some examples of what belongs where:
 
-```
+```text
 files/ (static, no variable substitution):
   - SSL certificates and keys
   - Pre-compiled binaries
@@ -269,7 +269,7 @@ If the validation fails, the file is not deployed and the task fails. This preve
 
 Let's put it all together with a role that deploys a monitoring agent:
 
-```
+```text
 roles/monitoring_agent/
   files/
     agent.gpg

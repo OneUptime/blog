@@ -307,7 +307,7 @@ Every host is in `all`, its functional group, and the relevant cross-cutting gro
 
 Once you have your default groups set up, use `group_vars` directories to keep configurations organized:
 
-```
+```text
 inventory/
   hosts.yml
   group_vars/

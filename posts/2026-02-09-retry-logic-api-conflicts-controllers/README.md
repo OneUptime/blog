@@ -14,7 +14,7 @@ In Kubernetes controllers, conflicts are inevitable. Multiple controllers may up
 
 Conflicts occur when your update is based on an outdated version of a resource. Kubernetes uses optimistic concurrency control through the `resourceVersion` field. When you try to update a resource, the API server checks if your resourceVersion matches the current version. If not, you get a conflict error:
 
-```
+```text
 Error from server (Conflict): Operation cannot be fulfilled on pods "nginx":
 the object has been modified; please apply your changes to the latest version and try again
 ```

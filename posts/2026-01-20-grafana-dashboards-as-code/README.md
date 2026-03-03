@@ -26,7 +26,7 @@ Grafana can automatically load dashboards from files on startup. This is the sim
 
 ### Directory Structure
 
-```
+```text
 /etc/grafana/provisioning/
 ├── dashboards/
 │   └── dashboard-provider.yaml

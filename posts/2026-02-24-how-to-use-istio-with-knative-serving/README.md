@@ -48,7 +48,7 @@ kubectl get pods -n knative-serving
 
 You should see pods for the controller, activator, autoscaler, and the net-istio controller:
 
-```
+```text
 NAME                                     READY   STATUS    RESTARTS   AGE
 activator-abc123-xyz                     1/1     Running   0          1m
 autoscaler-def456-xyz                    1/1     Running   0          1m
@@ -170,7 +170,7 @@ Check the service:
 kubectl get ksvc hello
 ```
 
-```
+```text
 NAME    URL                                     LATESTCREATED   LATESTREADY     READY   REASON
 hello   http://hello.default.example.com        hello-00001     hello-00001     True
 ```

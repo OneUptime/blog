@@ -95,7 +95,7 @@ This flag tells ArgoCD to skip the resource cleanup phase. It effectively:
 
 The CLI will ask for confirmation:
 
-```
+```text
 Are you sure you want to delete 'my-app'? [y/n]
 ```
 

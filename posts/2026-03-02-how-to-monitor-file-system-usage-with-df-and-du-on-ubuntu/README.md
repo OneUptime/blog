@@ -23,7 +23,7 @@ df -h
 
 Output:
 
-```
+```text
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/sda1        50G   32G   16G  68% /
 tmpfs           7.8G  1.2M  7.8G   1% /dev/shm
@@ -62,7 +62,7 @@ df -ih
 
 Output:
 
-```
+```text
 Filesystem      Inodes IUsed IFree IUse% Mounted on
 /dev/sda1        3.2M   980K  2.3M   30% /
 /dev/sda2        6.5M   6.5M     0  100% /var/mail

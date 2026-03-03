@@ -14,7 +14,7 @@ Terraform providers sometimes change names, move registries, or get forked. When
 
 Every resource in your Terraform state is associated with a provider address. That address looks something like:
 
-```
+```text
 registry.terraform.io/hashicorp/aws
 ```
 
@@ -131,7 +131,7 @@ terraform state replace-provider \
 
 Terraform will show you what will change and ask for confirmation:
 
-```
+```text
 Terraform will perform the following actions:
 
   ~ Updating provider:
@@ -320,7 +320,7 @@ Only the `provider` field changes. Everything else - resource type, name, attrib
 
 ### Provider Not Found in State
 
-```
+```text
 Error: Invalid target provider address
 Provider registry.terraform.io/hashicorp/aws does not exist in the current state.
 ```

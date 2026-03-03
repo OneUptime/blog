@@ -17,7 +17,7 @@ A well-partitioned dataset can reduce both query time and cost by 90% or more. L
 Partitioning organizes data into a directory structure based on column values. Instead of dumping all your files into a single S3 prefix, you arrange them into folders that represent specific values.
 
 Without partitioning:
-```
+```text
 s3://my-bucket/events/file001.parquet
 s3://my-bucket/events/file002.parquet
 s3://my-bucket/events/file003.parquet
@@ -25,7 +25,7 @@ s3://my-bucket/events/file003.parquet
 ```
 
 With partitioning by date:
-```
+```text
 s3://my-bucket/events/year=2025/month=01/day=01/file001.parquet
 s3://my-bucket/events/year=2025/month=01/day=02/file002.parquet
 s3://my-bucket/events/year=2025/month=02/day=01/file003.parquet

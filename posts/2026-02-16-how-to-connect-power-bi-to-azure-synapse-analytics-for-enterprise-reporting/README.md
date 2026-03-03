@@ -41,7 +41,7 @@ Choose based on your requirements:
 4. Click "Connect"
 5. Enter the connection details:
 
-```
+```text
 Server: your-synapse-workspace.sql.azuresynapse.net
 Database: your_dedicated_pool
 ```
@@ -53,7 +53,7 @@ Database: your_dedicated_pool
 
 If connecting programmatically or through advanced settings, the connection string looks like this:
 
-```
+```text
 Data Source=your-synapse-workspace.sql.azuresynapse.net;
 Initial Catalog=your_dedicated_pool;
 Authentication=ActiveDirectoryInteractive;
@@ -95,7 +95,7 @@ In Power BI Desktop, paste this query in the "Advanced options" section when set
 
 The serverless SQL pool lets you query data directly in Azure Data Lake Storage without loading it into a dedicated pool. This is great for ad-hoc reporting on data lake files.
 
-```
+```text
 Server: your-synapse-workspace-ondemand.sql.azuresynapse.net
 Database: your_serverless_db
 ```
@@ -270,7 +270,7 @@ WITH (STATE = ON);
 
 Power BI works best with a star schema. Ensure your Synapse tables follow this pattern:
 
-```
+```text
         dim_date
             |
 dim_product -- fact_sales -- dim_geography

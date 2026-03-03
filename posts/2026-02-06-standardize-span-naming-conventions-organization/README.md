@@ -269,7 +269,7 @@ Build a dashboard that shows compliance percentage per team and per service. Set
 
 Here are span naming patterns to specifically avoid:
 
-```
+```text
 Bad:  "processRequest"          (too generic)
 Good: "POST /api/orders"         (specific HTTP operation)
 

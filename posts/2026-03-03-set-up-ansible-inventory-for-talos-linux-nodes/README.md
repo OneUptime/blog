@@ -63,7 +63,7 @@ all:
 
 Group variables let you define settings that apply to all nodes in a particular role. Create a directory structure for group variables:
 
-```
+```text
 inventory/
   hosts.yml
   group_vars/
@@ -172,7 +172,7 @@ node_taints:
 
 For organizations running multiple clusters or environments, create separate inventory directories:
 
-```
+```text
 inventory/
   production/
     hosts.yml

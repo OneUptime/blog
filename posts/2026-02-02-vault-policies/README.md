@@ -622,7 +622,7 @@ path "sys/unseal" {
 
 Store all policies in version control with proper review processes.
 
-```
+```text
 vault-policies/
     README.md
     policies/

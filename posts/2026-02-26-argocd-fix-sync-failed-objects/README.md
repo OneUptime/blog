@@ -12,13 +12,13 @@ The "sync failed: one or more objects failed to apply" error in ArgoCD is a catc
 
 The error usually appears as:
 
-```
+```text
 one or more objects failed to apply, reason: <specific reason>
 ```
 
 Or in the sync result:
 
-```
+```text
 Sync Status:      Failed
 Message:          one or more objects failed to apply
 ```
@@ -41,7 +41,7 @@ argocd app resources my-app
 
 The output will show each resource and its sync status:
 
-```
+```text
 GROUP  KIND        NAMESPACE   NAME           STATUS  HEALTH   HOOK  MESSAGE
        ConfigMap   production  my-config      Synced  Healthy
 apps   Deployment  production  my-app         SyncFailed
@@ -67,7 +67,7 @@ kubectl logs -n argocd deployment/argocd-application-controller | \
 
 The Kubernetes API server rejected the resource because it violates the schema:
 
-```
+```text
 error validating data: ValidationError(Deployment.spec.template.spec.containers[0]):
 unknown field "imagepullpolicy" in io.k8s.api.core.v1.Container
 ```
@@ -102,7 +102,7 @@ kubeconform -strict deployment.yaml
 
 Some Kubernetes fields cannot be changed after creation:
 
-```
+```text
 The Deployment "my-app" is invalid: spec.selector: Invalid value:
 field is immutable
 ```
@@ -147,7 +147,7 @@ metadata:
 
 ArgoCD's service account might not have permission to create or update certain resources:
 
-```
+```text
 error creating resource: deployments.apps is forbidden:
 User "system:serviceaccount:argocd:argocd-application-controller"
 cannot create resource "deployments" in API group "apps" in the namespace "production"
@@ -182,7 +182,7 @@ rules:
 
 The target namespace for a resource does not exist:
 
-```
+```text
 error creating resource: namespaces "production" not found
 ```
 
@@ -210,7 +210,7 @@ metadata:
 
 The namespace has resource quotas that prevent the resource from being created:
 
-```
+```text
 error creating resource: forbidden: exceeded quota: compute-resources,
 requested: limits.cpu=4, used: limits.cpu=8, limited: limits.cpu=10
 ```
@@ -231,7 +231,7 @@ kubectl describe resourcequota compute-resources -n production
 
 Admission webhooks (validating or mutating) might reject the resource:
 
-```
+```text
 error creating resource: admission webhook "validate.example.com" denied the request:
 resource does not comply with policy
 ```
@@ -273,7 +273,7 @@ spec:
 
 The resource exists but was not created by ArgoCD (or was created by a different application):
 
-```
+```text
 error applying resource: the object has been modified; please apply your changes
 to the latest version or use ServerSideApply
 ```
@@ -296,7 +296,7 @@ argocd app sync my-app --force
 
 Trying to apply a custom resource when the CRD does not exist:
 
-```
+```text
 error applying resource: no matches for kind "Certificate" in version "cert-manager.io/v1"
 ```
 

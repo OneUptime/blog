@@ -12,7 +12,7 @@ The "Could not match supplied host pattern" warning appears when Ansible cannot 
 
 ## The Error
 
-```
+```text
 [WARNING]: Could not match supplied host pattern, ignoring: webservers
 ```
 

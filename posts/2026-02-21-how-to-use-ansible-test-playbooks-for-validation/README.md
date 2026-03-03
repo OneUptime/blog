@@ -88,7 +88,7 @@ A test playbook typically follows this pattern:
 
 Keep test playbooks in a `tests/` directory at the same level as your roles:
 
-```
+```text
 project/
   roles/
     webserver/

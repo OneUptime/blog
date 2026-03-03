@@ -185,7 +185,7 @@ gcloud compute forwarding-rules create hybrid-https-rule \
 
 Your on-premises firewall must allow traffic from GCP health check IP ranges and from the VPC subnet ranges:
 
-```
+```text
 # On-premises firewall rules (pseudo-config)
 # Allow health checks from GCP
 ALLOW TCP 8080 FROM 130.211.0.0/22

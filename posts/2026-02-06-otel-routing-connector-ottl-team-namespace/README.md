@@ -12,7 +12,7 @@ In a large organization, different teams often have different observability need
 
 The routing connector is a special component that acts as both an exporter (from the upstream pipeline) and a receiver (for downstream pipelines). It evaluates OTTL expressions against each piece of telemetry and routes it to the appropriate downstream pipeline.
 
-```
+```text
                         +--> [traces/platform] --> [Backend A]
 [OTLP Receiver] --> [routing] --> [traces/payments] --> [Backend B]
                         +--> [traces/default]  --> [Backend C]

@@ -76,7 +76,7 @@ module "vpc" {
 
 <!-- BEGIN_TF_DOCS -->
 <!-- END_TF_DOCS -->
-```
+```text
 
 Then run:
 
@@ -326,7 +326,7 @@ content: |-
   {{ .Inputs }}
 
   {{ .Outputs }}
-```
+```text
 
 This generates a pre-filled usage example from the module's variables, which is extremely helpful for users.
 
@@ -337,3 +337,5 @@ A few things to keep in mind. Always write good `description` fields in your var
 Mark sensitive outputs with `sensitive = true` - terraform-docs will flag these in the generated documentation so users know which values are redacted in Terraform output.
 
 For more on the manual side of documentation, see [how to document Terraform modules with README](https://oneuptime.com/blog/post/2026-02-23-document-terraform-modules-with-readme/view).
+
+```

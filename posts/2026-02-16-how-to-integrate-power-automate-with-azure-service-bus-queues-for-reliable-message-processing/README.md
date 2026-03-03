@@ -191,7 +191,7 @@ Sometimes you need to delay message processing. Service Bus supports scheduled m
 
 In the "Send message" action, set the "Scheduled Enqueue Time UTC" property:
 
-```
+```text
 @{addMinutes(utcNow(), 30)}
 ```
 

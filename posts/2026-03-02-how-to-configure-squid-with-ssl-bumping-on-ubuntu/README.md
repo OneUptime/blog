@@ -236,7 +236,7 @@ request_header_max_size 64 KB
 sudo nano /etc/squid/blocked_domains.txt
 ```
 
-```
+```text
 # One domain per line, with leading dot for all subdomains
 .malware-site.com
 .phishing-example.net

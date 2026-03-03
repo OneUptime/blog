@@ -67,7 +67,7 @@ Google needs to verify that you own the domain. The process depends on your doma
 3. Follow the verification wizard
 4. Add the TXT record provided by Google to your domain's DNS
 
-```
+```text
 # Example TXT record to add to your DNS
 # Record type: TXT
 # Host: @

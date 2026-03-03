@@ -77,7 +77,7 @@ pg_lsclusters
 
 Expected output from `pg_lsclusters`:
 
-```
+```text
 Ver Cluster Port Status Owner    Data directory              Log file
 16  main    5432 online postgres /var/lib/postgresql/16/main /var/log/postgresql/postgresql-16-main.log
 ```

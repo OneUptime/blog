@@ -42,7 +42,7 @@ flowchart TB
 
 ### Error 1: State Store Provider Not Found
 
-```
+```text
 java.lang.IllegalStateException: Error loading state store provider
 org.apache.spark.sql.execution.streaming.state.HDFSBackedStateStoreProvider
 ```
@@ -68,7 +68,7 @@ query = df.writeStream \
 
 ### Error 2: State Store Corrupted
 
-```
+```text
 java.io.IOException: Failed to read state store
 Caused by: java.io.EOFException: Unexpected end of input stream
 ```
@@ -107,7 +107,7 @@ state_df.show(truncate=False)
 
 ### Error 3: State Store Memory Overflow
 
-```
+```text
 java.lang.OutOfMemoryError: GC overhead limit exceeded
 at org.apache.spark.sql.execution.streaming.state.HDFSBackedStateStoreProvider
 ```
@@ -205,7 +205,7 @@ flowchart LR
 
 Version conflicts happen when multiple query instances try to write to the same state store.
 
-```
+```text
 java.lang.IllegalStateException:
 State store version conflict: expected version 100, found version 101
 ```

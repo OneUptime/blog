@@ -18,7 +18,7 @@ Common reasons for migration include organizational standardization on Terraform
 
 Before migrating, understand the key differences:
 
-```
+```text
 Pulumi                              Terraform
 ------                              ---------
 General-purpose languages           HCL (domain-specific)
@@ -54,7 +54,7 @@ This gives you a complete list of resources to migrate.
 
 Pulumi and Terraform resource types have a predictable mapping since they often share the same underlying provider:
 
-```
+```text
 Pulumi Resource Type                    Terraform Resource Type
 --------------------                    ----------------------
 aws:ec2/instance:Instance           ->  aws_instance

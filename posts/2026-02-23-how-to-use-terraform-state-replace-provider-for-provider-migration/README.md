@@ -20,7 +20,7 @@ Other scenarios include migrating from a legacy provider source to the modern `r
 
 Terraform identifies providers by their full source address:
 
-```
+```text
 registry.terraform.io/hashicorp/aws
 |_____________________| |_______| |__|
        hostname        namespace  type
@@ -47,7 +47,7 @@ terraform state replace-provider \
 
 Terraform will show you what will change and ask for confirmation:
 
-```
+```text
 Terraform will perform the following actions:
 
   ~ Updating provider:

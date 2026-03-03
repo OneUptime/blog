@@ -194,7 +194,7 @@ sudo crontab -e
 
 Add this line to renew certificates twice daily:
 
-```
+```text
 0 0,12 * * * certbot renew --quiet --post-hook "systemctl reload nginx"
 ```
 

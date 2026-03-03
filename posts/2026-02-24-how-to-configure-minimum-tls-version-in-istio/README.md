@@ -166,7 +166,7 @@ openssl s_client -connect gateway-ip:443 -tls1_3 -servername app.example.com
 
 For a failed connection (TLS 1.1 when minimum is 1.2), you will see an error like:
 
-```
+```text
 SSL routines:ssl3_read_bytes:tlsv1 alert protocol version
 ```
 
@@ -179,7 +179,7 @@ openssl s_client -connect gateway-ip:443 -servername app.example.com 2>/dev/null
 
 Expected output:
 
-```
+```text
 Protocol  : TLSv1.3
 ```
 
@@ -213,7 +213,7 @@ kubectl exec <pod-name> -c istio-proxy -- \
 
 In Prometheus, you can query:
 
-```
+```text
 envoy_listener_ssl_versions{envoy_ssl_version="TLSv1.2"}
 envoy_listener_ssl_versions{envoy_ssl_version="TLSv1.3"}
 ```

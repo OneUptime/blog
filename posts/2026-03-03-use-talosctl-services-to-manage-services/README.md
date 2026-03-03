@@ -34,7 +34,7 @@ talosctl services --nodes 192.168.1.10
 
 The output shows each service along with its state:
 
-```
+```text
 SERVICE      STATE     HEALTH   LAST CHANGE
 apid         Running   OK       5h30m ago
 containerd   Running   OK       5h30m ago

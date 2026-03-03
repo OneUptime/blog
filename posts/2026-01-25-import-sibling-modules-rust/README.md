@@ -14,7 +14,7 @@ Rust's module system can be confusing when you need to import code from sibling 
 
 Every Rust file is a module. The module hierarchy follows your file structure:
 
-```
+```text
 src/
   main.rs       # Root module (crate)
   lib.rs        # Library root (if library crate)
@@ -132,7 +132,7 @@ pub fn create_owned_product(owner: &User, name: &str) -> Product {
 
 Here is a full project structure showing module imports:
 
-```
+```text
 src/
   main.rs
   lib.rs

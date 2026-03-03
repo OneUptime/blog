@@ -259,11 +259,11 @@ spec:
 
 With ServiceEntry in place, you get full Istio telemetry for external calls. Check metrics in Prometheus:
 
-```
+```text
 istio_requests_total{destination_service="api.stripe.com",reporter="source"}
 ```
 
-```
+```text
 istio_request_duration_milliseconds_bucket{destination_service="api.stripe.com",reporter="source"}
 ```
 

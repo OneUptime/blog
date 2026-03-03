@@ -220,7 +220,7 @@ Add the password to GRUB's custom configuration:
 sudo nano /etc/grub.d/40_custom
 ```
 
-```
+```text
 set superusers="admin"
 password_pbkdf2 admin grub.pbkdf2.sha512.10000.HASH_VALUE_HERE
 ```

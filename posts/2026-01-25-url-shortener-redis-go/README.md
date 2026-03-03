@@ -25,7 +25,7 @@ PostgreSQL or MySQL would work, but you would need caching anyway. Redis elimina
 
 ## Project Structure
 
-```
+```text
 url-shortener/
   main.go
   handlers.go

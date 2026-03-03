@@ -241,7 +241,7 @@ When embedding reports, keep these security points in mind:
 
 **Content Security Policy.** Your web application's CSP headers need to allow framing from lookerstudio.google.com:
 
-```
+```text
 Content-Security-Policy: frame-src https://lookerstudio.google.com
 ```
 

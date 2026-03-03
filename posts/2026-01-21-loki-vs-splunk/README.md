@@ -54,7 +54,7 @@ flowchart TB
 
 ### Splunk Pricing Model
 
-```
+```text
 Splunk Pricing (Approximate):
 - Splunk Cloud: $15-20+ per GB/day ingested
 - Splunk Enterprise: License-based, roughly $1,800-2,000 per GB/day annually
@@ -66,7 +66,7 @@ Example - 100 GB/day:
 
 ### Loki Cost Model
 
-```
+```text
 Loki Costs (Self-Hosted):
 - Software: Free
 - Infrastructure:
@@ -266,7 +266,7 @@ splunk_advantages:
 
 ### Query Performance
 
-```
+```text
 Search Type                  | Loki          | Splunk
 -----------------------------|---------------|----------------
 Label-based queries          | Very Fast     | Fast
@@ -453,7 +453,7 @@ architecture:
 
 ### Scoring Matrix
 
-```
+```text
 Factor                    | Weight | Loki Score | Splunk Score
 --------------------------|--------|------------|-------------
 Total Cost of Ownership   | 25%    | 9          | 4

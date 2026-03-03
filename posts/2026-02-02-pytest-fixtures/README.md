@@ -87,7 +87,7 @@ graph TD
     D --> G[Available to tests/integration/*]
 ```
 
-```
+```text
 tests/
     conftest.py           # Shared fixtures for all tests
     test_basic.py
@@ -983,7 +983,7 @@ pytest --setup-show tests/test_example.py
 
 Output shows fixture lifecycle.
 
-```
+```text
 tests/test_example.py
     SETUP    S postgres_container
     SETUP    M database_connection

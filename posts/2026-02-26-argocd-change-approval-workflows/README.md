@@ -120,7 +120,7 @@ Configure your Git repository so that merges to the production branch require sp
 
 Create a CODEOWNERS file to require approval from specific teams.
 
-```
+```text
 # CODEOWNERS
 # Production changes require platform team approval
 apps/production/ @myorg/platform-team @myorg/sre-team

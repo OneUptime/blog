@@ -87,7 +87,7 @@ pip install "python-jose[cryptography]" "passlib[bcrypt]"
 
 Create the following project structure to keep your code organized. Separating concerns makes the codebase maintainable as it grows.
 
-```
+```text
 graphql-api/
     app/
         __init__.py

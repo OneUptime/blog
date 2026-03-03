@@ -57,7 +57,7 @@ kubectl exec -it deploy/my-app -c istio-proxy -- \
 
 The most important metrics to watch are:
 
-```
+```text
 cluster.outbound|80||my-service.default.svc.cluster.local.upstream_cx_active
 cluster.outbound|80||my-service.default.svc.cluster.local.upstream_cx_total
 cluster.outbound|80||my-service.default.svc.cluster.local.upstream_cx_overflow

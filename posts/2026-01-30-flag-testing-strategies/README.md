@@ -494,7 +494,7 @@ pict flags.model
 
 Output:
 
-```
+```text
 newCheckout darkMode betaFeatures newPayment analyticsV2
 OFF         ON       OFF          ON         OFF
 ON          OFF      ON           OFF        ON

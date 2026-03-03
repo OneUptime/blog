@@ -56,7 +56,7 @@ wg genkey | tee ~/client_private.key | wg pubkey | tee ~/client_public.key
 
 WireGuard assigns tunnel addresses independently of the transport layer. You can assign ULA (Unique Local Address) ranges for the tunnel itself even if your public transport is IPv4.
 
-```
+```text
 # Example address plan:
 # Server tunnel address (IPv4): 10.0.0.1/24
 # Server tunnel address (IPv6): fd00:dead:beef::1/64

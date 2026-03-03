@@ -48,7 +48,7 @@ DNSSEC works through a chain of trust from the root DNS servers down to your dom
 
 ### DNSSEC Record Types
 
-```
+```text
 DNSKEY  - Contains the public keys used for signing
 RRSIG   - Contains the signature for a record set
 DS      - Delegation Signer, links child zone to parent

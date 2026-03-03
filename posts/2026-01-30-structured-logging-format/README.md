@@ -18,7 +18,7 @@ In this guide, we will build a structured logging implementation from scratch, c
 
 Structured logging means outputting logs in a consistent, parseable format rather than free-form text strings. Instead of this:
 
-```
+```text
 2026-01-30 14:23:45 ERROR User login failed for john@example.com - invalid password from 192.168.1.50
 ```
 

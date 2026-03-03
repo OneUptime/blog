@@ -33,7 +33,7 @@ talosctl get volumes --nodes 192.168.1.10
 
 This produces output that shows each volume along with its current state. The output looks something like:
 
-```
+```text
 NODE            NAMESPACE   TYPE     ID          VERSION   PHASE     LOCATION       SIZE
 192.168.1.10    runtime     Volume   BOOT        1         Ready     /dev/sda1      512 MB
 192.168.1.10    runtime     Volume   EFI         1         Ready     /dev/sda2      100 MB

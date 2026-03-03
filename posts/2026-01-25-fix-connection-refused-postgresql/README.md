@@ -16,7 +16,7 @@ The "connection refused" error is one of the first obstacles many developers fac
 
 When you see a connection refused error, it typically looks like this:
 
-```
+```text
 psql: error: could not connect to server: Connection refused
     Is the server running on host "localhost" (127.0.0.1) and accepting
     TCP/IP connections on port 5432?
@@ -182,7 +182,7 @@ sudo -u postgres psql -c "SHOW hba_file;"
 
 ### Understanding pg_hba.conf Format
 
-```
+```text
 # TYPE  DATABASE  USER  ADDRESS       METHOD
 local   all       all                 peer
 host    all       all   127.0.0.1/32  scram-sha-256
@@ -191,7 +191,7 @@ host    all       all   ::1/128       scram-sha-256
 
 ### Common Configurations
 
-```
+```text
 # Allow local socket connections (Unix domain socket)
 local   all             all                     peer
 
@@ -285,7 +285,7 @@ Ensure your connection string or parameters are correct.
 
 ### Connection String Format
 
-```
+```text
 postgresql://username:password@hostname:port/database
 
 # Examples:

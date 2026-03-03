@@ -60,7 +60,7 @@ sudo blkid /dev/sdb1
 
 The output will look something like this:
 
-```
+```text
 /dev/sdb1: LABEL="journald-logs" UUID="a1b2c3d4-e5f6-7890-abcd-ef1234567890" TYPE="ext4"
 ```
 
@@ -70,7 +70,7 @@ Add an entry to `/etc/fstab`:
 sudo nano /etc/fstab
 ```
 
-```
+```text
 # journald log disk
 UUID=a1b2c3d4-e5f6-7890-abcd-ef1234567890  /var/log/journal  ext4  defaults,noatime  0  2
 ```

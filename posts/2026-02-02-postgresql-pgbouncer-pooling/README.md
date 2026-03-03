@@ -319,13 +319,13 @@ Proper pool sizing prevents both connection starvation and resource waste.
 
 The ideal pool size depends on your PostgreSQL server capacity and query patterns. Use this formula as a starting point:
 
-```
+```text
 optimal_pool_size = (cpu_cores * 2) + effective_spindle_count
 ```
 
 For SSD storage, simplify to:
 
-```
+```text
 optimal_pool_size = cpu_cores * 2 to 4
 ```
 

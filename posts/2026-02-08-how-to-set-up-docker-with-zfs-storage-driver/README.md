@@ -167,7 +167,7 @@ docker info | grep -i "storage driver"
 
 The output should show:
 
-```
+```text
  Storage Driver: zfs
 ```
 

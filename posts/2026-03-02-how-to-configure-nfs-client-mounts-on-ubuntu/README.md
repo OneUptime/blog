@@ -117,7 +117,7 @@ For mounts that should be available after reboot, add them to `/etc/fstab`:
 sudo nano /etc/fstab
 ```
 
-```
+```text
 # NFS mount - read-write with performance options
 192.168.1.10:/data/shared  /mnt/nfs/data  nfs4  rw,hard,intr,timeo=600,retrans=2,rsize=1048576,wsize=1048576,noatime,_netdev  0  0
 
@@ -197,7 +197,7 @@ A common problem is that NFS mounts in `/etc/fstab` cause long boot delays if th
 
 Alternatively, use `noauto` and mount via a systemd service or after confirming the network is up:
 
-```
+```text
 192.168.1.10:/data/shared  /mnt/nfs/data  nfs4  rw,hard,noatime,_netdev,noauto  0  0
 ```
 

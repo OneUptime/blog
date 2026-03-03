@@ -94,7 +94,7 @@ export ANSIBLE_GALAXY_SERVER_GALAXY_TOKEN="your_galaxy_token"
 
 The naming convention is:
 
-```
+```text
 ANSIBLE_GALAXY_SERVER_<SERVER_NAME_UPPERCASE>_<OPTION_UPPERCASE>
 ```
 
@@ -147,7 +147,7 @@ ansible-galaxy login --github-token your_github_personal_access_token
 
 This stores the token in `~/.ansible/galaxy_token`. The file is plain text:
 
-```
+```text
 token: your_galaxy_token
 ```
 

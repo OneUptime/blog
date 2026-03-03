@@ -34,7 +34,7 @@ sudo nano /etc/postfix/header_checks
 
 The file format is: `regex_pattern  action  [message]`
 
-```
+```text
 # /etc/postfix/header_checks - Postfix header check rules
 
 # Block messages with no Subject header
@@ -74,7 +74,7 @@ sudo nano /etc/postfix/main.cf
 
 Add or modify:
 
-```
+```text
 # Header checks for incoming SMTP connections
 header_checks = regexp:/etc/postfix/header_checks
 
@@ -114,7 +114,7 @@ Executable attachments are a common malware vector. Block them at the MTA level:
 sudo nano /etc/postfix/header_checks
 ```
 
-```
+```text
 # Block common executable attachment types
 /^Content-Type:.*name=.*\.(ade|adp|bat|chm|cmd|com|cpl|crt|exe|hlp|hta|inf|ins|isp|jse|lnk|mdb|mde|msc|msi|msp|mst|pcd|pif|reg|scr|sct|shs|shb|vb|vbe|vbs|wsc|wsf|wsh)(\s|")/  REJECT Blocked attachment type
 
@@ -126,7 +126,7 @@ sudo nano /etc/postfix/header_checks
 
 Block messages with known spam characteristics:
 
-```
+```text
 # Pharmaceutical spam common patterns
 /^Subject:.*\b(v.?i.?a.?g.?r.?a|c.?i.?a.?l.?i.?s|l.?e.?v.?i.?t.?r.?a)\b/i  REJECT Pharmaceutical spam
 
@@ -144,7 +144,7 @@ Block messages with known spam characteristics:
 
 Remove headers that reveal internal network information:
 
-```
+```text
 # Remove internal IP addresses from Received headers (uncomment for outbound)
 # /^Received:.*192\.168\.|^Received:.*10\.|^Received:.*172\.(1[6-9]|2[0-9]|3[01])\./ IGNORE
 
@@ -161,7 +161,7 @@ Remove headers that reveal internal network information:
 
 Use PREPEND to add informational headers:
 
-```
+```text
 # Add a note to messages that pass header checks
 /^Subject:/ PREPEND X-Header-Checked: yes
 ```
@@ -174,7 +174,7 @@ Similar to header checks, body checks scan the message body:
 sudo nano /etc/postfix/body_checks
 ```
 
-```
+```text
 # Block messages containing known phishing URLs
 /http:\/\/.*\.ru\/.*login/i  REJECT Suspected phishing URL
 
@@ -187,7 +187,7 @@ sudo nano /etc/postfix/body_checks
 
 Register body checks in main.cf:
 
-```
+```text
 body_checks = regexp:/etc/postfix/body_checks
 ```
 
@@ -238,7 +238,7 @@ sudo nano /etc/postfix/main.cf
 
 Add `D` flag to see which checks fire:
 
-```
+```text
 # For debugging, use:
 # header_checks = regexp:/etc/postfix/header_checks
 # Enable debug with D flag in the postfix logging
@@ -254,7 +254,7 @@ sudo grep "header_checks" /var/log/mail.log | tail -20
 
 A specific concern for outbound mail is header injection - where attackers craft messages with embedded newlines to insert additional headers. Postfix handles this at the SMTP level, but you can add extra protection:
 
-```
+```text
 # Check for common header injection patterns
 /^(To|CC|From|Reply-To):.*\n/  REJECT Header injection detected
 
@@ -270,7 +270,7 @@ For more sophisticated attachment filtering, combine header checks with Postfix'
 sudo nano /etc/postfix/main.cf
 ```
 
-```
+```text
 # Enable MIME header checks
 mime_header_checks = regexp:/etc/postfix/mime_header_checks
 ```
@@ -279,7 +279,7 @@ mime_header_checks = regexp:/etc/postfix/mime_header_checks
 sudo nano /etc/postfix/mime_header_checks
 ```
 
-```
+```text
 # Stricter attachment checks in the MIME headers
 /^Content-Type:.*application\/x-msdownload/  REJECT Windows executable attachment
 /^Content-Type:.*application\/x-sh/  REJECT Shell script attachment

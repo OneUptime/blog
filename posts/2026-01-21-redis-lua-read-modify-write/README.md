@@ -19,7 +19,7 @@ A read-modify-write (RMW) operation consists of three steps:
 
 Without atomicity, concurrent RMW operations can lead to race conditions:
 
-```
+```text
 Time    Thread A          Thread B          Value
 0       Read value (10)                     10
 1                         Read value (10)   10

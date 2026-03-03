@@ -65,7 +65,7 @@ We will wrap a “quote of the day” API so you can see how the pieces connect.
 
 This is the minimal file structure for a containerized Node.js application. The Dockerfile sits alongside your application code so Docker can access everything it needs during the build.
 
-```
+```text
 quote-api/
 ├─ package.json      # Node.js project metadata and dependencies
 ├─ server.js         # Application entry point

@@ -73,7 +73,7 @@ sudo nano /etc/snmp/snmpd.conf
 
 Replace the default configuration:
 
-```
+```text
 ###
 # SNMPv3 Configuration for Ubuntu
 ###
@@ -195,7 +195,7 @@ mkdir -p ~/.snmp
 nano ~/.snmp/snmp.conf
 ```
 
-```
+```text
 # Default SNMPv3 credentials
 defVersion 3
 defSecurityName monitoruser
@@ -292,7 +292,7 @@ sudo apt install nagios-plugins-contrib monitoring-plugins-basic
 
 Nagios service definition for load monitoring:
 
-```
+```text
 define service {
     host_name               web-server-01
     service_description     Load Average

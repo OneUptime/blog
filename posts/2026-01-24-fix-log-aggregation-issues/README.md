@@ -232,7 +232,7 @@ When you send logs faster than the backend can accept them, you hit rate limits.
 
 Loki returns specific errors for rate limiting:
 
-```
+```text
 429 Too Many Requests: ingestion rate limit exceeded
 ```
 

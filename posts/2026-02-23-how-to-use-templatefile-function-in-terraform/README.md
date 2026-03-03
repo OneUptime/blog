@@ -257,7 +257,7 @@ resource "local_file" "k8s_deployment" {
 
 Templates are typically stored in a `templates/` directory within your module.
 
-```
+```text
 my-module/
   main.tf
   variables.tf

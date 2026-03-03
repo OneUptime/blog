@@ -12,7 +12,7 @@ By default, MetalLB in Layer 2 mode lets any speaker pod on any node claim your 
 
 MetalLB supports this through the `nodeSelectors` field on the `L2Advertisement` resource. This guide shows you exactly how to set it up, test it, and verify it works.
 
-### Why Limit L2 Advertisement to Specific Nodes
+## Why Limit L2 Advertisement to Specific Nodes
 
 In Layer 2 mode, one MetalLB speaker pod wins an election and starts responding to ARP requests for the LoadBalancer IP. Any node running a speaker pod can win that election. This creates problems in several scenarios.
 
@@ -73,7 +73,7 @@ kubectl get nodes --show-labels | grep ingress
 
 You should see output like:
 
-```
+```text
 node-1   Ready   <none>   45d   v1.29.0   ...,node-role.kubernetes.io/ingress=true
 node-4   Ready   <none>   45d   v1.29.0   ...,node-role.kubernetes.io/ingress=true
 ```

@@ -156,7 +156,7 @@ While functions help within a single policy file, modules let you share code acr
 
 Here is a typical module structure:
 
-```
+```text
 sentinel-policies/
     modules/
         tfplan-functions/

@@ -39,7 +39,7 @@ flowchart TD
 
 **Error Message:**
 
-```
+```text
 Type "Post" must define field "createdAt" required by interface "Node".
 ```
 
@@ -96,7 +96,7 @@ type Comment implements Node {
 
 **Error Message:**
 
-```
+```text
 Interface field "Node.id" expects type "ID!" but "User.id" is type "String!".
 ```
 
@@ -135,7 +135,7 @@ type User implements Node {
 
 **Error Message:**
 
-```
+```text
 Abstract type "Node" must resolve to an Object type at runtime.
 Either the "Node" type should provide a "resolveType" function or
 each possible type should provide an "isTypeOf" function.
@@ -207,7 +207,7 @@ const resolvers = {
 
 **Error Message:**
 
-```
+```text
 Interface field argument "Searchable.search(query:)" expected
 but "Post.search" does not provide argument "query".
 ```
@@ -248,7 +248,7 @@ type Post implements Searchable {
 
 **Error Message:**
 
-```
+```text
 Interface field "Timestamped.updatedAt" expects type "DateTime!"
 but "Draft.updatedAt" is type "DateTime".
 ```

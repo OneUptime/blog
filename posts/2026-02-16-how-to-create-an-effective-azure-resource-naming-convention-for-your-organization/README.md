@@ -27,7 +27,7 @@ A good naming convention provides:
 
 The recommended format follows this pattern:
 
-```
+```text
 {resource-type}-{workload}-{environment}-{region}-{instance}
 ```
 
@@ -71,7 +71,7 @@ Every resource starts with a short prefix that identifies its type. Microsoft ma
 
 Different Azure resources have different naming restrictions:
 
-```
+```text
 Storage Accounts:
   - 3-24 characters
   - lowercase letters and numbers ONLY
@@ -100,7 +100,7 @@ Resource Groups:
 
 For resources with strict character limits (like Windows VMs with 15 characters max), use abbreviated versions:
 
-```
+```text
 Standard:     vm-orderapi-prod-eastus-001
 Abbreviated:  vm-ordapi-p-eu-01
 

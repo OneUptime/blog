@@ -10,7 +10,7 @@ Description: Understand and fix UnhandledPromiseRejectionWarning errors by prope
 
 When you see this warning in your Node.js application:
 
-```
+```text
 UnhandledPromiseRejectionWarning: Error: Something went wrong
 (node:12345) UnhandledPromiseRejectionWarning: Unhandled promise rejection.
 ```

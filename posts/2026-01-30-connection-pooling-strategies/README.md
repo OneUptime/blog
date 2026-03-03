@@ -78,7 +78,7 @@ graph LR
 
 A good starting formula for pool size is based on your database server cores.
 
-```
+```text
 pool_size = (core_count * 2) + spinning_disk_count
 ```
 

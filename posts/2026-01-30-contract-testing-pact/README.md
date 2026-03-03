@@ -297,7 +297,7 @@ pact-broker can-i-deploy \
 
 The response tells you whether deployment is safe:
 
-```
+```text
 Computer says yes \o/
 
 CONSUMER       | C.VERSION | PROVIDER    | P.VERSION | SUCCESS?

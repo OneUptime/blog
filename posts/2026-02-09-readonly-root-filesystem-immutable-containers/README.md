@@ -515,7 +515,7 @@ CMD ["node", "server.js"]
 
 Document required writable volumes in your image documentation:
 
-```
+```text
 # Required Volumes for Read-Only Root Filesystem
 - /tmp - Temporary files
 - /var/cache/app - Application cache

@@ -14,7 +14,7 @@ Monorepos - single repositories containing multiple applications, services, or i
 
 Consider a monorepo with 50 microservices:
 
-```
+```text
 monorepo/
   services/
     api-gateway/
@@ -308,7 +308,7 @@ This makes the dependency on shared resources explicit and visible in ArgoCD.
 
 Organize your monorepo to work well with ArgoCD:
 
-```
+```text
 monorepo/
   services/
     user-service/

@@ -10,7 +10,7 @@ Exemplars link metrics to traces. When you record a histogram measurement, you c
 
 ## How Exemplars Flow
 
-```
+```text
 SDK records metric with exemplar (trace_id, span_id)
   -> OTLP to Collector
   -> Collector exports to Prometheus (remote write or scrape)
@@ -139,7 +139,7 @@ In Grafana, exemplars are displayed as dots on graph panels. Configure the panel
 
 In the Prometheus data source settings:
 
-```
+```text
 Settings -> Data Sources -> Prometheus
   -> Exemplars
     -> Internal link: Tempo
@@ -164,7 +164,7 @@ If the response has an empty `data` array, exemplars are not being stored.
 
 PromQL aggregation functions drop exemplars. If your dashboard query uses `sum()` or `avg()`, exemplars are lost at query time:
 
-```
+```text
 # This drops exemplars
 sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
 

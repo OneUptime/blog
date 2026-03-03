@@ -137,7 +137,7 @@ kubectl logs -n my-app -l gateway.networking.k8s.io/gateway-name=waypoint
 
 Look for upstream connection errors:
 
-```
+```text
 [2024-01-15T10:30:45.123Z] "GET /api/data HTTP/1.1" 503 UF upstream_reset_before_response_started
 ```
 
@@ -183,7 +183,7 @@ kubectl logs -n my-app deploy/waypoint | grep rbac
 
 You should see messages like:
 
-```
+```text
 enforced denied, matched policy ns[my-app]-policy[deny-external]-rule[0]
 ```
 

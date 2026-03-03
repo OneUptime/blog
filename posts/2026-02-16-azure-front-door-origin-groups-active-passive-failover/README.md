@@ -234,7 +234,7 @@ az monitor diagnostic-settings create \
 
 Query the health probe logs to see origin health status changes.
 
-```
+```text
 // Track origin health status changes
 AzureDiagnostics
 | where Category == "FrontDoorHealthProbeLog"

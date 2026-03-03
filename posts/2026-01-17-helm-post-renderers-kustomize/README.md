@@ -86,7 +86,7 @@ helm install myapp charts/myapp \
 
 ### Directory Structure
 
-```
+```text
 project/
 ├── charts/
 │   └── myapp/

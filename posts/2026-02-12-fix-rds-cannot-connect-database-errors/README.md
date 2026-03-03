@@ -166,7 +166,7 @@ Both should return `true`.
 
 If you can reach the instance but authentication fails, you'll see errors like:
 
-```
+```text
 Access denied for user 'admin'@'10.0.1.45' (using password: YES)
 ```
 

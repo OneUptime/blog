@@ -46,7 +46,7 @@ https://console.cloud.google.com/apis/credentials
 
 When creating the OAuth client, add the Keycloak redirect URI:
 
-```
+```text
 # Redirect URI format
 https://your-keycloak-domain/realms/your-realm/broker/google/endpoint
 

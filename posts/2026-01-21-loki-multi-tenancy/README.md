@@ -23,7 +23,7 @@ Before starting, ensure you have:
 
 Loki uses the `X-Scope-OrgID` header to identify tenants:
 
-```
+```text
 Client -> X-Scope-OrgID: tenant-a -> Loki -> Tenant A Data
 Client -> X-Scope-OrgID: tenant-b -> Loki -> Tenant B Data
 ```

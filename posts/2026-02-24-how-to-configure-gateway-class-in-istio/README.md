@@ -28,7 +28,7 @@ When you install Istio, it automatically registers a GatewayClass:
 kubectl get gatewayclass
 ```
 
-```
+```text
 NAME    CONTROLLER                    ACCEPTED   AGE
 istio   istio.io/gateway-controller   True       10m
 ```
@@ -255,7 +255,7 @@ Each GatewayClass operates independently:
 kubectl get gatewayclass
 ```
 
-```
+```text
 NAME             CONTROLLER                    ACCEPTED   AGE
 istio            istio.io/gateway-controller   True       30d
 istio-waypoint   istio.io/gateway-controller   True       30d

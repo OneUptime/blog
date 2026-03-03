@@ -14,7 +14,7 @@ Building a compiler frontend is one of the most rewarding projects for any progr
 
 Before diving into code, let us set up our project structure:
 
-```
+```text
 compiler-frontend/
 ├── Cargo.toml
 └── src/
@@ -536,7 +536,7 @@ Our parser uses recursive descent, which maps grammar rules directly to function
 
 The grammar we will parse (in rough EBNF):
 
-```
+```text
 program     -> (function | statement)* EOF
 function    -> "fn" IDENTIFIER "(" params? ")" "->" type block
 params      -> param ("," param)*

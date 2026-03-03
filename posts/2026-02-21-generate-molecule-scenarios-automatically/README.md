@@ -25,7 +25,7 @@ molecule init scenario multi-node --driver-name docker
 
 This creates a basic structure.
 
-```
+```text
 molecule/
   multi-node/
     converge.yml
@@ -289,7 +289,7 @@ python3 generate_scenarios.py
 
 For team-wide standardization, use Cookiecutter to create a template that everyone uses.
 
-```
+```text
 # Directory structure for the cookiecutter template
 molecule-scenario-template/
   cookiecutter.json

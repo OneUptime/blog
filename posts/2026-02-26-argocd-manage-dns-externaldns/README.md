@@ -260,7 +260,7 @@ spec:
 
 ## Repository Structure
 
-```
+```text
 dns-config/
   base/
     kustomization.yaml

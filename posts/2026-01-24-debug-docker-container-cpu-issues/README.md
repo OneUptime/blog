@@ -27,7 +27,7 @@ docker stats mycontainer --no-stream
 
 Sample output:
 
-```
+```text
 NAME           CPU %     MEM USAGE / LIMIT
 api            125.50%   256MiB / 512MiB
 worker         45.23%    128MiB / 256MiB

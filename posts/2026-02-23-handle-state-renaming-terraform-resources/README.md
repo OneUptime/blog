@@ -108,7 +108,7 @@ resource "aws_instance" "api_server" {
 
 When you run `terraform plan`, Terraform sees the `moved` block and automatically updates the state:
 
-```
+```text
 Terraform will perform the following actions:
 
   # aws_instance.web has moved to aws_instance.api_server

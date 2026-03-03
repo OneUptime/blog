@@ -63,7 +63,7 @@ argocd proj get default
 
 Output shows the project specification:
 
-```
+```text
 Name:                        default
 Description:
 Destinations:                *,*
@@ -396,7 +396,7 @@ spec:
 
 Policies follow a specific format that defines access rules:
 
-```
+```text
 p, <role>, <resource>, <action>, <object>, <allow/deny>
 ```
 
@@ -645,7 +645,7 @@ Consistent naming simplifies management and policy enforcement:
 
 Organize project definitions in a dedicated repository:
 
-```
+```text
 argocd-config/
 ├── projects/
 │   ├── platform/

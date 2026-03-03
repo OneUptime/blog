@@ -123,7 +123,7 @@ When you confirm or strongly suspect a key compromise, the first 30 minutes are 
 
 Within the first 5 minutes, activate your incident response process:
 
-```
+```text
 NOTIFY IMMEDIATELY:
 - DNS/Infrastructure team lead
 - Security team lead
@@ -229,7 +229,7 @@ dnssec-settime -R now Kexample.com.+008+12345.key
 
 Contact your domain registrar immediately:
 
-```
+```text
 REGISTRAR EMERGENCY CONTACT TEMPLATE:
 
 Subject: URGENT - DNSSEC Key Compromise for [domain.com]
@@ -604,7 +604,7 @@ Effective communication is critical during a DNSSEC key compromise. Here is a st
 
 **Initial notification (T+0):**
 
-```
+```text
 SUBJECT: [SECURITY INCIDENT] DNSSEC Key Compromise - [domain.com]
 
 SEVERITY: Critical
@@ -630,7 +630,7 @@ NEXT UPDATE: [Time]
 
 **Status updates (every 30-60 minutes):**
 
-```
+```text
 SUBJECT: [UPDATE #2] DNSSEC Key Compromise - [domain.com]
 
 STATUS: Recovery in Progress
@@ -652,7 +652,7 @@ ESTIMATED COMPLETION: [Time]
 
 **Status page update:**
 
-```
+```text
 Title: DNS Security Maintenance
 
 We are performing emergency maintenance on our DNS infrastructure
@@ -672,7 +672,7 @@ Posted: [Time]
 
 **Customer notification (if required):**
 
-```
+```text
 Subject: Important Security Update - Action May Be Required
 
 Dear [Customer],

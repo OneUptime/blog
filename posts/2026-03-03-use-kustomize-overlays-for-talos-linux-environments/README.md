@@ -16,7 +16,7 @@ On a Talos Linux cluster, this pattern works particularly well because it aligns
 
 Overlays in Kustomize follow a simple principle: you have a base that contains the common configuration, and overlays that modify specific parts for each environment. The base never changes when you deploy to a new environment. Instead, you add or adjust an overlay.
 
-```
+```text
 my-app/
   base/
     kustomization.yaml
@@ -415,7 +415,7 @@ spec:
 
 For a real Talos Linux deployment, you might have overlays for different clusters as well:
 
-```
+```text
 overlays/
   dev-local/       # Local development cluster
   staging-aws/     # Staging on AWS

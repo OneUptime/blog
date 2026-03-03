@@ -18,7 +18,7 @@ In a typical dual-socket server, you have two CPU sockets, each with its own mem
 
 This difference seems small for a single access, but modern applications make billions of memory accesses per second. A workload that constantly crosses NUMA boundaries can lose 20-50% of its potential performance.
 
-```
+```text
 NUMA Node 0                    NUMA Node 1
 +-------------------+          +-------------------+
 | CPU Cores 0-15    |          | CPU Cores 16-31   |

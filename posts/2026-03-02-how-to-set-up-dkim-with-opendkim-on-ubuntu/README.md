@@ -69,7 +69,7 @@ cat /etc/opendkim/keys/example.com/mail.txt
 ```
 
 The `mail.txt` file contains something like:
-```
+```text
 mail._domainkey	IN	TXT	( "v=DKIM1; h=sha256; k=rsa; "
 	  "p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA..." )
 ```

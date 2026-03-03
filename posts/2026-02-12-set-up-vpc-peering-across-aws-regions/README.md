@@ -178,7 +178,7 @@ With DNS resolution enabled, private hostnames in one region resolve to private 
 
 Cross-region peering latency depends on the physical distance between regions:
 
-```
+```text
 Route                          Typical Latency
 us-east-1 to us-west-2        ~60-70ms
 us-east-1 to eu-west-1        ~70-90ms
@@ -192,7 +192,7 @@ This latency is consistent and lower than routing over the public internet, but 
 
 Cross-region data transfer is more expensive than same-region:
 
-```
+```text
 Same-region peering:   $0.01/GB (each direction)
 Cross-region peering:  $0.02/GB (varies by region pair)
 ```

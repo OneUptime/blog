@@ -16,7 +16,7 @@ This guide will walk you through how to identify the missing permission, fix it,
 
 AccessDenied errors in Terraform typically appear during `terraform plan` or `terraform apply`:
 
-```
+```text
 Error: error creating S3 Bucket (my-bucket): AccessDenied: Access Denied
     status code: 403, request id: ABC123XYZ
 

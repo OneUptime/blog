@@ -14,7 +14,7 @@ FRRouting on Ubuntu provides a full OSPF implementation that interoperates with 
 
 ## Lab Topology
 
-```
+```text
 Router A (10.0.1.1) --- 10.0.12.0/30 --- Router B (10.0.12.2)
 Router A (10.0.1.1) --- 10.0.13.0/30 --- Router C (10.0.13.2)
 Router B             --- 10.0.23.0/30 --- Router C (10.0.23.2)
@@ -73,7 +73,7 @@ sudo sysctl -p /etc/sysctl.d/99-ospf.conf
 sudo vtysh
 ```
 
-```
+```text
 configure terminal
 
 ! Set hostname for easier identification in show output
@@ -120,7 +120,7 @@ write memory
 
 ## Router B Configuration
 
-```
+```text
 configure terminal
 
 hostname RouterB
@@ -149,7 +149,7 @@ write memory
 
 ## Router C Configuration
 
-```
+```text
 configure terminal
 
 hostname RouterC
@@ -201,7 +201,7 @@ ip route show | grep ospf
 
 For larger networks, dividing OSPF into multiple areas reduces the LSA flood scope and the size of each router's LSDB. Area 0 is always the backbone; all other areas must connect to it.
 
-```
+```text
 configure terminal
 
 router ospf
@@ -221,7 +221,7 @@ write memory
 
 A stub area does not receive external LSAs (type 5), reducing the LSDB size for routers in that area. Routers in a stub area use a default route to reach external destinations.
 
-```
+```text
 configure terminal
 
 router ospf
@@ -240,7 +240,7 @@ write memory
 
 Inject routes from other protocols (static, connected, BGP) into OSPF:
 
-```
+```text
 configure terminal
 
 router ospf
@@ -262,7 +262,7 @@ write memory
 
 Protect OSPF against unauthorized routers joining the domain:
 
-```
+```text
 configure terminal
 
 interface eth0
@@ -283,7 +283,7 @@ write memory
 
 OSPF timers control how quickly the protocol detects and reacts to topology changes:
 
-```
+```text
 configure terminal
 
 interface eth0

@@ -50,7 +50,7 @@ sudo apt install postfix -y
 
 SPF records are published as TXT records in your DNS. Here's the syntax breakdown:
 
-```
+```text
 v=spf1 [mechanisms] [modifiers]
 ```
 
@@ -595,7 +595,7 @@ EOF
 
 When you receive the test email, view the original message headers. Look for:
 
-```
+```text
 Authentication-Results: mx.google.com;
        dkim=pass header.i=@yourdomain.com header.s=mail;
        spf=pass (google.com: domain of admin@yourdomain.com designates 203.0.113.10 as permitted sender);

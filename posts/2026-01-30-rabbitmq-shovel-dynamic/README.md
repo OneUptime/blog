@@ -101,7 +101,7 @@ rabbitmq-plugins list | grep shovel
 
 Expected output:
 
-```
+```text
 [E*] rabbitmq_shovel                   3.12.0
 [E*] rabbitmq_shovel_management        3.12.0
 ```
@@ -885,7 +885,7 @@ for service in services:
 
 ### Connection String Format
 
-```
+```text
 amqp://username:password@hostname:port/vhost
 ```
 
@@ -900,7 +900,7 @@ Special characters in password must be URL-encoded:
 
 Example with special password `p@ss:word`:
 
-```
+```text
 amqp://user:p%40ss%3Aword@hostname:5672/vhost
 ```
 

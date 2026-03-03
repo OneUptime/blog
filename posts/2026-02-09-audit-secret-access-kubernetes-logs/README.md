@@ -299,7 +299,7 @@ data:
 
 Kibana queries for Secret access:
 
-```
+```text
 # All Secret access
 objectRef.resource: "secrets"
 

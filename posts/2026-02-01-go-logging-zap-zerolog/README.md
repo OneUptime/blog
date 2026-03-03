@@ -16,7 +16,7 @@ Go developers have two exceptional choices for structured logging: Uber's Zap an
 
 Traditional logging produces output like this:
 
-```
+```text
 2026-02-01 10:15:32 ERROR: Failed to process order 12345 for user john@example.com
 ```
 
@@ -311,7 +311,7 @@ func main() {
 
 This produces colorized, readable output:
 
-```
+```text
 10:15:32 INF Query executed component=database latency=45ms
 ```
 

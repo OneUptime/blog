@@ -121,7 +121,7 @@ sudo strace -f -tt -T -e trace=network -p $PID 2>&1 | head -100
 
 Example output for a slow DNS lookup:
 
-```
+```text
 10:23:45.123456 socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP) = 5 <0.000012>
 10:23:45.123500 connect(5, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("10.0.0.2")}, 16) = 0 <0.000008>
 10:23:45.123550 sendto(5, "...", 32, 0, NULL, 0) = 32 <0.000015>

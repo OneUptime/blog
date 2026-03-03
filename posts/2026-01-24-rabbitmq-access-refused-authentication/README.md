@@ -14,7 +14,7 @@ The "Access Refused" error in RabbitMQ is one of the most frustrating issues to 
 
 When you see an error like this:
 
-```
+```text
 pika.exceptions.ProbableAccessDeniedError: ConnectionClosedByBroker: (403) 'ACCESS_REFUSED - Login was refused using authentication mechanism PLAIN. For details see the broker logfile.'
 ```
 
@@ -352,7 +352,7 @@ sudo journalctl -u rabbitmq-server -f | grep -i auth
 
 **Common log messages and their meanings:**
 
-```
+```text
 # Wrong password
 rabbit_auth_backend_internal: user 'myapp' - invalid credentials
 

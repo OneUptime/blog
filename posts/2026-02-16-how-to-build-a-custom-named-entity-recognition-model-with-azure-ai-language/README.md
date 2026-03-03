@@ -321,7 +321,7 @@ for doc_result in result:
 ```
 
 Expected output:
-```
+```text
 Extracted entities:
   [TimeReference] 2:30 PM PST
     Confidence: 0.95

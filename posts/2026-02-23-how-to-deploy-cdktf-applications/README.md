@@ -60,7 +60,7 @@ cdktf diff my-stack
 
 Example output:
 
-```
+```text
 Stack: my-stack
   + aws_vpc.main-vpc
   + aws_subnet.public-subnet
@@ -95,7 +95,7 @@ cdktf deploy '*' --parallelism 5
 
 During deployment, CDKTF shows the progress of each resource:
 
-```
+```text
 Deploying Stack: my-stack
 
   aws_vpc.main-vpc: Creating...

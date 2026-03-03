@@ -55,7 +55,7 @@ Make sure you have the following in place:
 
 Organize your project to keep deployment manifests separate from application code.
 
-```
+```text
 my-app/
 ├── .circleci/
 │   └── config.yml

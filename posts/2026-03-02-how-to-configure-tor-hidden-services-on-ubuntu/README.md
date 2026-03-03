@@ -78,7 +78,7 @@ sudo nano /etc/tor/torrc
 
 Add the following block:
 
-```
+```text
 # Hidden Service configuration
 # HiddenServiceDir is where Tor stores the service keys and hostname
 HiddenServiceDir /var/lib/tor/hidden_service/

@@ -52,7 +52,7 @@ This requires nesting multiple navigator types strategically.
 
 Think of nested navigation as a tree structure:
 
-```
+```text
 Root Navigator (Stack)
 ├── Auth Stack
 │   ├── Login Screen

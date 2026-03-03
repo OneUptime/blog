@@ -120,7 +120,7 @@ kubectl logs <pod-name> -c istio-proxy -f | grep rbac
 
 You will see entries like:
 
-```
+```text
 rbac_log: enforced allowed, matched policy ns[default]-policy[test-policy]-rule[0]
 rbac_log: enforced denied, no matched policy found
 ```
@@ -251,7 +251,7 @@ groups:
 
 Check the rate of 403 responses using PromQL:
 
-```
+```text
 sum(rate(istio_requests_total{response_code="403"}[5m])) by (destination_workload, source_workload)
 ```
 

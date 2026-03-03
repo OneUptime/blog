@@ -199,7 +199,7 @@ For Windows DNS Server, you would add a conditional forwarder for each zone poin
 
 For BIND:
 
-```
+```text
 # BIND conditional forwarding configuration for Azure private zones
 zone "privatelink.database.windows.net" {
     type forward;

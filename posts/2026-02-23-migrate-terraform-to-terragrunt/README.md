@@ -27,7 +27,7 @@ grep -r "backend" --include="*.tf" .
 
 A typical pre-migration Terraform project might look like this:
 
-```
+```text
 infrastructure/
   dev/
     main.tf              # Resource definitions
@@ -73,7 +73,7 @@ terragrunt --version
 
 If your environments have duplicated Terraform code (not just different variable values), extract the shared parts into modules:
 
-```
+```text
 # Before: Code duplicated across environments
 dev/main.tf     -> Contains VPC, ECS, and RDS resources
 staging/main.tf -> Same resources, slightly different values

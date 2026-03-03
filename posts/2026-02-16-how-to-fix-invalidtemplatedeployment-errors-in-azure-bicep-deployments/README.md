@@ -10,7 +10,7 @@ Description: Diagnose and fix InvalidTemplateDeployment errors in Azure Bicep de
 
 You write your Bicep template, run `az deployment group create`, and Azure responds with:
 
-```
+```text
 InvalidTemplateDeployment - The template deployment 'my-deployment' is not valid
 according to the validation procedure.
 ```

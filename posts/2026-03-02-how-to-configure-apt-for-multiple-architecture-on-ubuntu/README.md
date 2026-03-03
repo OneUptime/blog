@@ -83,7 +83,7 @@ By default, when you add an architecture, all existing apt sources serve package
 
 Ubuntu 22.04 and later use the DEB822 format for apt sources:
 
-```
+```text
 # /etc/apt/sources.list.d/ubuntu.sources
 Types: deb
 URIs: http://archive.ubuntu.com/ubuntu
@@ -96,7 +96,7 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 
 To add an ARM architecture source (for cross-compilation or Docker):
 
-```
+```text
 # /etc/apt/sources.list.d/ubuntu-arm.sources
 Types: deb
 URIs: http://ports.ubuntu.com/ubuntu-ports

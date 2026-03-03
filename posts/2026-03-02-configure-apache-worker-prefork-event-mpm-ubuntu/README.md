@@ -16,7 +16,7 @@ Apache's Multi-Processing Module (MPM) determines how it handles connections and
 
 Prefork uses a single-threaded process model. Each child process handles one request at a time. New connections wait until a process is free.
 
-```
+```text
 Main Process
 ├── Worker Process 1  (handles request A)
 ├── Worker Process 2  (handles request B)
@@ -38,7 +38,7 @@ Main Process
 
 Worker uses a hybrid multi-process, multi-thread model. Each process contains multiple threads, and each thread handles one request.
 
-```
+```text
 Main Process
 ├── Child Process 1
 │   ├── Thread 1 (handles request A)
@@ -63,7 +63,7 @@ Main Process
 
 Event is an evolution of Worker that adds asynchronous handling of keep-alive connections. Dedicated threads manage persistent connections, freeing worker threads to handle active requests.
 
-```
+```text
 Main Process
 ├── Child Process 1
 │   ├── Listener Thread (manages keep-alive connections, dispatches requests)
@@ -344,7 +344,7 @@ curl http://localhost/server-status?auto
 
 ## Decision Guide
 
-```
+```text
 Are you using mod_php?
   Yes -> Prefork (only option)
   No (using PHP-FPM or other FastCGI) ->

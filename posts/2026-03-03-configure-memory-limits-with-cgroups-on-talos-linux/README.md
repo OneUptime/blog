@@ -16,7 +16,7 @@ Getting memory configuration right is critical for stability. Set limits too low
 
 When you set memory resources in a Kubernetes pod spec, they map to specific cgroup v2 files:
 
-```
+```text
 Kubernetes                  Cgroup v2 File          Behavior
 -----------                 ---------------         --------
 resources.requests.memory   memory.min              Guaranteed minimum
@@ -37,7 +37,7 @@ resources:
 ```
 
 This translates to:
-```
+```text
 memory.min = 536870912    (512 MiB - guaranteed)
 memory.high = 966367641   (approximately 90% of 1 GiB)
 memory.max = 1073741824   (1 GiB - hard limit)

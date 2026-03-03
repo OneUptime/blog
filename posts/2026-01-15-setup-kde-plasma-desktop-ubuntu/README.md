@@ -734,7 +734,7 @@ sudo nano /etc/X11/xorg.conf.d/20-nvidia.conf
 
 Add the following:
 
-```
+```text
 Section "Device"
     Identifier "NVIDIA Card"
     Driver "nvidia"

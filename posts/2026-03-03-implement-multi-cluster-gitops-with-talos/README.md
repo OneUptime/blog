@@ -22,7 +22,7 @@ GitOps solves these problems by making Git the authoritative source for cluster 
 
 The first decision is how to organize your Git repository. For multi-cluster setups, a monorepo with clear directory structure works well:
 
-```
+```text
 gitops-repo/
   clusters/
     dev/

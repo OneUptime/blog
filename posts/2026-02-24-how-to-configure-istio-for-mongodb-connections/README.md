@@ -275,7 +275,7 @@ This tells the MongoDB sidecar to only know about services in the `database` nam
 
 Track your MongoDB connections through Istio with these Prometheus queries:
 
-```
+```text
 istio_tcp_connections_opened_total{destination_service="mongodb-headless.database.svc.cluster.local"}
 istio_tcp_sent_bytes_total{destination_service="mongodb-headless.database.svc.cluster.local"}
 ```

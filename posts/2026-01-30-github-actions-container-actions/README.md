@@ -45,7 +45,7 @@ flowchart LR
 
 A container action requires three files:
 
-```
+```text
 my-action/
   action.yml      # Action metadata
   Dockerfile      # Container definition
@@ -164,7 +164,7 @@ Let us build a container action that performs security scanning on container ima
 
 ### Project Structure
 
-```
+```text
 security-scan-action/
   action.yml
   Dockerfile

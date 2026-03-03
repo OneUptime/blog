@@ -183,7 +183,7 @@ Using a custom domain with Azure CDN involves two steps: DNS configuration and H
 
 Create a CNAME record in your DNS provider:
 
-```
+```text
 cdn.example.com  CNAME  mycdnendpoint.azureedge.net
 ```
 

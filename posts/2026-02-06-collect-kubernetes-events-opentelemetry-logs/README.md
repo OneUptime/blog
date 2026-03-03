@@ -326,7 +326,7 @@ Common alert rules:
 
 Here is an example using a log-based alert query pattern:
 
-```
+```text
 # Alert query pseudo-code for your observability backend
 severity == "ERROR"
   AND attributes["k8s.event.reason"] IN ("OOMKilling", "FailedScheduling", "NodeNotReady")

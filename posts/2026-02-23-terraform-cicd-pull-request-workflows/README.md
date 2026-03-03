@@ -222,7 +222,7 @@ EOF
 
 Require specific team members to review infrastructure changes:
 
-```
+```text
 # .github/CODEOWNERS
 # Infrastructure changes require platform team review
 /infrastructure/ @myorg/platform-team

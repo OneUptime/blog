@@ -24,7 +24,7 @@ The combination is natural because:
 
 ## Repository Structure
 
-```
+```text
 security/
   kyverno/
     Chart.yaml

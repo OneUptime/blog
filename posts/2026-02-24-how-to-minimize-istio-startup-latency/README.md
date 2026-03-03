@@ -207,7 +207,7 @@ The `server.initialization_time_ms` stat tells you exactly how long Envoy took t
 
 You can also monitor aggregate startup times through Prometheus:
 
-```
+```text
 # Average proxy startup time across all pods
 avg(envoy_server_initialization_time_ms)
 

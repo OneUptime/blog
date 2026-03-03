@@ -85,7 +85,7 @@ echo "Total user-managed keys found: ${TOTAL}"
 
 For each existing key, identify what is using it and plan the migration to a keyless alternative:
 
-```
+```text
 Common migration paths:
 
 1. Application on GCE/GKE -> Use attached service account / Workload Identity

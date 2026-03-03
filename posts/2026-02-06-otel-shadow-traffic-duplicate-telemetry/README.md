@@ -163,7 +163,7 @@ curl -s http://localhost:8888/metrics | grep shadow
 
 You can build a simple dashboard that compares these metrics:
 
-```
+```text
 Shadow Success Rate = sent / (sent + failed) * 100
 Shadow Queue Utilization = queue_size / queue_capacity * 100
 ```

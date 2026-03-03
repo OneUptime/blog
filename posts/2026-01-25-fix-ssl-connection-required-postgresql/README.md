@@ -16,7 +16,7 @@ When connecting to a PostgreSQL database, you might encounter errors like "SSL c
 
 Common SSL-related error messages include:
 
-```
+```text
 FATAL: no pg_hba.conf entry for host "192.168.1.100", user "myuser", database "mydb", SSL off
 psql: error: connection to server failed: SSL is required
 error: sslmode value "require" invalid when SSL support is not compiled in
@@ -213,7 +213,7 @@ ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL'
 
 Edit `pg_hba.conf`:
 
-```
+```text
 # Require SSL for remote connections
 hostssl all         all         0.0.0.0/0         scram-sha-256
 
@@ -270,7 +270,7 @@ SELECT * FROM pg_stat_ssl;
 
 ### Issue 1: Certificate Verification Fails
 
-```
+```text
 SSL error: certificate verify failed
 ```
 
@@ -290,7 +290,7 @@ conn = psycopg2.connect(
 
 ### Issue 2: Hostname Mismatch
 
-```
+```text
 SSL error: hostname mismatch
 ```
 
@@ -304,7 +304,7 @@ openssl x509 -in server.crt -noout -subject
 
 ### Issue 3: SSL Not Compiled In
 
-```
+```text
 sslmode value "require" invalid when SSL support is not compiled in
 ```
 

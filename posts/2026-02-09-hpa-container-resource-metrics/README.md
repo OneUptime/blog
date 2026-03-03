@@ -264,7 +264,7 @@ kubectl describe hpa webapp-hpa
 
 Look for events like:
 
-```
+```text
 Events:
   Type    Reason             Age   From                       Message
   ----    ------             ----  ----                       -------

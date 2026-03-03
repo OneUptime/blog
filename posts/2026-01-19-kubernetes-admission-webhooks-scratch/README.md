@@ -43,7 +43,7 @@ sequenceDiagram
 
 ## Project Structure
 
-```
+```text
 admission-webhook/
 ├── cmd/
 │   └── webhook/

@@ -115,7 +115,7 @@ aws cloudfront get-distribution-config --id E1234567890 \
 
 For S3, use the regional endpoint, not the global one:
 
-```
+```text
 # Correct
 my-bucket.s3.us-east-1.amazonaws.com
 

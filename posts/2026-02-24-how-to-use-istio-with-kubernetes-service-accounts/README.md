@@ -16,13 +16,13 @@ This guide covers how Istio uses Service Accounts, how to set them up correctly,
 
 When Istio's sidecar starts in a pod, it requests a certificate from istiod (the Istio control plane). Istiod verifies the pod's Service Account token and issues an X.509 certificate with a SPIFFE identity in this format:
 
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
 For example, a pod running with Service Account `web-frontend` in namespace `production` gets the identity:
 
-```
+```text
 spiffe://cluster.local/ns/production/sa/web-frontend
 ```
 
@@ -105,7 +105,7 @@ kubectl exec -n production deploy/web-frontend -c istio-proxy -- \
 
 The output should include:
 
-```
+```text
 URI:spiffe://cluster.local/ns/production/sa/web-frontend
 ```
 

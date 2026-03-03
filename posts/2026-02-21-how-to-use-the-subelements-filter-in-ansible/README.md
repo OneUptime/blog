@@ -55,7 +55,7 @@ Each iteration gives you a pair:
 - `item.1` is one element from the nested list (one group)
 
 The loop runs for every combination:
-```
+```text
 alice -> admin
 alice -> developers
 alice -> docker

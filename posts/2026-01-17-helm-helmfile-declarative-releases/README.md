@@ -121,7 +121,7 @@ helmfile destroy
 
 ### Recommended Layout
 
-```
+```text
 helmfile/
 ├── helmfile.yaml           # Main helmfile
 ├── helmfile.d/             # Split helmfiles

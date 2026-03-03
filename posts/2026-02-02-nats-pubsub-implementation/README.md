@@ -236,7 +236,7 @@ NATS subjects use a dot-separated hierarchy. This lets you organize messages log
 
 ### Subject Naming Convention
 
-```
+```text
 orders.created
 orders.updated
 orders.cancelled

@@ -93,7 +93,7 @@ The Environment tab shows all environment variables set in the Istiod process. T
 
 Common variables to check:
 
-```
+```text
 PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_OUTBOUND=true
 PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_INBOUND=true
 PILOT_TRACE_SAMPLING=100.0
@@ -118,7 +118,7 @@ If HeapAlloc is close to HeapSys and both are near your memory limit, Istiod nee
 
 Shows the exact Istiod build information:
 
-```
+```text
 Version: 1.20.0
 GitRevision: abc123def
 GolangVersion: go1.21.5

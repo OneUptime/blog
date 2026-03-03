@@ -16,7 +16,7 @@ I set this up for a team of eight data engineers, and it eliminated a whole clas
 
 Organize your repository to separate DAGs, tests, and configuration:
 
-```
+```text
 composer-dags/
   dags/
     etl_pipeline.py

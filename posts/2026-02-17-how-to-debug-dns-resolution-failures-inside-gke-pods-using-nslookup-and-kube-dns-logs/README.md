@@ -55,7 +55,7 @@ kubectl exec dns-debug -- cat /etc/resolv.conf
 
 You should see something like:
 
-```
+```text
 nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5

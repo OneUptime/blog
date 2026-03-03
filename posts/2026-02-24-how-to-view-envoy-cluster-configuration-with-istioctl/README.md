@@ -31,7 +31,7 @@ istioctl proxy-config clusters productpage-v1-abc123.default
 
 Output:
 
-```
+```text
 SERVICE FQDN                                    PORT   SUBSET   DIRECTION   TYPE          DESTINATION RULE
 BlackHoleCluster                                -      -        -           STATIC
 PassthroughCluster                              -      -        -           ORIGINAL_DST

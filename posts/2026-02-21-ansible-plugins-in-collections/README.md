@@ -16,7 +16,7 @@ This guide covers how to structure plugins inside a collection, the naming conve
 
 A collection follows a strict directory layout. Ansible discovers plugins based on their location within this structure.
 
-```
+```text
 collections/
   ansible_collections/
     myorg/
@@ -276,7 +276,7 @@ ansible-galaxy collection install -r requirements.yml
 
 Structure your tests alongside the plugins:
 
-```
+```text
 tests/
   unit/
     plugins/

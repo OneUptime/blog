@@ -32,7 +32,7 @@ If you have a microservices architecture with 20 services all talking to each ot
 
 Before optimizing, figure out how much cross-zone traffic you currently have. Use Istio metrics:
 
-```
+```text
 # Total bytes transferred cross-zone (approximate)
 sum(rate(istio_tcp_sent_bytes_total{reporter="source"}[24h])) by (source_workload, destination_workload)
 ```
@@ -194,7 +194,7 @@ For these, either skip locality settings or use a looser distribution.
 
 Track the percentage of local vs. cross-zone traffic over time:
 
-```
+```text
 # Percentage of same-zone traffic
 sum(rate(istio_requests_total{
   reporter="source",

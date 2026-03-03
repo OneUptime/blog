@@ -53,7 +53,7 @@ sha256sum -c terraform_${TERRAFORM_VERSION}_SHA256SUMS --ignore-missing
 
 Expected output:
 
-```
+```text
 terraform_1.7.5_linux_amd64.zip: OK
 ```
 
@@ -106,7 +106,7 @@ gpg --list-keys --fingerprint security@hashicorp.com
 
 The key fingerprint should match what HashiCorp publishes on their security page. At the time of writing, the primary signing key fingerprint is:
 
-```
+```text
 C874 011F 0AB4 0511 0D02 1055 3436 5D94 72D7 468F
 ```
 
@@ -121,13 +121,13 @@ gpg --verify terraform_${TERRAFORM_VERSION}_SHA256SUMS.sig terraform_${TERRAFORM
 
 Expected output (the important line):
 
-```
+```text
 gpg: Good signature from "HashiCorp Security (hashicorp.com/security) <security@hashicorp.com>"
 ```
 
 You might also see a warning about the key not being certified with a trusted signature. This is normal unless you have explicitly signed HashiCorp's key with your own GPG key:
 
-```
+```text
 gpg: WARNING: This key is not certified with a trusted signature!
 gpg:          There is no indication that the signature belongs to the owner.
 ```

@@ -67,7 +67,7 @@ For a more accurate picture, use the Metrics Explorer in Cloud Monitoring. Searc
 
 Once you know your daily ingestion volume, calculating the monthly cost is straightforward.
 
-```
+```text
 Monthly cost = (Daily GiB ingested - (50 GiB free / 30 days)) * 30 * price per GiB
 ```
 

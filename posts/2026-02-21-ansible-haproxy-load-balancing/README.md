@@ -51,7 +51,7 @@ HAProxy is a high-performance load balancer used in production by major companie
 
 ## HAProxy Configuration Template
 
-```
+```text
 # roles/haproxy/templates/haproxy.cfg.j2
 global
     maxconn {{ haproxy_maxconn | default(50000) }}

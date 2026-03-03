@@ -53,7 +53,7 @@ Here are some of the issues it detects:
 
 Example output:
 
-```
+```text
 Warning [IST0101] (VirtualService my-app.app) Referenced host not found: "my-app.app.svc.cluster.local"
 Error [IST0104] (Gateway my-gateway.istio-system) Referenced credential not found: "my-tls-cert"
 Info [IST0102] (Namespace app) The namespace is not enabled for Istio injection

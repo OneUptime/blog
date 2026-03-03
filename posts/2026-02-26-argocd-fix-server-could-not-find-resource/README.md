@@ -16,7 +16,7 @@ Let me walk through the common causes and fixes.
 
 This error comes from the Kubernetes API server, not from ArgoCD itself. When ArgoCD tries to create, read, or update a resource, it sends a request to the API server. If the API server does not know about the resource kind, it returns this error.
 
-```
+```text
 ComparisonError: the server could not find the requested resource (get monitoring.coreos.com/v1 ServiceMonitor)
 ```
 

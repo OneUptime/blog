@@ -43,7 +43,7 @@ sudo fdisk -l /dev/sdb
 
 Output for a fresh unpartitioned disk:
 
-```
+```text
 Disk /dev/sdb: 200 GiB, 214748364800 bytes, 419430400 sectors
 Disk model: QEMU HARDDISK
 Units: sectors of 1 * 512 = 512 bytes
@@ -61,7 +61,7 @@ sudo gdisk /dev/sdb
 
 gdisk prompts:
 
-```
+```text
 GPT fdisk (gdisk) version 1.0.8
 
 Partition table scan:
@@ -97,7 +97,7 @@ The `Creating new GPT entries in memory` message means gdisk will create a new G
 
 The simplest case - one partition covering the entire disk:
 
-```
+```text
 Command (? for help): n
 Partition number (1-128, default 1): [Enter]
 First sector (34-419430366, default = 2048) or {+-}size{KMGTP}: [Enter]
@@ -113,7 +113,7 @@ Accepting defaults for first and last sector uses the entire disk with proper al
 
 Create three partitions: 1GB boot, 4GB swap, and the rest for data:
 
-```
+```text
 Command (? for help): n
 Partition number (1-128, default 1): [Enter]
 First sector (34-419430366, default = 2048): [Enter]
@@ -139,7 +139,7 @@ Hex code or GUID (L to show codes, Enter = 8300): [Enter]
 
 ### Common partition type codes
 
-```
+```text
 8300  Linux filesystem (general purpose)
 8200  Linux swap
 ef00  EFI System Partition
@@ -150,7 +150,7 @@ fd00  Linux RAID
 
 Show all type codes within gdisk:
 
-```
+```text
 Command (? for help): L
 ```
 
@@ -158,13 +158,13 @@ Command (? for help): L
 
 Always check the partition table before committing:
 
-```
+```text
 Command (? for help): p
 ```
 
 Output:
 
-```
+```text
 Disk /dev/sdb: 419430400 sectors, 200.0 GiB
 Sector size (logical/physical): 512/512 bytes
 Disk identifier (GUID): ...
@@ -177,7 +177,7 @@ Number  Start (sector)    End (sector)  Size       Code  Name
 
 Run verification:
 
-```
+```text
 Command (? for help): v
 
 No problems found. 0 partitions are in the GUID Partition Table.
@@ -187,7 +187,7 @@ No problems found. 0 partitions are in the GUID Partition Table.
 
 When satisfied with the layout:
 
-```
+```text
 Command (? for help): w
 
 Final checks complete. About to write GPT data. THIS WILL OVERWRITE EXISTING
@@ -215,7 +215,7 @@ sudo blkid /dev/sdb1 /dev/sdb2 /dev/sdb3
 
 Expected lsblk output:
 
-```
+```text
 NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
 sdb      8:16   0  200G  0 disk
 ├─sdb1   8:17   0    1G  0 part

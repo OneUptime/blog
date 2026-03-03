@@ -36,7 +36,7 @@ A code push triggers the pipeline. It runs tests, trains the model, evaluates it
 
 First, organize your ML project for CI/CD. Here is the structure I use.
 
-```
+```text
 ml-project/
   src/
     features/

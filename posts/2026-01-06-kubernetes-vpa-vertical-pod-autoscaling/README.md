@@ -114,7 +114,7 @@ kubectl describe vpa web-api-vpa -n production
 ```
 
 Output:
-```
+```text
 Recommendation:
   Container Recommendations:
     Container Name:  web-api

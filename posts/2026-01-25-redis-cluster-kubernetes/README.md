@@ -18,7 +18,7 @@ Deploying Redis Cluster on Kubernetes requires careful consideration of networki
 
 A Redis Cluster distributes data across multiple master nodes, each with optional replicas for failover:
 
-```
+```text
 +-------------------+     +-------------------+     +-------------------+
 |  Master 0         |     |  Master 1         |     |  Master 2         |
 |  Slots: 0-5460    |     |  Slots: 5461-10922|     |  Slots: 10923-16383|

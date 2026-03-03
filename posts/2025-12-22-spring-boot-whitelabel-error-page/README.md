@@ -138,7 +138,7 @@ public class UserController {
 
 **Fix:** Add static resources to correct location:
 
-```
+```text
 src/main/resources/
     static/
         index.html
@@ -164,7 +164,7 @@ public class PageController {
 
 **Fix:** Create the template file:
 
-```
+```text
 src/main/resources/templates/home.html
 ```
 
@@ -202,7 +202,7 @@ spring:
 
 Create files in `src/main/resources/static/error/`:
 
-```
+```text
 static/
     error/
         404.html

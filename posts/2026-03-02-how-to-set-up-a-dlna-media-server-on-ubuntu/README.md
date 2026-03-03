@@ -179,7 +179,7 @@ From the web interface, go to Settings -> Libraries -> Add Library:
 - **Music**: Add `/home/user/Music` - scans for music with embedded tags
 
 For Plex to properly organize TV shows, use the naming convention:
-```
+```text
 /TVShows/Show Name/Season 01/Show Name - S01E01 - Episode Title.mkv
 ```
 
@@ -252,7 +252,7 @@ ls /mnt/dlna
 
 Both MiniDLNA and Plex work better with organized media:
 
-```
+```text
 /home/user/
 ├── Videos/
 │   ├── Movies/

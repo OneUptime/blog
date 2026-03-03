@@ -282,7 +282,7 @@ MIT
 
 The `docs/` directory can contain additional documentation files. Ansible Galaxy and automation hub render these:
 
-```
+```text
 docs/
   docsite/
     rst/

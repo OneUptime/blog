@@ -18,7 +18,7 @@ Redis Pub/Sub operates on a fire-and-forget principle. Publishers send messages 
 
 This architecture diagram shows the basic flow:
 
-```
+```text
 ┌──────────────┐         ┌─────────────┐         ┌──────────────┐
 │  Publisher   │────────>│   Redis     │────────>│  Subscriber  │
 │   Client     │         │   Server    │         │   Client A   │

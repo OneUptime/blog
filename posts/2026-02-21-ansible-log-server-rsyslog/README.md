@@ -138,7 +138,7 @@ rsyslog_allowed_sources:
 
 ## Server Configuration Template
 
-```
+```text
 # roles/rsyslog_server/templates/rsyslog-server.conf.j2 - rsyslog receiver config
 
 # Load required modules
@@ -187,7 +187,7 @@ if $fromhost-ip != '127.0.0.1' then {
 
 ## Log Rotation Template
 
-```
+```text
 # roles/rsyslog_server/templates/logrotate-remote.conf.j2
 {{ rsyslog_log_base_dir }}/*/*.log {
     daily
@@ -234,7 +234,7 @@ if $fromhost-ip != '127.0.0.1' then {
 
 ## Client Configuration Template
 
-```
+```text
 # roles/rsyslog_client/templates/rsyslog-client.conf.j2
 {% if rsyslog_tls_enabled %}
 # TLS configuration for secure log forwarding

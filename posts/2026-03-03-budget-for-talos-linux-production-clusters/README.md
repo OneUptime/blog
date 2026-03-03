@@ -28,7 +28,7 @@ A complete Talos Linux cluster budget should include:
 
 Start by defining your workload requirements. Here is a worksheet approach:
 
-```
+```text
 Step 1: Inventory your workloads
 +------------------+------+--------+----------+
 | Workload         | CPU  | Memory | Storage  |
@@ -65,7 +65,7 @@ Step 3: Choose node size and count
 
 For startups or small teams running 10-30 microservices:
 
-```
+```text
 Control Plane: 3x t3.large ($0.0832/hr each)
   Monthly: 3 x $0.0832 x 730 = $182.21
 
@@ -80,7 +80,7 @@ With 1-year reserved instances (40% savings): $529.81/month
 
 For mid-sized companies running 50-100 services:
 
-```
+```text
 Control Plane: 3x m5.xlarge ($0.192/hr each)
   Monthly: 3 x $0.192 x 730 = $420.48
 
@@ -95,7 +95,7 @@ With reserved instances: $2,775.17/month
 
 For enterprises running 200+ services with high availability:
 
-```
+```text
 Control Plane: 5x m5.2xlarge ($0.384/hr each)
   Monthly: 5 x $0.384 x 730 = $1,401.60
 
@@ -232,7 +232,7 @@ replication: 500 GB x $0.02/GB = $10/month
 
 ### Small Production Cluster
 
-```
+```text
 Category              | Monthly    | Annual
 ----------------------+------------+---------
 Compute (reserved)    | $530       | $6,360
@@ -247,7 +247,7 @@ Total                 | $2,106     | $25,272
 
 ### Medium Production Cluster
 
-```
+```text
 Category              | Monthly    | Annual
 ----------------------+------------+---------
 Compute (reserved)    | $2,775     | $33,300

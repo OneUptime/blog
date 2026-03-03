@@ -12,7 +12,7 @@ This error occurs when you specify a `become_method` (like sudo or su) without a
 
 ## The Error
 
-```
+```text
 ERROR! become_method requires become to be set to true
 ```
 

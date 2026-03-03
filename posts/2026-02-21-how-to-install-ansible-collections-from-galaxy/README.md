@@ -28,7 +28,7 @@ ansible-galaxy collection list
 
 Output looks something like this:
 
-```
+```text
 Collection        Version
 ----------------- -------
 community.docker  3.8.0
@@ -219,7 +219,7 @@ ansible-galaxy collection install community.docker -v
 
 The verbose output shows which dependencies are being pulled in:
 
-```
+```text
 Installing 'community.docker:3.8.0' to '~/.ansible/collections/ansible_collections/community/docker'
 Downloading https://galaxy.ansible.com/api/v3/...
 Installing 'community.library_inventory_filtering_v1:1.0.0'...

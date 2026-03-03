@@ -327,7 +327,7 @@ If you're sending logs to CloudWatch, use Insights for quick analysis.
 
 This CloudWatch Insights query finds the top talkers by bytes transferred:
 
-```
+```text
 fields @timestamp, srcaddr, dstaddr, dstport, bytes, action, flow_direction
 | filter action = "ACCEPT"
 | stats sum(bytes) as total_bytes by srcaddr, dstaddr, dstport
@@ -337,7 +337,7 @@ fields @timestamp, srcaddr, dstaddr, dstport, bytes, action, flow_direction
 
 Find SYN floods (possible DDoS):
 
-```
+```text
 fields @timestamp, srcaddr, dstaddr, dstport, tcp_flags, action
 | filter tcp_flags = 2 and action = "REJECT"
 | stats count(*) as syn_count by srcaddr

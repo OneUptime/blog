@@ -84,7 +84,7 @@ app.listen(3000, () => {
 
 When working correctly, you should see these spans for a request to `GET /api/users`:
 
-```
+```text
 GET /api/users                    [================] 15ms    (HTTP span)
   middleware - query               [=]                1ms    (Express middleware)
   middleware - expressInit         [=]                0.5ms  (Express middleware)

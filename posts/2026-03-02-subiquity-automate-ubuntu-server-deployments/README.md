@@ -197,7 +197,7 @@ python3 -m http.server 8080
 
 The kernel command line parameter to pass to the installer:
 
-```
+```text
 autoinstall ds=nocloud-net;s=http://192.168.1.100:8080/
 ```
 
@@ -287,7 +287,7 @@ virsh console test-ubuntu
 
 For large-scale bare-metal provisioning, combine autoinstall with PXE:
 
-```
+```text
 # GRUB PXE menu entry
 menuentry "Ubuntu 24.04 Autoinstall" {
     set gfxpayload=keep

@@ -99,7 +99,7 @@ git push
 
 This is the recommended approach for most teams. Use one branch (main) with Kustomize overlays for each environment:
 
-```
+```text
 config-repo/
 ├── base/
 │   ├── kustomization.yaml
@@ -200,7 +200,7 @@ git push origin production/v2.3.2
 
 Regardless of strategy, protect production deployments with branch protection and CODEOWNERS:
 
-```
+```text
 # CODEOWNERS
 # Platform team must approve all production changes
 overlays/production/ @myorg/platform-team

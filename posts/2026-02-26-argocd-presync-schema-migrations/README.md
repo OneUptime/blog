@@ -149,7 +149,7 @@ spec:
 
 Store migration files alongside your application code in the Git repository:
 
-```
+```text
 my-app/
   migrations/
     001_create_users_table.sql

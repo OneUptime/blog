@@ -28,7 +28,7 @@ Out of the box, Azure API Management does not add CORS headers to responses. If 
 
 The result is a browser console error like:
 
-```
+```text
 Access to XMLHttpRequest at 'https://myapi.azure-api.net/users' from origin 'https://myapp.com'
 has been blocked by CORS policy: Response to preflight request doesn't pass access control check:
 No 'Access-Control-Allow-Origin' header is present on the requested resource.
@@ -131,7 +131,7 @@ The browser considers `Content-Type: application/json` a non-simple header, so i
 
 If your backend API also adds CORS headers and the APIM CORS policy adds them too, you end up with duplicate headers. The browser sees something like:
 
-```
+```text
 Access-Control-Allow-Origin: https://myapp.com, https://myapp.com
 ```
 

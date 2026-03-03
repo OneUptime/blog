@@ -28,13 +28,13 @@ This takes a few seconds. If your application starts faster and immediately trie
 
 Here is what the failure looks like in application logs:
 
-```
+```text
 Error: connect ECONNREFUSED 127.0.0.1:15001
 ```
 
 Or for HTTP clients:
 
-```
+```text
 Error: upstream connect error or disconnect/reset before headers. reset reason: connection failure
 ```
 
@@ -177,7 +177,7 @@ spec:
 
 The relationship between these timeouts should be:
 
-```
+```text
 terminationGracePeriodSeconds > terminationDrainDuration > application shutdown time
 ```
 

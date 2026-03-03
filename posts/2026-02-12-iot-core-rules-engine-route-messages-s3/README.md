@@ -151,7 +151,7 @@ aws iot create-topic-rule \
 
 The S3 key uses IoT SQL functions to create a well-organized path:
 
-```
+```text
 raw/telemetry/{device_id}/{year}/{month}/{day}/{hour}/{timestamp}-{uuid}.json
 ```
 

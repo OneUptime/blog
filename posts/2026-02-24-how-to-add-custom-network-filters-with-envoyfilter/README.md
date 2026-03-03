@@ -16,7 +16,7 @@ The distinction is important. HTTP filters sit inside the `envoy.filters.network
 
 Network filters sit at the listener level and process all traffic, regardless of protocol. The filter chain for a typical Istio listener looks like this:
 
-```
+```text
 Listener
   └── Filter Chain
         ├── Network Filter: envoy.filters.network.metadata_exchange (Istio metadata)

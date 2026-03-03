@@ -85,7 +85,7 @@ Add to `/etc/fstab` to recreate the tmpfs on every boot.
 sudo nano /etc/fstab
 ```
 
-```
+```text
 # tmpfs for application scratch space (512MB)
 tmpfs  /mnt/scratch  tmpfs  size=512m,mode=1777  0  0
 

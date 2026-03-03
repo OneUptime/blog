@@ -234,7 +234,7 @@ await processor.StopProcessingAsync();
 
 The simplest and most common pattern. Each application or service that reads from the Event Hub gets its own consumer group:
 
-```
+```text
 Event Hub: user-events
   |-- Consumer Group: analytics-pipeline (Stream Analytics job)
   |-- Consumer Group: fraud-detection (Azure Functions)
@@ -246,7 +246,7 @@ Event Hub: user-events
 
 When a single consumer cannot keep up with the event rate, scale out by running more instances within the same consumer group:
 
-```
+```text
 Consumer Group: analytics-pipeline
   |-- Instance 1: Partitions 0, 1, 2, 3
   |-- Instance 2: Partitions 4, 5, 6, 7

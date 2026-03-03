@@ -18,7 +18,7 @@ When Kubernetes sends SIGTERM to your container, you have limited time (default 
 
 When a pod terminates, Kubernetes follows this sequence:
 
-```
+```text
 1. Pod marked for deletion
 2. Endpoints removed (pod stops receiving new traffic)
 3. PreStop hook executes (if defined)

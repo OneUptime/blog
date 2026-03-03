@@ -16,13 +16,13 @@ This approach scales beautifully. When you create a new resource, just tag it co
 
 Traditional policies reference specific resource ARNs:
 
-```
+```text
 "Resource": "arn:aws:s3:::team-alpha-data"
 ```
 
 Tag-based policies use conditions instead:
 
-```
+```text
 "Condition": {
     "StringEquals": {
         "s3:ResourceTag/Team": "alpha"

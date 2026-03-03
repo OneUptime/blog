@@ -82,7 +82,7 @@ The most common issue is a BFD session that never transitions from Down to Up.
 
 ### Symptoms
 
-```
+```text
 BFD Peers:
     peer 10.0.0.1 vrf default
         Status: down
@@ -142,7 +142,7 @@ The session alternates between Up and Down repeatedly.
 
 ### Symptoms
 
-```
+```text
 BFD Peers:
     peer 10.0.0.1 vrf default
         Status: up
@@ -198,7 +198,7 @@ BFD shows as Up but BGP does not tear down when the link fails. It still waits f
 
 ### Symptoms
 
-```
+```text
 # BFD shows up
 BFD Peers:
     peer 10.0.0.1

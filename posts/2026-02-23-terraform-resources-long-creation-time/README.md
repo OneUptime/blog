@@ -175,7 +175,7 @@ terraform apply
 
 For very slow resources that rarely change, consider putting them in their own Terraform configuration:
 
-```
+```text
 # infrastructure/
 #   foundation/     # Slow resources that rarely change
 #     main.tf       # VPC, RDS, EKS, ElastiCache
@@ -189,7 +189,7 @@ This way, you only wait for the slow resources when you actually need to modify 
 
 When a timeout occurs, Terraform shows an error like:
 
-```
+```text
 Error: error waiting for RDS DB Instance (production-database) creation: timeout while waiting for state to become 'available'
 ```
 

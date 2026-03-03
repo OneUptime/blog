@@ -52,7 +52,7 @@ The `groupby` filter takes a list of dictionaries and groups them by a specified
 
 Output:
 
-```
+```text
 Region: ap-south-1
   - web-03 (webserver)
 Region: eu-west-1
@@ -139,7 +139,7 @@ A common pattern is to group items and then count how many are in each group:
 
 Output:
 
-```
+```text
 Alert Summary:
 critical: 3 alert(s)
 info: 1 alert(s)

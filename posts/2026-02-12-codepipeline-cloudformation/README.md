@@ -31,7 +31,7 @@ The pipeline pulls your CloudFormation templates from source control, validates 
 
 Organize your CloudFormation templates in a clean structure:
 
-```
+```text
 infrastructure/
   templates/
     main.yml          # Root stack

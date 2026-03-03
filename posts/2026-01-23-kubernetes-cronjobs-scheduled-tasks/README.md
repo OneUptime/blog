@@ -32,7 +32,7 @@ spec:
 
 ## Cron Schedule Syntax
 
-```
+```text
 # ┌───────────── minute (0 - 59)
 # │ ┌───────────── hour (0 - 23)
 # │ │ ┌───────────── day of month (1 - 31)

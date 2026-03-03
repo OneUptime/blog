@@ -61,7 +61,7 @@ Interactive Query supports multiple connection methods.
 
 The primary way to connect BI tools and applications is through the JDBC endpoint:
 
-```
+```text
 jdbc:hive2://my-llap-cluster.azurehdinsight.net:443/default;transportMode=http;ssl=true;httpPath=/hive2
 ```
 
@@ -84,7 +84,7 @@ Notice the `hiveserver2-interactive` namespace in the connection string - this e
 
 The Ambari web interface provides a Hive View for running queries interactively:
 
-```
+```text
 https://my-llap-cluster.azurehdinsight.net
 ```
 
@@ -198,7 +198,7 @@ Navigate to Hive > Configs > Interactive in Ambari. Key settings include:
 
 A common configuration for D13 v2 nodes (56GB RAM):
 
-```
+```text
 LLAP Daemon Heap Size: 4GB
 LLAP Cache Size: 24GB
 YARN Container Memory: 16GB
@@ -262,7 +262,7 @@ Interactive Query is commonly used as the backend for BI dashboards. Here is how
 
 Configure the Hive connection in Superset using the PyHive driver:
 
-```
+```text
 hive://admin:YourPassword@my-llap-cluster.azurehdinsight.net:443/analytics?auth=BASIC&ssl=true
 ```
 

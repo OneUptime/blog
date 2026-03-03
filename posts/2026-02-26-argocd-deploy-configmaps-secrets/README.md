@@ -282,7 +282,7 @@ data:
 
 For multi-environment setups, use Kustomize overlays to manage environment-specific configuration:
 
-```
+```text
 apps/myapp/
   base/
     configmap.yaml      # Shared config

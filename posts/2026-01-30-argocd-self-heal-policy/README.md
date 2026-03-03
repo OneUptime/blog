@@ -348,7 +348,7 @@ argocd app get myapp
 
 Example output showing a self-heal sync:
 
-```
+```text
 Name:               myapp
 Project:            default
 Server:             https://kubernetes.default.svc

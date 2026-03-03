@@ -202,7 +202,7 @@ sudo iw phy phy0 channels | grep -E "5[0-9]{3}|Channel"
 
 Channel and center frequency combinations for 80MHz operation:
 
-```
+```text
 # 80MHz channel groups and their center frequency indexes:
 # Channels 36,40,44,48 → center = 42
 # Channels 52,56,60,64 → center = 58 (DFS)

@@ -14,7 +14,7 @@ A playbook library is a collection of well-tested, parameterized playbooks that 
 
 Organize your playbook library by operation type:
 
-```
+```text
 playbook-library/
 ├── provisioning/
 │   ├── provision-server.yml

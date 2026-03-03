@@ -50,7 +50,7 @@ sudo targetcli
 
 Inside targetcli:
 
-```
+```text
 # Navigate to backstores and create a fileio backstore
 /> cd /backstores/fileio
 /backstores/fileio> create disk1 /srv/iscsi-disk1.img 10G write_back=false
@@ -218,7 +218,7 @@ node.session.auth.password_in = AnotherSecurePassword
 
 In targetcli, configure the matching credentials:
 
-```
+```text
 /iscsi/iqn.2026-03.com.example:storage.lun1/tpg1> set attribute authentication=1
 /iscsi/iqn.2026-03.com.example:storage.lun1/tpg1/acls/iqn.2026-03.com.example:initiator1> set auth userid=initiator_user
 /iscsi/iqn.2026-03.com.example:storage.lun1/tpg1/acls/iqn.2026-03.com.example:initiator1> set auth password=SecurePassword123

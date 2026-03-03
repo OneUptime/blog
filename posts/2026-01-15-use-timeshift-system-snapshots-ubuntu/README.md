@@ -499,7 +499,6 @@ sudo umount /mnt
 sudo reboot
 ```
 
-#### Option B: Use Recovery Mode (see GRUB section below)
 
 ### Scenario 3: Restore Specific Files Only
 

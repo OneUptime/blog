@@ -60,7 +60,7 @@ Enable autoscaling to let Databricks add or remove worker nodes based on the cur
 - **Min workers** - the minimum number of workers (set to 1 for dev clusters, higher for production)
 - **Max workers** - the maximum number of workers (caps your cost)
 
-```
+```text
 Min workers: 2
 Max workers: 8
 ```
@@ -104,7 +104,7 @@ spark.sql.session.timeZone UTC
 
 Set environment variables that your notebooks and applications can access.
 
-```
+```text
 APP_ENV=development
 LOG_LEVEL=INFO
 DATA_LAKE_PATH=abfss://raw@mystorageaccount.dfs.core.windows.net
@@ -194,7 +194,7 @@ Configure spot instances in the cluster settings:
 - **First on demand** - the number of nodes guaranteed to be on-demand (always set the driver to on-demand)
 - **Spot bid max price** - set to -1 for the default (pay up to the on-demand price)
 
-```
+```text
 First on demand: 1 (ensures driver is always on-demand)
 Spot instances: Workers 2-8 use spot
 Fallback to on-demand: Yes (if spot is unavailable)
@@ -206,7 +206,7 @@ Here are some configurations I have used in production.
 
 ### Small Development Cluster
 
-```
+```text
 Runtime: 14.3.x LTS
 Driver: Standard_DS3_v2 (14 GB, 4 cores)
 Workers: 1-2, Standard_DS3_v2
@@ -216,7 +216,7 @@ Spot instances: All workers
 
 ### Medium ETL Cluster
 
-```
+```text
 Runtime: 14.3.x LTS with Photon
 Driver: Standard_DS4_v2 (28 GB, 8 cores)
 Workers: 2-8, Standard_DS4_v2
@@ -226,7 +226,7 @@ Spot instances: Workers only
 
 ### Large ML Training Cluster
 
-```
+```text
 Runtime: 14.3.x ML
 Driver: Standard_E8s_v3 (64 GB, 8 cores)
 Workers: 4-16, Standard_E8s_v3

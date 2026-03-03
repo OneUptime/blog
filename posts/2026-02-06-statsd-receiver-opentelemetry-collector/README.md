@@ -53,7 +53,7 @@ The receiver supports all standard StatsD metric types:
 
 Counters track the number of times an event occurs:
 
-```
+```text
 page.views:1|c
 api.requests:1|c
 errors:1|c|@0.1
@@ -76,7 +76,7 @@ receivers:
 
 Gauges represent a value that can increase or decrease:
 
-```
+```text
 cpu.usage:45.2|g
 memory.available:2048|g
 queue.size:+10|g
@@ -87,7 +87,7 @@ queue.size:-5|g
 
 Timers measure durations in milliseconds:
 
-```
+```text
 response.time:250|ms
 database.query:125.5|ms
 api.latency:50|ms
@@ -99,7 +99,7 @@ The receiver can aggregate timers into histograms or summary metrics.
 
 Similar to timers but can accept any numeric value:
 
-```
+```text
 request.size:1024|h
 payload.bytes:512|h
 ```
@@ -108,7 +108,7 @@ payload.bytes:512|h
 
 Sets count unique occurrences:
 
-```
+```text
 users.unique:user123|s
 ip.addresses:192.168.1.1|s
 sessions:session456|s
@@ -227,7 +227,7 @@ receivers:
 
 With DogStatsD extensions enabled, you can send tagged metrics:
 
-```
+```text
 api.requests:1|c|#endpoint:/users,method:GET,status:200
 response.time:250|ms|#service:frontend,region:us-east
 ```
@@ -694,7 +694,7 @@ service:
 
 Use consistent naming patterns:
 
-```
+```text
 # Good: hierarchical, descriptive
 api.requests.count
 api.response.time.ms

@@ -14,7 +14,7 @@ The "ambiguous redirect" error is one of the most common and frustrating errors 
 
 When you see an error message like:
 
-```
+```text
 bash: $filename: ambiguous redirect
 ```
 

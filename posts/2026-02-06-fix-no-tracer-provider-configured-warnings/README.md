@@ -10,7 +10,7 @@ Description: Learn why OpenTelemetry shows 'No TracerProvider configured' warnin
 
 You added OpenTelemetry to your application, deployed it, and instead of traces flowing to your backend, you see this in the logs:
 
-```
+```text
 Warning: No TracerProvider configured, using NoopTracerProvider. All tracing operations will be no-ops.
 ```
 
@@ -91,7 +91,7 @@ pip show opentelemetry-api | grep Version
 
 In Node.js, the warning looks like:
 
-```
+```text
 @opentelemetry/api: Registered a noop TracerProvider because a real one was not configured.
 ```
 
@@ -219,7 +219,7 @@ The missing `otel.SetTracerProvider(tp)` call is the most common cause of silent
 
 In Java, the warning typically appears as:
 
-```
+```text
 [otel.javaagent] No TracerProvider configured. Traces will not be exported.
 ```
 
@@ -277,7 +277,7 @@ The `buildAndRegisterGlobal()` method is what registers the provider. If you use
 
 In .NET, the warning may appear as:
 
-```
+```text
 No TracerProvider is registered. Install and configure the OpenTelemetry SDK to enable tracing.
 ```
 

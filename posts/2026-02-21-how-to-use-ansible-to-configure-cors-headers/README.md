@@ -38,7 +38,7 @@ The key CORS headers are:
 
 ## Project Structure
 
-```
+```text
 nginx-cors/
   inventory/
     hosts.yml

@@ -357,7 +357,7 @@ Control when handlers are notified using `changed_when`:
 
 When using roles, handlers are typically defined in `handlers/main.yml`:
 
-```
+```text
 # Role directory structure
 myapp_role/
 ├── tasks/

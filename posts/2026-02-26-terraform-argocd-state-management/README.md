@@ -31,7 +31,7 @@ This reconciliation loop causes constant churn, unexpected changes, and potentia
 
 The most effective pattern splits responsibilities by layer:
 
-```
+```text
 Terraform owns:
   - Cloud infrastructure (VPCs, subnets, DNS zones)
   - Kubernetes cluster provisioning (EKS, GKE, AKS)

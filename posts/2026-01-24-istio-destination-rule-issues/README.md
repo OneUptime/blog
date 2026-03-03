@@ -143,7 +143,7 @@ When you enable mTLS in a DestinationRule but the destination doesn't support it
 
 ### Symptoms
 
-```
+```text
 upstream connect error or disconnect/reset before headers. reset reason: connection termination
 ```
 

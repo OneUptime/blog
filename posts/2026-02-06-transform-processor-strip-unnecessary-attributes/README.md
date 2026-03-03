@@ -16,7 +16,7 @@ OTTL is a domain-specific language designed for transforming telemetry within th
 
 The basic syntax is:
 
-```
+```text
 <function>(<path>) where <condition>
 ```
 

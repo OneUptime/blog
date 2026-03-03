@@ -79,7 +79,7 @@ Each gateway TLS secret is about 5-10 KB depending on key size and certificate c
 
 Kubernetes secrets are stored in etcd. You need to account for this when planning etcd storage:
 
-```
+```text
 CA secrets: 1 x 12 KB = 12 KB
 Gateway TLS secrets: N_gateways x N_domains x 10 KB
 ConfigMap for CA root distribution: 1 x 2 KB = 2 KB
@@ -87,7 +87,7 @@ ConfigMap for CA root distribution: 1 x 2 KB = 2 KB
 
 For a deployment with 1 CA, 3 ingress gateways serving 20 domains:
 
-```
+```text
 Certificate storage in etcd: 12 KB + (20 x 10 KB) + 2 KB = 214 KB
 ```
 
@@ -97,7 +97,7 @@ This is negligible in terms of etcd storage, but the number of secret watch even
 
 Each sidecar holds certificates in memory:
 
-```
+```text
 Per sidecar: ~10 KB for cert + key + CA bundle
 500 sidecars: 500 x 10 KB = 5 MB total across the cluster
 ```
@@ -108,7 +108,7 @@ This is included in the sidecar memory calculation and is a small fraction of to
 
 Certificate rotation generates both network traffic and API server load:
 
-```
+```text
 Per rotation: ~5 KB CSR + ~5 KB signed cert = 10 KB
 Rotations per day (24h cert lifetime): 1 per workload per day
 500 workloads: 500 x 10 KB = 5 MB/day
@@ -147,7 +147,7 @@ spec:
 
 With cert-manager, additional secrets are created for the issuer chain. Plan for:
 
-```
+```text
 cert-manager secrets: 3-5 additional secrets x 10 KB = 30-50 KB
 CRD storage: Certificate, CertificateRequest, and Order objects
 ```

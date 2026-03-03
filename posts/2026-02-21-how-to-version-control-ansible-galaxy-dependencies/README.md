@@ -48,7 +48,7 @@ galaxy-collections/
 
 A cleaner approach is to separate your own roles from Galaxy roles entirely:
 
-```
+```text
 project/
     playbooks/
     roles/                    # Your own roles (committed)

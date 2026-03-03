@@ -21,7 +21,7 @@ PAM configuration files live in `/etc/pam.d/`. Each service (sudo, sshd, login, 
 
 For adding hardware tokens to an existing password system, the typical patterns are:
 
-```
+```text
 # Pattern 1: Password AND token required (two-factor)
 auth required pam_unix.so
 auth required pam_token.so
@@ -77,7 +77,7 @@ Configure PAM for sudo:
 sudo nano /etc/pam.d/sudo
 ```
 
-```
+```text
 # Standard password
 @include common-auth
 
@@ -89,7 +89,7 @@ The `cue` option shows a message prompting the user to touch the key.
 
 For passwordless login with FIDO2:
 
-```
+```text
 # FIDO2 alone is sufficient for sudo
 auth sufficient pam_u2f.so authfile=/etc/u2f-mappings/u2f_keys
 # Fallback to password if no key
@@ -121,7 +121,7 @@ Configure PAM:
 sudo nano /etc/pam.d/sudo
 ```
 
-```
+```text
 # Require password AND TOTP code
 @include common-auth
 auth required pam_google_authenticator.so
@@ -133,7 +133,7 @@ For SSH with TOTP (requires `ChallengeResponseAuthentication yes` in sshd_config
 sudo nano /etc/pam.d/sshd
 ```
 
-```
+```text
 # Add TOTP to SSH
 auth required pam_google_authenticator.so
 ```
@@ -143,7 +143,7 @@ auth required pam_google_authenticator.so
 sudo nano /etc/ssh/sshd_config
 ```
 
-```
+```text
 ChallengeResponseAuthentication yes
 AuthenticationMethods publickey,keyboard-interactive
 UsePAM yes
@@ -170,7 +170,7 @@ sudo nano /etc/pam_pkcs11/pam_pkcs11.conf
 
 Minimum configuration:
 
-```
+```text
 # pam_pkcs11.conf
 use_pkcs11_module = opensc;
 
@@ -190,7 +190,7 @@ Create the subject mapping:
 sudo nano /etc/pam_pkcs11/subject_mapping
 ```
 
-```
+```text
 # Certificate Subject -> Unix username
 CN=John Doe, O=Company, C=US -> johndoe
 CN=Jane Smith, O=Company, C=US -> janesmith
@@ -202,7 +202,7 @@ Configure PAM:
 sudo nano /etc/pam.d/sudo
 ```
 
-```
+```text
 # Smart card authentication
 auth sufficient pam_pkcs11.so
 # Password fallback
@@ -288,7 +288,7 @@ sudo nano /etc/pam.d/common-auth
 
 The default looks like:
 
-```
+```text
 auth [success=1 default=ignore] pam_unix.so nullok_secure
 auth requisite pam_deny.so
 auth required pam_permit.so
@@ -298,7 +298,7 @@ The `success=1` means if `pam_unix.so` succeeds, skip the next 1 module (`pam_de
 
 To add FIDO2 as a second factor for everything:
 
-```
+```text
 auth [success=1 default=ignore] pam_unix.so nullok_secure
 auth requisite pam_deny.so
 auth required pam_permit.so

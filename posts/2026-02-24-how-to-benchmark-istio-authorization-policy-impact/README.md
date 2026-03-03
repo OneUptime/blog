@@ -303,7 +303,7 @@ kubectl exec -n authz-bench $HTTPBIN_POD -c istio-proxy -- \
 
 You will see counters like:
 
-```
+```text
 http.inbound_0.0.0.0_8000.rbac.allowed: 145023
 http.inbound_0.0.0.0_8000.rbac.denied: 0
 http.inbound_0.0.0.0_8000.rbac.shadow_allowed: 0

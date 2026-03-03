@@ -31,7 +31,7 @@ gcloud services enable aiplatform.googleapis.com
 
 Cloud Functions in Go follow a specific layout:
 
-```
+```text
 my-function/
   go.mod
   go.sum

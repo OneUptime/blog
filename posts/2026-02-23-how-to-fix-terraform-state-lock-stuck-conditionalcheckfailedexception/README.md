@@ -10,7 +10,7 @@ Description: How to fix a stuck Terraform state lock with ConditionalCheckFailed
 
 You run any Terraform command and get:
 
-```
+```text
 Error: Error acquiring the state lock
 
 Error message: ConditionalCheckFailedException: The conditional request failed
@@ -104,7 +104,7 @@ terraform force-unlock f8e5b9a3-7c42-11ed-a1eb-0242ac120002
 
 Terraform will prompt for confirmation:
 
-```
+```text
 Do you really want to force-unlock?
   Terraform will remove the lock on the remote state.
   This will allow local Terraform commands to modify this state, even though it
@@ -125,7 +125,7 @@ terraform plan
 
 Sometimes `terraform force-unlock` itself fails. This can happen when Terraform cannot connect to the backend or when the lock info is corrupted:
 
-```
+```text
 Error: failed to unlock state: failed to delete lock item
 ```
 

@@ -156,7 +156,7 @@ spec:
 
 With this repository structure:
 
-```
+```text
 services/
   api-gateway/
     deployment.yaml

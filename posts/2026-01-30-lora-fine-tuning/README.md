@@ -270,7 +270,7 @@ model = configure_lora(model, rank=16, alpha=32, dropout=0.05)
 
 The output shows the dramatic reduction in trainable parameters.
 
-```
+```text
 trainable params: 8,388,608 || all params: 3,212,749,824 || trainable%: 0.2611
 ```
 

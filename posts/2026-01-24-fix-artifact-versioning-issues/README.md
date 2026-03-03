@@ -35,7 +35,7 @@ flowchart TD
 
 Semantic Versioning (SemVer) provides clear meaning to version numbers:
 
-```
+```text
 MAJOR.MINOR.PATCH
   |      |     |
   |      |     +-- Bug fixes, no API changes
@@ -217,7 +217,7 @@ ENTRYPOINT ["/server"]
 
 Structure your registry for clarity:
 
-```
+```text
 myregistry.com/
   +-- production/
   |     +-- api/

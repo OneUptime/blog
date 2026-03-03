@@ -142,7 +142,7 @@ locals {
 
 The directory structure looks like:
 
-```
+```text
 live/
   terragrunt.hcl           # root (remote state, common settings)
   dev/
@@ -309,7 +309,7 @@ inputs = {
 
 With this structure:
 
-```
+```text
 live/
   root.hcl                     # remote state config
   us-east-1/

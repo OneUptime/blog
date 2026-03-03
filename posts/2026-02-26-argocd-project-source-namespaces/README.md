@@ -16,7 +16,7 @@ This guide covers how to enable and configure source namespaces for ArgoCD proje
 
 In a standard ArgoCD setup:
 
-```
+```text
 argocd namespace:
   - Application: payments-api (project: payments)
   - Application: payments-worker (project: payments)
@@ -32,7 +32,7 @@ Every team needs RBAC access to create Application resources in the `argocd` nam
 
 With source namespaces, each team can create Application resources in their own namespace:
 
-```
+```text
 payments namespace:
   - Application: payments-api (project: payments)
   - Application: payments-worker (project: payments)
@@ -305,7 +305,7 @@ Even though applications can live in different namespaces, ArgoCD still requires
 
 Use a naming convention that includes the team or project:
 
-```
+```text
 payments-api-dev        # In payments namespace
 frontend-web-dev        # In frontend namespace
 ```

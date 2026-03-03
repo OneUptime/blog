@@ -52,7 +52,7 @@ This outputs the certificate's Not Before and Not After dates so you can see whe
 
 Istiod exposes several metrics related to certificate signing and distribution:
 
-```
+```text
 citadel_server_csr_count
 citadel_server_success_cert_issuance_count
 citadel_server_csr_parsing_err_count
@@ -99,7 +99,7 @@ This gives you the number of seconds until the root cert expires.
 
 Each sidecar proxy also reports certificate-related metrics:
 
-```
+```text
 envoy_server_days_until_first_cert_expiring
 istio_agent_pilot_xds_expired_nonce
 ```

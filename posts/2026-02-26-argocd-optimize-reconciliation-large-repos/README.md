@@ -122,7 +122,7 @@ spec:
 
 If optimizations within the repo are not enough, consider restructuring:
 
-```
+```text
 # Before: One large monorepo
 org/monorepo/
   services/

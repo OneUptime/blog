@@ -16,7 +16,7 @@ The general rule: if your data would take more than a week to transfer over the 
 
 Here is a rough transfer time calculation:
 
-```
+```text
 Data: 500 TB
 Network: 1 Gbps dedicated connection
 Effective throughput: ~80% utilization = 800 Mbps = 100 MB/s
@@ -258,7 +258,7 @@ Transfer Appliance pricing includes:
 
 Compare this against network transfer costs:
 
-```
+```text
 Network transfer of 500 TB:
 - Interconnect costs: ~$1,700/month for Dedicated 10 Gbps
 - Transfer time: ~58 days = ~2 months
@@ -278,7 +278,7 @@ For one-time large transfers, Transfer Appliance is almost always more cost-effe
 
 For true petabyte-scale migrations, use multiple appliances:
 
-```
+```text
 1 PB migration plan:
 - Order 4x TA300 appliances
 - Load 250 TB on each appliance in parallel

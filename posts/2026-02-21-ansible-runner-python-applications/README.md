@@ -47,7 +47,7 @@ for event in result.events:
 
 ansible-runner expects a specific directory layout:
 
-```
+```text
 project/
   project/
     deploy.yml            # Your playbooks

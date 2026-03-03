@@ -84,7 +84,7 @@ This tells Terraform to trust the state file and not call the provider APIs to v
 
 If you know certain resource types have slow APIs, isolate them into their own Terraform project:
 
-```
+```text
 infrastructure/
   fast-resources/     # EC2, S3 buckets, security groups
   slow-resources/     # CloudFront distributions, IAM policies

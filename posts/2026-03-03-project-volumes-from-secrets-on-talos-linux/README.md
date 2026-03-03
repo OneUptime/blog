@@ -160,7 +160,7 @@ spec:
 
 This creates a directory structure like:
 
-```
+```text
 /etc/credentials/
   database/
     username

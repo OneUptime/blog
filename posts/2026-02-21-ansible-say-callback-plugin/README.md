@@ -74,7 +74,7 @@ The say callback announces several events:
 
 During a typical playbook run, you hear something like:
 
-```
+```text
 "Starting playbook site dot yml"
 "ok on web-01"
 "ok on web-02"

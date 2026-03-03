@@ -228,7 +228,7 @@ spec:
 
 Organize your infrastructure Git repository like this:
 
-```
+```text
 infrastructure/
 ├── bootstrap/
 │   ├── crossplane/

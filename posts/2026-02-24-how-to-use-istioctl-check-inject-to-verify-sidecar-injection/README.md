@@ -34,14 +34,14 @@ istioctl check-inject -n default
 
 Output:
 
-```
+```text
 NAMESPACE   INJECTED   REASON
 default     true       Namespace label istio-injection=enabled
 ```
 
 If injection isn't enabled:
 
-```
+```text
 NAMESPACE   INJECTED   REASON
 kube-system false      Namespace label istio-injection not found
 ```
@@ -54,14 +54,14 @@ istioctl check-inject pod/httpbin-74fb669cc6-abc12 -n default
 
 Output:
 
-```
+```text
 POD                              NAMESPACE   INJECTED   REASON
 httpbin-74fb669cc6-abc12         default     true       Namespace label istio-injection=enabled, no pod override
 ```
 
 Or if the pod has opted out:
 
-```
+```text
 POD                              NAMESPACE   INJECTED   REASON
 httpbin-74fb669cc6-abc12         default     false      Pod annotation sidecar.istio.io/inject=false
 ```
@@ -86,7 +86,7 @@ The most common reason pods don't get sidecars:
 istioctl check-inject -n my-namespace
 ```
 
-```
+```text
 NAMESPACE      INJECTED   REASON
 my-namespace   false      Namespace label istio-injection not found
 ```
@@ -111,7 +111,7 @@ Sometimes a pod has an annotation that disables injection even though the namesp
 istioctl check-inject pod/special-pod-abc12 -n default
 ```
 
-```
+```text
 POD                    NAMESPACE   INJECTED   REASON
 special-pod-abc12      default     false      Pod annotation sidecar.istio.io/inject=false
 ```
@@ -138,7 +138,7 @@ If you're using revision-based canary upgrades, the namespace label changes from
 istioctl check-inject -n production
 ```
 
-```
+```text
 NAMESPACE    INJECTED   REASON
 production   false      Neither istio-injection nor istio.io/rev label found
 ```
@@ -178,7 +178,7 @@ istioctl install --set profile=default
 
 Pods running with `hostNetwork: true` can't use sidecar injection because Envoy can't intercept traffic properly. check-inject flags this:
 
-```
+```text
 POD              NAMESPACE   INJECTED   REASON
 network-pod      default     false      Pod uses host networking
 ```

@@ -226,7 +226,7 @@ If the metric count is zero, check the Collector logs for TLS errors or connecti
 
 The DaemonSet Collector on each control plane node forwards metrics to a central Collector service for final processing and export:
 
-```
+```text
 etcd (control plane node) -> DaemonSet Collector -> Central Collector Service -> Backend
 ```
 

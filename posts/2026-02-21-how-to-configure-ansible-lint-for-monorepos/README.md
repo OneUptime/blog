@@ -14,7 +14,7 @@ Monorepos that contain Ansible code alongside application code, Terraform config
 
 A typical monorepo might look like this:
 
-```
+```text
 myorg-infra/
   apps/
     frontend/
@@ -115,7 +115,7 @@ inventory = ./inventory/production
 
 Some monorepos have multiple independent Ansible projects (for example, separate teams or environments). Each can have its own configuration.
 
-```
+```text
 myorg-infra/
   team-platform/
     ansible/

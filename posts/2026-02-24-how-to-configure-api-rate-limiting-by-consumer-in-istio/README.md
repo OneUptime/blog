@@ -361,7 +361,7 @@ kubectl logs -l app=ratelimit -n istio-system --tail=20
 
 By default, Envoy adds rate limit headers to the response. Clients can see their current limits:
 
-```
+```text
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 60

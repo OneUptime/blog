@@ -27,7 +27,7 @@ This technique has been around since the early days of NAT, but dual-stack envir
 
 Without split-horizon, internal clients querying for public services often get routed out to the internet and back in through the firewall. This wastes bandwidth, adds latency, and can break stateful inspection rules.
 
-```
+```text
 Internal Client -> Corporate DNS -> Public IP (203.0.113.50)
                                          |
                                          v
@@ -39,7 +39,7 @@ Internal Client -> Corporate DNS -> Public IP (203.0.113.50)
 
 With split-horizon:
 
-```
+```text
 Internal Client -> Corporate DNS -> Private IP (10.0.1.50)
                                          |
                                          v

@@ -16,7 +16,7 @@ Istio's trust domain migration feature lets you change trust domains gracefully 
 
 A trust domain is the root of identity in your Istio mesh. It's the first segment of the SPIFFE identity:
 
-```
+```text
 spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 

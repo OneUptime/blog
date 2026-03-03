@@ -59,7 +59,7 @@ head -c 32 /dev/urandom | base64
 ```
 
 Example output:
-```
+```text
 XJ7f3kR2+9aH5mL1pN8qT0vW3yZ6xC4bA9dE1fG2hI=
 ```
 

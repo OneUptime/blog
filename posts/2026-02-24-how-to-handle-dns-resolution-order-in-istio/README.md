@@ -36,7 +36,7 @@ kubectl exec my-pod -- cat /etc/resolv.conf
 
 Output:
 
-```
+```text
 nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5
@@ -114,7 +114,7 @@ The `DNS_AUTO_ALLOCATE` option assigns virtual IPs to ServiceEntry hosts that do
 
 When service `A` in namespace `alpha` calls service `B` in namespace `beta`, it can use:
 
-```
+```text
 http://service-b.beta:8080
 http://service-b.beta.svc:8080
 http://service-b.beta.svc.cluster.local:8080

@@ -210,7 +210,7 @@ func doSomething() {
 
 Go detects when ALL goroutines are blocked:
 
-```
+```text
 fatal error: all goroutines are asleep - deadlock!
 ```
 

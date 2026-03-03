@@ -16,7 +16,7 @@ Google Cloud Speech-to-Text includes speaker diarization as a built-in feature. 
 
 Speaker diarization analyzes the audio and assigns a speaker label (Speaker 1, Speaker 2, etc.) to each word in the transcription. It does not identify who the speakers are by name - it just distinguishes between different voices. You get output like:
 
-```
+```text
 Speaker 1: Good morning, let's start the meeting.
 Speaker 2: Sure, I have the Q4 numbers ready.
 Speaker 1: Great, can you share those first?

@@ -10,7 +10,7 @@ Description: Learn how to diagnose and resolve AuthorizationFailed errors during
 
 You have your ARM template ready, you kick off the deployment, and within seconds you get hit with an AuthorizationFailed error. The message usually looks something like:
 
-```
+```text
 The client '<object-id>' with object id '<object-id>' does not have authorization
 to perform action 'Microsoft.Compute/virtualMachines/write' over scope
 '/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Compute/virtualMachines/myVM'

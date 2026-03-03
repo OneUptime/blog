@@ -125,7 +125,7 @@ Updating postgresql.conf enables SSL but does not require it. Edit pg_hba.conf t
 sudo nano /etc/postgresql/16/main/pg_hba.conf
 ```
 
-```
+```text
 # pg_hba.conf entries
 
 # Local connections can use peer auth (no SSL needed for socket connections)
@@ -198,7 +198,7 @@ chmod 644 client.crt
 ssl_ca_file = '/etc/postgresql/ssl/ca.crt'
 ```
 
-```
+```text
 # In pg_hba.conf - require client certificate
 # 'cert' method: authenticate using the CN field of the client certificate
 hostssl myapp_db    myapp_user    192.168.1.50/32    cert

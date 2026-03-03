@@ -198,7 +198,7 @@ talosctl get extensions --nodes <node-ip>
 
 Keep your schematics in your infrastructure repository alongside other cluster configuration:
 
-```
+```text
 infrastructure/
   talos/
     schematics/

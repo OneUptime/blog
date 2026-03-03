@@ -37,14 +37,14 @@ flowchart LR
 
 You might see errors like:
 
-```
+```text
 org.apache.spark.SparkException: Task not serializable
 Caused by: java.io.NotSerializableException: com.example.MyClass
 ```
 
 Or in more detail:
 
-```
+```text
 Serialization stack:
     - object not serializable (class: com.example.DatabaseConnection)
     - field (class: com.example.DataProcessor, name: connection)

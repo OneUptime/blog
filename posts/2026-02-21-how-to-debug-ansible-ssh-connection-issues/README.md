@@ -30,7 +30,7 @@ ansible all -m ping -vvvv
 
 At `-vvvv`, Ansible shows the exact SSH command it executes, which is invaluable:
 
-```
+```text
 <web01> SSH: EXEC ssh -vvv -o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=no -o 'IdentityFile="/home/user/.ssh/ansible_key"' -o KbdInteractiveAuthentication=no -o PreferredAuthentications=gssapi-with-mic,gssapi-keyex,hostbased,publickey -o PasswordAuthentication=no -o 'User="deploy"' -o ConnectTimeout=10 10.0.1.10 '/bin/sh -c '"'"'echo ~deploy && sleep 0'"'"''
 ```
 
@@ -89,7 +89,7 @@ ssh -vvv -i ~/.ssh/ansible_key deploy@10.0.1.10
 
 Look for these key lines in the verbose output:
 
-```
+```text
 # Good signs:
 debug1: Authentication succeeded (publickey).
 debug1: channel 0: new [client-session]
@@ -186,7 +186,7 @@ rm -f ~/.ansible/cp/*
 
 ### Wrong Python Interpreter
 
-```
+```text
 /bin/sh: /usr/bin/python: No such file or directory
 ```
 
@@ -278,7 +278,7 @@ ssh -vvv deploy@10.0.1.10 2>&1 | grep "Trying\|Offering\|Authentication"
 
 Typical output:
 
-```
+```text
 debug1: Authentications that can continue: publickey,keyboard-interactive
 debug1: Next authentication method: publickey
 debug1: Offering public key: /home/user/.ssh/ansible_key ED25519

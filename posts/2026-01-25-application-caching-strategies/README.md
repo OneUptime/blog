@@ -17,13 +17,13 @@ This guide covers proven caching strategies with practical implementations you c
 ## Why Caching Matters
 
 Without caching, every request hits your database:
-```
+```text
 Request -> Application -> Database (50ms) -> Response
 Throughput: ~20 req/sec per DB connection
 ```
 
 With caching:
-```
+```text
 Request -> Application -> Cache (1ms) -> Response
 Throughput: ~1000 req/sec (cache hit)
 ```

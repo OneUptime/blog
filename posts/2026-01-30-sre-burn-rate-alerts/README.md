@@ -20,19 +20,19 @@ If your SLO is 99.9% availability over 30 days, you have an error budget of 0.1%
 
 The formula:
 
-```
+```text
 burn_rate = error_rate / (1 - SLO_target)
 ```
 
 For a 99.9% SLO:
 
-```
+```text
 burn_rate = error_rate / 0.001
 ```
 
 If your current error rate is 0.5%, your burn rate is:
 
-```
+```text
 burn_rate = 0.005 / 0.001 = 5
 ```
 
@@ -164,19 +164,19 @@ The Google SRE approach uses two windows for each alert: a long window to detect
 
 The burn rate values come from this calculation:
 
-```
+```text
 burn_rate = SLO_window / detection_time
 ```
 
 For a 1-hour detection window with a 30-day SLO window:
 
-```
+```text
 burn_rate = 30 * 24 / 1 = 720 (this is the maximum)
 ```
 
 To detect issues that would exhaust budget in 2 days:
 
-```
+```text
 burn_rate = 30 / 2 = 15 (we use 14.4 for some safety margin)
 ```
 
@@ -703,7 +703,7 @@ if __name__ == "__main__":
 
 Running this produces:
 
-```
+```text
 SLO Target: 99.9%
 Error Budget: 0.1%
 SLO Window: 30 days

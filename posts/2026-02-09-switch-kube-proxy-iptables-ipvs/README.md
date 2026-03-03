@@ -42,7 +42,7 @@ lsmod | grep ip_vs
 
 You should see output like:
 
-```
+```text
 ip_vs_sh               16384  0
 ip_vs_wrr              16384  0
 ip_vs_rr               16384  0
@@ -240,7 +240,7 @@ sudo ipvsadm -L -n
 
 Example output:
 
-```
+```text
 IP Virtual Server version 1.2.1 (size=4096)
 Prot LocalAddress:Port Scheduler Flags
   -> RemoteAddress:Port           Forward Weight ActiveConn InActConn

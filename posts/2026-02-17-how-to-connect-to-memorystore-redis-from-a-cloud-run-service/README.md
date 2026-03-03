@@ -194,7 +194,7 @@ CMD exec gunicorn --bind :$PORT --workers 2 --threads 4 main:app
 
 The `requirements.txt`:
 
-```
+```text
 flask==3.0.0
 gunicorn==21.2.0
 redis==5.0.1

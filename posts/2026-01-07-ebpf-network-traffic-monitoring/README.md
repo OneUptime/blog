@@ -220,7 +220,7 @@ done
 
 Organize your eBPF project with a clear structure that separates kernel-space and user-space code:
 
-```
+```text
 ebpf-network-monitor/
 ├── src/
 │   ├── bpf/                    # eBPF kernel-space code

@@ -250,7 +250,7 @@ kubectl logs deploy/istiod -n istio-system | grep "Push debounce"
 
 You will see entries like:
 
-```
+```text
 Push debounce stable 112 for config ServiceEntry/default/external-api: 102.345ms since last change, 502.123ms since last push
 ```
 

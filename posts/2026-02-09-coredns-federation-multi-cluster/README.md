@@ -41,7 +41,7 @@ A federated DNS setup typically includes:
 
 Basic federation pattern:
 
-```
+```text
 Cluster A (us-east) → Federation DNS → Cluster B (us-west)
 Query: api.cluster-b.federation.com
 Response: 10.20.30.40 (service IP in Cluster B)
@@ -106,13 +106,13 @@ This configuration routes queries for `federation.svc.cluster.local` to dedicate
 
 Implement standard naming convention:
 
-```
+```text
 <service>.<namespace>.<cluster-id>.federation.svc.cluster.local
 ```
 
 Example service mappings:
 
-```
+```text
 api.production.us-east-1.federation.svc.cluster.local
 api.production.us-west-2.federation.svc.cluster.local
 api.production.eu-west-1.federation.svc.cluster.local

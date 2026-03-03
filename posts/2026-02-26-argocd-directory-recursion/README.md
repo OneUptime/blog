@@ -14,7 +14,7 @@ By default, ArgoCD only reads manifests from the top level of the directory spec
 
 Consider this directory structure:
 
-```
+```text
 apps/
   my-platform/
     base/
@@ -104,7 +104,7 @@ ArgoCD walks the entire directory tree starting from the source path. Every file
 
 Let us set up a real application with a nested structure. This example deploys a web application with a backend API, frontend, and monitoring:
 
-```
+```text
 apps/
   ecommerce/
     namespaces/

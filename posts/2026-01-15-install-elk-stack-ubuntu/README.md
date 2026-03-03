@@ -118,7 +118,7 @@ xpack.security.transport.ssl:
 sudo nano /etc/elasticsearch/jvm.options.d/heap.options
 ```
 
-```
+```text
 # Set heap size (half of available RAM, max 31g)
 -Xms2g
 -Xmx2g
@@ -330,7 +330,7 @@ sudo chown -R logstash:logstash /etc/logstash/certs
 sudo nano /etc/logstash/jvm.options
 ```
 
-```
+```text
 -Xms1g
 -Xmx1g
 ```
@@ -541,7 +541,7 @@ sudo filebeat test output
 sudo nano /etc/security/limits.conf
 ```
 
-```
+```text
 elasticsearch soft nofile 65536
 elasticsearch hard nofile 65536
 logstash soft nofile 65536

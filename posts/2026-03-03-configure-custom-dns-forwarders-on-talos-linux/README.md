@@ -164,7 +164,7 @@ Each domain gets its own server block with its own forwarding rules, cache setti
 
 CoreDNS supports several forwarding policies that control how it picks among multiple upstream servers:
 
-```
+```text
 # Round robin - distributes queries evenly
 forward . 10.0.0.53 10.0.0.54 {
     policy round_robin
@@ -187,7 +187,7 @@ For internal DNS servers, `sequential` is often the best choice because it keeps
 
 For better privacy, you can forward queries using DNS-over-TLS (DoT):
 
-```
+```text
 .:53 {
     errors
     health {
@@ -352,7 +352,7 @@ spec:
 
 Configure health checks so CoreDNS automatically fails over to backup servers when a primary goes down:
 
-```
+```text
 corp.example.com:53 {
     errors
     cache 30

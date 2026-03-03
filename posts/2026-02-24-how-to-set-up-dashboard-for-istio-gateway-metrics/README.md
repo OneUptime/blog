@@ -235,7 +235,7 @@ envoy_cluster_http2_streams_active{pod=~"istio-ingressgateway.*"}
 
 Make your dashboard more flexible by adding Grafana template variables:
 
-```
+```text
 # Gateway variable
 label_values(istio_requests_total{reporter="source"}, source_workload)
 

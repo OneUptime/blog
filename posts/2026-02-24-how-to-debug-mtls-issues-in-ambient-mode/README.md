@@ -148,14 +148,14 @@ kubectl logs -n istio-system $ZTUNNEL | grep -i "handshake\|tls\|ssl"
 
 A successful handshake sequence in the logs looks like:
 
-```
+```text
 TRACE starting TLS handshake with peer 10.244.2.1:15008
 TRACE TLS handshake complete, peer identity: spiffe://cluster.local/ns/my-app/sa/backend
 ```
 
 A failed handshake shows:
 
-```
+```text
 ERROR TLS handshake failed with peer 10.244.2.1:15008: certificate verify failed
 ```
 

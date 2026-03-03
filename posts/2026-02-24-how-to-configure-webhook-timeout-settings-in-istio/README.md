@@ -97,7 +97,7 @@ When a timeout occurs, the behavior depends on the `failurePolicy`:
 
 ### failurePolicy: Fail (Default)
 
-```
+```text
 timeout reached -> webhook call fails -> pod creation rejected
 ```
 
@@ -105,7 +105,7 @@ The pod is not created. The deployment controller will retry, but if istiod rema
 
 ### failurePolicy: Ignore
 
-```
+```text
 timeout reached -> webhook call fails -> pod created WITHOUT sidecar
 ```
 

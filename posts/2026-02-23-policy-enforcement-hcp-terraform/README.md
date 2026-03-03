@@ -16,7 +16,7 @@ HCP Terraform supports two policy frameworks: Sentinel (HashiCorp's own) and Ope
 
 Policies run after the plan phase and before the apply:
 
-```
+```text
 Plan -> Cost Estimation -> Policy Check -> Apply
 ```
 
@@ -79,7 +79,7 @@ resource "tfe_policy_set" "production_only" {
 
 ### Sentinel Policy Repository Structure
 
-```
+```text
 terraform-policies/
   sentinel.hcl           # Policy configuration
   restrict-instance-types.sentinel
@@ -271,7 +271,7 @@ resource "tfe_policy_set" "opa_security" {
 
 ### OPA Repository Structure
 
-```
+```text
 terraform-opa-policies/
   policies.hcl           # Policy configuration
   restrict-instance-types.rego
@@ -347,7 +347,7 @@ deny[msg] {
 
 When policies run, the results appear in the run output:
 
-```
+```text
 Sentinel Result: true
 
 This result means that all Sentinel policies passed and the
@@ -360,7 +360,7 @@ protected behavior is allowed.
 
 When a policy fails:
 
-```
+```text
 Sentinel Result: false
 
 This result means that one or more Sentinel policies failed.

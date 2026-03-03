@@ -210,7 +210,7 @@ The custom policy you set on Azure must exactly match what your on-premises devi
 
 Here is an example configuration for a Cisco IOS device that matches our Azure policy.
 
-```
+```text
 ! Phase 1 - IKE SA parameters matching Azure configuration
 crypto ikev2 proposal azure-proposal
   encryption aes-cbc-256

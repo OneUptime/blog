@@ -95,7 +95,7 @@ Mobile clients have unique constraints: limited bandwidth, battery concerns, and
 
 ### Project Structure
 
-```
+```text
 mobile-bff/
   src/
     controllers/

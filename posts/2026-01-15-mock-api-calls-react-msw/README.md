@@ -39,7 +39,7 @@ npm install msw @types/node --save-dev
 
 Organize your mocks in a dedicated directory:
 
-```
+```text
 src/
   mocks/
     handlers.js       # API route handlers

@@ -29,7 +29,7 @@ resource "aws_instance" "web" {
 ```
 
 Error:
-```
+```text
 Error: Conflicting configuration arguments
 
 "security_groups": conflicts with vpc_security_group_ids
@@ -279,7 +279,7 @@ resource "aws_ebs_volume" "data" {
 
 Provider developers define conflicts using the `ConflictsWith` schema property. You can find these in the provider source code or documentation. The error message usually tells you which attributes conflict:
 
-```
+```text
 Error: Conflicting configuration arguments
 
   "attribute_a": conflicts with attribute_b

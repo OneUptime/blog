@@ -232,7 +232,7 @@ clickhouse-client --query "
 
 For sharded clusters, upgrade one shard at a time:
 
-```
+```text
 Cluster with 3 shards, 2 replicas each:
 
 Round 1: Upgrade replica 1 of each shard

@@ -75,7 +75,7 @@ helm install redis bitnami/redis \
 
 ### Cost Estimate (AWS EC2)
 
-```
+```text
 Small (r6g.large, 2 vCPU, 16GB):
 - 3-node cluster: ~$450/month
 
@@ -410,7 +410,7 @@ r = redis.Redis(
 
 ### Choose Redis OSS Self-Hosted If:
 
-```
+```text
 [ ] You have Redis operations expertise
 [ ] Cost is the primary concern
 [ ] You need maximum configuration control
@@ -420,7 +420,7 @@ r = redis.Redis(
 
 ### Choose Redis Enterprise If:
 
-```
+```text
 [ ] You need Active-Active geo-replication
 [ ] Large datasets benefit from Flash storage
 [ ] Advanced modules (Search, Graph) are required
@@ -430,7 +430,7 @@ r = redis.Redis(
 
 ### Choose AWS ElastiCache If:
 
-```
+```text
 [ ] You're all-in on AWS
 [ ] Standard caching use cases
 [ ] Integration with AWS services is important

@@ -147,7 +147,7 @@ SELECT
 
 For Cloud Monitoring, the key metric is:
 
-```
+```text
 cloudsql.googleapis.com/database/replication/replica_lag
 ```
 

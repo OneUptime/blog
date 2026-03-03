@@ -59,7 +59,7 @@ kubectl exec -it my-pod -- cat /etc/resolv.conf
 
 Typical output:
 
-```
+```text
 nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5
@@ -175,7 +175,7 @@ kubectl logs -n kube-system -l k8s-app=kube-dns --tail=100
 
 Expected healthy output:
 
-```
+```text
 NAME      READY   UP-TO-DATE   AVAILABLE   AGE
 coredns   2/2     2            2           30d
 ```
@@ -218,7 +218,7 @@ nslookup google.com
 
 **Successful output:**
 
-```
+```text
 Server:         10.96.0.10
 Address:        10.96.0.10#53
 
@@ -228,7 +228,7 @@ Address: 10.96.0.1
 
 **Failed output:**
 
-```
+```text
 ;; connection timed out; no servers could be reached
 ```
 
@@ -264,7 +264,7 @@ kubectl describe svc kube-dns -n kube-system
 
 Expected output:
 
-```
+```text
 NAME       TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                  AGE
 kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   30d
 ```
@@ -399,7 +399,7 @@ curl -s http://localhost:9153/metrics | grep coredns_cache
 
 Key metrics:
 
-```
+```text
 coredns_cache_hits_total{server="dns://:53",type="success"} 12345
 coredns_cache_misses_total{server="dns://:53"} 678
 coredns_cache_size{server="dns://:53",type="success"} 1000
@@ -407,7 +407,7 @@ coredns_cache_size{server="dns://:53",type="success"} 1000
 
 Adjust cache TTL in Corefile if needed:
 
-```
+```text
 cache 60 {
     success 9984 30
     denial 9984 5
@@ -484,7 +484,7 @@ nslookup google.com
 
 ### Enable Verbose Logging
 
-```
+```text
 .:53 {
     errors
     log
@@ -495,7 +495,7 @@ nslookup google.com
 
 ### Add Custom DNS Entries
 
-```
+```text
 .:53 {
     hosts {
         10.0.0.100 custom.internal.example.com
@@ -507,7 +507,7 @@ nslookup google.com
 
 ### Forward Specific Domains to Custom DNS
 
-```
+```text
 .:53 {
     forward . /etc/resolv.conf
     # ... rest of config

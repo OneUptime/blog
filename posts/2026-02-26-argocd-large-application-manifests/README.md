@@ -54,13 +54,13 @@ kubectl get application my-app -n argocd -o json | wc -c
 
 When a resource exceeds the limit, you will see errors like:
 
-```
+```text
 rpc error: code = ResourceExhausted desc = trying to send message larger than max
 ```
 
 Or:
 
-```
+```text
 etcd: request is too large
 ```
 

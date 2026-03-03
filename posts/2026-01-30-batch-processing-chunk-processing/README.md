@@ -120,7 +120,7 @@ sequenceDiagram
 
 The commit interval determines how many items are processed before a database commit occurs. This is typically equal to your chunk size, but they can be configured separately in some frameworks.
 
-```
+```text
 Chunk Size = 100
 Commit Interval = 100
 

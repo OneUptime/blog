@@ -143,7 +143,7 @@ Bare repositories are what Git servers use. They have no working directory:
         git commit -m "Initial commit - project scaffolding"
       register: commit_result
       changed_when: "'nothing to commit' not in commit_result.stdout"
-```
+```text
 
 ## Repository Creation Flow
 

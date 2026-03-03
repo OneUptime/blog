@@ -30,7 +30,7 @@ Let us start with a concrete example: a production cluster with 3 control plane 
 
 ### Talos Linux
 
-```
+```text
 Control Plane (3x t3.large): 3 x $0.0832/hr = $0.2496/hr
 Workers (10x m5.xlarge): 10 x $0.192/hr = $1.92/hr
 Total compute: $2.1696/hr = $1,583.81/month
@@ -46,7 +46,7 @@ Support: $0 (community) or varies (enterprise)
 
 ### kubeadm on Ubuntu
 
-```
+```text
 Control Plane (3x t3.large): 3 x $0.0832/hr = $0.2496/hr
 Workers (10x m5.xlarge): 10 x $0.192/hr = $1.92/hr
 Total compute: $2.1696/hr = $1,583.81/month
@@ -62,7 +62,7 @@ Support: Community only
 
 ### k3s
 
-```
+```text
 Control Plane (3x t3.medium): 3 x $0.0416/hr = $0.1248/hr
 Workers (10x m5.xlarge): 10 x $0.192/hr = $1.92/hr
 Total compute: $2.0448/hr = $1,492.70/month
@@ -77,7 +77,7 @@ Support: Community or SUSE enterprise
 
 ### OpenShift
 
-```
+```text
 Control Plane (3x m5.xlarge): 3 x $0.192/hr = $0.576/hr
 Workers (10x m5.xlarge): 10 x $0.192/hr = $1.92/hr
 Infrastructure nodes (3x m5.xlarge): 3 x $0.192/hr = $0.576/hr
@@ -97,7 +97,7 @@ This is where the differences become dramatic. Operational costs are measured in
 
 ### Day-2 Operations: OS Patching
 
-```
+```text
 Talos Linux:
   Approach: Single API call to upgrade all nodes
   Time per upgrade cycle: 1-2 hours
@@ -125,7 +125,7 @@ OpenShift:
 
 ### Day-2 Operations: Kubernetes Upgrades
 
-```
+```text
 Talos Linux:
   OS and Kubernetes upgrade together
   Rolling upgrades with single command
@@ -147,7 +147,7 @@ OpenShift:
 
 ### Troubleshooting and Drift
 
-```
+```text
 Talos Linux:
   No configuration drift (immutable)
   No SSH means no ad-hoc changes to undo
@@ -171,7 +171,7 @@ OpenShift:
 
 Assuming a platform engineer costs $75/hour fully loaded:
 
-```
+```text
 Annual operational cost comparison:
 
 Talos Linux:
@@ -201,7 +201,7 @@ OpenShift:
 
 ## Security Cost Comparison
 
-```
+```text
 Talos Linux:
   CIS hardening: Built-in (minimal additional work)
   SSH audit: Not needed (no SSH)
@@ -230,7 +230,7 @@ OpenShift:
 
 ## Total Annual TCO Summary
 
-```
+```text
                     Infra      Licensing   Operations   Security    Total
 Talos Linux:       $19,006    $0          $4,350       $2,250      $25,606
 kubeadm:           $19,006    $0          $17,550      $9,000      $45,556
@@ -267,7 +267,7 @@ These numbers will vary based on your specific situation, team size, and cloud p
 
 Create a spreadsheet with these columns for your specific situation:
 
-```
+```text
 Category          | Your Talos | Your Alternative
 ------------------+-----------+-----------------
 Compute (monthly) |           |

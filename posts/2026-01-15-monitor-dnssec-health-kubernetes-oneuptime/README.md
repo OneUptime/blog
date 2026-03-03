@@ -44,7 +44,7 @@ Before diving into monitoring, let's understand how DNSSEC works in a Kubernetes
 
 ### DNSSEC Components
 
-```
+```text
 DNSSEC Trust Chain:
 ├── Root Zone (.)
 │   └── Zone Signing Key (ZSK)
@@ -120,7 +120,7 @@ OneUptime's synthetic monitors can validate DNSSEC responses directly.
 2. Select **Synthetic Monitor** type
 3. Configure the monitor:
 
-```
+```text
 Monitor Name: DNSSEC Validation - api.example.com
 Description: Validates DNSSEC chain for production API domain
 Check Interval: 5 minutes
@@ -718,7 +718,7 @@ echo "CoreDNS DNSSEC check complete: $PASSED/${#TEST_DOMAINS[@]} validated"
 
 Create a tiered alerting strategy for DNSSEC issues:
 
-```
+```text
 Alert Levels:
 ├── Information (P4)
 │   └── RRSIG expiring in 14+ days
@@ -745,7 +745,7 @@ Alert Levels:
 
 **Critical Alert - DNSSEC Validation Failure:**
 
-```
+```text
 Rule Name: DNSSEC Validation Failure
 Condition: Monitor status = offline OR heartbeat contains "status": "critical"
 Severity: Critical
@@ -755,7 +755,7 @@ Auto-incident: Yes
 
 **Warning Alert - RRSIG Expiring Soon:**
 
-```
+```text
 Rule Name: RRSIG Expiration Warning
 Condition: Heartbeat contains "status": "warning" OR days_until_expiry < 7
 Severity: Warning
@@ -765,7 +765,7 @@ Auto-incident: No
 
 **Information Alert - Routine Check:**
 
-```
+```text
 Rule Name: DNSSEC Health Check Complete
 Condition: Heartbeat contains "status": "healthy"
 Severity: Information
@@ -1221,7 +1221,7 @@ Create a unified dashboard in OneUptime for all DNSSEC monitors.
 
 ### Dashboard Layout
 
-```
+```text
 DNSSEC Health Dashboard
 ========================
 

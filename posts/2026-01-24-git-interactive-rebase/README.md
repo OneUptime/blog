@@ -51,7 +51,7 @@ git rebase -i abc1234
 
 This opens your editor with a list of commits:
 
-```
+```text
 pick abc1234 Add user model
 pick def5678 Add user controller
 pick ghi9012 Fix typo in model
@@ -93,7 +93,7 @@ git rebase -i HEAD~4
 ```
 
 Change the file from:
-```
+```text
 pick abc1234 Add login feature
 pick def5678 Fix login bug
 pick ghi9012 Fix another login bug
@@ -101,7 +101,7 @@ pick jkl3456 Add login tests
 ```
 
 To:
-```
+```text
 pick abc1234 Add login feature
 fixup def5678 Fix login bug
 fixup ghi9012 Fix another login bug
@@ -114,7 +114,7 @@ Result: Two commits. The bug fixes are absorbed into the first commit. The test 
 
 Simply change the order of lines:
 
-```
+```text
 pick ghi9012 Add tests        # Moved up
 pick abc1234 Add feature
 pick def5678 Update docs
@@ -126,7 +126,7 @@ pick def5678 Update docs
 
 Use `reword` to change a message:
 
-```
+```text
 pick abc1234 Add user feture
 reword def5678 Fix teh bug
 pick ghi9012 Update docs
@@ -138,7 +138,7 @@ Git will pause after each `reword` commit and open your editor.
 
 Use `edit` to split one commit into multiple:
 
-```
+```text
 edit abc1234 Add feature and tests and docs
 pick def5678 Other work
 ```
@@ -167,7 +167,7 @@ git rebase --continue
 
 Remove commits entirely:
 
-```
+```text
 pick abc1234 Good commit
 drop def5678 Accidental commit
 pick ghi9012 Another good commit
@@ -228,7 +228,7 @@ git rebase -i --autosquash main
 
 The commits will be automatically positioned and marked:
 
-```
+```text
 pick abc1234 Original commit
 fixup def5678 fixup! Original commit
 ```
@@ -237,7 +237,7 @@ fixup def5678 fixup! Original commit
 
 Run commands between commits:
 
-```
+```text
 pick abc1234 Add feature
 exec npm test
 pick def5678 Add another feature
@@ -295,7 +295,7 @@ git rebase -i main
 
 Edit the todo list:
 
-```
+```text
 pick m2n3o4p Initial feature implementation
 squash i9j0k1l WIP: start validation
 squash e5f6g7h Add validation
@@ -307,7 +307,7 @@ fixup f7e8d9c WIP
 
 Or create logical groupings:
 
-```
+```text
 pick m2n3o4p Initial feature implementation
 fixup f7e8d9c WIP
 
@@ -318,7 +318,7 @@ fixup a1b2c3d Fix tests
 
 Write meaningful commit messages when prompted:
 
-```
+```text
 Add user input validation
 
 - Validate email format

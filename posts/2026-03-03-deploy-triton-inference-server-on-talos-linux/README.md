@@ -24,7 +24,7 @@ This guide covers deploying Triton on Talos Linux, setting up a model repository
 
 Triton uses a structured model repository. Each model lives in its own directory with a configuration file and versioned model files:
 
-```
+```text
 model_repository/
   resnet50/
     config.pbtxt

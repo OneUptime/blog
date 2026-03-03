@@ -23,7 +23,7 @@ sudo cat /var/lib/dhcp/dhcpd.leases
 
 A typical lease entry looks like:
 
-```
+```text
 lease 192.168.1.105 {
   starts 1 2026/03/02 08:30:00;
   ends 1 2026/03/02 20:30:00;
@@ -122,7 +122,7 @@ sudo journalctl -u isc-dhcp-server -f
 
 Typical log entries:
 
-```
+```text
 Mar  2 09:15:23 server dhcpd: DHCPDISCOVER from aa:bb:cc:dd:ee:05 via eth0
 Mar  2 09:15:23 server dhcpd: DHCPOFFER on 192.168.1.130 to aa:bb:cc:dd:ee:05 via eth0
 Mar  2 09:15:23 server dhcpd: DHCPREQUEST for 192.168.1.130 from aa:bb:cc:dd:ee:05 via eth0
@@ -268,7 +268,7 @@ python3 /usr/local/bin/kea-utilization.py
 sudo nano /etc/cron.d/dhcp-monitoring
 ```
 
-```
+```text
 # Run DHCP monitoring checks every 15 minutes
 */15 * * * * root /usr/local/bin/show-active-leases.sh > /var/log/dhcp-leases-current.txt
 */15 * * * * root /usr/local/bin/find-new-dhcp-clients.sh >> /var/log/dhcp-new-clients.log
@@ -298,7 +298,7 @@ Configure logrotate to manage the DHCP log files:
 sudo nano /etc/logrotate.d/isc-dhcp-server
 ```
 
-```
+```text
 /var/log/dhcp-leases-current.txt
 /var/log/dhcp-new-clients.log
 {

@@ -44,7 +44,7 @@ ANSIBLE_CALLBACKS_ENABLED=profile_tasks ansible-playbook deploy.yml
 
 The output includes timestamps during execution:
 
-```
+```text
 TASK [Install packages] ********************************************************
 Thursday 21 February 2026  10:15:03 +0000 (0:00:02.345)       0:00:05.678 ****
 ok: [web-01]
@@ -58,7 +58,7 @@ changed: [web-02]
 
 And a sorted summary at the end:
 
-```
+```text
 Thursday 21 February 2026  10:17:30 +0000 (0:00:01.234)       0:02:30.456 ****
 ===============================================================================
 Install packages ----------------------------------------- 45.12s
@@ -82,7 +82,7 @@ ANSIBLE_CALLBACKS_ENABLED=profile_roles ansible-playbook site.yml
 
 Output:
 
-```
+```text
 ===============================================================================
 common --------------------------------------------------- 23.45s
 nginx ---------------------------------------------------- 18.67s
@@ -104,7 +104,7 @@ ANSIBLE_CALLBACKS_ENABLED=timer ansible-playbook site.yml
 
 Output:
 
-```
+```text
 Playbook run took 0 days, 0 hours, 2 minutes, 30 seconds
 ```
 

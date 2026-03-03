@@ -258,13 +258,13 @@ public class WordCount {
 2. Run the Flink program from your IDE
 
 3. Type words in the netcat terminal:
-   ```
+   ```text
    hello world
    hello flink
    ```
 
 4. Watch the counts appear in your IDE console:
-   ```
+   ```text
    (hello,1)
    (world,1)
    (hello,2)

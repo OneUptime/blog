@@ -41,7 +41,7 @@ npx @grafana/create-plugin
 
 This generates the basic plugin structure:
 
-```
+```text
 kubernetes-topology/
 ├── src/
 │   ├── module.ts          # Plugin entry point

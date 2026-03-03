@@ -51,7 +51,7 @@ df -h /mnt/ramdisk
 
 Output:
 
-```
+```text
 Filesystem      Size  Used Avail Use% Mounted on
 tmpfs           2.0G     0  2.0G   0% /mnt/ramdisk
 ```
@@ -100,7 +100,7 @@ sudo nano /etc/fstab
 
 Add this line:
 
-```
+```text
 # RAM disk for temporary build files - 4GB limit
 tmpfs   /mnt/ramdisk   tmpfs   size=4g,mode=1777,noexec,nosuid   0   0
 ```

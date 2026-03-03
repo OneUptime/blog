@@ -387,7 +387,7 @@ This limits each command service pod to 50 writes per minute. The query service 
 
 Track reads versus writes separately:
 
-```
+```text
 # Read request rate
 sum(rate(istio_requests_total{destination_service="order-query.production.svc.cluster.local"}[5m]))
 

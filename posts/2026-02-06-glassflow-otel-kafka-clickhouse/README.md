@@ -14,7 +14,7 @@ Running Apache Flink for telemetry processing is powerful, but it comes with ser
 
 ## Architecture
 
-```
+```text
 OTel Collector -> Kafka -> GlassFlow (transform) -> ClickHouse
 ```
 

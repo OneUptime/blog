@@ -34,7 +34,7 @@ flowchart TD
 
 ## Project Structure
 
-```
+```text
 prometheus-install/
   inventory/
     hosts.yml

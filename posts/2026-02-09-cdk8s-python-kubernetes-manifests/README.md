@@ -29,7 +29,7 @@ cdk8s init python-app
 
 The project structure includes:
 
-```
+```text
 k8s-app/
 ├── main.py          # Your application code
 ├── cdk8s.yaml       # Project configuration

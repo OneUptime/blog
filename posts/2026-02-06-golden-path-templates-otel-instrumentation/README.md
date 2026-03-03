@@ -34,7 +34,7 @@ graph TD
 
 Here is the directory layout for a Python Flask golden path template. Other language templates follow the same pattern with language-appropriate tooling.
 
-```
+```text
 golden-path-python-flask/
   cookiecutter.json
   {{cookiecutter.service_name}}/

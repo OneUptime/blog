@@ -182,7 +182,7 @@ cat /proc/cmdline
 
 Example output:
 
-```
+```text
 BOOT_IMAGE=/vmlinuz-5.15.0-91-generic root=/dev/mapper/ubuntu--vg-ubuntu--lv ro transparent_hugepage=never quiet splash
 ```
 

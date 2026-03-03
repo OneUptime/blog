@@ -655,7 +655,7 @@ jobs:
             automated
           reviewers: security-team
           draft: false
-```
+```text
 
 ### Custom Remediation Script
 

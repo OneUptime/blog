@@ -77,7 +77,7 @@ rabbitmq-plugins list | grep federation
 ```
 
 Expected output:
-```
+```text
 [E*] rabbitmq_federation               3.12.0
 [E*] rabbitmq_federation_management    3.12.0
 ```

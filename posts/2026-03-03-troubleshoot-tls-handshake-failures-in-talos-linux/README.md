@@ -31,7 +31,7 @@ If any of these pieces are mismatched, expired, or corrupt, the TLS handshake wi
 
 The error message itself often tells you what went wrong. Common messages include:
 
-```
+```text
 rpc error: code = Unavailable desc = connection error:
   desc = "transport: authentication handshake failed:
   tls: failed to verify certificate: x509: certificate signed by unknown authority"
@@ -39,7 +39,7 @@ rpc error: code = Unavailable desc = connection error:
 
 This specific error means the server's certificate was signed by a CA that your client does not trust.
 
-```
+```text
 rpc error: code = Unavailable desc = connection error:
   desc = "transport: authentication handshake failed:
   tls: bad certificate"

@@ -144,7 +144,7 @@ sudo journalctl -t kernel | grep "apparmor.*DENIED" | tail -20
 
 When you see a denial, it tells you exactly which system call or resource was blocked:
 
-```
+```text
 audit: type=1400 audit(1234567890.123:456): apparmor="DENIED" operation="open"
 profile="snap.my-app.my-app" name="/etc/hosts" pid=1234 comm="my-app"
 ```

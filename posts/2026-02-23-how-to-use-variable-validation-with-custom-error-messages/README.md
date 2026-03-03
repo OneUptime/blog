@@ -30,7 +30,7 @@ variable "environment" {
 
 When someone passes `environment = "prod"`, they see:
 
-```
+```text
 Error: Invalid value for variable
 
   on variables.tf line 1:
@@ -99,7 +99,7 @@ variable "aws_region" {
 
 If someone passes `us-east1` (missing the second hyphen), the message reads:
 
-```
+```text
 AWS region 'us-east1' is not valid. Expected format: us-east-1, eu-west-2, ap-southeast-1.
 ```
 
@@ -306,7 +306,7 @@ variable "bucket_name" {
 
 With the second approach, a user who passes `My-Bucket` gets:
 
-```
+```text
 S3 bucket name must start with a lowercase letter or number. Got: 'M'.
 ```
 

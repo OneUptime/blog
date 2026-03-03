@@ -126,7 +126,7 @@ Once the logs are flowing to Log Analytics, you can write queries to find patter
 
 ### Find the Top 10 Slowest Queries
 
-```
+```text
 // Find the 10 slowest queries in the last 24 hours
 AzureDiagnostics
 | where Category == "MySqlSlowLogs"
@@ -137,7 +137,7 @@ AzureDiagnostics
 
 ### Find the Most Frequently Slow Queries
 
-```
+```text
 // Group slow queries by SQL text to find repeat offenders
 AzureDiagnostics
 | where Category == "MySqlSlowLogs"
@@ -154,7 +154,7 @@ AzureDiagnostics
 
 ### Find Queries Examining Too Many Rows
 
-```
+```text
 // Queries examining more than 100K rows but returning few
 AzureDiagnostics
 | where Category == "MySqlSlowLogs"
@@ -167,7 +167,7 @@ AzureDiagnostics
 
 ### Track Slow Query Trends Over Time
 
-```
+```text
 // Hourly count of slow queries over the past week
 AzureDiagnostics
 | where Category == "MySqlSlowLogs"

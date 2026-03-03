@@ -8,7 +8,7 @@ Description: Learn how to selectively announce MetalLB service routes to specifi
 
 ---
 
-### Why Announce to a Subset of Peers?
+## Why Announce to a Subset of Peers?
 
 In production bare-metal Kubernetes clusters, you often peer with multiple upstream routers. Not every service should be announced to every peer. Common scenarios include:
 

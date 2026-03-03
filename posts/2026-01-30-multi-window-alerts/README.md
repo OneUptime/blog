@@ -62,13 +62,13 @@ Burn rate represents how fast you are consuming your error budget relative to yo
 
 The formula for burn rate is:
 
-```
+```text
 burn_rate = (1 - current_success_rate) / (1 - slo_target)
 ```
 
 For a 99.9% SLO with current success rate of 99.5%:
 
-```
+```text
 burn_rate = (1 - 0.995) / (1 - 0.999)
 burn_rate = 0.005 / 0.001
 burn_rate = 5

@@ -236,7 +236,7 @@ This way, sensitive values never appear in plain text in your parameter files or
 
 For larger projects, organize your parameter files alongside your templates.
 
-```
+```text
 infrastructure/
   modules/
     networking/

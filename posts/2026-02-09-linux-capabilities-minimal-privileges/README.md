@@ -241,13 +241,13 @@ PostgreSQL works perfectly with all capabilities dropped, running as a non-root 
 
 When containers fail due to missing capabilities, the error messages often indicate what's needed:
 
-```
+```text
 Error: bind: permission denied
 ```
 
 This suggests the container needs CAP_NET_BIND_SERVICE to bind a privileged port.
 
-```
+```text
 Error: operation not permitted: setuid
 ```
 

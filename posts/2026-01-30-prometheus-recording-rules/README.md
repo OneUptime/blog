@@ -92,7 +92,7 @@ groups:
 
 Prometheus recommends a specific naming convention for recording rules that makes them easy to identify and understand:
 
-```
+```text
 level:metric:operations
 ```
 
@@ -309,7 +309,7 @@ groups:
 
 Structure your rule files logically:
 
-```
+```text
 /etc/prometheus/rules/
     recording_rules/
         infrastructure.yml

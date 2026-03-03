@@ -390,7 +390,7 @@ Create alerts for sampling issues:
 
 ## Calculating Appropriate Sampling Rates
 
-```
+```text
 # Example calculation:
 # Current trace rate: 10,000 traces/sec
 # Target rate: 1,000 traces/sec

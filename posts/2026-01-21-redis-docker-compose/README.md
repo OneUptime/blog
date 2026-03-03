@@ -289,7 +289,7 @@ logfile ""
 
 Create a project structure:
 
-```
+```text
 project/
   docker-compose.yml
   redis.conf
@@ -301,7 +301,7 @@ project/
 
 `app/requirements.txt`:
 
-```
+```text
 flask==3.0.0
 redis==5.0.1
 gunicorn==21.2.0

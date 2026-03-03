@@ -85,13 +85,13 @@ Here is something that trips people up regularly. If there are NO ALLOW policies
 
 No policies at all:
 
-```
+```text
 All traffic -> Allowed (default behavior)
 ```
 
 One ALLOW policy added:
 
-```
+```text
 Traffic matching ALLOW -> Allowed
 Everything else -> Denied
 ```

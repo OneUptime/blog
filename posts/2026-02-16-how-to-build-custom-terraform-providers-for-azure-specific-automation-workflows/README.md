@@ -42,7 +42,7 @@ go get github.com/hashicorp/terraform-plugin-go
 
 The project structure looks like this:
 
-```
+```text
 terraform-provider-azurecatalog/
   internal/
     provider/

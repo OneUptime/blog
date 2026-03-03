@@ -87,7 +87,7 @@ kubectl describe node | grep -A 10 "Allocatable"
 ## Understanding Allocatable Resources
 
 Kubernetes calculates allocatable resources using the formula:
-```
+```text
 Allocatable = Capacity - Reserved - Eviction Threshold
 ```
 

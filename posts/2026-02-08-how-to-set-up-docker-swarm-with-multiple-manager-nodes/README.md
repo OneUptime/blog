@@ -53,7 +53,7 @@ docker swarm init --advertise-addr 10.0.1.10
 
 The output includes two join tokens, one for managers and one for workers. Save both.
 
-```
+```text
 Swarm initialized: current node (abc123def456) is now a manager.
 
 To add a worker to this swarm, run the following command:
@@ -122,7 +122,7 @@ docker node ls
 
 Expected output:
 
-```
+```text
 ID              HOSTNAME   STATUS   AVAILABILITY   MANAGER STATUS   ENGINE VERSION
 abc123 *        manager1   Ready    Active         Leader           24.0.7
 def456          manager2   Ready    Active         Reachable        24.0.7

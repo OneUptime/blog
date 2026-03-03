@@ -12,7 +12,7 @@ The "Destination not writable" error occurs when Ansible tries to write a file t
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "Destination /etc/nginx/nginx.conf not writable"
 }

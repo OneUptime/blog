@@ -55,7 +55,7 @@ terragrunt --version
 
 A typical Terragrunt project looks like this:
 
-```
+```text
 infrastructure/
   terragrunt.hcl              # Root config (DRY backend, common settings)
   environments/

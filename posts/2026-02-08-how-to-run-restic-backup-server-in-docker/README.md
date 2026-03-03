@@ -201,7 +201,7 @@ restic snapshots
 
 Output shows each snapshot with its ID, timestamp, hostname, paths, and tags:
 
-```
+```text
 ID        Time                 Host        Tags        Paths
 ----------------------------------------------------------------------
 a1b2c3d4  2026-02-01 02:00:05  webserver   automated   /var/www, /etc/nginx

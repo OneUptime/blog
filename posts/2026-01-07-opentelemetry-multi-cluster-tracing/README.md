@@ -1158,7 +1158,7 @@ With proper cluster identification, you can query traces by cluster in your back
 
 For Jaeger:
 
-```
+```text
 # Find traces from a specific cluster
 service="my-service" && k8s.cluster.name="production-us-east-1"
 
@@ -1171,7 +1171,7 @@ k8s.cluster.name="production-us-east-1" && span.kind="client"
 
 For Grafana Tempo with TraceQL:
 
-```
+```text
 // Find traces from a specific cluster
 { resource.k8s.cluster.name = "production-us-east-1" }
 

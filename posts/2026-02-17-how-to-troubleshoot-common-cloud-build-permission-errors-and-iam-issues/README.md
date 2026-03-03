@@ -18,7 +18,7 @@ Before diving into errors, you need to understand which service accounts Cloud B
 
 Every GCP project has a default Cloud Build service account:
 
-```
+```text
 PROJECT_NUMBER@cloudbuild.gserviceaccount.com
 ```
 
@@ -28,7 +28,7 @@ This is the account that runs your build steps. When a build step tries to acces
 
 Cloud Build also uses the Compute Engine default service account for some operations:
 
-```
+```text
 PROJECT_NUMBER-compute@developer.gserviceaccount.com
 ```
 
@@ -41,7 +41,7 @@ You can configure Cloud Build triggers to use a custom service account instead o
 ## Error 1: Permission Denied Pushing to Artifact Registry
 
 **Error message:**
-```
+```text
 ERROR: failed to push to us-central1-docker.pkg.dev/my-project/my-repo/my-app:latest:
 denied: Permission "artifactregistry.repositories.uploadArtifacts" denied
 ```
@@ -73,7 +73,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 ## Error 2: Cannot Deploy to Cloud Run
 
 **Error message:**
-```
+```text
 ERROR: (gcloud.run.deploy) PERMISSION_DENIED: Permission
 'run.services.create' denied on resource 'namespaces/my-project/services/my-app'
 ```
@@ -103,7 +103,7 @@ The second command is the one people almost always miss. Cloud Build needs `iam.
 ## Error 3: Cannot Access Secret Manager Secrets
 
 **Error message:**
-```
+```text
 ERROR: (gcloud.builds.submit) FAILED_PRECONDITION: generic::failed_precondition:
 missing permission on secret "projects/my-project/secrets/my-secret/versions/latest"
 ```
@@ -127,7 +127,7 @@ For security, grant access to individual secrets rather than the project-level r
 ## Error 4: Cannot Deploy Cloud Functions
 
 **Error message:**
-```
+```text
 ERROR: (gcloud.functions.deploy) ResponseError: status=[403],
 code=[Forbidden], message=[Permission 'cloudfunctions.functions.create' denied]
 ```
@@ -155,7 +155,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 ## Error 5: Cannot Access GCS Bucket
 
 **Error message:**
-```
+```text
 AccessDeniedException: 403 PROJECT_NUMBER@cloudbuild.gserviceaccount.com
 does not have storage.objects.get access to the Google Cloud Storage object
 ```
@@ -178,7 +178,7 @@ gsutil iam ch "serviceAccount:${CB_SA}:objectAdmin" gs://my-bucket
 ## Error 6: Cannot Pull Base Image from Another Project
 
 **Error message:**
-```
+```text
 Step #0: ERROR: failed to pull gcr.io/other-project/base-image:latest:
 denied: Token exchange failed for project 'other-project'
 ```
@@ -200,7 +200,7 @@ gcloud projects add-iam-policy-binding other-project \
 ## Error 7: Cannot Deploy to GKE
 
 **Error message:**
-```
+```text
 Error: cluster "my-cluster" is not accessible: permission denied
 ```
 
@@ -221,7 +221,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 ## Error 8: Trigger Creation Fails Due to Repository Permissions
 
 **Error message:**
-```
+```text
 ERROR: (gcloud.builds.triggers.create.github) PERMISSION_DENIED:
 The caller does not have permission
 ```
@@ -240,7 +240,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 ## Error 9: Build Fails with "Source Not Found"
 
 **Error message:**
-```
+```text
 ERROR: (gcloud.builds.submit) NOT_FOUND: no source provided
 ```
 
@@ -258,7 +258,7 @@ gsutil mb -p $PROJECT_ID gs://${PROJECT_ID}_cloudbuild
 ## Error 10: VPC Service Controls Blocking Build
 
 **Error message:**
-```
+```text
 ERROR: Request is prohibited by organization's policy.
 vpcServiceControls
 ```

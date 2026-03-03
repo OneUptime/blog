@@ -81,7 +81,7 @@ Customers may be unable to complete purchases.
    ```
 
 3. Find error traces in your observability backend:
-   ```
+   ```text
    # Tempo/Grafana TraceQL query
    {
      resource.service.name = "order-service"
@@ -100,7 +100,7 @@ Look for:
 
 Common patterns:
 - **Database timeout**: Look for spans with `db.system=postgresql` that have durations > 5s
-  ```
+  ```text
   {
     resource.service.name = "order-service"
     && span.db.system = "postgresql"
@@ -108,7 +108,7 @@ Common patterns:
   }
   ```
 - **Downstream service failure**: Look for HTTP client spans with 5xx responses
-  ```
+  ```text
   {
     resource.service.name = "order-service"
     && kind = client
@@ -133,7 +133,7 @@ Common patterns:
 - If error rate > 20%: Escalate to P1, page engineering manager
 - If database-related: Page the database team (dba-oncall)
 - If unresolved after 30 minutes: Page the checkout team lead
-```
+```text
 
 ## Example: Latency Degradation Alert
 
@@ -172,7 +172,7 @@ This may indicate a performance regression or resource contention.
    ```
 
 2. Find the slowest traces:
-   ```
+   ```text
    {
      resource.service.name = "order-service"
      && name = "HTTP POST /api/v1/orders"
@@ -182,7 +182,7 @@ This may indicate a performance regression or resource contention.
 
 3. In the trace waterfall, identify the slowest child span.
    The bottleneck is usually the longest bar in the waterfall.
-```
+```text
 
 ## Linking Alerts to Queries Programmatically
 

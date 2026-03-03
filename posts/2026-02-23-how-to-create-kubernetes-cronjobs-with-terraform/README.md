@@ -160,7 +160,7 @@ resource "kubernetes_cron_job_v1" "db_backup" {
 
 The schedule field uses standard cron format with five fields:
 
-```
+```text
 # +------------ minute (0-59)
 # | +---------- hour (0-23)
 # | | +-------- day of month (1-31)

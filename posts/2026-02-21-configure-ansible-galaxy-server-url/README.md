@@ -14,7 +14,7 @@ Ansible Galaxy is the default repository for sharing Ansible roles and collectio
 
 Out of the box, Ansible Galaxy uses:
 
-```
+```text
 https://galaxy.ansible.com/api/
 ```
 

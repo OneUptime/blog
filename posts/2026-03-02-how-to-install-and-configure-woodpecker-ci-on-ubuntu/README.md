@@ -36,7 +36,7 @@ Woodpecker authenticates users via your Git provider's OAuth.
 
 ### For Gitea / Forgejo
 
-```
+```text
 1. Log into Gitea as an admin
 2. Go to: Settings > Applications > Manage OAuth2 Applications
 3. Click "Create OAuth2 Application"
@@ -47,7 +47,7 @@ Woodpecker authenticates users via your Git provider's OAuth.
 
 ### For GitHub
 
-```
+```text
 1. Go to: GitHub > Settings > Developer settings > OAuth Apps
 2. Click "New OAuth App"
 3. Application name: Woodpecker CI

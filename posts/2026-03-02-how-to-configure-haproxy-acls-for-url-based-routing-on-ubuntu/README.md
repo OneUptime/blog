@@ -29,7 +29,7 @@ sudo systemctl start haproxy
 
 Before writing ACLs, understand the configuration sections:
 
-```
+```text
 global      - Process-wide settings (logging, security, performance)
 defaults    - Default settings inherited by all frontends/backends
 frontend    - Defines listening ports and applies routing logic (ACLs)
@@ -39,13 +39,13 @@ listen      - Combined frontend+backend shorthand
 
 ## Basic ACL Syntax
 
-```
+```text
 acl NAME condition
 ```
 
 Where `condition` is a test using a **fetch method** and optionally a **converter** and **matcher**:
 
-```
+```text
 acl is_api     path_beg /api/          # Path begins with /api/
 acl is_static  path_end .css .js .png  # Path ends with these extensions
 acl is_admin   path_beg /admin         # Path begins with /admin
@@ -61,7 +61,7 @@ The most common use case - routing based on URL path:
 sudo nano /etc/haproxy/haproxy.cfg
 ```
 
-```
+```text
 global
     log /dev/log local0
     log /dev/log local1 notice
@@ -176,7 +176,7 @@ backend health_backend
 
 Route traffic based on the HTTP `Host` header (virtual hosting):
 
-```
+```text
 frontend multi_site
     bind *:80
     bind *:443 ssl crt /etc/ssl/haproxy/
@@ -200,7 +200,7 @@ frontend multi_site
 
 ACLs can be combined with AND and OR logic:
 
-```
+```text
 frontend smart_frontend
     bind *:80
 
@@ -231,7 +231,7 @@ frontend smart_frontend
 
 Route based on custom request headers (useful for feature flags or A/B testing):
 
-```
+```text
 frontend header_routing
     bind *:80
 
@@ -256,7 +256,7 @@ frontend header_routing
 
 Route based on URL query parameters:
 
-```
+```text
 frontend query_routing
     bind *:80
 
@@ -273,7 +273,7 @@ frontend query_routing
 
 Strip path prefixes or rewrite paths when routing to backends:
 
-```
+```text
 frontend url_rewrite
     bind *:80
 

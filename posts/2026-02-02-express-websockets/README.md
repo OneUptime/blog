@@ -71,7 +71,7 @@ npm install express ws uuid
 
 Organize your project for maintainability as it grows.
 
-```
+```text
 project/
 ├── src/
 │   ├── server.js           # Main server setup

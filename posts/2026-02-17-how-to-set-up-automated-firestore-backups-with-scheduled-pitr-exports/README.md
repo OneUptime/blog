@@ -277,7 +277,7 @@ def check_backup_health(request):
 
 Here is a backup strategy that covers most scenarios:
 
-```
+```text
 +------------------+------------------+-------------------+
 | Backup Type      | Frequency        | Retention         |
 +------------------+------------------+-------------------+

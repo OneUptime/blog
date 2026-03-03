@@ -188,7 +188,7 @@ aws ec2 describe-vpn-connections \
 
 The inside tunnel addresses from the VPN configuration look like:
 
-```
+```text
 Tunnel 1:
   AWS inside IP: 169.254.10.1/30
   Customer inside IP: 169.254.10.2/30

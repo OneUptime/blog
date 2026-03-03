@@ -70,7 +70,7 @@ Use arrow keys to select `/dev/sdb` (or whichever disk has the lost partitions).
 
 Select "Analyse" then "Quick Search." TestDisk scans the drive for filesystem signatures:
 
-```
+```text
 Disk /dev/sdb - 500 GB / 465 GiB
 Partition               Start        End    Size in sectors
 D Linux                    2048    2099199    2097152 [sda1]
@@ -87,7 +87,7 @@ Press `P` to list files in a found partition. If you can see your files, the par
 
 Press Enter to validate the partition list, then press `W` to write the recovered partition table to disk. TestDisk will confirm with:
 
-```
+```text
 The partition table has been written.
 ```
 
@@ -117,7 +117,7 @@ sudo gpart /dev/sdb
 
 gpart output shows where it detected filesystem boundaries:
 
-```
+```text
 Begin scan...
 Possible partition(EXT2 FS), size(200M), offset(1M)
 Possible partition(EXT2 FS), size(50G), offset(201M)

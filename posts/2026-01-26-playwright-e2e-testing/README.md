@@ -60,7 +60,7 @@ During installation, Playwright will ask you a few questions:
 
 After installation, your project structure will look like this:
 
-```
+```text
 playwright-demo/
 ├── node_modules/
 ├── tests/

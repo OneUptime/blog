@@ -207,7 +207,7 @@ if __name__ == '__main__':
 
 Custom Beam metrics appear in Cloud Monitoring under the `custom.googleapis.com/dataflow/` namespace. You can query them using MQL (Monitoring Query Language):
 
-```
+```text
 # MQL query for average processing lag
 fetch dataflow_job
 | metric 'custom.googleapis.com/dataflow/pipeline_health/processing_lag_ms'

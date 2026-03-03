@@ -353,7 +353,7 @@ cilium connectivity test
 
 The expected output should show all Cilium components as healthy:
 
-```
+```text
     /¯¯\
  /¯¯\__/¯¯\    Cilium:             OK
  \__/¯¯\__/    Operator:           OK

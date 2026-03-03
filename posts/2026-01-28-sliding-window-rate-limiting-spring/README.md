@@ -20,7 +20,7 @@ The sliding window algorithm combines elements of fixed window and sliding log a
 
 ### The Algorithm
 
-```
+```text
 current_weight = (window_size - time_in_current_window) / window_size
 effective_count = (previous_window_count * current_weight) + current_window_count
 
@@ -32,7 +32,7 @@ else:
 
 ### Visual Example
 
-```
+```text
 Time: 11:30 (30 seconds into current minute)
 Previous minute (11:00-11:59): 60 requests
 Current minute (12:00-present): 20 requests
@@ -654,7 +654,7 @@ public void getData() { }
 
 Always include rate limit headers so clients can adapt:
 
-```
+```text
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 45
 X-RateLimit-Reset: 1706123456

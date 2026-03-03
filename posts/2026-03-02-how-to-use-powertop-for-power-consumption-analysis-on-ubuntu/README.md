@@ -34,7 +34,7 @@ This opens a TUI (terminal user interface) with several tabs. Navigate between t
 
 Shows real-time power consumption estimate, top power consumers, and current discharge rate (on laptops):
 
-```
+```text
 The battery reports a discharge rate of 8.32 W
 The estimated remaining time is 2 hours, 3 minutes
 
@@ -52,7 +52,7 @@ The "Events/s" column is important - high event rates prevent CPUs from reaching
 
 Shows what percentage of time CPUs spend in various C-states (idle power states). Deeper states (C6, C8, C10) use less power:
 
-```
+```text
 C0 active      14.8%
 C1             6.2%
 C1E            8.4%
@@ -70,7 +70,7 @@ Shows the CPU frequency distribution - how much time the CPU spent at each frequ
 
 Shows per-device power usage and whether devices are using power management:
 
-```
+```text
 Device          Runtime PM      Power Usage
 PCI Device      Active           3.2 W
 USB Device      Suspended        0.0 W
@@ -83,7 +83,7 @@ Devices showing "Active" that should be idle are targets for power management co
 
 This is the most actionable tab. It shows tuning suggestions with their current state:
 
-```
+```text
 Bad       Enable Audio codec power management
 Bad       VM writeback timeout
 Bad       SATA link power management

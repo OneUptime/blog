@@ -17,18 +17,18 @@ I have debugged more OOM issues in Dataflow than I care to count. The root cause
 OOM errors show up in different ways depending on what ran out of memory.
 
 **JVM heap overflow** shows up as:
-```
+```text
 java.lang.OutOfMemoryError: Java heap space
 ```
 
 **Worker VM memory exhaustion** shows up as the worker being killed by the OS:
-```
+```text
 The worker lost contact with the service. The most likely cause is that the
 worker VM was recycled.
 ```
 
 **GC overhead limit** shows up when the garbage collector is spending too much time:
-```
+```text
 java.lang.OutOfMemoryError: GC overhead limit exceeded
 ```
 

@@ -21,13 +21,13 @@ ansible-galaxy remove geerlingguy.nginx
 
 This deletes the role directory from the default roles path (`~/.ansible/roles/`). You will see output like:
 
-```
+```text
 - successfully removed geerlingguy.nginx
 ```
 
 If the role is not installed, you get:
 
-```
+```text
 - geerlingguy.nginx is not installed, skipping.
 ```
 

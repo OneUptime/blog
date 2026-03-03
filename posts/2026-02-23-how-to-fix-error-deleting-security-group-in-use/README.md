@@ -12,7 +12,7 @@ Trying to delete a security group that is still attached to a resource results i
 
 ## What the Error Looks Like
 
-```
+```text
 Error: error deleting Security Group (sg-0abc123def456789):
 DependencyViolation: resource sg-0abc123def456789 has a dependent
 object

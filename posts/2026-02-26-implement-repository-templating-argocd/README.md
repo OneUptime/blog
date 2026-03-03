@@ -14,7 +14,7 @@ When you manage dozens of services with ArgoCD, every config repo should follow 
 
 Consider what happens without templates. Team A structures their config like this:
 
-```
+```text
 team-a-service/
 ├── k8s/
 │   ├── prod/
@@ -23,7 +23,7 @@ team-a-service/
 
 Team B does this:
 
-```
+```text
 team-b-service/
 ├── deploy/
 │   ├── production/
@@ -36,7 +36,7 @@ Your ApplicationSet expects `overlays/production/kustomization.yaml` but neither
 
 Create a GitHub template repository (or GitLab project template) with this structure:
 
-```
+```text
 service-config-template/
 ├── base/
 │   ├── kustomization.yaml
@@ -320,7 +320,7 @@ jobs:
 
 The template includes a CODEOWNERS file that enforces review policies:
 
-```
+```text
 # CODEOWNERS
 # Platform team must review production changes
 overlays/production/ @myorg/platform-team

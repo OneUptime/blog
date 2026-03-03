@@ -90,7 +90,7 @@ Within a stage, the Summary Metrics section is critical. It shows the min, 25th 
 
 If there is a large gap between the median and max values, you have data skew. For example:
 
-```
+```text
 Duration:
   Min: 2s
   Median: 5s

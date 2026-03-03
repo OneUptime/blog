@@ -12,7 +12,7 @@ Cross-region telemetry transport is one of the most expensive parts of running a
 
 Let us quantify it. A typical microservices deployment generates:
 
-```
+```text
 Traces:  50,000 spans/sec * 1 KB avg = 50 MB/sec = 180 GB/hour
 Metrics: 100,000 data points/sec * 200 B avg = 20 MB/sec = 72 GB/hour
 Logs:    10,000 records/sec * 500 B avg = 5 MB/sec = 18 GB/hour
@@ -26,7 +26,7 @@ With OTel Arrow + Zstd (roughly 10:1 total compression), you send about 650 GB/d
 
 ## Architecture for Cross-Region Transport
 
-```
+```text
 Region A (us-east-1):
   [Apps] -> [Agent Collectors] -> [Regional Gateway]
                                         |

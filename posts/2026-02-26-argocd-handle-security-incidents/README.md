@@ -332,7 +332,7 @@ argocd app set <app-name-prod> --sync-policy automated --self-heal
 
 After every security incident, conduct a post-mortem:
 
-```
+```text
 ## Security Incident Post-Mortem
 
 **Date:** 2026-02-26

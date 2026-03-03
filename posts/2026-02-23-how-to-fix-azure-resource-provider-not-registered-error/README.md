@@ -12,7 +12,7 @@ When you try to create a resource in Azure through Terraform and get a "resource
 
 ## What the Error Looks Like
 
-```
+```text
 Error: creating Virtual Network: (Name "my-vnet" / Resource Group "my-rg"):
 network.VirtualNetworksClient#CreateOrUpdate: Failure sending request:
 StatusCode=409 -- Original Error: Code="MissingSubscriptionRegistration"

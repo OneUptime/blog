@@ -12,7 +12,7 @@ The error "Failed to connect to the host via ssh" is the most common Ansible err
 
 ## The Error
 
-```
+```text
 fatal: [webserver]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: ssh: connect to host 192.168.1.50 port 22: Connection refused",

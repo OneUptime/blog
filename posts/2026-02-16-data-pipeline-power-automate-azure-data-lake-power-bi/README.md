@@ -69,7 +69,7 @@ The `--hns true` flag enables the hierarchical namespace, which is what makes it
 
 Structure the raw zone by source system and date for easy management.
 
-```
+```text
 raw/
   sharepoint/
     project-tasks/
@@ -103,7 +103,7 @@ This flow runs daily, exports a SharePoint list to JSON, and writes it to the ra
 
 In Power Automate, create a new flow with a Recurrence trigger.
 
-```
+```text
 Trigger: Recurrence
   - Frequency: Day
   - Interval: 1
@@ -126,7 +126,7 @@ Action 3: Create Blob (Azure Blob Storage)
 
 ### Flow 2: Dynamics 365 Leads to Data Lake
 
-```
+```text
 Trigger: Recurrence
   - Frequency: Day
   - Interval: 1
@@ -157,7 +157,7 @@ Action 3: Create Blob
 
 This flow monitors a shared mailbox for reports sent as email attachments.
 
-```
+```text
 Trigger: When a new email arrives (V3)
   - Folder: Inbox
   - Include Attachments: Yes
@@ -330,7 +330,7 @@ In Power BI Desktop, use the Azure Data Lake Storage Gen2 connector.
 
 Create your report visuals and publish to the Power BI service.
 
-```
+```text
 // Power BI DAX measures for the dashboard
 
 // Task completion rate

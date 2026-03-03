@@ -12,7 +12,7 @@ YAML does not allow duplicate keys in a mapping. When Ansible encounters the sam
 
 ## The Error
 
-```
+```text
 ERROR! Duplicate key "name" found in YAML
 ```
 

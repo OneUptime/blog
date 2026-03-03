@@ -14,14 +14,14 @@ Exporting data from BigQuery to Cloud Storage sounds straightforward, but when y
 
 The error typically shows up as:
 
-```
+```text
 Error: Table too large to be exported to a single file.
 Specify a uri including a * to shard export across multiple files.
 ```
 
 Or for compressed exports that still exceed limits:
 
-```
+```text
 Error: The exported file size (2.3 GB) exceeds the maximum allowed size (1 GB).
 ```
 
@@ -44,7 +44,7 @@ bq extract \
 
 The wildcard `*` tells BigQuery to shard the output. The resulting files will be named something like:
 
-```
+```text
 gs://my-bucket/exports/my_table_000000000000.csv.gz
 gs://my-bucket/exports/my_table_000000000001.csv.gz
 gs://my-bucket/exports/my_table_000000000002.csv.gz

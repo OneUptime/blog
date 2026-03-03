@@ -42,7 +42,7 @@ This is the most common deployment failure. Your application deploys successfull
 
 ### Symptoms
 
-```
+```text
 ERROR: Your environment's health has transitioned from Ok to Severe.
        During an environment operation, 1 out of 1 instances failed.
 ```
@@ -90,7 +90,7 @@ Your `requirements.txt`, `package.json`, or `pom.xml` specifies a dependency tha
 
 ### Symptoms
 
-```
+```text
 ERROR: [Instance: i-0abc123] Command failed on instance.
        Return code: 1 Output: pip install failed
 ```
@@ -133,7 +133,7 @@ The instance profile doesn't have the permissions your application needs.
 
 ### Symptoms
 
-```
+```text
 botocore.exceptions.ClientError: An error occurred (AccessDenied)
 when calling the GetObject operation
 ```
@@ -177,7 +177,7 @@ The deployment package plus dependencies can fill up the root volume, especially
 
 ### Symptoms
 
-```
+```text
 OSError: [Errno 28] No space left on device
 ```
 
@@ -208,7 +208,7 @@ Docker deployments have their own category of issues.
 
 ### Image Pull Failures
 
-```
+```text
 ERROR: Cannot pull Docker image from ECR
 ```
 
@@ -288,7 +288,7 @@ The deployment takes longer than the configured timeout.
 
 ### Symptoms
 
-```
+```text
 ERROR: Operation timed out waiting for environment to become healthy
 ```
 

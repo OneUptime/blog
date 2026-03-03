@@ -39,7 +39,7 @@ sequenceDiagram
 
 ### What's in a Router Advertisement?
 
-```
+```text
 Router Advertisement Message:
 +---------------------------------------+
 | Cur Hop Limit (8 bits)               |
@@ -412,7 +412,7 @@ done
 
 ### Method 5: Wireshark Display Filter
 
-```
+```text
 # Wireshark filter for RA analysis
 icmpv6.type == 134
 
@@ -431,7 +431,7 @@ RA Guard is the most effective defense, implemented at the network switch level.
 
 #### Cisco IOS Configuration
 
-```
+```text
 ! Enable IPv6 snooping
 ipv6 snooping policy RA_GUARD_POLICY
   device-role host
@@ -457,7 +457,7 @@ ipv6 nd raguard policy RA_GUARD_ROUTER
 
 #### Cisco Nexus Configuration
 
-```
+```text
 ! Enable RA Guard globally
 feature ipv6 nd raguard
 
@@ -479,7 +479,7 @@ interface Ethernet1/48
 
 #### Juniper Junos Configuration
 
-```
+```text
 # Configure router advertisement guard
 set ethernet-switching-options secure-access-port ra-guard action block
 set ethernet-switching-options secure-access-port ra-guard policy raguard-hosts
@@ -493,7 +493,7 @@ set interfaces ge-0/0/1 unit 0 family ethernet-switching ra-guard
 
 #### Arista EOS Configuration
 
-```
+```text
 ! Enable RA Guard
 ipv6 neighbor binding
    recovery interval 300
@@ -685,7 +685,7 @@ Get-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv6
 
 #### Group Policy Configuration
 
-```
+```text
 Computer Configuration
   -> Administrative Templates
     -> Network
@@ -747,7 +747,7 @@ Configure switches to block DHCPv6 server messages from unauthorized sources.
 
 #### Cisco Configuration
 
-```
+```text
 ! Enable DHCPv6 Guard
 ipv6 dhcp guard policy DHCP_GUARD_POLICY
   device-role client

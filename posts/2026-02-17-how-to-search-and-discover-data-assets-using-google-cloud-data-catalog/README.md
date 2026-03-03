@@ -340,7 +340,7 @@ ALTER COLUMN total_revenue SET OPTIONS (description = 'Total order revenue in US
 
 ### Use Consistent Dataset Organization
 
-```
+```text
 project-analytics/
   raw/           # Raw ingested data
   staging/       # Cleaned and validated data

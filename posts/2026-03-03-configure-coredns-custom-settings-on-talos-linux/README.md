@@ -23,7 +23,7 @@ kubectl get configmap coredns -n kube-system -o yaml
 
 The default Corefile looks something like this:
 
-```
+```text
 .:53 {
     errors
     health {
@@ -59,7 +59,7 @@ kubectl edit configmap coredns -n kube-system
 
 Add the hosts plugin before the forward plugin:
 
-```
+```text
 .:53 {
     errors
     health {
@@ -105,7 +105,7 @@ kubectl run dns-test --rm -it --restart=Never --image=busybox -- \
 
 If your organization has internal DNS servers for corporate domains, you can forward those queries to the right servers while keeping external resolution on the default path:
 
-```
+```text
 .:53 {
     errors
     health {
@@ -147,7 +147,7 @@ Notice that each domain gets its own server block. CoreDNS routes queries to the
 
 The rewrite plugin lets you modify DNS queries before they are processed. This is useful for aliasing or redirecting:
 
-```
+```text
 .:53 {
     errors
     health {
@@ -179,7 +179,7 @@ The rewrite plugin lets you modify DNS queries before they are processed. This i
 
 You can also use regex-based rewrites for more complex patterns:
 
-```
+```text
 # Rewrite all *.legacy.local to *.default.svc.cluster.local
 rewrite name regex (.+)\.legacy\.local {1}.default.svc.cluster.local
 ```
@@ -188,7 +188,7 @@ rewrite name regex (.+)\.legacy\.local {1}.default.svc.cluster.local
 
 The default cache TTL of 30 seconds works for most cases, but you can tune it:
 
-```
+```text
 cache {
     success 9984 300   # Cache successful lookups for up to 300 seconds, max 9984 entries
     denial 9984 60     # Cache NXDOMAIN responses for up to 60 seconds
@@ -202,7 +202,7 @@ The prefetch option is particularly useful for high-traffic services. It refresh
 
 When troubleshooting DNS issues, enable the log plugin temporarily:
 
-```
+```text
 .:53 {
     log
     errors
@@ -290,7 +290,7 @@ data:
 
 Then reference it in the main Corefile using the `import` plugin:
 
-```
+```text
 .:53 {
     errors
     health {

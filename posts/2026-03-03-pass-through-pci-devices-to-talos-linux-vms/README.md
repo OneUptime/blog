@@ -76,7 +76,7 @@ done
 
 Find your target device in the output and note the IOMMU group number and the device IDs. For example:
 
-```
+```text
 IOMMU Group 14:
   03:00.0 Ethernet controller [0200]: Intel Corporation I350 Gigabit Network Connection [8086:1521] (rev 01)
   03:00.1 Ethernet controller [0200]: Intel Corporation I350 Gigabit Network Connection [8086:1521] (rev 01)

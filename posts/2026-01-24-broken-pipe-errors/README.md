@@ -79,7 +79,7 @@ sudo nano ~/.ssh/config
 
 Add the following configuration:
 
-```
+```text
 # Global SSH client settings
 Host *
     # Send a keepalive packet every 60 seconds
@@ -103,7 +103,7 @@ sudo nano /etc/ssh/sshd_config
 
 Add or modify these settings:
 
-```
+```text
 # Server sends keepalive to client every 60 seconds
 ClientAliveInterval 60
 

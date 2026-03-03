@@ -22,7 +22,7 @@ This guide walks through deploying a WordPress site from scratch on Ubuntu with 
 
 ## Project Structure
 
-```
+```text
 wordpress-deploy/
   inventory/
     hosts.yml

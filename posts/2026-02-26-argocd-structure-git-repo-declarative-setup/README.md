@@ -40,7 +40,7 @@ The ArgoCD config repo is what ArgoCD manages as App-of-Apps. The application so
 
 Here is a battle-tested structure for the ArgoCD configuration repository:
 
-```
+```text
 argocd-config/
   README.md
   root-apps/
@@ -100,7 +100,7 @@ argocd-config/
 
 Using a directory per application (instead of a flat list of YAML files) allows you to add additional configuration alongside the Application manifest:
 
-```
+```text
 applications/production/backend-api/
   app.yaml                    # ArgoCD Application manifest
   kustomization.yaml          # Optional: if using Kustomize to generate the app
@@ -115,7 +115,7 @@ Each application's source repository should have a clear layout for its Kubernet
 
 ### Kustomize-Based Layout
 
-```
+```text
 backend-api/
   src/                        # Application source code
   Dockerfile
@@ -146,7 +146,7 @@ spec:
 
 ### Helm-Based Layout
 
-```
+```text
 backend-api/
   src/
   Dockerfile
@@ -218,7 +218,7 @@ spec:
 
 Use different branches for different environments:
 
-```
+```text
 main branch     -> staging configuration
 production branch -> production configuration
 ```
@@ -229,7 +229,7 @@ This is simpler but makes it harder to review environment-specific changes and c
 
 When each environment runs on a separate cluster:
 
-```
+```text
 applications/
   cluster-prod-us/
     backend-api.yaml
@@ -265,7 +265,7 @@ spec:
 
 Some configuration is shared across environments (like CRD definitions or cluster-wide policies). Put these in a dedicated directory:
 
-```
+```text
 applications/
   shared/
     crds/
@@ -284,7 +284,7 @@ The shared directory gets its own root application or is included in both enviro
 
 With a well-structured repo, pull requests become clear and focused:
 
-```
+```text
 # Example PR: "Deploy backend-api v2.4.0 to production"
 # Changed files:
 #   applications/production/backend-api/app.yaml
@@ -298,7 +298,7 @@ With a well-structured repo, pull requests become clear and focused:
 
 Use CODEOWNERS to require approvals from the right teams:
 
-```
+```text
 # .github/CODEOWNERS
 applications/production/**  @platform-team @sre-team
 applications/staging/**     @platform-team
@@ -314,7 +314,7 @@ As your organization grows, consider these patterns:
 2. **Subdirectories per team** within a single config repo if central governance is needed
 3. **ApplicationSets** to reduce per-application YAML when patterns are repetitive
 
-```
+```text
 argocd-config/
   applications/
     team-frontend/

@@ -45,7 +45,7 @@ Once you have an SLO, the error budget burn rate tells you how fast you are cons
 
 The formula for burn rate is straightforward:
 
-```
+```text
 Burn Rate = (Actual Error Rate) / (Allowed Error Rate)
 
 Where:

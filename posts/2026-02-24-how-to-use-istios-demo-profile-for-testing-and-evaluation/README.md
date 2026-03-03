@@ -48,7 +48,7 @@ kubectl get pods -n istio-system -w
 
 You should see three deployments:
 
-```
+```text
 NAME                                    READY   STATUS    RESTARTS   AGE
 istio-egressgateway-7f4bc6d8b-xxxxx    1/1     Running   0          60s
 istio-ingressgateway-5d6b8c5f5-xxxxx   1/1     Running   0          60s

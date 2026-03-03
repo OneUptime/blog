@@ -446,14 +446,14 @@ The most common mistake with GSIs is creating them for attributes without thinki
 
 **Bad GSI design:** Using `isActive` (true/false) as partition key
 
-```
+```text
 isActive = true  -> millions of items in one partition (hot partition)
 isActive = false -> millions of items in one partition
 ```
 
 **Better GSI design:** Composite key with higher cardinality
 
-```
+```text
 GSI Partition Key: status#region (e.g., "ACTIVE#us-east")
 GSI Sort Key: createdAt
 

@@ -212,7 +212,7 @@ kubectl exec -n metallb-system <speaker-pod> -c frr -- \
 
 You should see output similar to:
 
-```
+```text
 BGP routing table entry for 10.200.0.0/24
   Community: no-advertise
   Last update: ...

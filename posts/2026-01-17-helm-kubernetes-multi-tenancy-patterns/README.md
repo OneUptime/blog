@@ -63,7 +63,7 @@ flowchart TB
 
 ### Chart Structure
 
-```
+```text
 tenant-chart/
 ├── Chart.yaml
 ├── values.yaml

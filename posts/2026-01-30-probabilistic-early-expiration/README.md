@@ -44,7 +44,7 @@ PER uses a simple but effective formula derived from the XFetch algorithm. Inste
 
 The core formula is:
 
-```
+```text
 shouldRefresh = currentTime - (delta * beta * log(random())) >= expirationTime
 ```
 

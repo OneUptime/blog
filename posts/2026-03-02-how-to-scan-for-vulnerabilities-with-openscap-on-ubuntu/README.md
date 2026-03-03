@@ -115,7 +115,7 @@ The command parameters:
 
 At the end of the scan, you'll see a summary like:
 
-```
+```text
 Title   Ensure Auditing for Processes Prior to auditd is Enabled
 Rule    xccdf_org.ssgproject.content_rule_grub2_audit_argument
 Result  pass

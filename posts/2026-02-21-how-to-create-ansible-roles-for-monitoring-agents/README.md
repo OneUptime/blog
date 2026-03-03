@@ -23,7 +23,7 @@ A monitoring agent role needs to:
 
 ## Role Structure
 
-```
+```text
 roles/node_exporter/
   defaults/main.yml
   handlers/main.yml

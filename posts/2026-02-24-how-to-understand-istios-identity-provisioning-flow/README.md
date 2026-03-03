@@ -36,13 +36,13 @@ kubectl create serviceaccount reviews -n default
 
 The SPIFFE identity is derived as:
 
-```
+```text
 spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 
 So for the reviews pod:
 
-```
+```text
 spiffe://cluster.local/ns/default/sa/reviews
 ```
 
@@ -96,7 +96,7 @@ SERVICE_ACCOUNT=reviews
 
 Envoy starts and needs certificates for mTLS. Instead of loading them from files, it uses the Secret Discovery Service (SDS) protocol. Envoy connects to a local SDS server that pilot-agent runs on a Unix domain socket:
 
-```
+```text
 /etc/istio/proxy/SDS
 ```
 
@@ -120,7 +120,7 @@ When pilot-agent receives the SDS request from Envoy, it:
 
 The CSR looks like this (conceptually):
 
-```
+```text
 Subject: (empty)
 Subject Alternative Name: URI:spiffe://cluster.local/ns/default/sa/reviews
 Public Key: <the generated ECDSA public key>

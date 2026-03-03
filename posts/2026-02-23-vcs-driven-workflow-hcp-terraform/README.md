@@ -80,7 +80,7 @@ resource "tfe_workspace" "production" {
 
 The VCS-driven workflow works best with a clear repository structure:
 
-```
+```text
 infrastructure/
   environments/
     production/
@@ -170,7 +170,7 @@ HCP Terraform creates a speculative plan that:
 
 The result appears as a GitHub (or GitLab/Bitbucket) status check:
 
-```
+```text
 HCP Terraform: Plan finished
   + 2 to add
   ~ 1 to change
@@ -201,13 +201,13 @@ After the PR is merged:
 
 For production, the recommended flow is:
 
-```
+```text
 PR opened -> speculative plan -> review -> merge -> full plan -> manual confirm -> apply
 ```
 
 For staging:
 
-```
+```text
 PR opened -> speculative plan -> review -> merge -> full plan -> auto apply
 ```
 

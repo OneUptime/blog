@@ -10,14 +10,14 @@ The OpenTelemetry Java agent bundles its own dependencies (gRPC, protobuf, Netty
 
 ## The Problem
 
-```
+```text
 java.lang.NoClassDefFoundError: io/grpc/LoadBalancerProvider
     at com.mycompany.service.GrpcClient.connect(GrpcClient.java:42)
 ```
 
 Or:
 
-```
+```text
 java.lang.NoSuchMethodError: 'void io.grpc.ManagedChannelBuilder.forTarget(java.lang.String)'
     at com.mycompany.service.GrpcClient.<init>(GrpcClient.java:28)
 ```
@@ -114,7 +114,7 @@ java -javaagent:opentelemetry-javaagent.jar \
 
 This shows which class loader is loading each class:
 
-```
+```text
 [Loaded io.grpc.ManagedChannel from file:/app/myapp.jar]
 [Loaded io.grpc.ManagedChannel from opentelemetry-javaagent.jar]
 ```

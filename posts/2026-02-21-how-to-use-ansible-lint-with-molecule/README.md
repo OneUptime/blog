@@ -16,7 +16,7 @@ In this post, we will cover how this integration works, how to configure it, and
 
 Molecule's default test sequence includes a `lint` step. Here is the full default sequence:
 
-```
+```text
 dependency -> lint -> cleanup -> destroy -> syntax -> create -> prepare -> converge -> idempotence -> side_effect -> verify -> cleanup -> destroy
 ```
 
@@ -37,7 +37,7 @@ cd webserver
 
 This creates the standard Molecule directory structure:
 
-```
+```text
 webserver/
   defaults/
     main.yml
@@ -189,7 +189,7 @@ skip_list:
 
 Roles often have multiple Molecule scenarios for different operating systems or configurations:
 
-```
+```text
 molecule/
   default/
     molecule.yml
@@ -399,7 +399,7 @@ molecule lint 2>&1 | head -50
 
 5. **Pin your tool versions.** Use a `requirements.txt` to pin ansible-lint and Molecule versions so everyone gets consistent results.
 
-```
+```text
 # requirements.txt - Pin linting and testing tool versions
 ansible-lint==24.10.0
 molecule==24.9.0

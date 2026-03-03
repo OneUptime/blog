@@ -138,7 +138,7 @@ sudo nano /etc/pam_pkcs11/pam_pkcs11.conf
 
 Key configuration in `pam_pkcs11.conf`:
 
-```
+```text
 # Specify the PKCS11 module to use
 use_pkcs11_module = opensc;
 
@@ -162,7 +162,7 @@ sudo nano /etc/pam_pkcs11/subject_mapping
 
 Add a line mapping the certificate subject to your username:
 
-```
+```text
 # Format: certificate subject : unix username
 CN=John Doe, OU=IT, O=Company, C=US -> johndoe
 ```
@@ -188,7 +188,7 @@ sudo nano /etc/pam.d/sudo
 
 Add:
 
-```
+```text
 # Smart card authentication (sufficient = card works without password)
 auth sufficient pam_pkcs11.so
 
@@ -204,7 +204,7 @@ For login:
 sudo nano /etc/pam.d/common-auth
 ```
 
-```
+```text
 # Sufficient: smart card OR password works
 auth sufficient pam_pkcs11.so
 

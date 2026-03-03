@@ -58,7 +58,7 @@ The recurrence field uses cron syntax. Important note: all times are in UTC. Mak
 
 Cron expressions in AWS scheduled scaling follow this format:
 
-```
+```text
 Minutes Hours DayOfMonth Month DayOfWeek
 ```
 

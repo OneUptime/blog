@@ -45,7 +45,7 @@ Once your cluster is running, you have several options for connecting and runnin
 
 The quickest way to start is through the Ambari web interface:
 
-```
+```text
 https://my-hive-cluster.azurehdinsight.net
 ```
 

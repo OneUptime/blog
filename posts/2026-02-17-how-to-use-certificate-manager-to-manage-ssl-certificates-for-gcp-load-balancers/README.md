@@ -61,7 +61,7 @@ gcloud certificate-manager dns-authorizations describe my-dns-auth \
 
 This outputs something like:
 
-```
+```text
 dnsResourceRecord:
   data: abc123.authorize.certificatemanager.goog.
   name: _acme-challenge.example.com.

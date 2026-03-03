@@ -16,7 +16,7 @@ This is one of the trickiest Cloud Run issues because the container might work p
 
 Cloud Run health check failures show up in a few different ways:
 
-```
+```text
 ERROR: Revision 'my-service-00002-abc' is not ready and cannot serve traffic.
 The user-provided container failed to start and listen on the port defined
 provided by the PORT environment variable. Logs for this revision might contain
@@ -25,14 +25,14 @@ more information.
 
 Or:
 
-```
+```text
 Container failed to start. Failed to start and then listen on the port defined
 by the PORT environment variable when it is set, or on port 8080.
 ```
 
 Or for newer deployments with startup probes:
 
-```
+```text
 Startup probe failed: container did not respond to health check request within the configured time limit.
 ```
 

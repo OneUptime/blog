@@ -1024,7 +1024,7 @@ await channel.assertQueue('bounded.queue', {
 
 Adopt a clear naming convention for exchanges and queues:
 
-```
+```text
 Exchanges: <domain>.<type>
   - orders.direct
   - events.topic

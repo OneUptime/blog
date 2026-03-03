@@ -239,7 +239,7 @@ kubectl exec -n metallb-system <speaker-pod> -c frr -- \
 
 Expected output for a healthy session:
 
-```
+```text
 BFD Peers:
     peer 10.0.0.1 vrf default
         ID: 1

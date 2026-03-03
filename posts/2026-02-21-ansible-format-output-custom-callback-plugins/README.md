@@ -92,7 +92,7 @@ class CallbackModule(DefaultCallback):
 
 Output:
 
-```
+```text
 [10:15:23] PLAY [Configure web servers] **************************************
 [10:15:23] TASK [Gathering Facts] ********************************************
   [10:15:25] ok: [web-01]
@@ -240,7 +240,7 @@ class CallbackModule(DefaultCallback):
 
 Place your callback in the `callback_plugins/` directory:
 
-```
+```text
 project/
   ansible.cfg
   callback_plugins/

@@ -14,7 +14,7 @@ A Git history filled with messages like "fix stuff," "wip," and "updates" tells 
 
 Every commit message follows this structure:
 
-```
+```text
 <type>(<scope>): <description>
 
 [optional body]
@@ -171,7 +171,7 @@ Add a script to `package.json`:
 
 Run `npm run commit` for an interactive prompt:
 
-```
+```text
 $ npm run commit
 
 ? Select the type of change that you're committing: (Use arrow keys)

@@ -67,7 +67,7 @@ This architecture ensures that all Istio configuration changes flow through a co
 
 A well-organized repository structure is crucial for managing Istio configurations at scale. Here is a recommended structure that separates concerns and supports multiple environments:
 
-```
+```text
 # Directory structure for Istio GitOps repository
 # Organized by environment and resource type for clarity
 
@@ -1348,7 +1348,7 @@ jobs:
             promotion
             istio
             ${{ inputs.target_env }}
-```
+```text
 
 ### Monitoring GitOps Operations
 

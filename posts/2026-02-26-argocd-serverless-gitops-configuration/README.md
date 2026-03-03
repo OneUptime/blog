@@ -35,7 +35,7 @@ Each layer needs to be consistent across environments and auditable for complian
 
 Organize your serverless configuration with clear separation between platform and application concerns:
 
-```
+```text
 serverless-config/
   platform/
     knative/

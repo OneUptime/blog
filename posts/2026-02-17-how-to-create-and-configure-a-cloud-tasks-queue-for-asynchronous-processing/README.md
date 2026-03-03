@@ -98,7 +98,7 @@ The retry parameters:
 
 Here is how the retry intervals work with `min-backoff=1s`, `max-doublings=4`, `max-backoff=300s`:
 
-```
+```text
 Attempt 1: Immediate
 Attempt 2: 1s wait
 Attempt 3: 2s wait  (doubled)

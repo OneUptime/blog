@@ -71,7 +71,7 @@ spec:
 
 The RuntimeDefault profile in containerd blocks dangerous syscalls including:
 
-```
+```text
 # Syscalls blocked by RuntimeDefault
 acct          - Process accounting
 add_key       - Kernel keyring manipulation

@@ -129,7 +129,7 @@ volumes:
 
 All files appear in `/etc/config`:
 
-```
+```text
 /etc/config/
 ├── file1.json
 ├── file2.xml

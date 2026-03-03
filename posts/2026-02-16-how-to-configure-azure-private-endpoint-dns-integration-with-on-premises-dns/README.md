@@ -153,7 +153,7 @@ Add-DnsServerConditionalForwarderZone `
 
 For **BIND on Linux**, add the following to your named.conf:
 
-```
+```text
 // Forward Azure Private Link DNS zones to the Azure DNS Private Resolver
 // The IP 10.0.10.4 is the inbound endpoint of the resolver
 

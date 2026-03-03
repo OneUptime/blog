@@ -31,7 +31,7 @@ flowchart TB
 
 Organize your values files by environment for clarity and maintainability.
 
-```
+```text
 my-app/
 ├── Chart.yaml
 ├── values.yaml              # Chart defaults

@@ -90,7 +90,7 @@ spec:
 
 Now when you run kubectl get databases, you'll see:
 
-```
+```text
 NAME        TYPE       VERSION   READY   ENDPOINT                    AGE
 prod-db     postgres   14.5      true    prod-db.default.svc:5432    5d
 staging-db  mysql      8.0       true    staging-db.default.svc:3306 2d
@@ -357,7 +357,7 @@ spec:
 
 When you run kubectl get applications, you see:
 
-```
+```text
 NAME          ENVIRONMENT   STATUS    REPLICAS   AGE
 api-service   production    Running   5          10d
 web-app       production    Running   3          5d
@@ -366,7 +366,7 @@ worker        staging       Running   2          2d
 
 And with kubectl get applications -o wide:
 
-```
+```text
 NAME          ENVIRONMENT   STATUS    REPLICAS   URL                        IMAGE                    LAST DEPLOYED   AGE
 api-service   production    Running   5          https://api.example.com    registry/api:v2.5.1      2d              10d
 web-app       production    Running   3          https://example.com        registry/web:v1.8.2      12h             5d

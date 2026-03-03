@@ -155,7 +155,7 @@ sudo chmod 700 /usr/local/bin/block-ip.sh
 sudo visudo -f /etc/sudoers.d/mod-evasive
 ```
 
-```
+```text
 www-data ALL=(ALL) NOPASSWD: /usr/sbin/ufw
 www-data ALL=(ALL) NOPASSWD: /usr/local/bin/block-ip.sh
 ```

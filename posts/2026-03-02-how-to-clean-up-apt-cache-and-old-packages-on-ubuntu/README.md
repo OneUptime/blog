@@ -165,7 +165,7 @@ sudo apt install -y unattended-upgrades
 sudo nano /etc/apt/apt.conf.d/50unattended-upgrades
 ```
 
-```
+```text
 # /etc/apt/apt.conf.d/50unattended-upgrades (relevant cleanup sections)
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
 Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";

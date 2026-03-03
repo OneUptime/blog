@@ -136,7 +136,7 @@ terraform-fmt:
 
 Many projects have Terraform code spread across multiple directories - environments, modules, shared configs. You might have a structure like this:
 
-```
+```text
 infrastructure/
   environments/
     dev/

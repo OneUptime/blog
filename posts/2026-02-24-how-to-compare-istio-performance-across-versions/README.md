@@ -389,7 +389,7 @@ spec:
 
 After collecting all the data, create a summary report:
 
-```
+```text
 Istio Version Comparison: 1.20.3 -> 1.21.0
 ============================================
 

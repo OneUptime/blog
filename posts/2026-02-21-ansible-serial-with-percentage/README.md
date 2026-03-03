@@ -85,7 +85,7 @@ Combine percentages in a progressive list:
 
 With 200 hosts:
 
-```
+```text
 Batch 1: 2 hosts (1%)   - canary
 Batch 2: 10 hosts (5%)  - small group
 Batch 3: 20 hosts (10%) - medium group
@@ -175,7 +175,7 @@ When planning your percentage, consider the capacity impact:
 
 Your batch size should not exceed the amount of excess capacity you have:
 
-```
+```text
 If you need 60 hosts to handle peak traffic:
   100 hosts - 60 minimum = 40 hosts available for updating
   40 / 100 = 40% maximum batch size

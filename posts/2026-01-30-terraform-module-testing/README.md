@@ -49,7 +49,7 @@ flowchart TB
 
 Before diving into tests, organize your module with a standard structure:
 
-```
+```text
 modules/
 └── aws-vpc/
     ├── main.tf
@@ -728,7 +728,7 @@ Tests require AWS credentials with permissions to create:
 ```bash
 go test -v -timeout 60m
 ```
-```
+```text
 
 ## Comparing Test Approaches
 
@@ -755,3 +755,5 @@ Start with unit tests that run in seconds, then add integration tests for critic
 - [Introducing the OneUptime Terraform Provider: Infrastructure as Code for Complete Observability](https://oneuptime.com/blog/post/2025-07-01-introducing-terraform-provider-for-oneuptime/view)
 - [Kubernetes and GitOps with ArgoCD](https://oneuptime.com/blog/post/2026-01-06-kubernetes-gitops-argocd/view)
 - [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)
+
+```

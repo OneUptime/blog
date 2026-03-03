@@ -146,7 +146,7 @@ To persist across reboots, add it to PulseAudio's configuration:
 nano ~/.config/pulse/default.pa
 ```
 
-```
+```text
 # Load default PulseAudio setup
 .include /etc/pulse/default.pa
 

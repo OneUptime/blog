@@ -106,7 +106,7 @@ if __name__ == '__main__':
 
 ## File Organization in Collections
 
-```
+```text
 my_collection/
   plugins/
     modules/

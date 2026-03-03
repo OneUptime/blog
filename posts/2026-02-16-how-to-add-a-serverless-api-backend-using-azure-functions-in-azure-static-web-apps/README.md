@@ -16,7 +16,7 @@ This guide covers adding an API backend to your Static Web App, from creating yo
 
 When you create a Static Web App with an API, the project structure looks like this:
 
-```
+```text
 my-project/
   api/                    # Azure Functions backend
     package.json

@@ -14,7 +14,7 @@ Terraform has a rich set of built-in functions for string manipulation, numeric 
 
 Function argument errors typically look like this:
 
-```
+```text
 Error: Error in function call
 
   on main.tf line 5, in locals:
@@ -25,7 +25,7 @@ Call to function "join" failed: missing value for "lists" parameter.
 
 Or:
 
-```
+```text
 Error: Invalid function argument
 
   on main.tf line 8, in resource "aws_instance" "web":
@@ -150,7 +150,7 @@ locals {
 
 Regular expression functions are particularly error-prone because invalid regex patterns cause runtime errors:
 
-```
+```text
 Error: Error in function call
 
 Call to function "regex" failed: invalid regexp pattern: error parsing
@@ -245,7 +245,7 @@ locals {
 
 The `file()` function reads a file at plan time. If the file does not exist, you get an error:
 
-```
+```text
 Error: Error in function call
 
 Call to function "file" failed: no file exists at "config.json".

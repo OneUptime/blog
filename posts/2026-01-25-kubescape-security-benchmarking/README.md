@@ -82,7 +82,7 @@ kubescape scan --exclude-namespaces kube-system,kube-public
 
 Sample output:
 
-```
+```text
 +--------------------+------------------+--------------------+---------------+
 |    CONTROL NAME    | FAILED RESOURCES | EXCLUDED RESOURCES | ALL RESOURCES |
 +--------------------+------------------+--------------------+---------------+

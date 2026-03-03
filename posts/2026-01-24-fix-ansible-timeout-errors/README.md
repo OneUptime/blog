@@ -36,7 +36,7 @@ graph TD
 
 ### Error Message
 
-```
+```text
 fatal: [server01]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: ssh: connect to host 10.0.0.5 port 22: Connection timed out",
@@ -149,7 +149,7 @@ ssh_args = -o ProxyCommand="ssh -W %h:%p -q bastion@bastion.example.com" -o Conn
 
 ### Error Message
 
-```
+```text
 fatal: [server01]: FAILED! => {
     "changed": false,
     "msg": "Timeout (12s) waiting for privilege escalation prompt:"
@@ -158,7 +158,7 @@ fatal: [server01]: FAILED! => {
 
 Or:
 
-```
+```text
 TASK [Install packages] *******************************************************
 fatal: [server01]: FAILED! => {"msg": "command timeout triggered, timeout value is 30 seconds"}
 ```
@@ -300,7 +300,7 @@ sequenceDiagram
 
 ### Error Message
 
-```
+```text
 fatal: [server01]: FAILED! => {
     "msg": "Timeout (10s) waiting for gather_facts"
 }

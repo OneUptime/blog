@@ -29,7 +29,7 @@ fn main() {
 
 Error message:
 
-```
+```text
 error[E0507]: cannot move out of `*r` which is behind a shared reference
  --> src/main.rs:5:13
   |

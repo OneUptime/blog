@@ -16,7 +16,7 @@ When Spring Boot starts, it scans your application for components (classes annot
 
 The full error typically looks like this:
 
-```
+```text
 org.springframework.beans.factory.NoSuchBeanDefinitionException:
 No qualifying bean of type 'com.example.MyService' available:
 expected at least 1 bean which qualifies as autowire candidate.

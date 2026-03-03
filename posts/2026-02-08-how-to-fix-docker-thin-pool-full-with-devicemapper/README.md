@@ -25,7 +25,7 @@ docker info | grep -A 20 "Storage Driver"
 
 You will see output like this when the pool is full or nearly full:
 
-```
+```text
 Storage Driver: devicemapper
  Pool Name: docker-thinpool
  Pool Blocksize: 524.3 kB
@@ -128,7 +128,7 @@ sudo nano /etc/lvm/lvm.conf
 
 Find and modify the thin pool autoextend settings:
 
-```
+```text
 # In /etc/lvm/lvm.conf, under the activation section
 activation {
     thin_pool_autoextend_threshold = 80
@@ -180,7 +180,7 @@ Create the LVM profile for auto-extension:
 sudo nano /etc/lvm/profile/docker-thinpool.profile
 ```
 
-```
+```text
 # /etc/lvm/profile/docker-thinpool.profile
 activation {
     thin_pool_autoextend_threshold=80

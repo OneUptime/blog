@@ -23,7 +23,7 @@ gcloud storage ls gs://my-bucket/ --verbosity=debug 2>&1 | tail -50
 
 The debug output often includes the specific permission that was checked. Look for lines mentioning `permission` or `status`:
 
-```
+```text
 HttpError 403: caller does not have storage.objects.list access to the Google Cloud Storage bucket.
 ```
 

@@ -91,7 +91,7 @@ Charts showing the service's outbound calls. If the service itself looks healthy
 
 A list of all pods for the workload with their status:
 
-```
+```text
 Pod                         Status    Restarts   Ready
 reviews-v1-abc123-xyz       Running   0          2/2
 reviews-v1-def456-uvw       Running   15         1/2

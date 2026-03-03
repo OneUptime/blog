@@ -87,7 +87,7 @@ Configure in `package.json`:
 
 Semantic versioning depends on commit message conventions:
 
-```
+```text
 feat: add user authentication       # Minor version bump (1.0.0 -> 1.1.0)
 fix: resolve login timeout          # Patch version bump (1.0.0 -> 1.0.1)
 feat!: redesign API endpoints       # Major version bump (1.0.0 -> 2.0.0)

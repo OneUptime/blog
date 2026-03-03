@@ -260,7 +260,7 @@ spec:
 
 A well-organized GitOps repository separates concerns:
 
-```
+```text
 gitops-repo/
   infrastructure/
     crossplane/

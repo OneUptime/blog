@@ -137,7 +137,7 @@ Configure the NFS server exports:
 sudo nano /etc/exports
 ```
 
-```
+```text
 # Export with Kerberos authentication required
 /srv/nfs/shared    *(rw,sync,no_subtree_check,sec=krb5p)
 
@@ -249,7 +249,7 @@ mount | grep nfs
 
 For persistent mounts in `/etc/fstab`:
 
-```
+```text
 nfsserver.example.com:/srv/nfs/shared  /mnt/nfs/shared  nfs4  sec=krb5p,hard,intr,noatime,_netdev  0  0
 ```
 
@@ -284,7 +284,7 @@ sudo crontab -e
 ```
 
 Add:
-```
+```text
 0 */8 * * * /usr/bin/kinit -k -t /etc/serviceuser.keytab serviceuser@EXAMPLE.COM
 ```
 

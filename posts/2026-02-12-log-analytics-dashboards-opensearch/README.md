@@ -252,7 +252,7 @@ Now that you have individual visualizations, assemble them into a dashboard:
 
 Create saved queries for common investigations so your team doesn't have to remember the syntax:
 
-```
+```text
 # High error rate from a specific service
 level:ERROR AND service:"payment-api" AND response_time_ms:>5000
 

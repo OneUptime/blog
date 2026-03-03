@@ -718,7 +718,7 @@ func main() {
 
 When you register the Go collector, Prometheus exposes these key metrics:
 
-```
+```text
 # Goroutine count
 go_goroutines
 
@@ -1029,7 +1029,7 @@ func main() {
 
 The OpenTelemetry runtime instrumentation exposes these metrics:
 
-```
+```text
 # Memory metrics
 runtime.go.mem.heap_alloc         # Heap bytes allocated
 runtime.go.mem.heap_idle          # Heap bytes idle

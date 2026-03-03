@@ -119,7 +119,7 @@ resource "aws_s3_bucket" "data" {
 
 If someone runs `terraform destroy` or removes the resource from the configuration, Terraform will throw an error like:
 
-```
+```text
 Error: Instance cannot be destroyed
   resource "aws_db_instance" "production" has lifecycle.prevent_destroy set,
   but the plan calls for this resource to be destroyed.

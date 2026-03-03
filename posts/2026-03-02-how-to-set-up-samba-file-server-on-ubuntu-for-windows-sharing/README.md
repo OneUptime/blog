@@ -253,7 +253,7 @@ sudo umount /mnt/teamshare
 
 From Windows Explorer or the Run dialog:
 
-```
+```text
 \\ubuntu-server.local\TeamShare
 # or using IP:
 \\192.168.1.50\TeamShare

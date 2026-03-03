@@ -196,7 +196,7 @@ gcloud compute forwarding-rules create my-service-http-rule \
 
 Add an A record pointing your domain to the global IP address:
 
-```
+```text
 api.yourdomain.com.  A  <YOUR_GLOBAL_IP>
 ```
 

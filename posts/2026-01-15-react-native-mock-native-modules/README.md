@@ -20,7 +20,7 @@ React Native applications run JavaScript code that communicates with native plat
 
 However, when running tests with Jest, your code executes in Node.js-not on a mobile device or simulator. The native code simply doesn't exist in this environment. Without proper mocking, you'll encounter errors like:
 
-```
+```text
 Invariant Violation: TurboModuleRegistry.getEnforcing(...):
 'CameraRoll' could not be found.
 ```
@@ -396,7 +396,7 @@ test('uses automatic mock', () => {
 
 For complex modules, create manual mocks in a `__mocks__` directory:
 
-```
+```text
 project-root/
 ├── __mocks__/
 │   ├── react-native-camera.ts

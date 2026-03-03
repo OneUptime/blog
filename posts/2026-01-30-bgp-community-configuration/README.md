@@ -40,7 +40,7 @@ Communities propagate with routes as they traverse the network. Each AS along th
 
 Standard communities are 32-bit values, typically represented as two 16-bit numbers separated by a colon (ASN:value). The first number usually represents the AS number, and the second is a locally significant value.
 
-```
+```text
 Format: ASN:VALUE (e.g., 65001:100)
 Range: 0:0 to 65535:65535
 ```
@@ -60,7 +60,7 @@ BGP defines several well-known communities with special meanings:
 
 Extended communities are 64-bit values that provide more flexibility and structure. They are commonly used for VPN route targets, traffic engineering, and other advanced features.
 
-```
+```text
 Format: Type:Administrator:Value
 Example: route-target:65001:100
 ```
@@ -69,7 +69,7 @@ Example: route-target:65001:100
 
 Large communities are 96-bit values designed for 32-bit ASN support. They consist of three 32-bit fields.
 
-```
+```text
 Format: GlobalAdmin:LocalData1:LocalData2
 Example: 4200000001:100:200
 ```
@@ -121,7 +121,7 @@ graph TB
 
 Here is a practical community scheme for an AS:
 
-```
+```text
 # Informational Communities (read-only)
 65001:1000  - Route learned from customer
 65001:1100  - Route learned from peer
@@ -539,7 +539,7 @@ graph TB
 
 Many transit providers offer communities that customers can use:
 
-```
+```text
 # Example Transit Provider Community Actions
 TRANSIT_ASN:0       - Do not announce to any peer
 TRANSIT_ASN:PEER    - Do not announce to specific peer ASN
@@ -621,7 +621,7 @@ With the exhaustion of 16-bit ASNs, large communities (RFC 8092) provide a solut
 
 ### Large Community Structure
 
-```
+```text
 Global Administrator : Local Data 1 : Local Data 2
       (32 bits)         (32 bits)      (32 bits)
 
@@ -820,7 +820,7 @@ route-map CUSTOMER_IN permit 10
 
 ### 4. Implement Consistent Naming Conventions
 
-```
+```text
 Community Lists:
 - CL_CUSTOMER_ROUTES
 - CL_BLACKHOLE

@@ -18,7 +18,7 @@ systemd merges the original unit file with all drop-ins it finds in that directo
 
 The directory structure looks like:
 
-```
+```text
 /etc/systemd/system/
   nginx.service.d/
     10-limits.conf
@@ -203,7 +203,7 @@ This reset-then-set pattern is required for multi-value directives where an empt
 
 Files are applied in lexicographic order. Use a numeric prefix to control ordering:
 
-```
+```text
 10-limits.conf       # Applied first
 20-environment.conf  # Applied second
 90-custom.conf       # Applied last (highest number wins on conflicts)

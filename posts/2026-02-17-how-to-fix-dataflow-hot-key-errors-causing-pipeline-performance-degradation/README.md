@@ -18,7 +18,7 @@ For example, if you are processing web analytics events grouped by user ID, and 
 
 Dataflow logs a warning when it detects this:
 
-```
+```text
 A hot key 'abc123' was detected in step 'GroupByKey'. This key processed 5000000 elements in the last 60s.
 ```
 

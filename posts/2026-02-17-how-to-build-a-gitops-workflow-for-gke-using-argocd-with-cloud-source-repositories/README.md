@@ -130,7 +130,7 @@ stringData:
 
 Organize your config repository for ArgoCD:
 
-```
+```text
 config-repo/
   apps/
     production/

@@ -127,7 +127,7 @@ The ArgoCD web UI has a built-in filter panel that supports label-based filterin
 
 The UI filter supports the same selector syntax as the CLI:
 
-```
+```text
 environment=production
 team=payments,tier=critical
 environment in (staging,production)

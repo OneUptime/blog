@@ -31,7 +31,7 @@ The simplest approach is including `.devcontainer` directly in your project repo
 
 ### Standard Structure
 
-```
+```text
 your-project/
   .devcontainer/
     devcontainer.json
@@ -117,7 +117,7 @@ Reference shared templates from a central repository. New projects can start wit
 
 ### Creating a Template Repository
 
-```
+```text
 org-devcontainer-templates/
   templates/
     nodejs/
@@ -211,7 +211,7 @@ flowchart LR
 
 ### Feature Structure
 
-```
+```text
 org-devcontainer-features/
   src/
     org-cli/
@@ -550,7 +550,7 @@ Update your devcontainer.json:
   "image": "ghcr.io/yourorg/devcontainer:2024-01"
 }
 ```
-```
+```text
 
 ## Access Control
 

@@ -29,7 +29,7 @@ Before diving into implementation, let's understand the benefits:
 
 A well-organized project structure is essential for clean architecture. Here is the recommended layout for a Go project using the repository pattern:
 
-```
+```text
 myapp/
 ├── cmd/
 │   └── api/

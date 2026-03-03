@@ -83,7 +83,7 @@ You can also create the table through the Log Analytics workspace in the portal 
 
 Let us create a DCR that collects a custom log file from a Linux server. Suppose your application writes logs to `/var/log/myapp/application.log` in a format like:
 
-```
+```text
 2026-02-16 10:23:45 ERROR PaymentModule - Failed to process payment: timeout
 2026-02-16 10:23:47 INFO PaymentModule - Retrying payment processing
 ```
@@ -232,7 +232,7 @@ One of the most powerful features of DCRs is the ability to transform data befor
 
 Here is an example transformation that parses a custom log format and filters out DEBUG lines:
 
-```
+```text
 // KQL transformation in a DCR dataFlow
 // Parse the raw log line and filter out debug messages
 source

@@ -23,7 +23,7 @@ The carrier is typically a map-like structure that holds headers. The context co
 
 Here is a visual representation of the flow:
 
-```
+```text
 Service A                          Service B
 ┌─────────────────┐               ┌─────────────────┐
 │                 │               │                 │
@@ -113,7 +113,7 @@ class TextMapPropagator(ABC):
 
 Let's build a custom propagator that uses a proprietary header format. Imagine your company has a legacy tracing system that uses a single header called `X-Custom-Trace` with the format:
 
-```
+```text
 X-Custom-Trace: {trace_id}:{span_id}:{sampled}
 ```
 

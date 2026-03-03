@@ -39,7 +39,7 @@ Both KDCs must have matching cross-realm TGT principals with the same shared sec
 sudo kadmin.local
 ```
 
-```
+```text
 # Create the principal that Realm A presents to Realm B's KDC
 kadmin.local: addprinc -e "aes256-cts-hmac-sha1-96:normal" krbtgt/PARTNER.EXAMPLE.COM@CORP.EXAMPLE.COM
 # Enter and confirm the shared secret password
@@ -57,7 +57,7 @@ Run on **Realm B's KDC**:
 sudo kadmin.local
 ```
 
-```
+```text
 # Create the same principals on Realm B with identical passwords
 kadmin.local: addprinc -e "aes256-cts-hmac-sha1-96:normal" krbtgt/PARTNER.EXAMPLE.COM@CORP.EXAMPLE.COM
 # Use the SAME shared secret as on Realm A

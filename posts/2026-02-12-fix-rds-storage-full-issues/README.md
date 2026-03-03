@@ -10,13 +10,13 @@ Description: Fix RDS storage full problems by identifying space consumers, clean
 
 Your RDS instance has run out of storage. The database stops accepting writes, your application throws errors, and everything grinds to a halt. Depending on the database engine, you might see errors like:
 
-```
+```text
 ERROR 1114 (HY000): The table 'my_table' is full
 ```
 
 or
 
-```
+```text
 FATAL: could not write to file "base/16384/12345": No space left on device
 ```
 

@@ -360,7 +360,7 @@ module.exports = {
 
 Keep tests close to the code they test. This makes it easy to find tests and encourages writing them.
 
-```
+```text
 src/
   routes/
     users.js

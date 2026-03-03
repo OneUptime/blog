@@ -128,7 +128,7 @@ squid_business_hours:
 
 ## Squid Configuration Template
 
-```
+```text
 # roles/squid/templates/squid.conf.j2 - Main Squid configuration
 # Listening port
 http_port {{ squid_port }}
@@ -201,7 +201,7 @@ negative_dns_ttl 1 minute
 
 ## Blocked Domains Template
 
-```
+```text
 # roles/squid/templates/blocked_domains.txt.j2
 {% for domain in squid_blocked_domains %}
 {{ domain }}

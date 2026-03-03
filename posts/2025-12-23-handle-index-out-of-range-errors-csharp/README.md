@@ -10,7 +10,7 @@ The `IndexOutOfRangeException` is a common runtime error that occurs when trying
 
 ## Understanding the Error
 
-```
+```text
 System.IndexOutOfRangeException: Index was outside the bounds of the array.
    at MyApp.ProcessData(Int32[] data) in Program.cs:line 25
 ```

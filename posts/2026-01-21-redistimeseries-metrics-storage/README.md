@@ -662,7 +662,7 @@ grafana-cli plugins install redis-datasource
 
 Example Grafana query:
 
-```
+```text
 TS.MRANGE - + AGGREGATION avg 60000 FILTER metric=cpu
 ```
 

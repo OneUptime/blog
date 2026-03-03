@@ -142,7 +142,7 @@ In OBS Studio:
 
 Click "Start Streaming". Your stream key becomes part of the HLS URL:
 
-```
+```text
 http://YOUR_SERVER_IP/hls/mystream.m3u8
 ```
 

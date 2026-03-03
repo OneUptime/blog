@@ -297,7 +297,7 @@ graph LR
 ## Identifying Performance Patterns
 
 ### Pattern 1: Linear Scaling
-```
+```text
 Users:      10    20    30    40    50
 RPS:       100   200   300   400   500
 Avg RT:     50    52    55    58    60
@@ -305,7 +305,7 @@ Avg RT:     50    52    55    58    60
 Good: System scales linearly with load.
 
 ### Pattern 2: Saturation Point
-```
+```text
 Users:      10    20    30    40    50
 RPS:       100   200   280   290   295
 Avg RT:     50    55   100   500  2000
@@ -313,7 +313,7 @@ Avg RT:     50    55   100   500  2000
 Problem: System saturates around 30 users. Database, CPU, or connection pool exhausted.
 
 ### Pattern 3: Memory Leak
-```
+```text
 Time:      1m    2m    3m    4m    5m
 Avg RT:    50    60    80   120   250
 Failures:   0     0     1     5    50
@@ -321,7 +321,7 @@ Failures:   0     0     1     5    50
 Problem: Performance degrades over time. Likely memory leak or resource exhaustion.
 
 ### Pattern 4: Intermittent Failures
-```
+```text
 Time:      1m    2m    3m    4m    5m
 Avg RT:    50    50   500    50    50
 Failures:   0     0    100    0     0

@@ -121,7 +121,7 @@ mkdir -p gatling-tests/resources
 mkdir -p gatling-tests/results
 ```
 
-```
+```text
 gatling-tests/
   simulations/
     ApiLoadTest.scala

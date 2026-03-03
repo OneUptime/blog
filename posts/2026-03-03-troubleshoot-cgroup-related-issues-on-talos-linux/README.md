@@ -320,7 +320,7 @@ talosctl get machineconfig --nodes <node-ip> -o yaml | grep -A20 kubelet
 
 When you encounter a cgroup-related issue, work through this checklist:
 
-```
+```text
 1. [ ] What is the symptom? (OOM, throttle, slow IO, eviction)
 2. [ ] Which pod/container is affected?
 3. [ ] What are the resource requests and limits?

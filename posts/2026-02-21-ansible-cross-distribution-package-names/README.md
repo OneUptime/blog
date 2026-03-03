@@ -164,7 +164,7 @@ For simpler cases, use an inline dictionary:
 
 In roles, set defaults per distribution in the `vars/` directory:
 
-```
+```text
 roles/webserver/
   defaults/
     main.yml

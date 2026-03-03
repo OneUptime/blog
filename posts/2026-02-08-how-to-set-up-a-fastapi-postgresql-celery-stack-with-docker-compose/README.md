@@ -28,7 +28,7 @@ The client sends requests to FastAPI. For immediate operations, FastAPI talks di
 
 ## Project Structure
 
-```
+```text
 fastapi-celery/
 ├── docker-compose.yml
 ├── Dockerfile
@@ -80,7 +80,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ## Requirements File
 
-```
+```text
 # Python package dependencies
 fastapi==0.109.0
 uvicorn[standard]==0.27.0

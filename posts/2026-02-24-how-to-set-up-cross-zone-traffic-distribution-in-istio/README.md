@@ -22,7 +22,7 @@ kubectl get nodes -L topology.kubernetes.io/zone
 
 Output looks something like:
 
-```
+```text
 NAME           STATUS   ROLES    AGE   VERSION   ZONE
 node-1         Ready    <none>   30d   v1.28.3   us-east-1a
 node-2         Ready    <none>   30d   v1.28.3   us-east-1a
@@ -116,7 +116,7 @@ kubectl get pods -l app=my-service -o wide --no-headers \
 
 Output:
 
-```
+```text
      15 node-1    (us-east-1a)
      12 node-3    (us-east-1b)
       5 node-5    (us-east-1c)
@@ -236,7 +236,7 @@ The 5% to other zones keeps them warm without breaking the bank.
 
 Use Prometheus to track actual traffic distribution:
 
-```
+```text
 sum(rate(istio_requests_total{
   destination_service="my-service.default.svc.cluster.local",
   reporter="source"

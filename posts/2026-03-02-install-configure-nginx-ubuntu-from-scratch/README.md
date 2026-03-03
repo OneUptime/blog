@@ -51,7 +51,7 @@ nginx -v
 
 ## Nginx Directory Structure
 
-```
+```text
 /etc/nginx/
 ├── nginx.conf            # Main configuration file
 ├── conf.d/               # Additional global configurations
@@ -63,7 +63,7 @@ nginx -v
 └── mime.types            # MIME type mappings
 ```
 
-```
+```text
 /var/log/nginx/
 ├── access.log            # HTTP access log
 └── error.log             # Error log

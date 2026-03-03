@@ -164,7 +164,7 @@ services:
 
 Each request through Envoy generates a span with these attributes:
 
-```
+```text
 Span: ingress_http backend_operation
 Attributes:
   http.method:               GET

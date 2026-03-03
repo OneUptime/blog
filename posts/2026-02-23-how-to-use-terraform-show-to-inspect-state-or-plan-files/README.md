@@ -45,7 +45,7 @@ terraform show
 
 The output looks something like this:
 
-```
+```text
 # aws_instance.web:
 resource "aws_instance" "web" {
     ami                          = "ami-0c55b159cbfafe1f0"
@@ -91,7 +91,7 @@ terraform show tfplan
 
 The output shows you the planned changes with the familiar `+`, `-`, and `~` markers:
 
-```
+```text
 Terraform will perform the following actions:
 
   # aws_instance.web will be updated in-place
@@ -273,7 +273,7 @@ diff /tmp/staging-resources.txt /tmp/prod-resources.txt
 
 Terraform marks certain values as sensitive, and `terraform show` respects that by default:
 
-```
+```text
 # aws_db_instance.main:
 resource "aws_db_instance" "main" {
     password = (sensitive value)

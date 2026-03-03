@@ -55,7 +55,7 @@ EventBridge Scheduler uses the same cron format as other AWS services, with six 
 
 Here are common patterns:
 
-```
+```text
 # Every 5 minutes
 cron(0/5 * * * ? *)
 

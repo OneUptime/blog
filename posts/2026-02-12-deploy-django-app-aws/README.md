@@ -84,7 +84,7 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 Create a `requirements.txt`.
 
-```
+```text
 Django==5.0
 gunicorn==21.2.0
 psycopg2-binary==2.9.9
@@ -231,7 +231,7 @@ Elastic Beanstalk handles the infrastructure, so you can focus on your code.
 
 Create the required EB configuration files.
 
-```
+```text
 myapp/
   .ebextensions/
     01_packages.config
@@ -284,7 +284,7 @@ chmod +x .platform/hooks/postdeploy/01_migrate.sh
 
 Create a Procfile.
 
-```
+```text
 # Procfile
 web: gunicorn myapp.wsgi:application --bind :8000 --workers 3
 ```

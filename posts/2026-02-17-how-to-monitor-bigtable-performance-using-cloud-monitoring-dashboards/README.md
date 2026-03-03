@@ -108,7 +108,7 @@ Here are the specific charts I recommend for every Bigtable dashboard.
 
 **CPU Utilization chart**: Shows CPU load per cluster. This is your most important capacity metric.
 
-```
+```text
 Metric: bigtable.googleapis.com/cluster/cpu_load
 Resource: bigtable_cluster
 Aggregation: Mean, 1-minute alignment
@@ -117,7 +117,7 @@ Threshold line: 70% (warning)
 
 **Request Latency chart**: Shows P50 and P99 latency broken down by method type.
 
-```
+```text
 Metric: bigtable.googleapis.com/server/latencies
 Resource: bigtable_table
 Aggregation: P50 and P99 percentiles
@@ -126,7 +126,7 @@ Group by: method (to separate reads from writes)
 
 **Throughput chart**: Shows rows read and written per second.
 
-```
+```text
 Metric: bigtable.googleapis.com/server/request_count
 Resource: bigtable_table
 Aggregation: Rate, 1-minute alignment
@@ -135,7 +135,7 @@ Group by: method
 
 **Storage utilization chart**: Shows total bytes stored.
 
-```
+```text
 Metric: bigtable.googleapis.com/cluster/storage_utilization
 Resource: bigtable_cluster
 Aggregation: Mean
@@ -143,7 +143,7 @@ Aggregation: Mean
 
 **Error rate chart**: Shows server-side errors.
 
-```
+```text
 Metric: bigtable.googleapis.com/server/error_count
 Resource: bigtable_table
 Aggregation: Sum, 1-minute alignment

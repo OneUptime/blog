@@ -109,7 +109,7 @@ Each static IP provides 64,512 ports for NAT (ports 1024-65535). Each outbound c
 
 Here is the math:
 
-```
+```text
 Required IPs = ceil(Max concurrent connections / 64512)
 ```
 

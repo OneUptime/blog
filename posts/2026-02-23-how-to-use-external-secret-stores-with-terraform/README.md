@@ -251,7 +251,7 @@ print(json.dumps({"value": result.stdout.strip()}))
 
 Here is a quick comparison to help you decide:
 
-```
+```text
 | Feature              | Cloud-Native | Vault    | SOPS     | 1Password |
 |---------------------|-------------|----------|----------|-----------|
 | Multi-cloud         | No          | Yes      | Yes      | Yes       |

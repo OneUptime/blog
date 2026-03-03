@@ -56,7 +56,7 @@ The first step in error analysis is attribution: figuring out where an error act
 
 In distributed systems, a single root cause can appear as errors in dozens of services. Without proper attribution, you end up chasing symptoms instead of causes.
 
-```
+```text
 User Request → API Gateway → Order Service → Payment Service → Database
                     ↓              ↓              ↓
                  Error!         Error!         Error! ← Actual source
@@ -659,17 +659,17 @@ processors:
 Create views that support analysis:
 
 **Error Rate by Service**
-```
+```text
 sum(rate(span_errors_total[5m])) by (service)
 ```
 
 **Error Categories Over Time**
-```
+```text
 sum(rate(span_errors_total[5m])) by (error_category)
 ```
 
 **Top Error Fingerprints**
-```
+```text
 topk(10, sum(rate(span_errors_total[5m])) by (error_fingerprint))
 ```
 

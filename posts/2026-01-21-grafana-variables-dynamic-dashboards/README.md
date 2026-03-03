@@ -197,7 +197,7 @@ All value: .+  # Match any non-empty string
 
 ### Panel Titles
 
-```
+```text
 HTTP Requests - $namespace / $service
 ```
 
@@ -212,7 +212,7 @@ sum(rate(http_requests_total{
 
 ### Dashboard Links
 
-```
+```text
 /d/abc123/service-detail?var-namespace=$namespace&var-service=$service
 ```
 

@@ -20,7 +20,7 @@ With per-source limits, you can give the checkout service 500 requests per minut
 
 When mTLS is enabled (which is the default in Istio), every request between services carries a client certificate. This certificate contains the service account identity in the SPIFFE format:
 
-```
+```text
 spiffe://cluster.local/ns/default/sa/checkout-service
 ```
 

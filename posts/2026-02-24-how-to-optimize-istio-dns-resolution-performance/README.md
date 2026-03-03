@@ -68,7 +68,7 @@ kubectl exec deploy/my-app -- cat /etc/resolv.conf
 
 You will see something like:
 
-```
+```text
 search my-namespace.svc.cluster.local svc.cluster.local cluster.local
 nameserver 10.96.0.10
 ndots:5
@@ -146,7 +146,7 @@ data:
 
 The `cache 60` line caches DNS responses for 60 seconds. Increasing this to 300 seconds can reduce the load on upstream DNS servers:
 
-```
+```text
 cache 300
 ```
 
@@ -193,7 +193,7 @@ kubectl exec deploy/my-app -c istio-proxy -- curl -s localhost:15000/stats | gre
 
 Key metrics to watch in Prometheus:
 
-```
+```text
 # CoreDNS query latency
 histogram_quantile(0.99, sum(rate(coredns_dns_request_duration_seconds_bucket[5m])) by (le))
 

@@ -160,7 +160,7 @@ resource "tfe_workspace" "managed" {
 
 Categorize by the technology or cloud provider:
 
-```
+```text
 aws, gcp, azure             - Cloud provider
 kubernetes, ecs, lambda      - Compute platform
 rds, dynamodb, redis         - Data stores
@@ -172,7 +172,7 @@ terraform-1.7, terraform-1.6 - Terraform version
 
 Track the lifecycle state of workspaces:
 
-```
+```text
 active        - Currently in use
 deprecated    - Being phased out
 temporary     - Created for testing, will be destroyed
@@ -361,7 +361,7 @@ for tag in sorted(tag_groups.keys()):
 
 Establish conventions early to keep tags useful as your organization scales:
 
-```
+```text
 # Use lowercase with hyphens
 production         # Good
 Production         # Avoid mixed case

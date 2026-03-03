@@ -758,7 +758,7 @@ test.describe('Light Mode Visual Tests', () => {
 
 ### Test Organization
 
-```
+```text
 tests/
   visual/
     __snapshots__/

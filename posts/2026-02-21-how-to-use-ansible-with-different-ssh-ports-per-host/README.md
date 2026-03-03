@@ -264,7 +264,7 @@ When using dynamic inventory scripts, include the port in the host variables:
 
 A realistic setup with different ports across environments:
 
-```
+```text
 inventory/
   production/
     hosts
@@ -325,7 +325,7 @@ ansible web02 -m ping -vvvv 2>&1 | grep "EXEC ssh"
 
 In the `-vvvv` output, look for the `-p` flag or `Port` option:
 
-```
+```text
 <web02> SSH: EXEC ssh ... -o Port=2222 ... 10.0.1.11
 ```
 

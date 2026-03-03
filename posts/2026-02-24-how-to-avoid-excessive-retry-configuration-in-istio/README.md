@@ -18,7 +18,7 @@ Consider a simple chain: Frontend -> API -> Database Service.
 
 If the Database Service has a brief hiccup and returns 503 for a few seconds, here is what happens with aggressive retries:
 
-```
+```text
 Frontend retries 5 times per request
   -> API retries 5 times per request to Database
     -> Each frontend request generates up to 25 database requests

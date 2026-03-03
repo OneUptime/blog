@@ -24,7 +24,7 @@ GSLB typically operates at the DNS level. When a user queries your domain name, 
 
 A typical GSLB setup for Talos Linux looks like this:
 
-```
+```text
 User (Europe)  -> DNS GSLB -> Talos Cluster EU (Frankfurt)
 User (US East) -> DNS GSLB -> Talos Cluster US-East (Virginia)
 User (Asia)    -> DNS GSLB -> Talos Cluster Asia (Tokyo)

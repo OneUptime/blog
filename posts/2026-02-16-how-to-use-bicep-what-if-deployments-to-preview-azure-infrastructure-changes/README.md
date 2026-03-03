@@ -38,7 +38,7 @@ az deployment group what-if \
 
 The output uses color-coded symbols to show what would change:
 
-```
+```text
 Resource and property changes are indicated with these symbols:
   + Create
   ~ Modify

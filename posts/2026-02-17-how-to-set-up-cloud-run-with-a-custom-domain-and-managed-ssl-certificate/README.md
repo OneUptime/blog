@@ -53,7 +53,7 @@ gcloud run domain-mappings describe \
 
 This will output something like:
 
-```
+```text
 status:
   resourceRecords:
   - name: api

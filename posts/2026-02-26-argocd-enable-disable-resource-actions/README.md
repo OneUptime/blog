@@ -155,7 +155,7 @@ Even if an action is defined and enabled in the discovery script, RBAC can preve
 
 The RBAC resource format for actions is:
 
-```
+```text
 p, <role>, applications, action/<group>/<kind>/<action>, <project>/<app>, <allow|deny>
 ```
 

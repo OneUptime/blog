@@ -22,7 +22,7 @@ Windows has native SMB support. You can connect via File Explorer or the command
 
 Open File Explorer and type the UNC path into the address bar:
 
-```
+```text
 \\192.168.1.50\data
 ```
 
@@ -70,7 +70,7 @@ macOS supports SMB natively through Finder.
 
 In Finder, press `Cmd+K` to open "Connect to Server." Enter:
 
-```
+```text
 smb://192.168.1.50/data
 ```
 
@@ -171,7 +171,7 @@ sudo chown root:root /etc/samba/credentials
 
 Then add to `/etc/fstab`:
 
-```
+```text
 //192.168.1.50/data  /mnt/samba/data  cifs  credentials=/etc/samba/credentials,uid=1000,gid=1000,iocharset=utf8,_netdev  0  0
 ```
 

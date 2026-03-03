@@ -31,7 +31,7 @@ They do not make sense when:
 
 A wrapper module calls the base module and passes through a simplified interface:
 
-```
+```text
 modules/
   rds-postgres/          # Wrapper module (your opinionated version)
     main.tf              # Calls the base module

@@ -82,7 +82,7 @@ gcloud tasks queues create patient-retry-queue \
 
 Controls how many times the backoff doubles before increasing linearly.
 
-```
+```text
 # With min-backoff=5s and max-doublings=3:
 # Attempt 1: Immediate
 # Attempt 2: 5s wait

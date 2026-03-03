@@ -100,7 +100,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA pglogical TO dms_user;
 
 Allow the DMS connection from Google Cloud:
 
-```
+```text
 # pg_hba.conf - Allow DMS to connect
 # Replace the IP range with your VPN or GCP IP range
 hostssl  all  dms_user  10.128.0.0/20  md5

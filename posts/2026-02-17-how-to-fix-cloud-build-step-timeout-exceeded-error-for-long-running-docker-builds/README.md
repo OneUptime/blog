@@ -180,7 +180,7 @@ timeout: '3600s'
 
 A large build context (files sent to Docker before building) slows down the build significantly. Create a `.dockerignore` file:
 
-```
+```text
 # .dockerignore - exclude files not needed in the Docker image
 .git
 node_modules

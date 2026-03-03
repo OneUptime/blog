@@ -97,7 +97,7 @@ Key settings:
 
 Navigate to: Manage Jenkins → Security
 
-```
+```text
 # Recommended settings:
 - Enable CSRF Protection
 - Disable CLI remoting
@@ -465,7 +465,7 @@ sudo systemctl start jenkins
 
 ### Critical Files to Backup
 
-```
+```text
 /var/lib/jenkins/
 ├── config.xml              # Main config
 ├── credentials.xml         # Credentials

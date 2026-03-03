@@ -18,7 +18,7 @@ Helm is great for packaging reusable charts that other people consume. But for y
 
 A typical Kustomize project for multi-environment AKS deployments looks like this:
 
-```
+```text
 k8s/
   base/
     kustomization.yaml

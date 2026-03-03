@@ -16,7 +16,7 @@ This guide shows how to properly size your quotas and limits when running Istio.
 
 Every pod with Istio sidecar injection has at least one extra container (`istio-proxy`) and potentially an init container (`istio-init`). The default sidecar resource requests are:
 
-```
+```text
 istio-proxy:
   CPU request: 100m (default)
   Memory request: 128Mi (default)
@@ -35,7 +35,7 @@ kubectl get configmap istio-sidecar-injector -n istio-system -o yaml | \
 
 ResourceQuotas sum up resource requests and limits across all pods in a namespace. With Istio, each pod's total is:
 
-```
+```text
 Pod CPU request = App CPU request + Sidecar CPU request
 Pod Memory request = App Memory request + Sidecar Memory request
 ```
@@ -70,7 +70,7 @@ spec:
 
 To calculate the right values, estimate your workload needs and add the sidecar overhead:
 
-```
+```text
 Total CPU requests = (App CPU per pod + Sidecar CPU per pod) * Expected pod count
 Total Memory requests = (App Memory per pod + Sidecar Memory per pod) * Expected pod count
 ```
@@ -163,7 +163,7 @@ Be careful with setting requests too low. If the sidecar does not have enough CP
 
 When a pod fails to schedule due to quota limits, you will see an error like:
 
-```
+```text
 Error creating: pods "my-app-xyz" is forbidden: exceeded quota: production-quota,
 requested: requests.cpu=300m, used: requests.cpu=19800m, limited: requests.cpu=20
 ```
@@ -176,7 +176,7 @@ kubectl describe resourcequota production-quota -n production
 
 Output:
 
-```
+```text
 Name:            production-quota
 Namespace:       production
 Resource         Used    Hard
@@ -220,7 +220,7 @@ groups:
 
 When planning quota sizes, create a spreadsheet or calculation:
 
-```
+```text
 Namespace: production
 Services: 5
 Replicas per service: 3-10

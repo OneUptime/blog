@@ -495,7 +495,7 @@ FT.SEARCH product_idx "wireless headphones"
 ```
 
 Response will include highlighted text:
-```
+```text
 description: "High-quality <b>wireless</b> <b>headphones</b> with noise cancellation"
 ```
 

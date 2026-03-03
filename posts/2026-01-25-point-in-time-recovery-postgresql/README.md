@@ -181,7 +181,7 @@ sudo tail -f /var/log/postgresql/postgresql-16-main.log
 ```
 
 The log will show messages like:
-```
+```text
 LOG: starting point-in-time recovery to 2026-01-25 14:34:00
 LOG: restored log file "000000010000000100000023" from archive
 LOG: redo starts at 0/15000028
@@ -319,7 +319,7 @@ rm -rf /tmp/recovery
 
 ### WAL Files Missing
 
-```
+```text
 FATAL: could not open file "/var/lib/postgresql/wal_archive/000000010000000100000025": No such file or directory
 ```
 
@@ -330,7 +330,7 @@ Solutions:
 
 ### Recovery Target Not Found
 
-```
+```text
 FATAL: recovery ended before configured recovery target was reached
 ```
 

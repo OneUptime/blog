@@ -6,7 +6,7 @@ Tags: Learning Resource, Site Reliability Engineering
 
 Description: Here's the difference between SLI, SLO, and SLA explained simply.
 
-### SLA - Service level agreement.
+## SLA - Service level agreement.
 
 SLA basically means a Service Level Agreement. **It’s a formal agreement or a legal contract between you and your customers.** It basically describes the reliability of your product/service in a formal agreement.
 

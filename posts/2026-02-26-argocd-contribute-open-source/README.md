@@ -16,7 +16,7 @@ Before jumping into code, it helps to understand how the ArgoCD repository is or
 
 Key directories you should familiarize yourself with:
 
-```
+```text
 argo-cd/
   cmd/              # CLI entry points for argocd-server, argocd-repo-server, etc.
   controller/       # Application controller logic

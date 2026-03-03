@@ -386,7 +386,7 @@ perf script | ~/FlameGraph/stackcollapse-perf.pl | \
 
 ### Understanding Flame Graphs
 
-```
+```text
 # Flame graph anatomy:
 #
 #          +---------------------------+

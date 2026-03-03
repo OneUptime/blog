@@ -12,7 +12,7 @@ Prometheus stores its own health metrics internally, but exporting them via OTLP
 
 The pipeline is straightforward:
 
-```
+```text
 Prometheus /metrics -> Collector (Prometheus Receiver) -> OTLP Exporter -> Your Backend
 ```
 

@@ -16,7 +16,7 @@ We will chain three types of enrichment:
 2. **GeoIP data** - country, city, and ASN based on client IP
 3. **Custom attributes** - business unit, cost center, SLA tier from a static mapping
 
-```
+```text
 [OTLP Receiver] --> [k8s_attributes] --> [geoip] --> [transform] --> [Exporter]
 ```
 
@@ -116,7 +116,7 @@ processors:
 
 After processing, your spans will have attributes like:
 
-```
+```text
 geo.city_name: "San Francisco"
 geo.country_name: "United States"
 geo.country_iso_code: "US"

@@ -81,7 +81,7 @@ Before configuring GCE SD, ensure you have:
 
 The service account or credentials used by Prometheus need the following IAM role:
 
-```
+```text
 roles/compute.viewer
 ```
 

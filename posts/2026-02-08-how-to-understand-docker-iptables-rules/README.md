@@ -65,7 +65,7 @@ sudo iptables -t nat -L DOCKER -n -v --line-numbers
 
 Typical output:
 
-```
+```text
 Chain DOCKER (2 references)
 num   pkts bytes target     prot opt in     out     source       destination
 1     0    0     RETURN     all  --  docker0 *       0.0.0.0/0    0.0.0.0/0
@@ -91,7 +91,7 @@ sudo iptables -t nat -L PREROUTING -n -v
 
 You will see a jump to the DOCKER chain:
 
-```
+```text
 Chain PREROUTING (policy ACCEPT)
 target     prot opt in     out     source       destination
 DOCKER     all  --  *      *       0.0.0.0/0    0.0.0.0/0    ADDRTYPE match dst-type LOCAL
@@ -108,7 +108,7 @@ Containers need their outbound traffic to appear as if it comes from the host. D
 sudo iptables -t nat -L POSTROUTING -n -v
 ```
 
-```
+```text
 Chain POSTROUTING (policy ACCEPT)
 target      prot opt in     out     source          destination
 MASQUERADE  all  --  *      !docker0 172.17.0.0/16  0.0.0.0/0
@@ -128,7 +128,7 @@ The filter table's FORWARD chain controls whether packets can traverse between i
 sudo iptables -L FORWARD -n -v --line-numbers
 ```
 
-```
+```text
 Chain FORWARD (policy DROP)
 num   pkts bytes target                    prot opt in      out      source       destination
 1     0    0     DOCKER-USER               all  --  *       *        0.0.0.0/0    0.0.0.0/0
@@ -158,7 +158,7 @@ sudo iptables -L DOCKER-ISOLATION-STAGE-1 -n -v
 sudo iptables -L DOCKER-ISOLATION-STAGE-2 -n -v
 ```
 
-```
+```text
 Chain DOCKER-ISOLATION-STAGE-1 (1 references)
 target                    prot opt in      out     source       destination
 DOCKER-ISOLATION-STAGE-2  all  --  docker0 !docker0 0.0.0.0/0  0.0.0.0/0
@@ -181,7 +181,7 @@ This is where you should add your own rules. Docker never modifies DOCKER-USER:
 sudo iptables -L DOCKER-USER -n -v
 ```
 
-```
+```text
 Chain DOCKER-USER (1 references)
 target  prot opt in     out     source       destination
 RETURN  all  --  *      *       0.0.0.0/0    0.0.0.0/0

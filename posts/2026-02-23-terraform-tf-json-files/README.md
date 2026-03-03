@@ -318,7 +318,7 @@ echo "Generated buckets.tf.json"
 
 You can have both `.tf` and `.tf.json` files in the same directory. Terraform merges them all:
 
-```
+```text
 project/
   versions.tf           # hand-written HCL
   providers.tf          # hand-written HCL

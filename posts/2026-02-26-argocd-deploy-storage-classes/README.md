@@ -156,7 +156,7 @@ volumeBindingMode: WaitForFirstConsumer
 
 ## Repository Structure
 
-```
+```text
 storage-config/
   base/
     kustomization.yaml

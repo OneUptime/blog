@@ -103,7 +103,7 @@ For any project beyond a quick prototype, use the `group_vars` directory. This i
 
 Create a `group_vars` directory alongside your inventory file:
 
-```
+```text
 project/
   ansible.cfg
   inventory.ini
@@ -182,7 +182,7 @@ backup_config:
 
 For groups with lots of variables, you can use a directory instead of a single file.
 
-```
+```text
 project/
   inventory.ini
   group_vars/

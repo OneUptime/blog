@@ -24,7 +24,7 @@ WireGuard running on your Talos nodes is a lightweight alternative. It uses the 
 
 The first step is designing a non-overlapping address scheme across all clouds.
 
-```
+```text
 AWS Cluster:
   VPC CIDR: 10.1.0.0/16
   Node subnet: 10.1.1.0/24

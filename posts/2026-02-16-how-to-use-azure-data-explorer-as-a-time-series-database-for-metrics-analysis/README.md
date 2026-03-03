@@ -84,7 +84,7 @@ Connect to your ADX database using the web UI (https://dataexplorer.azure.com) o
 // Configure the ingestion batching policy for higher throughput
 .alter table ServerMetrics policy ingestionbatching
 ```
-```
+```text
 @'{"MaximumBatchingTimeSpan":"00:00:30", "MaximumNumberOfItems": 10000, "MaximumRawDataSizeMB": 100}'
 ```
 

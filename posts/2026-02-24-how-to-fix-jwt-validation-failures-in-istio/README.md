@@ -137,7 +137,7 @@ Expired tokens are always rejected. Make sure your token issuer is providing tok
 
 By default, Istio looks for the JWT in the Authorization header as a Bearer token:
 
-```
+```text
 Authorization: Bearer <token>
 ```
 

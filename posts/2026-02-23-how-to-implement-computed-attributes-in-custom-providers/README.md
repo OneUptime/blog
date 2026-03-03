@@ -84,7 +84,7 @@ Attributes that the user must set, but the API adds additional computed properti
 
 When Terraform plans a create operation, computed attributes have "unknown" values because they have not been determined yet. This is shown in plan output as:
 
-```
+```text
 + id         = (known after apply)
 + ip_address = (known after apply)
 ```

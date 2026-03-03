@@ -50,7 +50,7 @@ sudo hostnamectl set-hostname ceph-node-01
 sudo nano /etc/hosts
 ```
 
-```
+```text
 192.168.10.11  ceph-node-01
 192.168.10.12  ceph-node-02
 192.168.10.13  ceph-node-03

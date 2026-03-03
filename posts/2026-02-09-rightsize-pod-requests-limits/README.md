@@ -301,7 +301,7 @@ Right-sizing is iterative, not one-time. Follow this process:
 
 Track changes in a spreadsheet:
 
-```
+```text
 Service       | Old Request | New Request | Old Limit | New Limit | Savings
 api-gateway   | 512Mi       | 384Mi       | 1Gi       | 768Mi     | 25%
 user-service  | 256Mi       | 192Mi       | 512Mi     | 384Mi     | 25%

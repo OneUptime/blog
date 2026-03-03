@@ -14,12 +14,12 @@ The "invalid reference format" error appears when Docker cannot parse an image n
 
 A valid Docker image reference follows this pattern:
 
-```
+```text
 [registry/][namespace/]repository[:tag|@digest]
 ```
 
 Examples of valid references:
-```
+```text
 nginx
 nginx:1.25
 nginx:latest

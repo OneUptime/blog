@@ -14,7 +14,7 @@ The Ansible package modules (apt, yum, dnf, package) are fundamental for system 
 
 ## Common Package Module Errors
 
-```
+```text
 FAILED! => {"changed": false, "msg": "No package matching 'nonexistent' is available"}
 
 FAILED! => {"changed": false, "msg": "Failed to lock apt for exclusive operation"}

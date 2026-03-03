@@ -62,7 +62,7 @@ kubectl get pods -n metallb-system -o wide
 
 Expected output shows all pods Running:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE   IP            NODE
 controller-5f98465b6b-xyz12   1/1     Running   0          24h   10.244.0.15   node-1
 speaker-abc12                 1/1     Running   0          24h   192.168.1.10  node-1
@@ -76,7 +76,7 @@ Verify DaemonSet status to ensure speakers run on all nodes:
 kubectl get daemonset -n metallb-system
 ```
 
-```
+```text
 NAME      DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
 speaker   3         3         3       3            3           <none>          24h
 ```
@@ -140,7 +140,7 @@ kubectl patch daemonset speaker -n metallb-system --type='json' \
 
 Normal L2 mode logs showing successful ARP responses:
 
-```
+```text
 {"caller":"main.go:142","event":"startUpdate","msg":"start of service update","service":"default/nginx-lb","ts":"2026-01-07T10:15:30Z"}
 {"caller":"main.go:178","event":"serviceAnnounced","ip":"192.168.1.100","msg":"service announced","pool":"default-pool","protocol":"layer2","service":"default/nginx-lb","ts":"2026-01-07T10:15:30Z"}
 {"caller":"arp.go:102","event":"arpResponse","interface":"eth0","ip":"192.168.1.100","msg":"responded to ARP request","ts":"2026-01-07T10:15:31Z"}
@@ -148,7 +148,7 @@ Normal L2 mode logs showing successful ARP responses:
 
 Normal BGP mode logs showing session establishment:
 
-```
+```text
 {"caller":"bgp.go:89","event":"sessionUp","msg":"BGP session established","peer":"192.168.1.1","ts":"2026-01-07T10:15:30Z"}
 {"caller":"bgp.go:156","event":"routeAdvertised","msg":"route advertised","prefix":"192.168.1.100/32","peer":"192.168.1.1","ts":"2026-01-07T10:15:31Z"}
 ```
@@ -157,19 +157,19 @@ Normal BGP mode logs showing session establishment:
 
 IP pool exhaustion:
 
-```
+```text
 {"caller":"main.go:205","error":"no available IPs in pool","level":"error","msg":"failed to allocate IP","service":"default/nginx-lb","ts":"2026-01-07T10:15:30Z"}
 ```
 
 Network interface issues:
 
-```
+```text
 {"caller":"arp.go:67","error":"interface eth0 not found","level":"error","msg":"failed to send ARP announcement","ts":"2026-01-07T10:15:30Z"}
 ```
 
 BGP session failures:
 
-```
+```text
 {"caller":"bgp.go:112","error":"connection refused","level":"error","msg":"BGP session failed","peer":"192.168.1.1","ts":"2026-01-07T10:15:30Z"}
 ```
 
@@ -187,7 +187,7 @@ kubectl describe service nginx-lb -n default
 
 Look for the Events section at the bottom:
 
-```
+```text
 Events:
   Type     Reason            Age   From                Message
   ----     ------            ----  ----                -------
@@ -251,7 +251,7 @@ Check service status:
 kubectl get svc nginx-lb -n default
 ```
 
-```
+```text
 NAME       TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
 nginx-lb   LoadBalancer   10.96.100.50   <pending>     80:31234/TCP   10m
 ```
@@ -323,7 +323,7 @@ arping -I eth0 192.168.1.100
 
 Expected output shows responses from the speaker node's MAC address:
 
-```
+```text
 ARPING 192.168.1.100 from 192.168.1.50 eth0
 Unicast reply from 192.168.1.100 [AA:BB:CC:DD:EE:FF]  0.845ms
 Unicast reply from 192.168.1.100 [AA:BB:CC:DD:EE:FF]  0.821ms
@@ -395,7 +395,7 @@ kubectl logs -n metallb-system -l component=speaker | grep -i bgp
 
 Look for session establishment messages:
 
-```
+```text
 {"caller":"bgp.go:89","event":"sessionUp","msg":"BGP session established","peer":"192.168.1.1"}
 {"caller":"bgp.go:95","event":"sessionDown","msg":"BGP session lost","peer":"192.168.1.1","error":"connection reset"}
 ```
@@ -434,7 +434,7 @@ Commands to run on the BGP router (varies by vendor):
 
 Cisco IOS:
 
-```
+```text
 show ip bgp summary
 show ip bgp neighbors 192.168.1.10
 show ip route bgp
@@ -442,7 +442,7 @@ show ip route bgp
 
 FRRouting:
 
-```
+```text
 show bgp summary
 show bgp neighbors
 show ip route bgp
@@ -602,7 +602,7 @@ kubectl exec -n metallb-system speaker-abc12 -- ping -c 3 <other-speaker-pod-ip>
 
 MetalLB exposes metrics for monitoring. Key metrics to watch:
 
-```
+```text
 metallb_speaker_announced - Number of announced IPs
 metallb_bgp_session_up - BGP session state (1 = up, 0 = down)
 metallb_bgp_updates_total - BGP update messages sent

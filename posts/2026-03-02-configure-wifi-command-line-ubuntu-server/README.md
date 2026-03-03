@@ -154,7 +154,7 @@ wpa_passphrase "MyHomeNetwork" "mysecretpassword"
 
 The `wpa_passphrase` output looks like:
 
-```
+```text
 network={
     ssid="MyHomeNetwork"
     #psk="mysecretpassword"

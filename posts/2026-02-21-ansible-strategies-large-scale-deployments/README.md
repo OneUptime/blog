@@ -335,7 +335,7 @@ For consistent large-scale operations, use AWX or Ansible Tower:
 
 Estimate control node requirements:
 
-```
+```text
 Memory: forks * 100MB + base Ansible overhead (500MB)
   50 forks = ~5.5 GB RAM
   100 forks = ~10.5 GB RAM

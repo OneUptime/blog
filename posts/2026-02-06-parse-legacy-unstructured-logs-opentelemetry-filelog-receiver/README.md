@@ -25,7 +25,7 @@ The result is a structured OpenTelemetry log record with typed attributes, prope
 
 Apache access logs in the Combined format look like this:
 
-```
+```text
 192.168.1.50 - frank [06/Feb/2026:13:55:36 -0700] "GET /api/users HTTP/1.1" 200 2326 "https://example.com" "Mozilla/5.0"
 ```
 
@@ -67,7 +67,7 @@ receivers:
 
 Many legacy apps use their own format. Let's say you have logs that look like this:
 
-```
+```text
 2026-02-06 14:22:33.145 [WARN] [thread-pool-7] com.app.OrderService - Order processing delayed for customer cust_1234, retry attempt 3
 ```
 
@@ -122,7 +122,7 @@ receivers:
 
 Syslog messages from network devices and older Linux services follow RFC 3164 or RFC 5424 formats:
 
-```
+```text
 <134>Feb  6 14:30:22 webserver01 nginx: upstream timed out (110: Connection timed out) while reading response header
 ```
 

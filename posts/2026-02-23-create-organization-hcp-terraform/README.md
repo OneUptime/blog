@@ -21,7 +21,7 @@ If you already have an HCP Terraform account, creating an organization takes a f
 3. Select "Create new organization"
 4. Fill in the details:
 
-```
+```text
 Organization Name: acme-infrastructure
 Email Address: infra-team@acme.com
 ```
@@ -84,7 +84,7 @@ After creation, configure the essential settings. Navigate to your organization'
 
 ### General Settings
 
-```
+```text
 Organization Name: acme-infrastructure (cannot change after creation)
 Email: infra-team@acme.com
 Session Timeout: 20160 (minutes - default is 14 days)
@@ -99,14 +99,14 @@ Configure how users authenticate:
 
 **Two-Factor Authentication**: Enable the organization-wide 2FA requirement. This forces all members to set up 2FA before they can access workspaces.
 
-```
+```text
 Settings > Security > Two-Factor Authentication
 Require two-factor authentication for all members: Enabled
 ```
 
 **SSO (Single Sign-On)**: Available on the Business tier, SSO lets your team authenticate through your identity provider (Okta, Azure AD, OneLogin):
 
-```
+```text
 Settings > SSO
 SSO Provider: SAML
 Single Sign-On URL: https://your-idp.com/sso/saml
@@ -122,7 +122,7 @@ HCP Terraform uses three types of tokens:
 
 Create an organization token for CI/CD:
 
-```
+```text
 Settings > API Tokens > Create an organization token
 Description: CI/CD Pipeline Token
 ```
@@ -133,7 +133,7 @@ Store this token securely. It grants full access to the organization.
 
 Teams control who can do what in your organization. Create teams based on your organizational structure:
 
-```
+```text
 Settings > Teams > Create team
 ```
 
@@ -255,7 +255,7 @@ resource "tfe_workspace" "prod_vpc" {
 
 Connect your version control system so workspaces can be linked to repositories:
 
-```
+```text
 Settings > VCS Providers > Add VCS Provider
 ```
 
@@ -276,7 +276,7 @@ Once connected, any workspace can link to a repository in that VCS provider.
 
 If you are on a paid tier, configure cost estimation:
 
-```
+```text
 Settings > Cost Estimation
 Enable Cost Estimation: Yes
 ```
@@ -287,7 +287,7 @@ This shows estimated monthly costs in every plan output, helping teams understan
 
 Establish naming conventions early. Once you have dozens of workspaces, consistent naming is critical:
 
-```
+```text
 # Workspace naming pattern
 {project}-{environment}-{component}
 

@@ -34,7 +34,7 @@ kubectl top nodes
 
 Output:
 
-```
+```text
 NAME       CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
 worker-1   1200m        30%    8Gi             40%
 worker-2   800m         20%    6Gi             30%
@@ -69,7 +69,7 @@ kubectl top pods -n production
 
 Output:
 
-```
+```text
 NAME           CPU(cores)   MEMORY(bytes)
 web-app-abc    150m         512Mi
 database-xyz   800m         4Gi
@@ -116,7 +116,7 @@ kubectl top pods --containers -n production
 
 Output:
 
-```
+```text
 POD            NAME         CPU(cores)   MEMORY(bytes)
 web-app-abc    app          120m         400Mi
 web-app-abc    sidecar      30m          112Mi

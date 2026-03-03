@@ -92,14 +92,14 @@ sudo nano /etc/fstab
 
 `/tmp` is world-writable and a common target for exploit staging:
 
-```
+```text
 # /tmp on a tmpfs with security options
 tmpfs  /tmp  tmpfs  defaults,noexec,nosuid,nodev,size=2G  0 0
 ```
 
 If `/tmp` is already a separate partition (not tmpfs):
 
-```
+```text
 UUID=xxxx  /tmp  ext4  defaults,noexec,nosuid,nodev  0 2
 ```
 
@@ -114,14 +114,14 @@ mount | grep " /tmp "
 
 `/var/tmp` persists across reboots (unlike `/tmp`). Many systems bind-mount it to `/tmp` for consistent handling:
 
-```
+```text
 # Bind mount /var/tmp to /tmp to share the same restrictions
 /tmp  /var/tmp  none  bind  0 0
 ```
 
 Or mount it separately:
 
-```
+```text
 UUID=xxxx  /var/tmp  ext4  defaults,noexec,nosuid,nodev  0 2
 ```
 
@@ -129,7 +129,7 @@ UUID=xxxx  /var/tmp  ext4  defaults,noexec,nosuid,nodev  0 2
 
 User home directories need execution rights (users run their own scripts), but should block device files and setuid bits:
 
-```
+```text
 UUID=xxxx  /home  ext4  defaults,nosuid,nodev  0 2
 ```
 
@@ -137,7 +137,7 @@ UUID=xxxx  /home  ext4  defaults,nosuid,nodev  0 2
 
 Shared memory is mounted as a tmpfs and is often used in exploit techniques:
 
-```
+```text
 # /dev/shm - shared memory filesystem
 tmpfs  /dev/shm  tmpfs  defaults,noexec,nosuid,nodev,size=512M  0 0
 ```
@@ -152,7 +152,7 @@ mount | grep shm
 
 On servers with sensitive application data, mounting `/var` with restrictive options prevents device file attacks:
 
-```
+```text
 UUID=xxxx  /var  ext4  defaults,nosuid,nodev  0 2
 ```
 
@@ -162,7 +162,7 @@ Do NOT add `noexec` to `/var` - package management and some applications execute
 
 The proc and sys filesystems expose kernel internals. Limit access:
 
-```
+```text
 proc  /proc  proc  defaults,hidepid=2,gid=proc  0 0
 ```
 
@@ -184,7 +184,7 @@ sudo mount -o remount /proc
 
 ## A Hardened fstab Example
 
-```
+```text
 # /etc/fstab - hardened configuration
 # <file system>  <mount point>  <type>  <options>              <dump>  <pass>
 

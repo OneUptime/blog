@@ -244,7 +244,7 @@ services:
 
 Basic Squid configuration:
 
-```
+```text
 # squid.conf - Minimal Squid proxy configuration
 http_port 3128
 

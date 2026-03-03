@@ -85,7 +85,7 @@ Based on what the domain mapping tells you, set up the correct records at your D
 
 For a CNAME record (subdomains):
 
-```
+```text
 Type: CNAME
 Name: api
 Value: ghs.googlehosted.com.
@@ -94,7 +94,7 @@ TTL: 300
 
 For A records (apex domains):
 
-```
+```text
 Type: A
 Name: @
 Value: 216.239.32.21

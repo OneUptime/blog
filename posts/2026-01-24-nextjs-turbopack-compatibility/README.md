@@ -81,7 +81,7 @@ module.exports = nextConfig;
 The most common error occurs when using custom Webpack configuration.
 
 Error message:
-```
+```text
 Error: Turbopack does not support custom webpack configuration.
 Please remove the webpack() function from next.config.js to use Turbopack.
 ```
@@ -289,7 +289,7 @@ Turbopack handles CSS differently in some cases.
 ### Global CSS Import Error
 
 Error:
-```
+```text
 Error: Global CSS cannot be imported from files other than your Custom App.
 ```
 

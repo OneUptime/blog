@@ -312,7 +312,7 @@ Available template variables:
 
 ### Understanding the Output
 
-```
+```text
 Summary:
   Count:        10000
   Total:        15.23 s

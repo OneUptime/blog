@@ -18,7 +18,7 @@ Tags in Azure Notification Hubs are simple string labels that you attach to devi
 
 Each registration can have up to 60 tags. Tags are case-sensitive strings up to 120 characters long. You can use any naming convention you like, but a common pattern is to use a prefix scheme.
 
-```
+```text
 user:12345          -- Target a specific user
 topic:sports        -- Interest-based targeting
 city:seattle        -- Location-based targeting

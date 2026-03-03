@@ -512,7 +512,7 @@ The most important alert is straightforward: notify on-call when replication lag
 
 Stick to consistent metric names across all database engines. This lets you build a single dashboard that works for PostgreSQL, MySQL, and MongoDB.
 
-```
+```text
 db.replication.lag_seconds       - Time lag (all engines)
 db.replication.lag_bytes         - Byte lag (PostgreSQL, MySQL)
 db.replication.active            - Is replication running (1/0)

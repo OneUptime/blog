@@ -14,7 +14,7 @@ Vault IDs are labels that Ansible attaches to encrypted content. When you have m
 
 A vault ID has two parts: a label and a password source. The label is a human-readable identifier. The password source is where Ansible gets the actual password (a file, a script, or an interactive prompt).
 
-```
+```text
 --vault-id label@source
 ```
 
@@ -44,7 +44,7 @@ head -1 group_vars/prod/vault.yml
 
 The `;prod` at the end is the vault ID label. Files encrypted without a vault ID show version `1.1` and have no label:
 
-```
+```text
 $ANSIBLE_VAULT;1.1;AES256
 ```
 
@@ -71,7 +71,7 @@ vault_identity_list = dev@~/.vault_pass_dev, staging@~/.vault_pass_staging, prod
 
 Directory structure:
 
-```
+```text
 project/
   ansible.cfg
   group_vars/
@@ -96,7 +96,7 @@ For larger organizations, segment by responsibility:
 vault_identity_list = infra@~/.vault_pass_infra, dba@~/.vault_pass_dba, security@~/.vault_pass_security, app@~/.vault_pass_app
 ```
 
-```
+```text
 roles/
   nginx/
     vars/
@@ -203,7 +203,7 @@ done
 
 Sample output:
 
-```
+```text
 ./group_vars/dev/vault.yml                                   [vault-id: dev]
 ./group_vars/prod/vault.yml                                  [vault-id: prod]
 ./group_vars/staging/vault.yml                               [vault-id: staging]

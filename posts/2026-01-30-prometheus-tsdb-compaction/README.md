@@ -49,7 +49,7 @@ Prometheus organizes data into:
 
 A typical block directory looks like this:
 
-```
+```text
 01HQXYZ123ABC456/
     meta.json       # Block metadata (time range, stats)
     index           # Inverted index for label lookups
@@ -556,7 +556,7 @@ storage:
 
 Track these metrics to understand compaction health:
 
-```
+```text
 prometheus_tsdb_compactions_total
 prometheus_tsdb_compaction_duration_seconds
 prometheus_tsdb_compactions_failed_total

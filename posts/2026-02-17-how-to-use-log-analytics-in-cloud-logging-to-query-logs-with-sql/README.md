@@ -57,13 +57,13 @@ Once enabled, go to **Logging** > **Log Analytics** in the Cloud Console. You wi
 
 The log data is available through a view that follows this naming convention:
 
-```
+```text
 `project_id.global._Default._AllLogs`
 ```
 
 For custom buckets:
 
-```
+```text
 `project_id.global.bucket_name._AllLogs`
 ```
 

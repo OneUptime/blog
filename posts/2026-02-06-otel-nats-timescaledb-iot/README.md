@@ -14,7 +14,7 @@ NATS uses about 10MB of RAM for the server process. Compare that to a Kafka brok
 
 ## Architecture
 
-```
+```text
 IoT Devices -> NATS (JetStream) -> OTel Collector (NATS receiver) -> TimescaleDB
 ```
 

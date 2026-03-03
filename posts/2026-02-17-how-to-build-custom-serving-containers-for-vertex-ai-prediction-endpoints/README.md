@@ -164,7 +164,7 @@ CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120",
 
 The requirements.txt file for this container:
 
-```
+```text
 flask==3.0.0
 gunicorn==21.2.0
 numpy==1.26.0

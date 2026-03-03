@@ -83,7 +83,7 @@ ssh-add --apple-use-keychain ~/.ssh/deploy_key
 
 You can configure the SSH client to automatically add keys to the agent and specify which key to use for which hosts.
 
-```
+```text
 # ~/.ssh/config
 # Automatically add keys to the agent on first use
 

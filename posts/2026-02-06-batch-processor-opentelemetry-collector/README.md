@@ -237,13 +237,13 @@ This tells you how many items per second flow through your collector.
 
 Use this formula:
 
-```
+```text
 send_batch_size = items_per_second × timeout_seconds × 0.8
 ```
 
 The 0.8 factor provides headroom for traffic spikes. For example, if processing 10,000 spans/second with a 1-second timeout:
 
-```
+```text
 send_batch_size = 10,000 × 1 × 0.8 = 8,000
 ```
 

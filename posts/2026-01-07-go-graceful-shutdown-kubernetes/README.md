@@ -760,7 +760,7 @@ The `terminationGracePeriodSeconds` value should account for:
 
 The recommended formula is:
 
-```
+```text
 terminationGracePeriodSeconds = preStopDelay + applicationShutdownTime + buffer
 ```
 

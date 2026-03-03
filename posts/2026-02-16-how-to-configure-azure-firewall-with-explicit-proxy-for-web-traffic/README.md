@@ -238,7 +238,7 @@ az monitor diagnostic-settings create \
 
 Query proxy activity in Log Analytics:
 
-```
+```text
 // KQL query to see proxy traffic through Azure Firewall
 AzureDiagnostics
 | where Category == "AzureFirewallApplicationRule"

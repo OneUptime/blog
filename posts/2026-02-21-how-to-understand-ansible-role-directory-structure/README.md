@@ -14,7 +14,7 @@ Ansible roles have a very specific directory layout, and every directory in that
 
 When you look at a fully populated Ansible role, the structure looks like this:
 
-```
+```text
 roles/
   myrole/
     tasks/

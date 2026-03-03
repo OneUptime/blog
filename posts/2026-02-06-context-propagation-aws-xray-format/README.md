@@ -16,7 +16,7 @@ This guide walks through setting up OpenTelemetry to read, write, and forward tr
 
 AWS X-Ray uses a custom HTTP header called `X-Amzn-Trace-Id` to carry trace context between services. The format looks like this:
 
-```
+```text
 X-Amzn-Trace-Id: Root=1-65a8c9d2-0abcdef1234567890abcdef0;Parent=53995c3f42cd8ad8;Sampled=1
 ```
 

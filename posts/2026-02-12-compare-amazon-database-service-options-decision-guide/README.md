@@ -66,7 +66,7 @@ Aurora is AWS's re-engineered MySQL and PostgreSQL compatible database. The stor
 
 **Aurora Serverless v2** is worth considering if your traffic is highly variable. It scales from 0.5 ACUs to 256 ACUs based on demand. Great for dev/test environments and applications with unpredictable traffic.
 
-```
+```text
 Comparison: Standard RDS vs Aurora
 
 | Feature              | RDS              | Aurora           |
@@ -140,7 +140,7 @@ Neptune is a graph database that supports both Gremlin (property graph) and SPAR
 
 **Best for:** Social networks, recommendation engines, fraud detection, knowledge graphs, anything where relationships between entities are the primary query pattern.
 
-```
+```text
 Example use cases:
 - "Find all users who are friends of friends of User X"
 - "What products were purchased by people who also bought Product Y"
@@ -179,7 +179,7 @@ Quantum Ledger Database provides an immutable, cryptographically verifiable tran
 
 Here is a rough monthly cost comparison for a moderate workload (assuming us-east-1):
 
-```
+```text
 | Service          | Config                    | Approximate Monthly Cost |
 |-----------------|---------------------------|-------------------------|
 | RDS MySQL       | db.r6g.large, 100GB       | $250                    |

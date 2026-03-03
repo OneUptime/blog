@@ -125,7 +125,7 @@ kubectl describe canary api-server
 
 You'll see events like:
 
-```
+```text
 Events:
   Type     Reason  Age   Message
   ----     ------  ----  -------

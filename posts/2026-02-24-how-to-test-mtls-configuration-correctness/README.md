@@ -129,7 +129,7 @@ istioctl proxy-config secret deploy/my-service -o json | \
 
 The output should show:
 
-```
+```text
 URI:spiffe://cluster.local/ns/default/sa/my-service-account
 ```
 

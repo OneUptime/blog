@@ -481,7 +481,7 @@ v2 mobile apps get the v2 BFF. Older apps get v1. This lets you evolve the BFF A
 
 Track each BFF independently to understand client-specific performance:
 
-```
+```text
 # Mobile BFF error rate
 sum(rate(istio_requests_total{destination_service="mobile-bff.production.svc.cluster.local",response_code=~"5.*"}[5m])) / sum(rate(istio_requests_total{destination_service="mobile-bff.production.svc.cluster.local"}[5m]))
 

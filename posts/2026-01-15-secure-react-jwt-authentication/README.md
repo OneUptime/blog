@@ -18,7 +18,7 @@ This guide covers everything from basic JWT concepts to production-ready impleme
 
 A JSON Web Token consists of three parts separated by dots: header, payload, and signature.
 
-```
+```text
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNjE2MjM5MDIyLCJleHAiOjE2MTYyNDI2MjJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
 ```
 
@@ -28,7 +28,7 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxMjM0NTY3ODkwIiwibmFtZSI6Ikp
 
 ### JWT Authentication Flow
 
-```
+```text
 1. User submits credentials (username/password)
 2. Server validates credentials
 3. Server generates JWT (access token) and refresh token
@@ -48,7 +48,7 @@ npm install axios jwt-decode react-router-dom
 
 ### Project Structure
 
-```
+```text
 src/
   auth/
     AuthContext.tsx

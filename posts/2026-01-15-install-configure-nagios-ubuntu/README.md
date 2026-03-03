@@ -109,7 +109,7 @@ sudo nano /usr/local/nagios/etc/nagios.cfg
 
 Verify these settings:
 
-```
+```text
 cfg_file=/usr/local/nagios/etc/objects/commands.cfg
 cfg_file=/usr/local/nagios/etc/objects/contacts.cfg
 cfg_file=/usr/local/nagios/etc/objects/timeperiods.cfg
@@ -132,7 +132,7 @@ sudo nano /usr/local/nagios/etc/objects/contacts.cfg
 
 Update email:
 
-```
+```text
 define contact {
     contact_name            nagiosadmin
     use                     generic-contact
@@ -169,7 +169,7 @@ sudo systemctl status nagios
 sudo nano /usr/local/nagios/etc/servers/webserver.cfg
 ```
 
-```
+```text
 define host {
     use                     linux-server
     host_name               webserver
@@ -241,7 +241,7 @@ sudo nano /etc/nagios/nrpe.cfg
 
 Add Nagios server IP:
 
-```
+```text
 allowed_hosts=127.0.0.1,::1,NAGIOS_SERVER_IP
 ```
 
@@ -278,7 +278,7 @@ sudo nano /usr/local/nagios/etc/objects/commands.cfg
 
 Verify notification commands:
 
-```
+```text
 define command {
     command_name    notify-host-by-email
     command_line    /usr/bin/printf "%b" "***** Nagios *****\n\nNotification Type: $NOTIFICATIONTYPE$\nHost: $HOSTNAME$\nState: $HOSTSTATE$\nAddress: $HOSTADDRESS$\nInfo: $HOSTOUTPUT$\n\nDate/Time: $LONGDATETIME$\n" | /usr/bin/mail -s "** $NOTIFICATIONTYPE$ Host Alert: $HOSTNAME$ is $HOSTSTATE$ **" $CONTACTEMAIL$

@@ -402,7 +402,7 @@ Escalate immediately if:
 - Database Team: [PHONE]
 - Security Team: [PHONE]
 - VP Engineering: [PHONE] (severe outages only)
-```
+```text
 
 ## Track On-Call Health Metrics
 

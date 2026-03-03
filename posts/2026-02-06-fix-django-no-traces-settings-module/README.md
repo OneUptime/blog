@@ -174,7 +174,7 @@ opentelemetry-instrument python manage.py runserver
 
 Make a request and check stdout for spans like:
 
-```
+```text
 GET /api/users  [================] 45ms
   django.middleware  [==]  5ms
   django.view  [============]  35ms

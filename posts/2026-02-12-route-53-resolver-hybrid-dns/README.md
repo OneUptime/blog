@@ -165,7 +165,7 @@ If you have multiple VPCs, associate the rule with each one that needs to resolv
 
 On your on-premises DNS servers, add conditional forwarders pointing to the inbound endpoint IPs. For BIND:
 
-```
+```text
 # Add to named.conf on your on-premises BIND server
 zone "aws.example.com" {
     type forward;

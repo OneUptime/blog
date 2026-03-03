@@ -95,7 +95,7 @@ sudo gluster volume info ha-vol
 ```
 
 Output shows:
-```
+```text
 Volume Name: ha-vol
 Type: Replicate
 Volume ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx

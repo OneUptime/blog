@@ -19,7 +19,7 @@ Point-in-time recovery (PITR) allows you to restore a PostgreSQL database to any
 
 ## PITR Requirements
 
-```
+```text
 Recovery requires:
 
 1. Base Backup (pg_basebackup)

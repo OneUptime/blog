@@ -26,7 +26,7 @@ sudo lvs /dev/data_vg/db_data
 ```
 
 Example output:
-```
+```text
   VG       #PV #LV #SN Attr   VSize    VFree
   data_vg    2   3   0 wz--n-   1.00t  200.00g
 ```
@@ -69,7 +69,7 @@ sudo lvextend -l +100%FREE /dev/data_vg/db_data
 ```
 
 Expected output:
-```
+```text
   Size of logical volume data_vg/db_data changed from 200.00 GiB (51200 extents) to 250.00 GiB (64000 extents).
   Logical volume data_vg/db_data successfully resized.
 ```
@@ -87,7 +87,7 @@ sudo resize2fs /dev/data_vg/db_data
 `resize2fs` without a size argument grows the filesystem to fill the entire block device. For online (live) resize, the filesystem must be mounted. ext4 supports live resize.
 
 Expected output:
-```
+```text
 resize2fs 1.46.5 (30-Dec-2021)
 Filesystem at /dev/data_vg/db_data is mounted on /var/lib/postgresql; on-line resizing required
 old_desc_blocks = 25, new_desc_blocks = 32
@@ -103,7 +103,7 @@ sudo xfs_growfs /var/lib/postgresql
 
 XFS always requires the filesystem to be mounted for live resize - it cannot resize unmounted XFS filesystems.
 
-```
+```text
 meta-data=/dev/mapper/data_vg-db_data isize=512    agcount=4, agsize=13107200 blks
 data     =                       bsize=4096   blocks=52428800, imaxpct=25
          =                       sunit=0      swidth=0 blks
@@ -133,7 +133,7 @@ After the resize, confirm the filesystem grew:
 df -h /var/lib/postgresql
 ```
 
-```
+```text
 Filesystem                        Size  Used Avail Use% Mounted on
 /dev/mapper/data_vg-db_data       246G  195G   51G  79% /var/lib/postgresql
 ```
@@ -144,7 +144,7 @@ Also verify the LV size:
 sudo lvs /dev/data_vg/db_data
 ```
 
-```
+```text
   LV      VG       Attr       LSize
   db_data data_vg  -wi-ao---- 250.00g
 ```

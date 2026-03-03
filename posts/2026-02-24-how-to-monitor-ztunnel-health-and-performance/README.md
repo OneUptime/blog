@@ -148,19 +148,19 @@ spec:
 
 If you're using Grafana (and you should be), set up dashboards for ztunnel monitoring. Here's a useful dashboard panel query for tracking connection rates per node:
 
-```
+```text
 sum(rate(istio_tcp_connections_opened_total{app="ztunnel"}[5m])) by (instance)
 ```
 
 For byte throughput:
 
-```
+```text
 sum(rate(istio_tcp_sent_bytes_total{app="ztunnel"}[5m])) by (instance)
 ```
 
 For tracking connection errors:
 
-```
+```text
 sum(rate(istio_tcp_connections_closed_total{app="ztunnel", response_flags!=""}[5m])) by (response_flags)
 ```
 

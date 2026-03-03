@@ -20,7 +20,7 @@ OpenTelemetry normally expects network connectivity to export telemetry data. We
 
 The key is a data diode, a hardware device that enforces one-way data flow from the OT network to the IT network. Telemetry data flows out; nothing flows back in.
 
-```
+```text
 [SCADA Network]  -->  [Data Diode]  -->  [IT Network]  -->  [OTel Collector]
    (air-gapped)      (one-way only)      (connected)        (exports to backend)
 ```

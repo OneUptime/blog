@@ -325,7 +325,7 @@ gcloud run domain-mappings describe \
 
 After creating the mapping, configure your DNS:
 
-```
+```text
 # For apex domain (example.com)
 A     @    216.239.32.21
 A     @    216.239.34.21

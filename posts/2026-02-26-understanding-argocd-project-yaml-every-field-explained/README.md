@@ -274,7 +274,7 @@ spec:
 
 The policy format follows Casbin syntax:
 
-```
+```text
 p, <subject>, <resource>, <action>, <project>/<application>, <allow|deny>
 ```
 

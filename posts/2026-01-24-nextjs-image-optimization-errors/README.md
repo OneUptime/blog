@@ -33,7 +33,7 @@ flowchart TD
 
 ### The Error
 
-```
+```text
 Error: Invalid src prop (https://example.com/image.jpg) on `next/image`,
 hostname "example.com" is not configured under images in your `next.config.js`
 ```
@@ -118,7 +118,7 @@ module.exports = nextConfig;
 
 ### The Error
 
-```
+```text
 Error: Image with src "/hero.jpg" must use "width" and "height" properties
 or "fill" property.
 ```
@@ -180,7 +180,7 @@ export function StaticImport() {
 
 ### The Error
 
-```
+```text
 Error: Image Optimization using Next.js' default loader is not compatible
 with `next export`.
 ```
@@ -244,7 +244,7 @@ export function imgixLoader({ src, width, quality }) {
 
 ### The Error
 
-```
+```text
 Error: Image with src "/photo.jpg" has invalid "quality" property.
 Expected a number from 1 to 100 but received 150.
 ```
@@ -292,7 +292,7 @@ export function QualityExample() {
 
 ### The Warning
 
-```
+```text
 Warning: Image with src "/banner.jpg" has "fill" but is missing "sizes" prop.
 ```
 
@@ -355,7 +355,7 @@ export function SidebarImage() {
 
 ### The Error
 
-```
+```text
 Error: 'sharp' is required to be installed in standalone mode for the
 image optimization to function correctly.
 ```
@@ -416,7 +416,7 @@ CMD ["node", "server.js"]
 
 ### The Error
 
-```
+```text
 Error: The requested resource exceeds the maximum size limit (10MB)
 ```
 
@@ -474,7 +474,7 @@ export async function optimizeForUpload(
 
 ### The Error
 
-```
+```text
 Error: Image with src "/dynamic.jpg" has "placeholder='blur'" property
 but is missing the "blurDataURL" property.
 ```

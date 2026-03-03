@@ -143,7 +143,7 @@ By default, all peers in a network can reach each other. Access Control Policies
 
 In the dashboard, go to Access Control > Policies and create a rule:
 
-```
+```text
 Name: Engineering Only
 Source: Group "engineers"
 Destination: Group "production-servers"
@@ -198,7 +198,7 @@ All other peers will now route `192.168.10.0/24` through the designated router p
 
 NetBird integrates with your existing DNS. Configure nameserver routing in the dashboard under DNS:
 
-```
+```text
 Domain: internal.yourdomain.com
 Nameservers: 192.168.1.53
 Peers groups: All

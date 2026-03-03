@@ -353,7 +353,7 @@ spec:
 
 Set the ESO refresh interval to be well under the Vault TTL:
 
-```
+```text
 Vault TTL:        60 minutes
 ESO Refresh:      45 minutes (refresh before expiry)
 Connection Max:   50 minutes (close connections before expiry)

@@ -67,7 +67,7 @@ pytest --version
 
 A typical Python project with pytest follows this structure. pytest automatically discovers tests in files that start with `test_` or end with `_test.py`.
 
-```
+```text
 my_project/
 ├── src/
 │   └── my_project/
@@ -199,7 +199,7 @@ pytest --cov=src/my_project
 
 When a test fails, pytest shows detailed information about what went wrong. Here is an example of a failed assertion.
 
-```
+```text
 ================================ FAILURES ================================
 _________________________ test_add_positive_numbers _________________________
 

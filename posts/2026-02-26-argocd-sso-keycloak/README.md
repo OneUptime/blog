@@ -123,7 +123,7 @@ data:
 
 Note: If you are using Keycloak before v18 (WildFly-based), the issuer URL format is different:
 
-```
+```text
 issuer: https://keycloak.example.com/auth/realms/platform
 ```
 
@@ -269,7 +269,7 @@ If users can log in but groups are not being passed:
 
 1. Verify the protocol mapper is configured correctly
 2. Test the token by navigating to:
-   ```
+   ```text
    https://keycloak.example.com/realms/platform/protocol/openid-connect/userinfo
    ```
    with a Bearer token

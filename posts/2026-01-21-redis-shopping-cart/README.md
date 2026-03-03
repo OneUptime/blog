@@ -27,7 +27,7 @@ Redis offers several advantages for shopping cart implementations:
 
 We will use Redis hashes to store cart data, where each field represents a product and the value is the quantity:
 
-```
+```text
 cart:{user_id} -> Hash
     product_123 -> 2
     product_456 -> 1

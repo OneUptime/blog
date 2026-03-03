@@ -212,7 +212,7 @@ done
 
 Output:
 
-```
+```text
 Host kernel version:
 6.5.0-44-generic
 
@@ -300,7 +300,7 @@ For a standard 16GB RAM VM, here's a realistic calculation:
 
 ### Memory Breakdown
 
-```
+```text
 Total RAM:                    16,384 MB
 Host OS overhead:             -1,024 MB  (kernel, systemd, etc.)
 Docker daemon:                  -256 MB
@@ -344,7 +344,7 @@ echo "Java microservices (500MB each): $((14592 / 500)) containers"
 
 Output:
 
-```
+```text
 Minimal containers (1MB each): 14592 containers
 Alpine + small app (25MB each): 583 containers
 Ubuntu + Python (120MB each): 121 containers

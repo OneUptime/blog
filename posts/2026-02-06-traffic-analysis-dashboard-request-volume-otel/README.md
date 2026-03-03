@@ -181,7 +181,7 @@ To build this in Grafana, you need trace data with service-to-service calls. The
 
 Make the dashboard interactive with Grafana variables:
 
-```
+```text
 # Service selector
 Variable: service_name
 Query: label_values(http_server_request_duration_seconds_count, service_name)

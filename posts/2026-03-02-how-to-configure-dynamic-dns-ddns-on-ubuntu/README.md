@@ -275,7 +275,7 @@ Add monitoring so you know when DDNS updates happen or fail:
 sudo nano /etc/logrotate.d/cloudflare-ddns
 ```
 
-```
+```text
 /var/log/cloudflare-ddns.log {
     weekly
     rotate 4

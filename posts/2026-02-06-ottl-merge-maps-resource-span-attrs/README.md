@@ -14,7 +14,7 @@ Resource attributes describe the entity that produced the telemetry (service nam
 
 ## Basic merge_maps Syntax
 
-```
+```text
 merge_maps(target_map, source_map, strategy)
 ```
 

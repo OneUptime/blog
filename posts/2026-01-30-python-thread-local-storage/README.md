@@ -64,7 +64,7 @@ print("All threads completed")
 
 Output:
 
-```
+```text
 Thread Worker-0: value = 0
 Thread Worker-1: value = 10
 Thread Worker-2: value = 20
@@ -112,7 +112,7 @@ for t in threads:
 
 Output (varies each run):
 
-```
+```text
 Processing request: 9 (expected: 0)
 Processing request: 9 (expected: 1)
 Processing request: 9 (expected: 2)
@@ -508,7 +508,7 @@ asyncio.run(main())
 
 Output:
 
-```
+```text
 Processing request req_001 for user alice
 Processing request req_002 for user bob
 Processing request req_003 for user charlie
@@ -560,7 +560,7 @@ asyncio.run(main())
 
 Output:
 
-```
+```text
 [INFO] Normal logging
 [DEBUG] Starting operation
 [DEBUG] Operation complete

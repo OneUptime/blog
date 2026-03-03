@@ -170,7 +170,7 @@ afl-fuzz -i corpus/seeds -o corpus/findings -m none -- ./my_parser @@
 
 ### AFL Dashboard Explained
 
-```
+```text
        american fuzzy lop ++4.00c (my_parser)
 
    process timing          overall results
@@ -276,7 +276,7 @@ mkdir -p corpus
 
 Dictionaries help the fuzzer generate structured inputs faster:
 
-```
+```text
 # json.dict
 # Common JSON tokens for the fuzzer to use in mutations
 # This dramatically speeds up coverage for format-aware fuzzing

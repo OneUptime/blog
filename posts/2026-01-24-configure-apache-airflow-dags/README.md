@@ -466,7 +466,7 @@ cleanup = PythonOperator(
 
 ### DAG File Organization
 
-```
+```text
 dags/
     common/
         __init__.py

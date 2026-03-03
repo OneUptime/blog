@@ -43,7 +43,7 @@ The double-slash (`//`) separates the repo URL from the path within the repo. Th
 
 The shared repo structure:
 
-```
+```text
 shared-k8s-configs/
 ├── monitoring/
 │   └── service-monitor/

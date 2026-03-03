@@ -152,7 +152,7 @@ kubectl get nodes
 
 Expected output:
 
-```
+```text
 NAME                              STATUS   ROLES                  AGE   VERSION
 edge-cluster-01-control-plane-0   Ready    control-plane,master   5m    v1.27.3
 edge-cluster-01-linux-worker-0    Ready    <none>                 3m    v1.27.3

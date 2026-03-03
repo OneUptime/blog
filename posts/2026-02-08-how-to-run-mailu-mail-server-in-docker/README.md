@@ -38,7 +38,7 @@ Important: Many cloud providers (AWS, GCP, Azure) block outbound port 25 by defa
 
 Proper DNS records are essential for email deliverability. Set these up before deploying Mailu.
 
-```
+```text
 # Required DNS records for mail.yourdomain.com
 
 # A record pointing to your server
@@ -310,7 +310,7 @@ docker compose exec admin cat /dkim/yourdomain.com.dkim.key
 
 Add the DKIM TXT record to your DNS.
 
-```
+```text
 dkim._domainkey.yourdomain.com.  TXT  "v=DKIM1; k=rsa; p=YOUR_PUBLIC_KEY_HERE"
 ```
 

@@ -22,7 +22,7 @@ This guide breaks down both patterns with real examples so you can make the righ
 
 In a monorepo, your structure looks something like this:
 
-```
+```text
 platform-manifests/
   apps/
     frontend/
@@ -105,7 +105,7 @@ spec:
 
 With multi-repo, each application or team gets its own manifest repository:
 
-```
+```text
 # Repo: myorg/frontend-manifests
 frontend/
   base/
@@ -232,7 +232,7 @@ spec:
 
 Many teams land on a hybrid pattern. Group related applications in shared repos while keeping distinct teams or domains separate:
 
-```
+```text
 # Repo: myorg/frontend-platform (frontend team)
   web-app/
   mobile-bff/

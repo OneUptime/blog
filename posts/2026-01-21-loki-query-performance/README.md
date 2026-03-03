@@ -23,7 +23,7 @@ Before starting, ensure you have:
 
 ### Query Path
 
-```
+```text
 Grafana -> Query Frontend -> Query Scheduler -> Querier -> Object Storage
                 |                                  |
             Split/Cache                        Fetch/Filter

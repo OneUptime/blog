@@ -55,7 +55,7 @@ Boot from USB on your ARM64 machine. If the firmware is UEFI-compliant, the Ubun
 
 The partition layout must include an EFI System Partition:
 
-```
+```text
 /dev/sda1  512MB  fat32   /boot/efi
 /dev/sda2  1GB    ext4    /boot
 /dev/sda3  rest   ext4    /  (or LVM)

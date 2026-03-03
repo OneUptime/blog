@@ -33,7 +33,7 @@ kubectl get svc istio-ingressgateway -n istio-system
 
 Then create a DNS record with your DNS provider:
 
-```
+```text
 Type: A
 Name: *.example.com
 Value: <GATEWAY_EXTERNAL_IP>
@@ -41,7 +41,7 @@ Value: <GATEWAY_EXTERNAL_IP>
 
 If your gateway has a hostname instead of an IP (common with AWS ELB), use a CNAME record:
 
-```
+```text
 Type: CNAME
 Name: *.example.com
 Value: <GATEWAY_HOSTNAME>

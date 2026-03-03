@@ -50,7 +50,7 @@ go mod verify
 
 ## Project Structure with Vendor
 
-```
+```text
 myproject/
 ├── go.mod
 ├── go.sum
@@ -128,7 +128,7 @@ ls vendor/github.com/gorilla/mux
 
 `vendor/modules.txt` tracks vendored modules:
 
-```
+```text
 # github.com/gorilla/mux v1.8.0
 ## explicit; go 1.12
 github.com/gorilla/mux

@@ -427,7 +427,7 @@ flowchart TD
 
 ### JavaScript Action Structure
 
-```
+```text
 my-action/
   action.yml      # Action metadata
   src/

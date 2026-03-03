@@ -37,7 +37,7 @@ When Go finds a `go.work` file in the current directory or any parent directory,
 
 Here is a typical monorepo structure that works well with Go workspaces:
 
-```
+```text
 myproject/
 ├── go.work
 ├── api/
@@ -257,7 +257,7 @@ However, there are cases where committing `go.work` makes sense - more on that i
 
 Each service that gets built and deployed separately should be its own module. Shared code that multiple services import should also be its own module:
 
-```
+```text
 project/
 ├── go.work
 ├── services/

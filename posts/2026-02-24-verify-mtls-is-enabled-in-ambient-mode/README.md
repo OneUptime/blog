@@ -22,7 +22,7 @@ istioctl ztunnel-config workloads
 
 This shows all workloads managed by ztunnel:
 
-```
+```text
 NAMESPACE    POD NAME            IP          NODE      WAYPOINT  PROTOCOL
 bookinfo     productpage-v1-xx   10.0.1.5    node-1    None      HBONE
 bookinfo     reviews-v1-yy       10.0.1.6    node-1    None      HBONE
@@ -48,7 +48,7 @@ kubectl logs -l app=ztunnel -n istio-system --tail=50
 
 Look for log entries that mention HBONE connections and source/destination identities:
 
-```
+```text
 info    access  connection complete src.addr=10.0.1.8:45234
   src.workload="sleep-abc" src.namespace="bookinfo"
   src.identity="spiffe://cluster.local/ns/bookinfo/sa/sleep"
@@ -138,7 +138,7 @@ istioctl ztunnel-config certificates
 
 This shows the certificates ztunnel is using:
 
-```
+```text
 CERTIFICATE NAME                                        TYPE     STATUS  VALID CERT
 spiffe://cluster.local/ns/bookinfo/sa/bookinfo-productpage  Leaf     Active  true
 spiffe://cluster.local/ns/bookinfo/sa/sleep                 Leaf     Active  true

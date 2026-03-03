@@ -31,7 +31,7 @@ aws ec2 create-flow-logs \
 The `max-aggregation-interval` of 60 seconds gives you the most granular data. You can also set it to 600 seconds (10 minutes) to reduce log volume.
 
 Logs are organized by date:
-```
+```text
 s3://my-flow-logs-bucket/vpc-flow-logs/AWSLogs/123456789012/vpcflowlogs/us-east-1/2025/02/12/
 ```
 

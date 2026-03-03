@@ -401,7 +401,7 @@ Note: Script-based approaches are slower than native RRF. Upgrade to 8.8+ if pos
 
 Dense vectors consume significant memory:
 
-```
+```text
 Memory per vector = dims * 4 bytes (float32)
 Total = num_documents * memory_per_vector * replication_factor
 ```

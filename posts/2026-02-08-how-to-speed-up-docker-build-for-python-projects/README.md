@@ -236,7 +236,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ## Technique 8: Use a .dockerignore File
 
-```
+```text
 # .dockerignore - Exclude unnecessary files from build context
 __pycache__
 *.pyc

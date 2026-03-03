@@ -169,7 +169,7 @@ Set `maxTaskRetryCount` to a value that accounts for potential multiple preempti
 
 When low-priority nodes are preempted, the pool shrinks. An autoscale formula can request replacement nodes.
 
-```
+```text
 // Maintain the desired capacity by requesting new low-priority nodes
 $taskSlotsPerNode = 4;
 $neededNodes = ceil($PendingTasks / $taskSlotsPerNode);

@@ -12,7 +12,7 @@ The NotLeaderForPartition error occurs when a producer or consumer sends a reque
 
 ## Understanding the Error
 
-```
+```text
 org.apache.kafka.common.errors.NotLeaderForPartitionException:
 This server is not the leader for that topic-partition
 ```

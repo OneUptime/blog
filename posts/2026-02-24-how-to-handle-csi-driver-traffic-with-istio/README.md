@@ -90,7 +90,7 @@ kubectl label namespace kube-system istio-injection=disabled
 
 The CSI controller makes outbound API calls to the storage backend. For example, the AWS EBS CSI driver calls the AWS EC2 API:
 
-```
+```text
 CSI Controller Pod -> EC2 API (ec2.us-east-1.amazonaws.com:443)
 ```
 

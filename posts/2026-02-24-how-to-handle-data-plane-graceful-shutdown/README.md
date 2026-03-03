@@ -251,7 +251,7 @@ Setting `maxUnavailable: 0` means Kubernetes will always create a new pod before
 
 Here is how all the timings should line up for a well-configured graceful shutdown:
 
-```
+```text
 Time    Event
 0s      Pod enters Terminating state
 0-5s    preStop sleep (endpoint propagation)

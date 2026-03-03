@@ -45,7 +45,7 @@ Kustomize is the most natural way to handle regional configuration differences i
 
 ### Repository Structure
 
-```
+```text
 deploy/
   base/
     kustomization.yaml

@@ -12,7 +12,7 @@ Load balancers sit at the critical path of every request hitting your infrastruc
 
 ## Role Structure
 
-```
+```text
 roles/haproxy/
   defaults/main.yml
   handlers/main.yml

@@ -42,7 +42,7 @@ kubectl get pods -n istio-system -l app=ztunnel -o wide
 
 Output will look something like:
 
-```
+```text
 NAME            READY   STATUS    NODE
 ztunnel-abc12   1/1     Running   node-1
 ztunnel-def34   1/1     Running   node-2
@@ -71,7 +71,7 @@ ztunnel uses HBONE (HTTP-Based Overlay Network Encapsulation) to create encrypte
 
 The connection between two ztunnel instances looks like this:
 
-```
+```text
 Source Pod -> [captured by CNI] -> Source ztunnel
   |
   | HTTP/2 CONNECT over mTLS (port 15008)

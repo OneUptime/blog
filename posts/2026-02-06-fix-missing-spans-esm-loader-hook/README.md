@@ -92,13 +92,13 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
 With the hook working, you should see:
 
-```
+```text
 @opentelemetry/instrumentation-http Applying ESM instrumentation patch for http
 ```
 
 Without the hook:
 
-```
+```text
 @opentelemetry/instrumentation-http Module http has been loaded before instrumentation
 ```
 

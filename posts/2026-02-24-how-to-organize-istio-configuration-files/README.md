@@ -16,7 +16,7 @@ There is no single right way to organize Istio config files, but there are patte
 
 This is the most common pattern and works well for multi-team setups:
 
-```
+```text
 istio-config/
   base/
     mesh-config.yaml
@@ -58,7 +58,7 @@ kubectl apply -f istio-config/namespaces/production/ -R
 
 When each team owns a set of services, group all Istio config for a service together:
 
-```
+```text
 services/
   order-service/
     k8s/
@@ -89,7 +89,7 @@ This pattern works great when services are in separate repos or owned by differe
 
 For platform teams that manage all Istio config centrally:
 
-```
+```text
 istio-config/
   gateways/
     production-gateway.yaml
@@ -124,7 +124,7 @@ istio-config/
 
 Consistent naming makes grep and find operations much easier. Here are conventions that work well:
 
-```
+```text
 # Pattern: <service-name>-<resource-type-abbreviation>.yaml
 order-service-vs.yaml        # VirtualService
 order-service-dr.yaml        # DestinationRule
@@ -136,7 +136,7 @@ order-service-sidecar.yaml   # Sidecar
 
 Or use full names if abbreviations are not clear in your team:
 
-```
+```text
 order-service-virtual-service.yaml
 order-service-destination-rule.yaml
 order-service-authorization-policy.yaml
@@ -230,7 +230,7 @@ spec:
 
 Add a README to each directory explaining what is in it and who owns it:
 
-```
+```text
 istio-config/namespaces/production/README.md
 
 # Production Istio Configuration
@@ -254,7 +254,7 @@ Applied automatically via Argo CD. Do not apply manually.
 
 Kustomize works well for managing environment-specific variations:
 
-```
+```text
 istio-config/
   base/
     kustomization.yaml

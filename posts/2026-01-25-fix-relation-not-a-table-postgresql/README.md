@@ -16,7 +16,7 @@ The "relation is not a table" error occurs when you try to perform table-specifi
 
 When you see this error, it typically looks like:
 
-```
+```text
 ERROR: "my_view" is not a table
 ERROR: cannot truncate a table other than a heap table
 ERROR: "my_sequence" is not a table

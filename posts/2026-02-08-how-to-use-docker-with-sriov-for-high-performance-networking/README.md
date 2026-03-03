@@ -67,7 +67,7 @@ ip link show eth0
 
 The output will show VF entries under the physical function:
 
-```
+```text
 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP
     vf 0 MAC 00:00:00:00:00:00, spoof checking on, link-state auto
     vf 1 MAC 00:00:00:00:00:00, spoof checking on, link-state auto

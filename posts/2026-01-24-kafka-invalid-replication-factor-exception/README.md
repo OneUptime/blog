@@ -58,7 +58,7 @@ The `InvalidReplicationFactorException` is thrown when:
 
 Example error message:
 
-```
+```text
 org.apache.kafka.common.errors.InvalidReplicationFactorException:
 Replication factor: 3 larger than available brokers: 1
 ```

@@ -337,7 +337,7 @@ func (e *CustomExporter) Shutdown(ctx context.Context) error {
 
 Different compression algorithms have different trade-offs:
 
-```
+```text
 Algorithm | Ratio  | Speed     | Best For
 ----------|--------|-----------|------------------
 gzip -1   | 3-5x   | Fast      | CPU-constrained environments

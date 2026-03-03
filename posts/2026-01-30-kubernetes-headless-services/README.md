@@ -63,7 +63,7 @@ kubectl get svc redis
 
 Output will show:
 
-```
+```text
 NAME    TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)    AGE
 redis   ClusterIP   None         <none>        6379/TCP   10s
 ```
@@ -81,7 +81,7 @@ kubectl run -it --rm dns-test --image=busybox:1.28 --restart=Never -- nslookup r
 
 For a headless service with three pods, you will see three A records:
 
-```
+```text
 Server:    10.96.0.10
 Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
 
@@ -173,13 +173,13 @@ With the above configuration, Kubernetes creates these DNS entries:
 
 The DNS naming pattern is:
 
-```
+```text
 <pod-name>.<service-name>.<namespace>.svc.cluster.local
 ```
 
 From within the same namespace, you can use the short form:
 
-```
+```text
 <pod-name>.<service-name>
 ```
 
@@ -290,13 +290,13 @@ The replicas can determine their role based on their pod name:
 
 Applications that need to write go to the primary:
 
-```
+```text
 postgresql://postgres-0.postgres.database:5432/mydb
 ```
 
 Applications that can read from any replica query the service name:
 
-```
+```text
 postgresql://postgres.database:5432/mydb
 ```
 
@@ -443,7 +443,7 @@ kubectl describe endpoints redis
 
 Expected output for a three-replica StatefulSet:
 
-```
+```text
 Name:         redis
 Namespace:    default
 Labels:       app=redis

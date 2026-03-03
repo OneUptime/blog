@@ -158,7 +158,7 @@ COPY . .
 
 While `.dockerignore` does not directly reduce layers, it reduces the build context size and prevents unnecessary files from being included in COPY layers.
 
-```
+```text
 # .dockerignore
 node_modules
 .git

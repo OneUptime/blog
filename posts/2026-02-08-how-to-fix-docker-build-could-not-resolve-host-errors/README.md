@@ -18,7 +18,7 @@ When Docker builds an image, each `RUN` instruction executes inside a temporary 
 
 The build error typically looks like this:
 
-```
+```text
 Step 5/12 : RUN apt-get update
  ---> Running in a1b2c3d4e5f6
 Err:1 http://archive.ubuntu.com/ubuntu focal InRelease
@@ -28,7 +28,7 @@ E: Failed to fetch http://archive.ubuntu.com/ubuntu/dists/focal/InRelease  Could
 
 Or for Node.js projects:
 
-```
+```text
 Step 6/12 : RUN npm install
 npm ERR! code EAI_AGAIN
 npm ERR! errno EAI_AGAIN

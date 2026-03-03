@@ -282,7 +282,7 @@ Configure Slack or webhook notifications for deploy status:
 
 Netlify creates predictable URLs for branch deploys:
 
-```
+```text
 # Pattern: branch-name--site-name.netlify.app
 
 feature-login--myreactapp.netlify.app

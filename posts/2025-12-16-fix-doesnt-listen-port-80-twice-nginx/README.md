@@ -142,7 +142,7 @@ grep -r "include" /etc/nginx/nginx.conf
 
 ### Proper File Structure
 
-```
+```text
 /etc/nginx/
 ├── nginx.conf
 ├── conf.d/

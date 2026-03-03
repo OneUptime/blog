@@ -36,7 +36,7 @@ The most common PBR use case on a server is having two network interfaces connec
 
 ### Network Setup
 
-```
+```text
 eth0: 203.0.113.10/24, gateway 203.0.113.1  (ISP1)
 eth1: 198.51.100.20/24, gateway 198.51.100.1 (ISP2)
 ```

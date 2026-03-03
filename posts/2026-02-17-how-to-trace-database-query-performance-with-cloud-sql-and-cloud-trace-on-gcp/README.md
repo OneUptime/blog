@@ -201,7 +201,7 @@ Cloud SQL Insights can then group queries by route and link them to specific tra
 
 Build a dashboard that combines application-level traces with Cloud SQL Insights data.
 
-```
+```text
 # MQL query for Cloud SQL query latency
 fetch cloudsql_database::cloudsql.googleapis.com/database/postgresql/insights/aggregate/execution_time
 | group_by [metric.querystring], percentile(val(), 95)
@@ -209,7 +209,7 @@ fetch cloudsql_database::cloudsql.googleapis.com/database/postgresql/insights/ag
 | top 10
 ```
 
-```
+```text
 # MQL query for Cloud SQL active queries
 fetch cloudsql_database::cloudsql.googleapis.com/database/postgresql/num_backends
 | group_by [resource.database_id], mean(val())

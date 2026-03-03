@@ -180,7 +180,7 @@ kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=cilium 
 
 You should see output like:
 
-```
+```text
 KubeProxyReplacement:    True
 ```
 
@@ -229,7 +229,7 @@ The values file above enables two important features:
 
 With DSR, the reply from a backend pod goes directly to the client instead of routing back through the node that received the request. This cuts the network path in half for return traffic:
 
-```
+```text
 # Without DSR (default SNAT mode):
 Client -> Node A -> Pod on Node B -> Node A -> Client
 

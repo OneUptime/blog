@@ -136,7 +136,7 @@ kubectl apply -f application.yaml
 
 ### Recommended Layout
 
-```
+```text
 myapp/
 ├── k8s/
 │   ├── base/
@@ -559,7 +559,7 @@ spec:
 
 ### 2. Separate Config from Code
 
-```
+```text
 # Application code repo
 myapp/
 ├── src/

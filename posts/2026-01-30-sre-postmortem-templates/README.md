@@ -422,7 +422,7 @@ Use this checklist to review postmortems before publishing.
 
 Store postmortems where teams can find and learn from them.
 
-```
+```text
 postmortems/
 ├── 2026/
 │   ├── 01/

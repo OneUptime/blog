@@ -351,7 +351,7 @@ The W3C Trace Context is the official standard and should be your default choice
 
 The traceparent format breakdown.
 
-```
+```text
 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
 |  |                                |                |
 |  |                                |                +-- Flags (01 = sampled)
@@ -365,13 +365,13 @@ The traceparent format breakdown.
 B3 comes in two flavors: single header and multi-header.
 
 **Single Header Format:**
-```
+```text
 b3: {TraceId}-{SpanId}-{SamplingState}-{ParentSpanId}
 b3: 80f198ee56343ba864fe8b2a57d3eff7-e457b5a2e4d86bd1-1-05e3ac9a4f6e3b90
 ```
 
 **Multi-Header Format:**
-```
+```text
 X-B3-TraceId: 80f198ee56343ba864fe8b2a57d3eff7
 X-B3-SpanId: e457b5a2e4d86bd1
 X-B3-ParentSpanId: 05e3ac9a4f6e3b90
@@ -382,7 +382,7 @@ X-B3-Sampled: 1
 
 Jaeger uses a single header with a colon-separated format.
 
-```
+```text
 uber-trace-id: {trace-id}:{span-id}:{parent-span-id}:{flags}
 uber-trace-id: 0af7651916cd43dd8448eb211c80319c:b7ad6b7169203331:0:1
 ```

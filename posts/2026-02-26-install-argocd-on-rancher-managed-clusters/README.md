@@ -273,7 +273,7 @@ Access ArgoCD through the Rancher dashboard by navigating to the cluster, going 
 
 For direct access, Rancher's kubectl proxy provides a URL like:
 
-```
+```text
 https://rancher.yourdomain.com/k8s/clusters/local/api/v1/namespaces/argocd/services/https:argocd-server:https/proxy/
 ```
 

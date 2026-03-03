@@ -14,7 +14,7 @@ Provider installation errors are frustrating because `terraform init` is the ver
 
 ## Error: Failed to Query Available Provider Packages
 
-```
+```text
 Error: Failed to query available provider packages
 
 Could not retrieve the list of available versions for provider
@@ -74,7 +74,7 @@ terraform providers mirror /opt/terraform/providers
 
 ## Error: Failed to Install Provider
 
-```
+```text
 Error: Failed to install provider
 
 Error while installing hashicorp/aws v5.30.0: the current package for
@@ -114,7 +114,7 @@ Be careful with this approach in production. The lock file exists to ensure repr
 
 ## Error: No Available Provider Versions
 
-```
+```text
 Error: Failed to query available provider packages
 
 Could not retrieve the list of available versions for provider
@@ -149,7 +149,7 @@ terraform {
 
 ## Error: Provider Registry Not Responding
 
-```
+```text
 Error: Failed to query available provider packages
 
 Could not retrieve the list of available versions for provider
@@ -173,7 +173,7 @@ export TF_REGISTRY_CLIENT_TIMEOUT=30
 
 ## Error: Could Not Load Plugin
 
-```
+```text
 Error: Could not load plugin
 
 Plugin reinitialization required. Please run "terraform init".
@@ -213,7 +213,7 @@ terraform init
 
 ## Error: Incompatible Provider Version
 
-```
+```text
 Error: Incompatible provider version
 
 Provider registry.terraform.io/hashicorp/aws v4.67.0 does not have a
@@ -243,7 +243,7 @@ curl -s "https://registry.terraform.io/v1/providers/hashicorp/aws/5.30.0/downloa
 
 ## Error: Provider Source Address Not Found
 
-```
+```text
 Error: Failed to query available provider packages
 
 Could not retrieve the list of available versions for provider

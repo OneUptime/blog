@@ -118,7 +118,7 @@ prometheus:
 
 Estimate storage needs:
 
-```
+```text
 Daily samples = (number of series) × (86400 / scrape_interval)
 Daily storage = daily samples × average bytes per sample (1-2 bytes)
 Total storage = daily storage × retention days × 1.5 (overhead)
@@ -126,7 +126,7 @@ Total storage = daily storage × retention days × 1.5 (overhead)
 
 Example calculation:
 
-```
+```text
 Series: 100,000
 Scrape interval: 30s
 Retention: 15 days

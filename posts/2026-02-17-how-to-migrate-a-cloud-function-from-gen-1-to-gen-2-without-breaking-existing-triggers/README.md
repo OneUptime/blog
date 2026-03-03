@@ -34,13 +34,13 @@ This is the biggest source of breakage during migration. If you just redeploy a 
 
 For HTTP functions, the URL format changes. Gen 1 URLs look like:
 
-```
+```text
 https://REGION-PROJECT_ID.cloudfunctions.net/FUNCTION_NAME
 ```
 
 Gen 2 URLs look like:
 
-```
+```text
 https://FUNCTION_NAME-HASH-REGION.a.run.app
 ```
 

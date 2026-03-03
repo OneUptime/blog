@@ -180,7 +180,7 @@ ansible-navigator doc --list
 
 Once in the TUI:
 
-```
+```text
 # Type a number to select a module from the list
 # Use arrow keys or j/k to scroll
 # Press / to search

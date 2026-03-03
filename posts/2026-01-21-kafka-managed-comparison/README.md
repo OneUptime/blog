@@ -367,7 +367,7 @@ def consume_messages(config, topic, group_id):
 
 ### Confluent Cloud Pricing
 
-```
+```text
 Basic Cluster:
 - $0.0096 per partition hour
 - $0.10 per GB data in
@@ -393,7 +393,7 @@ Example (moderate workload):
 
 ### AWS MSK Pricing
 
-```
+```text
 Provisioned:
 - kafka.m5.large: $0.21/hour per broker (~$150/month)
 - kafka.m5.xlarge: $0.42/hour per broker (~$300/month)
@@ -413,7 +413,7 @@ Example (3-broker m5.large cluster):
 
 ### Self-Hosted Pricing
 
-```
+```text
 AWS EC2 (3 brokers + 3 ZK):
 - 6x m5.xlarge: ~$1,100/month
 - EBS storage (3 TB): ~$300/month

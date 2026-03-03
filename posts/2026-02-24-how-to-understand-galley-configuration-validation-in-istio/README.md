@@ -23,7 +23,7 @@ kubectl get validatingwebhookconfiguration -l app=istiod
 
 Output:
 
-```
+```text
 NAME                           WEBHOOKS   AGE
 istio-validator-istio-system   1          30d
 ```
@@ -41,7 +41,7 @@ The validation flow is:
 
 The validation endpoint is typically at:
 
-```
+```text
 https://istiod.istio-system.svc:443/validate
 ```
 
@@ -198,7 +198,7 @@ The analyzer catches issues that schema validation alone misses:
 istioctl analyze -n default
 ```
 
-```
+```text
 Warning [IST0101] (VirtualService default/reviews) Referenced host not found: "reviews-v3"
 Warning [IST0104] (Gateway default/my-gateway) The gateway refers to a selector that does not match any deployment
 Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection
@@ -224,7 +224,7 @@ kubectl get validatingwebhookconfiguration istio-validator-istio-system -o yaml 
     grep failurePolicy
 ```
 
-```
+```text
 failurePolicy: Fail
 ```
 
@@ -288,7 +288,7 @@ kubectl exec -n istio-system deploy/istiod -- \
 
 Key metrics:
 
-```
+```text
 # Validation requests
 galley_validation_passed
 galley_validation_failed

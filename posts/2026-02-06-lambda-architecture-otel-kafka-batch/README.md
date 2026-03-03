@@ -10,7 +10,7 @@ Lambda architecture splits data processing into two paths: a real-time stream fo
 
 ## Architecture Overview
 
-```
+```text
                     +-> Speed Layer (OTel Collector -> Backend) -> Real-time View
 Apps -> OTel Collector
                     +-> Batch Layer (Kafka -> S3 -> Spark) -> Batch View

@@ -61,7 +61,7 @@ If AppArmor is not available, the annotations are ignored and containers run unc
 
 Custom profiles give precise control over container permissions:
 
-```
+```text
 #include <tunables/global>
 
 profile webapp-restricted flags=(attach_disconnected,mediate_deleted) {
@@ -148,7 +148,7 @@ The `localhost/` prefix indicates a custom profile loaded on the host.
 
 Develop profiles iteratively using complain mode:
 
-```
+```text
 #include <tunables/global>
 
 profile webapp-dev flags=(attach_disconnected,mediate_deleted,complain) {
@@ -179,7 +179,7 @@ Use the logged denials to refine the profile, adding necessary permissions.
 
 AppArmor provides abstractions for common patterns:
 
-```
+```text
 profile myapp {
   #include <abstractions/base>          # Basic system access
   #include <abstractions/nameservice>   # DNS resolution
@@ -197,7 +197,7 @@ These abstractions include commonly needed permissions, reducing profile complex
 
 Control filesystem access with fine granularity:
 
-```
+```text
 profile webapp-files {
   # Read-only access to application code
   /app/bin/** r,
@@ -231,7 +231,7 @@ Permissions include:
 
 Control network operations:
 
-```
+```text
 profile webapp-network {
   # Allow outbound HTTP/HTTPS
   network inet stream,
@@ -256,7 +256,7 @@ These rules prevent containers from creating raw sockets or using unexpected net
 
 AppArmor can restrict capabilities:
 
-```
+```text
 profile webapp-caps {
   # Deny all capabilities
   deny capability,
@@ -274,7 +274,7 @@ This complements Kubernetes securityContext capability controls.
 
 Restrict which binaries containers can execute:
 
-```
+```text
 profile webapp-exec {
   # Allow executing application binary
   /app/bin/webapp ix,
@@ -298,7 +298,7 @@ The `deny /tmp/** x` rule prevents executing files from /tmp, blocking common at
 
 PostgreSQL profile example:
 
-```
+```text
 #include <tunables/global>
 
 profile postgres-secure flags=(attach_disconnected,mediate_deleted) {
@@ -349,7 +349,7 @@ spec:
 
 Nginx profile with strict restrictions:
 
-```
+```text
 #include <tunables/global>
 
 profile nginx-secure flags=(attach_disconnected,mediate_deleted) {

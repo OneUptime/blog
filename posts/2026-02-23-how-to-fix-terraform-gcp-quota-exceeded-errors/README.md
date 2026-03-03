@@ -12,7 +12,7 @@ Quota exceeded errors happen when your Terraform configuration tries to create r
 
 ## What the Error Looks Like
 
-```
+```text
 Error: Error creating Instance: googleapi: Error 403: Quota
 'CPUS_ALL_REGIONS' exceeded. Limit: 24.0 in project my-project.
 metric name: compute.googleapis.com/cpus

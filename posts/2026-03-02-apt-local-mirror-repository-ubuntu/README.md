@@ -89,7 +89,7 @@ sudo nano /etc/apt/sources.list
 
 Replace the Ubuntu mirror URL with your local server:
 
-```
+```text
 # Original (pointing to Ubuntu's servers):
 deb http://archive.ubuntu.com/ubuntu jammy main restricted universe multiverse
 deb http://security.ubuntu.com/ubuntu jammy-security main restricted universe multiverse

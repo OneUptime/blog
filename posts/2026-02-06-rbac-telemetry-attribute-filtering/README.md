@@ -14,7 +14,7 @@ Backend-level RBAC controls who can query what. But Collector-level filtering co
 
 ## Architecture
 
-```
+```text
 All Services -> Shared Agent Collector -> RBAC Gateway Collector
                                               |
                     +-------------------------+------------------+

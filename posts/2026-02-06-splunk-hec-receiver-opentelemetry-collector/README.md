@@ -201,7 +201,7 @@ service:
 
 The Splunk HEC protocol uses tokens for authentication. Clients include the token in the `Authorization` header:
 
-```
+```text
 Authorization: Splunk <token>
 ```
 
@@ -370,7 +370,7 @@ The event format sends structured JSON with metadata:
 
 The raw format sends plain text logs:
 
-```
+```text
 2026-02-06 10:30:45 INFO User login successful user_id=user123 ip=192.0.2.1
 ```
 

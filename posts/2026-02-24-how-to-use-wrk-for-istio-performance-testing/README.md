@@ -76,7 +76,7 @@ The flags are:
 
 Output looks like:
 
-```
+```text
 Running 30s test @ http://httpbin.perf-test.svc.cluster.local:8000/get
   2 threads and 10 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
@@ -106,7 +106,7 @@ kubectl exec -n perf-test wrk-client -- \
 
 This gives you percentile data:
 
-```
+```text
   Latency Distribution
      50%    3.82ms
      75%    5.41ms

@@ -26,7 +26,7 @@ argocd cluster list
 
 Applications in the affected cluster will display:
 
-```
+```text
 ComparisonError: failed to load cluster information: Get "https://10.1.0.1:6443/api?timeout=30s": dial tcp 10.1.0.1:6443: i/o timeout
 ```
 

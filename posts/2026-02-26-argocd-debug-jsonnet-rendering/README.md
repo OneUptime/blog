@@ -37,7 +37,7 @@ kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server \
 
 The most frequent Jsonnet error in ArgoCD is a failed import:
 
-```
+```text
 RUNTIME ERROR: couldn't open import "lib/k8s.libsonnet": no match locally or in the Jsonnet library paths
 ```
 
@@ -82,7 +82,7 @@ jsonnet -J vendor -J lib apps/my-app/main.jsonnet
 
 Jsonnet is dynamically typed but strict about type operations. You will see errors like:
 
-```
+```text
 RUNTIME ERROR: Unexpected type string, expected number
 ```
 
@@ -117,7 +117,7 @@ directory:
 
 ArgoCD expects Jsonnet output to be either a single Kubernetes object or an array of objects. If the output is not valid, you get:
 
-```
+```text
 ComparisonError: failed to unmarshal manifest
 ```
 
@@ -159,7 +159,7 @@ else:
 
 Jsonnet evaluates lazily, so infinite recursion errors only appear when a field is actually accessed:
 
-```
+```text
 RUNTIME ERROR: max stack frames exceeded
 ```
 
@@ -178,7 +178,7 @@ Break the cycle by restructuring your code to avoid circular dependencies. If yo
 
 Jsonnet does not allow duplicate field names in the same object by default:
 
-```
+```text
 RUNTIME ERROR: duplicate field name: "name"
 ```
 
@@ -219,7 +219,7 @@ If this command fails, the rendering itself is broken and you need to check the 
 
 If your Jsonnet renders correctly but takes too long, ArgoCD may time out:
 
-```
+```text
 rpc error: code = Unknown desc = repo server timeout
 ```
 

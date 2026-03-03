@@ -115,7 +115,7 @@ Pricing is where things get interesting. Let's compare the costs for running 8 m
 
 **Dedicated Instances:**
 
-```
+```text
 Per-instance cost: ~$0.232/hr per m5.xlarge (dedicated pricing)
 Region fee:        $2.00/hr (one-time per region, per account)
 Total:             (8 x $0.232) + $2.00 = $3.856/hr
@@ -123,7 +123,7 @@ Total:             (8 x $0.232) + $2.00 = $3.856/hr
 
 **Dedicated Hosts:**
 
-```
+```text
 m5 host cost:      ~$4.788/hr (hosts up to 48 vCPUs, fits 12 x m5.xlarge)
 Total for 8:       $4.788/hr (same host, still has room for 4 more)
 ```

@@ -20,7 +20,7 @@ For more context on metrics types, see our guide on [what are metrics in OpenTel
 
 A cumulative counter tracks the total count since the process started:
 
-```
+```text
 Time    Value (cumulative)
 10:00   100
 10:01   150  (50 new requests since start)
@@ -32,7 +32,7 @@ Time    Value (cumulative)
 
 A delta counter tracks the change since the last measurement:
 
-```
+```text
 Time    Value (delta)
 10:00   100  (initial value)
 10:01   50   (150 - 100)
@@ -149,7 +149,7 @@ processors:
 
 Example of reset handling:
 
-```
+```text
 Time    Cumulative    Delta Output
 10:00   100          100 (first value)
 10:01   150          50  (150 - 100)
@@ -174,7 +174,7 @@ processors:
 
 Behavior:
 
-```
+```text
 Time    Input (Cumulative)    Output (Delta)
 10:00   100                   100 (initial value passed through)
 10:01   150                   50  (calculated: 150 - 100)
@@ -198,7 +198,7 @@ processors:
 
 Example with multiple instances:
 
-```
+```text
 Instance A (service=api,instance=1):
 Time    Cumulative    Delta
 10:00   100          100
@@ -231,7 +231,7 @@ processors:
 
 Memory considerations:
 
-```
+```text
 Memory per time series ≈ 100 bytes
 1000 time series ≈ 100 KB
 10,000 time series ≈ 1 MB
@@ -546,7 +546,7 @@ processors:
 
 Example scenario:
 
-```
+```text
 App starts at 10:00:
 10:00   100 -> Output: 100
 10:01   150 -> Output: 50

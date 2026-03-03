@@ -36,7 +36,7 @@ graph TD
 
 The gRPC Python package (`grpcio`) includes native C/C++ code that must be compiled on Alpine. Without the right build tools, you get errors like this:
 
-```
+```text
 Building wheels for collected packages: grpcio
   Building wheel for grpcio (pyproject.toml) ... error
   error: command '/usr/bin/gcc' failed: No such file or directory
@@ -44,7 +44,7 @@ Building wheels for collected packages: grpcio
 
 Or even more cryptic errors about missing headers:
 
-```
+```text
 fatal error: linux/futex.h: No such file or directory
 fatal error: openssl/ssl.h: No such file or directory
 ```
@@ -118,13 +118,13 @@ The key packages you need for building grpcio on Alpine are `gcc`, `g++`, `musl-
 
 Node.js OpenTelemetry packages that use `@grpc/grpc-js` are pure JavaScript and work fine on Alpine. But if you are using the older `grpc` package (now deprecated) or any native addon, you will see errors like:
 
-```
+```text
 Error: Error loading shared library ld-linux-x86-64.so.2: No such file or directory
 ```
 
 Or:
 
-```
+```text
 Error: Cannot find module '/app/node_modules/grpc/src/node/extension_binary/
   node-v108-linux-x64-musl/grpc_node.node'
 ```
@@ -176,7 +176,7 @@ CMD ["node", "index.js"]
 
 Alpine ships with a minimal set of CA certificates. If your OpenTelemetry exporter connects to a collector or backend over TLS, it might fail with certificate verification errors:
 
-```
+```text
 SSL: CERTIFICATE_VERIFY_FAILED
 unable to get local issuer certificate
 ```
@@ -265,7 +265,7 @@ CMD ["python", "main.py"]
 
 Some OpenTelemetry auto-instrumentation libraries use native extensions that can segfault on Alpine due to the musl/glibc incompatibility. This often shows up as a cryptic crash with no useful error message:
 
-```
+```text
 Segmentation fault (core dumped)
 ```
 

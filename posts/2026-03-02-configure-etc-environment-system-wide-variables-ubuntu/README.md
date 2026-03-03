@@ -34,7 +34,7 @@ cat /etc/environment
 
 Ubuntu's default `/etc/environment` typically just sets the PATH:
 
-```
+```text
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
 ```
 
@@ -54,7 +54,7 @@ sudo nano /etc/environment
 
 Example configuration:
 
-```
+```text
 # System-wide environment variables
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
 
@@ -195,7 +195,7 @@ Proxy settings deserve special attention. HTTP clients (curl, apt, wget) look fo
 sudo nano /etc/environment
 ```
 
-```
+```text
 # Proxy settings - both cases for maximum compatibility
 http_proxy="http://proxy.example.com:3128"
 HTTP_PROXY="http://proxy.example.com:3128"
@@ -213,7 +213,7 @@ For apt specifically (it doesn't always use environment variables), also configu
 sudo nano /etc/apt/apt.conf.d/01proxy
 ```
 
-```
+```text
 Acquire::http::Proxy "http://proxy.example.com:3128";
 Acquire::https::Proxy "http://proxy.example.com:3128";
 ```
@@ -236,7 +236,7 @@ cat /etc/default/locale
 
 `/etc/default/locale` is read by PAM alongside `/etc/environment`. You can set locale in either file:
 
-```
+```text
 # In /etc/environment
 LANG="en_US.UTF-8"
 LC_ALL="en_US.UTF-8"
@@ -282,7 +282,7 @@ grep pam_env /etc/pam.d/sshd
 
 Look for:
 
-```
+```text
 session required pam_env.so user_readenv=1 envfile=/etc/environment
 ```
 
@@ -302,7 +302,7 @@ These files use the same `KEY=VALUE` format and are processed by systemd's envir
 sudo nano /etc/environment.d/90-java.conf
 ```
 
-```
+```text
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 ```
 

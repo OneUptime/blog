@@ -44,17 +44,17 @@ echo ""
 ```
 
 The redirect URI that Dex uses follows this pattern:
-```
+```text
 <argocd-url>/auth/callback
 ```
 
 For OIDC without Dex:
-```
+```text
 <argocd-url>/auth/callback
 ```
 
 So if your ArgoCD URL is `https://argocd.example.com`, the redirect URI is:
-```
+```text
 https://argocd.example.com/auth/callback
 ```
 
@@ -202,7 +202,7 @@ When using Dex, you need TWO redirect URIs registered in your IdP:
 
 Open your browser's developer tools (Network tab) before clicking "Log in via SSO." Look at the redirect URL being sent:
 
-```
+```text
 # Example redirect URL from browser network tab
 https://your-idp.com/authorize?
   client_id=your-client-id&

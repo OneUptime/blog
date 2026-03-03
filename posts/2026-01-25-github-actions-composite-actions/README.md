@@ -448,7 +448,7 @@ Use reusable workflows for:
 
 Structure actions in your repository:
 
-```
+```text
 .github/
   actions/
     setup-project/

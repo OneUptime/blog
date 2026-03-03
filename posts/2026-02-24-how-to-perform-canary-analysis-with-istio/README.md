@@ -131,7 +131,7 @@ The most important metrics to compare between the canary and the stable version 
 
 **Error rate** - Compare the 5xx rate between v1 and v2:
 
-```
+```text
 # v1 error rate
 sum(rate(istio_requests_total{destination_service="my-app.production.svc.cluster.local",destination_version="v1",response_code=~"5.*"}[5m]))
 /
@@ -145,7 +145,7 @@ sum(rate(istio_requests_total{destination_service="my-app.production.svc.cluster
 
 **Latency** - Compare P99 latency:
 
-```
+```text
 # v1 P99
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="my-app.production.svc.cluster.local",destination_version="v1"}[5m])) by (le))
 

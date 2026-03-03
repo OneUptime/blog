@@ -183,7 +183,7 @@ This is not suitable for production but helps verify that log forwarding is work
 
 The simplest pattern sends logs directly from Talos nodes to your logging backend:
 
-```
+```text
 Talos Node 1 ---> Elasticsearch/Loki/Splunk
 Talos Node 2 --->
 Talos Node 3 --->
@@ -201,7 +201,7 @@ machine:
 
 A more robust pattern uses a log aggregator like Fluentd, Vector, or Logstash in between:
 
-```
+```text
 Talos Node 1 ---> Fluentd/Vector/Logstash ---> Elasticsearch/Loki/Splunk
 Talos Node 2 --->
 Talos Node 3 --->

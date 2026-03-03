@@ -53,7 +53,7 @@ graph TD
 
 Organize your data pipeline configurations in a monorepo:
 
-```
+```text
 data-platform/
   base/
     kafka/

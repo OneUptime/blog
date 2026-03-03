@@ -123,7 +123,7 @@ group_vars/
 
 ## Project Structure
 
-```
+```text
 project/
   site.yml
   playbooks/

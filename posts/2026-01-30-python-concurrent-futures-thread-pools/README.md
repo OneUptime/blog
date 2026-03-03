@@ -55,7 +55,7 @@ with ThreadPoolExecutor(max_workers=3) as executor:
 ```
 
 Output:
-```
+```text
 Starting fetch: https://api.example.com/users
 Data from https://api.example.com/users
 ```
@@ -182,7 +182,7 @@ with ThreadPoolExecutor(max_workers=3) as executor:
 ```
 
 Output:
-```
+```text
 Order 101 for Alice: $99.99
 Order 102 for Bob: $149.50
 Order 103 for Charlie: $75.00
@@ -361,7 +361,7 @@ with ThreadPoolExecutor(max_workers=3) as executor:
 ```
 
 Sample output (order varies due to random timing):
-```
+```text
 [1/7] Task 3 completed in 0.52s
 [2/7] Task 1 completed in 0.89s
 [3/7] Task 5 completed in 1.23s
@@ -633,7 +633,7 @@ if __name__ == "__main__":
 ```
 
 Sample output:
-```
+```text
 Main process PID: 12345
 Value 0 processed by PID 12346
 Value 1 processed by PID 12347

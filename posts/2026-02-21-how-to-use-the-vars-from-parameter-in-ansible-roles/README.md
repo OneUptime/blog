@@ -32,7 +32,7 @@ Let's build a practical example. Consider an Nginx role that needs different con
 
 First, the directory structure:
 
-```
+```text
 roles/nginx/
   tasks/
     main.yml

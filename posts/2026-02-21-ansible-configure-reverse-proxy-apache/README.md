@@ -20,7 +20,7 @@ This guide covers configuring Apache as a reverse proxy with Ansible, including 
 
 ## Project Structure
 
-```
+```text
 apache-proxy/
   inventory/
     hosts.yml

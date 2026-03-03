@@ -273,7 +273,7 @@ aws iot-data update-thing-shadow \
 
 Named shadows have their own MQTT topics.
 
-```
+```text
 $aws/things/{thing-name}/shadow/name/{shadow-name}/update
 $aws/things/{thing-name}/shadow/name/{shadow-name}/get
 $aws/things/{thing-name}/shadow/name/{shadow-name}/delete
@@ -283,7 +283,7 @@ $aws/things/{thing-name}/shadow/name/{shadow-name}/delete
 
 IoT Core uses reserved MQTT topics for shadow operations. Understanding these is important for debugging.
 
-```
+```text
 # Update shadow
 $aws/things/temperature-sensor-001/shadow/update
 

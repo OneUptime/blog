@@ -231,7 +231,7 @@ A common use case is authenticating with a private npm registry during the build
 
 Create a `.npmrc` file in your function source:
 
-```
+```text
 //registry.npmjs.org/:_authToken=${NPM_TOKEN}
 @mycompany:registry=https://npm.pkg.github.com
 ```

@@ -90,7 +90,7 @@ Edit the panel JSON directly:
 
 Alphabetically sorts legend entries:
 
-```
+```text
 Before sorting:
 - web-server-3
 - api-gateway
@@ -169,7 +169,7 @@ Table mode provides more sorting flexibility:
 
 ### Resulting Table Legend
 
-```
+```text
 | Series        | Last  | Min   | Max   | Mean  |
 |---------------|-------|-------|-------|-------|
 | api-gateway   | 45ms  | 12ms  | 120ms | 38ms  |

@@ -73,7 +73,7 @@ SPF tells receiving servers which IP addresses are authorized to send email for 
 
 ### Basic SPF Record Structure
 
-```
+```text
 v=spf1 [mechanisms] [modifiers] [qualifier]all
 ```
 
@@ -212,7 +212,7 @@ cat dkim_public.pem | grep -v "PUBLIC KEY" | tr -d '\n'
 
 **Example output:**
 
-```
+```text
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3x7...base64...IDAQAB
 ```
 
@@ -291,7 +291,7 @@ selector._domainkey.example.com.  IN  TXT  (
 
 ### DKIM Signature Header Example
 
-```
+```text
 DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
     d=example.com; s=202601;
     h=from:to:subject:date:message-id;
@@ -562,7 +562,7 @@ dnssec-keygen -a ECDSAP256SHA256 -n ZONE example.com
 
 **Configure named.conf:**
 
-```
+```text
 options {
     dnssec-validation auto;
     dnssec-enable yes;
@@ -592,7 +592,7 @@ rndc reload example.com
 
 **Enable DNSSEC in configuration:**
 
-```
+```text
 # pdns.conf
 dnssec=yes
 default-ksk-algorithm=ecdsa256
@@ -661,7 +661,7 @@ gcloud dns managed-zones describe example-zone --format='value(dnssecConfig.dsRe
 
 After enabling DNSSEC, you must publish the DS record with your domain registrar:
 
-```
+```text
 DS Record Format:
 example.com. 3600 IN DS 12345 13 2 49FD46E6C4B45C55D4AC69C3C25A6D3C1A23B4F5D6E7F8A9B0C1D2E3F4A5B6C7
 

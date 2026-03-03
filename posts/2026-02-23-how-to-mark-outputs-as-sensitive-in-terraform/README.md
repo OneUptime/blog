@@ -34,7 +34,7 @@ output "api_key" {
 
 After `terraform apply`, these outputs display as:
 
-```
+```text
 Outputs:
 
 api_key = <sensitive>

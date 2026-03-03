@@ -72,7 +72,7 @@ ollama pull llama3.2
 
 You will see download progress with layer information:
 
-```
+```text
 pulling manifest
 pulling 8934d96d3f08... 100% |████████████████████| 2.0 GB
 pulling 8c17c2ebb0ea... 100% |████████████████████| 7.0 KB
@@ -145,7 +145,7 @@ ollama list
 
 Example output:
 
-```
+```text
 NAME                    ID              SIZE      MODIFIED
 llama3.2:latest         a80c4f17acd5    2.0 GB    2 hours ago
 llama3.2:1b             baf6a787fdff    1.3 GB    3 hours ago
@@ -165,7 +165,7 @@ ollama ps
 
 Example output:
 
-```
+```text
 NAME              ID              SIZE      PROCESSOR    UNTIL
 llama3.2:latest   a80c4f17acd5    3.3 GB    100% GPU     4 minutes from now
 ```
@@ -183,7 +183,7 @@ ollama show llama3.2
 
 Output includes:
 
-```
+```text
   Model
     architecture     llama
     parameters       3.2B
@@ -235,7 +235,7 @@ ollama pull llama3.2
 
 If the model is already up to date, you will see:
 
-```
+```text
 pulling manifest
 pulling 8934d96d3f08... 100% |████████████████████| (already exists)
 pulling 8c17c2ebb0ea... 100% |████████████████████| (already exists)

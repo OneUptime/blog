@@ -228,7 +228,7 @@ resource "google_monitoring_alert_policy" "datastream_unsupported" {
 
 For ad-hoc investigation, Monitoring Query Language (MQL) gives you flexible querying:
 
-```
+```text
 # Check average latency per stream over the last hour
 fetch datastream.googleapis.com/Stream
 | metric 'datastream.googleapis.com/stream/total_latency'
@@ -237,7 +237,7 @@ fetch datastream.googleapis.com/Stream
 | group_by [resource.stream_id], [mean(val())]
 ```
 
-```
+```text
 # Compare throughput across all streams
 fetch datastream.googleapis.com/Stream
 | metric 'datastream.googleapis.com/stream/event_count'

@@ -146,7 +146,7 @@ service:
 
 With the data in your backend, you can calculate uptime as a percentage. Here is a PromQL query that computes availability over a 30-day window:
 
-```
+```text
 # Calculate uptime percentage per endpoint over the last 30 days.
 # A check is "up" if the status code is between 200 and 399.
 
@@ -163,7 +163,7 @@ With the data in your backend, you can calculate uptime as a percentage. Here is
 
 For SLA reporting, you typically need per-endpoint and per-region breakdowns:
 
-```
+```text
 # Per-endpoint, per-region uptime over 30 days
 (
   sum by (http_url, probe_location) (

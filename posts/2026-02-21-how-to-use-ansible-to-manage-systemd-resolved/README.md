@@ -185,7 +185,7 @@ Configure /etc/resolv.conf to use the resolved stub:
 
 The symlink to `/run/systemd/resolve/stub-resolv.conf` contains:
 
-```
+```text
 nameserver 127.0.0.53
 options edns0 trust-ad
 search internal.example.com example.com

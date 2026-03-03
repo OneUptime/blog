@@ -271,7 +271,7 @@ spec:
 
 The target queue length per pod depends on your processing rate and latency requirements. Calculate it using:
 
-```
+```text
 Target Queue Length = (Acceptable Latency) × (Messages per second per pod)
 ```
 

@@ -14,7 +14,7 @@ The "host not found in upstream" error is one of the most common issues encounte
 
 The full error message typically looks like this:
 
-```
+```text
 nginx: [emerg] host not found in upstream "backend.example.com" in /etc/nginx/nginx.conf:25
 ```
 

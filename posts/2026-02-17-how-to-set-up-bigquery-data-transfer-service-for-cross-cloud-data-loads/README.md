@@ -33,7 +33,7 @@ Let me start with the most common scenario: loading data from an AWS S3 bucket i
 
 Make sure your data is in a supported format (CSV, JSON, Avro, Parquet, or ORC) and organized in a predictable path structure.
 
-```
+```text
 s3://my-data-bucket/events/
   2026/02/17/events_001.parquet
   2026/02/17/events_002.parquet
@@ -177,7 +177,7 @@ bq mk --transfer_config \
 
 Use template variables in your data path to handle date-partitioned source data.
 
-```
+```text
 # Available template variables:
 # {run_time|yyyyMMddHH}  - Run timestamp with hour
 # {run_date|yyyyMMdd}    - Run date

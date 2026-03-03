@@ -43,7 +43,7 @@ az network application-gateway waf-config set \
 
 Now let your application run normally and check the WAF logs in Log Analytics.
 
-```
+```text
 // Query WAF logs for blocked/detected requests in the last 24 hours
 AzureDiagnostics
 | where Category == "ApplicationGatewayFirewallLog"
@@ -240,7 +240,7 @@ The first request should succeed (because we excluded `query_text`). The second 
 
 Keep monitoring WAF logs after applying exclusions to make sure you have not opened any gaps.
 
-```
+```text
 // Monitor WAF activity after applying exclusions
 AzureDiagnostics
 | where Category == "ApplicationGatewayFirewallLog"

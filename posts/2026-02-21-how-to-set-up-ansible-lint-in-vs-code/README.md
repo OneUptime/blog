@@ -137,7 +137,7 @@ Hover over any underlined text to see the rule ID and description.
 
 The Problems panel (`Ctrl+Shift+M` or `Cmd+Shift+M`) shows all diagnostics across open files:
 
-```
+```text
 playbook.yml
   Line 5: fqcn[action-core]: Use FQCN for builtin module actions (ansible-lint)
   Line 12: name[missing]: All tasks should be named (ansible-lint)

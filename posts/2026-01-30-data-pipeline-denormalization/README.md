@@ -44,7 +44,7 @@ Analytical queries have fundamentally different access patterns than transaction
 
 When your analytics query joins 5 tables with millions of rows each, the database spends most of its time shuffling data between tables. Denormalization pre-computes these joins, trading storage and write complexity for read speed.
 
-```
+```text
 Before Denormalization (5 tables, 4 joins):
 
 SELECT

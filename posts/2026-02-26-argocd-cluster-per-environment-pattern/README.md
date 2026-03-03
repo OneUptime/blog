@@ -49,7 +49,7 @@ The `--label` flags are important. You will use these labels with ApplicationSet
 
 Organize your config repo to reflect the per-environment approach:
 
-```
+```text
 gitops-config/
 ├── base/                          # Shared base manifests
 │   ├── frontend/

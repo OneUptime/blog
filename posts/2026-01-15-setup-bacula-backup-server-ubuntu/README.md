@@ -231,7 +231,7 @@ sudo nano /etc/postgresql/14/main/pg_hba.conf
 
 Add the following line before other authentication rules:
 
-```
+```text
 # Bacula catalog database access
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
 local   bacula          bacula                                  md5
@@ -274,7 +274,7 @@ sudo nano /etc/bacula/bacula-dir.conf
 
 Find and update the Catalog resource:
 
-```
+```text
 # Catalog Resource - Database connection settings
 # This defines how the Director connects to the catalog database
 Catalog {
@@ -308,7 +308,7 @@ sudo nano /etc/bacula/bacula-dir.conf
 
 Here is a comprehensive Director configuration:
 
-```
+```text
 #
 # Bacula Director Configuration File
 # /etc/bacula/bacula-dir.conf
@@ -984,7 +984,7 @@ sudo nano /etc/bacula/bacula-sd.conf
 
 Here is a comprehensive Storage Daemon configuration:
 
-```
+```text
 #
 # Bacula Storage Daemon Configuration File
 # /etc/bacula/bacula-sd.conf
@@ -1217,7 +1217,7 @@ sudo nano /etc/bacula/bacula-fd.conf
 
 Complete File Daemon configuration:
 
-```
+```text
 #
 # Bacula File Daemon Configuration File
 # /etc/bacula/bacula-fd.conf
@@ -1329,7 +1329,7 @@ sudo nano /etc/bacula/bacula-fd.conf
 
 Update the remote client's configuration:
 
-```
+```text
 FileDaemon {
   # Use unique name for each client (e.g., webserver-fd)
   Name = webserver-fd
@@ -1376,7 +1376,7 @@ Now let's create practical backup job configurations.
 
 ### Example: Complete Server Backup Job
 
-```
+```text
 # Full server backup job
 Job {
   Name = "FullServerBackup"
@@ -1411,7 +1411,7 @@ Job {
 
 ### Example: Database Backup with Pre-Scripts
 
-```
+```text
 # MySQL database backup job
 Job {
   Name = "MySQLDatabaseBackup"
@@ -1495,7 +1495,7 @@ sudo chmod +x /usr/local/bin/mysql_backup.sh
 
 ### Example: Incremental Backup Configuration
 
-```
+```text
 # Incremental backup job for frequently changing data
 Job {
   Name = "IncrementalDataBackup"
@@ -1544,7 +1544,7 @@ FileSet {
 
 ### Advanced Schedule Examples
 
-```
+```text
 # Grandfather-Father-Son (GFS) rotation schedule
 Schedule {
   Name = "GFS-Schedule"
@@ -1589,7 +1589,7 @@ Schedule {
 
 ### Advanced Pool Examples
 
-```
+```text
 # Monthly retention pool (grandfather)
 Pool {
   Name = Monthly-Full
@@ -1682,7 +1682,7 @@ sudo bconsole
 
 Common bconsole commands:
 
-```
+```text
 # Check Director status
 *status dir
 
@@ -1759,7 +1759,7 @@ sudo bconsole
 
 Follow the prompts to label volumes:
 
-```
+```text
 Automatically selected Catalog: MyCatalog
 Using Catalog "MyCatalog"
 Automatically selected Storage: File1
@@ -1814,7 +1814,7 @@ sudo bconsole
 
 Follow the prompts:
 
-```
+```text
 First you select one or more JobIds that contain files
 to be restored. You will be presented several methods
 of specifying the JobIds. Then you will be allowed to
@@ -1840,7 +1840,7 @@ Select item: 5
 
 After selecting files:
 
-```
+```text
 # Navigate and select files in the restore tree
 $ cd /etc
 $ mark nginx
@@ -1927,7 +1927,7 @@ $ done
 
 For automated or scripted restores, define a restore job:
 
-```
+```text
 Job {
   Name = "RestoreFilesToOriginal"
   Type = Restore
@@ -1970,7 +1970,7 @@ The Bacula Console is the primary interface for administering Bacula.
 sudo nano /etc/bacula/bconsole.conf
 ```
 
-```
+```text
 #
 # Bacula Console Configuration File
 # /etc/bacula/bconsole.conf
@@ -2251,7 +2251,7 @@ sudo nano /etc/baculum/Config-api-apache/baculum.users
 
 Add admin user:
 
-```
+```text
 admin:$apr1$XXXXX$YYYYY
 ```
 
@@ -2355,7 +2355,7 @@ Create API user for Baculum Web:
 
 Update the Messages resource in `bacula-dir.conf`:
 
-```
+```text
 Messages {
   Name = Standard
 
@@ -2665,7 +2665,7 @@ sudo grep bacula /etc/postgresql/14/main/pg_hba.conf
 
 **Problem: Jobs failing with timeout**
 
-```
+```text
 # Increase timeout values in bacula-dir.conf
 Job {
   Name = "BackupLocalServer"

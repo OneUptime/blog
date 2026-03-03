@@ -142,7 +142,7 @@ dig CAA your-domain.com
 
 If you have CAA records, make sure `pki.goog` is included:
 
-```
+```text
 your-domain.com.  300  IN  CAA  0 issue "pki.goog"
 ```
 

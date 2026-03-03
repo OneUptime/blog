@@ -29,7 +29,7 @@ curl -s http://localhost:8888/metrics | grep "scrape_series"
 
 Look at the Prometheus receiver's scrape metrics:
 
-```
+```text
 prometheus_target_scrapes_sample_out_of_order_total
 prometheus_target_scrapes_sample_duplicate_total
 prometheus_tsdb_head_series

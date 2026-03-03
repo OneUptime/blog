@@ -21,7 +21,7 @@ free -h
 
 Output:
 
-```
+```text
                total        used        free      shared  buff/cache   available
 Mem:            15Gi        8.2Gi       1.1Gi       512Mi       6.1Gi       6.8Gi
 Swap:          2.0Gi        0.0Gi       2.0Gi
@@ -80,7 +80,7 @@ sudo dmesg | grep -A 10 "Out of memory"
 
 OOM kill messages look like:
 
-```
+```text
 [123456.789] Out of memory: Kill process 12345 (java) score 823 or sacrifice child
 [123456.790] Killed process 12345 (java) total-vm:4194304kB, anon-rss:2097152kB, file-rss:0kB
 ```

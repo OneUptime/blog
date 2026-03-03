@@ -60,7 +60,7 @@ flowchart TB
 
 A well-organized project structure is essential for maintaining microservices. Each service lives in its own directory with its own configuration and dependencies.
 
-```
+```text
 deno-microservices/
 ├── shared/
 │   ├── types/

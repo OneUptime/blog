@@ -75,7 +75,7 @@ On the Compass welcome screen, you will see a connection string input field.
 
 ### Connecting to a Local MongoDB Instance
 
-```
+```text
 mongodb://localhost:27017
 ```
 
@@ -83,7 +83,7 @@ Click "Connect" and Compass will list the available databases.
 
 ### Connecting to a Remote MongoDB Instance
 
-```
+```text
 mongodb://username:password@remote-host:27017/your_database?authSource=admin
 ```
 
@@ -91,7 +91,7 @@ For MongoDB Atlas or other cloud deployments, copy the connection string from th
 
 ### Connection with TLS
 
-```
+```text
 mongodb://username:password@remote-host:27017/?tls=true&tlsCAFile=/path/to/ca.pem
 ```
 

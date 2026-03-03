@@ -85,6 +85,18 @@ interface BlogIssue {
   issues: FormatIssue[];
 }
 
+interface CodeFence {
+  char: '`' | '~';
+  length: number;
+  info: string;
+}
+
+interface OpenCodeFence {
+  char: '`' | '~';
+  length: number;
+  openLine: number;
+}
+
 // ANSI color codes for terminal output
 const colors = {
   red: '\x1b[31m',
@@ -110,6 +122,32 @@ function logInfo(msg: string): void {
 
 function logHeader(msg: string): void {
   console.log(`\n${colors.bold}=== ${msg} ===${colors.reset}\n`);
+}
+
+/**
+ * Parse a fenced code marker line (``` or ~~~).
+ */
+function parseCodeFence(line: string): CodeFence | null {
+  const trimmed = line.trimStart();
+  const match = trimmed.match(/^(`{3,}|~{3,})(.*)$/);
+  if (!match) {
+    return null;
+  }
+
+  const marker = match[1]!;
+  return {
+    char: marker[0] as '`' | '~',
+    length: marker.length,
+    info: match[2] || '',
+  };
+}
+
+/**
+ * Closing fence must use the same marker character, at least the same length,
+ * and contain no info string after the marker.
+ */
+function isClosingCodeFence(fence: CodeFence, openFence: OpenCodeFence): boolean {
+  return fence.char === openFence.char && fence.length >= openFence.length && fence.info.trim() === '';
 }
 
 // Validation state
@@ -1614,24 +1652,30 @@ function checkUnclosedCodeBlocks(postsDir: string[]): void {
     const content = fs.readFileSync(readmePath, 'utf8');
     const lines = content.split('\n');
 
-    let inCodeBlock = false;
-    let openLine = 0;
+    let openFence: OpenCodeFence | null = null;
 
     for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i]!.trimStart();
-      // Match ``` or ~~~ fences (with optional language tag for opening)
-      if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
-        if (!inCodeBlock) {
-          inCodeBlock = true;
-          openLine = i + 1;
-        } else {
-          inCodeBlock = false;
-        }
+      const fence = parseCodeFence(lines[i]!);
+      if (!fence) {
+        continue;
+      }
+
+      if (!openFence) {
+        openFence = {
+          char: fence.char,
+          length: fence.length,
+          openLine: i + 1,
+        };
+        continue;
+      }
+
+      if (isClosingCodeFence(fence, openFence)) {
+        openFence = null;
       }
     }
 
-    if (inCodeBlock) {
-      issues.push({ dir, openLine });
+    if (openFence) {
+      issues.push({ dir, openLine: openFence.openLine });
     }
   }
 
@@ -1664,22 +1708,28 @@ function checkCodeBlockLanguageTags(postsDir: string[]): void {
     const content = fs.readFileSync(readmePath, 'utf8');
     const lines = content.split('\n');
 
-    let inCodeBlock = false;
+    let openFence: OpenCodeFence | null = null;
 
     for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i]!.trimStart();
-      if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
-        if (!inCodeBlock) {
-          inCodeBlock = true;
-          // Check if there's a language tag after the fence
-          const fence = trimmed.startsWith('```') ? '```' : '~~~';
-          const afterFence = trimmed.substring(fence.length).trim();
-          if (!afterFence) {
-            issues.push({ dir, line: i + 1 });
-          }
-        } else {
-          inCodeBlock = false;
+      const fence = parseCodeFence(lines[i]!);
+      if (!fence) {
+        continue;
+      }
+
+      if (!openFence) {
+        openFence = {
+          char: fence.char,
+          length: fence.length,
+          openLine: i + 1,
+        };
+        if (!fence.info.trim()) {
+          issues.push({ dir, line: i + 1 });
         }
+        continue;
+      }
+
+      if (isClosingCodeFence(fence, openFence)) {
+        openFence = null;
       }
     }
   }
@@ -1733,17 +1783,22 @@ function checkHeadingHierarchy(postsDir: string[]): void {
     const content = fs.readFileSync(readmePath, 'utf8');
     const lines = content.split('\n');
 
-    let inCodeBlock = false;
+    let openFence: OpenCodeFence | null = null;
     let h1Count = 0;
     let lastLevel = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
-      if (line.trimStart().startsWith('```') || line.trimStart().startsWith('~~~')) {
-        inCodeBlock = !inCodeBlock;
+      const fence = parseCodeFence(line);
+      if (fence) {
+        if (!openFence) {
+          openFence = { char: fence.char, length: fence.length, openLine: i + 1 };
+        } else if (isClosingCodeFence(fence, openFence)) {
+          openFence = null;
+        }
         continue;
       }
-      if (inCodeBlock) continue;
+      if (openFence) continue;
 
       const headingMatch = line.match(/^(#{1,6})\s+/);
       if (!headingMatch) continue;
@@ -1812,40 +1867,64 @@ function checkEmptySections(postsDir: string[]): void {
     const content = fs.readFileSync(readmePath, 'utf8');
     const lines = content.split('\n');
 
-    let inCodeBlock = false;
-    let lastHeadingLine = -1;
-    let lastHeadingText = '';
-    let hasContentAfterHeading = false;
+    const headings: Array<{ line: number; level: number; text: string; index: number }> = [];
+    let openFence: OpenCodeFence | null = null;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
-      const trimmed = line.trimStart();
-
-      if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
-        inCodeBlock = !inCodeBlock;
-        if (inCodeBlock) hasContentAfterHeading = true;
+      const fence = parseCodeFence(line);
+      if (fence) {
+        if (!openFence) {
+          openFence = { char: fence.char, length: fence.length, openLine: i + 1 };
+        } else if (isClosingCodeFence(fence, openFence)) {
+          openFence = null;
+        }
         continue;
       }
-      if (inCodeBlock) continue;
+      if (openFence) continue;
 
-      const isHeading = /^#{1,6}\s+/.test(line);
-
-      if (isHeading) {
-        // If previous heading had no content, flag it
-        if (lastHeadingLine !== -1 && !hasContentAfterHeading) {
-          issues.push({ dir, line: lastHeadingLine, heading: lastHeadingText });
-        }
-        lastHeadingLine = i + 1;
-        lastHeadingText = line.trim();
-        hasContentAfterHeading = false;
-      } else if (line.trim() !== '' && line.trim() !== '---') {
-        hasContentAfterHeading = true;
+      const headingMatch = line.match(/^(#{1,6})\s+/);
+      if (headingMatch) {
+        headings.push({
+          line: i + 1,
+          level: headingMatch[1]!.length,
+          text: line.trim(),
+          index: i,
+        });
       }
     }
 
-    // Check last heading in the file
-    if (lastHeadingLine !== -1 && !hasContentAfterHeading) {
-      issues.push({ dir, line: lastHeadingLine, heading: lastHeadingText });
+    for (const heading of headings) {
+      let hasContent = false;
+      for (let i = heading.index + 1; i < lines.length; i++) {
+        const line = lines[i]!;
+        const fence = parseCodeFence(line);
+        if (fence) {
+          // A code block under a heading counts as section content.
+          hasContent = true;
+          break;
+        }
+
+        const trimmed = line.trim();
+        if (trimmed === '' || trimmed === '---') {
+          continue;
+        }
+
+        const nextHeadingMatch = line.match(/^(#{1,6})\s+/);
+        if (nextHeadingMatch) {
+          const nextLevel = nextHeadingMatch[1]!.length;
+          // Child headings imply this section has content in subsections.
+          hasContent = nextLevel > heading.level;
+          break;
+        }
+
+        hasContent = true;
+        break;
+      }
+
+      if (!hasContent) {
+        issues.push({ dir, line: heading.line, heading: heading.text });
+      }
     }
   }
 

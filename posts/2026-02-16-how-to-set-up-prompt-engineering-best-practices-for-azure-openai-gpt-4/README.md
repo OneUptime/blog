@@ -40,12 +40,12 @@ messages = [
 One of the most common problems is getting inconsistent output formats. If you need JSON, structured data, or a specific layout, tell the model exactly what you expect.
 
 Bad prompt:
-```
+```text
 Analyze this customer feedback and tell me what you find.
 ```
 
 Good prompt:
-```
+```text
 Analyze the following customer feedback. Return your analysis as JSON with these fields:
 - sentiment: "positive", "negative", or "neutral"
 - topics: array of topics mentioned

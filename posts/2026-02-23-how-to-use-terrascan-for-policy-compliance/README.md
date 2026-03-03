@@ -65,7 +65,7 @@ terrascan scan -i terraform -d . --show-passed=false
 
 The output includes the policy name, severity, resource, and a description:
 
-```
+```text
 Violation Details -
 
         Description    : Ensure S3 bucket has server-side encryption enabled
@@ -142,7 +142,7 @@ This is where Terrascan really shines. Custom policies use OPA's Rego language, 
 
 Create a policy directory structure:
 
-```
+```text
 custom-policies/
   aws/
     require_encryption/

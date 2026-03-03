@@ -567,19 +567,19 @@ With tracing in place, you can analyze worker performance:
 
 Query your tracing backend to find slow jobs:
 
-```
+```text
 job.class = "ProcessOrderJob" AND duration > 5000ms
 ```
 
 Find jobs that always fail:
 
-```
+```text
 job.success = false AND job.attempts >= max_attempts
 ```
 
 Identify jobs stuck in retry loops:
 
-```
+```text
 job.is_retry = true GROUP BY job.class
 ```
 

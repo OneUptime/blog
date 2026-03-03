@@ -20,7 +20,7 @@ The key thing to understand is that policies are inherited by default. A project
 
 The error message usually mentions the constraint name. Look for something like:
 
-```
+```text
 Operation denied by organization policy constraint: constraints/compute.vmExternalIpAccess
 ```
 

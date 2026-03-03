@@ -184,7 +184,7 @@ for r in results[:5]:
 
 A typical output might look like:
 
-```
+```text
 Top 5 models:
   VotingEnsemble: AUC = 0.9234
   StackEnsemble: AUC = 0.9218

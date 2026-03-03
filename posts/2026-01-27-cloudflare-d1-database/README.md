@@ -88,7 +88,7 @@ D1 supports SQL migrations for managing your database schema. Migrations help yo
 
 Create a `migrations` folder in your project and add numbered SQL files.
 
-```
+```text
 my-project/
   migrations/
     0001_create_users_table.sql

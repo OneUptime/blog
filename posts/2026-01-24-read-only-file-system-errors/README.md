@@ -69,7 +69,7 @@ mount | grep -E '(^/dev|type (ext4|xfs|btrfs))'
 
 Example output showing a read-only root filesystem:
 
-```
+```text
 /dev/sda1 on / type ext4 (ro,relatime,errors=remount-ro)
 ```
 
@@ -191,7 +191,7 @@ sudo blkid /dev/sda1
 
 Example fstab entry that might cause read-only mounting:
 
-```
+```text
 # Incorrect - 'ro' option forces read-only mount
 /dev/sda2  /data  ext4  ro,noatime  0  2
 

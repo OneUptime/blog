@@ -64,7 +64,7 @@ stringData:
 2. Navigate to Settings > Webhooks > Add webhook
 3. Configure the webhook with these settings:
 
-```
+```text
 Payload URL: https://argocd.example.com/api/webhook
 Content type: application/json
 Secret: <your-generated-secret>
@@ -73,13 +73,13 @@ SSL verification: Enable SSL verification
 
 Select which events to trigger the webhook:
 
-```
+```text
 Events: Just the push event
 ```
 
 You can also select additional events if needed:
 
-```
+```text
 - Push events (required)
 - Pull request events (optional - useful for preview environments)
 ```
@@ -125,7 +125,7 @@ kubectl logs -n argocd deployment/argocd-server -f | grep -i "webhook\|received"
 
 You should see log entries like:
 
-```
+```text
 level=info msg="Received push event repo: https://github.com/org/repo, revision: abc1234, ref: refs/heads/main"
 ```
 

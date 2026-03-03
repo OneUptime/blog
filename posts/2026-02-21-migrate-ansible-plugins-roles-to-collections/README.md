@@ -14,7 +14,7 @@ If you have been building Ansible plugins for a while, they are probably scatter
 
 Take inventory of your existing plugins. They might live in any of these locations:
 
-```
+```text
 # Project-level plugins
 my_project/
   filter_plugins/

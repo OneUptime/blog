@@ -22,7 +22,7 @@ There's also a 1MB template body limit for S3-hosted templates (51,200 bytes for
 
 Here's a directory structure that scales well for large projects.
 
-```
+```text
 infrastructure/
   cloudformation/
     main/

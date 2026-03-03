@@ -492,7 +492,7 @@ spec:
 
 Directory structure:
 
-```
+```text
 my-k8s-configs/
 ├── argocd/
 │   └── applications/           # App of Apps - managed by root application
@@ -765,7 +765,7 @@ spec:
 
 ### 1. Repository Structure
 
-```
+```text
 # Recommended monorepo structure
 my-k8s-configs/
 ├── base/                    # Base configurations

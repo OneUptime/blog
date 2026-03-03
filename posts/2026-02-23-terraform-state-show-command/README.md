@@ -273,7 +273,7 @@ This is intentional - `terraform state show` protects sensitive values in its di
 
 ### Resource Not Found
 
-```
+```text
 No instance found for the given address!
 ```
 

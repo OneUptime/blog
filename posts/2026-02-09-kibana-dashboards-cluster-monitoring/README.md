@@ -16,7 +16,7 @@ This guide covers building production-ready Kibana dashboards for Kubernetes log
 
 Start by defining index patterns for your logs:
 
-```
+```text
 Settings → Stack Management → Index Patterns → Create index pattern
 
 Name: kubernetes-*
@@ -58,7 +58,7 @@ Build dashboards for specific applications:
 - Requests by endpoint
 
 **Query for response time percentiles:**
-```
+```text
 Aggregation: Percentiles on response_time_ms
 Percentiles: 50, 95, 99
 ```
@@ -68,19 +68,19 @@ Percentiles: 50, 95, 99
 Create saved searches for common queries:
 
 **Recent Errors:**
-```
+```text
 level:ERROR OR level:FATAL
 Sort by: @timestamp descending
 Columns: @timestamp, kubernetes.pod_name, kubernetes.namespace_name, message
 ```
 
 **Failed Pod Starts:**
-```
+```text
 kubernetes.container_name:* AND log:(*CrashLoopBackOff* OR *ImagePullBackOff* OR *Failed*)
 ```
 
 **Authentication Failures:**
-```
+```text
 log:(*authentication* OR *unauthorized*) AND level:ERROR
 ```
 

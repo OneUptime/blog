@@ -28,7 +28,7 @@ Before writing any ArgoCD configuration, decide on your repository layout.
 
 All services live in a single repository:
 
-```
+```text
 microservices/
   services/
     user-service/
@@ -54,7 +54,7 @@ microservices/
 
 Each service has its own repository, with a separate config repo for deployment manifests:
 
-```
+```text
 # deployment-config repo
 environments/
   staging/

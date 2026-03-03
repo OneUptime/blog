@@ -33,7 +33,7 @@ When a new pod is created in a namespace with sidecar injection enabled, it gets
 
 The pilot-agent generates a private key and creates a Certificate Signing Request (CSR). The CSR includes the workload identity, which is derived from the Kubernetes service account:
 
-```
+```text
 spiffe://cluster.local/ns/default/sa/my-app
 ```
 
@@ -69,7 +69,7 @@ istioctl proxy-config secret deploy/my-app -n default
 
 Output:
 
-```
+```text
 RESOURCE NAME   TYPE           STATUS   VALID CERT   SERIAL NUMBER   NOT AFTER               NOT BEFORE
 default         Cert Chain     ACTIVE   true         abc123...       2024-01-16T10:30:45Z    2024-01-15T10:30:45Z
 ROOTCA          CA             ACTIVE   true         def456...       2034-01-13T10:30:45Z    2024-01-15T10:30:45Z
@@ -85,7 +85,7 @@ istioctl proxy-config secret deploy/my-app -n default -o json | \
 
 The output includes:
 
-```
+```text
 Subject: O = cluster.local
 Subject Alternative Name:
     URI:spiffe://cluster.local/ns/default/sa/my-app
@@ -178,7 +178,7 @@ kubectl exec -n istio-system deploy/istiod -- \
 
 Key metrics:
 
-```
+```text
 # Total CSRs received
 citadel_server_csr_count
 

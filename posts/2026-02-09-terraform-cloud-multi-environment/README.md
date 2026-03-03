@@ -116,7 +116,7 @@ This creates three workspaces with different auto-apply settings. Development an
 
 Organize code to support multiple environments:
 
-```
+```text
 project/
 ├── terraform.tf           # Cloud and provider config
 ├── variables.tf           # Variable definitions

@@ -103,7 +103,7 @@ Let us build a complete device plugin for a hypothetical custom accelerator. We 
 
 ### Project Structure
 
-```
+```text
 custom-device-plugin/
 ├── cmd/
 │   └── plugin/

@@ -83,7 +83,7 @@ For each service, note:
 
 Harness often stores manifests inline or references them loosely. ArgoCD needs a clean Git structure:
 
-```
+```text
 my-app-config/
   base/
     deployment.yaml

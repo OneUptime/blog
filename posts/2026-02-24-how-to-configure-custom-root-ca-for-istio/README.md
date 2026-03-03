@@ -124,7 +124,7 @@ kubectl logs -n istio-system deploy/istiod | grep -i "CA"
 
 You should see something like:
 
-```
+```text
 info    Using istiod file format for signing ca files
 ```
 

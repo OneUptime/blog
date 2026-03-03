@@ -48,7 +48,7 @@ sudo ufw status
 ### Access Web Interface
 
 Open your browser and navigate to:
-```
+```text
 https://your_server_ip:9090
 ```
 
@@ -330,7 +330,7 @@ sudo nano /etc/pam.d/cockpit
 ```
 
 Add:
-```
+```text
 auth required pam_succeed_if.so user ingroup cockpit-admin
 ```
 

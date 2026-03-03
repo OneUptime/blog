@@ -14,7 +14,7 @@ When you look at raw Istio metrics, you see individual URL paths, exact response
 
 Consider a REST API with these endpoints:
 
-```
+```text
 GET /api/users/123
 GET /api/users/456
 POST /api/orders/789
@@ -26,7 +26,7 @@ If you track each path as a separate label value, you get an explosion of time s
 
 What you actually want is:
 
-```
+```text
 GET /api/users/{id}        -> category: "user-read"
 POST /api/orders/{id}      -> category: "order-create"
 GET /api/products/search   -> category: "product-search"

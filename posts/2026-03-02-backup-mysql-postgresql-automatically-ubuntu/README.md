@@ -160,7 +160,7 @@ Set up password-less authentication using a `.pgpass` file:
 sudo -u postgres nano ~/.pgpass
 ```
 
-```
+```text
 # hostname:port:database:username:password
 localhost:5432:*:backup_role:your-password-here
 ```

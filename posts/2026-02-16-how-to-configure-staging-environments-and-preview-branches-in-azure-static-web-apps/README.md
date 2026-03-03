@@ -16,7 +16,7 @@ This workflow eliminates the "it works on my machine" problem and removes the ne
 
 When you push a commit or open a pull request against the production branch, the GitHub Actions workflow runs. For PR events, instead of deploying to production, Azure creates an isolated environment with a unique URL pattern:
 
-```
+```text
 https://happy-river-0a1b2c3d4-<PR_NUMBER>.azurestaticapps.net
 ```
 

@@ -63,7 +63,7 @@ results:                           # Expected outcomes
 
 ### Complete Test Directory Layout
 
-```
+```text
 policy-tests/
 ├── kyverno-test.yaml              # Test manifest
 ├── policies/
@@ -242,7 +242,7 @@ kyverno test policy-tests/kyverno-test.yaml
 
 Expected output:
 
-```
+```text
 Loading test  ( policy-tests/kyverno-test.yaml ) ...
   Loading values/variables ...
   Loading policies ...

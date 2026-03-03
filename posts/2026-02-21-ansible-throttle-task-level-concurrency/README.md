@@ -56,7 +56,7 @@ The `throttle` keyword lets you limit just that one task to 5 concurrent executi
 
 Throttle creates a semaphore that limits concurrent task execution. If `throttle: 3` and you have 20 hosts:
 
-```
+```text
 Time -->
 Host 01: [Register API] ----
 Host 02: [Register API] ----
@@ -224,7 +224,7 @@ callback_whitelist = profile_tasks
 
 A throttled task with 50 hosts and `throttle: 5` will show a longer total time because hosts queue up waiting for their turn:
 
-```
+```text
 Register with load balancer API ----------------------------------- 45.23s
 Install packages --------------------------------------------------- 12.45s
 Start service ------------------------------------------------------- 3.21s

@@ -12,7 +12,7 @@ Terraform is powerful but becomes complex quickly. Following established best pr
 
 Organize your Terraform code for clarity and reusability:
 
-```
+```text
 terraform/
 ├── modules/                    # Reusable modules
 │   ├── networking/
@@ -50,7 +50,7 @@ graph TD
 
 Use consistent file naming within each module or environment:
 
-```
+```text
 module/
 ├── main.tf           # Primary resources
 ├── variables.tf      # Input variable declarations
@@ -248,7 +248,7 @@ terraform {
 
 Split state to limit the impact of changes:
 
-```
+```text
 states/
 ├── network/        # VPC, subnets (changes rarely)
 ├── security/       # IAM, security groups

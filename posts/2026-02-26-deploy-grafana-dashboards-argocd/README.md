@@ -111,7 +111,7 @@ data:
 
 Structure your repository to keep dashboards organized by category.
 
-```
+```text
 dashboards/
   kubernetes/
     cluster-overview.yaml

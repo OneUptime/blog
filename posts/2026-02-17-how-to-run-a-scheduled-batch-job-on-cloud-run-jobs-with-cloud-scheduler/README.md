@@ -109,7 +109,7 @@ CMD ["python", "batch_job.py"]
 
 Requirements:
 
-```
+```text
 google-cloud-storage==2.*
 google-cloud-bigquery==3.*
 ```
@@ -297,7 +297,7 @@ The scheduler continues to trigger the job as before - it just runs the updated 
 
 Cloud Run Jobs are billed only for the time they are executing. If your ETL job runs for 10 minutes per day with 4 parallel tasks at 1 CPU and 1 GB memory, the monthly cost is approximately:
 
-```
+```text
 Daily: 4 tasks * 10 min * 60 sec = 2,400 vCPU-seconds
 Monthly: 2,400 * 30 = 72,000 vCPU-seconds
 CPU cost: 72,000 * $0.00002400 = $1.73

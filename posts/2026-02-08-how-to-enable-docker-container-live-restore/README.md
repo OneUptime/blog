@@ -85,7 +85,7 @@ docker info | grep -i "live restore"
 
 You should see:
 
-```
+```text
  Live Restore Enabled: true
 ```
 

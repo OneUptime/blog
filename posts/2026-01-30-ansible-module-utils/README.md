@@ -51,7 +51,7 @@ flowchart LR
 
 A well-organized Ansible collection with module utils follows this structure:
 
-```
+```text
 my_collection/
 ├── plugins/
 │   ├── modules/

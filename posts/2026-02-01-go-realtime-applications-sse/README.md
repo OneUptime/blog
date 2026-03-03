@@ -16,7 +16,7 @@ Server-Sent Events is a standard that allows servers to push data to clients ove
 
 The protocol is dead simple. It uses plain text over HTTP with a specific format:
 
-```
+```text
 event: message
 data: {"user": "alice", "action": "login"}
 
@@ -107,7 +107,7 @@ The critical parts are:
 
 The SSE protocol supports several fields:
 
-```
+```text
 id: 123
 event: user_login
 data: {"user": "alice"}

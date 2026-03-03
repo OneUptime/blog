@@ -33,7 +33,7 @@ Ansible gathers several distribution-related facts during setup:
 
 Example outputs for different systems:
 
-```
+```text
 # Ubuntu 22.04
 Distribution: Ubuntu
 Version: 22.04

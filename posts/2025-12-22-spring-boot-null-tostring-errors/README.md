@@ -402,7 +402,7 @@ Add to your JVM arguments:
 
 This produces more helpful messages:
 
-```
+```text
 // Before
 java.lang.NullPointerException
 

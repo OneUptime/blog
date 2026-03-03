@@ -327,7 +327,7 @@ gcloud run domain-mappings describe \
 
 The output will tell you which DNS records to add. Typically, you need to add a CNAME record.
 
-```
+```text
 # DNS Configuration (add these to your DNS provider)
 # For a subdomain like api.mycompany.com:
 api.mycompany.com.  CNAME  ghs.googlehosted.com.

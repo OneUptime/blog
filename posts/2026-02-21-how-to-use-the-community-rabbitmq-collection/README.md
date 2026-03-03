@@ -280,7 +280,7 @@ RabbitMQ plugins can be enabled and disabled through the collection as well.
 
 In practice, you would wrap all of this into a reusable role. Here is the structure.
 
-```
+```text
 roles/rabbitmq_config/
   defaults/main.yml
   tasks/main.yml

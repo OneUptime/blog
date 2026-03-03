@@ -110,7 +110,7 @@ docker compose version
 
 A typical Dockerized Rails project structure:
 
-```
+```text
 myapp/
   app/
   config/

@@ -488,7 +488,7 @@ These metrics complement your traces. While traces show you what happened in a s
 
 With this instrumentation in place, debugging becomes straightforward. Suppose your alerting fires because checkout p99 latency exceeded 8 seconds. You query your traces backend for slow checkout traces and find one that took 9.2 seconds. The trace waterfall shows:
 
-```
+```text
 checkout.process                    [=====================================] 9.2s
   cart.validate                     [=====]                                1.1s
     cart.fetch_contents             [==]                                   0.3s

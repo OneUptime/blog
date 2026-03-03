@@ -108,7 +108,7 @@ OversignHeaders         From
 sudo nano /etc/opendkim/key.table
 ```
 
-```
+```text
 # Format: identifier  domain:selector:/path/to/private/key
 mail._domainkey.example.com  example.com:mail:/etc/opendkim/keys/example.com.private
 ```
@@ -118,7 +118,7 @@ mail._domainkey.example.com  example.com:mail:/etc/opendkim/keys/example.com.pri
 sudo nano /etc/opendkim/signing.table
 ```
 
-```
+```text
 # Format: email/domain  key_identifier
 *@example.com  mail._domainkey.example.com
 ```
@@ -128,7 +128,7 @@ sudo nano /etc/opendkim/signing.table
 sudo nano /etc/opendkim/trusted.hosts
 ```
 
-```
+```text
 127.0.0.1
 ::1
 localhost

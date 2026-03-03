@@ -353,7 +353,7 @@ resource "aws_cloudwatch_metric_alarm" "stuck_lock" {
 
 ### Lock Acquisition Timeout
 
-```
+```text
 Error: Error acquiring the state lock
 
 Lock Info:
@@ -371,7 +371,7 @@ Steps:
 
 ### DynamoDB Table Not Found
 
-```
+```text
 Error: Error acquiring state lock: ResourceNotFoundException
 ```
 
@@ -379,7 +379,7 @@ Solution: Create the DynamoDB table or check the table name spelling.
 
 ### Insufficient Permissions
 
-```
+```text
 Error: Error acquiring state lock: AccessDeniedException
 ```
 

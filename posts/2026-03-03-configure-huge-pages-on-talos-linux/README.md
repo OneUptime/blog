@@ -216,7 +216,7 @@ If `HugePages_Free` is consistently zero, your workloads need more huge pages th
 
 To determine how many huge pages you need, add up the huge page requests from all pods that will run on a node, then add a small buffer:
 
-```
+```text
 Total needed = Sum of all pod hugepage requests + 10% buffer
 
 Example:

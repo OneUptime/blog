@@ -111,7 +111,7 @@ cat /boot/config-$(uname -r) | grep CONFIG_BPF
 
 Let's organize our load balancer project with a clear directory structure that separates eBPF kernel-space code from user-space management code.
 
-```
+```text
 xdp-load-balancer/
 ├── src/
 │   ├── bpf/

@@ -322,7 +322,7 @@ After rebuilding, take steps to prevent this from happening again.
 
 Move all ArgoCD configuration into Git so recovery is automated.
 
-```
+```text
 argocd-config/
   bootstrap/
     argocd-cm.yaml

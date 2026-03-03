@@ -113,7 +113,7 @@ External extensions are standalone binaries. Go is a popular choice because it c
 
 ### Project Structure
 
-```
+```text
 my-telemetry-extension/
   extensions/
     my-telemetry-extension    # The executable (must match folder name)
@@ -372,7 +372,7 @@ handler = wrap_handler()
 
 ### Layer Structure
 
-```
+```text
 my-internal-extension/
   python/
     python_wrapper.py
@@ -681,7 +681,7 @@ def handler(event, context):
 
 ### Layer Structure
 
-```
+```text
 extension-layer/
   extensions/
     my-extension           # External extension executable

@@ -54,7 +54,7 @@ great_expectations init
 
 ### Project Structure
 
-```
+```text
 great_expectations/
 ├── great_expectations.yml
 ├── expectations/

@@ -193,7 +193,7 @@ gcloud alpha monitoring policies create \
 
 Here are the alerts every App Engine application should have:
 
-```
+```text
 1. High Memory Usage (>80% of instance class limit)
    - Indicates potential memory leaks or undersized instances
    - Action: Check for memory leaks, consider upgrading instance class

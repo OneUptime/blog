@@ -30,15 +30,15 @@ const exporter = new OTLPTraceExporter({
 
 When HTTP traffic hits the gRPC port, you might see:
 
-```
+```text
 Failed to export spans: Request failed with status 0
 ```
 
-```
+```text
 Error: connect ECONNREFUSED 127.0.0.1:4317
 ```
 
-```
+```text
 upstream connect error or disconnect/reset before headers
 ```
 
@@ -148,7 +148,7 @@ exporter = OTLPSpanExporter(
 
 The gRPC client tries to establish an HTTP/2 connection, but port 4318 expects HTTP/1.1. The error is typically:
 
-```
+```text
 grpc._channel._InactiveRpcError: <_InactiveRpcError of RPC that terminated with:
   status = StatusCode.UNAVAILABLE
   details = "failed to connect to all addresses"

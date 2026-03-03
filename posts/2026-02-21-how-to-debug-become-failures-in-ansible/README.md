@@ -35,7 +35,7 @@ ansible-playbook -i inventory.yml playbook.yml -vvvv 2>&1 | tee ansible-debug.lo
 
 Look for lines containing "BECOME" or "sudo" in the output. You will see the exact sudo command Ansible constructs:
 
-```
+```text
 <target_host> ESTABLISH SSH CONNECTION FOR USER: deploy
 <target_host> SSH: EXEC ssh -o ControlMaster=auto ... deploy@target_host
 <target_host> EXEC /bin/sh -c 'sudo -H -S -n -u root /bin/sh -c ...'

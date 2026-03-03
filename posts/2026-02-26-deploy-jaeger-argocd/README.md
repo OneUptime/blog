@@ -25,7 +25,7 @@ The Jaeger Operator simplifies management by providing a `Jaeger` custom resourc
 
 ## Repository Structure
 
-```
+```text
 tracing/
   jaeger-operator/
     Chart.yaml

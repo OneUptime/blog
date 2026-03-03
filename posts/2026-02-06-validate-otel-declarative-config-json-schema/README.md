@@ -91,7 +91,7 @@ python validate_otel_config.py otel-config.yaml otel-config-schema.json
 
 If there is an error, you get a clear message:
 
-```
+```text
 FAIL: otel-config.yaml
   Field: tracer_provider -> processors -> 0 -> batch -> schedule_delay
   Error: 'fast' is not of type 'integer'

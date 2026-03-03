@@ -12,14 +12,14 @@ When you try to create or sync an ArgoCD application and get the error "app is n
 
 The full error message usually looks something like:
 
-```
+```text
 application 'my-app' in project 'my-project' is not permitted:
 application destination {https://kubernetes.default.svc production} is not permitted in project 'my-project'
 ```
 
 Or:
 
-```
+```text
 application repo https://github.com/org/repo is not permitted in project 'my-project'
 ```
 
@@ -40,7 +40,7 @@ If any of these restrictions do not match your application's configuration, you 
 
 **Error:**
 
-```
+```text
 application repo https://github.com/org/my-repo is not permitted in project 'team-a'
 ```
 
@@ -97,7 +97,7 @@ sourceRepos:
 
 **Error:**
 
-```
+```text
 application destination {https://remote-cluster:6443 default} is not permitted in project 'team-a'
 ```
 
@@ -153,7 +153,7 @@ Always use `https://kubernetes.default.svc` for the local cluster unless you hav
 
 **Error:**
 
-```
+```text
 application destination {https://kubernetes.default.svc production} is not permitted in project 'team-a'
 ```
 
@@ -188,7 +188,7 @@ spec:
 
 **Error:**
 
-```
+```text
 cluster resource ClusterRole is not permitted in project 'team-a'
 ```
 

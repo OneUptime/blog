@@ -80,7 +80,7 @@ journalctl -t ansible --since "1 hour ago"
 
 Sample syslog output:
 
-```
+```text
 Feb 21 10:15:23 control-node ansible: playbook start: /opt/ansible/deploy.yml
 Feb 21 10:15:25 control-node ansible: task start: Gathering Facts
 Feb 21 10:15:30 control-node ansible: task ok: [web-01] Gathering Facts
@@ -113,7 +113,7 @@ if $programname == 'ansible' then {
 
 syslog-ng configuration:
 
-```
+```text
 # /etc/syslog-ng/conf.d/ansible.conf
 filter f_ansible { program("ansible"); };
 destination d_central { tcp("syslog.example.com" port(514)); };
@@ -124,7 +124,7 @@ log { source(s_src); filter(f_ansible); destination(d_central); };
 
 Send Ansible syslog data to Elasticsearch through Logstash:
 
-```
+```text
 # /etc/logstash/conf.d/ansible-syslog.conf
 input {
   syslog {
@@ -170,7 +170,7 @@ whitelist = ansible
 
 Create a Splunk saved search for Ansible failures:
 
-```
+```text
 index=ansible "task failed" | stats count by target_host, task_name | sort -count
 ```
 
@@ -194,7 +194,7 @@ sudo systemctl restart rsyslog
 
 Add log rotation:
 
-```
+```text
 # /etc/logrotate.d/ansible-syslog
 /var/log/ansible/ansible-syslog.log {
     daily

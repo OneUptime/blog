@@ -99,12 +99,12 @@ Fill in the basic monitor details:
 
 Once created, each Incoming Email Monitor is assigned a unique email address in the format:
 
-```
+```text
 monitor-{secret-key}@{your-inbound-domain}
 ```
 
 For example:
-```
+```text
 monitor-550e8400-e29b-41d4-a716-446655440000@inbound.oneuptime.com
 ```
 
@@ -251,7 +251,7 @@ Click "Show More" to view:
 
 Instead of broad matches, use specific criteria to avoid false positives.
 
-```
+```text
 Bad:  Subject Contains "error"
 Good: Subject Contains "[CRITICAL] Database Error" AND From Equals "monitoring@db.example.com"
 ```

@@ -113,7 +113,7 @@ curl -H "Authorization: Bearer $GRAFANA_TOKEN" \
 
 Organize dashboards in a Git repository:
 
-```
+```text
 grafana-dashboards/
 ├── dashboards/
 │   ├── platform/

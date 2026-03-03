@@ -23,7 +23,7 @@ The `var` parameter takes a variable name as a plain string (no Jinja2 curly bra
 
 Output:
 
-```
+```text
 ok: [web-01] => {
     "deploy_version": "3.2.1"
 }
@@ -48,7 +48,7 @@ Key things about `var`:
 
 Output:
 
-```
+```text
 ok: [web-01] => {
     "ansible_default_ipv4.address": "10.0.1.50"
 }
@@ -71,7 +71,7 @@ The `msg` parameter takes a string that can include Jinja2 expressions and outpu
 
 Output:
 
-```
+```text
 ok: [web-01] => {
     "msg": "Deploying version 3.2.1 to web-01"
 }
@@ -152,7 +152,7 @@ A lesser-known feature is that `var` can actually evaluate Jinja2 expressions, n
 
 Output:
 
-```
+```text
 ok: [localhost] => {
     "my_servers | selectattr('role', 'equalto', 'web') | list": [
         {"name": "web-01", "role": "web"},
@@ -191,7 +191,7 @@ The `msg` parameter supports multiline strings, which is great for creating form
 
 Output:
 
-```
+```text
 ok: [web-01] => {
     "msg": "System Summary for web-01\n=============================================\nOS: Ubuntu 22.04\nKernel: 5.15.0-91-generic\nCPU Cores: 4\nTotal Memory: 8192MB\nFree Memory: 4521MB\nDefault IP: 10.0.1.50\n"
 }
@@ -249,7 +249,7 @@ For printing multiple variables cleanly, you can also use `msg` with a dictionar
 
 Output:
 
-```
+```text
 ok: [web-01] => {
     "msg": {
         "branch": "release/3.2",

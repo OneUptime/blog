@@ -168,7 +168,7 @@ wasm-pack build --target web
 
 The build produces several files in the `pkg/` directory:
 
-```
+```text
 pkg/
   rust_wasm_demo_bg.wasm    # The compiled WebAssembly binary
   rust_wasm_demo_bg.wasm.d.ts

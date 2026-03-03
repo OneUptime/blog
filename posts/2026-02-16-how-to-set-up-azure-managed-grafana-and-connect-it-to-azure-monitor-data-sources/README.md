@@ -247,7 +247,7 @@ Managed Grafana supports Grafana's built-in alerting. You can create alerts base
 
 ### Setting Up a Teams Notification Channel
 
-```
+```text
 1. In Grafana, go to Alerting > Contact points
 2. Click "New contact point"
 3. Select "Microsoft Teams" as the integration type

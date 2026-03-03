@@ -265,7 +265,7 @@ url: oci://registry.example.com/plugins/auth:v1.0.1
 
 For organizations with multiple plugins, use a consistent naming convention:
 
-```
+```text
 registry.example.com/istio-plugins/
   auth/
     v1.0.0

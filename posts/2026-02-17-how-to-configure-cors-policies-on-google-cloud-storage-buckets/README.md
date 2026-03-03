@@ -165,7 +165,7 @@ curl -i -X OPTIONS \
 
 You should see headers like:
 
-```
+```text
 Access-Control-Allow-Origin: https://myapp.com
 Access-Control-Allow-Methods: GET
 Access-Control-Allow-Headers: Content-Type

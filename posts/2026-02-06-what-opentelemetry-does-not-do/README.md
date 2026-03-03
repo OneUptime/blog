@@ -418,7 +418,7 @@ OpenTelemetry captures and propagates trace context, but it doesn't analyze trac
 
 Consider a trace spanning multiple services:
 
-```
+```text
 API Gateway (50ms)
   ├─ Auth Service (10ms)
   └─ Order Service (1200ms)

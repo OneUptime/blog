@@ -59,7 +59,7 @@ pipelines:
 
 Store your cloud provider credentials as repository variables. Go to Repository Settings, then Repository variables:
 
-```
+```text
 AWS_ACCESS_KEY_ID = AKIA...        (secured)
 AWS_SECRET_ACCESS_KEY = ...        (secured)
 AWS_DEFAULT_REGION = us-east-1
@@ -175,21 +175,21 @@ The `deployment` keyword links the step to a Bitbucket deployment environment, w
 Configure each deployment environment in Repository Settings under Deployments:
 
 **test environment:**
-```
+```text
 ENVIRONMENT = dev
 AWS_ACCESS_KEY_ID = (dev account key)
 AWS_SECRET_ACCESS_KEY = (dev account secret)
 ```
 
 **staging environment:**
-```
+```text
 ENVIRONMENT = staging
 AWS_ACCESS_KEY_ID = (staging account key)
 AWS_SECRET_ACCESS_KEY = (staging account secret)
 ```
 
 **production environment:**
-```
+```text
 ENVIRONMENT = production
 AWS_ACCESS_KEY_ID = (production account key)
 AWS_SECRET_ACCESS_KEY = (production account secret)

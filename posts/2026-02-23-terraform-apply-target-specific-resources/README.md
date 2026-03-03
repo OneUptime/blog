@@ -228,7 +228,7 @@ terraform destroy \
 
 When you use `-target`, Terraform displays a warning:
 
-```
+```text
 Warning: Resource targeting is in effect
 
 You are creating a plan with the -target option, which means that the result
@@ -304,7 +304,7 @@ terraform output
 
 Instead of targeting resources within a large state, split into smaller, focused configurations:
 
-```
+```text
 # Instead of:
 terraform apply -target=module.networking
 

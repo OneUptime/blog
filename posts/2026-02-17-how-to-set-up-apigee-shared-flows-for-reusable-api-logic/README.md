@@ -30,7 +30,7 @@ The structure of a shared flow is similar to a proxy but simpler.
 
 ### Directory Structure
 
-```
+```text
 security-shared-flow/
   sharedflowbundle/
     policies/

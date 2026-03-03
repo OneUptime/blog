@@ -24,7 +24,7 @@ Let me build a module for deploying an Azure App Service with custom domains and
 
 Here is the file structure:
 
-```
+```text
 modules/
   app-service/
     main.bicep

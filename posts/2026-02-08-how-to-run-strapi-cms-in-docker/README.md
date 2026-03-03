@@ -103,7 +103,7 @@ CMD ["npm", "run", "start"]
 
 Add a `.dockerignore` to keep the image clean.
 
-```
+```text
 # .dockerignore - Exclude unnecessary files from the Docker build
 node_modules
 .tmp

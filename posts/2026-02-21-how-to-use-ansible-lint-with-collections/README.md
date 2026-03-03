@@ -93,7 +93,7 @@ If you are developing your own collection, ansible-lint can validate the entire 
 
 ### Collection Directory Structure
 
-```
+```text
 my_namespace/
   my_collection/
     galaxy.yml

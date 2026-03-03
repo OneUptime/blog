@@ -134,7 +134,7 @@ Before creating networks, understand the IPv6 address types you will encounter:
 
 Similar to RFC 1918 private addresses in IPv4. Use these for internal container communication that does not need internet routable addresses.
 
-```
+```text
 fd00::/8     - Unique Local Address range
 fd00::/80    - Common Docker subnet allocation
 fdxx:xxxx::  - Locally generated addresses
@@ -144,7 +144,7 @@ fdxx:xxxx::  - Locally generated addresses
 
 Internet-routable addresses. Use these when containers need direct IPv6 internet connectivity.
 
-```
+```text
 2001:db8::/32  - Documentation range (examples only)
 2600::/12      - Example ISP allocation
 ```
@@ -153,7 +153,7 @@ Internet-routable addresses. Use these when containers need direct IPv6 internet
 
 Automatically assigned to every interface. Used for local network segment communication. Docker assigns these automatically.
 
-```
+```text
 fe80::1       - Typical link-local address
 ```
 

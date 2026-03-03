@@ -28,7 +28,7 @@ terraform init
 
 Typical output:
 
-```
+```text
 Initializing the backend...
 
 Initializing provider plugins...

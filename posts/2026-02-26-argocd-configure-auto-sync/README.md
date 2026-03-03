@@ -236,7 +236,7 @@ kubectl get application my-app -n argocd -w
 
 ArgoCD exposes Prometheus metrics for monitoring auto-sync:
 
-```
+```text
 # Number of sync operations
 argocd_app_sync_total
 
@@ -253,7 +253,7 @@ argocd_app_health_status
 
 If a Kubernetes controller modifies resources after ArgoCD syncs them (like an HPA changing replica counts), auto-sync with self-heal will create a loop:
 
-```
+```text
 ArgoCD syncs replicas=3 -> HPA scales to replicas=5 ->
 ArgoCD detects drift -> ArgoCD syncs replicas=3 -> HPA scales again -> ...
 ```

@@ -14,7 +14,7 @@ Ansible collections changed how roles and modules are packaged and distributed. 
 
 An Ansible collection has a specific directory layout that Molecule needs to understand.
 
-```
+```text
 my_namespace/
   my_collection/
     galaxy.yml
@@ -169,7 +169,7 @@ Create a converge playbook that exercises the custom modules.
 
 Instead of testing roles individually, you can create Molecule scenarios at the collection level that test the entire collection as an integration test.
 
-```
+```text
 my_namespace/
   my_collection/
     molecule/

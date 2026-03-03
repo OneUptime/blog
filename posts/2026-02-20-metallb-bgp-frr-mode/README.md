@@ -12,7 +12,7 @@ MetalLB ships with a native BGP implementation that handles basic peering well, 
 
 This guide walks you through deploying MetalLB in FRR mode from scratch, configuring BGP peers, and verifying that routes are advertised correctly.
 
-### Why FRR Mode?
+## Why FRR Mode?
 
 The default MetalLB speaker handles simple BGP peering, but it cannot do the following:
 

@@ -33,7 +33,7 @@ This works for small setups, but it quickly becomes unmanageable. You end up wit
 
 The recommended approach is a separate inventory directory for each environment:
 
-```
+```text
 inventories/
   development/
     hosts.yml
@@ -176,7 +176,7 @@ db_maintenance_window: "sunday 02:00-04:00"
 
 If most of your configuration is the same across environments and only a few values change, you can use a shared group_vars directory with environment-specific overrides:
 
-```
+```text
 inventories/
   shared_group_vars/
     all.yml

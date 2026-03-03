@@ -12,7 +12,7 @@ The "subscription not found" error in Terraform with Azure happens when the prov
 
 ## What the Error Looks Like
 
-```
+```text
 Error: building AzureRM Client: obtain subscription() from Azure CLI:
 subscription was not found
 

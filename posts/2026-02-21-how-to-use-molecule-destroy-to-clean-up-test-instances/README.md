@@ -264,7 +264,7 @@ Sometimes destroy itself fails. Here are common causes and fixes.
 
 ### Container Already Removed
 
-```
+```text
 TASK [Destroy molecule instance(s)] ****************************
 fatal: No container found with name "instance"
 ```
@@ -277,7 +277,7 @@ molecule reset
 
 ### Docker Daemon Not Running
 
-```
+```text
 Cannot connect to the Docker daemon
 ```
 
@@ -290,7 +290,7 @@ molecule destroy
 
 ### VM Provider Error
 
-```
+```text
 VBoxManage: error: The machine 'instance' is already locked
 ```
 

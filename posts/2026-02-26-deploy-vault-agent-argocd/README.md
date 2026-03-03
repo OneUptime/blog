@@ -36,7 +36,7 @@ graph LR
 
 ## Repository Structure
 
-```
+```text
 secrets/
   vault/
     Chart.yaml

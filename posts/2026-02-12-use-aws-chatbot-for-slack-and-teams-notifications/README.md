@@ -205,7 +205,7 @@ send_deployment_notification(
 One of the cooler features is running AWS commands directly from Slack. Type `@aws` followed by a CLI command.
 
 For example, in Slack:
-```
+```text
 @aws cloudwatch describe-alarms --state-value ALARM
 @aws ecs list-services --cluster production
 @aws lambda list-functions

@@ -44,7 +44,7 @@ The hub contains Azure Firewall for traffic inspection, a VPN Gateway for on-pre
 
 I organize hub-spoke projects like this:
 
-```
+```text
 infrastructure/
   modules/
     hub-network/

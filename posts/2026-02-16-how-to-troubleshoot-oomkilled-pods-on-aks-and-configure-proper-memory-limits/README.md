@@ -51,7 +51,7 @@ kubectl describe pod <pod-name> -n <namespace>
 
 The `kubectl describe` output shows the last terminated reason and the container's memory limit. Look for lines like:
 
-```
+```text
 Last State:     Terminated
   Reason:       OOMKilled
   Exit Code:    137
@@ -91,7 +91,7 @@ kubectl top pod <pod-name> -n <namespace> --containers
 
 If you have Prometheus, these queries give deeper insight.
 
-```
+```text
 // Maximum memory usage over the last 24 hours
 // This helps set limits that accommodate peak usage
 max_over_time(container_memory_working_set_bytes{
@@ -118,7 +118,7 @@ container_spec_memory_limit_bytes{namespace="default"}
 
 ### Using Container Insights (Azure Monitor)
 
-```
+```text
 // KQL query for memory usage trends
 // Shows peak and average memory per pod over 24 hours
 Perf
@@ -143,7 +143,7 @@ The application gradually consumes more memory over time without releasing it. S
 - Restarts temporarily fix the issue
 - Usage is not correlated with traffic
 
-```
+```text
 // Prometheus query to detect memory leaks
 // Positive derivative over time indicates growing memory usage
 deriv(container_memory_working_set_bytes{
@@ -178,7 +178,7 @@ Use the data from Step 3 to set appropriate limits.
 
 ### General Formula
 
-```
+```text
 memory.request = average memory usage + 20% buffer
 memory.limit = peak memory usage + 30% buffer
 ```

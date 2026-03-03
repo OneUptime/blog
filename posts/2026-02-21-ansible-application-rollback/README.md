@@ -35,7 +35,7 @@ graph TD
 
 ## Project Structure
 
-```
+```text
 rollback-setup/
   inventory/
     production.yml

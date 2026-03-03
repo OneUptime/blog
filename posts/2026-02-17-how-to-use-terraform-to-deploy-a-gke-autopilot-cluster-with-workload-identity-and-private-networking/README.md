@@ -39,7 +39,7 @@ flowchart TD
 
 ## Project Structure
 
-```
+```text
 terraform/
   main.tf
   variables.tf

@@ -60,13 +60,13 @@ Two HTTP headers form the backbone of API deprecation communication: `Deprecatio
 
 The `Deprecation` header indicates that an endpoint is deprecated. It can contain either a boolean value or a timestamp indicating when the deprecation was announced.
 
-```
+```text
 Deprecation: true
 ```
 
 Or with a timestamp:
 
-```
+```text
 Deprecation: Sun, 01 Jan 2026 00:00:00 GMT
 ```
 
@@ -74,7 +74,7 @@ Deprecation: Sun, 01 Jan 2026 00:00:00 GMT
 
 The `Sunset` header specifies when the endpoint will stop working. This gives clients a concrete deadline for migration.
 
-```
+```text
 Sunset: Sun, 01 Jun 2026 00:00:00 GMT
 ```
 
@@ -82,7 +82,7 @@ Sunset: Sun, 01 Jun 2026 00:00:00 GMT
 
 The `Link` header points clients to migration documentation or the replacement endpoint.
 
-```
+```text
 Link: </api/v2/users>; rel="successor-version"
 Link: </docs/migration/v1-to-v2>; rel="deprecation"; type="text/html"
 ```

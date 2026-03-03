@@ -25,7 +25,7 @@ fn main() {
 
 The compiler error reveals the type:
 
-```
+```text
 error[E0308]: mismatched types
  --> src/main.rs:4:17
   |
@@ -70,7 +70,7 @@ fn main() {
 
 Output:
 
-```
+```text
 x: i32
 y: f64
 z: &str
@@ -274,7 +274,7 @@ fn main() {
 
 Output:
 
-```
+```text
 Step 1: Initial data
   Type: alloc::vec::Vec<&str>
 

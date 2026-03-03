@@ -82,7 +82,7 @@ gcloud compute addresses list \
 
 You will see one IP per subnet in the VPC. For example:
 
-```
+```text
 NAME                    ADDRESS       REGION        SUBNETWORK
 dns-resolver-1          10.128.0.2    us-central1   my-subnet-us
 dns-resolver-2          10.200.0.2    europe-west1  my-subnet-eu
@@ -134,7 +134,7 @@ Add-DnsServerConditionalForwarderZone `
 
 Add a forwarding zone to your BIND configuration:
 
-```
+```text
 // Forward cloud DNS queries to GCP Cloud DNS inbound forwarders
 zone "internal.mycompany.com" {
     type forward;
@@ -157,7 +157,7 @@ sudo rndc reload
 
 For the Unbound resolver:
 
-```
+```text
 # Forward cloud domain to GCP Cloud DNS
 forward-zone:
     name: "internal.mycompany.com."
@@ -169,7 +169,7 @@ forward-zone:
 
 For dnsmasq:
 
-```
+```text
 # Forward cloud DNS to GCP inbound forwarders
 server=/internal.mycompany.com/10.128.0.2
 server=/internal.mycompany.com/10.200.0.2
@@ -214,7 +214,7 @@ gcloud dns managed-zones list --filter="visibility=private" \
 
 On the on-premises side, create a conditional forwarder for each zone:
 
-```
+```text
 // BIND config for multiple cloud domains
 zone "internal.mycompany.com" {
     type forward;

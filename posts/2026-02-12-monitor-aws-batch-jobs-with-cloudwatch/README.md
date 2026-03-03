@@ -260,7 +260,7 @@ aws cloudwatch put-dashboard \
 
 CloudWatch Log Insights lets you query across all your job logs.
 
-```
+```text
 # Find all failed jobs in the last 24 hours
 fields @timestamp, @message
 | filter @message like /ERROR|Exception|FATAL/

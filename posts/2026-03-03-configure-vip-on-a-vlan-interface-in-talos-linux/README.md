@@ -129,7 +129,7 @@ The switch ports connected to your Talos nodes must be configured as trunk ports
 
 ### Cisco IOS
 
-```
+```text
 interface GigabitEthernet0/1
   description Talos-CP-01
   switchport mode trunk
@@ -140,7 +140,7 @@ interface GigabitEthernet0/1
 
 ### Arista EOS
 
-```
+```text
 interface Ethernet1
   description Talos-CP-01
   switchport mode trunk

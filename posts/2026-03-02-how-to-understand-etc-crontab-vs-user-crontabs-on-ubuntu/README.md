@@ -29,7 +29,7 @@ The `/etc/crontab` file is the system-wide crontab. Unlike user crontabs, it has
 cat /etc/crontab
 ```
 
-```
+```text
 # /etc/crontab: system-wide crontab
 # Unlike any other crontab you don't have to run the `crontab'
 # command to install the new version when you edit this file
@@ -55,7 +55,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 The format has six time/date fields plus the username before the command:
 
-```
+```text
 minute  hour  day-of-month  month  day-of-week  username  command
 ```
 
@@ -65,7 +65,7 @@ minute  hour  day-of-month  month  day-of-week  username  command
 sudo nano /etc/crontab
 ```
 
-```
+```text
 # Run database backup as the postgres user every day at 2am
 0 2 * * * postgres /usr/local/bin/pg_backup.sh
 
@@ -93,7 +93,7 @@ Creating a file in `/etc/cron.d/`:
 sudo nano /etc/cron.d/myapp-maintenance
 ```
 
-```
+```text
 # Cron job for myapp maintenance tasks
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -138,7 +138,7 @@ sudo crontab -u username -l
 
 ### User Crontab Format
 
-```
+```text
 # minute  hour  day-of-month  month  day-of-week  command
 
 # Backup home directory every day at 1am

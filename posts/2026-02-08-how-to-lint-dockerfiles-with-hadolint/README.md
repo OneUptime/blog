@@ -60,7 +60,7 @@ hadolint bad-example.Dockerfile
 
 Hadolint produces output like this:
 
-```
+```text
 bad-example.Dockerfile:1 DL3007 warning: Using latest is prone to errors
 bad-example.Dockerfile:2 DL3009 info: Delete the apt-get lists after installing
 bad-example.Dockerfile:2 DL3008 warning: Pin versions in apt get install

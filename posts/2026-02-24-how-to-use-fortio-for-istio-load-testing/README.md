@@ -253,7 +253,7 @@ This gives you a matrix of results across different concurrency levels and reque
 
 A typical Fortio output looks like this:
 
-```
+```text
 Sockets used: 32 (for perfect keepalive, would be 32)
 Uniform: false, Jitter: false
 Code 200 : 89432 (100.0 %)
@@ -270,7 +270,7 @@ Key things to look at:
 
 The histogram section shows percentile distribution:
 
-```
+```text
 # target 50% 4.5
 # target 75% 6.2
 # target 90% 8.1

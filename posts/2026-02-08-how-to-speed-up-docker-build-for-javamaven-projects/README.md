@@ -261,7 +261,7 @@ The `--no-daemon` flag is important. The Gradle daemon makes sense for interacti
 
 ## Technique 8: Use a .dockerignore File
 
-```
+```text
 # .dockerignore - exclude build artifacts and IDE files
 .git
 .gitignore

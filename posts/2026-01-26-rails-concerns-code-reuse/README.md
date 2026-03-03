@@ -913,7 +913,7 @@ graph TB
 
 For large applications, organize concerns by domain:
 
-```
+```text
 app/
   models/
     concerns/

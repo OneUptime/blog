@@ -18,7 +18,7 @@ An analyzer consists of three components:
 2. **Tokenizer**: Split text into tokens
 3. **Token filters**: Transform tokens (lowercase, stemming, synonyms)
 
-```
+```text
 Input Text -> Character Filters -> Tokenizer -> Token Filters -> Tokens
 ```
 

@@ -62,7 +62,7 @@ sudo nano /etc/redis/redis.conf
 
 ### Network Configuration
 
-```
+```text
 # By default Redis listens on all interfaces
 # For a single application server, bind to localhost only
 bind 127.0.0.1 ::1
@@ -82,7 +82,7 @@ tcp-keepalive 300
 
 ### Security
 
-```
+```text
 # Set a strong password for authentication
 # Generate a strong password: openssl rand -base64 32
 requirepass "your_very_strong_password_here"
@@ -96,7 +96,7 @@ rename-command CONFIG "CONFIG_admin_only"  # Rename CONFIG
 
 ### Memory Configuration
 
-```
+```text
 # Maximum memory Redis will use
 # Without this limit, Redis will use all available RAM
 maxmemory 1gb
@@ -120,7 +120,7 @@ Redis offers three persistence approaches:
 
 **RDB (snapshots)** - Saves the dataset to disk at intervals. Fast restarts, possible data loss:
 
-```
+```text
 # Save every 900 seconds if at least 1 key changed
 save 900 1
 # Save every 300 seconds if at least 10 keys changed
@@ -138,7 +138,7 @@ rdbcompression yes
 
 **AOF (Append Only File)** - Logs every write operation. Near-zero data loss, slower:
 
-```
+```text
 # Enable AOF
 appendonly yes
 appendfilename "appendonly.aof"
@@ -156,7 +156,7 @@ auto-aof-rewrite-min-size 64mb
 
 **No persistence** - For pure caching where data loss is acceptable:
 
-```
+```text
 save ""         # Disable RDB snapshots
 appendonly no   # Disable AOF
 ```

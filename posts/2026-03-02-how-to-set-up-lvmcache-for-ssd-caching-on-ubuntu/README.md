@@ -143,7 +143,7 @@ sudo dmsetup status vg-data-lv--data
 
 The dm-cache status output shows:
 
-```
+```text
 0 2097152000 cache 8 928/65536 512 29/4096 0 0 0 0 - rw writeback 2 migration_threshold 2048 mq 10 random_threshold 4 sequential_threshold 512 discard_promote_adjustment 1 read_promote_adjustment 4 write_promote_adjustment 8
 ```
 

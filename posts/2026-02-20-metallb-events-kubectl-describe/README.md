@@ -37,7 +37,7 @@ kubectl describe svc my-service
 
 The output includes an `Events` section at the bottom:
 
-```
+```text
 Events:
   Type    Reason        Age   From                Message
   ----    ------        ----  ----                -------
@@ -53,7 +53,7 @@ MetalLB emits several types of events. Here is a breakdown of the most common on
 
 When MetalLB assigns an IP successfully, you see:
 
-```
+```text
 # Normal event indicating successful IP assignment
 Type: Normal
 Reason: IPAllocated
@@ -63,7 +63,7 @@ Message: Assigned IP ["192.168.1.100"]
 
 For L2 mode, the speaker also announces which node is advertising:
 
-```
+```text
 # Normal event indicating the node that will respond to ARP/NDP requests
 Type: Normal
 Reason: nodeAssigned
@@ -75,7 +75,7 @@ Message: announcing from node "worker-1" with protocol "layer2"
 
 When allocation fails, MetalLB emits warning events:
 
-```
+```text
 # Warning event when no IP addresses are available in the matching pools
 Type: Warning
 Reason: AllocationFailed
@@ -87,7 +87,7 @@ Message: Failed to allocate IP for "default/my-service": no available IPs
 
 If your MetalLB configuration has issues:
 
-```
+```text
 # Warning when the service references a pool that does not exist
 Type: Warning
 Reason: AllocationFailed
@@ -153,7 +153,7 @@ This is useful when you are applying configuration changes and want to see Metal
 
 ### Pattern: No Available IPs
 
-```
+```text
 Warning  AllocationFailed  metallb-controller  Failed to allocate IP: no available IPs
 ```
 
@@ -170,7 +170,7 @@ kubectl get svc -A -o json | jq '[
 
 ### Pattern: No Matching Pool
 
-```
+```text
 Warning  AllocationFailed  metallb-controller  no matching IPAddressPool
 ```
 
@@ -186,7 +186,7 @@ kubectl get svc my-service -o jsonpath='{.metadata.annotations}'
 
 ### Pattern: IP Already In Use
 
-```
+```text
 Warning  AllocationFailed  metallb-controller  "192.168.1.100" is already in use
 ```
 

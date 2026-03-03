@@ -28,7 +28,7 @@ resource "aws_instance" "web" {
 
 The general syntax is:
 
-```
+```text
 <BLOCK_TYPE> "<LABEL_1>" "<LABEL_2>" {
   # Block body
 }

@@ -114,14 +114,14 @@ service:
 
 Grafana tracks how long each dashboard takes to load:
 
-```
+```text
 grafana_dashboard_loading_duration_seconds_bucket - Histogram of dashboard load times
 grafana_dashboard_loading_duration_seconds_count  - Number of dashboard loads
 grafana_dashboard_loading_duration_seconds_sum    - Total time spent loading dashboards
 ```
 
 Calculate the P95 dashboard load time:
-```
+```text
 histogram_quantile(0.95, grafana_dashboard_loading_duration_seconds_bucket)
 ```
 
@@ -129,7 +129,7 @@ histogram_quantile(0.95, grafana_dashboard_loading_duration_seconds_bucket)
 
 Data source query performance is critical:
 
-```
+```text
 grafana_datasource_request_duration_seconds_bucket - Query duration histogram
 grafana_datasource_request_total                    - Total queries by datasource type
 grafana_datasource_response_size_bytes              - Response sizes
@@ -137,7 +137,7 @@ grafana_datasource_response_size_bytes              - Response sizes
 
 Break this down by data source type to identify which backends are slow:
 
-```
+```text
 grafana_datasource_request_duration_seconds_bucket{datasource_type="prometheus"}
 grafana_datasource_request_duration_seconds_bucket{datasource_type="elasticsearch"}
 grafana_datasource_request_duration_seconds_bucket{datasource_type="loki"}
@@ -145,13 +145,13 @@ grafana_datasource_request_duration_seconds_bucket{datasource_type="loki"}
 
 ### API Response Times
 
-```
+```text
 grafana_http_request_duration_seconds_bucket - HTTP handler duration
 ```
 
 Filter by handler to find slow API endpoints:
 
-```
+```text
 grafana_http_request_duration_seconds_bucket{handler="/api/dashboards/:uid"}
 grafana_http_request_duration_seconds_bucket{handler="/api/ds/query"}
 ```
@@ -167,7 +167,7 @@ When tracing is enabled, Grafana generates traces for:
 
 A dashboard load trace looks like:
 
-```
+```text
 grafana.dashboard.load                    [total: 2.5s]
   grafana.dashboard.fetch                 [50ms]
   grafana.panel.query (panel-1)           [800ms]

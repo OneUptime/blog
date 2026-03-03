@@ -80,7 +80,7 @@ From the HCX Cloud Manager web interface:
 
 Deploy the OVA in your on-premises vSphere environment:
 
-```
+```text
 In your on-premises vCenter:
 1. Right-click your target cluster and select "Deploy OVF Template"
 2. Point to the downloaded HCX Connector OVA
@@ -95,7 +95,7 @@ In your on-premises vCenter:
 
 Access the HCX Connector management interface at `https://<connector-ip>:9443` and complete the initial setup:
 
-```
+```text
 1. Enter the activation key you generated in Step 2
 2. Configure the HCX site name (e.g., "on-premises-datacenter")
 3. Register with your on-premises vCenter:
@@ -113,7 +113,7 @@ Site pairing establishes the connection between your on-premises HCX Connector a
 
 In the HCX Connector web interface:
 
-```
+```text
 1. Navigate to Infrastructure > Interconnect > Site Pairing
 2. Click "Add Site Pairing"
 3. Enter the HCX Cloud Manager URL from your GCVE private cloud
@@ -129,7 +129,7 @@ Network profiles define the IP pools that HCX uses for its service appliances. Y
 
 On the on-premises HCX Connector:
 
-```
+```text
 Management Network Profile:
 - IP pool: 10.0.10.20 - 10.0.10.30  (static IPs for HCX appliances)
 - Subnet mask: 255.255.255.0
@@ -152,7 +152,7 @@ Uplink Network Profile:
 
 The service mesh deploys the HCX service appliances that handle migration traffic. This is where the actual tunnel infrastructure gets created.
 
-```
+```text
 1. In the HCX Connector, go to Infrastructure > Interconnect > Service Mesh
 2. Click "Create Service Mesh"
 3. Select the source site (on-premises) and destination site (GCVE)
@@ -181,7 +181,7 @@ gcloud vmware private-clouds hcx describe \
 
 If your VMs need to keep their IP addresses during migration, extend the on-premises network segments to GCVE:
 
-```
+```text
 1. In HCX Connector, go to Services > Network Extension
 2. Click "Create Network Extension"
 3. Select the source network (on-premises port group or segment)
@@ -204,7 +204,7 @@ With everything configured, you can start migrating VMs. HCX offers several migr
 
 To perform a migration:
 
-```
+```text
 1. In HCX Connector, go to Services > Migration
 2. Click "Migrate"
 3. Select the VMs to migrate
@@ -221,7 +221,7 @@ To perform a migration:
 
 Track migration progress from the HCX dashboard:
 
-```
+```text
 1. Go to Services > Migration > Dashboard
 2. Monitor active migrations:
    - Data transferred

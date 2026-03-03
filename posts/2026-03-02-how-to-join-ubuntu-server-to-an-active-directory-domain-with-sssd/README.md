@@ -69,7 +69,7 @@ sudo apt install -y chrony
 sudo nano /etc/chrony/chrony.conf
 ```
 
-```
+```text
 # Use AD domain controller as NTP source
 server corp.example.com iburst prefer
 ```
@@ -102,7 +102,7 @@ realm discover corp.example.com
 
 Expected output:
 
-```
+```text
 corp.example.com
   type: kerberos
   realm-name: CORP.EXAMPLE.COM
@@ -224,7 +224,7 @@ sudo systemctl enable --now oddjobd
 sudo visudo
 ```
 
-```
+```text
 # Grant sudo to a specific AD user
 jsmith@corp.example.com ALL=(ALL) ALL
 
@@ -241,7 +241,7 @@ Or use `/etc/sudoers.d/`:
 sudo nano /etc/sudoers.d/ad-groups
 ```
 
-```
+```text
 # Allow Domain Admins group full sudo access
 %domain\ admins ALL=(ALL:ALL) ALL
 ```

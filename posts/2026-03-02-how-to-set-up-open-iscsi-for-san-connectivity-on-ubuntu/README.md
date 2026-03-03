@@ -32,7 +32,7 @@ systemctl status open-iscsi
 
 Each iSCSI host has a unique identifier called the IQN (iSCSI Qualified Name). The format is:
 
-```
+```text
 iqn.YYYY-MM.com.reversed-domain:optional-string
 ```
 
@@ -119,7 +119,7 @@ sudo iscsiadm --mode discovery --type sendtargets --portal 192.168.1.11
 ```
 
 Example output:
-```
+```text
 192.168.1.10:3260,1 iqn.1992-08.com.netapp:sn.storage01:vs.1
 192.168.1.11:3260,2 iqn.1992-08.com.netapp:sn.storage01:vs.1
 ```

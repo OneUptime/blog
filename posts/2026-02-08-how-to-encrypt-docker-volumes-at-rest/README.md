@@ -86,14 +86,14 @@ sudo cryptsetup luksAddKey /opt/docker-encrypted.img /root/docker-volume.key
 
 Add an entry to `/etc/crypttab` for automatic unlocking at boot:
 
-```
+```text
 # /etc/crypttab - auto-unlock the encrypted Docker volume at boot
 docker-secure  /opt/docker-encrypted.img  /root/docker-volume.key  luks
 ```
 
 And add the mount point to `/etc/fstab` so it mounts automatically:
 
-```
+```text
 # /etc/fstab - auto-mount the encrypted volume
 /dev/mapper/docker-secure  /mnt/docker-encrypted  ext4  defaults  0  2
 ```

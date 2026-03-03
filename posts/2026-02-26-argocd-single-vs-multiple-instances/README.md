@@ -218,7 +218,7 @@ done
 
 **Resource waste.** Each instance runs its own server, controller, repo server, and Redis. This adds up quickly.
 
-```
+```text
 # Resource usage comparison for 10 teams
 # Single instance: ~4 CPU, 8Gi RAM
 # 10 instances: ~20 CPU, 40Gi RAM (5x more resources)

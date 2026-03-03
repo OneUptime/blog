@@ -337,7 +337,7 @@ spec:
 
 Document your test results in a structured format:
 
-```
+```text
 HA Test Report - [Date]
 Cluster: [name]
 Talos Version: [version]

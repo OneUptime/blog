@@ -43,7 +43,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 During installation, you will see a prompt with three options:
 
-```
+```text
 1) Proceed with installation (default)
 2) Customize installation
 3) Cancel installation
@@ -230,7 +230,7 @@ cargo init --lib
 
 When you run `cargo new my_project`, Cargo creates:
 
-```
+```text
 my_project/
 ├── Cargo.toml      # Project manifest (dependencies, metadata)
 ├── Cargo.lock      # Locked versions of dependencies (auto-generated)

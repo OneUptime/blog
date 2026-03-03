@@ -14,7 +14,7 @@ ArgoCD sync windows use standard cron expressions to define when windows start. 
 
 ArgoCD uses standard five-field cron expressions.
 
-```
+```text
 ┌───────── minute (0-59)
 │ ┌─────── hour (0-23)
 │ │ ┌───── day of month (1-31)

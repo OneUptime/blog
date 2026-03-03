@@ -25,7 +25,7 @@ Look for changes to components you use: processors, receivers, exporters.
 
 If you have Collector metrics from before the upgrade, compare key indicators:
 
-```
+```text
 # CPU usage
 rate(process_cpu_seconds_total[5m])
 

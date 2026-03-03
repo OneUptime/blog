@@ -90,7 +90,7 @@ ceph osd crush tree
 
 Example output:
 
-```
+```text
 ID  CLASS  WEIGHT   TYPE NAME
 -1         10.00000  root default
 -3          5.00000      datacenter dc1
@@ -111,7 +111,7 @@ Let us build a comprehensive CRUSH hierarchy for a multi-datacenter deployment.
 
 The following CRUSH map defines a two-datacenter topology with rack and host levels:
 
-```
+```text
 # CRUSH Map for Multi-Datacenter Deployment
 # This configuration defines a hierarchy with datacenters, racks, and hosts
 
@@ -251,7 +251,7 @@ If you need custom hierarchy levels (e.g., row, room, building, region), define 
 
 The following section defines custom bucket types for your CRUSH hierarchy:
 
-```
+```text
 # Types define the levels in your CRUSH hierarchy
 # Lower numbers are closer to OSDs (leaves)
 # Higher numbers are closer to root
@@ -296,7 +296,7 @@ flowchart LR
 
 The following CRUSH rules demonstrate different placement strategies:
 
-```
+```text
 # Rule for host-level failure domain
 # Replicas are placed on different hosts
 # Suitable for small clusters without rack diversity
@@ -365,7 +365,7 @@ rule hdd_only {
 
 The following CRUSH rule is designed for erasure-coded pools:
 
-```
+```text
 # Rule for erasure-coded pool with rack-level failure domain
 # Each chunk is placed in a different rack
 rule erasure_rack {
@@ -836,7 +836,7 @@ ceph osd df tree
 
 The following CRUSH rule is recommended for production workloads:
 
-```
+```text
 # Production-ready replicated rule with rack-level failure domain
 # Includes retry parameters for improved reliability
 rule production_replicated {

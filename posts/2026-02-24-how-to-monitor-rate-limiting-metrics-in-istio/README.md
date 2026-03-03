@@ -22,7 +22,7 @@ kubectl exec deploy/my-service -c istio-proxy -- curl -s localhost:15000/stats |
 
 This outputs stats like:
 
-```
+```text
 http_local_rate_limiter.enabled: 5000
 http_local_rate_limiter.enforced: 150
 http_local_rate_limiter.ok: 4850
@@ -37,7 +37,7 @@ kubectl exec deploy/istio-ingressgateway -n istio-system -c istio-proxy -- curl 
 
 Which shows:
 
-```
+```text
 ratelimit.api-gateway.ok: 9500
 ratelimit.api-gateway.over_limit: 500
 ratelimit.api-gateway.error: 3

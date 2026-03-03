@@ -25,7 +25,7 @@ Without a clear specification, teams argue about whether a service is "up" or "d
 
 Every SLI follows the same structure:
 
-```
+```text
 SLI = (Good Events / Valid Events) * 100%
 ```
 

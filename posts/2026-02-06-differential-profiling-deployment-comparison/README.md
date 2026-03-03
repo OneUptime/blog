@@ -12,7 +12,7 @@ You deployed a new version and latency increased by 15%. Was it your code change
 
 A differential profile (sometimes called a diff flame graph) takes two flame graphs and computes the difference. For each function, it calculates:
 
-```
+```text
 delta = (samples_after / total_after) - (samples_before / total_before)
 ```
 
@@ -133,7 +133,7 @@ The color coding in a diff flame graph is straightforward:
 
 Focus on the red bars. The wider and redder a bar is, the more significant the regression. Here is an example of what you might see:
 
-```
+```text
 processOrder()           [neutral - no change]
   validateInput()        [slightly green - 2% faster]
   calculateDiscount()    [deep red - 45% more CPU]

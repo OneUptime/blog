@@ -42,7 +42,7 @@ pip install -r requirements.txt
 
 Your project structure looks like this:
 
-```
+```text
 my-functions/
     function_app.py    # All your functions live here
     requirements.txt

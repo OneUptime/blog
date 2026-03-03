@@ -111,7 +111,7 @@ Good step:
    ```
 
    Expected output:
-   ```
+   ```text
    waiting for server to promote.... done
    server promoted
    ```
@@ -120,7 +120,7 @@ Good step:
    Check the current role with: `SELECT pg_is_in_recovery();`
    - Returns `f` if primary
    - Returns `t` if standby
-```
+```text
 
 Notice the pattern: command to run, expected output, and what to do if the output differs.
 
@@ -150,7 +150,7 @@ After completing the failover, verify success:
    psql -h primary.db.internal -c "SELECT client_addr, state FROM pg_stat_replication;"
    ```
    Expected: At least one row with `state = 'streaming'`
-```
+```text
 
 ### Escalation Paths
 
@@ -200,7 +200,7 @@ Then run:
 ```bash
 kubectl --context=${CLUSTER}-${ENV} get pods
 ```
-```
+```text
 
 ### Show Expected Output
 
@@ -212,17 +212,17 @@ systemctl status postgresql
 ```
 
 Expected output (healthy):
-```
+```text
 postgresql.service - PostgreSQL database server
    Active: active (running) since Mon 2026-01-15 10:30:00 UTC
 ```
 
 Expected output (problem):
-```
+```text
 postgresql.service - PostgreSQL database server
    Active: failed (Result: exit-code) since Mon 2026-01-15 10:30:00 UTC
 ```
-```
+```text
 
 ### Handle Edge Cases
 
@@ -247,7 +247,7 @@ sudo kill <PID>
 
 **"FATAL: could not open relation mapping file"**
 Data directory may be corrupted. Do not attempt repair - escalate immediately.
-```
+```text
 
 ## Testing Runbooks
 
@@ -322,7 +322,7 @@ As you build more runbooks, organization becomes important.
 
 Use a consistent naming pattern that sorts logically:
 
-```
+```text
 service-action-scope.md
 
 Examples:

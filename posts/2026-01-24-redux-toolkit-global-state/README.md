@@ -828,7 +828,7 @@ export default AddPostForm;
 
 ### 1. Organize by Feature
 
-```
+```text
 src/
   features/
     auth/

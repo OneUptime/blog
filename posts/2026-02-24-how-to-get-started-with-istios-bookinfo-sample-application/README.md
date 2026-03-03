@@ -65,7 +65,7 @@ kubectl get pods -n bookinfo -w
 
 You should see all pods with 2/2 containers (the app container plus the istio-proxy sidecar):
 
-```
+```text
 NAME                              READY   STATUS    RESTARTS   AGE
 details-v1-5f4d584748-abc12       2/2     Running   0          60s
 productpage-v1-6b746f74dc-def34   2/2     Running   0          60s

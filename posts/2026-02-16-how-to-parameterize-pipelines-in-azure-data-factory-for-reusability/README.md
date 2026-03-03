@@ -217,7 +217,7 @@ Reference them with `@pipeline().globalParameters.parameterName`.
 
 ADF has a rich expression language for building dynamic values. Here are some commonly used patterns.
 
-```
+```text
 // Get current date components for partitioned paths
 @formatDateTime(utcnow(), 'yyyy')                    // "2026"
 @formatDateTime(utcnow(), 'MM')                       // "02"

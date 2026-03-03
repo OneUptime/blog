@@ -215,7 +215,7 @@ Compare the output with your Route 53 export to make sure everything matches.
 This is the actual cutover. Go to your domain registrar and update the nameservers from Route 53's nameservers to Cloud DNS's nameservers.
 
 Replace the old nameservers:
-```
+```text
 ns-123.awsdns-45.com
 ns-678.awsdns-90.net
 ns-901.awsdns-12.org
@@ -223,7 +223,7 @@ ns-234.awsdns-56.co.uk
 ```
 
 With the new Google Cloud DNS nameservers:
-```
+```text
 ns-cloud-a1.googledomains.com
 ns-cloud-a2.googledomains.com
 ns-cloud-a3.googledomains.com

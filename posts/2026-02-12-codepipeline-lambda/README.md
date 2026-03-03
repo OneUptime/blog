@@ -18,7 +18,7 @@ AWS SAM (Serverless Application Model) is the cleanest way to manage Lambda depl
 
 ### Project Structure
 
-```
+```text
 my-lambda-app/
   src/
     handler.js        # Lambda function code

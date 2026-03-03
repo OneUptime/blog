@@ -28,7 +28,7 @@ java -version
 
 You should see output similar to this.
 
-```
+```text
 openjdk version "17.0.9" 2023-10-17
 OpenJDK Runtime Environment (build 17.0.9+9)
 OpenJDK 64-Bit Server VM (build 17.0.9+9, mixed mode)
@@ -329,7 +329,7 @@ tasks.withType<Test> {
 
 After generating or creating your project, you will have this directory structure.
 
-```
+```text
 my-spring-app/
 ├── src/
 │   ├── main/
@@ -1260,7 +1260,7 @@ java -jar build/libs/demo-0.0.1-SNAPSHOT.jar
 
 Once the application starts, you should see output like this.
 
-```
+```text
   .   ____          _            __ _ _
  /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
 ( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \

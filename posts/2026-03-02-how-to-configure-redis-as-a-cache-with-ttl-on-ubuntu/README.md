@@ -24,7 +24,7 @@ Edit the configuration:
 sudo nano /etc/redis/redis.conf
 ```
 
-```
+```text
 # Required: set a memory limit
 maxmemory 2gb
 

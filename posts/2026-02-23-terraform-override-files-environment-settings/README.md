@@ -19,7 +19,7 @@ Terraform processes configuration files in two passes. First, it loads all regul
 - `override.tf` - Always loaded as an override
 - `*_override.tf` - Any file ending with `_override.tf` is treated as an override
 
-```
+```text
 project/
   main.tf              # Base configuration
   variables.tf         # Variable definitions

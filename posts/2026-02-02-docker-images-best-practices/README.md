@@ -234,7 +234,7 @@ The `--no-install-recommends` flag prevents installing suggested packages you do
 
 A `.dockerignore` file prevents unnecessary files from being sent to the Docker daemon during build. This speeds up builds and prevents accidentally including sensitive files.
 
-```
+```text
 # .dockerignore
 
 # Dependencies (will be installed fresh in the container)

@@ -96,7 +96,7 @@ Notice the format for JSON secrets: `ARN:json_key::`. The two trailing colons ar
 
 The full format for referencing a specific key within a JSON secret is:
 
-```
+```text
 arn:aws:secretsmanager:region:account:secret:secret-name:json-key:version-stage:version-id
 ```
 

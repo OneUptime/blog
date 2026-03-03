@@ -328,7 +328,7 @@ release:
   needs:
     - publish-npm
     - publish-docker
-```
+```text
 
 ## Release Branches
 

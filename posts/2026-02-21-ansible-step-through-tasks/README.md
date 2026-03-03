@@ -21,7 +21,7 @@ ansible-playbook -i inventory.ini site.yml --step
 
 Ansible will stop before each task and present you with three options.
 
-```
+```text
 TASK [Update package cache] ****************************************************
 Perform task: TASK: Update package cache (N)o/(y)es/(c)ontinue:
 ```
@@ -102,7 +102,7 @@ ansible-playbook -i inventory.ini monitoring-setup.yml --step
 
 The session looks like this:
 
-```
+```text
 PLAY [Set up monitoring agent] ************************************************
 
 TASK [Gathering Facts] ********************************************************
@@ -251,7 +251,7 @@ For more advanced interactive debugging, Ansible has a built-in debugger that ac
 
 When a task fails, the debugger drops you into an interactive session where you can inspect variables, change task arguments, and retry.
 
-```
+```text
 TASK [Template that might fail] ***********************************************
 fatal: [web01]: FAILED! => {"msg": "AnsibleUndefinedVariable: 'app_port' is undefined"}
 [web01] TASK: Template that might fail (debug)> p task_vars['app_port']

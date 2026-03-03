@@ -26,7 +26,7 @@ gcloud artifacts repositories list --location=us-central1
 ```
 
 The repository URL follows this pattern:
-```
+```text
 LOCATION-docker.pkg.dev/PROJECT_ID/REPOSITORY_NAME
 ```
 
@@ -319,7 +319,7 @@ gcloud artifacts repositories create helm-charts \
 ```
 
 The URL format for multi-region is:
-```
+```text
 us-docker.pkg.dev/my-project/helm-charts
 ```
 

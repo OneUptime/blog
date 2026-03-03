@@ -53,7 +53,7 @@ spec:
 
 Keep DestinationRules alongside their VirtualServices:
 
-```
+```text
 istio-config/
   base/
     kustomization.yaml

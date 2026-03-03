@@ -184,7 +184,7 @@ This works but adds overhead. If both the client and server are in the mesh, you
 
 Configure your MySQL client to not use SSL:
 
-```
+```text
 mysql -h mysql-host -u user -p --ssl-mode=DISABLED
 ```
 

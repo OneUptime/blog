@@ -25,7 +25,7 @@ Each type has different symptoms and different fixes.
 
 If you see errors like this when creating pods:
 
-```
+```text
 Error creating: Internal error occurred: failed calling webhook "rev.namespace.sidecar-injector.istio.io":
 Post "https://istiod.istio-system.svc:443/inject?timeout=10s": dial tcp 10.96.x.x:443: connect: connection refused
 ```
@@ -127,7 +127,7 @@ metadata:
 
 When applying VirtualServices or other Istio resources:
 
-```
+```text
 Error from server: error when creating "virtualservice.yaml": admission webhook
 "rev.validation.istio.io" denied the request: configuration is invalid
 ```
@@ -159,7 +159,7 @@ kubectl get destinationrules -A -o json | jq -r '.items[] | "\(.metadata.namespa
 
 ## Symptom 4: Webhook Timeout Errors
 
-```
+```text
 Error creating: Internal error occurred: failed calling webhook:
 Post "https://istiod.istio-system.svc:443/inject?timeout=10s": context deadline exceeded
 ```
@@ -209,7 +209,7 @@ kubectl patch mutatingwebhookconfiguration istio-sidecar-injector \
 
 ## Symptom 5: Certificate Errors
 
-```
+```text
 Error creating: Internal error occurred: failed calling webhook:
 Post "https://istiod.istio-system.svc:443/inject": x509: certificate has expired
 ```

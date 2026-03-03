@@ -404,7 +404,7 @@ kubectl rollout restart deployment my-app
 kubectl scale deployment my-app --replicas=0
 kubectl scale deployment my-app --replicas=3
 ```
-```
+```text
 
 Provide training and onboarding materials explaining why direct pod deletion is restricted.
 

@@ -109,7 +109,7 @@ CMD ["node", "server.js"]
 
 Keep builds fast by excluding unnecessary files:
 
-```
+```text
 node_modules
 build
 tmp

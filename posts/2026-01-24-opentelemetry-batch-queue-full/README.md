@@ -64,7 +64,7 @@ flowchart LR
 
 ### Common Error Messages
 
-```
+```text
 2024-01-15T10:30:45.123Z    warn    exporterhelper/queued_retry.go:123
     Dropping data because sending_queue is full.
     {"kind": "exporter", "data_type": "traces", "name": "otlp", "dropped_items": 1024}

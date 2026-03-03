@@ -17,7 +17,7 @@ Webhooks are the backbone of modern automation. Instead of polling APIs endlessl
 Webhooks are HTTP callbacks - automated messages sent from one application to another when a specific event occurs. Think of them as reverse APIs: instead of your application requesting data, external services push data to your server.
 
 **Traditional Polling:**
-```
+```text
 Your App ---> (every 30 seconds) ---> GitHub API: "Any new commits?"
 GitHub API ---> "No"
 Your App ---> (30 seconds later) ---> GitHub API: "Any new commits?"
@@ -26,7 +26,7 @@ GitHub API ---> "No"
 ```
 
 **Webhooks:**
-```
+```text
 GitHub ---> (push event) ---> Your Webhook Server: "New commit arrived!"
 Your Server ---> Executes deployment script
 ```

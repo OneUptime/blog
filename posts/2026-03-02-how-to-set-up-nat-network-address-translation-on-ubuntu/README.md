@@ -208,7 +208,7 @@ Here is a complete gateway setup for a private network:
 
 ### Network Topology
 
-```
+```text
 Internet
     |
   eth0 (public IP, e.g., from ISP via DHCP)

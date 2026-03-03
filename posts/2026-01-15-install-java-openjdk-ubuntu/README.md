@@ -105,7 +105,7 @@ sudo update-alternatives --config java
 ```
 
 Output example:
-```
+```text
 There are 3 choices for the alternative java (providing /usr/bin/java).
 
   Selection    Path                                            Priority   Status

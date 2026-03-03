@@ -196,7 +196,7 @@ redis-stat 1 60 >> /var/log/redis-stat.log
 sudo nano /etc/logrotate.d/redis-stat
 ```
 
-```
+```text
 /var/log/redis-stat.log {
     daily
     rotate 7

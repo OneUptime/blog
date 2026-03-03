@@ -14,7 +14,7 @@ The "Unable to resolve service for type" error is one of the most common issues 
 
 The full error message typically looks like this:
 
-```
+```text
 System.InvalidOperationException: Unable to resolve service for type 'MyApp.Services.IUserService'
 while attempting to activate 'MyApp.Controllers.UsersController'.
 ```

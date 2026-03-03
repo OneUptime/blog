@@ -24,7 +24,7 @@ When your Express.js project grows from a simple API to a full-featured applicat
 
 Here is a folder structure that works well for medium to large Express applications:
 
-```
+```text
 src/
 ├── config/           # Configuration and environment
 │   ├── index.js

@@ -40,7 +40,7 @@ Data pipelines, schemas, configurations, and documentation should all live in ve
 
 ### Repository Structure
 
-```
+```text
 data-platform/
 ├── dags/                      # Airflow DAGs
 │   ├── ingestion/

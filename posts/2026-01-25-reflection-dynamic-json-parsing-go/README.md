@@ -349,7 +349,7 @@ func main() {
 ```
 
 Output:
-```
+```text
 active                    = true (bool)
 loginCount                = 42 (float64)
 user.name                 = Bob (string)

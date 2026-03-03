@@ -108,7 +108,7 @@ Notice the key wiring: in the traces pipeline, `spanmetrics` appears as an expor
 
 The Span Metrics Connector generates three metrics by default:
 
-```
+```text
 # Request rate (counter) - incremented for each span
 traces.spanmetrics.calls_total{
   service.name="checkout-service",

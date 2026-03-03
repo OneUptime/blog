@@ -68,7 +68,7 @@ curl -X PUT "localhost:9200/products" -H 'Content-Type: application/json' -d'
 
 The bulk API uses a newline-delimited JSON format (NDJSON). Each operation requires two lines: an action metadata line and the document source:
 
-```
+```text
 {"index": {"_index": "products", "_id": "1"}}
 {"product": "Laptop", "reviews": [{"author": "Alice", "rating": 5}]}
 {"index": {"_index": "products", "_id": "2"}}

@@ -84,7 +84,7 @@ To allow remote port forwarding to bind to external interfaces on the SSH server
 sudo nano /etc/ssh/sshd_config
 ```
 
-```
+```text
 # Allow remote forwarded ports to bind to non-loopback addresses
 GatewayPorts yes
 ```
@@ -133,7 +133,7 @@ Instead of long command-line flags, put tunnel configuration in `~/.ssh/config`:
 nano ~/.ssh/config
 ```
 
-```
+```text
 # Jump host / SSH gateway
 Host dbserver-tunnel
     HostName dbserver.example.com
@@ -157,7 +157,7 @@ ssh -f -N dbserver-tunnel
 
 Multiple `LocalForward` directives work in one SSH connection:
 
-```
+```text
 Host multi-tunnel
     HostName bastion.example.com
     User ubuntu
@@ -240,7 +240,7 @@ ssh -J user@hop1.example.com,user@hop2.internal user@final-target.internal
 # In ~/.ssh/config
 ```
 
-```
+```text
 Host bastion
     HostName bastion.example.com
     User ubuntu

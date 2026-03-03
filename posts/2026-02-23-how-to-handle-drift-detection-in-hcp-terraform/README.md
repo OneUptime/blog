@@ -112,7 +112,7 @@ curl \
 
 A drift report typically looks like this:
 
-```
+```text
 Assessment Result: Drift Detected
 
 Resource Drift:

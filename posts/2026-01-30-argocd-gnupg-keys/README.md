@@ -68,7 +68,7 @@ gpg --full-generate-key
 
 When prompted, select the following options:
 
-```
+```text
 Please select what kind of key you want:
    (1) RSA and RSA (default)
    (2) DSA and Elgamal
@@ -102,7 +102,7 @@ gpg --list-secret-keys --keyid-format=long
 
 You will see output similar to this:
 
-```
+```text
 /home/user/.gnupg/secring.gpg
 -----------------------------
 sec   rsa4096/ABCD1234EFGH5678 2026-01-30 [SC] [expires: 2027-01-30]

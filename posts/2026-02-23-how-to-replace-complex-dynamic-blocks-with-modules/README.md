@@ -93,7 +93,7 @@ resource "aws_lb_listener" "main" {
 
 Create a module that encapsulates the ALB configuration:
 
-```
+```text
 modules/
   alb/
     main.tf        # ALB, listeners, target groups

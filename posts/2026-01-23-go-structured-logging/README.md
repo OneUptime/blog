@@ -39,7 +39,7 @@ func main() {
 ```
 
 **Text output:**
-```
+```text
 2024/01/15 10:30:00 INFO user logged in user_id=123 ip=192.168.1.1
 ```
 

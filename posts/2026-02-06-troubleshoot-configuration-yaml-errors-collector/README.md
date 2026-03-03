@@ -70,7 +70,7 @@ receivers:
 
 **Error message:**
 
-```
+```text
 Error: yaml: line 3: mapping values are not allowed in this context
 ```
 
@@ -209,7 +209,7 @@ Referencing a component that isn't configured.
 
 **Error message:**
 
-```
+```text
 Error: service references receiver "otlp" which is not configured
 Error: service references processor "batch" which is not configured
 ```
@@ -260,7 +260,7 @@ Component configuration missing mandatory fields.
 
 **Error message:**
 
-```
+```text
 Error: receiver "otlp": protocols: must have at least one protocol enabled
 Error: exporter "otlp": endpoint must be specified
 ```
@@ -294,7 +294,7 @@ Providing wrong data type for a field.
 
 **Error message:**
 
-```
+```text
 Error: cannot unmarshal string into Go value of type int
 Error: time: invalid duration "10"
 Error: invalid boolean value "yes"
@@ -369,7 +369,7 @@ Certain processors must be in specific positions in the pipeline.
 
 **Error message:**
 
-```
+```text
 Warning: memory_limiter processor should be first in pipeline
 Error: batch processor should come after memory_limiter
 ```
@@ -414,7 +414,7 @@ Using an extension without registering it in the service section.
 
 **Error message:**
 
-```
+```text
 Error: failed to get extension: extension "health_check" not found
 ```
 
@@ -461,7 +461,7 @@ Using the same component name multiple times.
 
 **Error message:**
 
-```
+```text
 Error: duplicate receiver name: otlp
 ```
 

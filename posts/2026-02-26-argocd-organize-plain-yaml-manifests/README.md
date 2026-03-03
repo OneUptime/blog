@@ -18,7 +18,7 @@ Every ArgoCD Application points to a directory path in a Git repository. That di
 
 The simplest pattern - one directory per application, all manifests at the top level:
 
-```
+```text
 k8s-manifests/
   apps/
     frontend/
@@ -65,7 +65,7 @@ spec:
 
 Separate directories for each environment:
 
-```
+```text
 k8s-manifests/
   environments/
     staging/
@@ -117,7 +117,7 @@ spec:
 
 Reduce duplication by using a shared base with environment-specific files:
 
-```
+```text
 k8s-manifests/
   apps/
     frontend/
@@ -152,7 +152,7 @@ This pattern works well with a naming convention where each environment director
 
 Organize by the target namespace, which mirrors how resources appear in the cluster:
 
-```
+```text
 k8s-manifests/
   namespaces/
     payments/
@@ -202,7 +202,7 @@ spec:
 
 Organize by team ownership for multi-team environments:
 
-```
+```text
 k8s-manifests/
   teams/
     platform/
@@ -253,7 +253,7 @@ spec:
 
 Shared resources like CRDs, ClusterRoles, and cluster-wide ConfigMaps need special treatment since they do not belong to any single application:
 
-```
+```text
 k8s-manifests/
   cluster/
     crds/
@@ -344,7 +344,7 @@ The good news is that ArgoCD supports all three source types, so you can migrate
 
 **Add a `.gitignore`** to exclude editor artifacts:
 
-```
+```text
 # .gitignore
 *.swp
 *.bak

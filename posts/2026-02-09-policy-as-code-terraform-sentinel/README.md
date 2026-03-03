@@ -363,7 +363,7 @@ exceeds_cpu_limit(limit) {
 
 Organize policies:
 
-```
+```text
 policies/
 ├── kubernetes/
 │   ├── deployments.rego

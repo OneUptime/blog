@@ -200,7 +200,7 @@ dig +nocmd +noall +answer @"$DNS_SERVER" "$DOMAIN" A
 
 **Example output showing rotation:**
 
-```
+```text
 Query 1:
 192.168.1.10
 192.168.1.11

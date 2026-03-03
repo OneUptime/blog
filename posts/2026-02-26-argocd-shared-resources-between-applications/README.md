@@ -55,7 +55,7 @@ spec:
 
 The shared resources repo contains all the common resources:
 
-```
+```text
 shared-resources/
   namespaces/
     production.yaml

@@ -27,7 +27,7 @@ Before implementing protections, you need to understand what attackers can do wi
 
 React Native apps have a predictable structure that attackers know well:
 
-```
+```text
 android/app/src/main/assets/
 ├── index.android.bundle    # Your JavaScript code
 ├── index.android.bundle.map  # Source maps (if included)
@@ -36,7 +36,7 @@ android/app/src/main/assets/
 
 On iOS, the bundle is located at:
 
-```
+```text
 Payload/YourApp.app/
 ├── main.jsbundle           # Your JavaScript code
 └── assets/                 # Static resources
@@ -338,7 +338,7 @@ iOS apps compiled with Xcode have different protection mechanisms.
 
 In Xcode, enable these settings for release builds:
 
-```
+```text
 Build Settings:
 - Enable Bitcode: Yes
 - Strip Debug Symbols During Copy: Yes

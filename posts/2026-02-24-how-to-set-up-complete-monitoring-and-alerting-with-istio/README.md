@@ -304,7 +304,7 @@ Create a dashboard that shows the big picture:
 
 Use a variable for the service name:
 
-```
+```text
 Variable: service
 Query: label_values(istio_requests_total, destination_service)
 ```

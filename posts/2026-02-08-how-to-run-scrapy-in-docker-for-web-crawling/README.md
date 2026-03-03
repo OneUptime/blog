@@ -20,7 +20,7 @@ Docker also makes it straightforward to run multiple spiders in parallel, each i
 
 A clean Scrapy project for Docker looks like this:
 
-```
+```text
 scrapy-crawler/
   Dockerfile
   docker-compose.yml

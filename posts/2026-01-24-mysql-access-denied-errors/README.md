@@ -14,7 +14,7 @@ The "Access Denied for User" error is one of the most common issues MySQL admini
 
 MySQL access denied errors typically look like this:
 
-```
+```text
 ERROR 1045 (28000): Access denied for user 'username'@'host' (using password: YES)
 ERROR 1045 (28000): Access denied for user 'username'@'host' (using password: NO)
 ERROR 1142 (42000): SELECT command denied to user 'username'@'host' for table 'tablename'

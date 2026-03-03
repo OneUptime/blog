@@ -613,7 +613,7 @@ The `Alt-Svc` header tells browsers that HTTP/3 is available. Without it, client
 
 ### Header Format
 
-```
+```text
 Alt-Svc: h3=":443"; ma=86400
 ```
 

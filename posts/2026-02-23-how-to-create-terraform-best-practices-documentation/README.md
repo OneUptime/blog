@@ -233,7 +233,7 @@ aws s3api get-object \
   --version-id "versionId123" \
   restored-state.tfstate
 ```
-```
+```text
 
 ## Making Documentation Discoverable
 

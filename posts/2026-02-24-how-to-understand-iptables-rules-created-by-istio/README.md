@@ -48,7 +48,7 @@ nsenter -t $CONTAINER_PID -n iptables -t nat -L -v -n
 
 Istio primarily uses the `nat` table in iptables. The rules are organized into custom chains. Here's what a typical output looks like:
 
-```
+```text
 Chain PREROUTING (policy ACCEPT)
 target     prot opt source               destination
 ISTIO_INBOUND  tcp  --  0.0.0.0/0        0.0.0.0/0
@@ -152,7 +152,7 @@ When you set these annotations, the `istio-init` container adds extra RETURN rul
 
 After applying exclusions, you'll see additional rules like:
 
-```
+```text
 Chain ISTIO_INBOUND (1 references)
 target     prot opt source               destination
 RETURN     tcp  --  0.0.0.0/0        0.0.0.0/0   tcp dpt:8081

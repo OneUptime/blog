@@ -106,7 +106,7 @@ ansible all -m ping
 
 You can also configure the port in your SSH config and let Ansible inherit it:
 
-```
+```text
 # ~/.ssh/config
 Host web01
     HostName 10.0.0.10

@@ -46,7 +46,7 @@ app.Run();
 
 The `/metrics` endpoint now exposes Prometheus-formatted metrics:
 
-```
+```text
 # HELP http_requests_received_total Total number of HTTP requests received
 # TYPE http_requests_received_total counter
 http_requests_received_total{code="200",method="GET",controller="Products",action="GetAll"} 42

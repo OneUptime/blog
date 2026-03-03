@@ -243,7 +243,7 @@ steps:
 
 Store multiple actions in subdirectories of one repository.
 
-```
+```text
 your-org/actions/
   setup-node/
     action.yml

@@ -192,14 +192,14 @@ connectors:
 
 If you have these metrics:
 
-```
+```text
 request.count{service.name="api", environment="prod", region="us-east", instance="i-123"} = 100
 request.count{service.name="api", environment="prod", region="us-east", instance="i-456"} = 150
 ```
 
 The Sum connector produces:
 
-```
+```text
 request.count{service.name="api", environment="prod", region="us-east"} = 250
 ```
 

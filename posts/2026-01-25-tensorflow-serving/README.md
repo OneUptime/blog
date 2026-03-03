@@ -59,7 +59,7 @@ print(f"Model saved to {export_path}")
 
 TensorFlow Serving expects models organized with version numbers:
 
-```
+```text
 models/
   my_model/
     1/                    # Version 1

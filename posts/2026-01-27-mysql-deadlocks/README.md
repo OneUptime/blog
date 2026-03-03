@@ -44,7 +44,7 @@ SHOW ENGINE INNODB STATUS\G
 
 The output contains a `LATEST DETECTED DEADLOCK` section. Here is what to look for:
 
-```
+```text
 ------------------------
 LATEST DETECTED DEADLOCK
 ------------------------

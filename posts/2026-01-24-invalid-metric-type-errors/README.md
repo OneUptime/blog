@@ -36,7 +36,7 @@ graph TD
 The most common cause of "Invalid Metric Type" errors is attempting to register a metric with a different type than previously registered.
 
 **Error Message:**
-```
+```text
 Error: A metric with name 'http.request.count' already exists with a different type
 ```
 
@@ -93,7 +93,7 @@ export const httpMetrics = {
 Different backends expect different aggregation temporalities. Prometheus expects cumulative, while some OTLP backends prefer delta.
 
 **Error Message:**
-```
+```text
 Error: Invalid aggregation temporality for metric type Counter: expected CUMULATIVE, got DELTA
 ```
 
@@ -159,7 +159,7 @@ const reader = new PeriodicExportingMetricReader({
 When using custom histogram boundaries, mismatches between definition and backend expectations can cause errors.
 
 **Error Message:**
-```
+```text
 Error: Histogram boundaries must be monotonically increasing
 ```
 
@@ -197,7 +197,7 @@ const histogram = meter.createHistogram('http.server.request.duration', {
 Different definitions of the same metric with different units cause conflicts.
 
 **Error Message:**
-```
+```text
 Error: Metric 'request.duration' already registered with unit 'ms', cannot register with unit 's'
 ```
 
@@ -226,7 +226,7 @@ const requestDuration = meter.createHistogram('http.request.duration', {
 Views can transform metrics, but incorrect configuration leads to type errors.
 
 **Error Message:**
-```
+```text
 Error: Cannot apply Sum aggregation to Histogram instrument
 ```
 
@@ -299,7 +299,7 @@ flowchart LR
 ```
 
 **Error Message:**
-```
+```text
 Error: Prometheus does not support negative values for Counter type
 ```
 

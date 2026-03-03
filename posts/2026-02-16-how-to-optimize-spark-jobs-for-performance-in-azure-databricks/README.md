@@ -255,7 +255,7 @@ Photon is Databricks' C++ query engine that accelerates Spark SQL and DataFrame 
 
 Enable Photon by selecting a Photon-enabled runtime when creating your cluster.
 
-```
+```text
 Runtime: 14.3.x-photon-scala2.12
 ```
 

@@ -218,7 +218,7 @@ az monitor diagnostic-settings list \
 
 Query the logs for the specific failure:
 
-```
+```text
 // Find all 403 errors with details
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.KEYVAULT"

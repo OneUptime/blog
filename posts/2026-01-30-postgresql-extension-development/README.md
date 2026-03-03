@@ -25,7 +25,7 @@ Extensions also integrate with PostgreSQL's dump and restore utilities, making b
 
 A PostgreSQL extension consists of at least three files in the extension directory (typically `/usr/share/postgresql/<version>/extension/`):
 
-```
+```text
 myext/
 ├── myext.control          # Extension metadata
 ├── myext--1.0.sql         # Initial version SQL
@@ -1356,7 +1356,7 @@ Create a `META.json` file for PGXN (PostgreSQL Extension Network):
 
 Create `debian/control`:
 
-```
+```text
 Source: postgresql-emailtype
 Section: database
 Priority: optional

@@ -119,7 +119,7 @@ nvm ls
 ```
 
 Output example:
-```
+```text
 ->     v20.10.0
        v18.19.0
        v22.0.0

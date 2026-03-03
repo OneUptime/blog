@@ -22,7 +22,7 @@ kubectl get crd | grep istio
 
 You will see something like:
 
-```
+```text
 authorizationpolicies.security.istio.io
 destinationrules.networking.istio.io
 envoyfilters.networking.istio.io

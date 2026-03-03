@@ -26,7 +26,7 @@ This is the number one cause. You're hitting a URL that doesn't exist in your AP
 
 API Gateway URLs follow this pattern:
 
-```
+```text
 https://{api-id}.execute-api.{region}.amazonaws.com/{stage}/{resource}
 ```
 

@@ -214,7 +214,7 @@ def rotate_secret(cloud_event):
 
 Create the requirements file:
 
-```
+```text
 # requirements.txt
 functions-framework==3.*
 google-cloud-secret-manager==2.*

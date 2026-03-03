@@ -20,7 +20,7 @@ Roles also make it easy to share common Talos management patterns across multipl
 
 Ansible roles follow a standard directory layout. Here is what a Talos management role looks like:
 
-```
+```text
 roles/
   talos-secrets/
     tasks/

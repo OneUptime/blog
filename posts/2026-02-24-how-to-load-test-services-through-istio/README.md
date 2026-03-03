@@ -232,7 +232,7 @@ When analyzing load test results, focus on these metrics:
 
 A good load test report looks like this:
 
-```
+```text
 Target QPS: 200
 Actual QPS: 198.5
 Duration: 120s

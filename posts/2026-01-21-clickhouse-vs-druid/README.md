@@ -400,7 +400,7 @@ Management:
 
 ### Druid Scaling
 
-```
+```text
 Druid scales by component:
 - Historical: Add nodes for more query capacity
 - MiddleManager: Add nodes for more ingestion capacity

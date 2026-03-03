@@ -23,7 +23,7 @@ Before starting, ensure you have:
 
 ### How Labels Work
 
-```
+```text
 {job="nginx", env="production", host="server01"} Log line content here
 ```
 

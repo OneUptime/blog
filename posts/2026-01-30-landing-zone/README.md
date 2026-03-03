@@ -110,7 +110,7 @@ Let's build a production-ready landing zone step by step using Terraform. We wil
 
 Organize your Terraform code for maintainability and reusability.
 
-```
+```text
 landing-zone/
   modules/
     organization/

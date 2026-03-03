@@ -12,13 +12,13 @@ The "namespace not permitted" error in ArgoCD occurs when an application tries t
 
 The error message usually looks like:
 
-```
+```text
 application destination {https://kubernetes.default.svc production} is not permitted in project 'my-project'
 ```
 
 Or when syncing:
 
-```
+```text
 namespace "production" is not permitted in project "team-a"
 ```
 

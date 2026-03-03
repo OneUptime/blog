@@ -88,7 +88,7 @@ sudo gluster peer status
 ```
 
 Expected output:
-```
+```text
 Number of Peers: 2
 
 Hostname: gluster2
@@ -119,7 +119,7 @@ sudo gluster volume info gvol0
 ```
 
 Expected info output:
-```
+```text
 Volume Name: gvol0
 Type: Distribute
 Volume ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx

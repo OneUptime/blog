@@ -47,7 +47,7 @@ sudo nano /etc/ssh/sshd_config
 
 Add or modify these directives at the end of the file:
 
-```
+```text
 # Match block for the SFTP-only group
 Match User sftpuser
     ChrootDirectory /var/sftp
@@ -66,7 +66,7 @@ sudo usermod -aG sftponly sftpuser
 
 Then in sshd_config:
 
-```
+```text
 Match Group sftponly
     ChrootDirectory /var/sftp
     ForceCommand internal-sftp
@@ -114,7 +114,7 @@ ldd /bin/bash
 ```
 
 Example output:
-```
+```text
 linux-vdso.so.1 (0x00007ffee3f45000)
 libtinfo.so.6 => /lib/x86_64-linux-gnu/libtinfo.so.6
 libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6
@@ -177,7 +177,7 @@ sudo chown jailuser:jailuser $JAIL/home/jailuser
 
 Add to `/etc/ssh/sshd_config`:
 
-```
+```text
 Match User jailuser
     ChrootDirectory /var/chroot/restricted
     AllowTcpForwarding no

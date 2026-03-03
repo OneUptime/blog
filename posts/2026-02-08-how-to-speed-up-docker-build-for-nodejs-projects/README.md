@@ -56,7 +56,7 @@ Use `npm ci` instead of `npm install`. It is faster because it installs exactly 
 
 Without `.dockerignore`, Docker sends your entire project directory (including `node_modules`, `.git`, and build artifacts) to the daemon as build context. This slows down the initial step of every build.
 
-```
+```text
 # .dockerignore - Exclude everything that doesn't belong in the image
 node_modules
 .git

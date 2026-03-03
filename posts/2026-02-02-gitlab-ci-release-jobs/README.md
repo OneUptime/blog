@@ -124,7 +124,7 @@ create-release:
       See [docs](https://docs.example.com) for usage instructions.
   rules:
     - if: $CI_COMMIT_TAG
-```
+```text
 
 ### File-Based Description
 

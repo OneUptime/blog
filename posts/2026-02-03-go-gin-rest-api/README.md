@@ -49,7 +49,7 @@ go get -u github.com/google/uuid
 
 A well-organized project structure makes your code maintainable. Here is the structure we will use:
 
-```
+```text
 go-gin-api/
 ├── main.go
 ├── handlers/

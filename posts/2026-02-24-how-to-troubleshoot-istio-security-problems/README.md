@@ -92,7 +92,7 @@ kubectl logs <pod-name> -c istio-proxy -n production | grep "rbac"
 
 You will see messages like:
 
-```
+```text
 enforced denied, matched policy ns[production]-policy[deny-external]-rule[0]
 ```
 

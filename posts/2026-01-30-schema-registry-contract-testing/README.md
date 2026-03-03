@@ -65,7 +65,7 @@ Schema registries support different compatibility modes that define what changes
 
 ### Choosing the Right Mode
 
-```
+```text
 BACKWARD: Use when consumers are deployed before producers.
           New consumers can read old messages.
 

@@ -51,7 +51,7 @@ ssh username@ubuntu-server-ip
 
 Configure your local `~/.ssh/config` to make connections easier to manage:
 
-```
+```text
 # ~/.ssh/config
 Host myubuntu
     HostName 192.168.1.100

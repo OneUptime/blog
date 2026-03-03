@@ -158,7 +158,7 @@ Let's create a CSI driver for a hypothetical custom storage backend. We'll use G
 
 ### Directory Structure
 
-```
+```text
 my-csi-driver/
 ├── cmd/
 │   └── my-csi-driver/

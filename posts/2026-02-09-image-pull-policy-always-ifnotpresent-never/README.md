@@ -382,7 +382,7 @@ kubectl describe pod my-pod
 
 Look for events:
 
-```
+```text
 Events:
   Type     Reason     Message
   ----     ------     -------
@@ -392,7 +392,7 @@ Events:
 
 Or errors:
 
-```
+```text
 Warning  Failed     Failed to pull image "myapp:v1.0.0": rpc error: code = NotFound
 Warning  Failed     Error: ImagePullBackOff
 ```

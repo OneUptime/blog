@@ -86,7 +86,7 @@ kubectl get crd | grep gateway
 
 You should see output similar to:
 
-```
+```text
 gatewayclasses.gateway.networking.k8s.io
 gateways.gateway.networking.k8s.io
 httproutes.gateway.networking.k8s.io

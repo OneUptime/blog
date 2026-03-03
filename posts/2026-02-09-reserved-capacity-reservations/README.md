@@ -270,7 +270,7 @@ Example: If running t3.xlarge nodes and confident they will remain optimal, buy 
 
 Three-year commitments offer maximum savings but require confidence in long-term needs. Consider a layered approach:
 
-```
+```text
 Year 1: 3-year commitment for 30% of baseline
 Year 2: 1-year commitment for 30% of baseline
 Year 3: On-demand for remaining 40%
@@ -312,7 +312,7 @@ During normal operation, workloads run on spot instances. During spot interrupti
 
 Calculate total cost of ownership:
 
-```
+```text
 On-demand only:
 - 150 t3.xlarge @ $0.1664/hour
 - 720 hours/month

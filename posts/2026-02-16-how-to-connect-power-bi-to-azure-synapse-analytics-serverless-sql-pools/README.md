@@ -203,7 +203,7 @@ For most reporting scenarios, Import mode with scheduled refresh is the better c
 
 Partitioned data means queries can skip irrelevant files. If your Power BI report filters by year and month, partition your Parquet files accordingly:
 
-```
+```text
 /orders/year=2025/month=01/data.parquet
 /orders/year=2025/month=02/data.parquet
 /orders/year=2025/month=03/data.parquet

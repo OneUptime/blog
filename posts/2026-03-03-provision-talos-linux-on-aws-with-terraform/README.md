@@ -31,7 +31,7 @@ You will also need to have the Talos Linux AMI available in your target AWS regi
 
 Set up your Terraform project with a clean directory structure:
 
-```
+```text
 talos-aws/
   main.tf
   variables.tf

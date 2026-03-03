@@ -53,7 +53,7 @@ az cosmosdb keys list \
 
 The connection string looks like this:
 
-```
+```text
 mongodb://myMongoCosmosAccount:PRIMARY_KEY@myMongoCosmosAccount.mongo.cosmos.azure.com:10255/?ssl=true&replicaSet=globaldb&retrywrites=false&maxIdleTimeMS=120000&appName=@myMongoCosmosAccount@
 ```
 

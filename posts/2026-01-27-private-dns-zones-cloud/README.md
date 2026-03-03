@@ -186,7 +186,7 @@ Understanding how DNS resolution flows through your network is critical for trou
 
 ### AWS VPC DNS Resolution Flow
 
-```
+```text
 +-------------------+
 | EC2 Instance      |
 | (10.0.1.10)       |

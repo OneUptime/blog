@@ -175,7 +175,7 @@ Use branch protection rules to ensure all project changes go through pull reques
 
 Create a CODEOWNERS file:
 
-```
+```text
 # .github/CODEOWNERS
 # ArgoCD project configs require platform team approval
 projects/ @my-org/platform-team

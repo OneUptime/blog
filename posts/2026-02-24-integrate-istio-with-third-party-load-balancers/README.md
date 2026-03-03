@@ -14,7 +14,7 @@ Running Istio does not mean you have to abandon your existing load balancer infr
 
 When you integrate an external load balancer with Istio, the typical pattern is: external clients hit the load balancer first, which then forwards traffic to the Istio ingress gateway, which routes it into the mesh. The load balancer handles things like DDoS protection, WAF rules, global server load balancing, and IP whitelisting, while Istio handles service-to-service routing, mTLS, and fine-grained traffic management.
 
-```
+```text
 Client -> External LB -> Istio Ingress Gateway -> Service (with sidecar)
 ```
 
@@ -152,7 +152,7 @@ data:
 
 HAProxy can sit in front of Istio either as a Kubernetes Ingress controller or as an external instance. For external HAProxy, configure the backend to point at the Istio ingress gateway NodePorts:
 
-```
+```text
 frontend http-in
     bind *:80
     bind *:443 ssl crt /etc/haproxy/certs/
@@ -169,7 +169,7 @@ backend istio-gateway
 
 If you want HAProxy to send the PROXY protocol so Istio can extract the real client IP:
 
-```
+```text
 backend istio-gateway
     balance roundrobin
     server node1 10.0.1.10:30080 check send-proxy-v2

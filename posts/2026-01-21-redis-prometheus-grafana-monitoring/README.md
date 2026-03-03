@@ -18,7 +18,7 @@ The monitoring stack consists of:
 2. **Prometheus**: Scrapes and stores metrics time-series data
 3. **Grafana**: Visualizes metrics and provides alerting
 
-```
+```text
 Redis --> Redis Exporter --> Prometheus --> Grafana
           (port 9121)       (port 9090)    (port 3000)
 ```

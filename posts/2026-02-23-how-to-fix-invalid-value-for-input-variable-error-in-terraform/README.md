@@ -10,7 +10,7 @@ Description: How to fix Invalid Value for Input Variable errors in Terraform cau
 
 You run `terraform plan` and see:
 
-```
+```text
 Error: Invalid value for variable
 
 on variables.tf line 5:
@@ -22,7 +22,7 @@ string, got number.
 
 Or maybe something like:
 
-```
+```text
 Error: Invalid value for variable
 
 on variables.tf line 10:
@@ -99,7 +99,7 @@ variable "environment" {
 }
 ```
 
-```
+```text
 Error: No value for required variable
 
 The root module input variable "environment" is not set, and has no default
@@ -150,7 +150,7 @@ variable "environment" {
 }
 ```
 
-```
+```text
 Error: Invalid value for variable
 
 on variables.tf line 1:

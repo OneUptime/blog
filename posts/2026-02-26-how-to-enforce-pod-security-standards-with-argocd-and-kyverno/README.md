@@ -316,7 +316,7 @@ spec:
 
 Organize policies in Git and deploy with an ArgoCD Application.
 
-```
+```text
 security-policies/
   kyverno/
     baseline/

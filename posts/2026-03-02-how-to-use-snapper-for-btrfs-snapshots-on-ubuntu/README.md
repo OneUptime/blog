@@ -40,7 +40,7 @@ lsblk -f
 
 A clean Btrfs layout for Ubuntu uses separate subvolumes:
 
-```
+```text
 @       -> mounted at /
 @home   -> mounted at /home
 @var    -> mounted at /var (optional, for containers or heavy package use)
@@ -112,7 +112,7 @@ sudo snapper -c root list
 
 The snapshot list shows:
 
-```
+```text
 Type   | # | Pre # | Date                     | User | Used Space | Cleanup | Description
 -------+---+-------+--------------------------+------+------------+---------+-------------------
 pre    | 1 |       | Sun 2026-03-01 14:00:00   | root |  16.00 KiB |         | Before major update
@@ -137,7 +137,7 @@ For manual integration, create wrapper scripts:
 sudo nano /etc/apt/apt.conf.d/80snapper
 ```
 
-```
+```text
 DPkg::Pre-Invoke {"snapper -c root create --type pre --cleanup-algorithm number --description 'apt pre-invoke'";};
 DPkg::Post-Invoke {"snapper -c root create --type post --cleanup-algorithm number --description 'apt post-invoke'";};
 ```
@@ -171,7 +171,7 @@ sudo snapper -c root status 1..2
 
 Output shows:
 
-```
+```text
 c..... /etc/nginx/nginx.conf
 +..... /etc/nginx/sites-available/newsite
 -..... /etc/nginx/sites-available/oldsite

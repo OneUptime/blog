@@ -33,7 +33,7 @@ Before starting, ensure you have:
 
 ### Storage Layout
 
-```
+```text
 object-storage-bucket/
   - chunks/
       - tenant-id/

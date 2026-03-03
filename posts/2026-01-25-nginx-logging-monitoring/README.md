@@ -234,7 +234,7 @@ curl http://localhost:8080/nginx_status
 ```
 
 Output:
-```
+```text
 Active connections: 43
 server accepts handled requests
  7368 7368 10993

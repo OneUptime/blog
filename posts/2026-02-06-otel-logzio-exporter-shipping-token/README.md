@@ -195,7 +195,7 @@ services:
 
 After setting up the pipeline, logs should appear in your Logz.io Kibana dashboard. Search for them using:
 
-```
+```text
 service.name: "order-processor" AND severity_text: "ERROR"
 ```
 

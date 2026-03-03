@@ -667,7 +667,7 @@ console.log(`Worker started for queue: ${queueName}`);
 
 1. **Use .dockerignore** to exclude unnecessary files:
 
-```
+```text
 # .dockerignore
 node_modules
 npm-debug.log

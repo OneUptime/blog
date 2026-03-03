@@ -315,7 +315,7 @@ kubectl cluster-info
 
 Expected output showing IPv6 addresses:
 
-```
+```text
 Kubernetes control plane is running at https://[2001:db8:1::10]:6443
 CoreDNS is running at https://[2001:db8:1::10]:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 ```

@@ -25,12 +25,12 @@ free -h
 
 Example output:
 
-```
+```text
 NAME      TYPE  SIZE  USED PRIO
 /swapfile file  2G    0B   -2
 ```
 
-```
+```text
               total        used        free      shared  buff/cache   available
 Mem:          3.8Gi       1.2Gi       1.0Gi        45Mi       1.5Gi       2.3Gi
 Swap:         2.0Gi          0B       2.0Gi
@@ -146,7 +146,7 @@ swapon --show
 
 Output:
 
-```
+```text
 NAME       TYPE  SIZE  USED PRIO
 /swapfile  file    8G    0B   -2
 /swapfile2 file    2G    0B    5

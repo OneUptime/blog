@@ -39,7 +39,7 @@ kubectl logs -n my-app -l app=my-service -c istio-proxy | grep -i "wasm\|plugin\
 
 Common error messages and their causes:
 
-```
+```text
 # URL not reachable
 "Failed to fetch Wasm plugin" -> Check the URL in the WasmPlugin resource
 
@@ -170,13 +170,13 @@ cat envoy-config.json | python3 -m json.tool | grep -A 20 "envoy.filters.http.wa
 
 Wasm panics show up in Envoy logs as:
 
-```
+```text
 Wasm VM failed to handle request headers
 ```
 
 or
 
-```
+```text
 proxy_on_request_headers returned WasmResult::InternalFailure
 ```
 

@@ -12,7 +12,7 @@ GitOps means your Git repository is the single source of truth for your infrastr
 
 Organize your Git repository to separate base configurations from environment-specific overrides:
 
-```
+```text
 otel-gitops/
   charts/
     otel-collector/

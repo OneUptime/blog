@@ -22,7 +22,7 @@ The operator introduces three custom resources:
 
 ## Repository Structure
 
-```
+```text
 telemetry/
   opentelemetry-operator/
     Chart.yaml

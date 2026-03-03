@@ -14,7 +14,7 @@ By default, Istio looks for JWTs in the `Authorization` header with a `Bearer` p
 
 When you don't specify `fromHeaders` or `fromParams`, Istio looks for the JWT in:
 
-```
+```text
 Authorization: Bearer <token>
 ```
 

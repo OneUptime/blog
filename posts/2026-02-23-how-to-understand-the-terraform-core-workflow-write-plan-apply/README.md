@@ -118,7 +118,7 @@ graph TD
 
 The plan output uses symbols to indicate what will happen:
 
-```
+```text
 # + means create
   + resource "aws_instance" "web" {
       + ami           = "ami-0c55b159cbfafe1f0"
@@ -144,7 +144,7 @@ The plan output uses symbols to indicate what will happen:
 
 The summary at the bottom tells you the total count:
 
-```
+```text
 Plan: 2 to add, 1 to change, 1 to destroy.
 ```
 

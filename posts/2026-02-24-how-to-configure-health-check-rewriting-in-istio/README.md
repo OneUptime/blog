@@ -132,7 +132,7 @@ The following are NOT rewritten:
 
 The rewritten URL follows this pattern:
 
-```
+```text
 /app-health/<container-name>/<probe-type>
 ```
 
@@ -143,7 +143,7 @@ Where probe-type is:
 
 So if you have a container named `web-server` with all three probes, the rewritten paths are:
 
-```
+```text
 /app-health/web-server/livez
 /app-health/web-server/readyz
 /app-health/web-server/startupz

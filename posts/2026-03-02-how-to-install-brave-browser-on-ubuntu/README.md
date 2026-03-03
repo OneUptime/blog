@@ -95,7 +95,7 @@ After launching Brave for the first time, some settings worth configuring:
 
 Brave Shields blocks trackers and ads. Access global settings at `brave://settings/shields`:
 
-```
+```text
 - Trackers & ads blocking: Standard (default) or Aggressive
 - Upgrade connections to HTTPS: Enabled (recommended)
 - Block fingerprinting: Standard or Strict
@@ -108,7 +108,7 @@ Individual site exceptions can be set by clicking the Brave lion icon in the add
 
 Navigate to `brave://settings/privacy`:
 
-```
+```text
 - Send a "Do Not Track" request: Enable if desired
 - Block Google Sign-In: Enable to prevent Google's FLoC tracking
 - Allow privacy-preserving product analytics: Disable for maximum privacy

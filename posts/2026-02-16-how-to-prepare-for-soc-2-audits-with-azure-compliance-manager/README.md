@@ -35,7 +35,7 @@ Compliance Manager is part of the Microsoft Purview compliance portal. It provid
 
 To get started, navigate to compliance.microsoft.com and create a SOC 2 assessment:
 
-```
+```text
 1. Go to Microsoft Purview Compliance Portal
 2. Select Compliance Manager
 3. Click Assessments > Add Assessment

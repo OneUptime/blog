@@ -303,7 +303,7 @@ spec:
 
 Organize functions per environment:
 
-```
+```text
 functions/
   base/
     hello-world.yaml

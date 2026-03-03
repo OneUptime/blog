@@ -54,7 +54,7 @@ kubectl get pods -n elastic-system
 
 Expected output:
 
-```
+```text
 NAME                 READY   STATUS    RESTARTS   AGE
 elastic-operator-0   1/1     Running   0          2m
 ```

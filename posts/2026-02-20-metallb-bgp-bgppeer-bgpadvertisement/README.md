@@ -74,7 +74,7 @@ kubectl get pods -n metallb-system
 
 You should see output similar to:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-7d7f8d7b9c-x4k2n  1/1     Running   0          45s
 speaker-abc12                 1/1     Running   0          45s
@@ -295,7 +295,7 @@ kubectl logs -n metallb-system -l component=speaker --tail=50 | grep -i bgp
 
 You should see log entries like:
 
-```
+```text
 {"caller":"bgp.go:63","event":"sessionUp","localASN":64501,"msg":"BGP session established","peerASN":64500,"peerIP":"10.0.0.1"}
 ```
 
@@ -369,7 +369,7 @@ kubectl get svc nginx-lb
 
 Expected output:
 
-```
+```text
 NAME       TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)        AGE
 nginx-lb   LoadBalancer   10.96.45.123   192.168.100.10   80:31234/TCP   10s
 ```

@@ -152,7 +152,7 @@ The `transformKql` field in the data flow is where DCRs get really powerful. Ins
 
 Here is a transformation that parses a structured log line format like `2026-02-16 14:30:00 [ERROR] Connection timeout to database server`.
 
-```
+```text
 source
 | extend TimeGenerated = todatetime(extract('^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2})', 1, RawData))
 | extend Level = extract('\\[(\\w+)\\]', 1, RawData)

@@ -345,7 +345,7 @@ async function processLargeFile(bucket, filePath) {
 
 Structure your landing zone to make it easy to identify file types and sources:
 
-```
+```text
 gs://my-project-data-landing/
   sales/
     2024-01-15-sales-report.csv

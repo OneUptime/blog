@@ -138,7 +138,7 @@ infracost breakdown --path .
 
 Sample output:
 
-```
+```text
 Project: .
 
  Name                                     Monthly Qty  Unit   Monthly Cost
@@ -206,7 +206,7 @@ infracost diff --path . --compare-to infracost-base.json
 
 Sample diff output:
 
-```
+```text
 Project: .
 
 + aws_elasticache_replication_group.redis

@@ -197,7 +197,7 @@ callbacks_enabled = profile_tasks
 
 This gives you output like:
 
-```
+```text
 Wednesday 21 February 2026  10:15:00 +0000 (0:00:03.456)  0:01:23.456 ********
 Install packages ------------------------------------------ 45.23s
 Copy configuration files ---------------------------------- 12.11s

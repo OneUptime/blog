@@ -92,7 +92,7 @@ profiling:
 
 Once data is flowing into your profiling backend, open the CPU flame graph. Look for these patterns:
 
-```
+```text
 # Example CPU hotspot pattern:
 #
 # handleRequest                [======================] 45% of total CPU
@@ -108,7 +108,7 @@ In this example, `decodeUTF8` is the clear CPU hotspot. It accounts for 25% of a
 
 Memory flame graphs look similar but represent bytes allocated instead of CPU time:
 
-```
+```text
 # Example memory allocation hotspot:
 #
 # processOrder               [======================] 800MB allocated/min

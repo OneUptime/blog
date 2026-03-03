@@ -12,13 +12,13 @@ The "context deadline exceeded" error in ArgoCD is a timeout error. It means an 
 
 Here is what the error typically looks like:
 
-```
+```text
 FATA[0030] rpc error: code = DeadlineExceeded desc = context deadline exceeded
 ```
 
 Or in the application status:
 
-```
+```text
 ComparisonError: context deadline exceeded
 ```
 
@@ -45,7 +45,7 @@ The most common cause. ArgoCD's repo server needs to clone or fetch from your Gi
 
 **Symptoms:**
 
-```
+```text
 rpc error: code = Unknown desc = Get "https://github.com/org/repo": context deadline exceeded
 ```
 
@@ -99,7 +99,7 @@ Helm template rendering or Kustomize builds can take a long time for complex cha
 
 **Symptoms:**
 
-```
+```text
 ComparisonError: failed to generate manifest: context deadline exceeded
 ```
 
@@ -145,7 +145,7 @@ When ArgoCD communicates with a remote cluster and the Kubernetes API is slow to
 
 **Symptoms:**
 
-```
+```text
 failed to sync cluster: context deadline exceeded
 ```
 
@@ -215,7 +215,7 @@ data:
 
 When logging in via the ArgoCD CLI:
 
-```
+```text
 FATA[0030] rpc error: code = DeadlineExceeded desc = context deadline exceeded
 ```
 

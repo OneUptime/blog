@@ -385,7 +385,7 @@ The SSH Check receiver produces the following metrics:
 
 **Example metric output:**
 
-```
+```text
 sshcheck_duration{} 245.7
 sshcheck_status{} 1
 sshcheck_error{} 0
@@ -393,7 +393,7 @@ sshcheck_error{} 0
 
 With SFTP checks enabled:
 
-```
+```text
 sshcheck_duration{} 245.7
 sshcheck_status{} 1
 sshcheck_error{} 0

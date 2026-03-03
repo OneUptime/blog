@@ -53,7 +53,7 @@ spec:
 
 If your repo has this structure:
 
-```
+```text
 services/
   api-gateway/
     deployment.yaml
@@ -72,7 +72,7 @@ The generator creates three Applications: `api-gateway`, `user-service`, and `pa
 
 Each matched directory produces these parameters:
 
-```
+```text
 Directory: services/api-gateway
   path          = "services/api-gateway"
   path.basename = "api-gateway"
@@ -140,7 +140,7 @@ For repositories with deeper nesting, use multi-level glob patterns:
 
 Given this repo structure:
 
-```
+```text
 teams/
   backend/
     services/
@@ -182,7 +182,7 @@ This generates Applications named `backend-api`, `backend-auth`, `frontend-web`,
 
 A common pattern is organizing directories by environment:
 
-```
+```text
 envs/
   dev/
     api-gateway/
@@ -270,7 +270,7 @@ spec:
 
 The Git directory generator works well with Kustomize overlay structures:
 
-```
+```text
 base/
   api-gateway/
     kustomization.yaml

@@ -167,7 +167,7 @@ https_proxy=http://proxy.corp.example.com:8080
 
 For larger inventories, putting proxy settings inline gets messy. The cleaner approach is using the `host_vars` and `group_vars` directory structure:
 
-```
+```text
 inventory/
   hosts.ini
   group_vars/

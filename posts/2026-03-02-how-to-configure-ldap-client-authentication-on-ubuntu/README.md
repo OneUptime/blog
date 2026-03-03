@@ -125,7 +125,7 @@ Configure NSS to use SSSD for user and group lookups:
 sudo nano /etc/nsswitch.conf
 ```
 
-```
+```text
 passwd:         files systemd sss
 group:          files systemd sss
 shadow:         files sss
@@ -168,7 +168,7 @@ Configure nslcd:
 sudo nano /etc/nslcd.conf
 ```
 
-```
+```text
 uid nslcd
 gid nslcd
 uri ldap://ldap.example.com
@@ -187,7 +187,7 @@ sudo systemctl restart nslcd
 
 Update `/etc/nsswitch.conf` to include `ldap`:
 
-```
+```text
 passwd:         files ldap
 group:          files ldap
 shadow:         files ldap

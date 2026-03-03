@@ -450,7 +450,7 @@ Exclude system metrics when focusing on workloads:
 
 Structure dashboards hierarchically:
 
-```
+```text
 Kubernetes/
 ├── Cluster Overview
 ├── Namespace Overview

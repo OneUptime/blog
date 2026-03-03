@@ -170,7 +170,7 @@ Syncthing can keep old versions of modified or deleted files. Configure versioni
 
 Create a `.stignore` file in a synced folder to exclude files from synchronization:
 
-```
+```text
 # .stignore - Patterns for files to exclude from sync
 # Ignore OS-generated files
 .DS_Store

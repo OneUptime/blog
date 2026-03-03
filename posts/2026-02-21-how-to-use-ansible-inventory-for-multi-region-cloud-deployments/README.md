@@ -207,7 +207,7 @@ ansible-playbook deploy.yml --limit 'env_production:&region_ap_southeast_1'
 
 If you run across multiple cloud providers, use separate inventory files per provider:
 
-```
+```text
 inventory/
   01_aws_ec2.yml          # AWS instances
   02_azure_rm.yml         # Azure VMs

@@ -74,7 +74,7 @@ istioctl x describe pod <pod-name> -n <namespace>
 
 The output will show something like:
 
-```
+```text
 Pod: httpbin-xxxx
    Pod Revision: default
    Pod Ports: 8080(httpbin), 15090(istio-proxy)

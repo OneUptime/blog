@@ -16,7 +16,7 @@ This guide is a systematic approach to diagnosing and fixing SSH permission deni
 
 The typical error looks like this:
 
-```
+```text
 fatal: [web1]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: deploy@192.168.1.10: Permission denied (publickey,password).",
@@ -44,7 +44,7 @@ ssh -vvv -i ~/.ssh/deploy_key deploy@192.168.1.10
 
 In the verbose output, look for these lines:
 
-```
+```text
 debug1: Offering public key: /home/user/.ssh/deploy_key RSA SHA256:...
 debug1: Server accepts key: /home/user/.ssh/deploy_key RSA SHA256:...
 # OR

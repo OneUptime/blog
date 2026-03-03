@@ -176,7 +176,7 @@ ssh user@[2001:db8:1::10]
 
 In `~/.ssh/config` on the client side:
 
-```
+```text
 Host myserver
     HostName 2001:db8:1::10
     User deploy
@@ -185,13 +185,13 @@ Host myserver
 
 The SSH daemon on the server listens on both IPv4 and IPv6 by default. To restrict to IPv6 only, edit `/etc/ssh/sshd_config`:
 
-```
+```text
 ListenAddress ::
 ```
 
 The `::` notation means all IPv6 addresses. If you want a specific IPv6 address:
 
-```
+```text
 ListenAddress 2001:db8:1::10
 ```
 
@@ -203,7 +203,7 @@ UFW manages both IPv4 and IPv6 rules. Ensure IPv6 is enabled in UFW configuratio
 sudo nano /etc/default/ufw
 ```
 
-```
+```text
 # Ensure this line is set
 IPV6=yes
 ```

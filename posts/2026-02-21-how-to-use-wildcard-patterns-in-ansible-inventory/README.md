@@ -248,7 +248,7 @@ ansible '*prod*' -i inventory.ini --list-hosts | tail -n +2 | wc -l
 
 To get the most out of wildcards, adopt a consistent naming convention:
 
-```
+```text
 {role}-{environment}-{region}-{index}.{domain}
 ```
 

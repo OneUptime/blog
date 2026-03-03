@@ -74,7 +74,7 @@ docker build --check -f test.Dockerfile .
 
 The output shows each issue with its location, severity, and a description:
 
-```
+```text
 WARNING: LegacyKeyValueFormat - "Legacy key/value format with whitespace separator should not be used"
 WARNING: SecretsUsedInArgOrEnv - "Do not use ARG or ENV instructions for sensitive data"
 WARNING: JSONArgsRecommended - "JSON arguments recommended for ENTRYPOINT to prevent unintended behavior"

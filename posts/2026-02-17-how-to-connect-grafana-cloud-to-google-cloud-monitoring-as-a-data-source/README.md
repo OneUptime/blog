@@ -206,14 +206,14 @@ Grafana supports MQL queries against Google Cloud Monitoring. Switch to the MQL 
 
 Example MQL queries you can use in Grafana panels.
 
-```
+```text
 # Request rate with error breakdown
 fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count
 | group_by [metric.response_code_class], rate(val())
 | every 1m
 ```
 
-```
+```text
 # Ratio of errors to total - error percentage
 {
   fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count
@@ -229,7 +229,7 @@ fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count
 | mul(100)
 ```
 
-```
+```text
 # Cloud SQL CPU utilization
 fetch cloudsql_database::cloudsql.googleapis.com/database/cpu/utilization
 | group_by [resource.database_id], mean(val())

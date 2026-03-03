@@ -122,7 +122,7 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 ```
 
 You should see messages like:
-```
+```text
 @opentelemetry/instrumentation-http Applying instrumentation patch for module on require hook
 ```
 

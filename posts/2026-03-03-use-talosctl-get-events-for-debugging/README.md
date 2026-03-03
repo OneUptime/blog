@@ -34,7 +34,7 @@ The watch mode keeps the connection open and prints new events as they occur. Th
 
 Each event in the output contains several fields:
 
-```
+```text
 NODE           TYPE        ID                                   VERSION   TIMESTAMP
 192.168.1.10   ConfigSet   config-set-1234                     1         2026-03-03T10:15:30Z
 192.168.1.10   PhaseEvent  phase-event-5678                    1         2026-03-03T10:15:31Z

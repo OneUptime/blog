@@ -40,7 +40,7 @@ flowchart LR
 
 A minimal MLflow project looks like this:
 
-```
+```text
 my_ml_project/
 ├── MLproject           # Project specification
 ├── conda.yaml          # Conda environment definition
@@ -368,7 +368,7 @@ mlflow.set_tracking_uri(tracking_uri)
 
 Create reusable project templates:
 
-```
+```text
 mlflow-project-template/
 ├── {{cookiecutter.project_name}}/
 │   ├── MLproject

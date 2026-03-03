@@ -53,7 +53,7 @@ CEL expressions in Access Context Manager evaluate to a boolean (true/false). Th
 
 Here is a simple example:
 
-```
+```text
 origin.ip == "203.0.113.1"
 ```
 

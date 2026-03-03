@@ -27,13 +27,13 @@ This catches issues like:
 
 The output for a valid playbook is simply:
 
-```
+```text
 playbook: deploy.yml
 ```
 
 For an invalid one, you get a clear error:
 
-```
+```text
 ERROR! Syntax Error while loading YAML.
   mapping values are not allowed in this context
   in "deploy.yml", line 15, column 10
@@ -74,7 +74,7 @@ Ansible-lint catches things like:
 
 Example output:
 
-```
+```text
 deploy.yml:15: command-instead-of-module: Use apt instead of command to install packages
 deploy.yml:23: no-changed-when: Commands should not change things without a when clause
 deploy.yml:31: name[missing]: All tasks should be named
@@ -122,7 +122,7 @@ ansible-playbook deploy.yml --check --diff
 
 The `--diff` flag is especially useful for template and file tasks because it shows you the exact content differences:
 
-```
+```text
 TASK [Deploy nginx configuration] ***
 --- before: /etc/nginx/nginx.conf
 +++ after: dynamically generated
@@ -219,7 +219,7 @@ molecule init scenario default --driver-name docker
 
 This creates the following structure:
 
-```
+```text
 roles/webserver/
   molecule/
     default/

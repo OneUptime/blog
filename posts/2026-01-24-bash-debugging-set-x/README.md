@@ -48,7 +48,7 @@ echo "Hello, $name"
 
 Output with `set -x`:
 
-```
+```text
 + echo 'This command will be traced'
 This command will be traced
 + name=world

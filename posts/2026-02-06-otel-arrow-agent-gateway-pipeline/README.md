@@ -10,7 +10,7 @@ The agent-to-gateway pattern is the most common production architecture for Open
 
 ## Architecture
 
-```
+```text
 [App] --> [Agent Collector] --OTel Arrow--> [Gateway Collector] --OTLP--> [Backend]
 [App] --> [Agent Collector] --OTel Arrow-->        |
 [App] --> [Agent Collector] --OTel Arrow-->        |

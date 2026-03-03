@@ -278,7 +278,7 @@ Create ingestion mappings to transform OpenTelemetry data into your table schema
     {"column": "Events", "path": "$.events", "datatype": "dynamic"},
     {"column": "Links", "path": "$.links", "datatype": "dynamic"}
 ]
-```
+```text
 
 // Create mapping for metrics
 .create table Metrics ingestion json mapping 'OtelMetricsMapping'
@@ -292,7 +292,7 @@ Create ingestion mappings to transform OpenTelemetry data into your table schema
     {"column": "Attributes", "path": "$.attributes", "datatype": "dynamic"},
     {"column": "Resource", "path": "$.resource", "datatype": "dynamic"}
 ]
-```
+```text
 
 // Create mapping for logs
 .create table Logs ingestion json mapping 'OtelLogsMapping'
@@ -308,7 +308,7 @@ Create ingestion mappings to transform OpenTelemetry data into your table schema
     {"column": "Attributes", "path": "$.attributes", "datatype": "dynamic"},
     {"column": "Resource", "path": "$.resource", "datatype": "dynamic"}
 ]
-```
+```text
 ```
 
 Update your collector configuration to use these mappings:
@@ -389,7 +389,7 @@ Configure partitioning and retention policies to optimize query performance and 
     }
   ]
 }
-```
+```text
 
 // Set update policy to automatically aggregate data
 .alter table TraceSummary policy update
@@ -480,7 +480,7 @@ Optimize ADX performance with these strategies:
   "TagPrefix": "drop-by:",
   "RetentionPeriod": "00:00:00"
 }
-```
+```text
 ```
 
 **4. Optimize Batch Sizes:**

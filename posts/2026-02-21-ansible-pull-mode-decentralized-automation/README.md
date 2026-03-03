@@ -61,7 +61,7 @@ ansible-pull -U https://github.com/yourorg/ansible-configs.git -d /opt/ansible-l
 
 Your Git repository needs a playbook that targets `localhost`. Here is a typical structure.
 
-```
+```text
 ansible-configs/
   local.yml              # Main playbook (default entry point)
   requirements.yml       # Ansible Galaxy requirements

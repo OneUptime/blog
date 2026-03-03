@@ -125,7 +125,7 @@ talosctl service etcd --nodes 10.0.0.1
 
 For maximum reliability, set up a cascade of watchdog mechanisms:
 
-```
+```text
 Layer 1: Application health checks (Kubernetes liveness probes)
   - Restarts individual containers
   - Timeout: 10-30 seconds

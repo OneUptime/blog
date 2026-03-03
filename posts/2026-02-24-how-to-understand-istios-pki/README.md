@@ -172,7 +172,7 @@ spec:
 
 With this config, identities look like:
 
-```
+```text
 spiffe://my-org.example.com/ns/default/sa/reviews
 ```
 

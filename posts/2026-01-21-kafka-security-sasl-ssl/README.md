@@ -236,7 +236,7 @@ security.inter.broker.protocol=SASL_SSL
 
 #### JAAS Configuration for Broker
 
-```
+```text
 # /etc/kafka/kafka_server_jaas.conf
 
 KafkaServer {
@@ -302,7 +302,7 @@ security.inter.broker.protocol=SASL_SSL
 
 #### JAAS Configuration for SCRAM
 
-```
+```text
 # /etc/kafka/kafka_server_jaas.conf
 
 KafkaServer {

@@ -12,7 +12,7 @@ If you're running Kubernetes on bare metal, you already know the pain - there is
 
 This guide walks you through the entire process: installing the Operator Lifecycle Manager (OLM), subscribing to the MetalLB Operator, deploying MetalLB, and configuring IP address pools with L2 or BGP advertisements.
 
-### What Is the MetalLB Operator?
+## What Is the MetalLB Operator?
 
 The MetalLB Operator is a Kubernetes operator published on [OperatorHub.io](https://operatorhub.io). It packages MetalLB as a set of Custom Resource Definitions (CRDs) and a controller that watches for those resources. Instead of applying raw YAML manifests and managing upgrades yourself, the operator handles:
 
@@ -78,7 +78,7 @@ kubectl get pods -n olm
 
 You should see output similar to this:
 
-```
+```text
 NAME                                READY   STATUS    RESTARTS   AGE
 olm-operator-5b9bd6b4d7-x2k8n      1/1     Running   0          45s
 catalog-operator-7f8c5f6b9d-r4jvq   1/1     Running   0          45s
@@ -182,7 +182,7 @@ kubectl get csv -n metallb-system
 
 Expected output:
 
-```
+```text
 NAME                                  DISPLAY            VERSION   PHASE
 metallb-operator.v0.14.9              MetalLB Operator   0.14.9    Succeeded
 ```
@@ -229,7 +229,7 @@ kubectl get pods -n metallb-system
 
 The output should look something like:
 
-```
+```text
 NAME                                      READY   STATUS    RESTARTS   AGE
 metallb-operator-5d8c7f9b6-lm4nt         1/1     Running   0          3m
 controller-metallb-7b5d6f8c4-p2xwn       1/1     Running   0          45s
@@ -432,7 +432,7 @@ kubectl get svc nginx-test-lb
 
 You should see something like:
 
-```
+```text
 NAME            TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)        AGE
 nginx-test-lb   LoadBalancer   10.43.12.95    192.168.1.240   80:31452/TCP   10s
 ```

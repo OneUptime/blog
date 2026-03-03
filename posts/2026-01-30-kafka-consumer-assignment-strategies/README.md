@@ -531,7 +531,7 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 
 Output shows which consumer owns which partitions:
 
-```
+```text
 GROUP            TOPIC    PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG   CONSUMER-ID                                    HOST
 order-processors orders   0          1000            1050            50    consumer-1-abc123                              /10.0.0.1
 order-processors orders   1          2000            2100            100   consumer-1-abc123                              /10.0.0.1

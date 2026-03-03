@@ -98,7 +98,7 @@ description: >
 ```
 
 Result:
-```
+```text
 This is the first paragraph about the deployment process and what it configures on the server.
 This is the second paragraph that covers the verification steps and health checks.
 This is the third paragraph about rollback procedures in case of failure.

@@ -476,7 +476,7 @@ cockroach node status --insecure --host=localhost:26257
 
 You should see output showing all three nodes:
 
-```
+```text
   id |     address      |   sql_address    |  build  |          started_at          |          updated_at          | locality | is_available | is_live
 -----+------------------+------------------+---------+------------------------------+------------------------------+----------+--------------+---------
    1 | localhost:26257  | localhost:26257  | v23.x.x | 2026-02-02 10:00:00.000000+0 | 2026-02-02 10:00:05.000000+0 |          | true         | true

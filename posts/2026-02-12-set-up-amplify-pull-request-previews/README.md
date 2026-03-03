@@ -16,7 +16,7 @@ When a developer opens a pull request against your main branch, Amplify automati
 
 The preview URL looks something like:
 
-```
+```text
 https://pr-42.d1234abcd.amplifyapp.com
 ```
 
@@ -100,7 +100,7 @@ PR previews should typically connect to development or staging backends, not pro
 1. Go to "Hosting" then "Environment variables"
 2. Add variables with the branch scope set to "Previews"
 
-```
+```text
 # Preview-specific environment variables
 API_URL=https://dev-api.example.com
 DATABASE_URL=postgresql://user:pass@dev-db:5432/myapp

@@ -349,7 +349,7 @@ kubectl exec -n abort-test $RATINGS_POD -c istio-proxy -- \
 
 You should see counters like:
 
-```
+```text
 http.inbound_0.0.0.0_9080.fault.aborts_injected: 1523
 http.inbound_0.0.0.0_9080.fault.delays_injected: 0
 ```

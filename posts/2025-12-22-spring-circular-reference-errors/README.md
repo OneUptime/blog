@@ -22,7 +22,7 @@ graph LR
 
 The error message looks like this:
 
-```
+```text
 ***************************
 APPLICATION FAILED TO START
 ***************************

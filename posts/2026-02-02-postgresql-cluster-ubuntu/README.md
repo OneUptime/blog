@@ -161,7 +161,7 @@ sudo nano /etc/postgresql/16/main/pg_hba.conf
 
 Add these lines at the end of pg_hba.conf to allow replication from your standby servers:
 
-```
+```text
 # Allow replication connections from standby servers
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
 host    replication     replicator      192.168.1.11/32         scram-sha-256
@@ -711,7 +711,7 @@ ssl_key_file = 'server.key'
 
 Update pg_hba.conf to require SSL for replication:
 
-```
+```text
 hostssl replication replicator 192.168.1.0/24 scram-sha-256
 ```
 

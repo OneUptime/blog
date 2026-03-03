@@ -23,7 +23,7 @@ Here is what the complete stack includes:
 
 ## Project Structure
 
-```
+```text
 myproject/
   docker-compose.yml
   docker-compose.prod.yml

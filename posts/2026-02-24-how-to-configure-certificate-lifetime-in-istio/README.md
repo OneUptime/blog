@@ -231,7 +231,7 @@ kubectl logs deployment/istiod -n istio-system | grep -c "CSR"
 
 Check Prometheus metrics:
 
-```
+```text
 # CSR processing rate
 rate(citadel_server_csr_count[5m])
 

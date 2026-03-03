@@ -14,7 +14,7 @@ Prop type validation errors occur when components receive props that do not matc
 
 When React detects a prop type mismatch, it logs a warning to the console:
 
-```
+```text
 Warning: Failed prop type: Invalid prop `count` of type `string`
 supplied to `Counter`, expected `number`.
 ```

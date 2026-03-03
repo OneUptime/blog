@@ -14,13 +14,13 @@ The `RecordTooLargeException` is one of the most common errors encountered when 
 
 When you see this exception, Kafka is telling you that your message is too large:
 
-```
+```text
 org.apache.kafka.common.errors.RecordTooLargeException: The message is 1548576 bytes when serialized which is larger than the maximum request size you have configured with the max.request.size configuration.
 ```
 
 Or from the broker side:
 
-```
+```text
 org.apache.kafka.common.errors.RecordTooLargeException: The request included a message larger than the max message size the server will accept.
 ```
 

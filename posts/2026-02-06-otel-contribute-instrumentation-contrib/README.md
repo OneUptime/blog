@@ -67,7 +67,7 @@ pip install tox
 
 Follow the existing convention in the repo:
 
-```
+```text
 instrumentation/opentelemetry-instrumentation-fastmq/
     src/
         opentelemetry/

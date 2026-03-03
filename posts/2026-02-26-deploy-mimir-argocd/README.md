@@ -54,7 +54,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 metrics/
   mimir/
     Chart.yaml

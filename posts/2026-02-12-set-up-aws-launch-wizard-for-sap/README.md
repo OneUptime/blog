@@ -98,7 +98,7 @@ Launch Wizard walks through several configuration screens. Here are the key deci
 
 Launch Wizard recommends instances based on your HANA memory requirement:
 
-```
+```text
 HANA Memory Requirement    Recommended Instance
 128 GB                     r6i.4xlarge
 256 GB                     r6i.8xlarge
@@ -129,7 +129,7 @@ Launch Wizard configures EBS volumes following SAP guidelines:
 
 For production deployments, enable HA:
 
-```
+```text
 HANA HA:
 - HANA System Replication (synchronous or asynchronous)
 - Pacemaker cluster for automatic failover

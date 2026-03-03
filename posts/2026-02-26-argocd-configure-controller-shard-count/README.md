@@ -88,7 +88,7 @@ spec:
 
 The `ARGOCD_CONTROLLER_REPLICAS` environment variable tells each controller pod the total number of shards. This is critical because each pod uses this value to calculate which clusters it owns:
 
-```
+```text
 my_clusters = clusters where hash(cluster) % ARGOCD_CONTROLLER_REPLICAS == my_pod_ordinal
 ```
 

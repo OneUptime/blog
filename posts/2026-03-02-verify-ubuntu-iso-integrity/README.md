@@ -66,7 +66,7 @@ gpg --keyid-format long --verify SHA256SUMS.gpg SHA256SUMS
 
 Look for this in the output:
 
-```
+```text
 gpg: Good signature from "Ubuntu CD Image Automatic Signing Key (2012) <cdimage@ubuntu.com>" [unknown]
 ```
 
@@ -87,7 +87,7 @@ The `--ignore-missing` flag tells sha256sum not to fail if other ISOs listed in 
 
 Expected output:
 
-```
+```text
 ubuntu-24.04-live-server-amd64.iso: OK
 ```
 

@@ -156,7 +156,7 @@ talosctl service udevd -n <node-ip>
 
 Services in Talos start in a specific order based on their dependencies:
 
-```
+```text
 machined (PID 1)
   -> udevd (hardware detection)
   -> containerd (container runtime)

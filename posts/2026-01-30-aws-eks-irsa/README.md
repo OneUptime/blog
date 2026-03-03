@@ -26,7 +26,7 @@ The IRSA mechanism relies on several components working together:
 
 Here is a visual representation of the IRSA flow:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                              EKS Cluster                                │
 │  ┌─────────────┐     ┌─────────────────┐     ┌─────────────────────┐   │
@@ -112,7 +112,7 @@ echo "OIDC URL: ${OIDC_URL}"
 
 The output will look similar to:
 
-```
+```text
 OIDC URL: https://oidc.eks.us-west-2.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE
 ```
 
@@ -156,7 +156,7 @@ aws iam list-open-id-connect-providers \
 
 You should see output similar to:
 
-```
+```text
 -----------------------------------------------------------------------------------
 |                          ListOpenIDConnectProviders                             |
 +---------------------------------------------------------------------------------+
@@ -382,7 +382,7 @@ kubectl describe serviceaccount my-app-sa -n my-app
 
 The output should show the annotation:
 
-```
+```text
 Name:                my-app-sa
 Namespace:           my-app
 Labels:              app=my-app
@@ -527,7 +527,7 @@ kubectl exec -it my-app-pod -n my-app -- env | grep AWS
 
 Expected output:
 
-```
+```text
 AWS_ROLE_ARN=arn:aws:iam::123456789012:role/eks-my-app-role
 AWS_WEB_IDENTITY_TOKEN_FILE=/var/run/secrets/eks.amazonaws.com/serviceaccount/token
 ```
@@ -543,7 +543,7 @@ kubectl exec -it my-app-pod -n my-app -- ls -la /var/run/secrets/eks.amazonaws.c
 
 Expected output:
 
-```
+```text
 total 4
 drwxrwxrwt 3 root root  100 Jan 30 10:00 .
 drwxr-xr-x 3 root root   60 Jan 30 10:00 ..

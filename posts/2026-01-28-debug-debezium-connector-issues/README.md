@@ -478,7 +478,7 @@ if __name__ == "__main__":
 
 ### Issue: Connector Fails to Start
 
-```
+```text
 Error: Connector configuration is invalid and contains the following errors
 ```
 
@@ -493,7 +493,7 @@ curl -X PUT -H "Content-Type: application/json" \
 
 ### Issue: Snapshot Never Completes
 
-```
+```text
 Error: Snapshot has been running for extended period
 ```
 
@@ -530,7 +530,7 @@ incremental.snapshot.chunk.size=1024
 
 ### Issue: High Replication Lag
 
-```
+```text
 Warning: MilliSecondsBehindSource is growing
 ```
 
@@ -562,7 +562,7 @@ poll.interval.ms=100
 
 ### Issue: Missing Events
 
-```
+```text
 Error: Expected event not found in Kafka topic
 ```
 

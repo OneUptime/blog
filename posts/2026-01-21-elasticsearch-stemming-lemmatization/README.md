@@ -313,7 +313,7 @@ For many overrides, use a file:
 
 Create `/etc/elasticsearch/analysis/stem_overrides.txt`:
 
-```
+```text
 running, ran, runs => run
 better, best => good
 mice => mouse
@@ -810,7 +810,7 @@ Use appropriate language-specific stemmers.
 
 ### 7. Order Filters Correctly
 
-```
+```text
 lowercase -> stop words -> protected words -> stemmer override -> stemmer
 ```
 

@@ -99,7 +99,7 @@ all:
 
 For production setups, I recommend pulling port configuration into dedicated variable files. This keeps your inventory file clean and makes it easier to manage across environments:
 
-```
+```text
 inventory/
   hosts.ini
   group_vars/

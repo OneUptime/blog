@@ -14,7 +14,7 @@ This post covers a complete Ansible role for installing MongoDB Community Editio
 
 ## Role Structure
 
-```
+```text
 roles/mongodb_install/
   defaults/main.yml
   tasks/

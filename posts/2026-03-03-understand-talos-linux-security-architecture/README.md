@@ -72,7 +72,7 @@ Without these certificates, there is no way to authenticate to the cluster. This
 
 The Talos root filesystem is mounted read-only. The OS image is a SquashFS filesystem that gets verified at boot. You cannot modify system binaries, install additional software, or tamper with the OS at runtime.
 
-```
+```text
 Filesystem Layout:
 / (root)          - Read-only SquashFS
 /system           - Read-only, contains Talos binaries
@@ -138,7 +138,7 @@ Talos Linux ships with a hardened kernel configuration:
 - **seccomp** profiles restricting system calls
 - Kernel parameters tuned for security:
 
-```
+```text
 # Security-relevant kernel parameters Talos sets by default
 kernel.kptr_restrict = 1          # Hide kernel pointers
 kernel.dmesg_restrict = 1         # Restrict dmesg access

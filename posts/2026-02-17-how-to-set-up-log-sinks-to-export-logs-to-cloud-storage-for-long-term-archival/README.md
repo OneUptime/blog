@@ -142,7 +142,7 @@ gcloud storage buckets add-iam-policy-binding gs://my-project-log-archive \
 
 Cloud Logging exports logs to Cloud Storage as JSON files organized by date. The file structure looks like this:
 
-```
+```text
 gs://my-project-log-archive/
   syslog/2026/02/17/
     08:00:00_08:59:59_S0.json

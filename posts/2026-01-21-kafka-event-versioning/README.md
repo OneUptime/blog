@@ -50,7 +50,7 @@ Event versioning is essential for evolving event-driven systems without breaking
 
 ### Strategy 3: Separate Topics per Version
 
-```
+```text
 orders-events-v1
 orders-events-v2
 orders-events-v3

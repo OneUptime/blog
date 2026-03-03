@@ -24,7 +24,7 @@ This approach means ArgoCD manages itself through GitOps. You store the Kustomiz
 
 Here is a typical directory structure for managing ArgoCD with Kustomize.
 
-```
+```text
 argocd-install/
   base/
     kustomization.yaml

@@ -97,7 +97,7 @@ smtp_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
 sudo nano /etc/postfix/sasl_passwd
 ```
 
-```
+```text
 # Mailgun SMTP credentials
 # Replace with your actual SMTP username and password
 [smtp.mailgun.org]:587    postmaster@mg.yourdomain.com:your-mailgun-smtp-password
@@ -131,7 +131,7 @@ sender_canonical_maps = hash:/etc/postfix/sender_canonical
 sudo nano /etc/postfix/sender_canonical
 ```
 
-```
+```text
 # Map system users to verified Mailgun sender addresses
 root            noreply@yourdomain.com
 www-data        app@yourdomain.com
@@ -163,7 +163,7 @@ sudo tail -f /var/log/mail.log
 
 A successful relay shows:
 
-```
+```text
 postfix/smtp[1234]: to=<recipient@example.com>,
   relay=smtp.mailgun.org[x.x.x.x]:587,
   status=sent (250 Queued. Thank you.)
@@ -334,7 +334,7 @@ relayhost = [smtp.eu.mailgun.org]:587
 
 And update sasl_passwd accordingly:
 
-```
+```text
 [smtp.eu.mailgun.org]:587    postmaster@mg.yourdomain.com:your-password
 ```
 

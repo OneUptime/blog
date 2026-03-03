@@ -75,7 +75,7 @@ Grafana panel plugins consist of several key pieces:
 
 The data flow works like this:
 
-```
+```text
 Data Source -> Query -> Data Frame -> Panel Plugin -> Visualization
                                           |
                                     Panel Options
@@ -105,7 +105,7 @@ npx @grafana/create-plugin@latest
 
 This generates the following structure:
 
-```
+```text
 my-custom-panel/
 ├── .config/                    # Build configuration
 ├── src/
@@ -932,7 +932,7 @@ npm run build
 
 The build output structure:
 
-```
+```text
 dist/
 ├── img/
 │   └── logo.svg

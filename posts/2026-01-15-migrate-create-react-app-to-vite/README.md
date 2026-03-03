@@ -585,7 +585,7 @@ npm run dev
 
 You should see output similar to:
 
-```
+```text
   VITE v5.x.x  ready in 300 ms
 
   ➜  Local:   http://localhost:3000/
@@ -974,7 +974,7 @@ Use this checklist to ensure you've completed all migration steps:
 
 After migration, your project structure should look like this:
 
-```
+```text
 my-app/
 ├── node_modules/
 ├── public/

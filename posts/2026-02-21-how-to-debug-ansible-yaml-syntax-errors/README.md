@@ -14,7 +14,7 @@ YAML syntax errors are the most basic and yet most frustrating problems in Ansib
 
 When Ansible encounters a YAML syntax error, it produces a message like:
 
-```
+```text
 ERROR! We were unable to read either as JSON nor YAML, these are the errors we got from each:
 JSON: Expecting value: line 1 column 1 (char 0)
 
@@ -38,7 +38,7 @@ YAML does not allow tab characters. This is the number one cause of syntax error
 
 The error message:
 
-```
+```text
 found character '\t' that cannot start any token
 ```
 
@@ -87,13 +87,13 @@ YAML uses indentation to define structure. Every level must be consistently inde
 
 **The error message for this is often misleading:**
 
-```
+```text
 mapping values are not allowed in this context
 ```
 
 or
 
-```
+```text
 could not find expected ':'
 ```
 
@@ -317,7 +317,7 @@ ansible-lint -R -r ~/.ansible/lint-rules deploy.yml
 
 Example output:
 
-```
+```text
 deploy.yml:15: syntax-check: 'deploy.yml' is not a valid YAML file
 deploy.yml:23: yaml[indentation]: wrong indentation: expected 4 but found 6
 deploy.yml:31: yaml[truthy]: truthy value should be one of [false, true]

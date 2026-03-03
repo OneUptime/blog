@@ -14,7 +14,7 @@ A processor sits between receivers and exporters. It receives telemetry data, tr
 
 ## Project Structure
 
-```
+```text
 piiprocessor/
     factory.go      # Creates processor instances
     config.go       # Configuration struct

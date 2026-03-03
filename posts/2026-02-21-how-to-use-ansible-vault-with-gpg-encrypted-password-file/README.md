@@ -177,7 +177,7 @@ This is a significant advantage over plain text password files. The encrypted fi
 
 A typical project layout:
 
-```
+```text
 project/
   ansible.cfg              # references vault_pass_gpg.sh
   vault_pass_gpg.sh        # decryption script (committed)

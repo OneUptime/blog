@@ -100,7 +100,7 @@ path = "src/client.rs"
 
 ### Project Structure
 
-```
+```text
 grpc-rust-service/
 ├── Cargo.toml
 ├── build.rs

@@ -115,7 +115,7 @@ Helm templates give you more flexibility for generating Istio resources dynamica
 
 ### Helm Chart Structure
 
-```
+```text
 istio-service-chart/
   Chart.yaml
   values.yaml

@@ -14,7 +14,7 @@ The "Each child in a list should have a unique key prop" warning is one of the m
 
 When you see this warning in your console:
 
-```
+```text
 Warning: Each child in a list should have a unique "key" prop.
 ```
 

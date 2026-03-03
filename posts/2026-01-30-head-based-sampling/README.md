@@ -58,7 +58,7 @@ Key characteristics:
 
 The W3C traceparent header carries the sampling decision:
 
-```
+```text
 traceparent: 00-<trace-id>-<span-id>-<flags>
 ```
 

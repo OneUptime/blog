@@ -199,7 +199,7 @@ helm upgrade --install istio-services ./charts/standard-service \
 
 Use Kustomize components for shared configuration patterns:
 
-```
+```text
 istio-config/
   components/
     standard-resilience/

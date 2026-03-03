@@ -275,13 +275,13 @@ Now you can safely scale down and delete the v1 deployment.
 
 Track how many requests still hit deprecated endpoints:
 
-```
+```text
 sum(rate(istio_requests_total{request_url_path=~"/api/v1/.*"}[1h]))
 ```
 
 Compare v1 vs v2 traffic:
 
-```
+```text
 sum(rate(istio_requests_total{request_url_path=~"/api/v1/.*"}[1h]))
 /
 (sum(rate(istio_requests_total{request_url_path=~"/api/v1/.*"}[1h])) + sum(rate(istio_requests_total{request_url_path=~"/api/v2/.*"}[1h])))

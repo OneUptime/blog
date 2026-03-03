@@ -21,7 +21,7 @@ docker top web-server
 
 The output looks similar to a standard `ps` listing:
 
-```
+```text
 UID    PID    PPID   C  STIME  TTY   TIME      CMD
 root   1234   1233   0  10:05  ?     00:00:01  nginx: master process
 www    1250   1234   0  10:05  ?     00:00:00  nginx: worker process

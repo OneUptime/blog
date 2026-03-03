@@ -163,7 +163,7 @@ Calculate appropriate queue sizes based on your throughput and recovery time obj
 
 ### Sizing Formula
 
-```
+```text
 Required Storage (GB) = (throughput_per_sec × item_size_bytes × max_outage_seconds) / 1024^3
 ```
 
@@ -172,7 +172,7 @@ Example calculation:
 - Average span size: 2 KB
 - Target recovery time: 1 hour (3,600 seconds)
 
-```
+```text
 Storage = (10,000 × 2,048 × 3,600) / 1024^3
 Storage = 68 GB
 ```

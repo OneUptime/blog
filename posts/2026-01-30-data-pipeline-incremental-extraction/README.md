@@ -203,7 +203,7 @@ Here is a complete implementation of an incremental extraction pipeline using th
 
 ### Project Structure
 
-```
+```text
 incremental_pipeline/
     __init__.py
     watermark.py      # Watermark management

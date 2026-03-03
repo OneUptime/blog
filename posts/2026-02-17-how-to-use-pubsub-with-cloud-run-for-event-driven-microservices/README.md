@@ -115,7 +115,7 @@ CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
 
 Requirements:
 
-```
+```text
 flask==3.0.0
 gunicorn==21.2.0
 ```

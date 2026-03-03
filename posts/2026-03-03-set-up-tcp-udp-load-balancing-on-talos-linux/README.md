@@ -268,7 +268,7 @@ spec:
 
 For more control over TCP load balancing, use an external HAProxy:
 
-```
+```text
 # /etc/haproxy/haproxy.cfg
 
 defaults

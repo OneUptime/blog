@@ -133,7 +133,7 @@ echo '2024-01-15 INFO Contact support@example.com or call (800) 555-0199' >> /va
 
 Check the debug output to confirm the scrubbed results look like:
 
-```
+```text
 2024-01-15 ERROR Failed to send email to [EMAIL_REDACTED]
 2024-01-15 WARN User [PHONE_REDACTED] exceeded rate limit
 2024-01-15 INFO Contact [EMAIL_REDACTED] or call [PHONE_REDACTED]

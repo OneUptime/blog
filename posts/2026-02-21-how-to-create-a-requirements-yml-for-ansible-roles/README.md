@@ -178,7 +178,7 @@ collections:
 
 For projects with different role needs per environment, create multiple requirements files:
 
-```
+```text
 project/
   requirements.yml              # Common roles
   requirements-dev.yml          # Development-only roles

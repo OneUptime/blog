@@ -14,7 +14,7 @@ The "Could not read from remote repository" error stops you from pushing, pullin
 
 The full error message looks like this:
 
-```
+```text
 fatal: Could not read from remote repository.
 
 Please make sure you have the correct access rights
@@ -96,7 +96,7 @@ ssh-add --apple-use-keychain ~/.ssh/id_ed25519
 
 Create or edit `~/.ssh/config`:
 
-```
+```text
 Host github.com
     AddKeysToAgent yes
     UseKeychain yes
@@ -301,7 +301,7 @@ ssh -T -p 443 git@ssh.github.com
 
 Add to `~/.ssh/config`:
 
-```
+```text
 Host github.com
     Hostname ssh.github.com
     Port 443
@@ -333,7 +333,7 @@ ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_work -C "work@email.com"
 
 Edit `~/.ssh/config`:
 
-```
+```text
 # Personal GitHub account
 Host github.com-personal
     HostName github.com

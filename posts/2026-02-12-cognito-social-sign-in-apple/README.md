@@ -32,7 +32,7 @@ In the Apple Developer portal (developer.apple.com):
 
 The callback URL format:
 
-```
+```text
 https://your-domain.auth.us-east-1.amazoncognito.com/oauth2/idpresponse
 ```
 

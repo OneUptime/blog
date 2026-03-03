@@ -29,7 +29,7 @@ Layer 4 load balancers only see TCP/UDP packets and can't inspect HTTP content. 
 
 ## Project Structure
 
-```
+```text
 lb/
 ├── main.go           # Entry point
 ├── balancer.go       # Load balancer logic

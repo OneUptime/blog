@@ -84,7 +84,7 @@ The `--stream-options LowLatency` flag is key. Without it, the default latency c
 
 The command returns two ingest URLs (primary and secondary for redundancy). They look like:
 
-```
+```text
 rtmp://my-live-event-myms.channel.media.azure.net:1935/live/a1b2c3d4
 ```
 
@@ -175,7 +175,7 @@ az ams streaming-locator get-paths \
 This returns HLS and DASH manifest URLs. For low-latency HLS (LL-HLS), append `(format=m3u8-cmaf)` to the path.
 
 Example HLS URL:
-```
+```text
 https://my-media-services-usea.streaming.media.azure.net/abc123/stream.ism/manifest(format=m3u8-cmaf)
 ```
 

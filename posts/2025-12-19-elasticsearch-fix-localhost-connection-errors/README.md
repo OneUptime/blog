@@ -14,7 +14,7 @@ The "Failed to connect to localhost:9200" error is one of the most common issues
 
 You might see variations of this error:
 
-```
+```text
 curl: (7) Failed to connect to localhost port 9200: Connection refused
 ConnectionError: Failed to establish a new connection
 Connection refused [::1]:9200

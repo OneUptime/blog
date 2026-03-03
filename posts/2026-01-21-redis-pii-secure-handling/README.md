@@ -14,7 +14,7 @@ Handling Personally Identifiable Information (PII) in Redis requires careful con
 
 ### Common PII Types
 
-```
+```text
 +------------------+---------------------------+------------------+
 | Category         | Examples                  | Sensitivity      |
 +------------------+---------------------------+------------------+

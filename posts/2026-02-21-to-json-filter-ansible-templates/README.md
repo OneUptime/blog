@@ -124,7 +124,7 @@ DATABASE_HOSTS={{ db_hosts | to_json }}
 
 The rendered output:
 
-```
+```text
 APP_NAME=myapp
 APP_PORT=8080
 LOG_CONFIG={"level": "info", "format": "json", "outputs": [{"type": "stdout"}, {"type": "file", "path": "/var/log/myapp/app.log"}]}

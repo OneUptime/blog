@@ -26,7 +26,7 @@ sudo mv skaffold /usr/local/bin
 
 ## Project Structure
 
-```
+```text
 project/
   skaffold.yaml
   k8s/

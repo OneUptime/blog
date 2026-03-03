@@ -33,7 +33,7 @@ Request-trace correlation is the practice of linking every HTTP request to its d
 
 Without correlation, debugging distributed systems often looks like this:
 
-```
+```text
 User: "I got an error at 2:34 PM"
 You: *searches 50GB of logs* *finds 10,000 requests around that time*
 You: "Which one was yours?"
@@ -41,7 +41,7 @@ You: "Which one was yours?"
 
 With correlation:
 
-```
+```text
 User: "I got an error, the request ID was abc-123"
 You: *clicks link* *sees full trace with all service calls, timing, and errors*
 You: "Found it. The payment service timed out after 30s."
@@ -236,7 +236,7 @@ W3C Trace Context is the standard for distributed tracing propagation. It uses t
 - **traceparent**: Contains version, trace-id, parent-id, and trace-flags
 - **tracestate**: Vendor-specific key-value pairs
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
              |  |                                |                |
              v  |                                |                |
@@ -368,7 +368,7 @@ function addRequestIdToSpan(requestId: string): void {
 ```
 
 Now you can query your trace backend:
-```
+```text
 http.request_id = "550e8400-e29b-41d4-a716-446655440000"
 ```
 

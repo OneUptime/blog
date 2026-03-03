@@ -320,7 +320,7 @@ Resources:
 
 Provisioned concurrency charges apply even when instances are idle:
 
-```
+```text
 Cost = Provisioned GB-seconds * $0.000004463
      + Request charges (same as on-demand)
      + Duration charges for actual execution
@@ -328,7 +328,7 @@ Cost = Provisioned GB-seconds * $0.000004463
 
 For a function with 512MB memory and 10 provisioned instances running 24/7:
 
-```
+```text
 Monthly cost = 10 * 0.5GB * 86400s * 30 days * $0.000004463
             = $578/month just for provisioned concurrency
 ```

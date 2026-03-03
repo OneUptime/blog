@@ -56,7 +56,7 @@ kubectl exec my-app-xxxxx -c my-app -- cat /etc/resolv.conf
 
 Typical output:
 
-```
+```text
 nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5

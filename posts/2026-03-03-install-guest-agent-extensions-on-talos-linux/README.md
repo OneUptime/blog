@@ -150,7 +150,7 @@ machine:
 
 On the vSphere side, VMware Tools status will automatically change to "Running" once the extension is active:
 
-```
+```text
 vSphere Client -> VM -> Summary -> VMware Tools: Running (open-vm-tools)
 ```
 

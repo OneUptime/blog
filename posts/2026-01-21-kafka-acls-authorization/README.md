@@ -29,7 +29,7 @@ allow.everyone.if.no.acl.found=false
 
 ### ACL Structure
 
-```
+```text
 Principal + Permission + Operation + Resource + Host
 ```
 

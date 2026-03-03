@@ -182,12 +182,12 @@ ecs.describe_services(
 If you mix up the ARN format (like using a task ARN where a service ARN is expected), you'll get `ResourceNotFoundException`.
 
 The new ARN format includes the cluster name:
-```
+```text
 arn:aws:ecs:region:account:service/cluster-name/service-name
 ```
 
 The old format didn't:
-```
+```text
 arn:aws:ecs:region:account:service/service-name
 ```
 

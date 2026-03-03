@@ -16,7 +16,7 @@ Fluent Bit provides robust multiline parsing capabilities that can reassemble st
 
 When an application writes a stack trace, it typically looks like this:
 
-```
+```text
 2026-02-09 10:15:32 ERROR Exception in thread "main"
 java.lang.NullPointerException: Cannot invoke method on null object
     at com.example.MyService.processRequest(MyService.java:45)

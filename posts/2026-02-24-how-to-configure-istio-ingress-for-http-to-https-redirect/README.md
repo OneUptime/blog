@@ -61,7 +61,7 @@ curl -v http://myapp.example.com/
 
 You should see:
 
-```
+```text
 < HTTP/1.1 301 Moved Permanently
 < location: https://myapp.example.com/
 ```
@@ -195,13 +195,13 @@ The first rule matches HTTP traffic on port 80 and redirects to HTTPS. The secon
 
 The redirect preserves the request path and query parameters by default. If a client requests:
 
-```
+```text
 http://myapp.example.com/api/users?page=2
 ```
 
 They get redirected to:
 
-```
+```text
 https://myapp.example.com/api/users?page=2
 ```
 
@@ -217,7 +217,7 @@ There are a few ways to handle this:
 
 Configure the load balancer to health check on a port that is not affected by the redirect. The Istio ingress gateway has a status port (15021) with a health endpoint:
 
-```
+```text
 Health check URL: http://<gateway-ip>:15021/healthz/ready
 ```
 

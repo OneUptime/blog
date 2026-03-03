@@ -61,7 +61,7 @@ sudo ausearch -m avc -ts today
 
 A typical denial looks like this:
 
-```
+```text
 type=AVC msg=audit(1707840000.123:456): avc:  denied  { read } for
   pid=12345 comm="httpd" name="config.json" dev="sda1" ino=789012
   scontext=system_u:system_r:httpd_t:s0
@@ -113,7 +113,7 @@ ls -Z /var/www/html/
 
 Output:
 
-```
+```text
 unconfined_u:object_r:user_home_t:s0 config.json
 system_u:object_r:httpd_sys_content_t:s0 index.html
 ```
@@ -213,7 +213,7 @@ cat my_httpd_policy.te
 
 A typical generated policy:
 
-```
+```text
 module my_httpd_policy 1.0;
 
 require {

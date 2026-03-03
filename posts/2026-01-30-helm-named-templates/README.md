@@ -34,7 +34,7 @@ flowchart TD
 
 Helm ignores files starting with underscore during manifest generation. This makes `_helpers.tpl` the perfect place for template definitions.
 
-```
+```text
 mychart/
 ├── Chart.yaml
 ├── values.yaml
@@ -475,7 +475,7 @@ helm template myrelease ./mychart -f custom-values.yaml
 
 For complex charts, split helpers into multiple files:
 
-```
+```text
 templates/
 ├── _helpers.tpl          # Core helpers (name, fullname, labels)
 ├── _images.tpl           # Image-related templates

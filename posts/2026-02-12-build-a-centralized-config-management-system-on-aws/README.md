@@ -36,7 +36,7 @@ Parameter Store is free for standard parameters (up to 10,000) and supports hier
 
 Here is a naming scheme that scales well:
 
-```
+```text
 /{environment}/{application}/{component}/{setting}
 ```
 

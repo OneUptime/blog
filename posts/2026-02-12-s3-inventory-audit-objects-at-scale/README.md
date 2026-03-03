@@ -128,7 +128,7 @@ After configuring inventory, it takes up to 48 hours for the first report to app
 
 Reports are organized in the destination bucket like this:
 
-```
+```text
 my-inventory-reports/
   inventory/
     my-source-bucket/

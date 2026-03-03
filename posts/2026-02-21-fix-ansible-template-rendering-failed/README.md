@@ -12,7 +12,7 @@ Template rendering failures occur when Jinja2 cannot process a template file. Th
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "AnsibleError: An unhandled exception occurred while templating '{{ config.database.host }}'. Error was a <class 'ansible.errors.AnsibleUndefinedVariable'>, original message: 'dict object' has no attribute 'database'"
 }

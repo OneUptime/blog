@@ -148,7 +148,7 @@ public class StatefulProducer {
 **Problem:** Transaction took too long, broker aborted it.
 
 **Error:**
-```
+```text
 org.apache.kafka.common.errors.OutOfOrderSequenceException:
 The broker received an out of order sequence number
 ```

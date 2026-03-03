@@ -101,7 +101,7 @@ lsblk
 
 You will see something like this:
 
-```
+```text
 NAME    MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
 sda       8:0    0  128G  0 disk
 |-sda1    8:1    0 29.9G  0 part /

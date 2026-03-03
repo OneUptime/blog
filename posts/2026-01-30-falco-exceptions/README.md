@@ -403,7 +403,7 @@ For maintainability, organize exceptions in separate files from rules.
 
 ### Directory Structure
 
-```
+```text
 /etc/falco/
   falco.yaml              # Main config
   falco_rules.yaml        # Default Falco rules

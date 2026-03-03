@@ -14,7 +14,7 @@ The "Too many open files" error is one of the most common issues encountered by 
 
 In Linux, everything is a file - including network sockets, pipes, and actual files. Each open "file" requires a file descriptor (FD). When a process or the system reaches its file descriptor limit, you see errors like:
 
-```
+```text
 Too many open files
 socket: Too many open files
 java.io.IOException: Too many open files

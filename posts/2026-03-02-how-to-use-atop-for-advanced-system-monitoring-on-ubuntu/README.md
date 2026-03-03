@@ -54,7 +54,7 @@ Press `q` to quit.
 
 The top of the atop display shows:
 
-```
+```text
 ATOP - myserver            2026/03/02  14:23:45     1d0h12m elapsed
 PRC | sys  8.04s | user 18.5s |              | #proc    198 | #trun      4 |
 CPU | sys    12% | user   27% | irq     2%   | idle    59%  | wait     0%  |
@@ -184,13 +184,13 @@ sudo nano /etc/default/atop
 
 Change:
 
-```
+```text
 INTERVAL=600
 ```
 
 To:
 
-```
+```text
 INTERVAL=30
 ```
 

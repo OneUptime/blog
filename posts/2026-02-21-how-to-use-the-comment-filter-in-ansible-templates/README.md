@@ -24,7 +24,7 @@ By default, the comment filter uses shell-style `#` comments:
 ```
 
 Output:
-```
+```text
 #
 # This file is managed by Ansible
 #
@@ -56,7 +56,7 @@ The filter supports several built-in comment styles:
 ```
 
 Output:
-```
+```text
 --- Shell style (default) ---
 #
 # Managed by Ansible
@@ -90,7 +90,7 @@ You can specify custom prefix, postfix, and decoration characters:
 ```
 
 Output:
-```
+```text
 ;
 ; Managed by Ansible
 ;
@@ -146,7 +146,7 @@ PubkeyAuthentication yes
 ```
 
 Output:
-```
+```text
 #
 # SSH Configuration
 # Managed by Ansible - Do not edit manually

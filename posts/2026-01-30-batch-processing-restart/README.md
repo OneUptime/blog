@@ -31,7 +31,7 @@ Batch restart is the ability to resume a failed or stopped batch job from its la
 3. **Checkpointing**: Regular saves of processing progress
 4. **Idempotent Operations**: Safe to reprocess without side effects
 
-```
+```text
 Execution Flow with Restart
 ===========================
 

@@ -20,7 +20,7 @@ ArgoCD detects Kustomize projects automatically when it finds a `kustomization.y
 
 The standard pattern for a Kustomize-based multi-environment repository looks like this:
 
-```
+```text
 my-app/
   base/
     kustomization.yaml

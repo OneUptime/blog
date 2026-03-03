@@ -151,7 +151,7 @@ kubectl set image deployment/my-app my-app=my-app:1.1.0 -n app
 
 Flagger detects the change and starts the canary process:
 
-```
+```text
 1. Scales up canary with new image
 2. Routes 10% traffic to canary (stepWeight)
 3. Waits 30s (interval), checks metrics
@@ -321,7 +321,7 @@ kubectl get canary my-app -n app
 
 Output:
 
-```
+```text
 NAME     STATUS    WEIGHT   LASTTRANSITIONTIME
 my-app   Failed    0        2024-01-15T10:30:00Z
 ```
@@ -371,7 +371,7 @@ The staging configuration reaches 80% canary in about 1 minute. The production c
 
 Flagger exposes its own metrics:
 
-```
+```text
 flagger_canary_status{name="my-app", namespace="app"}
 flagger_canary_weight{name="my-app", namespace="app"}
 flagger_canary_total{name="my-app", namespace="app"}

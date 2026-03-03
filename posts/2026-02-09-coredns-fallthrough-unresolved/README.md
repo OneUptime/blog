@@ -24,7 +24,7 @@ Without fallthrough, plugins that can't answer a query return NXDOMAIN, stopping
 
 Default behavior without fallthrough:
 
-```
+```text
 Query: external.com
 → kubernetes plugin (can't answer, returns NXDOMAIN)
 → NXDOMAIN returned to client
@@ -33,7 +33,7 @@ Query: external.com
 
 With fallthrough:
 
-```
+```text
 Query: external.com
 → kubernetes plugin (can't answer, falls through)
 → forward plugin (resolves via upstream DNS)

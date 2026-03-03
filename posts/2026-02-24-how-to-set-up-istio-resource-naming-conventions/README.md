@@ -25,7 +25,7 @@ Before getting into resource-specific conventions, some ground rules apply to ev
 
 Kubernetes resource names must match the following regex, so stick to that pattern:
 
-```
+```text
 [a-z0-9]([-a-z0-9]*[a-z0-9])?
 ```
 

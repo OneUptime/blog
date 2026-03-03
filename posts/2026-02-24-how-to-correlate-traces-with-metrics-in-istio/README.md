@@ -88,7 +88,7 @@ These same values appear as attributes in trace spans. When you see a metric ano
 
 For example, if Prometheus shows elevated errors for:
 
-```
+```text
 istio_requests_total{
   source_workload="order-service",
   destination_service="payment-service",
@@ -98,7 +98,7 @@ istio_requests_total{
 
 You can search your tracing backend for:
 
-```
+```text
 service.name = "order-service"
 AND http.status_code = 500
 AND peer.service = "payment-service"
@@ -148,7 +148,7 @@ datasources:
 
 In Grafana, create a panel using the `istio_request_duration_milliseconds` histogram:
 
-```
+```text
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="payment-service"}[5m])) by (le))
 ```
 
@@ -194,7 +194,7 @@ When you can't link by trace ID directly, time-based correlation is the fallback
 
 In Jaeger's UI, you can search by time range and filter:
 
-```
+```text
 Service: payment-service
 Operation: /api/charge
 Tags: http.status_code=500
@@ -209,25 +209,25 @@ In Grafana, set up a dashboard variable that links panel time ranges to Tempo qu
 Create a Grafana dashboard that shows metrics and related traces side by side:
 
 **Panel 1: Error Rate (Prometheus)**
-```
+```text
 sum(rate(istio_requests_total{response_code=~"5.*",destination_service="$service"}[5m]))
 /
 sum(rate(istio_requests_total{destination_service="$service"}[5m]))
 ```
 
 **Panel 2: Latency Distribution (Prometheus)**
-```
+```text
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="$service"}[5m])) by (le))
 ```
 
 **Panel 3: Error Traces (Tempo)**
 Use TraceQL to find relevant traces:
-```
+```text
 {span.http.status_code >= 500 && resource.service.name = "$service"} | duration > 1s
 ```
 
 **Panel 4: Service Dependencies (Prometheus)**
-```
+```text
 sum(rate(istio_requests_total{source_workload="$service"}[5m])) by (destination_service)
 ```
 

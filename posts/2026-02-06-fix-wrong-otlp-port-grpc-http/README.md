@@ -19,25 +19,25 @@ OTLP (OpenTelemetry Protocol) supports two transport mechanisms:
 
 ### Sending HTTP to the gRPC Port (4317)
 
-```
+```text
 Error: 14 UNAVAILABLE: No connection established
 ```
 
 or
 
-```
+```text
 Error: failed to export: unexpected HTTP status code received from server: 0
 ```
 
 ### Sending gRPC to the HTTP Port (4318)
 
-```
+```text
 Error: 14 UNAVAILABLE: failed to connect to all addresses
 ```
 
 or
 
-```
+```text
 Error: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure
 ```
 

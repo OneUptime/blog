@@ -25,7 +25,7 @@ istioctl proxy-config listener <pod-name>
 
 The output will show something like:
 
-```
+```text
 ADDRESS      PORT  MATCH                                                       DESTINATION
 0.0.0.0      15001 ALL                                                         PassthroughCluster
 0.0.0.0      15006 Addr: *:15006                                               Non-HTTP/Non-TCP
@@ -101,7 +101,7 @@ You'll see filter chains for:
 
 Beyond the two main listeners, Istio creates individual listeners for each service in the mesh that your pod might need to reach. These are the service-specific listeners you see in the `istioctl proxy-config listener` output.
 
-```
+```text
 10.96.45.100 8080  Trans: raw_buffer; App: http/1.1,h2c    Route: 8080
 10.96.45.100 8080  Trans: tls; App: istio-http/1.0          Route: 8080
 ```

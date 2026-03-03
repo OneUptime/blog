@@ -66,7 +66,7 @@ CloudWatch Logs Insights is powerful for searching through control plane logs. H
 
 Find failed authentication attempts:
 
-```
+```text
 # CloudWatch Logs Insights query for auth failures
 fields @timestamp, @message
 | filter @logStream like /authenticator/
@@ -77,7 +77,7 @@ fields @timestamp, @message
 
 Find who deleted a resource:
 
-```
+```text
 # Query audit logs for delete operations
 fields @timestamp, user.username, objectRef.resource, objectRef.name, objectRef.namespace
 | filter verb = "delete"
@@ -87,7 +87,7 @@ fields @timestamp, user.username, objectRef.resource, objectRef.name, objectRef.
 
 Find scheduling failures:
 
-```
+```text
 # Query scheduler logs for failures
 fields @timestamp, @message
 | filter @logStream like /scheduler/
@@ -251,7 +251,7 @@ For best results with CloudWatch, have your applications output JSON-formatted l
 
 This lets you write CloudWatch Insights queries against specific fields:
 
-```
+```text
 # Query application logs by field
 fields @timestamp, message, duration_ms, path
 | filter level = "error"

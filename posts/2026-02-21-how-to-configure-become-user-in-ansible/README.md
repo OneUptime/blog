@@ -292,7 +292,7 @@ For flexible playbooks, use variables for `become_user`.
 
 Your connecting user needs sudo permission to become the target user. This is configured in sudoers.
 
-```
+```text
 # /etc/sudoers.d/ansible
 # Allow deploy user to become specific service accounts
 

@@ -18,7 +18,7 @@ Ansible playbooks are infrastructure code. Like any code, they can have bugs, re
 
 Organize your tests alongside your Ansible code:
 
-```
+```text
 project/
   roles/
     my_role/

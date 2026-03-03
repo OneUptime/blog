@@ -14,7 +14,7 @@ Many servers require a password for sudo access. While passwordless sudo is idea
 
 When you run an Ansible playbook with `become: yes` on a server that requires a sudo password, you get an error like this:
 
-```
+```text
 TASK [Install nginx] ***********************************************************
 fatal: [web1.example.com]: FAILED! => {"msg": "Missing sudo password"}
 ```
@@ -35,7 +35,7 @@ ansible-playbook -K deploy.yml
 
 Ansible will ask:
 
-```
+```text
 BECOME password:
 ```
 
@@ -103,7 +103,7 @@ ansible_become_password: "password-for-web2"
 
 The directory structure looks like this:
 
-```
+```text
 project/
   inventory.ini
   deploy.yml

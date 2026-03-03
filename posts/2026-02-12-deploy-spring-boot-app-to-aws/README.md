@@ -75,7 +75,7 @@ This is the fastest way to get a Spring Boot app running on AWS. Elastic Beansta
 
 Create a Procfile in your project root. This tells Elastic Beanstalk how to start your app:
 
-```
+```text
 web: java -jar target/myapp-0.0.1-SNAPSHOT.jar --server.port=5000
 ```
 

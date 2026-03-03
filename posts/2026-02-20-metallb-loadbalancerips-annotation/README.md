@@ -119,7 +119,7 @@ kubectl get svc my-web-app -o wide
 
 You should see output similar to:
 
-```
+```text
 NAME         TYPE           CLUSTER-IP      EXTERNAL-IP                  PORT(S)
 my-web-app   LoadBalancer   10.96.100.50    192.168.1.150,fd00::150      80:31234/TCP,443:31235/TCP
 ```

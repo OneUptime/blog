@@ -136,7 +136,7 @@ sudo rabbitmqctl cluster_status
 
 You should see output similar to:
 
-```
+```text
 Cluster status of node rabbit@node1 ...
 Basics
 
@@ -271,7 +271,7 @@ Three or five nodes work best. This ensures a clear majority during network part
 
 Place nodes in different availability zones or data centers to survive zone failures:
 
-```
+```text
 Node 1: us-east-1a
 Node 2: us-east-1b
 Node 3: us-east-1c

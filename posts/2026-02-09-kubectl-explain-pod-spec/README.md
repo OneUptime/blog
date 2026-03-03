@@ -27,7 +27,7 @@ kubectl explain service
 
 Output shows the resource structure:
 
-```
+```text
 KIND:     Pod
 VERSION:  v1
 

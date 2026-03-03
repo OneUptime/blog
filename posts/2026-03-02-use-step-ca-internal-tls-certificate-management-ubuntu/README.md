@@ -75,7 +75,7 @@ sudo -u step step ca init \
 
 After initialization, the CA structure is:
 
-```
+```text
 /etc/step-ca/
 ├── certs/
 │   ├── root_ca.crt          # Root CA certificate (share this with clients)

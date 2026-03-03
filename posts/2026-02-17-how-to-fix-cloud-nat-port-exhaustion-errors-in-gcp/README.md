@@ -77,7 +77,7 @@ Applications that do not reuse connections (no HTTP keep-alive, no connection po
 
 If you have many VMs and few NAT IPs, the total port pool gets divided up quickly:
 
-```
+```text
 Total available ports = Number of NAT IPs x 64,512
 Max VMs (at 64 ports each) = Total available ports / 64
 ```

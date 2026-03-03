@@ -253,7 +253,7 @@ aws s3api put-bucket-notification-configuration \
 
 S3 supports a variety of event types:
 
-```
+```text
 s3:ObjectCreated:*              - Any object creation
 s3:ObjectCreated:Put            - PUT (single upload)
 s3:ObjectCreated:Post           - POST

@@ -14,7 +14,7 @@ Description: A systematic guide to diagnosing and fixing SSH 'Connection refused
 
 When you see:
 
-```
+```text
 ssh: connect to host server.example.com port 22: Connection refused
 ```
 

@@ -227,7 +227,7 @@ Create a `sandbox/EXERCISES.md` file that guides new developers through learning
 
 The best part about Gitpod is sharing. Generate a link that anyone on your team can click:
 
-```
+```text
 https://gitpod.io/#https://github.com/your-org/your-repo
 ```
 

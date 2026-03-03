@@ -76,7 +76,7 @@ jobs:
 
 This produces a clean cost breakdown right on your PR:
 
-```
+```text
 Monthly cost will increase by $142.50
 
 Resource                     Monthly Cost    Change

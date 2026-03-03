@@ -12,7 +12,7 @@ The biggest performance win from OTel Arrow is not just the transport compressio
 
 In a traditional OTLP pipeline, data undergoes multiple format conversions:
 
-```
+```text
 [SDK] -> protobuf -> [Collector] -> Go structs -> protobuf -> [ClickHouse Exporter] -> SQL/JSON -> [ClickHouse]
 ```
 
@@ -20,7 +20,7 @@ Each conversion takes CPU time and allocates memory. For a Collector handling 10
 
 With OTel Arrow and a native backend:
 
-```
+```text
 [SDK] -> protobuf -> [Arrow Converter] -> Arrow -> [ClickHouse] (native Arrow insert)
 ```
 
@@ -185,7 +185,7 @@ service:
 
 Benchmarks comparing Arrow insert vs standard SQL insert into ClickHouse:
 
-```
+```text
 Insert method          | Throughput    | CPU (Collector) | CPU (ClickHouse)
 -----------------------|---------------|-----------------|------------------
 SQL INSERT (batched)   | 50K spans/s   | 4 cores         | 2 cores

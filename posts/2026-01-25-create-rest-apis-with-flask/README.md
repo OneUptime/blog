@@ -383,7 +383,7 @@ def get_profile():
 
 ### Organizing a Larger Application
 
-```
+```text
 project/
     app/
         __init__.py      # Application factory

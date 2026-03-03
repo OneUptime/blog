@@ -80,7 +80,7 @@ molecule init scenario --driver-name docker
 
 This creates the following structure:
 
-```
+```text
 my_role/
   molecule/
     default/

@@ -73,7 +73,7 @@ GRANT CONNECT ON DATABASE postgres TO replicator;
 
 Edit `pg_hba.conf` on the primary to allow replication connections.
 
-```
+```text
 # Allow replication connections from replica servers
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
 host    replication     replicator      192.168.1.0/24          scram-sha-256
@@ -165,7 +165,7 @@ sudo tail -f /var/log/postgresql/postgresql-16-main.log
 
 You should see messages like:
 
-```
+```text
 LOG:  entering standby mode
 LOG:  redo starts at 0/3000028
 LOG:  consistent recovery state reached at 0/3000100

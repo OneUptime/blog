@@ -76,7 +76,7 @@ istioctl proxy-status
 
 Output looks something like:
 
-```
+```text
 NAME                          CLUSTER        CDS        LDS        EDS        RDS        ECDS
 httpbin-abc123.default        Kubernetes     SYNCED     SYNCED     SYNCED     SYNCED     NOT SENT
 sleep-def456.default          Kubernetes     SYNCED     SYNCED     SYNCED     SYNCED     NOT SENT

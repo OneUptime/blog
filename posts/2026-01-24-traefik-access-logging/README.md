@@ -41,7 +41,7 @@ data:
 
 With the default configuration, logs go to stdout in Common Log Format:
 
-```
+```text
 10.0.0.1 - - [25/Jan/2026:10:00:00 +0000] "GET /api/users HTTP/1.1" 200 1234 "-" "Mozilla/5.0"
 ```
 

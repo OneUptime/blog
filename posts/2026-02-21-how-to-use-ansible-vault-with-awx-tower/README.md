@@ -141,7 +141,7 @@ curl -X POST "https://awx.example.com/api/v2/job_templates/42/credentials/" \
 
 AWX syncs your playbook project from a Git repository. Your vault-encrypted files live in the repository just as they would for command-line usage:
 
-```
+```text
 project-repo/
   site.yml
   group_vars/
@@ -251,14 +251,14 @@ This is a significant advantage over command-line vault, where anyone with the p
 
 Common issues and solutions:
 
-```
+```text
 ERROR: Decryption failed (no vault secrets were found that could decrypt)
 ```
 This means the vault credential is missing or the vault ID does not match. Check:
 - Is a vault credential associated with the job template?
 - Does the vault ID in the credential match the vault ID in the encrypted file header?
 
-```
+```text
 ERROR: Vault password file not found
 ```
 AWX creates temporary vault password files automatically. This error usually indicates an AWX configuration problem rather than a vault problem.

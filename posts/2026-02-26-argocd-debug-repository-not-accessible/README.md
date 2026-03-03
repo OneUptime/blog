@@ -20,7 +20,7 @@ When ArgoCD shows "repository not accessible" in the UI or CLI, it means the rep
 
 The actual error message often includes additional details:
 
-```
+```text
 rpc error: code = Unknown desc = error creating SSH agent: ...
 rpc error: code = Unknown desc = authentication required
 rpc error: code = Unknown desc = repository not found

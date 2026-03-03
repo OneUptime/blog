@@ -213,7 +213,7 @@ kubectl exec -n bookinfo deploy/ratings-v1 -- \
 
 Store runbooks in a directory structure like this:
 
-```
+```text
 chaos-runbooks/
   service-failure/
     reviews-failure.yaml

@@ -246,7 +246,7 @@ sudo ausearch -k process-execution -ts recent -i | head -30
 
 Example output:
 
-```
+```text
 ----
 time->Mon Mar 02 10:15:33 2026
 type=SYSCALL msg=audit(1234567890.123:4567): arch=c000003e syscall=59 success=yes exit=0

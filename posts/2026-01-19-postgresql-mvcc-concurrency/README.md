@@ -77,7 +77,7 @@ FROM accounts;
 ```
 
 Result:
-```
+```text
  ctid  | xmin | xmax | id | name  | balance
 -------+------+------+----+-------+---------
  (0,1) |  100 |    0 |  1 | Alice | 1000.00

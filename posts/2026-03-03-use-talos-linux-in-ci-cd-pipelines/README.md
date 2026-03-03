@@ -72,7 +72,7 @@ The QEMU provider is slower but more realistic. Use it when Docker provider limi
 
 A typical CI/CD pipeline with Talos Linux follows this pattern:
 
-```
+```text
 1. Create Talos cluster
 2. Wait for cluster health
 3. Deploy application

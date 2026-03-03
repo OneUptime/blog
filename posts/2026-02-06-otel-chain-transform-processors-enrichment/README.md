@@ -19,7 +19,7 @@ You could put all your OTTL statements into a single transform processor, and th
 
 ## The Chaining Pattern
 
-```
+```text
 [Receiver] --> [transform/normalize] --> [transform/enrich] --> [transform/classify] --> [Exporter]
 ```
 

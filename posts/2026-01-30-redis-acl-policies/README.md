@@ -90,7 +90,7 @@ ACL GETUSER appuser
 
 Example output:
 
-```
+```text
 1) "flags"
 2) 1) "on"
 3) "passwords"
@@ -427,7 +427,7 @@ redis-cli ACL LOG RESET
 
 ### Sample ACL Log Output
 
-```
+```text
 1) 1) "count"
    2) (integer) 1
    3) "reason"

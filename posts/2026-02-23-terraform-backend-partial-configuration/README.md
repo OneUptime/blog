@@ -192,7 +192,7 @@ This gives you maximum flexibility but means you cannot run `terraform init` wit
 
 This is the most common pattern for teams managing multiple environments:
 
-```
+```text
 project/
   main.tf
   backend.tf

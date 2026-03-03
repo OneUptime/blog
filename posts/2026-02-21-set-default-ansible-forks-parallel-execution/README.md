@@ -110,7 +110,7 @@ ssh deploy@server01 "grep MaxStartups /etc/ssh/sshd_config"
 
 If needed, increase it on the remote hosts:
 
-```
+```text
 # /etc/ssh/sshd_config on managed hosts
 MaxStartups 50:30:100
 ```

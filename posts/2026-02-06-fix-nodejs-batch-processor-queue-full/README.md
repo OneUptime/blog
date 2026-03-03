@@ -43,7 +43,7 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.WARN);
 ```
 
 Look for:
-```
+```text
 Dropping span because maxQueueSize reached
 ```
 

@@ -22,7 +22,7 @@ A generator might create multiple Deployment resources from a simple specificati
 
 Kustomize discovers plugins through the XDG_CONFIG_HOME directory, typically ~/.config/kustomize/plugin. Plugins must follow a specific directory structure:
 
-```
+```text
 ~/.config/kustomize/plugin/
 └── someteam.example.com/
     └── v1/
@@ -376,7 +376,7 @@ Include these tests in version control alongside your plugins.
 
 Maintain multiple plugin versions for backward compatibility:
 
-```
+```text
 ~/.config/kustomize/plugin/
 └── generators.example.com/
     ├── v1/
@@ -488,7 +488,7 @@ spec:
 
 ## Output
 Generates one Deployment per app in the apps list.
-```
+```text
 
 Include examples and common troubleshooting scenarios.
 
@@ -509,3 +509,5 @@ Test plugins with various inputs including edge cases. Automated tests prevent r
 The Kustomize plugin system extends configuration management capabilities beyond built-in features, enabling organizations to implement custom logic specific to their requirements. Whether generating resources from compact specifications or enforcing organization-wide policies through transformers, plugins provide the flexibility needed for complex environments.
 
 By following plugin development best practices and maintaining clear documentation, you can build a library of reusable components that enhance Kustomize for your entire organization. The plugin system's extensibility ensures Kustomize can adapt to virtually any configuration management need while maintaining its declarative, version-controlled approach.
+
+```

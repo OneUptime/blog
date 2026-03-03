@@ -36,7 +36,7 @@ graph TD
 
 Organize your Ansible project for pipeline execution.
 
-```
+```text
 ansible-deployment/
   inventory/
     dev.ini

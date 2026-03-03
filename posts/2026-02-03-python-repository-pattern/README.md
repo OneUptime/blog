@@ -1131,7 +1131,7 @@ def cancel_order(
 
 Here is how all the pieces fit together in a typical project layout:
 
-```
+```text
 order_service/
 ├── domain/
 │   ├── __init__.py

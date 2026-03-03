@@ -73,7 +73,7 @@ sudo nano /etc/ssh/sshd_config
 ```
 
 Important SSH settings for the build server:
-```
+```text
 PasswordAuthentication no
 PubkeyAuthentication yes
 AllowGroups builders sudo
@@ -215,7 +215,7 @@ sudo nano /etc/security/limits.conf
 ```
 
 Add these limits:
-```
+```text
 # Limits for build users
 @builders   soft   nproc    200
 @builders   hard   nproc    500

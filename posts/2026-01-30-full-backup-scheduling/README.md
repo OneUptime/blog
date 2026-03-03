@@ -76,7 +76,7 @@ Choosing the right backup frequency depends on several factors: data change rate
 
 ### Common Full Backup Schedules
 
-```
+```text
 Daily Full Backups:
 ├── Best for: Small datasets, critical systems
 ├── Storage impact: High
@@ -151,7 +151,7 @@ LIMIT 10;
 
 ### Typical Backup Windows
 
-```
+```text
 Business Applications:
 ├── Window: 11 PM - 6 AM local time (7 hours)
 ├── Peak avoidance: Business hours
@@ -589,7 +589,7 @@ Backups are worthless if they cannot be restored. Regular verification ensures b
 
 ### Verification Levels
 
-```
+```text
 Level 1 - File Integrity (Every Backup):
 ├── Checksum validation
 ├── File size verification

@@ -65,7 +65,7 @@ tcpdump -i any -n 'tcp port 8080' -c 20
 
 With mTLS active, you will see the TCP three-way handshake followed by TLS handshake packets. The initial bytes after the TCP connection show the TLS ClientHello:
 
-```
+```text
 IP 10.244.1.5.45678 > 10.244.2.3.8080: Flags [S], seq 123456
 IP 10.244.2.3.8080 > 10.244.1.5.45678: Flags [S.], seq 789012, ack 123457
 IP 10.244.1.5.45678 > 10.244.2.3.8080: Flags [.], ack 789013

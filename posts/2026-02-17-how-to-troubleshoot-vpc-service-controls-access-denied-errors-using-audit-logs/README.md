@@ -16,7 +16,7 @@ The good news is that every VPC Service Controls violation is logged in Cloud Au
 
 When a request is blocked by VPC Service Controls, you get an error that looks something like this:
 
-```
+```text
 googleapi: Error 403: Request is prohibited by organization's policy.
 vpcServiceControlsUniqueIdentifier: UNIQUE_ID_HERE
 ```

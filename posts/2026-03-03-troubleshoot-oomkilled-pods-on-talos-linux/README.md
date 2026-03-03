@@ -24,7 +24,7 @@ kubectl describe pod <pod-name> -n <namespace>
 
 Look for the `Last State` section in the container status:
 
-```
+```text
 Last State:     Terminated
   Reason:       OOMKilled
   Exit Code:    137

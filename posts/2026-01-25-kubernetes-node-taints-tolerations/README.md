@@ -351,7 +351,7 @@ kubectl get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints'
 ```
 
 Common error message:
-```
+```text
 Warning  FailedScheduling  pod has unbound immediate PersistentVolumeClaims
          0/5 nodes are available: 3 node(s) had taints that the pod didn't tolerate
 ```

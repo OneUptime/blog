@@ -69,7 +69,7 @@ go tool nm -size myapp | sort -t ' ' -k2 -rn | head -50
 
 The output shows symbol address, size, type, and name:
 
-```
+```text
  1048576 T runtime.(*mheap).alloc
   524288 T runtime.mallocgc
   262144 R runtime.typelink

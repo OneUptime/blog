@@ -69,7 +69,7 @@ This installs:
 
 Let us organize our project with a clean structure:
 
-```
+```text
 src/
 ├── components/
 │   ├── UserList.tsx
@@ -1401,7 +1401,7 @@ const GET_USERS = gql`
 
 Keep queries, mutations, and fragments in separate files:
 
-```
+```text
 src/graphql/
 ├── client.ts
 ├── fragments/

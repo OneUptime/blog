@@ -237,7 +237,7 @@ def important_function():
 
 1. This annotation explains the function
 2. This annotation explains the return value
-```
+```text
 
 ## Development Server
 

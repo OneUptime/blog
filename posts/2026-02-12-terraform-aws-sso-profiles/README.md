@@ -31,7 +31,7 @@ aws configure sso
 
 The wizard will ask for several values:
 
-```
+```text
 SSO session name (Recommended): my-org
 SSO start URL [None]: https://my-org.awsapps.com/start
 SSO region [None]: us-east-1

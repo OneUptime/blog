@@ -16,7 +16,7 @@ This guide provides a step-by-step troubleshooting methodology for every common 
 
 Before diving into solutions, let us catalog the error messages you are likely to see.
 
-```
+```text
 # Error 1: Missing sudo password
 fatal: [host]: FAILED! => {"msg": "Missing sudo password"}
 
@@ -249,7 +249,7 @@ ansible web1 -m command -a "whoami" --become -vvvv 2>&1 | head -100
 
 In the output, look for:
 
-```
+```text
 # The SSH command being executed
 <web1> SSH: EXEC ssh -o ControlMaster=auto ...
 
@@ -361,7 +361,7 @@ retries = 3
 
 Paired with proper sudoers on the remote host:
 
-```
+```text
 # /etc/sudoers.d/ansible
 Defaults:deploy !requiretty
 deploy ALL=(ALL) NOPASSWD: ALL

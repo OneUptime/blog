@@ -90,7 +90,7 @@ print(bell)
 
 This prints the circuit diagram:
 
-```
+```text
 T  : |0|1|
 
 q0 : -H-C-

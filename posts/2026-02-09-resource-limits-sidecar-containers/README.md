@@ -246,7 +246,7 @@ kubectl top pods --containers -n production
 
 Output:
 
-```
+```text
 POD          NAME         CPU    MEMORY
 app-abc      app          450m   1.5Gi
 app-abc      envoy        80m    200Mi

@@ -228,7 +228,7 @@ Build dashboards with these queries:
 
 Set up alerts for drift and failures:
 
-```
+```text
 # Alert: Drift detected in production
 # terraform.drift.resources{tf.workspace="production"} > 0
 

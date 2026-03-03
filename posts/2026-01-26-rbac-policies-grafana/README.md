@@ -54,7 +54,7 @@ Folders are the primary mechanism for organizing dashboard access.
 
 Design folders around team ownership or data sensitivity:
 
-```
+```text
 Dashboards/
 ├── Platform/              # Platform team owns these
 │   ├── Infrastructure/

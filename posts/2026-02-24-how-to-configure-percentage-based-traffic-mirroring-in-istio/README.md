@@ -212,7 +212,7 @@ Complete confidence - all traffic is tested against the new version.
 
 Here is the math for sizing your mirror deployment:
 
-```
+```text
 mirror_rps = production_rps * (mirrorPercentage / 100)
 mirror_replicas = ceiling(mirror_rps / rps_per_replica)
 ```

@@ -79,7 +79,7 @@ The node CIDR mask size determines how many pods each node can support. Here's h
 
 Calculate the total number of nodes you can support:
 
-```
+```text
 Nodes = 2^(node-mask - cluster-mask)
 
 For 10.244.0.0/16 with /24 node masks:

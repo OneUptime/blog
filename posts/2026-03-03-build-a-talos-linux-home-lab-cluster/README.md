@@ -28,7 +28,7 @@ For a practical starting point, three nodes with 8GB RAM each gives you enough h
 
 Keep your lab network simple. Connect everything to the same switch and use your home router for DHCP initially. You will want to assign static IPs to your Talos nodes later.
 
-```
+```text
 Internet
   |
   Router (192.168.1.1)

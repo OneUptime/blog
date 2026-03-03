@@ -57,7 +57,7 @@ spec:
 
 Your application should expose these standard metrics:
 
-```
+```text
 # Request rate
 http_requests_total{method="GET", path="/api/v1/products", status="200"} 15234
 

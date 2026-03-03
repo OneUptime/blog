@@ -73,7 +73,7 @@ kubectl exec deploy/api -c istio-proxy -- \
 
 The output includes stats like:
 
-```
+```text
 server.total_connections: 45
 server.days_until_first_cert_expiring: 364
 listener_manager.listener_stopped: 2
@@ -87,7 +87,7 @@ Build a Grafana dashboard that tracks drain health. Here are the panels you need
 
 **Panel 1: Connection Open/Close Rate**
 
-```
+```text
 # Connections opened (should drop to zero during drain)
 sum(rate(istio_tcp_connections_opened_total{destination_workload="api"}[1m])) by (destination_workload_namespace)
 
@@ -97,7 +97,7 @@ sum(rate(istio_tcp_connections_closed_total{destination_workload="api"}[1m])) by
 
 **Panel 2: Error Rate Correlated with Deployments**
 
-```
+```text
 # Error rate
 sum(rate(istio_requests_total{destination_workload="api",response_code=~"5.."}[1m])) by (response_code)
 
@@ -107,7 +107,7 @@ kube_deployment_status_observed_generation{deployment="api"}
 
 **Panel 3: Active Connection Count**
 
-```
+```text
 # Active connections (should drain to zero during shutdown)
 sum(istio_tcp_connections_opened_total{destination_workload="api"}) by (destination_workload_namespace)
 -
@@ -116,7 +116,7 @@ sum(istio_tcp_connections_closed_total{destination_workload="api"}) by (destinat
 
 **Panel 4: Request Duration During Drain**
 
-```
+```text
 # p99 request duration (spikes indicate requests waiting on draining connections)
 histogram_quantile(0.99,
   sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="api"}[1m])) by (le)

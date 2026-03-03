@@ -77,7 +77,7 @@ The `target_system: kafka` tells the JMX receiver to use Kafka-specific metric d
 
 ### Under-Replicated Partitions
 
-```
+```text
 kafka.broker.under_replicated_partitions
 JMX: kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions
 ```
@@ -89,7 +89,7 @@ This is the single most important Kafka metric. A value above 0 means some parti
 
 ### ISR Shrink and Expand Rate
 
-```
+```text
 kafka.broker.isr_shrinks_per_sec
 JMX: kafka.server:type=ReplicaManager,name=IsrShrinksPerSec
 
@@ -101,7 +101,7 @@ ISR (In-Sync Replica) shrinks indicate replicas falling behind. Frequent shrinks
 
 ### Active Controller Count
 
-```
+```text
 kafka.broker.active_controller_count
 JMX: kafka.controller:type=KafkaController,name=ActiveControllerCount
 ```
@@ -110,7 +110,7 @@ Exactly one broker should be the active controller. If no broker reports `Active
 
 ### Request Handler Idle Ratio
 
-```
+```text
 kafka.broker.request_handler_avg_idle_percent
 JMX: kafka.server:type=KafkaRequestHandlerPool,name=RequestHandlerAvgIdlePercent
 ```
@@ -119,7 +119,7 @@ This shows what percentage of time the request handler threads are idle. Below 2
 
 ### Log Flush Rate and Time
 
-```
+```text
 kafka.broker.log_flush_rate_and_time
 JMX: kafka.log:type=LogFlushStats,name=LogFlushRateAndTimeMs
 ```

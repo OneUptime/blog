@@ -125,7 +125,7 @@ Let us build a production-ready authentication webhook in Go. This implementatio
 
 ### Project Structure
 
-```
+```text
 auth-webhook/
 ├── main.go
 ├── handlers/

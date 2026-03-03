@@ -31,7 +31,7 @@ kubectl describe pod my-app
 
 Look for events like:
 
-```
+```text
 Events:
   Type     Reason            Message
   ----     ------            -------
@@ -50,7 +50,7 @@ journalctl -u kubelet -n 1000 | grep -i "topology"
 
 Look for messages like:
 
-```
+```text
 Topology Affinity Error: cannot align resources to a single NUMA node
 Admit: Resources cannot fit in available NUMA nodes
 ```
@@ -73,7 +73,7 @@ numactl --hardware
 
 Example output:
 
-```
+```text
 available: 2 nodes (0-1)
 node 0 cpus: 0 1 2 3 4 5 6 7
 node 0 size: 32768 MB

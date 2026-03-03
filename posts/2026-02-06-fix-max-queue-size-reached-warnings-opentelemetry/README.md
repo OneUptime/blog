@@ -37,7 +37,7 @@ The default queue size in most OpenTelemetry SDK implementations is 2048 items. 
 
 The warning message typically looks something like this in your logs:
 
-```
+```text
 # SDK-level warning when the BatchSpanProcessor queue is full
 WARN  otel: dropping span, queue is full (maxQueueSize: 2048)
 

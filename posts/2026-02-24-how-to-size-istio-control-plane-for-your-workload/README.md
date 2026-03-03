@@ -183,7 +183,7 @@ Memory is usually the limiting factor for istiod. The main memory consumers are:
 
 Estimate memory with this rough formula:
 
-```
+```text
 Base memory: ~200MB
 Per service: ~0.5MB
 Per proxy: ~1MB

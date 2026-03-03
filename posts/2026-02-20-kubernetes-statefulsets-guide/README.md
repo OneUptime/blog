@@ -118,7 +118,7 @@ spec:
 
 Each pod in a StatefulSet gets a DNS name following this pattern:
 
-```
+```text
 <pod-name>.<service-name>.<namespace>.svc.cluster.local
 ```
 

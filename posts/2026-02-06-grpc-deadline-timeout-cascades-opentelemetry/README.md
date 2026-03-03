@@ -108,7 +108,7 @@ server := grpc.NewServer(
 
 A healthy trace waterfall with proper deadline propagation looks like this:
 
-```
+```text
 Service A (deadline: 5000ms remaining)
   Service B (deadline: 4200ms remaining)
     Service C (deadline: 3100ms remaining)
@@ -117,7 +117,7 @@ Service A (deadline: 5000ms remaining)
 
 The remaining deadline decreases at each hop by the time spent so far. A broken cascade looks like this:
 
-```
+```text
 Service A (deadline: 5000ms remaining)  -> DEADLINE_EXCEEDED at 5000ms
   Service B (deadline: 5000ms remaining)  -> still running at 5500ms
     Service C (deadline: 5000ms remaining)  -> still running at 6000ms

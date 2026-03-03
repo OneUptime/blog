@@ -201,7 +201,7 @@ SHOW REPLICA STATUS\G
 
 The most common topology involves one source with one or more replicas. This setup is straightforward and works well for read scaling.
 
-```
+```text
                     +----------------+
                     |    Source      |
                     |  (Read/Write)  |
@@ -269,7 +269,7 @@ SAVE MYSQL QUERY RULES TO DISK;
 
 In cascading replication, some replicas serve as intermediate sources for other replicas. This reduces load on the primary source and is useful for geographically distributed setups.
 
-```
+```text
                     +----------------+
                     |    Source      |
                     |  (Read/Write)  |
@@ -341,7 +341,7 @@ START REPLICA;
 
 Multi-source replication allows a single replica to receive data from multiple source servers. This is useful for aggregating data from different databases or creating a consolidated reporting server.
 
-```
+```text
     +----------------+     +----------------+
     |   Source A     |     |   Source B     |
     | (sales_db)     |     | (inventory_db) |
@@ -411,7 +411,7 @@ CHANGE REPLICATION FILTER
 
 Circular replication creates a ring topology where each server is both a source and a replica. While this enables writes on any node, it introduces complexity and potential conflicts.
 
-```
+```text
     +----------------+
     |   Server A     |<---------+
     +-------+--------+          |

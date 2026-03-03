@@ -47,7 +47,7 @@ istioctl analyze -A
 
 Look for warnings like:
 
-```
+```text
 Warning [IST0109] (VirtualService default/reviews-1) Conflicting VirtualServices for host "reviews"
 ```
 
@@ -227,7 +227,7 @@ kubectl replace -f <crd-file>.yaml
 
 Kubernetes uses optimistic concurrency control. If two processes try to update the same Istio resource simultaneously, one will get a conflict error:
 
-```
+```text
 Error from server (Conflict): Operation cannot be fulfilled on virtualservices.networking.istio.io "my-route": the object has been modified; please apply your changes to the latest version of the object
 ```
 

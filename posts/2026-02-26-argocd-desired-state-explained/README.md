@@ -116,7 +116,7 @@ kustomize build overlays/production
 
 Let us say your Git repository has this structure:
 
-```
+```text
 my-app/
   base/
     deployment.yaml

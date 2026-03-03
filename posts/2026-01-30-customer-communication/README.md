@@ -44,7 +44,7 @@ The best incident communication happens before customers notice the problem. Her
 
 Customers contact support first. You scramble to explain. Trust erodes with every minute of silence.
 
-```
+```text
 Customer: "Is your service down?"
 Support: "Let me check with engineering..."
 [20 minutes later]
@@ -56,7 +56,7 @@ Customer: [Already considering alternatives]
 
 You detect the issue, notify customers, and control the narrative.
 
-```
+```text
 [Automated within 2 minutes of detection]
 Email: "We're aware of an issue affecting [Service].
        Our team is investigating. Next update in 15 minutes."

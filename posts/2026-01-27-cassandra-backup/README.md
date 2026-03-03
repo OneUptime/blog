@@ -120,7 +120,7 @@ flowchart LR
 ```
 
 Snapshots are stored at:
-```
+```text
 /var/lib/cassandra/data/<keyspace>/<table-uuid>/snapshots/<snapshot-name>/
 ```
 

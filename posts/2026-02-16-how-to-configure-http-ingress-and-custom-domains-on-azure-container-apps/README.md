@@ -103,7 +103,7 @@ Azure will tell you to create a CNAME record (or an A record for apex domains) a
 
 For a subdomain like `app.example.com`, create a CNAME record pointing to your container app's default domain.
 
-```
+```text
 CNAME  app.example.com  ->  my-web-app.happyocean-abc123.eastus.azurecontainerapps.io
 TXT    asuid.app.example.com  ->  <verification-id-from-azure>
 ```

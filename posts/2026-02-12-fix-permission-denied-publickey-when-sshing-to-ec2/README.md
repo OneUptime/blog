@@ -10,13 +10,13 @@ Description: Resolve the 'Permission denied (publickey)' SSH error when connecti
 
 You can see the instance is reachable (no connection timeout), but SSH still won't let you in:
 
-```
+```text
 Permission denied (publickey).
 ```
 
 Or the more verbose version:
 
-```
+```text
 debug1: Authentications that can continue: publickey
 debug1: Next authentication method: publickey
 debug1: Offering public key: /home/user/.ssh/id_rsa RSA
@@ -108,7 +108,7 @@ ssh-add ~/.ssh/my-ec2-key.pem
 
 SSH is strict about file permissions. If your private key file is too permissive, SSH refuses to use it.
 
-```
+```text
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 @         WARNING: UNPROTECTED PRIVATE KEY FILE!          @
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -236,13 +236,13 @@ ssh -vvv -i ~/.ssh/my-key.pem ec2-user@54.123.45.67
 
 Look for these lines in the output:
 
-```
+```text
 debug1: Offering public key: /home/user/.ssh/my-key.pem RSA SHA256:xxxxx
 ```
 
 This shows which keys SSH is trying. If it's not offering the key you expect, specify it with `-i`.
 
-```
+```text
 debug1: Authentications that can continue: publickey
 ```
 

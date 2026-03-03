@@ -46,7 +46,7 @@ spec:
 
 Organize VirtualServices by domain or team:
 
-```
+```text
 istio-config/
   base/
     kustomization.yaml

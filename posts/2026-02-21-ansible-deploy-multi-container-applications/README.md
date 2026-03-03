@@ -261,7 +261,7 @@ Here is the full deployment playbook. Services are deployed in order of their de
 
 For better organization, split the stack into Ansible roles:
 
-```
+```text
 roles/
   data-layer/
     tasks/main.yml

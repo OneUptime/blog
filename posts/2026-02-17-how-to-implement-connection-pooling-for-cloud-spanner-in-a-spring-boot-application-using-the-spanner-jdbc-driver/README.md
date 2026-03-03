@@ -143,7 +143,7 @@ The JDBC URL parameters `minSessions`, `maxSessions`, and `numChannels` control 
 
 This is the most important part. You need to align the HikariCP pool size with the Spanner session pool size.
 
-```
+```text
 HikariCP Pool (JDBC connections) --> Spanner Session Pool (gRPC sessions) --> Spanner Backend
 ```
 

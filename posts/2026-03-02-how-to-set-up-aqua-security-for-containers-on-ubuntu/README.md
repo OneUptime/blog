@@ -278,7 +278,7 @@ Set up a cron job to scan your deployed images regularly:
 sudo nano /etc/cron.d/trivy-scan
 ```
 
-```
+```text
 # Run Trivy scan on all local images every night at 2 AM
 0 2 * * * root /usr/local/bin/scan-all-images.sh >> /var/log/trivy-scan.log 2>&1
 ```

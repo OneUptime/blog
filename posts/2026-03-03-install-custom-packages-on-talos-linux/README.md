@@ -125,7 +125,7 @@ metadata:
 
 The `rootfs` directory contains files that will be placed on the Talos filesystem:
 
-```
+```text
 rootfs/
   usr/
     local/

@@ -153,7 +153,7 @@ Ask yourself these questions when deciding how to record an exception:
 
 When every handled exception is a span error, your alerting becomes useless:
 
-```
+```text
 # Alert that fires constantly because of cache misses
 alert: HighErrorRate
 expr: rate(span_errors_total[5m]) > 0.1
@@ -161,7 +161,7 @@ expr: rate(span_errors_total[5m]) > 0.1
 
 After fixing the handling:
 
-```
+```text
 # Alert that actually catches real problems
 alert: HighErrorRate
 expr: rate(span_errors_total[5m]) > 0.01

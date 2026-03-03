@@ -46,7 +46,7 @@ gcloud deployment-manager manifests describe \
 
 Create a mapping between Deployment Manager resource types and Terraform:
 
-```
+```text
 Deployment Manager Type                    Terraform Resource
 -----------------------                    ------------------
 compute.v1.instance                    ->  google_compute_instance

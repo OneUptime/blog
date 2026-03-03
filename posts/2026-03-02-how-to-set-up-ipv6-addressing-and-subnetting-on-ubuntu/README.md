@@ -14,13 +14,13 @@ IPv6 adoption has accelerated significantly over the past few years, and most mo
 
 IPv6 addresses are 128 bits written as 8 groups of 4 hexadecimal digits separated by colons:
 
-```
+```text
 2001:0db8:85a3:0000:0000:8a2e:0370:7334
 ```
 
 Leading zeros in each group can be omitted, and one consecutive sequence of all-zero groups can be replaced with `::`:
 
-```
+```text
 2001:db8:85a3::8a2e:370:7334
 ```
 
@@ -62,7 +62,7 @@ IPv6 subnetting differs from IPv4 in that address space is vast. Standard practi
 
 A `/64` subnet is the standard for any network segment. The first 64 bits are the network prefix, and the last 64 bits are the interface identifier.
 
-```
+```text
 2001:db8:1234:0001::/64
 |--- Network Prefix ---|--- Host Part ---|
     First 64 bits          Last 64 bits
@@ -297,7 +297,7 @@ sudo ip6tables -L -n
 
 For an organization with a `/48` allocation (`2001:db8:1234::/48`), you have subnets `2001:db8:1234:0000::/64` through `2001:db8:1234:ffff::/64`:
 
-```
+```text
 Subnet allocation plan:
 2001:db8:1234:0001::/64  - Management network
 2001:db8:1234:0010::/64  - Production servers

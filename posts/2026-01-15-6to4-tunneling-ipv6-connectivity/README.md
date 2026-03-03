@@ -30,7 +30,7 @@ In this comprehensive guide, we will explore the fundamentals of 6to4 tunneling,
 
 The 6to4 address format follows a specific structure:
 
-```
+```text
 2002:WWXX:YYZZ::/48
 ```
 

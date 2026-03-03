@@ -101,7 +101,7 @@ docker trust inspect --pretty myregistry.azurecr.io/myapp:v1.0
 
 This shows the signers, the tags that are signed, and the signing key fingerprints. You should see output like:
 
-```
+```text
 Signatures for myregistry.azurecr.io/myapp
 
 SIGNED TAG    DIGEST                                                           SIGNERS

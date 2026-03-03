@@ -65,7 +65,7 @@ The traffic flow with a waypoint proxy involves an extra hop compared to ztunnel
 6. Waypoint forwards traffic to the destination node's ztunnel via HBONE
 7. Destination ztunnel delivers the traffic to the destination pod
 
-```
+```text
 Source Pod -> Source ztunnel --HBONE--> Waypoint Proxy --HBONE--> Dest ztunnel -> Dest Pod
 ```
 
@@ -191,7 +191,7 @@ Waypoint proxies have their own service account and SPIFFE identity. This identi
 
 The trust chain looks like:
 
-```
+```text
 Source (identity: frontend-sa) -> ztunnel -> Waypoint (identity: waypoint-sa) -> ztunnel -> Destination
 ```
 

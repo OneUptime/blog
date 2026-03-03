@@ -126,7 +126,7 @@ Update your values files for any breaking changes between the old and new chart 
 
 Set up a GitOps repository structure for ArgoCD.
 
-```
+```text
 gitops-repo/
   apps/
     ingress/

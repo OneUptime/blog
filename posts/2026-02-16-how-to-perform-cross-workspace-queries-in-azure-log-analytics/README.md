@@ -32,7 +32,7 @@ The trade-off is that correlation becomes harder. Cross-workspace queries bridge
 
 The `workspace()` function lets you reference a table in another workspace from within your query. There are three ways to reference a workspace:
 
-```
+```text
 // By workspace name (simplest, but only works within the same subscription)
 workspace("law-production").SecurityEvent
 | where TimeGenerated > ago(1h)
@@ -55,7 +55,7 @@ The function returns a reference to the specified workspace, and you append the 
 
 The most common use case is joining data from different workspaces to correlate events. For example, correlating security events from a security workspace with application logs from an application workspace.
 
-```
+```text
 // Join security sign-in events with application errors
 // to identify if failed logins correlate with application issues
 let signIns = workspace("law-security").SigninLogs
@@ -74,7 +74,7 @@ signIns
 
 Sometimes you want to query the same table across multiple workspaces and combine the results. The `union` operator handles this.
 
-```
+```text
 // Combine heartbeat data from all environment workspaces
 // to get a unified view of all servers
 union
@@ -93,7 +93,7 @@ The `TenantId` column (also accessible as `_WorkspaceId` in some contexts) tells
 
 If you have workspaces in different regions for data sovereignty, cross-workspace queries let you build a global view.
 
-```
+```text
 // CPU utilization across all regional workspaces
 union
     workspace("law-us-east").Perf,
@@ -110,7 +110,7 @@ union
 
 You can also query across Application Insights resources using the `app()` function, similar to `workspace()`.
 
-```
+```text
 // Correlate server-side errors with client-side page views
 let serverErrors = workspace("law-backend").AppExceptions
 | where TimeGenerated > ago(1h)
@@ -133,7 +133,7 @@ Cross-workspace queries are powerful, but they are not free. Here are some thing
 
 **Filter early**: Always push `where` clauses as close to the data source as possible. Instead of pulling all data from remote workspaces and then filtering, filter within the `workspace()` reference.
 
-```
+```text
 // Good: filter happens at the remote workspace
 let remoteData = workspace("law-production").SecurityEvent
 | where TimeGenerated > ago(1h)
@@ -150,7 +150,7 @@ The query optimizer handles most of these cases, but being explicit helps.
 
 **Use summarize to reduce data**: If you are joining data from a remote workspace, summarize it before the join to reduce the amount of data transferred across the network.
 
-```
+```text
 // Summarize remote data before joining
 let remoteMetrics = workspace("law-production").Perf
 | where TimeGenerated > ago(1h)

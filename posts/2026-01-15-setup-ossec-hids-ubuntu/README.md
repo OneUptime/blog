@@ -122,7 +122,7 @@ sudo ./install.sh
 
 During installation, you will be prompted with several questions. Here is a typical server installation:
 
-```
+```text
 ** Para instalacao em Portugues, escolha [br].
 ** For installation in English, choose [en].
 (en/br/cn/de/el/es/fr/hu/it/jp/nl/pl/ru/sr/tr) [en]: en
@@ -162,7 +162,7 @@ sudo /var/ossec/bin/ossec-control status
 ```
 
 Expected output:
-```
+```text
 ossec-monitord is running...
 ossec-logcollector is running...
 ossec-remoted is running...
@@ -220,7 +220,7 @@ sudo ./install.sh
 
 Choose `agent` when prompted:
 
-```
+```text
 What kind of installation do you want (server, agent, local, hybrid or help)? agent
 
 What's the IP Address or hostname of the OSSEC HIDS server?: 192.168.1.100
@@ -247,7 +247,7 @@ sudo /var/ossec/bin/manage_agents
 ```
 
 Example session:
-```
+```text
 ****************************************
 * OSSEC HIDS v3.7.0 Agent manager.     *
 ****************************************
@@ -276,7 +276,7 @@ Agent added.
 ```
 
 Extract the key:
-```
+```text
 Choose your action: A,E,L,R or Q: E
 
 Available agents:
@@ -930,12 +930,12 @@ sudo /var/ossec/bin/ossec-logtest
 ```
 
 Enter a sample log line:
-```
+```text
 Jan 15 10:30:00 myserver myapp: AUTH: admin from 192.168.1.50
 ```
 
 Expected output:
-```
+```text
 **Phase 1: Completed pre-decoding.
        full event: 'Jan 15 10:30:00 myserver myapp: AUTH: admin from 192.168.1.50'
        hostname: 'myserver'
@@ -1180,7 +1180,7 @@ sudo /var/www/html/ossec/setup.sh
 ```
 
 During setup:
-```
+```text
 Setting up ossec ui...
 
 Username: admin

@@ -14,7 +14,7 @@ When users try to upload large files through Nginx, they often encounter "413 Re
 
 When a client sends a request body larger than the configured limit, Nginx immediately rejects it:
 
-```
+```text
 HTTP/1.1 413 Request Entity Too Large
 ```
 

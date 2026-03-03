@@ -140,7 +140,7 @@ The fsGroup setting changes the group ownership of mounted volumes to GID 1000, 
 
 When rootless containers fail due to permission problems, check the error messages:
 
-```
+```text
 Error: EACCES: permission denied, open '/var/log/app.log'
 ```
 

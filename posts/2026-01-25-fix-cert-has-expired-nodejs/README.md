@@ -10,7 +10,7 @@ Description: Resolve the CERT_HAS_EXPIRED error in Node.js by updating certifica
 
 When you see this error in your Node.js application:
 
-```
+```text
 Error: CERT_HAS_EXPIRED
     at TLSSocket.onConnectSecure (_tls_wrap.js:1515:34)
 ```

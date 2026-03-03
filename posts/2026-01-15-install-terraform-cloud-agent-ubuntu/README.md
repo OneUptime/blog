@@ -112,7 +112,7 @@ Before installing the agent, you need to create an agent pool in Terraform Cloud
 
 ### Step 2: Configure the Agent Pool
 
-```
+```text
 Pool Name: production-agents
 Description: Agents for production infrastructure in private datacenter
 ```

@@ -74,7 +74,7 @@ const processOrderFunction = new lambda.Function(this, 'ProcessOrder', {
 
 The project structure for this would be something like:
 
-```
+```text
 my-cdk-app/
   lambda/
     process-order/

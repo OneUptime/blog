@@ -23,7 +23,7 @@ This copies `nginx.conf` from the current directory on your controller to `/etc/
 
 Output on success:
 
-```
+```text
 web1 | CHANGED => {
     "changed": true,
     "checksum": "a4b5c6d7e8f9...",

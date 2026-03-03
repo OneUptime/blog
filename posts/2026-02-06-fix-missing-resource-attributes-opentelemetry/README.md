@@ -16,7 +16,7 @@ This is one of those issues that seems small at first but becomes a real problem
 
 A resource in OpenTelemetry is a set of key-value pairs that describe the source of telemetry. The OpenTelemetry specification defines a set of semantic conventions for common attributes:
 
-```
+```text
 service.name        - The logical name of the service (e.g., "payment-service")
 service.version     - The version of the service (e.g., "1.4.2")
 service.namespace   - A namespace for the service (e.g., "shop")

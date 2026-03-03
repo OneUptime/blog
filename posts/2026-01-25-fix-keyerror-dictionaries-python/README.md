@@ -22,7 +22,7 @@ print(user["age"])       # KeyError: 'age'
 
 The error message shows which key was not found:
 
-```
+```text
 KeyError: 'age'
 ```
 

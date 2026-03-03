@@ -36,7 +36,7 @@ kubectl exec -it <pod-name> -c istio-proxy -- iptables-save -t nat
 
 This gives you output like:
 
-```
+```text
 *nat
 :PREROUTING ACCEPT [0:0]
 :INPUT ACCEPT [0:0]

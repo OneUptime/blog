@@ -36,7 +36,7 @@ flowchart TD
 
 Organize your CircleCI configuration to separate platform concerns while sharing common workflows.
 
-```
+```text
 .circleci/
   config.yml
   scripts/

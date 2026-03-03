@@ -80,7 +80,7 @@ It returns the template parameters and description on success:
 
 On failure, it returns an error:
 
-```
+```text
 An error occurred (ValidationError) when calling the ValidateTemplate operation:
 Template format error: Every Resources object must contain a Type member.
 ```
@@ -115,7 +115,7 @@ cfn-lint template.yaml
 
 Example output:
 
-```
+```text
 E3012 Property Resources/MyBucket/Properties/BucketName should be of type String
   template.yaml:15:7
 
@@ -190,7 +190,7 @@ cargo install cfn-guard
 
 Write a rules file:
 
-```
+```text
 # rules.guard - Custom policy rules
 
 # All S3 buckets must have encryption enabled

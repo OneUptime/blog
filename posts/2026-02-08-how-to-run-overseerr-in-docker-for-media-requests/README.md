@@ -104,7 +104,7 @@ Connect Overseerr to Radarr for automatic movie requests:
 2. Click "Add Radarr Server"
 3. Fill in the connection details:
 
-```
+```text
 Server Name: Radarr
 Hostname: 192.168.1.100 (or your Radarr server IP)
 Port: 7878
@@ -127,7 +127,7 @@ The Sonarr setup follows the same pattern:
 2. Click "Add Sonarr Server"
 3. Fill in the connection details:
 
-```
+```text
 Server Name: Sonarr
 Hostname: 192.168.1.100
 Port: 8989
@@ -151,7 +151,7 @@ Overseerr supports multiple authentication methods:
 
 Configure user defaults in Settings > Users:
 
-```
+```text
 # Recommended user permission settings
 Auto-approve Movies: No (requires admin approval)
 Auto-approve TV: No
@@ -184,7 +184,7 @@ Configure notifications to stay informed about requests. Overseerr supports many
 
 ### Email Notifications
 
-```
+```text
 # Settings > Notifications > Email
 SMTP Host: smtp.gmail.com
 SMTP Port: 587
@@ -196,14 +196,14 @@ Sender Address: overseerr@your-domain.com
 
 ### Discord Notifications
 
-```
+```text
 # Settings > Notifications > Discord
 Webhook URL: https://discord.com/api/webhooks/YOUR_WEBHOOK_URL
 ```
 
 ### Telegram Notifications
 
-```
+```text
 # Settings > Notifications > Telegram
 Bot Token: YOUR_BOT_TOKEN
 Chat ID: YOUR_CHAT_ID

@@ -39,7 +39,7 @@ cat data.txt | redis-cli -h redis.example.com -p 6379 --pipe
 
 The Redis protocol format is straightforward:
 
-```
+```text
 *<number of arguments>
 $<length of argument 1>
 <argument 1>

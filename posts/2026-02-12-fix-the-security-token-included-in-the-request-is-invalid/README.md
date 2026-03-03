@@ -16,14 +16,14 @@ Let's go through each possible cause and fix it.
 
 The full error usually looks like this:
 
-```
+```text
 An error occurred (InvalidClientTokenId) when calling the [Operation] operation:
 The security token included in the request is invalid.
 ```
 
 Or sometimes:
 
-```
+```text
 An error occurred (UnrecognizedClientException) when calling the [Operation] operation:
 The security token included in the request is invalid.
 ```

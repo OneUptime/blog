@@ -173,7 +173,7 @@ Configure syslog to capture the audit events:
 sudo nano /etc/rsyslog.d/samba-audit.conf
 ```
 
-```
+```text
 # Log Samba audit events to a separate file
 local5.notice    /var/log/samba/audit.log
 ```

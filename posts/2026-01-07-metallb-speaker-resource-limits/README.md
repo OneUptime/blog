@@ -361,7 +361,7 @@ pie title MetalLB Speaker Memory Distribution
 
 Use this formula to estimate memory requirements:
 
-```
+```text
 Base Memory (Go runtime): ~20Mi
 Per Service: ~0.5Mi
 Per BGP Peer: ~2Mi

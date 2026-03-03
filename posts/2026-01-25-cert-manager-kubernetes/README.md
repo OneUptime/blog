@@ -64,7 +64,7 @@ kubectl get crd | grep cert-manager
 
 Expected output shows three pods running:
 
-```
+```text
 NAME                                       READY   STATUS    RESTARTS   AGE
 cert-manager-7d59c9bd65-xpz8k             1/1     Running   0          2m
 cert-manager-cainjector-5c5695d979-djxkm  1/1     Running   0          2m

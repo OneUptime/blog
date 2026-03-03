@@ -12,7 +12,7 @@ Dynamic URL segments like user IDs, order numbers, and UUIDs create high-cardina
 
 Without normalization, your trace backend shows:
 
-```
+```text
 GET /api/users/abc123def     - 3 traces
 GET /api/users/xyz789ghi     - 2 traces
 GET /api/users/mno456pqr     - 1 trace
@@ -23,7 +23,7 @@ GET /api/orders/67890        - 2 traces
 
 After normalization:
 
-```
+```text
 GET /api/users/{userId}      - 6 traces
 GET /api/orders/{orderId}    - 6 traces
 ```

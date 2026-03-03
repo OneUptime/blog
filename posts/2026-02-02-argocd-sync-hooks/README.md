@@ -413,7 +413,7 @@ spec:
 
 Organize your manifests to separate hooks from application resources:
 
-```
+```text
 k8s/production/
   kustomization.yaml
   deployment.yaml

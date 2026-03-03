@@ -252,7 +252,7 @@ kubectl exec my-service-pod -c istio-proxy -- \
 
 Key metrics:
 
-```
+```text
 downstream_cx_active: 45
 downstream_cx_total: 12345
 downstream_cx_destroy: 12300

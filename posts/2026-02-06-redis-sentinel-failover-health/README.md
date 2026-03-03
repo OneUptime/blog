@@ -140,7 +140,7 @@ receivers:
 
 Key Sentinel log events:
 
-```
+```text
 +sdown master mymaster 10.0.0.1 6379    - Subjectively down (one Sentinel thinks it is down)
 +odown master mymaster 10.0.0.1 6379    - Objectively down (quorum reached)
 +failover-state-reconf-slaves master mymaster - Failover started
@@ -214,7 +214,7 @@ services:
 
 Sentinel configuration:
 
-```
+```text
 # sentinel.conf
 sentinel monitor mymaster redis-master 6379 2
 sentinel down-after-milliseconds mymaster 5000

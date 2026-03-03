@@ -142,7 +142,7 @@ sudo mkdir -p /var/log
 sudo nano /etc/udev/rules.d/99-usb-automount.rules
 ```
 
-```
+```text
 # Automount USB storage devices when added
 # Match USB mass storage partitions
 ACTION=="add", KERNEL=="sd[b-z][0-9]", SUBSYSTEMS=="usb", RUN+="/usr/local/bin/usb-mount.sh add %N"
@@ -253,7 +253,7 @@ udevadm info -a -n /dev/sdb | grep -E 'idVendor|idProduct|serial'
 
 Update the udev rule to match only trusted devices:
 
-```
+```text
 # Only mount this specific USB device (by vendor and product ID)
 ACTION=="add", KERNEL=="sd[b-z][0-9]", SUBSYSTEMS=="usb", \
   ATTRS{idVendor}=="0781", ATTRS{idProduct}=="5583", \

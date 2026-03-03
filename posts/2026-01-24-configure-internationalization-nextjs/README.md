@@ -111,7 +111,7 @@ module.exports = nextConfig;
 
 Create a structured translation system:
 
-```
+```text
 project/
   locales/
     en/
@@ -306,7 +306,7 @@ flowchart TD
 
 ### Directory Structure for App Router
 
-```
+```text
 app/
   [locale]/
     layout.js

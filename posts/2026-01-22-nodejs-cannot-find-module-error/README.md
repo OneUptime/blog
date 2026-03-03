@@ -12,7 +12,7 @@ The "Error: Cannot find module" is one of the most common errors in Node.js deve
 
 ## Understanding the Error
 
-```
+```text
 Error: Cannot find module 'express'
     at Function.Module._resolveFilename (internal/modules/cjs/loader.js:636:15)
     at Function.Module._load (internal/modules/cjs/loader.js:562:25)

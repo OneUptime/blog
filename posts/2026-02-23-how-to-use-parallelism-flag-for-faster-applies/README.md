@@ -16,7 +16,7 @@ This guide covers how to tune the `-parallelism` flag for your specific workload
 
 Terraform builds a dependency graph of all resources and operations. Resources that do not depend on each other can be created in parallel. The `-parallelism` flag sets the maximum number of concurrent operations.
 
-```
+```text
 # Default: 10 concurrent operations
 terraform apply
 
@@ -88,7 +88,7 @@ terraform apply -parallelism=25
 
 If you see errors like these, reduce parallelism:
 
-```
+```text
 Error: error creating Security Group: RequestLimitExceeded: Request limit exceeded.
 Error: ThrottlingException: Rate exceeded
 Error: error creating S3 bucket: TooManyBuckets: You have attempted to create more buckets than allowed

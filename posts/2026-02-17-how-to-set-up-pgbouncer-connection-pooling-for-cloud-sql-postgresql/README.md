@@ -301,19 +301,19 @@ If `cl_waiting` is consistently above 0, increase your `default_pool_size`. If `
 
 A good starting formula:
 
-```
+```text
 pool_size = (CPU cores on Cloud SQL * 2) + number_of_disks
 ```
 
 For a Cloud SQL instance with 4 vCPUs and 1 disk:
 
-```
+```text
 pool_size = (4 * 2) + 1 = 9, round up to 10
 ```
 
 If you have multiple PgBouncer instances (like sidecars), divide this across them:
 
-```
+```text
 per_instance_pool = total_pool / number_of_pgbouncer_instances
 ```
 

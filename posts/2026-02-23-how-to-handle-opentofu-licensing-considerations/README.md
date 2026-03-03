@@ -26,7 +26,7 @@ The Mozilla Public License 2.0 is a weak copyleft license. Here is what that mea
 
 **No patent retaliation.** The MPL 2.0 includes a patent grant from contributors, which means you get a license to any patents that cover the contributed code.
 
-```
+```text
 # Quick summary of what you can do under MPL 2.0:
 # - Use commercially: YES
 # - Modify: YES (modified MPL files must stay MPL)

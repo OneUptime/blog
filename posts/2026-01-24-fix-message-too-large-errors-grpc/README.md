@@ -30,7 +30,7 @@ flowchart TB
 
 The error typically appears as:
 
-```
+```text
 rpc error: code = ResourceExhausted desc = grpc: received message larger than max (4194308 vs. 4194304)
 ```
 

@@ -133,7 +133,7 @@ spring:
 
 Structure your Git repository with configuration files named after applications and profiles.
 
-```
+```text
 config-repo/
 ├── application.yml              # Shared defaults for all apps
 ├── application-dev.yml          # Shared dev settings

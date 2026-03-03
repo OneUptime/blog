@@ -10,13 +10,13 @@ Description: Understand why you get BucketAlreadyExists and BucketAlreadyOwnedBy
 
 If you've tried creating an S3 bucket and received one of these errors, you're not alone:
 
-```
+```text
 BucketAlreadyExists: The requested bucket name is not available.
 ```
 
 or
 
-```
+```text
 BucketAlreadyOwnedByYou: Your previous request to create the named bucket succeeded and you already own it.
 ```
 
@@ -50,7 +50,7 @@ echo "Created bucket: ${ACCOUNT_ID}-my-application-data"
 
 Here are some common naming patterns that help avoid conflicts:
 
-```
+```text
 # Pattern: {account-id}-{project}-{purpose}
 123456789012-myapp-uploads
 

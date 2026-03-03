@@ -97,7 +97,7 @@ For multi-repo setups, each repository should have a consistent internal structu
 
 ### Platform Infrastructure Repo
 
-```
+```text
 platform-infra/
   namespaces/
     payments/
@@ -116,7 +116,7 @@ platform-infra/
 
 ### Application Repo
 
-```
+```text
 payment-service/
   src/               # Application source code
   deploy/
@@ -131,7 +131,7 @@ payment-service/
 
 ### Security Policies Repo
 
-```
+```text
 security-policies/
   policies/
     payments/
@@ -149,7 +149,7 @@ security-policies/
 
 ### Observability Config Repo
 
-```
+```text
 observability-config/
   services/
     payment-service/

@@ -78,7 +78,7 @@ dev environment # spaces not allowed
 
 Best for small teams with straightforward deployments:
 
-```
+```text
 dev
 staging
 prod
@@ -90,7 +90,7 @@ Clean, obvious, and works everywhere.
 
 For multi-region deployments:
 
-```
+```text
 us-east-1-dev
 us-east-1-prod
 eu-west-1-dev
@@ -103,7 +103,7 @@ The region comes first so workspaces sort geographically when listed.
 
 For organizations where teams own their infrastructure:
 
-```
+```text
 platform-dev
 platform-prod
 payments-dev
@@ -116,7 +116,7 @@ frontend-prod
 
 For ephemeral environments tied to branches:
 
-```
+```text
 feature-user-auth
 feature-new-checkout
 bugfix-login-error
@@ -127,7 +127,7 @@ pr-142
 
 For environments that are temporary by design:
 
-```
+```text
 load-test-20260223
 demo-client-a-20260301
 migration-test-20260215
@@ -288,7 +288,7 @@ echo "$WORKSPACE"
 
 Examples:
 
-```
+```text
 feature/USER-1234-new-login  ->  feature-user-1234-ne
 bugfix/Fix_Critical_Bug!!!   ->  bugfix-fix-critical-
 release/v2.0.0               ->  release-v2-0-0
@@ -299,7 +299,7 @@ dependabot/npm/lodash-4.17   ->  dependabot-npm-lodas
 
 Create a reference document your team can follow:
 
-```
+```text
 # Terraform Workspace Naming Convention
 
 ## Format

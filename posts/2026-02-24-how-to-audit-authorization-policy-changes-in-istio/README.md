@@ -45,7 +45,7 @@ rules:
 
 Configure the API server to use this policy. On managed Kubernetes services, this is typically done through the cloud provider's console or CLI. On self-managed clusters, add these flags to the API server:
 
-```
+```text
 --audit-policy-file=/etc/kubernetes/audit-policy.yaml
 --audit-log-path=/var/log/kubernetes/audit.log
 --audit-log-maxage=30
@@ -209,7 +209,7 @@ istioctl proxy-config log deployment/my-app -n backend --level rbac:debug
 
 This produces log entries like:
 
-```
+```text
 enforced_by=shadow_engine action=ALLOW source=10.0.0.5 destination=my-app:8080 matched_policy=allow-frontend
 ```
 

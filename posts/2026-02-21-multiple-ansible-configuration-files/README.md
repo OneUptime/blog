@@ -25,7 +25,7 @@ Here are common reasons to maintain more than one ansible.cfg:
 
 The simplest approach is to have separate project directories, each with its own ansible.cfg. Ansible reads the config from the current working directory.
 
-```
+```text
 ansible-projects/
   development/
     ansible.cfg
@@ -120,7 +120,7 @@ ansible-playbook playbooks/deploy.yml
 
 Keep all config files in a single project and use the ANSIBLE_CONFIG environment variable to switch between them:
 
-```
+```text
 my-project/
   configs/
     dev.cfg

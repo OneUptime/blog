@@ -18,7 +18,7 @@ HTTP response caching stores the complete API response, enabling subsequent requ
 
 ### Performance Impact
 
-```
+```text
 Without caching:
 Client -> API -> Business Logic -> Database -> API -> Client
 Total time: ~100-500ms

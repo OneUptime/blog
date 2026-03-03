@@ -127,7 +127,7 @@ Fixed delays have a problem: they do not adapt to the severity of the failure. I
 
 The formula is straightforward:
 
-```
+```text
 delay = base_delay * (multiplier ^ attempt_number)
 ```
 

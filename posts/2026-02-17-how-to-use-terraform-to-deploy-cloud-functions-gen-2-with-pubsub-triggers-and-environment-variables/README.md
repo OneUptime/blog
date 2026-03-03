@@ -20,7 +20,7 @@ If you have used Cloud Functions 1st gen before, Gen 2 is a significant shift. U
 
 Here is what the Terraform configuration looks like alongside the function code:
 
-```
+```text
 cloud-functions/
   terraform/
     main.tf

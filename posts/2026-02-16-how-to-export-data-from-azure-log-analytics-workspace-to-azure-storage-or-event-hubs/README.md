@@ -142,7 +142,7 @@ For infrastructure-as-code deployments:
 
 When data is exported to a storage account, it is organized in a container-per-table structure:
 
-```
+```text
 stlogarchive/
   am-securityevent/
     WorkspaceResourceId=/subscriptions/.../
@@ -173,7 +173,7 @@ Once data lands in Azure Storage, you can query it using Azure Data Explorer, Az
 
 Here is how to query exported data from Azure Data Explorer:
 
-```
+```text
 // Create an external table pointing to the exported data in blob storage
 .create external table SecurityEvents (
     TimeGenerated: datetime,
@@ -245,7 +245,7 @@ After creating an export rule, monitor its health to make sure data is flowing.
 
 In the portal, go to the Data Export section of your workspace and check the status of each rule. You can also set up alerts for export failures.
 
-```
+```text
 // KQL query to check if exported tables are still receiving data
 // Run this in your Log Analytics workspace
 union SecurityEvent, Syslog

@@ -25,7 +25,7 @@ This aggregated registry is then translated into Envoy xDS configuration and pus
 
 Istiod connects to the Kubernetes API server and sets up watches on several resource types:
 
-```
+```text
 Services
 Endpoints/EndpointSlices
 Pods
@@ -35,7 +35,7 @@ Namespaces
 
 And for Istio resources:
 
-```
+```text
 VirtualService
 DestinationRule
 ServiceEntry
@@ -129,7 +129,7 @@ When the registry changes, istiod needs to push updated configuration to affecte
 
 Monitor push activity:
 
-```
+```text
 pilot_xds_pushes{type="cds"}
 pilot_xds_pushes{type="eds"}
 pilot_xds_pushes{type="lds"}
@@ -144,7 +144,7 @@ For cluster, listener, and route changes (which happen less frequently), istiod 
 
 You can tell the difference by looking at the push metrics:
 
-```
+```text
 pilot_xds_pushes{type="eds_senderr"}  # EDS push errors
 pilot_xds_pushes{type="cds"}          # Full CDS pushes
 ```
@@ -207,7 +207,7 @@ The service registry scales with your mesh. For large meshes, here are the thing
 
 Key metrics to watch:
 
-```
+```text
 pilot_xds_push_time_bucket  # How long pushes take
 pilot_xds              # Number of connected proxies
 pilot_services         # Number of registered services

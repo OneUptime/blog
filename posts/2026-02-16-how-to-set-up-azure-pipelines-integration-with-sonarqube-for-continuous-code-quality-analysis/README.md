@@ -27,7 +27,7 @@ First, create a service connection in Azure DevOps that points to your SonarQube
 
 Navigate to Project Settings, then Service connections, then "New service connection." Select "SonarQube" from the list.
 
-```
+```text
 Service connection configuration:
   Server URL: https://sonarqube.yourcompany.com (or https://sonarcloud.io for cloud)
   Token: your-sonarqube-user-token

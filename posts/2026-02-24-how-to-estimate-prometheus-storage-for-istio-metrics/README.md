@@ -31,7 +31,7 @@ Istio's standard metrics include labels like:
 
 The cardinality scales with the cross-product of these labels. If you have 100 services, each talking to 5 other services, with 5 common response codes:
 
-```
+```text
 Cardinality per metric = Sources x Destinations x Response_Codes x Protocols
                       = 100 x 5 x 5 x 2
                       = 5,000 time series per metric
@@ -50,7 +50,7 @@ Istio exports about 10-15 key metrics by default:
 
 Histograms are the expensive ones. A histogram with the default 20 buckets generates 20+2 time series (one per bucket plus sum and count) for each unique label combination.
 
-```
+```text
 For istio_request_duration_milliseconds:
 5,000 label combinations x 22 histogram series = 110,000 time series
 
@@ -96,7 +96,7 @@ Prometheus stores each sample (a timestamp + value pair) using approximately 1-2
 
 **Formula:**
 
-```
+```text
 Storage = Time_Series x Samples_Per_Series x Bytes_Per_Sample x Retention_Period
 
 Where:
@@ -106,7 +106,7 @@ Where:
 
 **Example with 355,000 time series, 15s scrape interval, 15 days retention:**
 
-```
+```text
 Samples_Per_Series = (15 x 24 x 3600) / 15 = 86,400 samples
 
 Storage = 355,000 x 86,400 x 1.5 bytes
@@ -116,7 +116,7 @@ Storage = ~43 GB
 
 Add 20% overhead for indexes and WAL (write-ahead log):
 
-```
+```text
 Total storage: 43 GB x 1.2 = ~52 GB
 ```
 

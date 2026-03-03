@@ -26,7 +26,7 @@ Add `backup: true` to any template task:
 
 When this runs and `/etc/nginx/nginx.conf` already exists, Ansible creates a timestamped copy before writing the new version. The backup file looks something like:
 
-```
+```text
 /etc/nginx/nginx.conf.2026-02-21@14:30:45~
 ```
 

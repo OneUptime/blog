@@ -130,7 +130,7 @@ done
 
 Example output:
 
-```
+```text
 /web: 172.18.0.3
 /api: 172.18.0.4
 /postgres: 172.18.0.2

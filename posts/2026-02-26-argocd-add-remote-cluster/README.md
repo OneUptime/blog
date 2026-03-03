@@ -61,7 +61,7 @@ argocd cluster add remote-staging
 
 The output looks like:
 
-```
+```text
 INFO[0000] ServiceAccount "argocd-manager" created in namespace "kube-system"
 INFO[0000] ClusterRole "argocd-manager-role" created
 INFO[0000] ClusterRoleBinding "argocd-manager-role-binding" created

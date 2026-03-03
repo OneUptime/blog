@@ -189,7 +189,7 @@ full rollout.
   at com.company.auth.SessionValidator.validate(SessionValidator.java:45)
   at com.company.auth.AuthController.login(AuthController.java:78)
 Caused by: token.user_id is null for token abc123...
-```
+```text
 
 ### Relevant Metrics
 

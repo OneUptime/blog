@@ -174,7 +174,7 @@ To find memory leaks, follow this pattern:
 3. **Force Garbage Collection**: Click the trash can icon in DevTools
 4. **Comparison Snapshot**: Take another snapshot
 
-```
+```text
 Timeline:
 [App Load] -> [Snapshot 1] -> [Navigate/Interact] -> [Return] -> [GC] -> [Snapshot 2]
 ```
@@ -204,7 +204,7 @@ Compare two snapshots to find growing objects:
 
 Common leak patterns to look for:
 
-```
+```text
 Detached DOM tree
   - Look for "Detached" in object names
   - Indicates DOM nodes not in document but still referenced
@@ -266,7 +266,7 @@ The Retainers panel shows why an object isn't being garbage collected. This is c
 
 When you select an object in the snapshot, the Retainers panel shows:
 
-```
+```text
 Object @12345
   <- propertyName in ParentObject @67890
     <- anotherProperty in GrandparentObject @11111
@@ -278,7 +278,7 @@ This tree shows the reference chain keeping the object alive.
 ### Common Retainer Patterns
 
 **Event Listener Retention:**
-```
+```text
 HTMLDivElement @12345
   <- listener in EventListenerList
     <- (GC roots)
@@ -286,7 +286,7 @@ HTMLDivElement @12345
 This indicates an event listener is keeping a DOM element alive.
 
 **Closure Retention:**
-```
+```text
 Object @12345
   <- context in (closure) @67890
     <- handleClick in FunctionContext
@@ -295,7 +295,7 @@ Object @12345
 A closure is capturing and retaining the object.
 
 **React Fiber Retention:**
-```
+```text
 FiberNode @12345
   <- child in FiberNode @67890
     <- (GC roots)
@@ -932,7 +932,7 @@ The timeline shows several memory metrics:
 
 Look for these patterns:
 
-```
+```text
 Normal Pattern (No Leak):
 Memory rises during activity, drops during GC
 [___/\__/\__/\___]

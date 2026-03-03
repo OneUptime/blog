@@ -10,7 +10,7 @@ Description: Understand why Docker shows 'layer already exists' during push and 
 
 When you push a Docker image to a registry, you often see messages like this:
 
-```
+```text
 The push refers to repository [docker.io/myuser/myapp]
 abc123: Layer already exists
 def456: Layer already exists
@@ -78,13 +78,13 @@ CMD ["node", "server.js"]
 
 Sometimes the push fails partway through with errors related to existing layers:
 
-```
+```text
 error pushing image: layer already exists but with different digest
 ```
 
 Or:
 
-```
+```text
 received unexpected HTTP status: 500 Internal Server Error
 ```
 

@@ -12,7 +12,7 @@ The "Shared connection to X closed" error usually appears during long-running ta
 
 ## The Error
 
-```
+```text
 fatal: [server1]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: Shared connection to 10.0.1.10 closed.",

@@ -217,7 +217,7 @@ By default, wg-easy routes all client traffic through the VPN. For split tunneli
 
 In the wg-easy UI, edit a peer's "Allowed IPs" to only include the private subnets you want to route through VPN:
 
-```
+```text
 10.8.0.0/24, 192.168.1.0/24
 ```
 

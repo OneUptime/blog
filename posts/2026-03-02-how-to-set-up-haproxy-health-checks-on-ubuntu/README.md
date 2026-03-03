@@ -29,7 +29,7 @@ The simplest health check: verify a TCP connection can be established.
 sudo nano /etc/haproxy/haproxy.cfg
 ```
 
-```
+```text
 backend app_servers
     balance roundrobin
 
@@ -46,7 +46,7 @@ The `check` keyword at the end of each server line enables health checks. HAProx
 
 For web applications, check that the application is actually responding correctly:
 
-```
+```text
 backend web_app
     balance roundrobin
 
@@ -78,7 +78,7 @@ Health check options:
 
 Verify that the health endpoint returns expected content, not just a 200 status:
 
-```
+```text
 backend api_servers
     balance leastconn
     option httpchk
@@ -101,7 +101,7 @@ backend api_servers
 
 Some applications expose health endpoints on a different port than the main service:
 
-```
+```text
 backend app_with_health_port
     balance roundrobin
     option httpchk
@@ -118,7 +118,7 @@ backend app_with_health_port
 
 For gRPC services:
 
-```
+```text
 backend grpc_backend
     balance roundrobin
 
@@ -136,7 +136,7 @@ backend grpc_backend
 
 For databases and other non-HTTP services:
 
-```
+```text
 backend mysql_backend
     mode tcp
     balance roundrobin
@@ -152,7 +152,7 @@ backend mysql_backend
 
 For Redis:
 
-```
+```text
 backend redis_backend
     mode tcp
     balance roundrobin
@@ -170,7 +170,7 @@ backend redis_backend
 
 When backends use SSL:
 
-```
+```text
 backend https_backends
     balance roundrobin
     option httpchk
@@ -185,7 +185,7 @@ backend https_backends
 
 HAProxy can ask an external agent (a small TCP service) whether a backend is healthy. This allows application-controlled capacity management:
 
-```
+```text
 backend app_with_agent
     balance roundrobin
 
@@ -226,7 +226,7 @@ socat TCP-LISTEN:9000,fork,reuseaddr EXEC:/usr/local/bin/haproxy-agent.sh
 
 Enable logging of health check state changes:
 
-```
+```text
 defaults
     log global
     option log-health-checks  # Log transitions between UP and DOWN
@@ -288,7 +288,7 @@ echo "show backend" | sudo socat - /run/haproxy/admin.sock
 
 Prevent overwhelming a recovered server with a flood of requests:
 
-```
+```text
 backend gradual_recovery
     balance roundrobin
     option httpchk

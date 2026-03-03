@@ -18,7 +18,7 @@ This guide covers proven repository structure patterns for ArgoCD, when to use e
 
 All Kubernetes manifests and ArgoCD application definitions live in one repository:
 
-```
+```text
 platform/
   argocd/
     install/                    # ArgoCD installation manifests
@@ -76,7 +76,7 @@ platform/
 
 Separate repositories for platform config, team configs, and application source code:
 
-```
+```text
 # Platform config repo (platform-config)
 argocd/
   install/
@@ -137,7 +137,7 @@ manifests/
 
 The most common and recommended pattern:
 
-```
+```text
 service-name/
   base/
     deployment.yaml
@@ -184,7 +184,7 @@ spec:
 
 When using Helm charts (either your own or third-party):
 
-```
+```text
 services/
   web-frontend/
     Chart.yaml              # Or reference to external chart
@@ -217,7 +217,7 @@ spec:
 
 Useful when environments have significantly different configurations:
 
-```
+```text
 environments/
   dev/
     web-frontend/
@@ -251,7 +251,7 @@ This pattern causes duplication but makes it very clear what each environment lo
 
 This is one of the most important best practices. Your application source code (Go files, Python files, Dockerfiles) should live in a separate repository from your Kubernetes manifests:
 
-```
+```text
 # Source code repo: myorg/web-frontend
 src/
 Dockerfile
@@ -291,7 +291,7 @@ The CI pipeline in the source repo builds the image, and then a separate process
 
 Keep ArgoCD Application definitions organized and consistent:
 
-```
+```text
 apps/
   # Group by environment
   dev/
@@ -331,7 +331,7 @@ metadata:
 
 Resources used across multiple services (monitoring, logging, ingress controllers) need their own structure:
 
-```
+```text
 shared/
   monitoring/
     prometheus/

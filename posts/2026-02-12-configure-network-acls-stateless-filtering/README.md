@@ -18,7 +18,7 @@ Each NACL has a numbered list of rules that get evaluated in order, starting fro
 
 Here's the default NACL that comes with every VPC.
 
-```
+```text
 Rule #  Type         Protocol  Port Range  Source/Dest    Allow/Deny
 100     All Traffic   All       All         0.0.0.0/0      ALLOW
 *       All Traffic   All       All         0.0.0.0/0      DENY

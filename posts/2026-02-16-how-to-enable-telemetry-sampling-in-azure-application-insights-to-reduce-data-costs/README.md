@@ -148,7 +148,7 @@ When you query sampled data in Log Analytics, each record has a `itemCount` fiel
 
 When you write KQL queries, use `sum(itemCount)` instead of `count()` to get accurate totals.
 
-```
+```text
 // Correct way to count requests with sampled data
 requests
 | where timestamp > ago(1h)
@@ -176,7 +176,7 @@ In contrast, these are good candidates for aggressive sampling:
 
 Before configuring sampling, estimate how much data you are currently ingesting and what your target is.
 
-```
+```text
 // Check current daily ingestion volume per telemetry type
 union requests, dependencies, traces, exceptions, customEvents, pageViews
 | where timestamp > ago(1d)
@@ -192,7 +192,7 @@ If dependencies account for 80% of your data volume and you apply 25% sampling t
 
 After enabling sampling, verify it is active by checking the `itemCount` values in your telemetry.
 
-```
+```text
 // Verify sampling is active by checking itemCount values
 requests
 | where timestamp > ago(1h)

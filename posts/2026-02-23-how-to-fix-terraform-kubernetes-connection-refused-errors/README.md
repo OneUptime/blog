@@ -12,7 +12,7 @@ Connection refused errors with the Terraform Kubernetes provider mean Terraform 
 
 ## What the Error Looks Like
 
-```
+```text
 Error: Get "https://192.168.1.100:6443/api/v1/namespaces/default":
 dial tcp 192.168.1.100:6443: connect: connection refused
 

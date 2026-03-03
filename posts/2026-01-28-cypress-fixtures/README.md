@@ -260,7 +260,7 @@ describe('Edge Cases', () => {
 
 As your test suite grows, organize fixtures into subdirectories by feature or domain.
 
-```
+```text
 cypress/
   fixtures/
     users/

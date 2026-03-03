@@ -935,7 +935,7 @@ OneUptime seamlessly ingests logs and metrics from the Pub/Sub receiver. Once co
 
 Example OneUptime query:
 
-```
+```text
 source.type = "gcp_pubsub" AND
 severity_text = "ERROR" AND
 gcp.resource.type = "gce_instance"

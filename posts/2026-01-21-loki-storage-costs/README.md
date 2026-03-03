@@ -36,7 +36,7 @@ flowchart TB
 
 ### Estimating Storage Requirements
 
-```
+```text
 Storage = Log Volume per Day x Retention Days x (1 - Compression Ratio)
 
 Example:
@@ -478,7 +478,7 @@ sum(rate(loki_distributor_bytes_received_total[5m]))
 
 ### Before Optimization
 
-```
+```text
 - Raw log volume: 100 GB/day
 - Retention: 90 days
 - No filtering
@@ -489,7 +489,7 @@ sum(rate(loki_distributor_bytes_received_total[5m]))
 
 ### After Optimization
 
-```
+```text
 - Log volume after filtering: 60 GB/day
 - Retention: 30 days (with tiered per-stream)
 - Debug logs: 1 day retention

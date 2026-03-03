@@ -30,7 +30,7 @@ When you add `backup: true` to a `copy` task, Ansible creates a backup of the ex
 
 If `/etc/myapp/app.conf` already exists and the new content is different, Ansible renames the existing file to something like:
 
-```
+```text
 /etc/myapp/app.conf.2024-06-15@14:30:22~
 ```
 

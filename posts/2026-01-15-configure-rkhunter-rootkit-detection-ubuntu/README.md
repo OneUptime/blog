@@ -106,7 +106,7 @@ rkhunter --help
 
 Expected output:
 
-```
+```text
 Rootkit Hunter version 1.4.6
 ```
 
@@ -232,7 +232,7 @@ rkhunter output is color-coded for easy interpretation:
 
 ### Sample Scan Output
 
-```
+```text
 Checking for rootkits...
 
   Performing check of known rootkit files and directories

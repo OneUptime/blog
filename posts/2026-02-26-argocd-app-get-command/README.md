@@ -18,7 +18,7 @@ argocd app get my-app
 
 This produces a comprehensive output showing the application's configuration and current state:
 
-```
+```text
 Name:               argocd/my-app
 Project:            default
 Server:             https://kubernetes.default.svc
@@ -105,7 +105,7 @@ argocd app get my-app -o tree
 
 Shows the resource hierarchy, including owner references:
 
-```
+```text
 my-app
 ├── Service/my-app-ns/my-app-svc
 ├── Deployment/my-app-ns/my-app
@@ -129,7 +129,7 @@ The tree view with additional columns for sync and health information.
 
 The top section shows the application's configuration:
 
-```
+```text
 Name:           argocd/my-app          # namespace/name
 Project:        default                 # ArgoCD project
 Server:         https://kubernetes...   # Destination cluster
@@ -142,7 +142,7 @@ Path:           apps/my-app            # Path in repo
 
 ### Sync Information
 
-```
+```text
 Sync Policy:    Automated (Prune)       # Auto-sync with pruning
 Sync Status:    Synced to HEAD (a1b2c3d) # Current sync state and revision
 ```
@@ -154,7 +154,7 @@ Possible sync statuses:
 
 ### Health Information
 
-```
+```text
 Health Status:  Healthy
 ```
 
@@ -170,7 +170,7 @@ Possible health statuses:
 
 The bottom section lists every managed resource:
 
-```
+```text
 GROUP  KIND        NAMESPACE   NAME           STATUS  HEALTH   HOOK  MESSAGE
 apps   Deployment  my-app-ns   my-app         Synced  Healthy        deployment configured
        Service     my-app-ns   my-app-svc     Synced  Healthy        service configured

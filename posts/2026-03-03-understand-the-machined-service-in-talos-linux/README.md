@@ -29,7 +29,7 @@ When `apid` receives a management request from `talosctl`, many of those request
 
 During the boot process, `machined` is one of the first services to start. It reads the machine configuration from the system partition, validates it, and then begins setting up the node according to that configuration. The boot sequence looks roughly like this:
 
-```
+```text
 BIOS/UEFI --> Bootloader --> Kernel --> machined starts
     |
     |--> Read machine config from disk

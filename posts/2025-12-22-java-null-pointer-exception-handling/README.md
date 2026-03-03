@@ -12,7 +12,7 @@ Description: Learn how to prevent, diagnose, and handle NullPointerException err
 
 ## Understanding the Error
 
-```
+```text
 java.lang.NullPointerException: Cannot invoke "String.length()" because "str" is null
     at com.example.MyService.process(MyService.java:25)
 ```

@@ -18,7 +18,7 @@ Without any Istio policies, every service can call any other service across any 
 
 Before locking things down, figure out what your actual cross-namespace communication patterns look like. If you have Istio metrics flowing to Prometheus, run this query:
 
-```
+```text
 sum(rate(istio_requests_total{reporter="destination"}[1h])) by (source_workload_namespace, destination_workload_namespace) > 0
 ```
 

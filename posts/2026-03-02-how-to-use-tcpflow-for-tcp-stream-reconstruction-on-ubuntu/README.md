@@ -42,13 +42,13 @@ sudo tcpflow -i eth0
 
 This creates files in the current directory. Each file is named using the format:
 
-```
+```text
 <src-ip>.<src-port>-<dst-ip>.<dst-port>
 ```
 
 For example, a connection from `192.168.1.10:54321` to `93.184.216.34:80` produces two files:
 
-```
+```text
 192.168.001.010.54321-093.184.216.034.00080
 093.184.216.034.00080-192.168.001.010.54321
 ```
@@ -113,7 +113,7 @@ cat /tmp/http_capture/192.168.001.010.54321-093.184.216.034.00080
 
 The file will contain the raw HTTP request:
 
-```
+```text
 GET /index.html HTTP/1.1
 Host: example.com
 User-Agent: curl/7.81.0
@@ -123,7 +123,7 @@ Accept: */*
 
 And the response file will contain:
 
-```
+```text
 HTTP/1.1 200 OK
 Content-Type: text/html; charset=UTF-8
 Content-Length: 1256

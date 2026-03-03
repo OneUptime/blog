@@ -265,7 +265,7 @@ Key metrics:
 
 In Prometheus:
 
-```
+```text
 envoy_cluster_upstream_rq_pending_overflow{cluster_name="outbound|8080||backend-service.default.svc.cluster.local"}
 ```
 

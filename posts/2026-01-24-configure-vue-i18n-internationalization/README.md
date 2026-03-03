@@ -388,7 +388,7 @@ export default i18n;
 
 ### Locale Files Structure
 
-```
+```text
 src/i18n/
   index.ts
   locales/

@@ -16,7 +16,7 @@ When you apply a bunch of manifests to a Kubernetes cluster, kubectl processes t
 
 The typical error looks like this:
 
-```
+```text
 resource mapping not found for name: "my-resource" namespace: "" from "":
 no matches for kind "MyCustomResource" in version "example.com/v1"
 ```

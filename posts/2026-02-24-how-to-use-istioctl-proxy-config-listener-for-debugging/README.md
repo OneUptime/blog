@@ -26,7 +26,7 @@ istioctl proxy-config listener productpage-v1-6b746f74dc-9rlmh.bookinfo
 
 Output:
 
-```
+```text
 ADDRESSES      PORT  MATCH                                                           DESTINATION
 10.96.0.1      443   ALL                                                             Cluster: outbound|443||kubernetes.default.svc.cluster.local
 0.0.0.0        9080  ALL                                                             Inline Route: 9080

@@ -75,7 +75,7 @@ Ansible's file logging captures everything that appears in the terminal output, 
 
 The log format looks like this:
 
-```
+```text
 2026-02-21 10:15:30,123 p=12345 u=deploy n=ansible | PLAY [Deploy web application] *****
 2026-02-21 10:15:30,456 p=12345 u=deploy n=ansible | TASK [Gathering Facts] *****
 2026-02-21 10:15:32,789 p=12345 u=deploy n=ansible | ok: [web01]

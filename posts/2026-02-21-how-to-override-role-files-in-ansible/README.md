@@ -106,7 +106,7 @@ Ansible searches for templates in a specific order. When a role uses `template: 
 
 This means you can override a role's template simply by placing a file with the same name in your playbook's `templates/` directory.
 
-```
+```text
 project/
   templates/
     nginx.conf.j2          # This takes priority

@@ -94,7 +94,7 @@ Each error comes with a rule ID (like E3002), a description, and the exact locat
 
 cfn-lint organizes its rules into categories that cover different aspects of template validation.
 
-```
+```text
 E1000-E1999: Basic template errors (format, parsing)
 E2000-E2999: Parameter and mapping errors
 E3000-E3999: Resource property errors

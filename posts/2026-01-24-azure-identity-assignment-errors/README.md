@@ -44,7 +44,7 @@ There are two types of managed identities:
 
 This happens when you try to create a duplicate role assignment.
 
-```
+```text
 ERROR: The role assignment already exists.
 ```
 
@@ -90,13 +90,13 @@ fi
 
 This error occurs when the identity has not fully propagated through Azure AD.
 
-```
+```text
 ERROR: Principals of type Application cannot validly be used in role assignments.
 ```
 
 **Or:**
 
-```
+```text
 ERROR: The principal with id 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' does not exist in the directory.
 ```
 
@@ -187,7 +187,7 @@ resource "azurerm_role_assignment" "vm_storage" {
 
 The identity exists but does not have the required permissions.
 
-```
+```text
 ERROR: AuthorizationFailed: The client 'xxx' with object id 'xxx' does not have authorization
 to perform action 'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read'
 over scope '/subscriptions/xxx/...'
@@ -260,7 +260,7 @@ az role assignment create \
 
 When attaching a user-assigned identity that does not exist or is in a different subscription.
 
-```
+```text
 ERROR: The resource Microsoft.ManagedIdentity/userAssignedIdentities/myIdentity
 under resource group myResourceGroup was not found.
 ```

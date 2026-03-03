@@ -209,7 +209,7 @@ terraform force-unlock LOCK_ID
 
 A good state organization scheme separates environments and components:
 
-```
+```text
 gs://my-org-terraform-state/
   environments/
     dev/

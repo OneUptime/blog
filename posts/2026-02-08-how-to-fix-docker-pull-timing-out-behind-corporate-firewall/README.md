@@ -115,7 +115,7 @@ Many corporate firewalls perform SSL/TLS inspection (man-in-the-middle) using a 
 
 Symptoms of SSL inspection interference:
 
-```
+```text
 Error response from daemon: Get https://registry-1.docker.io/v2/: x509: certificate signed by unknown authority
 ```
 
@@ -199,7 +199,7 @@ volumes:
 
 Sometimes the cleanest solution is asking your IT team to whitelist the required endpoints. Provide them with this list:
 
-```
+```text
 # Required endpoints for Docker Hub access
 registry-1.docker.io:443          # Docker Hub registry API
 auth.docker.io:443                # Docker Hub authentication

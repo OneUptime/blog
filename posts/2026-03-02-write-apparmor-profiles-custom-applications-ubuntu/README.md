@@ -21,7 +21,7 @@ Profiles live in `/etc/apparmor.d/`. The filename is typically the full path of 
 
 A minimal profile looks like this:
 
-```
+```text
 #include <tunables/global>
 
 /usr/local/bin/myapp {
@@ -43,7 +43,7 @@ The profile name matches the binary path. Everything inside the braces defines w
 
 File rules follow this pattern:
 
-```
+```text
 /path/to/file permissions,
 ```
 
@@ -61,7 +61,7 @@ Common permission flags:
 
 Examples:
 
-```
+```text
 # Read-only access to a config file
 /etc/myapp/config.conf r,
 
@@ -82,7 +82,7 @@ Examples:
 
 AppArmor supports glob patterns in file paths:
 
-```
+```text
 # Match any file in a directory (not recursive)
 /etc/myapp/* r,
 
@@ -100,7 +100,7 @@ AppArmor supports glob patterns in file paths:
 
 Use `owner` to restrict rules to files owned by the process's user:
 
-```
+```text
 # Only allow writing files the user owns
 owner /home/**/.myapp/** rw,
 
@@ -115,7 +115,7 @@ owner @{HOME}/.config/myapp/** r,
 
 Linux capabilities control what privileged operations a process can perform:
 
-```
+```text
 # Allow binding to ports below 1024
 capability net_bind_service,
 
@@ -131,7 +131,7 @@ capability setfcap,
 
 ### Network Rules
 
-```
+```text
 # Allow all network access
 network,
 
@@ -147,7 +147,7 @@ network unix,
 
 ### Signal Rules
 
-```
+```text
 # Allow sending SIGTERM to processes in the same profile
 signal (send) set=(term) peer=/usr/local/bin/myapp,
 
@@ -159,7 +159,7 @@ signal (receive) set=(hup term) peer=/usr/bin/systemd,
 
 AppArmor provides pre-built abstraction snippets for common patterns. Including them saves writing dozens of rules manually:
 
-```
+```text
 # Basic rules almost every application needs
 #include <abstractions/base>
 
@@ -196,7 +196,7 @@ Start with a minimal profile in complain mode so the application can run while y
 sudo nano /etc/apparmor.d/usr.local.bin.myapp
 ```
 
-```
+```text
 #include <tunables/global>
 
 /usr/local/bin/myapp {
@@ -243,7 +243,7 @@ sudo cat /etc/apparmor.d/usr.local.bin.myapp
 
 Look for overly broad rules and tighten them:
 
-```
+```text
 # Too broad - allows reading everything under /etc
 /etc/** r,
 
@@ -272,7 +272,7 @@ If new denials appear, go back to complain mode, run `aa-logprof`, and repeat.
 
 Here's a complete profile for a hypothetical web service:
 
-```
+```text
 #include <tunables/global>
 
 /usr/local/bin/webservice {
@@ -337,7 +337,7 @@ sudo apparmor_parser -r /etc/apparmor.d/usr.local.bin.myapp
 
 For applications that fork child processes, you can use "hats" to define different profiles for different parts of the application:
 
-```
+```text
 /usr/local/bin/myapp {
   #include <abstractions/base>
 
@@ -363,7 +363,7 @@ The main application can "change hat" to the worker profile using the `aa_change
 
 **Forgetting to allow the binary itself** - the application needs to be able to read its own executable:
 
-```
+```text
 /usr/local/bin/myapp mr,
 ```
 

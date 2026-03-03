@@ -23,7 +23,7 @@ kubectl get svc -A | grep LoadBalancer
 
 You will see:
 
-```
+```text
 NAMESPACE   NAME       TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)
 default     myapp-svc  LoadBalancer   10.96.100.50   <pending>     80:30123/TCP
 ```

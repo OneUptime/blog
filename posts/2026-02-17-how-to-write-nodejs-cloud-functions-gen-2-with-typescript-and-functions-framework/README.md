@@ -499,7 +499,7 @@ export function getConfig(): AppConfig {
 
 Exclude unnecessary files from the deployment package.
 
-```
+```text
 # .gcloudignore - Files to exclude from deployment
 node_modules/
 src/

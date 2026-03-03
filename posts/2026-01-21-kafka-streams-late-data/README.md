@@ -14,7 +14,7 @@ Late-arriving data is a common challenge in stream processing when events arrive
 
 ### Why Data Arrives Late
 
-```
+```text
 Event Time vs Processing Time:
 
 Event created: 10:00:00 (event time)
@@ -73,7 +73,7 @@ public class GracePeriodExample {
 
 ### How Grace Periods Work
 
-```
+```text
 Window: [10:00 - 10:05) with 2-minute grace
 
 Timeline:

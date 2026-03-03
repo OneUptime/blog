@@ -34,7 +34,7 @@ sudo apt-get install -y geoipupdate
 sudo nano /etc/GeoIP.conf
 ```
 
-```
+```text
 # MaxMind account configuration
 AccountID YOUR_ACCOUNT_ID
 LicenseKey YOUR_LICENSE_KEY

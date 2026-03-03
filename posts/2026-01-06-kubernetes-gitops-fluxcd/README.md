@@ -91,7 +91,7 @@ flux logs --all-namespaces --follow
 
 This directory structure separates concerns between clusters, infrastructure, and applications. It enables independent reconciliation cycles and makes it easy to promote changes between environments.
 
-```
+```text
 fleet-infra/
 ├── clusters/
 │   ├── production/

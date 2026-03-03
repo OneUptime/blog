@@ -96,7 +96,7 @@ module.exports = {
 
 semantic-release uses conventional commits to determine version bumps:
 
-```
+```text
 feat: add new payment method        -> Minor bump (1.0.0 -> 1.1.0)
 fix: correct tax calculation        -> Patch bump (1.0.0 -> 1.0.1)
 feat!: redesign checkout flow       -> Major bump (1.0.0 -> 2.0.0)

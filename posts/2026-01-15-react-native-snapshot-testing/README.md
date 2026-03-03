@@ -30,7 +30,7 @@ The snapshot testing workflow consists of three main phases:
 
 Here is a simple visualization of this process:
 
-```
+```text
 First Run:
 Component Render -> Capture Output -> Save to .snap file
 

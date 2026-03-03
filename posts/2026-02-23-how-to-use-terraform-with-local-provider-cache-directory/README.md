@@ -48,7 +48,7 @@ When you run `terraform init` with a cache configured, Terraform follows this pr
 
 The directory structure inside the cache mirrors the provider's registry path:
 
-```
+```text
 ~/.terraform.d/plugin-cache/
   registry.terraform.io/
     hashicorp/

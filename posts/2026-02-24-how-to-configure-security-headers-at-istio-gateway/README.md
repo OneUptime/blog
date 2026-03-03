@@ -268,7 +268,7 @@ curl -I https://app.example.com
 
 Expected output:
 
-```
+```text
 HTTP/2 200
 strict-transport-security: max-age=31536000; includeSubDomains; preload
 x-content-type-options: nosniff

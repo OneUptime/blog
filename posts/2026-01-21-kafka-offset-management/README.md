@@ -12,7 +12,7 @@ Consumer offsets track processing progress in Kafka. Proper offset management is
 
 ## Understanding Offsets
 
-```
+```text
 Topic: orders, Partition: 0
 
 Offsets:  0  1  2  3  4  5  6  7  8  9

@@ -62,7 +62,7 @@ BM25 (Best Matching 25) is the industry standard for keyword-based ranking. It i
 
 ### The BM25 Formula
 
-```
+```text
 score(D, Q) = sum over terms in Q of:
     IDF(term) * (tf(term, D) * (k1 + 1)) / (tf(term, D) + k1 * (1 - b + b * |D| / avgdl))
 ```

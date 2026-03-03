@@ -304,7 +304,7 @@ Codespaces can automatically apply your personal dotfiles for a consistent exper
 
 Example dotfiles structure:
 
-```
+```text
 dotfiles/
 ├── install.sh         # Script that runs automatically
 ├── .bashrc           # Shell configuration

@@ -85,7 +85,7 @@ This command downloads the template and sets up the project structure. It also p
 
 The resulting project structure looks like this.
 
-```
+```text
 my-web-app/
   src/                    # Application source code
     web/                  # Frontend code

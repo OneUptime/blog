@@ -24,7 +24,7 @@ A zero-trust architecture in a Kubernetes/Istio environment follows these princi
 
 Istio issues SPIFFE-compliant X.509 certificates to every workload. The identity is derived from the Kubernetes service account:
 
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
@@ -149,7 +149,7 @@ Now nothing works. That's intentional. You build up access from zero.
 
 Map out which services need to communicate with which, and what operations they need:
 
-```
+```text
 frontend -> user-service (GET /api/users, POST /api/login)
 frontend -> product-service (GET /api/products)
 frontend -> cart-service (GET, POST, DELETE /api/cart)

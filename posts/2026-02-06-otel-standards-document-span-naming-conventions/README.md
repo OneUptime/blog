@@ -43,7 +43,7 @@ Span names are the most visible part of your telemetry. They show up in trace vi
 
 Define a clear pattern:
 
-```
+```text
 # HTTP server spans
 HTTP <method> <route>
 Example: HTTP GET /api/v1/orders/{id}

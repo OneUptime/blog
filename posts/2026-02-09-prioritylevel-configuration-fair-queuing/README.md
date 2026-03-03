@@ -77,7 +77,7 @@ kubectl get prioritylevelconfiguration fair-workload -o yaml -w
 
 Concurrency shares determine the relative weight of each priority level. The API server calculates actual concurrency as:
 
-```
+```text
 Actual Concurrency = (nominalConcurrencyShares / Total Shares) * Server Capacity
 ```
 

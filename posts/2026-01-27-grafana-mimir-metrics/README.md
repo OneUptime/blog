@@ -35,7 +35,7 @@ Grafana Mimir is built on a microservices architecture with several key componen
 
 ### Data Flow
 
-```
+```text
 Prometheus --[remote_write]--> Distributor --> Ingester --> Object Storage
                                                     |
                               Query Frontend --> Querier --> Store Gateway

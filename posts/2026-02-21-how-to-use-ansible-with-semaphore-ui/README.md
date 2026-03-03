@@ -257,7 +257,7 @@ Semaphore supports cron-based scheduling for recurring tasks.
 2. Go to the Schedule tab
 3. Add a cron expression:
 
-```
+```text
 # Run every day at 2 AM
 0 2 * * *
 

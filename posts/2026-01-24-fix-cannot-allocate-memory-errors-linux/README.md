@@ -65,7 +65,7 @@ swapon --show
 
 ### Reading `free -h` Output
 
-```
+```text
               total        used        free      shared  buff/cache   available
 Mem:           15Gi       12Gi       500Mi       200Mi       2.5Gi       2.0Gi
 ```

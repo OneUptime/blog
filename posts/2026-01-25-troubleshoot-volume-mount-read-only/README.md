@@ -12,7 +12,7 @@ Your application logs "Read-only file system" errors, but you configured the vol
 
 ## Common Symptoms
 
-```
+```text
 Error: EROFS: read-only file system, open '/data/file.txt'
 mkdir: cannot create directory '/data/app': Read-only file system
 touch: cannot touch '/data/test': Read-only file system

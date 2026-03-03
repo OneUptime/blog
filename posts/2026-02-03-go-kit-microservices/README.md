@@ -60,7 +60,7 @@ The philosophy is simple: business logic should be pure Go interfaces. Everythin
 
 Go-Kit promotes a clean separation of concerns through three distinct layers:
 
-```
+```text
 +------------------+
 |    Transport     |  <-- HTTP, gRPC, NATS, etc.
 +------------------+
@@ -94,7 +94,7 @@ This separation means you can:
 
 A well-organized Go-Kit project looks like this:
 
-```
+```text
 user-service/
 ├── cmd/
 │   └── server/

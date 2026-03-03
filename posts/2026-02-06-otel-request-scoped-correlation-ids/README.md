@@ -200,7 +200,7 @@ service:
 
 Once the correlation ID is in all three signals, searching becomes straightforward:
 
-```
+```text
 # Find traces for a specific order
 TraceQL: { span.order.id = "order-12345" }
 

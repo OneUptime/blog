@@ -59,7 +59,7 @@ Common tuning options:
 sudo nano /etc/clamav/clamd.conf
 ```
 
-```
+```text
 # /etc/clamav/clamd.conf key settings
 
 # Unix socket for the milter to connect to
@@ -97,7 +97,7 @@ LogFacility LOG_MAIL
 sudo nano /etc/clamav/freshclam.conf
 ```
 
-```
+```text
 # /etc/clamav/freshclam.conf key settings
 
 # Check for updates 12 times per day (every 2 hours)
@@ -127,7 +127,7 @@ The milter connects Postfix to ClamAV. Configure it to decide what to do with in
 sudo nano /etc/clamav/clamav-milter.conf
 ```
 
-```
+```text
 # /etc/clamav/clamav-milter.conf
 
 # Socket for Postfix to connect to

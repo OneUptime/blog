@@ -62,7 +62,7 @@ For virtually all server workloads, the answer is LTS. The reasons are practical
 
 **Upgrade paths**: Ubuntu only supports upgrading between adjacent releases. From an interim release, you must upgrade through each release to reach the next LTS. From an LTS, you can jump directly to the next LTS.
 
-```
+```text
 LTS path: 22.04 -> 24.04 -> 26.04 (direct jumps)
 Interim path: 23.10 -> 24.04 (forced to upgrade every 9 months)
 ```
@@ -163,7 +163,7 @@ The codename convention uses an animal with a matching adjective:
 
 In configuration files, package repositories, and upgrade tools, you will see both the version number and the codename used:
 
-```
+```text
 deb http://archive.ubuntu.com/ubuntu noble main restricted
 ```
 

@@ -26,7 +26,7 @@ IPv6 addresses are 128 bits long, typically represented as eight groups of four 
 
 The following example shows a typical IPv6 address broken down into its components:
 
-```
+```text
 2001:0db8:85a3:0000:0000:8a2e:0370:7334
 |    |    |    |    |    |    |    |
 +----+----+----+----+----+----+----+---- Eight 16-bit groups
@@ -117,7 +117,7 @@ ip -6 route get 2001:db8:1::1
 
 Sample output from the routing table display:
 
-```
+```text
 ::1 dev lo proto kernel metric 256 pref medium
 2001:db8:1::/64 dev eth0 proto kernel metric 256 pref medium
 fe80::/64 dev eth0 proto kernel metric 256 pref medium

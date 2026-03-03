@@ -218,7 +218,7 @@ hive:javax.jdo.option.ConnectionPassword=HIVE_PASSWORD" \
 
 An HA cluster costs roughly 1.5 times more than a standard cluster for master nodes (3 masters instead of 1). Worker costs are the same. For clusters where workers dominate the cost (which is most clusters), the overhead is modest.
 
-```
+```text
 Standard cluster:  1 master + 10 workers = 11 nodes
 HA cluster:        3 masters + 10 workers = 13 nodes
 Additional cost:   ~18% more (2 extra master nodes)

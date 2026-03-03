@@ -43,7 +43,7 @@ api_key           = "sk_live_abc123def456"
 
 Terraform plan can display sensitive values in its output:
 
-```
+```text
 # terraform plan output might show:
 ~ resource "aws_db_instance" "main" {
     ~ password = "old_password" -> "new_password"

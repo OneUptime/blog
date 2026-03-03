@@ -51,7 +51,7 @@ docker pull emscripten/emsdk:latest
 
 Create the following project structure:
 
-```
+```text
 my-cpp-plugin/
   CMakeLists.txt
   src/

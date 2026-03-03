@@ -63,7 +63,7 @@ sudo nano /etc/rsync-exclude.txt
 
 Add the following content:
 
-```
+```text
 # Virtual filesystems - populated at boot
 /dev/*
 /proc/*

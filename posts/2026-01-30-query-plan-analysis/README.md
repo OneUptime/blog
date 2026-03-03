@@ -42,7 +42,7 @@ WHERE o.created_at > '2025-01-01'
 
 Output:
 
-```
+```text
 Hash Join  (cost=12.50..45.80 rows=120 width=48)
   Hash Cond: (o.user_id = u.id)
   ->  Seq Scan on orders o  (cost=0.00..28.50 rows=450 width=16)
@@ -64,7 +64,7 @@ WHERE o.created_at > '2025-01-01'
 
 Output:
 
-```
+```text
 Hash Join  (cost=12.50..45.80 rows=120 width=48) (actual time=0.85..2.14 rows=98 loops=1)
   Hash Cond: (o.user_id = u.id)
   ->  Seq Scan on orders o  (cost=0.00..28.50 rows=450 width=16) (actual time=0.02..0.95 rows=423 loops=1)
@@ -92,7 +92,7 @@ WHERE o.created_at > '2025-01-01'
 
 Output:
 
-```
+```text
 +----+-------------+-------+------+---------------+---------+---------+-------------+------+-------------+
 | id | select_type | table | type | possible_keys | key     | key_len | ref         | rows | Extra       |
 +----+-------------+-------+------+---------------+---------+---------+-------------+------+-------------+
@@ -113,7 +113,7 @@ WHERE o.created_at > '2025-01-01'
 
 Output:
 
-```
+```text
 -> Nested loop inner join  (cost=54.25 rows=120) (actual time=0.089..1.245 rows=98 loops=1)
     -> Index lookup on u using idx_status (status='active')  (cost=18.00 rows=180) (actual time=0.045..0.234 rows=156 loops=1)
     -> Filter: (o.created_at > '2025-01-01')  (cost=0.25 rows=1) (actual time=0.005..0.006 rows=1 loops=156)
@@ -300,13 +300,13 @@ PostgreSQL calculates costs using several parameters:
 
 The formula for a sequential scan:
 
-```
+```text
 cost = (pages * seq_page_cost) + (rows * cpu_tuple_cost)
 ```
 
 For an index scan:
 
-```
+```text
 cost = (index_pages * random_page_cost) +
        (index_tuples * cpu_index_tuple_cost) +
        (heap_pages * random_page_cost) +
@@ -363,7 +363,7 @@ LIMIT 100;
 
 Run EXPLAIN ANALYZE and find:
 
-```
+```text
 Sort  (cost=89547.23..89548.73 rows=600 width=52) (actual time=4521.23..4521.45 rows=100 loops=1)
   Sort Key: (sum(o.total)) DESC
   Sort Method: top-N heapsort  Memory: 35kB

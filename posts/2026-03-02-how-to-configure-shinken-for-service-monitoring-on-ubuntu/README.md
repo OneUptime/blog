@@ -89,7 +89,7 @@ ls /etc/shinken/
 cat /etc/shinken/daemons/arbiter-master.cfg
 ```
 
-```
+```text
 define arbiter{
     arbiter_name    Arbiter-Master
     host_name       localhost
@@ -111,7 +111,7 @@ Similar files exist for each daemon type in their respective directories.
 sudo nano /etc/shinken/commands/commands.cfg
 ```
 
-```
+```text
 # Check host alive
 define command {
     command_name    check-host-alive
@@ -149,7 +149,7 @@ define command {
 sudo nano /etc/shinken/contacts/admin.cfg
 ```
 
-```
+```text
 define contact {
     contact_name        admin
     alias               Administrator
@@ -178,7 +178,7 @@ define contactgroup {
 sudo nano /etc/shinken/templates/templates.cfg
 ```
 
-```
+```text
 # Generic host template
 define host {
     name                    generic-host
@@ -223,7 +223,7 @@ define service {
 sudo nano /etc/shinken/hosts/hosts.cfg
 ```
 
-```
+```text
 # Web server
 define host {
     use                 linux-server
@@ -255,7 +255,7 @@ define host {
 sudo nano /etc/shinken/services/services.cfg
 ```
 
-```
+```text
 # Check SSH on all Linux servers
 define service {
     use                     generic-service
@@ -301,7 +301,7 @@ define service {
 sudo nano /etc/shinken/hosts/hostgroups.cfg
 ```
 
-```
+```text
 define hostgroup {
     hostgroup_name      linux-servers
     alias               Linux Servers
@@ -382,7 +382,7 @@ sudo -u shinken shinken install webui2
 sudo nano /etc/shinken/brokers/broker-master.cfg
 ```
 
-```
+```text
 define broker {
     broker_name     Broker-Master
     modules         webui2

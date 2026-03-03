@@ -48,7 +48,7 @@ flowchart TD
 
 ### Project Structure
 
-```
+```text
 terraform-modules/
 ├── modules/
 │   └── vpc/

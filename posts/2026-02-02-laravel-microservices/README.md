@@ -77,7 +77,7 @@ graph TB
 
 Each microservice should be a separate Laravel or Lumen project. Here's a recommended structure:
 
-```
+```text
 microservices/
 ├── api-gateway/
 ├── user-service/

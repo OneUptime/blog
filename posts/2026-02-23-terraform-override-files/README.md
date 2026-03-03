@@ -14,7 +14,7 @@ Terraform override files let you change parts of your configuration without modi
 
 Any file ending in `_override.tf` or named exactly `override.tf` is treated as an override file. Terraform processes override files after all regular files and merges their contents into the existing configuration.
 
-```
+```text
 project/
   main.tf              # regular configuration
   variables.tf         # regular configuration
@@ -80,7 +80,7 @@ Terraform recognizes these as override files:
 - `override.tf` - processed first among overrides
 - Any file matching `*_override.tf` - processed in alphabetical order after `override.tf`
 
-```
+```text
 project/
   main.tf
   override.tf          # processed first
@@ -203,7 +203,7 @@ terraform {
 
 Add to `.gitignore`:
 
-```
+```text
 # .gitignore
 *_override.tf
 override.tf

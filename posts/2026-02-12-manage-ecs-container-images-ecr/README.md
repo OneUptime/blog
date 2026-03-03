@@ -196,7 +196,7 @@ docker buildx build \
 
 For teams with many services, organize repositories with a naming convention.
 
-```
+```text
 # By team/service
 team-a/api
 team-a/worker

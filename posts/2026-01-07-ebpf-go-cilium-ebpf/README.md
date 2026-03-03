@@ -110,7 +110,7 @@ go get github.com/cilium/ebpf/cmd/bpf2go@latest
 
 A well-organized project structure helps manage eBPF programs and their Go counterparts effectively:
 
-```
+```text
 ebpf-go-project/
 |-- go.mod
 |-- go.sum

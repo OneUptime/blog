@@ -166,7 +166,7 @@ CMD ["python", "main.py"]
 
 The requirements file lists the Google Cloud libraries needed.
 
-```
+```text
 # requirements.txt
 google-cloud-bigquery==3.14.0
 google-cloud-storage==2.14.0

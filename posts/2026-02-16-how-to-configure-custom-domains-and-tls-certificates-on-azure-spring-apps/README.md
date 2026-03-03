@@ -42,7 +42,7 @@ Go to your DNS provider and add the following records.
 
 For a subdomain like `api.example.com`, create a CNAME record.
 
-```
+```text
 Type:  CNAME
 Name:  api
 Value: my-spring-service.azuremicroservices.io
@@ -51,7 +51,7 @@ TTL:   3600
 
 For domain verification, you may also need a TXT record.
 
-```
+```text
 Type:  TXT
 Name:  asuid.api
 Value: <verification-id-provided-by-azure>
@@ -68,7 +68,7 @@ az spring show \
   --query "properties.networkProfile.outboundIPs"
 ```
 
-```
+```text
 Type:  A
 Name:  @
 Value: <spring-apps-ip-address>

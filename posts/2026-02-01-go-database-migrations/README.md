@@ -48,7 +48,7 @@ go get -u github.com/golang-migrate/migrate/v4/source/file
 
 This is where many teams mess up. golang-migrate uses a specific naming convention that you need to follow exactly:
 
-```
+```text
 {version}_{title}.up.sql
 {version}_{title}.down.sql
 ```
@@ -67,7 +67,7 @@ migrate create -ext sql -dir db/migrations -seq create_users_table
 
 This generates two files:
 
-```
+```text
 db/migrations/000001_create_users_table.up.sql
 db/migrations/000001_create_users_table.down.sql
 ```
@@ -285,7 +285,7 @@ goose -dir db/migrations create add_orders_table sql
 
 Goose uses a slightly different naming convention:
 
-```
+```text
 20240115120000_add_orders_table.sql
 ```
 

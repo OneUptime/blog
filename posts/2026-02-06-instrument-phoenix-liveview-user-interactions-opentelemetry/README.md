@@ -681,7 +681,7 @@ Use traces to calculate user experience metrics:
 
 Query your observability platform for these metrics:
 
-```
+```text
 # Example queries (syntax varies by platform)
 
 # Average interaction latency

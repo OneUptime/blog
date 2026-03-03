@@ -21,13 +21,13 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 Now restart your application and look for these specific log messages:
 
 **Good signs:**
-```
+```text
 Applying instrumentation patch for module http on require hook
 Applying instrumentation patch for module express on require hook
 ```
 
 **Bad signs:**
-```
+```text
 Module express has been loaded before @opentelemetry/instrumentation-express
 ```
 
@@ -157,7 +157,7 @@ sdk.start();
 
 Make a request to your application and you should see span data printed to stdout:
 
-```
+```text
 {
   traceId: 'abc123...',
   name: 'GET /api/users',

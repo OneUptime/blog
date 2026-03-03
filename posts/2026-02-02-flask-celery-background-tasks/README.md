@@ -62,7 +62,7 @@ pip install flower
 
 Organize your project for clean separation of concerns between Flask and Celery components.
 
-```
+```text
 flask_celery_app/
 ├── app/
 │   ├── __init__.py          # Flask app factory

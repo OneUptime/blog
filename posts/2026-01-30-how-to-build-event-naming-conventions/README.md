@@ -927,7 +927,7 @@ Document your event naming conventions in a team-accessible location. Here is a 
 All events follow this pattern:
 ```
 [namespace.]object.action[.qualifier]
-```
+```text
 
 ## Rules
 

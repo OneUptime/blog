@@ -96,7 +96,7 @@ Before initiating the transfer, point your domain's nameservers to the Route 53 
 
 Log into your current registrar and update the nameservers to something like:
 
-```
+```text
 ns-1234.awsdns-56.org
 ns-789.awsdns-01.net
 ns-456.awsdns-23.co.uk

@@ -382,7 +382,7 @@ helm install istio-managed . -n istio-system --create-namespace
 
 When you have multiple hooks at the same lifecycle point, use weights to control the order:
 
-```
+```text
 Weight -20: RBAC resources (ServiceAccount, ClusterRole, etc.)
 Weight -10: Pre-checks and validation
 Weight  -5: Backups

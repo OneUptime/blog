@@ -86,7 +86,7 @@ yamllint -c .yamllint.yaml collector-config.yaml
 
 `yamllint` will report:
 
-```
+```text
 collector-config.yaml:15:3: error: duplication of key "otlp" in mapping (key-duplicates)
 ```
 

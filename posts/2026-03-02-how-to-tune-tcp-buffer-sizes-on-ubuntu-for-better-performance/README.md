@@ -18,13 +18,13 @@ TCP uses buffers on both the sender and receiver side. The receiver advertises h
 
 For maximum throughput, the buffer should be large enough to fill the network pipe while waiting for acknowledgments. The formula is:
 
-```
+```text
 Optimal buffer size = Bandwidth-Delay Product (BDP)
 BDP = bandwidth (bytes/sec) * RTT (seconds)
 ```
 
 Example: A 10Gbps link to a server with 50ms RTT:
-```
+```text
 BDP = (10,000,000,000 / 8) bytes/s * 0.05s = 62,500,000 bytes ≈ 60MB
 ```
 
@@ -44,7 +44,7 @@ sysctl net.core.wmem_max
 
 Default output:
 
-```
+```text
 net.ipv4.tcp_rmem = 4096 131072 6291456
 net.ipv4.tcp_wmem = 4096 16384 4194304
 net.core.rmem_default = 212992
@@ -208,13 +208,13 @@ iperf3 -c server-ip -t 30 -P 4
 For WAN testing, test between machines in different data centers or regions.
 
 Before tuning example:
-```
+```text
 [ ID] Interval     Transfer     Bitrate
 [  5]  0-30 sec   2.10 GBytes  602 Mbits/sec
 ```
 
 After buffer tuning:
-```
+```text
 [ ID] Interval     Transfer     Bitrate
 [  5]  0-30 sec   8.45 GBytes  2.42 Gbits/sec
 ```

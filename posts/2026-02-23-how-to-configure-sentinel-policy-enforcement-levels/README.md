@@ -140,7 +140,7 @@ curl \
 5. Policy failure is shown in the UI as a warning
 6. Developer can see the warning but is not blocked
 
-```
+```text
 Plan: 3 to add, 0 to change, 0 to destroy.
 
 Sentinel Result: false
@@ -165,7 +165,7 @@ Continue to apply? (yes/no)
 5. An authorized user can override the failure
 6. If overridden, the run continues with the override noted in the audit log
 
-```
+```text
 Plan: 3 to add, 0 to change, 0 to destroy.
 
 Sentinel Result: false
@@ -188,7 +188,7 @@ Override? (yes/no)
 5. No override is possible
 6. Developer must fix the issue and re-run
 
-```
+```text
 Plan: 3 to add, 0 to change, 0 to destroy.
 
 Sentinel Result: false
@@ -224,7 +224,7 @@ Here is a decision framework for choosing enforcement levels:
 
 ### Common Patterns by Category
 
-```
+```text
 Hard-Mandatory:
   - Encryption at rest for storage services
   - No public databases

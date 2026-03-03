@@ -65,7 +65,7 @@ Here is a playbook running against 5 hosts:
 
 ### Default Output (verbose, multi-line)
 
-```
+```text
 PLAY [Configure web servers] **************************************************
 
 TASK [Gathering Facts] ********************************************************
@@ -108,7 +108,7 @@ That is 30+ lines for just 3 tasks on 5 hosts. Imagine 50 tasks on 100 hosts.
 
 ### Dense Output (compact, one-line)
 
-```
+```text
 PLAY [Configure web servers] **************************************************
 TASK [Gathering Facts]       ok=5    changed=0    unreachable=0    failed=0
 TASK [Install nginx]         ok=3    changed=2    unreachable=0    failed=0
@@ -129,7 +129,7 @@ The task section is now just 4 lines instead of 20. At scale, this difference is
 
 When a task fails on some hosts, the dense output highlights it clearly:
 
-```
+```text
 TASK [Deploy configuration]  ok=3    changed=0    unreachable=0    failed=2
   FAILED: web-03 - msg: "Could not find template 'nginx.conf.j2'"
   FAILED: web-04 - msg: "Could not find template 'nginx.conf.j2'"
@@ -176,7 +176,7 @@ callbacks_enabled = timer, profile_tasks
 
 With `timer` and `profile_tasks` enabled alongside dense, you get timing information at the end:
 
-```
+```text
 PLAY [Configure web servers] **************************************************
 TASK [Gathering Facts]       ok=5    changed=0    unreachable=0    failed=0
 TASK [Install nginx]         ok=3    changed=2    unreachable=0    failed=0
@@ -254,7 +254,7 @@ Here is where dense really shines. Consider a patching playbook:
 
 With 100 servers and `serial: 20`, the default callback would produce thousands of lines. With dense, you get a clean summary for each batch:
 
-```
+```text
 PLAY [Patch all servers] ******************************************************
 
 Batch 1/5:
@@ -282,7 +282,7 @@ ANSIBLE_STDOUT_CALLBACK=minimal ansible-playbook deploy.yml
 
 Output:
 
-```
+```text
 web-01 | CHANGED
 web-02 | CHANGED
 web-03 | FAILED! => {"msg": "..."}

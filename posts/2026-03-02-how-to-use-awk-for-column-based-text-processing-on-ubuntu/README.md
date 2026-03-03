@@ -16,7 +16,7 @@ Where `sed` is best for line-by-line text transformation, `awk` shines when your
 
 An awk program consists of pattern-action pairs:
 
-```
+```text
 awk 'pattern { action }' input_file
 ```
 

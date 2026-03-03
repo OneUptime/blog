@@ -45,7 +45,7 @@ The optimal pool size depends on your workload type:
 
 For tasks that primarily use CPU (computation, data processing):
 
-```
+```text
 Optimal threads = Number of CPU cores
 ```
 
@@ -70,7 +70,7 @@ cpu_pool = ThreadPoolExecutor(max_workers=cpu_count)
 
 For tasks that wait on I/O (network, disk, database):
 
-```
+```text
 Optimal threads = CPU cores * (1 + Wait time / Service time)
 ```
 

@@ -169,7 +169,7 @@ This approach:
 
 Regardless of which approach you use, store your RBAC configuration in Git. Here is a recommended repository structure:
 
-```
+```text
 argocd-config/
   base/
     argocd-rbac-cm.yaml      # Global RBAC policy

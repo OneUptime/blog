@@ -144,17 +144,17 @@ az sql failover-group update \
 This is one of the best parts of failover groups. Instead of connecting to a specific server, you connect to the failover group listener.
 
 Before failover groups:
-```
+```text
 Server=myserver-primary.database.windows.net;Database=mydb;...
 ```
 
 With failover groups:
-```
+```text
 Server=myapp-fg.database.windows.net;Database=mydb;...
 ```
 
 For read-only workloads:
-```
+```text
 Server=myapp-fg.secondary.database.windows.net;Database=mydb;...
 ```
 

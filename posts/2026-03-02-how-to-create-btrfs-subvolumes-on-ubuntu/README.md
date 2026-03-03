@@ -25,7 +25,7 @@ Contrast with a regular directory: a directory is just a path within a subvolume
 
 Ubuntu's Btrfs installation layout (if you chose Btrfs during install) uses a conventional layout:
 
-```
+```text
 Btrfs volume (on /dev/sda1)
   @        -> mounted as /
   @home    -> mounted as /home
@@ -41,7 +41,7 @@ This separation lets you snapshot root (`@`) for system snapshots without includ
 sudo btrfs subvolume list /
 ```
 
-```
+```text
 ID 256 gen 145 top level 5 path @
 ID 257 gen 143 top level 5 path @home
 ID 258 gen 67  top level 256 path @/var/lib/portables
@@ -75,7 +75,7 @@ The subvolumes appear as directories but are actually independent namespaces.
 sudo btrfs subvolume list /data
 ```
 
-```
+```text
 ID 256 gen 12 top level 5 path web
 ID 257 gen 12 top level 5 path databases
 ID 258 gen 12 top level 5 path backups
@@ -136,7 +136,7 @@ sudo blkid /dev/sdb
 
 Add entries to `/etc/fstab`:
 
-```
+```text
 # /etc/fstab
 # Main Btrfs device - mount the 'web' subvolume at /var/www
 UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  /var/www          btrfs  subvol=web,compress=zstd:3,noatime      0  0
@@ -181,7 +181,7 @@ Check properties of a subvolume:
 sudo btrfs subvolume show /data/web
 ```
 
-```
+```text
         Name:           web
         UUID:           xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
         Parent UUID:    -
@@ -226,7 +226,7 @@ sudo mount -o subvol=web_new /dev/sdb /var/www
 sudo btrfs subvolume delete /data/web
 ```
 
-```
+```text
 Delete subvolume (no-commit): '/data/web'
 ```
 
@@ -260,7 +260,7 @@ sudo btrfs quota enable /data
 sudo btrfs qgroup show /data
 ```
 
-```
+```text
 qgroupid         rfer         excl     max_rfer     max_excl
 --------         ----         ----     --------     --------
 0/5              1.23GiB      1.23GiB         none         none
@@ -299,7 +299,7 @@ sudo btrfs subvolume create /mnt/btrfs/@backups      # /backup
 sudo btrfs subvolume create /mnt/btrfs/@snapshots    # snapshot storage location
 ```
 
-```
+```text
 # /etc/fstab entries
 UUID=xxxx  /var/www           btrfs  subvol=@web,compress=zstd:3,noatime     0 0
 UUID=xxxx  /var/lib/postgresql btrfs subvol=@databases,nodatacow,noatime     0 0

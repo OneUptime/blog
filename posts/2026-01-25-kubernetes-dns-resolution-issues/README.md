@@ -301,7 +301,7 @@ kubectl rollout restart deployment coredns -n kube-system
 
 Understanding service DNS format:
 
-```
+```text
 <service-name>.<namespace>.svc.cluster.local
 ```
 

@@ -16,7 +16,7 @@ This guide covers all of these scenarios so you can deploy Python Cloud Function
 
 The simplest case: create a `requirements.txt` file in your function's source directory alongside `main.py`:
 
-```
+```text
 # requirements.txt - Basic dependencies
 functions-framework==3.*
 google-cloud-storage==2.14.0
@@ -70,7 +70,7 @@ Cloud Build reads `requirements.txt` and runs `pip install` during the build ste
 
 Always pin your dependencies to specific versions in production. Unpinned versions can break your function when a new release of a dependency introduces breaking changes:
 
-```
+```text
 # requirements.txt - Pin ALL dependencies, including transitive ones
 functions-framework==3.4.0
 google-cloud-storage==2.14.0
@@ -125,7 +125,7 @@ extra-index-url = https://us-central1-python.pkg.dev/my-project/python-packages/
 
 And reference your private package in requirements.txt:
 
-```
+```text
 # requirements.txt
 functions-framework==3.4.0
 my-internal-library==1.2.3
@@ -163,7 +163,7 @@ gcloud functions deploy my-function \
 
 You can install packages directly from GitHub repositories:
 
-```
+```text
 # requirements.txt - Install from GitHub
 functions-framework==3.4.0
 git+https://github.com/myorg/mypackage.git@v1.2.3#egg=mypackage
@@ -186,7 +186,7 @@ gcloud functions deploy my-function \
 
 Or use a requirements.txt with the token embedded (only in CI/CD, not committed to source control):
 
-```
+```text
 # Generated requirements.txt (do not commit this with the token!)
 git+https://x-access-token:ghp_TOKEN@github.com/myorg/mypackage.git@v1.2.3#egg=mypackage
 ```
@@ -195,7 +195,7 @@ git+https://x-access-token:ghp_TOKEN@github.com/myorg/mypackage.git@v1.2.3#egg=m
 
 If you have local Python packages or shared libraries, include them in your source directory:
 
-```
+```text
 my-function/
   main.py
   requirements.txt
@@ -304,7 +304,7 @@ gcloud functions deploy my-function \
 
 Large dependencies slow down cold starts and increase build times. Here are techniques to keep your package size small:
 
-```
+```text
 # Use slim versions of packages when available
 # Instead of: boto3==1.34.0 (60MB+)
 # Use specific service packages: mypy-boto3-s3==1.34.0
@@ -322,7 +322,7 @@ numpy==1.26.3
 
 Create separate requirements files for development and production:
 
-```
+```text
 # requirements-dev.txt
 -r requirements.txt
 pytest==7.4.0
@@ -331,7 +331,7 @@ black==23.12.0
 mypy==1.8.0
 ```
 
-```
+```text
 # requirements.txt (production - deployed with the function)
 functions-framework==3.4.0
 google-cloud-storage==2.14.0

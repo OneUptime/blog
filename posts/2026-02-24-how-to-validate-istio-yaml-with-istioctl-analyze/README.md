@@ -22,7 +22,7 @@ istioctl analyze
 
 This checks the live cluster configuration and reports any issues it finds. The output looks something like:
 
-```
+```text
 Warning [IST0101] (VirtualService default/reviews) Referenced host not found: "reviews"
 Warning [IST0104] (Gateway default/my-gateway) The gateway refers to a server with a credential name that does not exist
 Info [IST0118] (Service default/reviews) Port name "http" does not follow the naming convention
@@ -90,7 +90,7 @@ istioctl analyze bad-vs.yaml --use-kube=false
 
 Output:
 
-```
+```text
 Warning [IST0101] (VirtualService default/bad-vs) Referenced host not found: "nonexistent-service"
 ```
 

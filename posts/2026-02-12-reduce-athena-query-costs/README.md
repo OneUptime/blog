@@ -18,7 +18,7 @@ Athena pricing is simple: **$5 per TB of data scanned** by your queries. There's
 
 The cost equation is:
 
-```
+```text
 Query cost = (Data scanned in bytes / 1,099,511,627,776) * $5
 ```
 

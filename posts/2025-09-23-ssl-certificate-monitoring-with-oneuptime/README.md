@@ -94,7 +94,7 @@ flowchart LR
 
 ### Step 2: Configure Basic Settings
 
-```
+```text
 Monitor Name: API SSL Certificate
 Description: Monitors SSL certificate for api.example.com
 URL: https://api.example.com
@@ -122,7 +122,7 @@ You can customize these thresholds based on your renewal process timeline.
 
 Create separate monitors for each critical subdomain:
 
-```
+```text
 ✓ api.example.com
 ✓ app.example.com  
 ✓ cdn.example.com
@@ -134,7 +134,7 @@ Create separate monitors for each critical subdomain:
 
 Not all SSL services run on port 443:
 
-```
+```text
 Database SSL: db.example.com:5432
 SMTP SSL: mail.example.com:465
 HTTPS Proxy: proxy.example.com:8443
@@ -146,7 +146,7 @@ OneUptime can monitor SSL on any port where TLS is terminated.
 
 For wildcard certificates (*.example.com), monitor the primary domain and key subdomains:
 
-```
+```text
 Primary: example.com (wildcard cert)
 Critical subdomains: api.example.com, app.example.com
 ```
@@ -185,7 +185,7 @@ This data helps with security audits, compliance reporting, and certificate life
 
 Set up cascading alerts for different urgency levels:
 
-```
+```text
 90 days: Information (start planning renewal)
 30 days: Warning (begin renewal process)  
 7 days: Critical (urgent renewal required)
@@ -305,7 +305,7 @@ After renewing certificates:
 
 Organize monitoring across environments:
 
-```
+```text
 Production:
 ├── api.example.com
 ├── app.example.com  

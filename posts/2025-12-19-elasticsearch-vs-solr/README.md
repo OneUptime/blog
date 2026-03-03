@@ -158,7 +158,7 @@ GET /products/_search
 
 ### Solr Query Syntax
 
-```
+```text
 GET /solr/products/select?
   q=name:laptop
   &fq=price:[* TO 1500]
@@ -213,7 +213,7 @@ GET /products/_search
 
 ### Solr Faceting
 
-```
+```text
 GET /solr/products/select?
   q=*:*
   &facet=true

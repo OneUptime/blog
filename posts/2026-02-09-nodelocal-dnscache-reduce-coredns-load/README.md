@@ -245,7 +245,7 @@ kubectl run test-dns --image=nicolaka/netshoot -it --rm -- cat /etc/resolv.conf
 
 You should see:
 
-```
+```text
 nameserver 169.254.20.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5

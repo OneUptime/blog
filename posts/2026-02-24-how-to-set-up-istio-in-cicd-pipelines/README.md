@@ -107,7 +107,7 @@ Your VirtualServices, DestinationRules, and other Istio resources should live al
 
 A typical directory structure:
 
-```
+```text
 k8s/
   app/
     deployment.yaml

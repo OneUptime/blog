@@ -57,7 +57,7 @@ lsb_release -a
 
 You should see output similar to:
 
-```
+```text
 Distributor ID: Ubuntu
 Description:    Ubuntu 24.04 LTS
 Release:        24.04
@@ -642,7 +642,7 @@ sudo nano /etc/apt/apt.conf.d/50unattended-upgrades
 
 Modify these settings for production use:
 
-```
+```text
 // Automatically upgrade packages from these origins
 Unattended-Upgrade::Allowed-Origins {
     "${distro_id}:${distro_codename}";
@@ -679,7 +679,7 @@ sudo nano /etc/apt/apt.conf.d/20auto-upgrades
 
 Ensure these settings are present:
 
-```
+```text
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::Download-Upgradeable-Packages "1";
@@ -719,7 +719,7 @@ sudo nano /etc/fstab
 
 Add the following line:
 
-```
+```text
 # Secure shared memory
 tmpfs /run/shm tmpfs defaults,noexec,nosuid 0 0
 ```
@@ -944,7 +944,7 @@ sudo nano /etc/default/sysstat
 
 Change `ENABLED="false"` to:
 
-```
+```text
 ENABLED="true"
 ```
 
@@ -1000,7 +1000,7 @@ sudo crontab -e
 
 Add this line:
 
-```
+```text
 0 * * * * /usr/local/bin/check-disk-space.sh
 ```
 
@@ -1022,7 +1022,7 @@ sudo nano /etc/logrotate.d/custom-apps
 
 Example configuration:
 
-```
+```text
 /var/log/myapp/*.log {
     daily
     missingok
@@ -1102,7 +1102,7 @@ sudo sshd -T | grep -E 'permitrootlogin|passwordauthentication|port'
 
 Expected output:
 
-```
+```text
 port 2222
 permitrootlogin no
 passwordauthentication no

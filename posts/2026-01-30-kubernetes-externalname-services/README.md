@@ -65,7 +65,7 @@ kubectl get service my-database -n production
 
 Output:
 
-```
+```text
 NAME          TYPE           CLUSTER-IP   EXTERNAL-IP                        PORT(S)   AGE
 my-database   ExternalName   <none>       database.external-provider.com     <none>    5s
 ```
@@ -536,7 +536,7 @@ kubectl run dns-test --image=busybox:1.36 --rm -it --restart=Never -- nslookup m
 
 Expected output:
 
-```
+```text
 Server:    10.96.0.10
 Address 1: 10.96.0.10 kube-dns.kube-system.svc.cluster.local
 
@@ -552,7 +552,7 @@ kubectl describe service my-database -n production
 
 Look for:
 
-```
+```text
 Name:              my-database
 Namespace:         production
 Type:              ExternalName

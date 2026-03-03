@@ -54,7 +54,7 @@ For a typical three-node cluster, the budget option (3x Beelink N100) runs about
 
 Mini PCs stack well. Many home labbers use a simple shelf or a 3D-printed rack:
 
-```
+```text
   [Mini PC 3 - worker]
   [Mini PC 2 - worker]
   [Mini PC 1 - control plane]

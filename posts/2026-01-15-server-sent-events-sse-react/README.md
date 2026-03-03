@@ -52,7 +52,7 @@ Key characteristics:
 
 SSE uses a simple text format:
 
-```
+```text
 event: message
 data: {"temperature": 72, "unit": "fahrenheit"}
 id: 12345

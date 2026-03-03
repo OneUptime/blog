@@ -207,7 +207,7 @@ dbt run --select fct_orders --debug
 
 Parse the debug output for clues:
 
-```
+```text
 [debug] Executing SQL:
   create table "analytics_dev"."fct_orders" as (
     select ...

@@ -79,7 +79,7 @@ sudo cp /etc/dnsmasq.conf /etc/dnsmasq.conf.bak
 sudo nano /etc/dnsmasq.conf
 ```
 
-```
+```text
 # Basic dnsmasq configuration
 
 # Listen on specific interfaces only (safer than listening on all)
@@ -119,7 +119,7 @@ dnsmasq reads `/etc/hosts` for local hostname resolution. Add internal hostnames
 sudo nano /etc/hosts
 ```
 
-```
+```text
 127.0.0.1       localhost
 127.0.1.1       ubuntu-server
 
@@ -143,7 +143,7 @@ sudo nano /etc/dnsmasq.conf
 ```
 
 Add:
-```
+```text
 # Additional hosts files
 addn-hosts=/etc/dnsmasq.hosts
 ```
@@ -152,7 +152,7 @@ addn-hosts=/etc/dnsmasq.hosts
 sudo nano /etc/dnsmasq.hosts
 ```
 
-```
+```text
 192.168.1.200   jumpbox.local.example.com jumpbox
 192.168.1.201   monitoring.local.example.com monitoring
 192.168.2.10    storage1.local.example.com storage1
@@ -168,7 +168,7 @@ You can route queries for specific domains to specific DNS servers. This is usef
 sudo nano /etc/dnsmasq.conf
 ```
 
-```
+```text
 # Forward .corp.example.com queries to the internal DNS server
 server=/corp.example.com/10.0.0.1
 
@@ -188,7 +188,7 @@ For hosts that aren't in `/etc/hosts`, you can add records directly in the confi
 sudo nano /etc/dnsmasq.conf
 ```
 
-```
+```text
 # Custom A records
 address=/custom-app.local.example.com/192.168.1.150
 
@@ -210,7 +210,7 @@ sudo nano /etc/dnsmasq.conf
 ```
 
 Add:
-```
+```text
 # Load all .conf files from this directory
 conf-dir=/etc/dnsmasq.d/,*.conf
 ```
@@ -220,7 +220,7 @@ conf-dir=/etc/dnsmasq.d/,*.conf
 sudo nano /etc/dnsmasq.d/upstream.conf
 ```
 
-```
+```text
 # Upstream DNS servers
 server=8.8.8.8
 server=8.8.4.4
@@ -231,7 +231,7 @@ server=1.1.1.1
 sudo nano /etc/dnsmasq.d/local-hosts.conf
 ```
 
-```
+```text
 # Local address overrides
 address=/mail.local/192.168.1.110
 address=/git.local/192.168.1.120

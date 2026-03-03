@@ -29,7 +29,7 @@ dpkg -l | grep openjdk | grep -v doc
 
 Each version installs to its own directory under `/usr/lib/jvm/`:
 
-```
+```text
 /usr/lib/jvm/java-11-openjdk-amd64/
 /usr/lib/jvm/java-17-openjdk-amd64/
 /usr/lib/jvm/java-21-openjdk-amd64/
@@ -62,7 +62,7 @@ sudo update-alternatives --config java
 
 This displays a menu:
 
-```
+```text
 There are 3 choices for the alternative java (providing /usr/bin/java).
 
   Selection    Path                                            Priority   Status

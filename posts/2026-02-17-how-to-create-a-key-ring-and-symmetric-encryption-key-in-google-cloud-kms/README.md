@@ -254,7 +254,7 @@ The output includes the key's purpose, algorithm, protection level, rotation sch
 
 Use a consistent naming scheme that includes the purpose and environment:
 
-```
+```text
 Key rings:  {app}-{environment}-keyring    (e.g., payments-prod-keyring)
 Keys:       {purpose}-{type}-key           (e.g., data-encryption-key, config-wrapping-key)
 ```

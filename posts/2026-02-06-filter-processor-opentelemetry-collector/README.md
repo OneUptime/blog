@@ -637,7 +637,7 @@ curl http://localhost:8888/metrics | grep processor
 
 ### Healthy Filtering Patterns
 
-```
+```text
 otelcol_processor_dropped_spans{processor="filter"} 150000
 otelcol_processor_accepted_spans{processor="filter"} 50000
 ```

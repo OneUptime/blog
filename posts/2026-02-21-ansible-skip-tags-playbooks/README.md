@@ -269,7 +269,7 @@ ansible-playbook -i inventory.ini full-setup.yml --skip-tags "database,ssl" --li
 
 Output:
 
-```
+```text
 playbook: full-setup.yml
 
   play #1 (webservers): Full server setup    TAGS: []

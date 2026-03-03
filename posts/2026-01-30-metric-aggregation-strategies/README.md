@@ -201,7 +201,7 @@ groups:
 
 Follow a consistent naming pattern for discoverability:
 
-```
+```text
 level:metric:operations
 ```
 

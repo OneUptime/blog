@@ -569,7 +569,7 @@ If GitOps is unavailable, apply directly:
 ```bash
 kubectl apply -k overlays/production/
 ```
-```
+```text
 
 ## Conclusion
 
@@ -578,3 +578,5 @@ GitOps workflows transform Velero backup management from ad-hoc commands to vers
 Start with a simple Git repository structure, integrate with ArgoCD for automated deployment, and build validation into your pull request workflow. As your confidence grows, add policy-as-code generators, multi-cluster management, and automated testing.
 
 Remember that your disaster recovery strategy is only as reliable as your backup configurations. GitOps ensures those configurations are version controlled, tested, and consistently applied across all your clusters.
+
+```

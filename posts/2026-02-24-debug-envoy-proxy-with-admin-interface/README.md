@@ -68,7 +68,7 @@ kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/clusters
 
 The output shows each cluster with its endpoints:
 
-```
+```text
 outbound|8080||my-service.default.svc.cluster.local::10.0.1.5:8080::health_flags::/failed_active_hc/failed_outlier_check
 outbound|8080||my-service.default.svc.cluster.local::10.0.1.6:8080::health_flags::healthy
 ```

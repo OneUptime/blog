@@ -180,7 +180,7 @@ Runbooks are step-by-step guides for resolving specific incidents. The key is ma
 
 Establish a predictable URL pattern so engineers can guess URLs even without the link:
 
-```
+```text
 https://wiki.company.com/runbooks/{alert-name-kebab-case}
 https://wiki.company.com/runbooks/{service}/{alert-category}
 ```
@@ -318,7 +318,7 @@ If unresolved after 15 minutes:
 - [Service Architecture](https://docs.company.com/architecture)
 - [Scaling Guidelines](https://docs.company.com/scaling)
 - [Incident Response Process](https://docs.company.com/incident-response)
-```
+```text
 
 ---
 

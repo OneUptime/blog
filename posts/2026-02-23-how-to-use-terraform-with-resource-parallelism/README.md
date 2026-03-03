@@ -16,7 +16,7 @@ This post explains how resource parallelism works, how to tune it, and how to ha
 
 Terraform uses a walk algorithm on the dependency graph. It starts with resources that have no dependencies (the roots), processes them in parallel, then moves to the next level of resources whose dependencies are satisfied.
 
-```
+```text
 Level 0: [VPC]
 Level 1: [Subnet A] [Subnet B] [Internet GW] [Security Group]
 Level 2: [Instance A] [Instance B] [NAT GW]
@@ -187,7 +187,7 @@ module "b" {
 
 If you see throttling errors, reduce parallelism:
 
-```
+```text
 Error: error creating Security Group Rule: RequestLimitExceeded: Request limit exceeded.
 ```
 
@@ -258,7 +258,7 @@ terraform apply -parallelism=20 2>&1 | grep -E "Creating|Modifying|Destroying"
 
 The output shows timestamps, so you can see how many operations overlap:
 
-```
+```text
 aws_instance.worker["worker-1"]: Creating...
 aws_instance.worker["worker-2"]: Creating...
 aws_instance.worker["worker-3"]: Creating...

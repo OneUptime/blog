@@ -33,7 +33,7 @@ When your data includes latitude and longitude columns:
 
 ### Sample Data Format
 
-```
+```text
 | location    | latitude | longitude | value |
 |-------------|----------|-----------|-------|
 | New York    | 40.7128  | -74.0060  | 1500  |
@@ -102,7 +102,7 @@ When your data only has location names (countries, cities, regions):
 
 ### Sample Data Format
 
-```
+```text
 | country | requests |
 |---------|----------|
 | US      | 5000     |
@@ -280,7 +280,7 @@ sum by (city) (http_requests_total)
 
 ### Lookup Query (CSV or Static Data)
 
-```
+```text
 # Query B: City coordinates
 # Format: Table
 city,latitude,longitude

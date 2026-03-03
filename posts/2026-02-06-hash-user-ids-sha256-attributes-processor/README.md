@@ -12,7 +12,7 @@ Hashing user IDs before they leave your infrastructure gives you the best of bot
 
 If you redact a user ID entirely (replacing it with "REDACTED"), you lose the ability to search for all traces belonging to a specific user. Hashing preserves that correlation:
 
-```
+```text
 # Original
 user.id: "john.doe@company.com"
 

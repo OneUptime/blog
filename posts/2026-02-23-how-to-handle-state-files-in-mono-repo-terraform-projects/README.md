@@ -26,7 +26,7 @@ Without proper state isolation, you risk:
 
 The most common pattern organizes code by environment and component:
 
-```
+```text
 infrastructure/
   modules/                    # Shared modules
     vpc/

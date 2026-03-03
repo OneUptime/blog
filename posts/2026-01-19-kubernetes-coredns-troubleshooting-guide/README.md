@@ -94,7 +94,7 @@ cat /etc/resolv.conf
 
 Expected `/etc/resolv.conf`:
 
-```
+```text
 search default.svc.cluster.local svc.cluster.local cluster.local
 nameserver 10.96.0.10
 options ndots:5

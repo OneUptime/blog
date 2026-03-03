@@ -14,7 +14,7 @@ Kubernetes namespaces provide logical isolation for your workloads, but services
 
 Every Kubernetes service gets a DNS record in the format:
 
-```
+```text
 <service-name>.<namespace>.svc.cluster.local
 ```
 
@@ -38,7 +38,7 @@ curl http://api-server.backend.svc.cluster.local        # Fully qualified
 
 When a pod makes a DNS query, Kubernetes configures search domains in `/etc/resolv.conf`:
 
-```
+```text
 nameserver 10.96.0.10
 search web.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5

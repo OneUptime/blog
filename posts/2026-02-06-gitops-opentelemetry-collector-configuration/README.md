@@ -27,7 +27,7 @@ With GitOps, you get:
 
 Organize your collector configurations in a Git repository:
 
-```
+```text
 otel-configs/
   base/
     collector-config.yaml      # Base configuration shared across environments

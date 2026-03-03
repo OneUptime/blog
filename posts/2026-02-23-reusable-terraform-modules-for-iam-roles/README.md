@@ -26,7 +26,7 @@ At minimum, an IAM role module should handle:
 
 ## Module Structure
 
-```
+```text
 modules/iam-role/
   main.tf
   variables.tf

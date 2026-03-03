@@ -25,7 +25,7 @@ kubectl describe pod my-failing-pod -n my-namespace
 
 Look at the Events section at the bottom. You will see messages like:
 
-```
+```text
 Failed to pull image "us-docker.pkg.dev/my-project/my-repo/my-image:v1.0":
 rpc error: code = Unknown desc = failed to pull and unpack image...
 ```
@@ -36,7 +36,7 @@ The specific error message tells you a lot about what went wrong.
 
 The most common cause is simply a typo or wrong path. Artifact Registry image paths follow this format:
 
-```
+```text
 REGION-docker.pkg.dev/PROJECT-ID/REPOSITORY-NAME/IMAGE-NAME:TAG
 ```
 

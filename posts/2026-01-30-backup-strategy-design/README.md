@@ -902,7 +902,7 @@ kubectl scale deployment app --replicas=3
 - Document the incident
 - Update backup procedures if needed
 - Notify stakeholders
-```
+```text
 
 ### Recovery Time Estimation
 
@@ -953,3 +953,5 @@ Your backup strategy should be boring and reliable. If it is exciting, something
 ---
 
 Ready to monitor your backup jobs? OneUptime provides heartbeat monitoring to track backup status, alert on failures, and ensure your data protection strategy actually works when you need it most.
+
+```

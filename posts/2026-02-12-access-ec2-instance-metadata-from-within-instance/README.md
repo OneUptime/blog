@@ -38,7 +38,7 @@ curl http://169.254.169.254/latest/meta-data/
 
 This returns a list of available metadata categories:
 
-```
+```text
 ami-id
 ami-launch-index
 ami-manifest-path

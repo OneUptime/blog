@@ -14,7 +14,7 @@ This guide sets up the full stack on Ubuntu using Docker Compose.
 
 ## Architecture Overview
 
-```
+```text
 Your Applications
       |
       v

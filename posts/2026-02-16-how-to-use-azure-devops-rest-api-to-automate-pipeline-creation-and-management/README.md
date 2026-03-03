@@ -16,7 +16,7 @@ The REST API lets you do everything the portal does, but programmatically. You c
 
 The Azure DevOps REST API follows a consistent URL pattern. Most endpoints look like this:
 
-```
+```text
 https://dev.azure.com/{organization}/{project}/_apis/{area}/{resource}?api-version=7.1
 ```
 

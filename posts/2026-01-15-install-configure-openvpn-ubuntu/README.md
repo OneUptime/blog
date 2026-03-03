@@ -114,7 +114,7 @@ sudo chmod 600 /etc/openvpn/server/ta.key
 sudo nano /etc/openvpn/server/server.conf
 ```
 
-```
+```text
 # OpenVPN Server Configuration
 
 # Network settings
@@ -196,7 +196,7 @@ sudo nano /etc/ufw/before.rules
 
 Add at the top (before *filter):
 
-```
+```text
 # NAT rules for OpenVPN
 *nat
 :POSTROUTING ACCEPT [0:0]
@@ -212,7 +212,7 @@ sudo nano /etc/default/ufw
 ```
 
 Change:
-```
+```text
 DEFAULT_FORWARD_POLICY="ACCEPT"
 ```
 
@@ -292,7 +292,7 @@ nano ~/client-configs/base.conf
 
 Base configuration:
 
-```
+```text
 # OpenVPN Client Configuration
 
 client

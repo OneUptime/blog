@@ -88,7 +88,7 @@ Not every CVE requires an immediate response. Assess the impact based on:
 
 Create a severity matrix for your organization:
 
-```
+```text
 CRITICAL (CVSS 9.0+) + Remote Exploit = Patch within 24 hours
 CRITICAL (CVSS 9.0+) + No Exploit     = Patch within 72 hours
 HIGH (CVSS 7.0+) + Remote Exploit     = Patch within 1 week
@@ -205,7 +205,7 @@ Many base image CVEs are in packages that Istio does not use at runtime. Documen
 
 Create a documented process so your team knows what to do when a CVE drops:
 
-```
+```text
 1. NOTIFICATION
    - Receive CVE notification (mailing list, RSS, scan alert)
    - Create tracking ticket

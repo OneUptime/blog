@@ -425,13 +425,13 @@ service:
 
 Tail sampling keeps traces in memory during the decision wait period. Calculate memory needs:
 
-```
+```text
 Memory ≈ avg_trace_size * num_traces
        ≈ avg_trace_size * expected_new_traces_per_sec * decision_wait
 ```
 
 If you have 1000 traces/sec, 30s decision wait, and 10KB average trace size:
-```
+```text
 Memory ≈ 10KB * 1000 * 30 = 300MB
 ```
 

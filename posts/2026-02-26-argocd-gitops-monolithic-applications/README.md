@@ -28,7 +28,7 @@ ArgoCD does not solve all of these problems, but it gives you a controlled, audi
 
 For a monolith, your config repository is simpler than a microservices setup:
 
-```
+```text
 my-monolith-config/
   base/
     deployment.yaml

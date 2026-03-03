@@ -37,7 +37,7 @@ Key fields:
 
 ## Error: Serial Number Conflict
 
-```
+```text
 Error: Failed to write state
 
   The serial number in the state being written (42) is not greater
@@ -83,7 +83,7 @@ terraform apply
 
 ## Error: Lineage Mismatch
 
-```
+```text
 Error: Failed to write state
 
   The "lineage" value in the state being written does not match
@@ -123,7 +123,7 @@ terraform state push ready-state.json
 
 ## Error: Invalid JSON
 
-```
+```text
 Error: Failed to read state file
 
   The state file could not be parsed as JSON.
@@ -169,7 +169,7 @@ iconv -f UTF-8 -t UTF-8 -c raw-state.json > cleaned-state.json
 
 ## Error: State Version Mismatch
 
-```
+```text
 Error: Unsupported state file format
 
   The state file uses format version 4, which is not supported
@@ -201,7 +201,7 @@ The safest approach is to always use the same or newer Terraform version as the 
 
 ## Error: Resource Schema Mismatch
 
-```
+```text
 Error: Failed to decode resource state
 
   Error decoding state for "aws_instance.web":
@@ -234,7 +234,7 @@ terraform state push fix-state.json
 
 ## Error: terraform state push Rejected
 
-```
+```text
 Error: cannot import state with serial number lower than
        existing serial number
 ```

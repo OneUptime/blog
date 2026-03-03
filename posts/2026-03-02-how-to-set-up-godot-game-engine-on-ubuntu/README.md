@@ -141,7 +141,7 @@ Godot organizes everything as scenes containing nodes. A scene might be:
 
 Nodes are the building blocks. Common node types:
 
-```
+```text
 Node2D
 ├── Sprite2D (displays a texture)
 ├── CollisionShape2D (defines collision boundaries)

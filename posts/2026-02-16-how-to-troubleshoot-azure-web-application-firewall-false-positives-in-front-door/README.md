@@ -43,7 +43,7 @@ az monitor diagnostic-settings create \
 
 Query the WAF logs to identify which rules are generating the most false positives.
 
-```
+```text
 // KQL query to find the most frequently triggered WAF rules
 // Focus on blocked requests (action == "Block")
 AzureDiagnostics
@@ -57,7 +57,7 @@ AzureDiagnostics
 
 This gives you a ranked list of rules causing blocks. Now look at the specific requests being blocked.
 
-```
+```text
 // Detailed view of blocked requests for a specific rule
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.CDN"

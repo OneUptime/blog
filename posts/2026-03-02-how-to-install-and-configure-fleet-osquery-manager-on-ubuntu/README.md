@@ -245,7 +245,7 @@ Create the osquery flag file on each client:
 sudo nano /etc/osquery/osquery.flags
 ```
 
-```
+```text
 --tls_hostname=your-fleet-server:8080
 --host_identifier=instance
 --enroll_secret_path=/etc/osquery/enroll_secret

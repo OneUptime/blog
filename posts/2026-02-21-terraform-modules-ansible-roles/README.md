@@ -12,7 +12,7 @@ Terraform modules and Ansible roles serve similar purposes in their respective t
 
 ## Aligned Structure
 
-```
+```text
 infrastructure/
   terraform/
     modules/

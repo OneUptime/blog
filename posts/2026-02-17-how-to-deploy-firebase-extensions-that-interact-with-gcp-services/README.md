@@ -41,7 +41,7 @@ During installation, you will be prompted for configuration parameters.
 
 Key parameters to set:
 
-```
+```text
 Collection path: users
 Dataset ID: firestore_export
 Table ID: users_raw
@@ -109,7 +109,7 @@ firebase ext:install firebase/storage-resize-images \
 
 Configure it with these settings:
 
-```
+```text
 Cloud Storage bucket: YOUR_PROJECT_ID.appspot.com
 Sizes of resized images: 200x200,800x600,1200x1200
 Deletion of original file: No
@@ -125,7 +125,7 @@ The extension watches for new file uploads in the specified bucket. When an imag
 
 The output file naming pattern looks like:
 
-```
+```text
 Original: images/photo.jpg
 Resized:  images/photo_200x200.webp
           images/photo_800x600.webp
@@ -180,7 +180,7 @@ firebase ext:install firebase/firestore-send-email \
 
 Configuration parameters:
 
-```
+```text
 SMTP connection URI: smtps://username:password@smtp.sendgrid.net:465
 Email documents collection: mail
 Default FROM address: noreply@yourdomain.com

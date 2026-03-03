@@ -75,7 +75,7 @@ Here is a reference of the most useful patterns and what they match.
 
 The simplest structure - all configs in one directory.
 
-```
+```text
 configs/
   frontend.json
   backend.json
@@ -98,7 +98,7 @@ This matches all four files. It does NOT match files in subdirectories like `con
 
 Organize configs into categories.
 
-```
+```text
 configs/
   infrastructure/
     cert-manager.json
@@ -138,7 +138,7 @@ generators:
 
 Environment-specific config files in a structured tree.
 
-```
+```text
 environments/
   dev/
     us-east-1/
@@ -278,7 +278,7 @@ This includes all JSON files in `apps/` but excludes files starting with `test-`
 
 Instead of using directory names, use a consistent filename pattern.
 
-```
+```text
 services/
   frontend/
     argocd-config.json

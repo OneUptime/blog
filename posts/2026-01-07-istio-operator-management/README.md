@@ -924,7 +924,7 @@ spec:
 
 Organize your Istio configuration in Git:
 
-```
+```text
 kubernetes-configs/
 ├── base/
 │   └── istio/

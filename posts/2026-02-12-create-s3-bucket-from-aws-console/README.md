@@ -36,7 +36,7 @@ Some rules for bucket names:
 
 Good naming conventions include using your organization name or account ID as a prefix:
 
-```
+```text
 mycompany-app-data-production
 mycompany-logs-us-east-1
 123456789012-terraform-state

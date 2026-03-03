@@ -271,7 +271,7 @@ Install extensions:
 
 ### DataGrip / DBeaver Setup
 
-```
+```text
 Connection Settings:
 - Host: localhost
 - Port: 8123 (HTTP) or 9000 (Native)
@@ -283,7 +283,7 @@ Connection Settings:
 
 ### SQL File Organization
 
-```
+```text
 project/
 ├── sql/
 │   ├── migrations/

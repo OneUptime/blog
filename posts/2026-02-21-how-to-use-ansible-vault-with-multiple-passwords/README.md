@@ -111,7 +111,7 @@ ansible-playbook site.yml
 
 A clean project structure separates secrets by environment:
 
-```
+```text
 project/
   ansible.cfg
   site.yml

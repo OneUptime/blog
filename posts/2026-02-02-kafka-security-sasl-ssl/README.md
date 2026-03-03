@@ -158,7 +158,7 @@ echo "Users created successfully"
 
 Create a JAAS file for the broker to authenticate with other brokers and handle client authentication.
 
-```
+```text
 // /opt/kafka/config/kafka_server_jaas.conf
 KafkaServer {
     org.apache.kafka.common.security.scram.ScramLoginModule required

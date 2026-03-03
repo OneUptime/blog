@@ -23,7 +23,7 @@ kubectl get pdb -A -o wide
 
 Output shows the key metrics you need:
 
-```
+```text
 NAMESPACE    NAME           MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
 production   api-pdb        2               N/A               3                     15d
 production   web-pdb        N/A             1                 1                     15d

@@ -44,7 +44,7 @@ kubectl port-forward svc/weave-gitops -n flux-system 9001:9001
 
 Organize your Git repository to separate Istio resources from application manifests:
 
-```
+```text
 ├── clusters/
 │   └── production/
 │       ├── flux-system/
@@ -286,7 +286,7 @@ spec:
 
 Use Kustomize overlays to manage Istio configs across environments:
 
-```
+```text
 ├── base/
 │   └── my-app/
 │       ├── virtualservice.yaml

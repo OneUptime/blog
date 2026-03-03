@@ -240,7 +240,7 @@ The merged result:
 
 A typical project structure separates concerns across multiple override files:
 
-```
+```text
 project/
 ├── docker-compose.yml           # Base service definitions
 ├── docker-compose.override.yml  # Local development (auto-loaded)

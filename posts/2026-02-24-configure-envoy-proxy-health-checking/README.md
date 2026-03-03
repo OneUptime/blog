@@ -16,7 +16,7 @@ When Istio injects a sidecar, all traffic goes through Envoy, including health c
 
 Istio solves this by rewriting health probes. The sidecar injector modifies the pod spec to route health probes through a special health check endpoint on the pilot-agent:
 
-```
+```text
 kubelet -> pilot-agent (port 15021) -> application health endpoint
 ```
 

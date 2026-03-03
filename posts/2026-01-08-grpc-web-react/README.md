@@ -68,7 +68,7 @@ npm install -D protoc-gen-grpc-web
 
 ### Project Structure
 
-```
+```text
 grpc-web-react/
 ├── proto/
 │   └── user.proto

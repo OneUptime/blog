@@ -16,7 +16,7 @@ Ansible has a recommended directory layout, and for good reason. Following it me
 
 Here is the full recommended structure:
 
-```
+```text
 ansible-project/
 ├── inventories/
 │   ├── production/

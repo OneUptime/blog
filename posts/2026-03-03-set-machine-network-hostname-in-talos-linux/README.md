@@ -106,7 +106,7 @@ talosctl get hostname --nodes 192.168.1.101
 
 This command shows you the current hostname as Talos sees it. The output looks like:
 
-```
+```text
 NODE            NAMESPACE   TYPE       ID        VERSION   HOSTNAME
 192.168.1.101   network     HostnameStatus   hostname  1         worker-01
 ```

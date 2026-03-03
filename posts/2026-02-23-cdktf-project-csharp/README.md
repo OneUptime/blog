@@ -37,7 +37,7 @@ cdktf init --template=csharp --local
 
 This generates a .NET project:
 
-```
+```text
 cdktf-csharp-demo/
   Main.cs                 # Entry point
   MyStack.cs              # Stack definition

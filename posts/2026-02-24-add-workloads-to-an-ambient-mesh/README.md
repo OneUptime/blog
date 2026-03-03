@@ -72,7 +72,7 @@ istioctl ztunnel-config workloads
 
 This lists all workloads that ztunnel is actively managing. Your enrolled pods should appear with their identity and protocol information:
 
-```
+```text
 NAMESPACE    POD NAME           IP          NODE        PROTOCOL
 my-app       frontend-abc123    10.0.1.5    node-1      HBONE
 my-app       backend-def456     10.0.1.6    node-1      HBONE

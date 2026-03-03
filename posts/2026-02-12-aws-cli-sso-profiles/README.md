@@ -41,7 +41,7 @@ aws configure sso
 
 The CLI will open your browser for authentication. After you log in, it shows you available accounts and roles.
 
-```
+```text
 # There are N AWS accounts available to you.
 # Using the account ID 123456789012
 # The only role available to you is: AdministratorAccess

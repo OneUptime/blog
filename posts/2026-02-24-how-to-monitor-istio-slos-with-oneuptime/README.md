@@ -26,7 +26,7 @@ Istio gives you the building blocks for the most common SLI types.
 
 The most fundamental SLI measures whether requests succeed:
 
-```
+```text
 # Availability = successful requests / total requests
 # Using Istio metrics:
 
@@ -46,7 +46,7 @@ Be careful about what counts as "successful." A 404 might be a valid response (t
 
 Measures whether requests complete fast enough:
 
-```
+```text
 # Latency SLI = requests faster than threshold / total requests
 # "99% of requests should complete in under 500ms"
 
@@ -64,7 +64,7 @@ sum(rate(istio_request_duration_milliseconds_count{
 
 Measures whether the service handles expected load:
 
-```
+```text
 # Throughput = actual request rate vs expected minimum
 # Less common but useful for services with SLAs
 
@@ -148,7 +148,7 @@ alert_90_percent:
 
 The error budget math is straightforward:
 
-```
+```text
 # For a 99.9% availability SLO over 30 days:
 Total minutes in 30 days = 30 * 24 * 60 = 43,200
 Error budget = 43,200 * 0.001 = 43.2 minutes of downtime allowed
@@ -162,7 +162,7 @@ Error budget = 43,200 * 0.0001 = 4.32 minutes
 
 In terms of requests, if you serve 1 million requests per day:
 
-```
+```text
 # 99.9% SLO over 30 days:
 Total requests = 30,000,000
 Allowed failures = 30,000 requests
@@ -179,7 +179,7 @@ Create a dedicated SLO dashboard in OneUptime with these panels:
 
 A table showing each SLO with its current value:
 
-```
+```text
 | Service          | SLI Type     | Target  | Current | Budget Remaining |
 |-----------------|-------------|---------|---------|-----------------|
 | API Gateway      | Availability | 99.95%  | 99.97%  | 65%             |
@@ -193,7 +193,7 @@ Color-code the "Budget Remaining" column: green > 50%, yellow 25-50%, red < 25%.
 
 Show how fast the error budget is being consumed:
 
-```
+```text
 # Burn rate = actual error rate / allowed error rate
 # A burn rate of 1.0 means you're consuming budget exactly at the sustainable rate
 # A burn rate of 2.0 means you'll exhaust your budget in half the window
@@ -207,7 +207,7 @@ A chart showing burn rate over time helps you spot trends. A gradually increasin
 
 Show whether you met your SLO in previous periods:
 
-```
+```text
 | Month    | API Gateway | Payment | User Service |
 |----------|------------|---------|-------------|
 | Jan 2026 | 99.97%     | 99.993% | 99.92%      |

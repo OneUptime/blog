@@ -140,7 +140,7 @@ curl http://server-ip
 
 What to look for in the output:
 
-```
+```text
 # Successful connection - you see SYN, SYN-ACK, ACK
 14:30:01.123456 IP 192.168.1.100.54321 > 192.168.1.10.80: Flags [S]   # SYN
 14:30:01.123500 IP 192.168.1.10.80 > 192.168.1.100.54321: Flags [S.]  # SYN-ACK

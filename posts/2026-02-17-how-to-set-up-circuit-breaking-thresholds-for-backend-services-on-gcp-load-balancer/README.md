@@ -104,7 +104,7 @@ Setting the right thresholds is the hard part. Here is a framework for calculati
 
 Start with your backend's known capacity:
 
-```
+```text
 Backend instances: 10
 Max concurrent connections per instance: 200
 Expected average response time: 100ms

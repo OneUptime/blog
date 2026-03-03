@@ -14,7 +14,7 @@ This post covers how to set up complete tenant isolation in the OpenTelemetry Co
 
 The pattern is straightforward: one shared receiver accepts all incoming data, a routing connector splits it by tenant, and then each tenant gets a completely independent pipeline with its own processors and exporters.
 
-```
+```text
 OTLP Receiver --> Routing Connector --> Tenant A Pipeline --> Tenant A Exporter
                                     --> Tenant B Pipeline --> Tenant B Exporter
                                     --> Tenant C Pipeline --> Tenant C Exporter

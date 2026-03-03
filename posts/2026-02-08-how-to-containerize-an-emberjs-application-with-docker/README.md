@@ -126,7 +126,7 @@ Ember projects can have large `node_modules` and `tmp` directories. Exclude them
 
 This .dockerignore keeps the build context minimal:
 
-```
+```text
 node_modules
 dist
 tmp

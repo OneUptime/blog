@@ -479,7 +479,7 @@ Watch for these patterns in your metrics:
 
 Start with your budget. If your observability backend charges per span and you have a monthly budget, work backwards:
 
-```
+```text
 budget_spans_per_month = monthly_budget / cost_per_span
 budget_spans_per_second = budget_spans_per_month / (30 * 24 * 3600)
 average_spans_per_trace = 8  (measure this for your system)
@@ -488,7 +488,7 @@ target_traces_per_second = budget_spans_per_second / average_spans_per_trace
 
 For example, with a $1,000/month budget at $0.000001 per span:
 
-```
+```text
 budget_spans_per_month = 1,000,000,000
 budget_spans_per_second = 385
 target_traces_per_second = 385 / 8 = ~48 traces/sec

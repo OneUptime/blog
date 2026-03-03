@@ -147,7 +147,7 @@ A typo in /etc/fstab can prevent the OS from booting. You'll see the boot hang o
 
 When you connect to the serial console, you'll see something like:
 
-```
+```text
 [FAILED] Failed to mount /bad-mount-point.
 [DEPEND] Dependency failed for Local File Systems.
 You are in emergency mode. After logging in, type "journalctl -xb" to view
@@ -213,7 +213,7 @@ netplan apply  # Ubuntu
 
 The serial console captures kernel panic output in real time. You'll see the full stack trace:
 
-```
+```text
 Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)
 ```
 

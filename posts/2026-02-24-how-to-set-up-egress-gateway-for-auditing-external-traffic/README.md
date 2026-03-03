@@ -357,13 +357,13 @@ Once you have logs flowing to your SIEM, here are useful queries:
 
 **All external services accessed by a specific namespace:**
 
-```
+```text
 kubernetes.namespace: "payment-processing" AND upstream_cluster: "outbound|*"
 ```
 
 **Failed egress attempts (unauthorized services):**
 
-```
+```text
 response_code: 502 AND kubernetes.labels.istio: "egressgateway"
 ```
 

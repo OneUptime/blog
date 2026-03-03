@@ -272,7 +272,7 @@ Using `-e` on the command line is particularly dangerous because the password ap
 
 Here is a recommended workflow for teams that need to share become passwords.
 
-```
+```text
 project/
   ansible.cfg
   inventory/

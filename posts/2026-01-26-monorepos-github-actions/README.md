@@ -14,7 +14,7 @@ Monorepos contain multiple projects in a single repository. Without proper confi
 
 A typical monorepo might look like this:
 
-```
+```text
 my-monorepo/
   packages/
     api/

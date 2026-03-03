@@ -12,7 +12,7 @@ Ansible uses a temporary directory on remote hosts to transfer and execute modul
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "Failed to create temporary directory. In some cases, you may have been able to authenticate and did not have permissions on the target directory."
 }

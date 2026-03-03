@@ -34,7 +34,7 @@ resource "aws_instance" "web" {
 ```
 
 Plan output:
-```
+```text
 # aws_instance.web will be updated in-place
 ~ resource "aws_instance" "web" {
       id            = "i-0abc123"
@@ -60,7 +60,7 @@ resource "aws_instance" "web" {
 ```
 
 Plan output:
-```
+```text
 # aws_instance.web must be replaced
 -/+ resource "aws_instance" "web" {
       ~ ami           = "ami-0c55b159cbfafe1f0" -> "ami-0new123456789" # forces replacement
@@ -75,7 +75,7 @@ The `-/+` symbol means destroy then create. The comment `# forces replacement` t
 
 When the attribute value in your configuration matches the current state, Terraform does nothing:
 
-```
+```text
 No changes. Your infrastructure matches the configuration.
 ```
 
@@ -255,7 +255,7 @@ resource "aws_db_instance" "main" {
 
 Terraform will show the change in the plan but mask the actual values:
 
-```
+```text
 # aws_db_instance.main will be updated in-place
 ~ resource "aws_db_instance" "main" {
     ~ password = (sensitive value)

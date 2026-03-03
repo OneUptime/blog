@@ -16,7 +16,7 @@ The concept is simple: organize your S3 data into a folder structure that Athena
 
 The standard approach is Hive-style partitioning, where the S3 path includes the partition key and value:
 
-```
+```text
 s3://my-data-lake/events/
     year=2026/
         month=01/

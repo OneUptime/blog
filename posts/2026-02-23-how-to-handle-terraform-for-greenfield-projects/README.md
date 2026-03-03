@@ -16,7 +16,7 @@ In this guide, we will cover how to set up a greenfield Terraform project with t
 
 Start with a structure that supports growth:
 
-```
+```text
 my-project/
   infrastructure/
     environments/

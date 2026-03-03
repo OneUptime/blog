@@ -8,7 +8,7 @@ Description: Fix broken Collector deployments after the OpenTelemetry Docker ima
 
 You try to pull a new Collector version and get:
 
-```
+```text
 Error: pull access denied for otel/opentelemetry-collector-contrib,
 repository does not exist or may require 'docker login'
 ```

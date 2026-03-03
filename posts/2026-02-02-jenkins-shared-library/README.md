@@ -45,7 +45,7 @@ graph TB
 
 A properly organized Shared Library follows a specific directory structure that Jenkins expects. Each directory serves a distinct purpose.
 
-```
+```text
 jenkins-shared-library/
 ├── vars/                    # Global variables and functions
 │   ├── buildDocker.groovy   # Called as buildDocker() in pipelines

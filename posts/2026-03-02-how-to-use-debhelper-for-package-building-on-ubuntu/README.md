@@ -75,7 +75,7 @@ dh binary --no-act
 
 Output looks like:
 
-```
+```text
    dh_auto_configure
    dh_auto_build
    dh_auto_test

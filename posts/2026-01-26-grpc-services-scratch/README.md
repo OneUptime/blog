@@ -39,7 +39,7 @@ flowchart LR
 
 Before diving into code, here is the project structure we will build:
 
-```
+```text
 grpc-service/
 ├── proto/
 │   └── user.proto          # Service and message definitions

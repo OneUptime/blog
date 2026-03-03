@@ -89,7 +89,7 @@ kubectl logs -n metallb-system <speaker-pod> | grep -E "(session|established|con
 
 Symptoms in speaker logs:
 
-```
+```text
 level=info msg="BGP session to 10.0.0.1:179 failed to establish"
 level=error msg="failed to connect: dial tcp 10.0.0.1:179: i/o timeout"
 ```
@@ -154,7 +154,7 @@ kubectl exec -n metallb-system <speaker-pod> -- ip route get 10.0.0.1
 
 Symptoms:
 
-```
+```text
 level=info msg="BGP session established" peer=10.0.0.1
 level=error msg="BGP session reset" reason="notification received" code=6 subcode=2
 ```
@@ -194,7 +194,7 @@ spec:
 
 On Cisco router, verify configuration:
 
-```
+```text
 router# show running-config | section router bgp
 router bgp 64501
   neighbor 10.0.1.10 remote-as 64500   ! Must match MetalLB's myASN
@@ -206,7 +206,7 @@ The router must have your node IPs as allowed BGP neighbors.
 
 Cisco IOS example - Add each Kubernetes node:
 
-```
+```text
 router bgp 64501
   neighbor 10.0.1.10 remote-as 64500
   neighbor 10.0.1.11 remote-as 64500
@@ -215,7 +215,7 @@ router bgp 64501
 
 For dynamic peers (peer groups), configure on Cisco:
 
-```
+```text
 router bgp 64501
   neighbor metallb-peers peer-group
   neighbor metallb-peers remote-as 64500
@@ -226,13 +226,13 @@ router bgp 64501
 
 Symptoms:
 
-```
+```text
 level=info msg="BGP session established" peer=10.0.0.1
 ```
 
 But the router shows no routes from MetalLB:
 
-```
+```text
 router# show ip bgp neighbors 10.0.1.10 received-routes
 ! Empty output
 ```
@@ -313,7 +313,7 @@ kubectl get endpoints test-lb
 
 Symptoms in logs:
 
-```
+```text
 level=info msg="BGP session established" peer=10.0.0.1
 level=error msg="BGP session reset" peer=10.0.0.1
 level=info msg="BGP session established" peer=10.0.0.1
@@ -355,7 +355,7 @@ spec:
 
 On Cisco, verify timers match:
 
-```
+```text
 router# show ip bgp neighbors 10.0.1.10 | include hold time
   Hold time is 90, keepalive interval is 30 seconds
 ```
@@ -502,7 +502,7 @@ When your router is not directly connected (multiple hops away).
 
 Symptoms:
 
-```
+```text
 level=error msg="BGP OPEN message error" error="eBGP peer not directly connected"
 ```
 
@@ -523,7 +523,7 @@ spec:
 
 On the router side (Cisco):
 
-```
+```text
 router bgp 64501
   neighbor 10.0.1.10 remote-as 64500
   neighbor 10.0.1.10 ebgp-multihop 2    ! Adjust hop count as needed
@@ -533,7 +533,7 @@ router bgp 64501
 
 Symptoms:
 
-```
+```text
 level=error msg="BGP session failed" error="TCP MD5 signature mismatch"
 ```
 
@@ -564,7 +564,7 @@ spec:
 
 Verify router has matching password (Cisco):
 
-```
+```text
 router bgp 64501
   neighbor 10.0.1.10 password your-secure-password
 ```
@@ -638,7 +638,7 @@ chmod +x metallb-bgp-debug.sh
 
 Show BGP summary:
 
-```
+```text
 router# show ip bgp summary
 BGP router identifier 10.0.0.1, local AS number 64501
 Neighbor        V    AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd
@@ -648,13 +648,13 @@ Neighbor        V    AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd
 
 Show routes received from MetalLB:
 
-```
+```text
 router# show ip bgp neighbors 10.0.1.10 received-routes
 ```
 
 Show detailed neighbor info:
 
-```
+```text
 router# show ip bgp neighbors 10.0.1.10
 ```
 
@@ -662,19 +662,19 @@ router# show ip bgp neighbors 10.0.1.10
 
 Show BGP summary:
 
-```
+```text
 user@router> show bgp summary
 ```
 
 Show received routes:
 
-```
+```text
 user@router> show route receive-protocol bgp 10.0.1.10
 ```
 
 Show neighbor details:
 
-```
+```text
 user@router> show bgp neighbor 10.0.1.10
 ```
 

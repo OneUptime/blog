@@ -17,7 +17,7 @@ OpenTelemetry uses two separate propagation mechanisms:
 
 These are configured independently. Having trace context propagation enabled does not automatically enable baggage propagation.
 
-```
+```text
 Service A                          Service B
   |                                  |
   | traceparent: 00-trace-id-...  -> | Trace context works

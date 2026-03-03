@@ -164,7 +164,7 @@ action.auto_create_index: true
 
 ## Logstash Pipeline Template
 
-```
+```text
 # roles/elk/templates/logstash-pipeline.conf.j2 - Log processing pipeline
 input {
   beats {

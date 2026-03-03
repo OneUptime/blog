@@ -16,13 +16,13 @@ Istio solves this with mutual TLS (mTLS) and identity-based authentication. Ever
 
 Istio assigns each service a SPIFFE identity based on its Kubernetes service account. The format looks like this:
 
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
 For example, a service running under the `order-service` service account in the `production` namespace gets the identity:
 
-```
+```text
 spiffe://cluster.local/ns/production/sa/order-service
 ```
 

@@ -23,7 +23,7 @@ sudo apt-get update -o Debug::Acquire::http=true 2>&1 | head -50
 
 ## Error: NO_PUBKEY / GPG Key Problems
 
-```
+```text
 W: GPG error: https://apt.releases.hashicorp.com jammy InRelease: The following signatures couldn't be verified because the public key is not available: NO_PUBKEY AA16FCBCA621E701
 E: The repository 'https://apt.releases.hashicorp.com jammy InRelease' is not signed.
 ```
@@ -69,7 +69,7 @@ sudo apt-get install --reinstall ubuntu-keyring
 
 ## Error: 404 Not Found
 
-```
+```text
 E: Failed to fetch http://old-releases.ubuntu.com/ubuntu/dists/... 404  Not Found
 Err:1 http://archive.ubuntu.com/ubuntu hirsute InRelease
   404  Not Found [IP: 91.189.91.81 80]
@@ -115,7 +115,7 @@ sudo mv /etc/apt/sources.list.d/broken.list /etc/apt/sources.list.d/broken.list.
 
 ## Error: Failed to Fetch / Network Errors
 
-```
+```text
 Err:1 http://archive.ubuntu.com/ubuntu jammy InRelease
   Temporary failure resolving 'archive.ubuntu.com'
   Connection failed [IP: ...]
@@ -149,7 +149,7 @@ curl -I http://archive.ubuntu.com/ubuntu/
 sudo nano /etc/apt/apt.conf.d/01proxy
 ```
 
-```
+```text
 # /etc/apt/apt.conf.d/01proxy
 Acquire::http::Proxy "http://proxyuser:proxypass@proxy.company.com:8080";
 Acquire::https::Proxy "http://proxyuser:proxypass@proxy.company.com:8080";
@@ -180,7 +180,7 @@ sudo apt-get update
 
 ## Error: Malformed or Duplicate Entries
 
-```
+```text
 E: Malformed entry 56 in list file /etc/apt/sources.list (Component)
 W: Target Packages (main/binary-amd64/Packages) is configured multiple times
 ```
@@ -225,7 +225,7 @@ sudo apt-get update
 
 ## Error: Size/Hash Mismatch
 
-```
+```text
 W: Failed to fetch https://... Hash Sum mismatch
 E: Some index files failed to download. They have been ignored, or old ones used instead.
 ```
@@ -245,7 +245,7 @@ sudo apt-get update
 
 ## Error: Lock File Problems
 
-```
+```text
 E: Could not get lock /var/lib/apt/lists/lock
 E: Unable to lock directory /var/lib/apt/lists/
 ```

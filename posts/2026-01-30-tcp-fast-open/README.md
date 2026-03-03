@@ -526,7 +526,7 @@ TCP Fast Open can provide significant latency improvements, especially for:
 
 ### Latency Reduction Calculation
 
-```
+```text
 Traditional TCP connection time:
   DNS lookup + TCP handshake + TLS handshake + Request/Response
   = DNS + 1 RTT + 2 RTT (TLS 1.2) + 1 RTT

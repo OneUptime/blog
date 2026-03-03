@@ -120,7 +120,7 @@ Grafana uses folders to organize dashboards, and permissions are set at the fold
 
 A practical folder structure for a multi-team organization:
 
-```
+```text
 /Infrastructure/
     - VM Health Dashboard
     - Network Dashboard
@@ -204,7 +204,7 @@ Navigate to Configuration > Data sources, select the data source, and go to the 
 
 The platform team manages all infrastructure dashboards and grants view access to other teams:
 
-```
+```text
 Azure RBAC:
 - Platform Team: Grafana Admin
 - All other teams: Grafana Viewer
@@ -218,7 +218,7 @@ Folder Permissions:
 
 Each team manages their own dashboards within their designated folder:
 
-```
+```text
 Azure RBAC:
 - Platform Team: Grafana Admin
 - All teams: Grafana Editor
@@ -233,7 +233,7 @@ Folder Permissions:
 
 Teams can only see dashboards relevant to them:
 
-```
+```text
 Azure RBAC:
 - Admins: Grafana Admin
 - Everyone else: Grafana Viewer or Grafana Editor

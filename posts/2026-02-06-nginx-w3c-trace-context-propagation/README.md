@@ -16,12 +16,12 @@ The W3C Trace Context specification defines two headers:
 - **tracestate**: Contains vendor-specific trace data
 
 Format of `traceparent`:
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 ```
 
 The `tracestate` header carries additional context:
-```
+```text
 tracestate: oneuptime=sampling:100,rojo=00f067aa0ba902b7
 ```
 

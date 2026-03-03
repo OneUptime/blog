@@ -953,7 +953,7 @@ jobs:
 
 Organize your tests to match the testing pyramid:
 
-```
+```text
 tests/
     conftest.py              # Shared fixtures
     unit/

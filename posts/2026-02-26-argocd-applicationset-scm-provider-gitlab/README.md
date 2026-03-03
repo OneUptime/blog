@@ -169,7 +169,7 @@ curl --request PUT \
 
 GitLab organizations often use nested groups to organize projects by team or domain.
 
-```
+```text
 myorg/
 ├── frontend/
 │   ├── web-portal

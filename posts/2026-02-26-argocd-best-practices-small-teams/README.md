@@ -51,7 +51,7 @@ spec:
 
 With a small team, managing multiple Git repositories creates overhead that slows you down. Put everything in one repo:
 
-```
+```text
 infrastructure/
   argocd/               # ArgoCD installation manifests
   apps/                 # Application definitions

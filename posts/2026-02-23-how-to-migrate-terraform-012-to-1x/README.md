@@ -18,7 +18,7 @@ Terraform 0.12 reached end of life and no longer receives security updates or bu
 
 You cannot jump directly from 0.12 to 1.x. Terraform requires a step-by-step upgrade through each minor version:
 
-```
+```text
 0.12.x -> 0.13.x -> 0.14.x -> 0.15.x -> 1.0.x -> 1.x (latest)
 ```
 

@@ -76,7 +76,7 @@ Parse nginx combined log format:
 
 Parsed nginx log:
 
-```
+```text
 Input: 192.168.1.100 - - [09/Feb/2026:10:15:30 +0000] "GET /api/users HTTP/1.1" 200 1234 "https://example.com" "Mozilla/5.0"
 
 Output:

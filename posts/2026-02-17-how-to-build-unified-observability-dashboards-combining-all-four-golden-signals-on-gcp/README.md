@@ -50,7 +50,7 @@ Here are the MQL queries for each golden signal when your service runs on GKE be
 
 ### Latency
 
-```
+```text
 # P50, P95, P99 request latency from the load balancer
 {
   fetch https_lb_rule::loadbalancing.googleapis.com/https/total_latencies
@@ -70,7 +70,7 @@ Here are the MQL queries for each golden signal when your service runs on GKE be
 
 ### Traffic
 
-```
+```text
 # Requests per second through the load balancer
 fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count
 | group_by [resource.url_map_name], rate(val())
@@ -79,7 +79,7 @@ fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count
 
 ### Errors
 
-```
+```text
 # Error rate as a percentage
 {
   fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count
@@ -97,7 +97,7 @@ fetch https_lb_rule::loadbalancing.googleapis.com/https/request_count
 
 ### Saturation
 
-```
+```text
 # CPU utilization of GKE containers
 fetch k8s_container::kubernetes.io/container/cpu/limit_utilization
 | group_by [resource.namespace_name, resource.pod_name], mean(val())
@@ -105,7 +105,7 @@ fetch k8s_container::kubernetes.io/container/cpu/limit_utilization
 | top 10
 ```
 
-```
+```text
 # Memory utilization of GKE containers
 fetch k8s_container::kubernetes.io/container/memory/limit_utilization
 | group_by [resource.namespace_name, resource.pod_name], mean(val())
@@ -349,7 +349,7 @@ gcloud monitoring dashboards create --config-from-file=golden-signals-dashboard.
 
 Cloud Run has its own metric set. Here are the golden signal queries adapted for Cloud Run.
 
-```
+```text
 # Latency - P95 request latency for Cloud Run
 fetch cloud_run_revision::run.googleapis.com/request_latencies
 | group_by [resource.service_name], percentile(val(), 95)

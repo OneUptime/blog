@@ -197,7 +197,7 @@ Edge devices often need site-specific configurations - different WiFi settings, 
 
 The best pattern is to use a combination of a base configuration and per-cluster overlays stored in Git.
 
-```
+```text
 edge-configs/
   base/
     monitoring/

@@ -42,7 +42,7 @@ Common high-volume, low-value log sources:
 
 You can estimate how much each log type contributes using this query in Logs Explorer:
 
-```
+```text
 # Count log entries by resource type and log name over the last day
 resource.type="gce_instance"
 ```
@@ -99,7 +99,7 @@ Here are exclusion filters I have found most impactful across different environm
 
 These are usually the biggest offenders. Load balancers check backend health every few seconds, generating enormous volumes of repetitive logs:
 
-```
+```text
 # Exclude health check HTTP requests
 httpRequest.requestUrl="/healthz" OR httpRequest.requestUrl="/readyz" OR httpRequest.requestUrl="/health" OR httpRequest.requestUrl="/"
 ```
@@ -203,7 +203,7 @@ After applying exclusion filters, monitor the impact:
 2. Compare your Cloud Logging costs month-over-month in the Billing console
 3. Use this Cloud Monitoring metric to track ingestion:
 
-```
+```text
 # Monitor log ingestion volume over time
 fetch global
 | metric 'logging.googleapis.com/billing/bytes_ingested'

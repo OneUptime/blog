@@ -83,7 +83,7 @@ cd rabbitmq_random_exchange
 
 The final structure will look like this:
 
-```
+```text
 rabbitmq_random_exchange/
   src/
     rabbitmq_random_exchange.app.src

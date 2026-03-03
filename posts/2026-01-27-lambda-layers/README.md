@@ -32,7 +32,7 @@ The critical detail is that your layer must follow a specific directory structur
 
 Here is the directory structure for a Python layer:
 
-```
+```text
 my-python-layer/
     python/
         my_utils/
@@ -44,7 +44,7 @@ my-python-layer/
 
 And for a Node.js layer:
 
-```
+```text
 my-node-layer/
     nodejs/
         node_modules/
@@ -986,7 +986,7 @@ Outputs:
 
 ### SAM Layer Directory Structure
 
-```
+```text
 project/
     template.yaml
     layers/
@@ -1191,7 +1191,7 @@ Following these best practices will help you build maintainable, efficient serve
 
 ### Code Organization
 
-```
+```text
 recommended-structure/
     layers/
         shared-utils/           # Common utilities

@@ -48,13 +48,13 @@ First, set up a project in the Google Cloud Console:
 
 For the OAuth client configuration, you'll need the authorized redirect URI from Cognito. It follows this format:
 
-```
+```text
 https://<your-domain>.auth.<region>.amazoncognito.com/oauth2/idpresponse
 ```
 
 If you're using a custom domain:
 
-```
+```text
 https://auth.yourapp.com/oauth2/idpresponse
 ```
 
@@ -290,7 +290,7 @@ For full account linking, you'll need admin API calls to merge the accounts. Thi
 
 Verify the setup by constructing the authorization URL manually:
 
-```
+```text
 https://my-app-auth.auth.us-east-1.amazoncognito.com/oauth2/authorize?
   client_id=your-app-client-id&
   response_type=code&

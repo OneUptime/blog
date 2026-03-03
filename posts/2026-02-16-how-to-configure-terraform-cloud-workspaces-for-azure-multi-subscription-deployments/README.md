@@ -33,7 +33,7 @@ graph TB
 
 Start by creating a Terraform Cloud organization and configuring it for your Azure environment. I recommend structuring workspaces with a naming convention that includes the component and environment:
 
-```
+```text
 {component}-{environment}
 ```
 

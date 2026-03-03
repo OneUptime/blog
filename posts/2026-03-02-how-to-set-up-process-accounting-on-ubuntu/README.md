@@ -79,7 +79,7 @@ sudo sa -U username
 
 The output from `sa` looks like:
 
-```
+```text
        1237   1.00re  0.01cp    0avio  100k
        sa        3    0.00re   0.00cp    0avio    0k
        ls       15    0.00re   0.00cp    0avio    0k
@@ -198,7 +198,7 @@ Customize the rotation:
 sudo nano /etc/logrotate.d/acct
 ```
 
-```
+```text
 /var/log/account/pacct {
     rotate 12       # Keep 12 rotated files
     monthly         # Rotate monthly

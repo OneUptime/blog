@@ -54,7 +54,7 @@ sudo nano /etc/tlp.conf
 
 The key concept: most settings come in pairs with `_AC` and `_BAT` suffixes:
 
-```
+```text
 # CPU governor: performance on AC, powersave on battery
 CPU_SCALING_GOVERNOR_ON_AC=performance
 CPU_SCALING_GOVERNOR_ON_BAT=powersave

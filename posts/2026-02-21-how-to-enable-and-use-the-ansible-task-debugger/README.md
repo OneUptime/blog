@@ -134,7 +134,7 @@ When multiple methods are in play, the most specific setting wins. Here is the p
 
 Once inside the debugger, you have access to these commands:
 
-```
+```text
 p <expression>     Print/evaluate a Python expression
 task.args          Show task module arguments
 task_vars          Access all task variables
@@ -149,7 +149,7 @@ q                  Quit the playbook
 
 Here is a practical example of debugging a role that sets up a web application. First, the role structure:
 
-```
+```text
 roles/webapp/
   tasks/
     main.yml
@@ -204,7 +204,7 @@ The configuration tasks:
 
 When the nginx template fails because of an undefined variable, the debugger session might look like this:
 
-```
+```text
 TASK [webapp : Deploy nginx configuration] ************************************
 fatal: [web-01]: FAILED! => {"changed": false, "msg": "AnsibleUndefinedVariable:
   'webapp_server_name' is undefined"}
@@ -243,7 +243,7 @@ When running against multiple hosts, the debugger activates separately for each 
 
 If `node-02` fails but `node-01` and `node-03` succeed, you get a debugger prompt just for `node-02`:
 
-```
+```text
 TASK [Set cluster node ID] ****************************************************
 ok: [node-01]
 fatal: [node-02]: FAILED! => {"changed": false, "msg": "..."}

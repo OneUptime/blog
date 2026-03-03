@@ -16,7 +16,7 @@ ArgoCD notifications support subscriptions on `AppProject` resources using the s
 
 The annotation format is identical:
 
-```
+```text
 notifications.argoproj.io/subscribe.<trigger-name>.<service-name>: <recipient>
 ```
 

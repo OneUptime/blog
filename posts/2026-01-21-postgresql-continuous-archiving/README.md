@@ -19,7 +19,7 @@ Continuous archiving captures Write-Ahead Log (WAL) files as they are generated,
 
 ## How Continuous Archiving Works
 
-```
+```text
 PostgreSQL Write Flow:
 
 Transaction -> WAL Buffer -> WAL Segment File -> Archive

@@ -14,7 +14,7 @@ Remix is a full-stack React framework that runs on Node.js, Deno, or various clo
 
 A standard Remix project (created with `npx create-remix@latest`) has this structure:
 
-```
+```text
 my-remix-app/
   app/
     root.tsx
@@ -187,7 +187,7 @@ CMD ["node", "--import", "tsx", "server.ts"]
 
 ## The .dockerignore File
 
-```
+```text
 # .dockerignore
 node_modules
 build

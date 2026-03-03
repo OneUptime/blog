@@ -85,7 +85,7 @@ nano /etc/ssh/sshd_config
 
 Set or confirm these values:
 
-```
+```text
 # Disable root login entirely
 PermitRootLogin no
 
@@ -205,7 +205,7 @@ Edit the configuration to also enable automatic reboots during off-hours if a ke
 nano /etc/apt/apt.conf.d/50unattended-upgrades
 ```
 
-```
+```text
 // Automatically reboot at a specific time
 Unattended-Upgrade::Automatic-Reboot "true";
 Unattended-Upgrade::Automatic-Reboot-Time "02:00";

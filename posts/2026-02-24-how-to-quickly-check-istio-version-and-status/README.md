@@ -22,7 +22,7 @@ istioctl version
 
 This shows you three things: the client version (your local istioctl binary), the control plane version (istiod), and the data plane version (the sidecar proxies). The output looks something like:
 
-```
+```text
 client version: 1.22.0
 control plane version: 1.22.0
 data plane version: 1.22.0 (45 proxies)
@@ -48,7 +48,7 @@ kubectl get pods -n istio-system -l app=istiod
 
 You should see one or more pods in `Running` state with all containers ready:
 
-```
+```text
 NAME                      READY   STATUS    RESTARTS   AGE
 istiod-7f8c9d6b5-abcde   1/1     Running   0          2d
 ```
@@ -94,7 +94,7 @@ This command scans all your Istio resources (VirtualServices, DestinationRules, 
 
 The output looks like:
 
-```
+```text
 Warning [IST0101] (VirtualService default/my-vs) Referenced host not found: "missing-service"
 Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection
 ```
@@ -143,7 +143,7 @@ istioctl proxy-status
 
 This shows every sidecar in the mesh and its sync status:
 
-```
+```text
 NAME                       CLUSTER    CDS    LDS    EDS    RDS    ECDS   ISTIOD
 frontend-abc123.default    Kubernetes SYNCED SYNCED SYNCED SYNCED        istiod-xxx
 api-def456.backend         Kubernetes SYNCED SYNCED SYNCED SYNCED        istiod-xxx

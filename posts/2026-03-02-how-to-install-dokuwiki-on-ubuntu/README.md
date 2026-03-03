@@ -136,7 +136,7 @@ sudo systemctl reload nginx
 
 Access the install script in your browser:
 
-```
+```text
 http://your-server-ip/install.php
 ```
 

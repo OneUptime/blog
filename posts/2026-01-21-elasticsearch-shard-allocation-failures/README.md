@@ -106,7 +106,7 @@ curl -u elastic:password -X GET "localhost:9200/_cluster/allocation/explain?incl
 **Decider:** `disk_threshold`
 
 **Explanation:**
-```
+```text
 the node is above the high watermark cluster setting [cluster.routing.allocation.disk.watermark.high=90%]
 ```
 
@@ -145,7 +145,7 @@ curl -u elastic:password -X PUT "localhost:9200/_cluster/settings" -H 'Content-T
 **Decider:** `same_shard`
 
 **Explanation:**
-```
+```text
 a copy of this shard is already allocated to this node
 ```
 
@@ -165,7 +165,7 @@ curl -u elastic:password -X PUT "localhost:9200/my-index/_settings" -H 'Content-
 **Decider:** `max_shards_per_node`
 
 **Explanation:**
-```
+```text
 too many shards [1000] allocated to this node, [cluster.routing.allocation.total_shards_per_node=1000]
 ```
 
@@ -188,7 +188,7 @@ Or better, reduce shard count by consolidating indices.
 **Decider:** `filter`
 
 **Explanation:**
-```
+```text
 node does not match index setting [index.routing.allocation.require.zone] value [zone-a]
 ```
 
@@ -212,7 +212,7 @@ curl -u elastic:password -X PUT "localhost:9200/my-index/_settings" -H 'Content-
 **Decider:** `cluster_routing_allocation`
 
 **Explanation:**
-```
+```text
 the cluster has not reached the allocation_enabled threshold
 ```
 
@@ -231,7 +231,7 @@ curl -u elastic:password -X PUT "localhost:9200/_cluster/settings" -H 'Content-T
 ### 6. No Valid Shard Copy
 
 **Explanation:**
-```
+```text
 cannot allocate because a previous copy of the primary shard existed but can no longer be found
 ```
 
@@ -276,7 +276,7 @@ curl -u elastic:password -X POST "localhost:9200/_cluster/reroute" -H 'Content-T
 **Decider:** `awareness`
 
 **Explanation:**
-```
+```text
 allocation would prevent zone [zone-a] from having a copy of the shard
 ```
 

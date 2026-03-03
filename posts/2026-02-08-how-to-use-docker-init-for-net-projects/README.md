@@ -58,7 +58,7 @@ docker init
 
 Docker init detects the .csproj file and identifies the project as .NET:
 
-```
+```text
 ? What application platform does your project use? ASP.NET Core
 ? What version of .NET do you want to use? 8.0
 ? What port does your server listen on? 8080
@@ -298,7 +298,7 @@ environment:
 
 ## .NET-Specific .dockerignore
 
-```
+```text
 # Build outputs
 bin
 obj

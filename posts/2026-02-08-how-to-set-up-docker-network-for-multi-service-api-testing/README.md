@@ -38,7 +38,7 @@ docker network ls --filter name=api-test
 
 You should see output like:
 
-```
+```text
 NETWORK ID     NAME               DRIVER    SCOPE
 a1b2c3d4e5f6   api-test-network   bridge    local
 ```

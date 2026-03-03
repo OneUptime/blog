@@ -127,7 +127,7 @@ gcloud storage ls gs://myorg-terraform-modules/network/
 
 Organize your bucket with a clear structure:
 
-```
+```text
 myorg-terraform-modules/
   network/
     v1.0.0.zip

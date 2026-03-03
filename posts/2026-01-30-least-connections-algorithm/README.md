@@ -410,7 +410,7 @@ In real-world scenarios, servers often have different capacities. A server with 
 
 The algorithm calculates an effective load score:
 
-```
+```text
 score = active_connections / weight
 ```
 

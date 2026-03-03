@@ -270,7 +270,7 @@ Let us build a complete streaming SSR setup from scratch.
 
 ### Project Structure
 
-```
+```text
 streaming-ssr-app/
   src/
     client/

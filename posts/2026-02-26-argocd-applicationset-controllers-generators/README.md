@@ -251,7 +251,7 @@ spec:
 
 Every generator outputs a list of parameter maps. Think of it as a list of rows where each row is a dictionary of key-value pairs:
 
-```
+```text
 Generator Output:
 [
   {cluster: "prod", region: "us-east-1", url: "https://prod.example.com"},

@@ -25,7 +25,7 @@ Before choosing a structure, consider these requirements:
 
 For a single application with multiple environments:
 
-```
+```text
 my-api/
   base/
     kustomization.yaml
@@ -69,7 +69,7 @@ ArgoCD Applications:
 
 For multiple applications in a single repository:
 
-```
+```text
 k8s-configs/
   apps/
     frontend/
@@ -143,7 +143,7 @@ graph TD
 
 Instead of organizing by application first, organize by environment. This layout works well when you want to see everything deployed to a specific environment in one place:
 
-```
+```text
 k8s-configs/
   bases/
     frontend/
@@ -178,7 +178,7 @@ ArgoCD path per application per environment: `environments/production/frontend`
 
 When deploying to multiple clusters:
 
-```
+```text
 k8s-configs/
   apps/
     frontend/
@@ -199,7 +199,7 @@ k8s-configs/
 
 Or flatten the cluster and environment into one level:
 
-```
+```text
 k8s-configs/
   apps/
     frontend/
@@ -220,7 +220,7 @@ k8s-configs/
 
 Store ArgoCD Application manifests alongside the configs or in a separate directory:
 
-```
+```text
 k8s-configs/
   argocd/
     app-of-apps.yaml         # Parent application
@@ -259,7 +259,7 @@ spec:
 
 When multiple applications share common resources, create a shared base:
 
-```
+```text
 k8s-configs/
   shared/
     bases/
@@ -326,7 +326,7 @@ This automatically creates an ArgoCD Application for every `apps/*/overlays/prod
 
 Consistency matters at scale:
 
-```
+```text
 base/
   kustomization.yaml       # Always this exact filename
   deployment.yaml          # Named by resource kind

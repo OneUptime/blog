@@ -210,7 +210,7 @@ Here are practical SLI definitions for common GCP services.
 
 For **Cloud Run** services.
 
-```
+```text
 # Good: responses with status < 500
 # Total: all responses
 good_filter: metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class!="5xx"
@@ -219,7 +219,7 @@ total_filter: metric.type="run.googleapis.com/request_count"
 
 For **GKE** services with Istio.
 
-```
+```text
 # Good: requests that succeeded
 # Total: all requests
 good_filter: metric.type="istio.io/service/server/request_count" AND metric.labels.response_code<500
@@ -228,7 +228,7 @@ total_filter: metric.type="istio.io/service/server/request_count"
 
 For **custom metrics** from your application.
 
-```
+```text
 # Good: custom success metric
 # Total: custom total metric
 good_filter: metric.type="custom.googleapis.com/api/success_count"

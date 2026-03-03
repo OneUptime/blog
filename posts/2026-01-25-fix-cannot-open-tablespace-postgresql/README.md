@@ -16,7 +16,7 @@ The "cannot open tablespace" error in PostgreSQL indicates that the database can
 
 When you see this error:
 
-```
+```text
 FATAL: could not open tablespace directory "pg_tblspc/16385": No such file or directory
 
 ERROR: could not open file "pg_tblspc/16385/PG_14_202107181/16386/16387": Permission denied

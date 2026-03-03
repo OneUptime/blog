@@ -43,7 +43,7 @@ sudo chown root:root /etc/cron.allow
 
 Once cron.allow exists, any user not in the file will get a denial when they try to use crontab:
 
-```
+```text
 You (testuser) are not allowed to use this program (crontab)
 See crontab(1) for more information
 ```

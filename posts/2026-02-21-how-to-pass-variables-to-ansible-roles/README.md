@@ -14,7 +14,7 @@ Ansible roles are the primary unit of reusable automation. A well-written role w
 
 Before diving into how to pass variables, let us look at where roles define their own variables:
 
-```
+```text
 roles/
   webserver/
     defaults/

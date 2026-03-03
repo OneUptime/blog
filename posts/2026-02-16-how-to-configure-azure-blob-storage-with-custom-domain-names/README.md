@@ -27,7 +27,7 @@ This is the simpler setup, suitable when you do not need HTTPS on the custom dom
 
 At your DNS provider, create a CNAME record that points your subdomain to the blob storage endpoint:
 
-```
+```text
 assets.yourdomain.com  CNAME  mystorageaccount.blob.core.windows.net
 ```
 
@@ -69,7 +69,7 @@ The `asverify` approach lets you validate ownership without affecting any existi
 
 After the mapping is in place, blobs are accessible at both the default and custom domain URLs:
 
-```
+```text
 # Default URL
 https://mystorageaccount.blob.core.windows.net/images/logo.png
 
@@ -110,7 +110,7 @@ The CDN endpoint gets a default URL like `https://my-cdn-endpoint.azureedge.net`
 
 First, create a CNAME record at your DNS provider pointing to the CDN endpoint:
 
-```
+```text
 assets.yourdomain.com  CNAME  my-cdn-endpoint.azureedge.net
 ```
 

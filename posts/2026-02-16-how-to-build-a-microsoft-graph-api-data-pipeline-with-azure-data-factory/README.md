@@ -82,7 +82,7 @@ This pipeline acquires an access token using the client credentials flow:
    - Headers: Content-Type: `application/x-www-form-urlencoded`
    - Body:
 
-```
+```text
 client_id=@{pipeline().parameters.ClientId}&scope=https://graph.microsoft.com/.default&client_secret=@{pipeline().parameters.ClientSecret}&grant_type=client_credentials
 ```
 
@@ -164,7 +164,7 @@ For large tenants with many groups, this ForEach can take hours. Set the batch c
 
 Sign-in and audit logs are useful for security analytics:
 
-```
+```text
 Source URL: /auditLogs/signIns?$filter=createdDateTime ge @{addDays(utcNow(),-1)}
 ```
 
@@ -172,7 +172,7 @@ This extracts sign-in logs from the last 24 hours.
 
 For directory audit logs:
 
-```
+```text
 Source URL: /auditLogs/directoryAudits?$filter=activityDateTime ge @{addDays(utcNow(),-1)}
 ```
 

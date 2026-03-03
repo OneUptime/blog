@@ -14,13 +14,13 @@ When traffic is not flowing correctly in Istio ambient mode, debugging can be tr
 
 Before debugging, you need to know what a healthy data path looks like in ambient mode:
 
-```
+```text
 Source Pod -> [CNI Redirection] -> Source ztunnel -> [HBONE/mTLS] -> Dest ztunnel -> [CNI Delivery] -> Dest Pod
 ```
 
 With a waypoint proxy:
 
-```
+```text
 Source Pod -> Source ztunnel -> Waypoint Proxy -> Dest ztunnel -> Dest Pod
 ```
 

@@ -16,7 +16,7 @@ There is a catch, though. X-Ray uses a different trace ID format than OpenTeleme
 
 Before diving into configuration, it helps to understand what makes X-Ray's trace IDs different. OpenTelemetry uses a standard W3C trace ID, which is a 32-character hex string. X-Ray trace IDs look like this:
 
-```
+```text
 1-5f4b3c2a-1234567890abcdef12345678
 ```
 

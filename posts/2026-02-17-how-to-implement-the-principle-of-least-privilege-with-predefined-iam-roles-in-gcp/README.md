@@ -28,7 +28,7 @@ GCP IAM roles fall into three categories:
 
 ### Basic Roles (Avoid These)
 
-```
+```text
 roles/viewer    - Read access to all resources
 roles/editor    - Read + write access to all resources
 roles/owner     - Full access + IAM management
@@ -40,7 +40,7 @@ These are the roles you want to replace. They grant permissions across every ser
 
 Google maintains hundreds of predefined roles scoped to specific services and actions:
 
-```
+```text
 roles/storage.objectViewer     - Read objects in Cloud Storage
 roles/compute.instanceAdmin.v1 - Manage Compute Engine instances
 roles/cloudsql.editor          - Manage Cloud SQL instances

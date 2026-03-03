@@ -158,7 +158,7 @@ The return value indicates how many subscribers received the message.
 
 Back in the subscriber terminal, you'll see:
 
-```
+```text
 1) "message"
 2) "notifications"
 3) "Hello, Redis Pub/Sub!"
@@ -232,7 +232,7 @@ Pattern subscriptions allow you to subscribe to multiple channels using glob-sty
 
 When receiving messages from pattern subscriptions, you get additional information:
 
-```
+```text
 1) "pmessage"           # Message type for pattern subscriptions
 2) "user:*"             # The pattern that matched
 3) "user:123"           # The actual channel name

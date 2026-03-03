@@ -18,7 +18,7 @@ When a packet needs to leave a subnet, AWS evaluates the route table from most s
 
 Here's what the default main route table looks like:
 
-```
+```text
 Destination        Target
 10.0.0.0/16        local
 ```
@@ -97,7 +97,7 @@ aws ec2 create-route \
 
 After adding routes, your public route table looks like this:
 
-```
+```text
 Destination        Target          Status
 10.0.0.0/16        local           Active
 0.0.0.0/0          igw-abc123      Active
@@ -105,7 +105,7 @@ Destination        Target          Status
 
 And your private route table:
 
-```
+```text
 Destination        Target          Status
 10.0.0.0/16        local           Active
 0.0.0.0/0          nat-def456      Active
@@ -142,7 +142,7 @@ Any subnet not explicitly associated uses the main route table. This is a common
 
 AWS uses longest prefix match to decide which route to use. Here's an example:
 
-```
+```text
 Destination        Target
 10.0.0.0/16        local
 10.0.5.0/24        pcx-abc123

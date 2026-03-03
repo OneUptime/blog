@@ -189,7 +189,7 @@ ORDER BY time
 
 Customize the appearance of bullish and bearish candles in the panel options.
 
-```
+```text
 Up color: #73BF69 (green)
 Down color: #F2495C (red)
 Flat color: #808080 (gray)
@@ -225,7 +225,7 @@ When your data comes in separate series, use the "Group by" transformation.
 
 Use "Organize fields" to rename columns to match OHLC conventions.
 
-```
+```text
 price_first -> open
 price_max -> high
 price_min -> low
@@ -401,7 +401,7 @@ Here is a complete dashboard JSON snippet for a candlestick panel.
 
 Check that your query returns the required fields. Enable query inspector to see raw data.
 
-```
+```text
 Panel Options > Query Inspector > Refresh
 ```
 

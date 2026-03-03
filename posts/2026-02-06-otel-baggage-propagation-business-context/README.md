@@ -185,7 +185,7 @@ resource:
 
 This tells the SDK to both inject and extract baggage from HTTP headers. The W3C Baggage header format looks like this on the wire:
 
-```
+```text
 baggage: tenant.id=acme-corp,user.id=user-42,request.priority=high
 ```
 

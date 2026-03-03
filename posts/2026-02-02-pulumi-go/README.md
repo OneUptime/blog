@@ -96,7 +96,7 @@ pulumi new kubernetes-go
 
 A typical Pulumi Go project has the following structure.
 
-```
+```text
 my-infra/
 ├── main.go          # Your infrastructure code
 ├── go.mod           # Go module file
@@ -1286,7 +1286,7 @@ func main() {
 
 Structure your infrastructure for maintainability.
 
-```
+```text
 infrastructure/
 ├── networking/           # VPCs, subnets, security groups
 │   ├── main.go

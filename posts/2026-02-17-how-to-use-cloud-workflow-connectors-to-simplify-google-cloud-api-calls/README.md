@@ -25,7 +25,7 @@ Connectors are essentially typed wrappers around Google Cloud REST APIs. They:
 
 Connector calls follow this pattern:
 
-```
+```text
 googleapis.{service}.{version}.{resource_path}.{method}
 ```
 

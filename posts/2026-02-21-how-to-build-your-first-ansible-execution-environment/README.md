@@ -232,7 +232,7 @@ The `additional_build_steps` section lets you inject custom Dockerfile/Container
 
 After creating everything, your project directory should look like this:
 
-```
+```text
 my-first-ee/
   execution-environment.yml    # Main definition file
   requirements.yml             # Ansible collections

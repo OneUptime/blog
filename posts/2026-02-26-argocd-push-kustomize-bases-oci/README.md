@@ -53,7 +53,7 @@ flux --version
 
 Let's say you have a reusable Nginx base:
 
-```
+```text
 nginx-base/
   kustomization.yaml
   deployment.yaml
@@ -313,7 +313,7 @@ stringData:
 
 A good versioning strategy for shared Kustomize bases:
 
-```
+```text
 v1.0.0 - Initial stable release
 v1.1.0 - Added new configurable parameters (backward compatible)
 v1.2.0 - Updated default resource limits

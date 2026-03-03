@@ -214,7 +214,7 @@ Once logs are flowing, use CloudWatch Logs Insights to query them. Here are some
 
 Find the slowest API calls in the last hour:
 
-```
+```text
 # Top 10 slowest requests
 fields @timestamp, httpMethod, resourcePath, status, responseLatency
 | sort responseLatency desc
@@ -223,7 +223,7 @@ fields @timestamp, httpMethod, resourcePath, status, responseLatency
 
 Count requests by status code:
 
-```
+```text
 # Request count by status code
 fields status
 | stats count(*) as requestCount by status
@@ -232,7 +232,7 @@ fields status
 
 Calculate latency percentiles by endpoint:
 
-```
+```text
 # P50, P90, P99 latency per endpoint
 fields resourcePath, responseLatency
 | stats
@@ -247,7 +247,7 @@ fields resourcePath, responseLatency
 
 Find error patterns:
 
-```
+```text
 # Errors by endpoint and error message
 fields httpMethod, resourcePath, status, errorMessage
 | filter status >= 400
@@ -257,7 +257,7 @@ fields httpMethod, resourcePath, status, errorMessage
 
 Track requests from a specific client:
 
-```
+```text
 # All requests from a specific IP
 fields @timestamp, httpMethod, resourcePath, status, responseLatency
 | filter ip = "203.0.113.42"

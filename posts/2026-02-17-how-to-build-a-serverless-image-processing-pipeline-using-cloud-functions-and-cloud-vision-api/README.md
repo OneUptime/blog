@@ -312,7 +312,7 @@ gcloud functions deploy process-image \
 
 The `requirements.txt` for the function:
 
-```
+```text
 google-cloud-storage==2.14.0
 google-cloud-vision==3.6.0
 google-cloud-firestore==2.14.0

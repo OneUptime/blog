@@ -46,7 +46,7 @@ cat /etc/apt/preferences.d/firefox-no-snap 2>/dev/null || echo "File doesn't exi
 sudo nano /etc/apt/preferences.d/firefox-no-snap
 ```
 
-```
+```text
 # /etc/apt/preferences.d/firefox-no-snap
 # Prevent the firefox Snap from being installed via APT redirects
 Package: firefox*
@@ -97,7 +97,7 @@ Tell APT to prefer packages from the Mozilla repository over Ubuntu's versions:
 sudo nano /etc/apt/preferences.d/mozilla
 ```
 
-```
+```text
 # /etc/apt/preferences.d/mozilla
 # Prefer Mozilla's APT repository for Firefox and Thunderbird
 Package: *

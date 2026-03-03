@@ -39,7 +39,7 @@ spec:
 
 Your repository structure:
 
-```
+```text
 charts/my-app/
   Chart.yaml
   templates/
@@ -122,7 +122,7 @@ The order matters. Files listed later override values from earlier files.
 
 If your values files are in a different directory within the same repository, use relative paths:
 
-```
+```text
 repo/
   charts/my-app/
     Chart.yaml

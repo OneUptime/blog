@@ -333,7 +333,7 @@ stringData:
 
 Kong forwards consumer information to upstream services in headers:
 
-```
+```text
 X-Consumer-ID: <consumer_uuid>
 X-Consumer-Custom-ID: mobile-app-v1
 X-Consumer-Username: mobile-app

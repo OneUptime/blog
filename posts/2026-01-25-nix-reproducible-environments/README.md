@@ -31,7 +31,7 @@ nix --version
 
 Enable flakes (the modern Nix interface) by adding to `~/.config/nix/nix.conf`:
 
-```
+```text
 experimental-features = nix-command flakes
 ```
 

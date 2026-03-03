@@ -401,7 +401,7 @@ kubectl get events --field-selector involvedObject.name=payment-service \
 
 Example status output during progression:
 
-```
+```text
 NAME              STATUS        WEIGHT   LASTTRANSITIONTIME
 payment-service   Progressing   10       2024-01-25T10:15:00Z
 payment-service   Progressing   20       2024-01-25T10:16:00Z

@@ -409,7 +409,7 @@ Organize flag tests to make coverage gaps visible and maintenance easier.
 
 ### Folder Structure
 
-```
+```text
 tests/
   flags/
     __fixtures__/

@@ -75,7 +75,7 @@ service:
 
 The buffer pool hit ratio tells you how often InnoDB finds data in memory versus reading from disk:
 
-```
+```text
 buffer_pool_hit_ratio = 1 - (mysql.buffer_pool.operations{type="read_requests"} / mysql.buffer_pool.operations{type="reads"})
 ```
 
@@ -83,7 +83,7 @@ A hit ratio above 99% is good. Below 95% indicates the buffer pool is too small 
 
 ### Buffer Pool Pages
 
-```
+```text
 mysql.buffer_pool.pages{status="total"}    - Total pages in buffer pool
 mysql.buffer_pool.pages{status="data"}     - Pages containing data
 mysql.buffer_pool.pages{status="free"}     - Free (unused) pages
@@ -94,7 +94,7 @@ If `free` pages are consistently at zero, the buffer pool is fully utilized and 
 
 ### Buffer Pool Utilization
 
-```
+```text
 buffer_pool_utilization = pages{status="data"} / pages{status="total"} * 100
 ```
 
@@ -102,7 +102,7 @@ Above 95% utilization means the buffer pool is nearly full. Consider increasing 
 
 ### Page Flushes
 
-```
+```text
 mysql.buffer_pool.page_flushes - Number of pages flushed from buffer pool to disk
 flush_rate = rate(mysql.buffer_pool.page_flushes[5m])
 ```
@@ -113,7 +113,7 @@ High flush rates during normal operations indicate the buffer pool is under pres
 
 ### Slow Query Count
 
-```
+```text
 mysql.slow_queries - Total slow queries (cumulative)
 slow_query_rate = rate(mysql.slow_queries[5m])
 ```
@@ -150,7 +150,7 @@ receivers:
 
 ### Thread Counts
 
-```
+```text
 mysql.threads{status="connected"}  - Total connected threads
 mysql.threads{status="running"}    - Threads actively executing
 mysql.threads{status="cached"}     - Threads in the thread cache

@@ -39,7 +39,7 @@ Flags:
 - `/dev/data_vg/db_data` - the original LV (the "origin")
 
 Output:
-```
+```text
   Logical volume "db_data_snap" created.
 ```
 
@@ -58,7 +58,7 @@ sudo lvcreate -l 15%ORIGIN -s -n db_data_snap /dev/data_vg/db_data
 sudo lvs
 ```
 
-```
+```text
   LV           VG       Attr       LSize   Pool Origin  Data%  Meta%
   db_data      data_vg  owi-aos--- 200.00g
   db_data_snap data_vg  swi-a-s---  20.00g      db_data 0.00
@@ -137,7 +137,7 @@ sudo lvs -o name,origin,snap_percent
 watch -n 10 'sudo lvs -o name,origin,snap_percent'
 ```
 
-```
+```text
   LV           Origin  Snap%
   db_data_snap db_data  12.45
 ```
@@ -183,7 +183,7 @@ sudo lvextend -L +10G /dev/data_vg/db_data_snap
 
 Or configure automatic extension in `/etc/lvm/lvm.conf`:
 
-```
+```text
 snapshot_autoextend_threshold = 70  # extend when 70% full
 snapshot_autoextend_percent = 20    # extend by 20% each time
 ```
@@ -207,7 +207,7 @@ sudo lvremove /dev/data_vg/db_data_snap
 ```
 
 Confirm deletion:
-```
+```text
   Do you really want to remove active logical volume data_vg/db_data_snap? [y/n]: y
   Logical volume "db_data_snap" successfully removed.
 ```

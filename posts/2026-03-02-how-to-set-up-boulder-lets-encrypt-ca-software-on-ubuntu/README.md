@@ -82,7 +82,7 @@ docker compose ps
 ```
 
 The ACME directory endpoint will be available at:
-```
+```text
 http://localhost:4001/directory
 ```
 
@@ -211,7 +211,7 @@ spec:
 
 ### Using Caddy
 
-```
+```text
 # Caddyfile
 example.internal.com {
     tls admin@example.com {
@@ -239,7 +239,7 @@ certbot certonly \
 
 Boulder exposes Prometheus metrics. Monitor key metrics:
 
-```
+```text
 # Certificate issuance rate
 boulder_ca_certificates_issued_total
 

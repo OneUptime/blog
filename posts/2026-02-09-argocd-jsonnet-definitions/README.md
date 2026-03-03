@@ -29,7 +29,7 @@ ArgoCD has built-in Jsonnet support, making it seamless to use Jsonnet as a sour
 
 ArgoCD automatically detects and processes Jsonnet files with `.jsonnet` extensions. Here's a basic repository structure:
 
-```
+```text
 my-app-repo/
 ├── environments/
 │   ├── dev.jsonnet

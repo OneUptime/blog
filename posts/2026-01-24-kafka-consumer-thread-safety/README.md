@@ -76,7 +76,7 @@ public class UnsafeConsumer {
 
 ### The Exception You Will See
 
-```
+```text
 java.util.ConcurrentModificationException:
 KafkaConsumer is not safe for multi-threaded access.
 At most one thread should access the consumer at any given time.

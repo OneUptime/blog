@@ -328,7 +328,7 @@ Configuring your router is the most effective method as it automatically applies
 
 ### Generic Router Configuration Steps
 
-```
+```text
 1. Access your router's admin panel (typically 192.168.1.1 or 192.168.0.1)
 2. Navigate to: Network Settings > DHCP > DNS Settings
 3. Set Primary DNS: YOUR_PI_HOLE_IP (e.g., 192.168.1.100)
@@ -380,7 +380,7 @@ Enhance Pi-hole's blocking capability by adding additional blocklists.
 
 ### Adding Blocklists via Web Interface
 
-```
+```text
 1. Navigate to: http://YOUR_PI_HOLE_IP/admin
 2. Go to: Group Management > Adlists
 3. Add new list URLs and click "Add"
@@ -548,7 +548,7 @@ echo "Common whitelist entries added!"
 
 ### Managing Lists via Web Interface
 
-```
+```text
 Whitelist:
 1. Navigate to: Domains
 2. Select "Add domain to whitelist"
@@ -571,7 +571,7 @@ Pi-hole can function as your network's DHCP server, simplifying client configura
 
 ### Disable Router DHCP First
 
-```
+```text
 IMPORTANT: Before enabling Pi-hole DHCP, disable DHCP on your router
 to prevent conflicts. Having two DHCP servers can cause network issues.
 
@@ -599,7 +599,7 @@ sudo nano /etc/pihole/setupVars.conf
 
 ### Configure DHCP via Web Interface
 
-```
+```text
 1. Navigate to: Settings > DHCP
 2. Check "DHCP server enabled"
 3. Configure:
@@ -941,7 +941,7 @@ sqlite3 /etc/pihole/pihole-FTL.db \
 
 ### Web Interface Statistics
 
-```
+```text
 Dashboard (http://YOUR_PI_HOLE_IP/admin):
 - Total queries (24h, 7d, 30d views)
 - Queries blocked percentage

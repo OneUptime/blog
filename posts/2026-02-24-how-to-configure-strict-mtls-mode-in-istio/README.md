@@ -181,7 +181,7 @@ Also monitor your application error rates. A spike in 503 errors right after ena
 
 In Prometheus, query:
 
-```
+```text
 rate(istio_requests_total{response_code="503", reporter="destination"}[5m])
 ```
 

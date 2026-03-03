@@ -16,7 +16,7 @@ This post walks through practical patterns for multi-cloud Terraform CI/CD.
 
 The first decision is how to organize your multi-cloud Terraform code. The cleanest approach separates by provider:
 
-```
+```text
 infrastructure/
   aws/
     networking/

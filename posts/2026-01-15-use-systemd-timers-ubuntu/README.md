@@ -198,7 +198,7 @@ The `OnCalendar` directive uses a powerful and flexible syntax for defining sche
 
 ### Basic Format
 
-```
+```text
 DayOfWeek Year-Month-Day Hour:Minute:Second
 ```
 
@@ -295,7 +295,7 @@ systemd-analyze calendar --timezone=America/New_York "daily"
 
 Example output:
 
-```
+```text
 $ systemd-analyze calendar --iterations=5 "Mon..Fri *-*-* 09:00:00"
   Original form: Mon..Fri *-*-* 09:00:00
 Normalized form: Mon..Fri *-*-* 09:00:00
@@ -621,7 +621,7 @@ sudo systemctl show my-task.timer
 
 Example `list-timers` output:
 
-```
+```text
 NEXT                        LEFT          LAST                        PASSED       UNIT                         ACTIVATES
 Wed 2026-01-15 03:00:00 UTC 5h 23min left Tue 2026-01-14 03:00:00 UTC 18h ago      daily-backup.timer           daily-backup.service
 Wed 2026-01-15 00:00:00 UTC 2h 23min left Tue 2026-01-14 00:00:00 UTC 21h ago      logrotate.timer              logrotate.service
@@ -785,7 +785,7 @@ crontab -e
 ### Migration Example
 
 **Original crontab entry**:
-```
+```text
 # Backup database every day at 2 AM
 0 2 * * * /usr/local/bin/backup.sh >> /var/log/backup.log 2>&1
 ```

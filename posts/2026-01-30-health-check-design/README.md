@@ -229,7 +229,7 @@ The structure of your health check endpoints affects debuggability, performance,
 
 Organize health checks into a clear URL hierarchy:
 
-```
+```text
 /health              # Aggregate status (for humans and dashboards)
 /health/live         # Liveness probe (for Kubernetes)
 /health/ready        # Readiness probe (for load balancers)

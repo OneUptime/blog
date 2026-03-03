@@ -63,7 +63,7 @@ If a root process needs access (for backup scripts, etc.), you can use `no_root_
 
 The `all_squash` export option maps all client UIDs to the anonymous user (`nobody`). If this is set, no client user can access the share with their own identity:
 
-```
+```text
 /srv/nfs/public  *(ro,sync,no_subtree_check,all_squash,anonuid=1000,anongid=1000)
 ```
 
@@ -193,7 +193,7 @@ sudo mount -t nfs4 192.168.1.10:/srv/nfs/data /mnt/nfs/data
 
 Configure the `hard` and `intr` mount options:
 
-```
+```text
 # In /etc/fstab
 192.168.1.10:/srv/nfs/data  /mnt/nfs/data  nfs4  hard,intr,timeo=600,retrans=3,noatime,_netdev  0  0
 ```

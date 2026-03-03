@@ -121,7 +121,7 @@ Validating webhooks can reject resources that do not meet certain criteria. This
 
 ### Common Validation Failures
 
-```
+```text
 SyncError: admission webhook "validate.my-policy" denied the request:
 resource does not meet security requirements
 ```

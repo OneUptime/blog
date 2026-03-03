@@ -274,7 +274,7 @@ services:
 
 ## Modular Project Structure
 
-```
+```text
 project/
 ├── docker-compose.yml          # Main orchestration
 ├── compose/

@@ -123,7 +123,7 @@ At 100 hosts, that's 50,000-100,000 additional metrics before you write a single
 
 Here's a calculator based on our data:
 
-```
+```text
 Base monthly cost = (
   (hosts × $15) +
   (hosts × $31 if APM) +

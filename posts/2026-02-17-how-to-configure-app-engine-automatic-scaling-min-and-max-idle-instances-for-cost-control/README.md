@@ -128,7 +128,7 @@ Here you are trading money for speed. Five minimum idle instances means the firs
 
 Idle instances cost the same as active instances - you pay for the instance hours whether the instance is processing requests or sitting idle. Here is a rough calculation:
 
-```
+```text
 F1 instance: ~$0.05 per hour
 F2 instance: ~$0.10 per hour
 F4 instance: ~$0.20 per hour

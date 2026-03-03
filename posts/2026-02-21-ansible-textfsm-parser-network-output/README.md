@@ -40,7 +40,7 @@ A TextFSM template has two sections: value definitions and state rules. Let me w
 
 Here is typical output from that command:
 
-```
+```text
 Interface              IP-Address      OK? Method Status                Protocol
 GigabitEthernet0/0     10.1.1.1        YES manual up                    up
 GigabitEthernet0/1     unassigned      YES unset  administratively down down
@@ -49,7 +49,7 @@ Loopback0              10.255.0.1      YES manual up                    up
 
 And here is a TextFSM template to parse it.
 
-```
+```text
 # cisco_ios_show_ip_interface_brief.textfsm
 # Parses 'show ip interface brief' output into structured records
 Value INTERFACE (\S+)
@@ -117,7 +117,7 @@ Sometimes NTC templates do not cover your specific command or you need to parse 
 
 Let me parse the output of `show cdp neighbors detail`, which has multi-line records.
 
-```
+```text
 # templates/cisco_ios_show_cdp_neighbors_detail.textfsm
 # Parse CDP neighbor detail output which spans multiple lines per neighbor
 Value DEVICE_ID (\S+)
@@ -212,7 +212,7 @@ The `cli_parse` module from `ansible.utils` provides a cleaner interface that co
 
 Mark a value as `Required` so records without that value are discarded.
 
-```
+```text
 # Only record entries that have both an interface name and IP address
 Value Required INTERFACE (\S+)
 Value Required IP_ADDRESS (\d+\.\d+\.\d+\.\d+)
@@ -223,7 +223,7 @@ Value STATUS (\S+)
 
 Capture multiple values into a list for fields that repeat within a record.
 
-```
+```text
 # Capture all secondary IP addresses as a list
 Value INTERFACE (\S+)
 Value PRIMARY_IP (\d+\.\d+\.\d+\.\d+)
@@ -240,7 +240,7 @@ Start
 
 Use `Filldown` to carry a value forward across multiple records. This is useful when a header applies to multiple rows.
 
-```
+```text
 # The VRF name appears once, followed by multiple routes
 Value Filldown VRF (\S+)
 Value Required NETWORK (\d+\.\d+\.\d+\.\d+)

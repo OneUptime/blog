@@ -35,7 +35,7 @@ service:
 
 The output looks like this:
 
-```
+```text
 2026-02-06T10:15:30Z info TracesExporter {"kind": "exporter", "data_type": "traces", "name": "debug", "resource spans": 1, "spans": 5}
 ```
 
@@ -53,7 +53,7 @@ exporters:
 
 Output:
 
-```
+```text
 2026-02-06T10:15:30Z info TracesExporter {"kind": "exporter", "data_type": "traces", "name": "debug"}
     Resource SchemaURL:
     Resource attributes:
@@ -85,7 +85,7 @@ exporters:
 
 Output includes every attribute on every span:
 
-```
+```text
 Span #0
     Trace ID: abc123def456...
     Span ID: 789abc...

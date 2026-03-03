@@ -145,7 +145,7 @@ at -l
 
 Example output:
 
-```
+```text
 5    Sun Mar  5 14:30:00 2026 a myuser
 6    Mon Mar  6 09:00:00 2026 a myuser
 ```

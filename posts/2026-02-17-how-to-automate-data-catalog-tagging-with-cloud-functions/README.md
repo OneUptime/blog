@@ -287,7 +287,7 @@ def apply_ownership_tag(entry, dataset_id):
 
 The requirements file:
 
-```
+```text
 # requirements.txt
 google-cloud-datacatalog==3.18.0
 ```

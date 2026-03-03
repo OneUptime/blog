@@ -216,7 +216,7 @@ function handler(event) {
 
 Using the wrong S3 endpoint as the origin causes 403 errors. Use the bucket's regional endpoint:
 
-```
+```text
 # Correct S3 origin for CloudFront
 my-bucket.s3.us-east-1.amazonaws.com
 

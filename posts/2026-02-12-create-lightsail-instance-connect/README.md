@@ -194,7 +194,7 @@ Set up an SSH config on your local machine so you don't have to remember the IP 
 
 Add this to your `~/.ssh/config` file.
 
-```
+```text
 Host lightsail
     HostName YOUR_INSTANCE_IP
     User ubuntu

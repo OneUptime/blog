@@ -57,7 +57,7 @@ volumes:
 
 ### Caddyfile
 
-```
+```text
 # Caddyfile
 app.example.com {
     reverse_proxy app:3000
@@ -73,7 +73,7 @@ That's it! Caddy automatically:
 
 ### Caddyfile with Multiple Domains
 
-```
+```text
 # Caddyfile
 api.example.com {
     reverse_proxy api:3000
@@ -135,7 +135,7 @@ volumes:
 
 ### Round Robin
 
-```
+```text
 api.example.com {
     reverse_proxy api-1:3000 api-2:3000 api-3:3000
 }
@@ -143,7 +143,7 @@ api.example.com {
 
 ### With Health Checks
 
-```
+```text
 api.example.com {
     reverse_proxy api-1:3000 api-2:3000 api-3:3000 {
         health_uri /health
@@ -156,7 +156,7 @@ api.example.com {
 
 ### Weighted Load Balancing
 
-```
+```text
 api.example.com {
     reverse_proxy {
         to api-v1:3000 api-v2:3000
@@ -188,7 +188,7 @@ services:
       - "3000"
 ```
 
-```
+```text
 # Caddyfile - Caddy discovers all replicas via DNS
 api.example.com {
     reverse_proxy api:3000
@@ -197,7 +197,7 @@ api.example.com {
 
 ## Path-Based Routing
 
-```
+```text
 example.com {
     # API routes
     handle /api/* {
@@ -226,7 +226,7 @@ example.com {
 
 ### Security Headers
 
-```
+```text
 example.com {
     header {
         # Security headers
@@ -247,7 +247,7 @@ example.com {
 
 ### CORS Configuration
 
-```
+```text
 api.example.com {
     @cors_preflight method OPTIONS
 
@@ -269,7 +269,7 @@ api.example.com {
 
 ### Basic Auth
 
-```
+```text
 admin.example.com {
     basicauth {
         # Generate: caddy hash-password
@@ -282,7 +282,7 @@ admin.example.com {
 
 ### Forward Auth (with Authelia/Authentik)
 
-```
+```text
 *.example.com {
     forward_auth authelia:9091 {
         uri /api/verify?rd=https://auth.example.com/
@@ -295,7 +295,7 @@ admin.example.com {
 
 ## Compression and Caching
 
-```
+```text
 example.com {
     encode gzip zstd
 
@@ -309,7 +309,7 @@ example.com {
 
 ## Websockets
 
-```
+```text
 example.com {
     reverse_proxy /ws/* api:3000
 
@@ -323,7 +323,7 @@ Caddy automatically handles WebSocket upgrades.
 
 ### Self-Signed Certificates
 
-```
+```text
 # Caddyfile for development
 {
     local_certs
@@ -436,7 +436,7 @@ volumes:
   postgres_data:
 ```
 
-```
+```text
 # Caddyfile
 {
     email admin@example.com
@@ -508,7 +508,7 @@ curl localhost:2019/load \
 
 ### Expose Admin API
 
-```
+```text
 {
     admin 0.0.0.0:2019
 }
@@ -516,7 +516,7 @@ curl localhost:2019/load \
 
 ## Metrics and Monitoring
 
-```
+```text
 {
     servers {
         metrics

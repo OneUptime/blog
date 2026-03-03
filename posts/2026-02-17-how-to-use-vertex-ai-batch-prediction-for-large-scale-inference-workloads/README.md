@@ -71,7 +71,7 @@ For JSONL input, each line is a JSON object representing one instance:
 
 For CSV input:
 
-```
+```text
 feature1,feature2,feature3
 0.5,category_a,42
 0.8,category_b,17

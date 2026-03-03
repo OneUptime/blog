@@ -57,7 +57,7 @@ conftest --version
 
 Organize your policies in a `policy` directory:
 
-```
+```text
 project/
   policy/
     kubernetes.rego
@@ -149,7 +149,7 @@ conftest test kubernetes/deployment.yaml
 
 Output:
 
-```
+```text
 FAIL - kubernetes/deployment.yaml - main - Container 'app' must set securityContext.runAsNonRoot to true
 FAIL - kubernetes/deployment.yaml - main - Container 'app' must specify resource limits
 FAIL - kubernetes/deployment.yaml - main - Container 'app' must specify resource requests
@@ -471,7 +471,7 @@ conftest test deployment.yaml
 
 ### Policy Bundles Structure
 
-```
+```text
 policy-bundle/
   policy/
     kubernetes/

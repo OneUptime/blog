@@ -27,7 +27,7 @@ This happens because CPU limits create a hard ceiling, unlike memory limits whic
 
 Kubernetes translates CPU limits into CFS (Completely Fair Scheduler) parameters:
 
-```
+```text
 cpu.cfs_period_us = 100000 (100ms)
 cpu.cfs_quota_us = (CPU limit) * 100000
 

@@ -14,14 +14,14 @@ NVMe SSDs are now common in both server and workstation hardware, and installing
 
 NVMe drives use a different device naming convention than SATA disks. Where SATA drives appear as `/dev/sda`, `/dev/sdb`, etc., NVMe drives appear as:
 
-```
+```text
 /dev/nvme0n1    # First NVMe controller, first namespace
 /dev/nvme1n1    # Second NVMe controller, first namespace
 ```
 
 Partitions on NVMe use `p` as a separator:
 
-```
+```text
 /dev/nvme0n1p1  # First partition on first NVMe drive
 /dev/nvme0n1p2  # Second partition
 ```
@@ -43,7 +43,7 @@ Boot from the USB. Modern systems with NVMe drives are almost always UEFI-based,
 
 When you reach the storage configuration step, Subiquity (the Ubuntu Server installer) should detect your NVMe drive automatically. You will see something like:
 
-```
+```text
 NVME Controller
   nvme0n1   Samsung SSD 980 Pro 1TB
 ```
@@ -107,7 +107,7 @@ To make this persistent across reboots, create a udev rule:
 sudo nano /etc/udev/rules.d/60-nvme-scheduler.rules
 ```
 
-```
+```text
 # Set none scheduler for NVMe drives
 ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/scheduler}="none"
 ```
@@ -163,7 +163,7 @@ Set up regular health checks with a cron job:
 sudo crontab -e
 ```
 
-```
+```text
 # Check NVMe health weekly and log to syslog
 0 3 * * 0 nvme smart-log /dev/nvme0n1 | logger -t nvme-health
 ```
@@ -204,7 +204,7 @@ sudo fstrim -v /
 
 If you want continuous TRIM instead of periodic, add the `discard` mount option to fstab:
 
-```
+```text
 UUID=xxxx / ext4 defaults,discard 0 1
 ```
 

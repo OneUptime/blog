@@ -44,7 +44,7 @@ cdk init app --language python
 
 CDK generates the following structure.
 
-```
+```text
 dynamo-api/
   app.py                     # App entry point
   dynamo_api/
@@ -344,7 +344,7 @@ curl https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/prod/items/item-001
 
 Keep your requirements.txt updated as you add new CDK modules.
 
-```
+```text
 # requirements.txt
 aws-cdk-lib==2.170.0
 constructs>=10.0.0,<11.0.0

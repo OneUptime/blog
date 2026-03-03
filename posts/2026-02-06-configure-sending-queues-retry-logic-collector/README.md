@@ -139,7 +139,7 @@ With persistent queues, data survives collector restarts, crashes, or container 
 When using persistent queues, plan for storage capacity:
 
 **Storage Size Calculation**:
-```
+```text
 Storage Needed = Queue Size × Average Batch Size × Safety Factor
 
 Example:
@@ -198,7 +198,7 @@ service:
 
 The retry logic uses exponential backoff to avoid overwhelming a struggling backend:
 
-```
+```text
 Retry Attempt    Delay
 1                5s
 2                10s

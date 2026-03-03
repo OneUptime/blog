@@ -10,7 +10,7 @@ Description: Diagnose and fix connection timeout errors when trying to SSH or co
 
 You try to SSH into your EC2 instance and nothing happens. After a long wait, you get:
 
-```
+```text
 ssh: connect to host 54.123.45.67 port 22: Connection timed out
 ```
 
@@ -109,7 +109,7 @@ aws ec2 describe-route-tables \
 
 You should see a route like:
 
-```
+```text
 Destination     Target              State
 0.0.0.0/0       igw-abc123         active
 ```

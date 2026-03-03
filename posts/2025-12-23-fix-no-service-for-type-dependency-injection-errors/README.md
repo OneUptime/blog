@@ -12,7 +12,7 @@ The "No service for type" error is one of the most common issues developers enco
 
 When you see an error like this:
 
-```
+```text
 System.InvalidOperationException: No service for type 'MyApplication.Services.IUserService' has been registered.
 ```
 

@@ -332,7 +332,7 @@ spec:
 
 Organize your repository for multi-cluster management:
 
-```
+```text
 gitops-repo/
   clusters/              # Cluster registration secrets
     staging.yaml

@@ -160,7 +160,7 @@ machine:
 
 For large deployments, consider a hierarchical NTP architecture:
 
-```
+```text
 Stratum 1: GPS/atomic clock reference
     |
 Stratum 2: Your primary NTP servers (sync to stratum 1)

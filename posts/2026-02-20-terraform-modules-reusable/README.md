@@ -36,7 +36,7 @@ graph TD
 
 A well-organized module follows a consistent structure.
 
-```
+```text
 modules/
   vpc/
     main.tf          # Primary resource definitions

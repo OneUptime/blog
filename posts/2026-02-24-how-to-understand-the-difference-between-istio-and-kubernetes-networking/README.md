@@ -173,7 +173,7 @@ Kubernetes gives you basic pod metrics through the metrics-server (CPU, memory).
 
 Istio generates detailed L7 metrics for every request:
 
-```
+```text
 istio_requests_total{source_app="frontend", destination_app="backend", response_code="200"}
 istio_request_duration_milliseconds_bucket{...}
 ```
@@ -232,7 +232,7 @@ The key insight is that Istio sits on top of Kubernetes networking, not beside i
 
 When a request goes from service A to service B:
 
-```
+```text
 App A -> iptables redirect -> Envoy sidecar A -> [network] -> Envoy sidecar B -> App B
 ```
 

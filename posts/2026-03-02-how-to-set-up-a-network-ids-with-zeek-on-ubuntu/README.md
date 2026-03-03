@@ -75,7 +75,7 @@ Configure local networks so Zeek knows which traffic is internal:
 sudo nano /opt/zeek/etc/networks.cfg
 ```
 
-```
+```text
 # /opt/zeek/etc/networks.cfg
 # Define your internal network ranges
 10.0.0.0/8         Private RFC 1918 space

@@ -164,7 +164,7 @@ CMD ["python", "server.py"]
 
 Requirements:
 
-```
+```text
 websockets==12.*
 ```
 

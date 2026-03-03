@@ -246,7 +246,7 @@ In the Chronicle console, go to the Data Ingestion dashboard. You should see:
 
 You can also run a quick UDM search to verify.
 
-```
+```text
 metadata.log_type = "GCP_CLOUDAUDIT" AND metadata.event_timestamp.seconds > timestamp("2026-02-17T00:00:00Z")
 ```
 

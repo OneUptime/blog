@@ -43,7 +43,7 @@ flux check
 
 Flux works with a directory-based structure:
 
-```
+```text
 istio-gitops/
   clusters/
     production/

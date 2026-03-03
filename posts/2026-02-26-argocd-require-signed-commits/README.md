@@ -230,7 +230,7 @@ For defense in depth, enforce signing at both the Git platform level and ArgoCD:
 
 ### GitHub Branch Protection
 
-```
+```text
 Repository Settings > Branches > Branch protection rules:
   - Require signed commits: ON
   - Include administrators: ON
@@ -238,7 +238,7 @@ Repository Settings > Branches > Branch protection rules:
 
 ### GitLab Push Rules
 
-```
+```text
 Settings > Repository > Push rules:
   - Reject unsigned commits: ON
 ```

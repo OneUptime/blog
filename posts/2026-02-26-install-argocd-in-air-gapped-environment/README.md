@@ -60,7 +60,7 @@ grep -E "image:" argocd-install.yaml | sort -u | awk '{print $2}'
 
 The typical images for ArgoCD v2.13.x are:
 
-```
+```text
 quay.io/argoproj/argocd:v2.13.3
 ghcr.io/dexidp/dex:v2.38.0
 redis:7.0.15-alpine

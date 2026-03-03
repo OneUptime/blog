@@ -10,7 +10,7 @@ Description: Fix the SyntaxError when using ES6 import statements in Node.js by 
 
 You write `import express from 'express'` in your Node.js file, hit run, and get slapped with this error:
 
-```
+```text
 SyntaxError: Cannot use import statement outside a module
 ```
 

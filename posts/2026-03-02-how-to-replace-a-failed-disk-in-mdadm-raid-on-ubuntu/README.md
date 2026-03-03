@@ -29,7 +29,7 @@ sudo mdadm --detail /dev/md0 | grep -E 'State|Failed|Active|Working'
 
 Example output showing a failed disk:
 
-```
+```text
 /dev/md0:
            Version : 1.2
      Creation Time : Mon Jan 20 10:00:00 2026
@@ -169,7 +169,7 @@ cat /proc/mdstat
 
 The rebuild starts immediately:
 
-```
+```text
 Personalities : [raid5]
 md0 : active raid5 sdd1[3] sdb1[1] sda1[0] sdc1[4]
       2929893888 blocks super 1.2 level 5, 512k chunk, algorithm 2 [4/3] [UUU_]

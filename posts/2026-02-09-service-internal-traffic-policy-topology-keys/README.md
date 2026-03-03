@@ -231,7 +231,7 @@ kubectl get nodes --show-labels | grep topology
 
 You should see labels like:
 
-```
+```text
 topology.kubernetes.io/zone=us-east-1a
 topology.kubernetes.io/region=us-east-1
 ```

@@ -10,7 +10,7 @@ Description: Learn how to diagnose and fix the common 'Could not get lock /var/l
 
 Few things interrupt a sysadmin's workflow like trying to install a package and being told the package manager is locked. The error message looks something like this:
 
-```
+```text
 E: Could not get lock /var/lib/dpkg/lock-frontend - open (11: Resource temporarily unavailable)
 E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), is another process using it?
 ```

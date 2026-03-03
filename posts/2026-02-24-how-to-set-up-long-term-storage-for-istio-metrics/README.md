@@ -210,7 +210,7 @@ remote_write:
 
 Estimating storage costs helps you budget for long-term retention. A rough formula:
 
-```
+```text
 daily_bytes = active_series * 2 bytes/sample * samples_per_day
 monthly_bytes = daily_bytes * 30
 ```

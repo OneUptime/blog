@@ -16,7 +16,7 @@ This guide covers the Doppler CLI on Ubuntu, integrating it with applications, a
 
 Doppler organizes secrets hierarchically:
 
-```
+```text
 Workspace (your organization)
   └── Project (e.g., "my-api")
       ├── dev environment

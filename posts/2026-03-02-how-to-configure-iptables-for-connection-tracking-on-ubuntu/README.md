@@ -98,7 +98,7 @@ sudo conntrack -E
 
 Example output from `conntrack -L`:
 
-```
+```text
 tcp      6 431999 ESTABLISHED src=192.168.1.50 dst=10.0.0.1 sport=54321 dport=443
          src=10.0.0.1 dst=192.168.1.50 sport=443 dport=54321 [ASSURED] mark=0 use=1
 ```
@@ -167,7 +167,7 @@ sudo nano /etc/sysctl.conf
 
 Add these lines:
 
-```
+```text
 # Conntrack table sizing
 net.netfilter.nf_conntrack_max = 262144
 net.netfilter.nf_conntrack_buckets = 65536
@@ -252,7 +252,7 @@ chmod +x /usr/local/bin/check-conntrack.sh
 
 When the table fills up, the kernel logs:
 
-```
+```text
 nf_conntrack: table full, dropping packet
 ```
 

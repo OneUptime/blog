@@ -173,7 +173,7 @@ For managing many users, group them:
 sudo nano /etc/apache2/.htgroups
 ```
 
-```
+```text
 # Format: groupname: user1 user2 user3
 admins: alice bob
 editors: charlie dave eve

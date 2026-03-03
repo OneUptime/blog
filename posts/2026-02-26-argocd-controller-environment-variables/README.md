@@ -236,7 +236,7 @@ env:
 
 Increase these if the controller manages many resources and you see throttling in the logs:
 
-```
+```text
 Throttling request took X seconds
 ```
 

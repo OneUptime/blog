@@ -123,7 +123,7 @@ operator-sdk init --domain example.com --repo github.com/example/memcached-opera
 
 This creates the following project structure:
 
-```
+```text
 memcached-operator/
 ├── Dockerfile              # Multi-stage Dockerfile for the operator
 ├── Makefile               # Build, test, and deploy targets
@@ -1079,7 +1079,7 @@ spec:
             description: Names of the Memcached pods
             x-descriptors:
               - urn:alm:descriptor:com.tectonic.ui:podStatuses
-```
+```text
 
 ### Build and Push Bundle
 

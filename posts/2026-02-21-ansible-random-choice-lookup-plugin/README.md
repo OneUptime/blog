@@ -99,7 +99,7 @@ When configuring resolver settings, you might want each host to use a different 
 
 The template would prioritize the randomly selected server:
 
-```
+```text
 # templates/resolv.conf.j2 - DNS configuration with random primary
 nameserver {{ primary_dns }}
 {% for server in all_dns %}

@@ -110,7 +110,7 @@ Measures visual stability: how much the page layout shifts unexpectedly.
 
 ### Project Structure
 
-```
+```text
 src/
   rum/
     index.ts              # Main export

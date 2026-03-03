@@ -14,7 +14,7 @@ Creating applications programmatically through the ArgoCD API is essential for b
 
 The endpoint for creating applications is:
 
-```
+```text
 POST /api/v1/applications
 ```
 

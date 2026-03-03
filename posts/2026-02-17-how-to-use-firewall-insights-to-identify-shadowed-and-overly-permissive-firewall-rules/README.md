@@ -45,7 +45,7 @@ A shadowed rule is a firewall rule that can never be matched because a higher-pr
 
 Here is how shadowed rules happen in practice:
 
-```
+```text
 Rule A (Priority 900): ALLOW tcp:80 from 0.0.0.0/0 to all instances
 Rule B (Priority 1000): DENY tcp:80 from 10.0.0.0/8 to tag:web-servers
 ```

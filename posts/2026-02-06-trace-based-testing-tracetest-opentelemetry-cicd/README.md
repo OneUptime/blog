@@ -222,7 +222,7 @@ tracetest run test --file tests/test-create-order.yaml --wait-for-result
 
 The output looks like this:
 
-```
+```text
 Test "Create Order - Happy Path" - PASSED
 
   API returns 201 Created .................... PASSED

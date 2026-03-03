@@ -28,7 +28,7 @@ The primary header is `traceparent`, which contains four fields separated by hyp
 - Trace flags: A 2-character hex field containing sampling and other flags
 
 A typical traceparent header looks like this:
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 ```
 

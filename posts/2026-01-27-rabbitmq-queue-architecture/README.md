@@ -14,7 +14,7 @@ Description: Learn how to design RabbitMQ queue architecture including exchange 
 
 RabbitMQ follows the AMQP protocol with three core components: producers publish messages to exchanges, exchanges route messages to queues based on bindings, and consumers read from queues.
 
-```
+```text
 Producer -> Exchange -> Binding -> Queue -> Consumer
 ```
 
@@ -345,7 +345,7 @@ Each vhost has isolated exchanges, queues, and permissions. Use them to separate
 
 Consistent naming makes operations and debugging easier.
 
-```
+```text
 # Exchange naming
 {domain}.{type}
   orders.direct

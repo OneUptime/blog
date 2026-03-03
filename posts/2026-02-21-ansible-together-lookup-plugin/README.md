@@ -235,7 +235,7 @@ When lists have different lengths, shorter lists get padded with `None`. This ca
 
 This outputs:
 
-```
+```text
 alice -> admin
 bob -> developer
 charlie -> no role assigned

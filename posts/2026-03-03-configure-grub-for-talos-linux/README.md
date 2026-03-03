@@ -29,7 +29,7 @@ When Talos Linux installs with GRUB, it sets up the boot loader on the target di
 
 ### BIOS Layout
 
-```
+```text
 Disk:
   ├── MBR (GRUB stage 1)
   ├── Post-MBR gap (GRUB stage 1.5)
@@ -41,7 +41,7 @@ Disk:
 
 ### UEFI Layout with GRUB
 
-```
+```text
 Disk:
   ├── EFI System Partition
   │   └── EFI/BOOT/BOOTX64.EFI (GRUB EFI binary)
@@ -120,7 +120,7 @@ The `bootloader: true` setting ensures GRUB is installed or updated during the i
 
 Like systemd-boot, GRUB in Talos supports the A/B partition scheme for safe upgrades:
 
-```
+```text
 BOOT partition:
   ├── A/
   │   ├── vmlinuz    # Kernel (slot A)
@@ -147,7 +147,7 @@ talosctl upgrade --image ghcr.io/siderolabs/installer:v1.10.0
 
 The GRUB configuration includes fallback logic:
 
-```
+```text
 # Simplified view of what Talos generates in grub.cfg
 set default=0
 set timeout=3

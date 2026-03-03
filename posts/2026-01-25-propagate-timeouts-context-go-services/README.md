@@ -16,7 +16,7 @@ Consider a user request that hits your API gateway, which calls Service A, which
 
 Without proper propagation, those services keep working on a request nobody is waiting for. This wastes resources and can cause cascading failures during load spikes.
 
-```
+```text
 User Request (5s timeout)
     -> API Gateway
         -> Service A (30s default timeout)

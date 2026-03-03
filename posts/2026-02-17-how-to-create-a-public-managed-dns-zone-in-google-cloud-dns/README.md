@@ -59,7 +59,7 @@ gcloud dns managed-zones describe my-zone \
 
 This outputs something like:
 
-```
+```text
 ns-cloud-a1.googledomains.com.
 ns-cloud-a2.googledomains.com.
 ns-cloud-a3.googledomains.com.

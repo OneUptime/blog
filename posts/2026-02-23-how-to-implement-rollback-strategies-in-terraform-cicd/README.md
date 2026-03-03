@@ -416,7 +416,7 @@ echo "No irreversible changes detected"
 
 Document your rollback procedures so the team knows what to do under pressure:
 
-```
+```text
 TERRAFORM ROLLBACK RUNBOOK
 
 1. ASSESS

@@ -68,7 +68,7 @@ terraform {
 
 The connection string follows the standard PostgreSQL URI format:
 
-```
+```text
 postgres://username:password@hostname:port/database?parameters
 ```
 

@@ -172,7 +172,7 @@ With `HonorOrigin`, Front Door follows the `Cache-Control` and `Expires` headers
 
 Common origin headers and how Front Door handles them:
 
-```
+```text
 Cache-Control: public, max-age=600    -> Cached for 10 minutes
 Cache-Control: private                 -> Not cached at edge
 Cache-Control: no-cache, no-store      -> Not cached at edge

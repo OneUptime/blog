@@ -299,7 +299,7 @@ Update-MgPolicyCrossTenantAccessPolicyPartner `
 
 Use sign-in logs to monitor how cross-tenant access is being used:
 
-```
+```text
 // KQL query for cross-tenant sign-in activity
 SigninLogs
 | where TimeGenerated > ago(7d)

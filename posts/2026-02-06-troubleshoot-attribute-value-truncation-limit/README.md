@@ -187,7 +187,7 @@ exporters:
 
 If exports fail due to message size, you will see:
 
-```
+```text
 rpc error: code = ResourceExhausted desc = grpc: received message larger than max
 ```
 

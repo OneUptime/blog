@@ -323,7 +323,7 @@ argocd app get my-app --show-operation
 
 The error will look something like:
 
-```
+```text
 pods "my-app-xxx" is forbidden: violates PodSecurity "restricted:latest":
 allowPrivilegeEscalation != false
 (container "app" must set securityContext.allowPrivilegeEscalation=false)

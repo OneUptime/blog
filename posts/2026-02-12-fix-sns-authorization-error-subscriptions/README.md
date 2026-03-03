@@ -14,7 +14,7 @@ If you've ever tried to subscribe a Lambda function, SQS queue, or HTTP endpoint
 
 When you see something like this:
 
-```
+```text
 An error occurred (AuthorizationError) when calling the Subscribe operation:
 User: arn:aws:iam::123456789012:user/myuser is not authorized to perform: SNS:Subscribe on resource: arn:aws:sns:us-east-1:123456789012:my-topic
 ```

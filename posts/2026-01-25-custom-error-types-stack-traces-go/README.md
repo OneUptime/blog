@@ -26,7 +26,7 @@ func fetchUser(id string) (*User, error) {
 
 When this error bubbles up through multiple layers, you get something like:
 
-```
+```text
 failed to process request: failed to fetch user: connection refused
 ```
 
@@ -248,7 +248,7 @@ func chargeCard(userID string) error {
 
 This produces output like:
 
-```
+```text
 payment processing failed: card declined
 
 Stack trace:

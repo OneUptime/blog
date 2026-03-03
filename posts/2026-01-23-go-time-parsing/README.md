@@ -16,7 +16,7 @@ Time parsing in Go is different from other languages. Go uses a reference time i
 
 Go uses a specific reference time that you arrange into your desired format:
 
-```
+```text
 Mon Jan 2 15:04:05 MST 2006
 ```
 
@@ -108,7 +108,7 @@ func main() {
 ```
 
 **Output:**
-```
+```text
 RFC3339:     2024-01-15T14:30:00-07:00
 RFC3339Nano: 2024-01-15T14:30:00.123456789-07:00
 RFC1123:     Mon, 15 Jan 2024 14:30:00 MST
@@ -198,7 +198,7 @@ func main() {
 ```
 
 **Output:**
-```
+```text
 1h30m: 1h30m0s
 2h45m30s: 2h45m30s
 100ms: 100ms

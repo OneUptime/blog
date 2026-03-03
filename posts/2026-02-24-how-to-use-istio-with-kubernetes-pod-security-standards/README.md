@@ -28,7 +28,7 @@ kubectl get namespaces --show-labels | grep pod-security
 
 Look for labels like:
 
-```
+```text
 pod-security.kubernetes.io/enforce: restricted
 pod-security.kubernetes.io/warn: restricted
 pod-security.kubernetes.io/audit: restricted
@@ -203,7 +203,7 @@ kubectl apply -f my-pod.yaml --dry-run=server -n restricted-ns
 
 If the pod violates the PSS level, you will see an error like:
 
-```
+```text
 Error from server (Forbidden): pods "my-app" is forbidden: violates PodSecurity "restricted:latest":
 allowPrivilegeEscalation != false (container "istio-init" must set securityContext.allowPrivilegeEscalation=false)
 ```

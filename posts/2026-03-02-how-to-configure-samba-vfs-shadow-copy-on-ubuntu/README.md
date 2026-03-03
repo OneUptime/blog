@@ -18,7 +18,7 @@ The `shadow_copy2` module looks for snapshot directories in a format that Samba 
 
 The snapshot directories must follow a naming convention that Samba can parse. The default format is:
 
-```
+```text
 @GMT-YYYY.MM.DD-HH.MM.SS
 ```
 

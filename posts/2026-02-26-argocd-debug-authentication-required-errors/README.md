@@ -14,7 +14,7 @@ The "authentication required" error in ArgoCD means the repo-server can reach th
 
 The error manifests in several forms:
 
-```
+```text
 # HTTPS authentication failure
 rpc error: code = Unknown desc = authentication required
 

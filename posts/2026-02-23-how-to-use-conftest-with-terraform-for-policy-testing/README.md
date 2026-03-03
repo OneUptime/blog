@@ -103,7 +103,7 @@ The distinction between `deny` and `warn` matters:
 
 As your policy collection grows, organize them by concern:
 
-```
+```text
 policy/
   security/
     encryption.rego

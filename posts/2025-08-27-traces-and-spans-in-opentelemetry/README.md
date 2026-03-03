@@ -101,7 +101,7 @@ Rules of thumb:
 
 Plain tree first:
 
-```
+```text
 Trace (HTTP GET /checkout)
 └─ Root: HTTP GET /checkout
 	 ├─ inventory.reserve
@@ -114,7 +114,7 @@ Trace (HTTP GET /checkout)
 
 Same thing with timing ideas (length ≈ duration):
 
-```
+```text
 HTTP GET /checkout  |=============================|
 	inventory.reserve |====| 
 	db.query.products |===|

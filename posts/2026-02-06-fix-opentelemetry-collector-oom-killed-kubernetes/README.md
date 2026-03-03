@@ -48,7 +48,7 @@ kubectl get deployment -n observability otel-collector -o jsonpath='{.spec.templ
 
 Typical output when OOM is occurring:
 
-```
+```text
 Last State:     Terminated
   Reason:       OOMKilled
   Exit Code:    137
@@ -115,7 +115,7 @@ service:
 
 The relationship between the Kubernetes limit and the memory limiter settings is critical. Here is how to calculate them:
 
-```
+```text
 Kubernetes memory limit:   2000 MiB (set in deployment spec)
 memory_limiter limit_mib:  1600 MiB (80% of Kubernetes limit)
 memory_limiter spike_limit: 400 MiB (buffer for spikes)
@@ -200,7 +200,7 @@ If you are seeing OOM kills, try reducing `send_batch_size` and `timeout`. Each 
 
 Compare memory profiles with different batch settings:
 
-```
+```text
 # High memory usage configuration
 send_batch_size: 8192
 timeout: 30s
@@ -248,7 +248,7 @@ exporters:
 
 The memory impact of the queue depends on queue_size and the size of each batch. If each batch is 256 spans averaging 2 KB each, and the queue holds 100 batches:
 
-```
+```text
 Memory for queue = 100 batches * 256 spans * 2 KB = ~50 MB
 ```
 
@@ -397,7 +397,7 @@ These alerts give you time to take action before the collector crashes.
 
 Here is a reference table for memory settings based on your Kubernetes memory limit:
 
-```
+```text
 K8s Limit | GOMEMLIMIT | limit_mib | spike_limit_mib | Soft Limit
 ----------|------------|-----------|-----------------|----------
 512 MiB   | 460 MiB    | 400       | 100             | 300 MiB

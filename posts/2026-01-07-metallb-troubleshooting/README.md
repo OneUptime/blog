@@ -121,7 +121,7 @@ kubectl get pods -n metallb-system -o wide
 
 Expected output shows pods in Running state:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE   IP            NODE
 controller-5f98465b6b-x7kcj   1/1     Running   0          2d    10.244.0.15   node1
 speaker-7h4km                 1/1     Running   0          2d    192.168.1.10  node1

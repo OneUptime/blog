@@ -110,7 +110,7 @@ Let's build a practical example: a research and writing system that can investig
 
 First, set up your project with a clean structure that separates concerns.
 
-```
+```text
 multi-agent-system/
 ├── agents/
 │   ├── __init__.py

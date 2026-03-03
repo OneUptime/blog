@@ -255,7 +255,7 @@ sudo apt-get install -y smartmontools
 sudo nano /etc/smartd.conf
 ```
 
-```
+```text
 # /etc/smartd.conf
 # Monitor all drives, run short test weekly, long test monthly
 # Email on failure or attribute change

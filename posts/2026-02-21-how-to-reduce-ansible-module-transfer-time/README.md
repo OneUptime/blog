@@ -21,7 +21,7 @@ ansible webserver01 -m ping -vvvv
 
 The output will show something like:
 
-```
+```text
 <webserver01> ESTABLISH SSH CONNECTION FOR USER: admin
 <webserver01> SSH: EXEC ssh -o ControlMaster=auto ...
 <webserver01> ESTABLISH SSH CONNECTION FOR USER: admin

@@ -16,7 +16,7 @@ This guide breaks down EC2 instance families, explains when to use each one, and
 
 Every EC2 instance type follows a specific naming pattern. Let's decode it:
 
-```
+```text
 m7g.2xlarge
 │││  │
 ││└── Generation (7 = seventh generation)

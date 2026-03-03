@@ -146,7 +146,7 @@ cilium status | grep KubeProxyReplacement
 
 You'll see output like:
 
-```
+```text
 KubeProxyReplacement:    True   [eth0 10.0.1.5 (Direct Routing)]
 ```
 

@@ -349,7 +349,7 @@ kubectl describe pod my-pod
 
 Look for events like:
 
-```
+```text
 Warning  Unhealthy  Container startup probe failed: HTTP probe failed with statuscode: 503
 ```
 

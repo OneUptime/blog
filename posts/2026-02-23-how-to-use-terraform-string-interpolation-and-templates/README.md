@@ -278,7 +278,7 @@ ${key}=${value}
 
 This produces clean output without extra blank lines:
 
-```
+```text
 DATABASE_URL=postgresql://localhost:5432/mydb
 REDIS_URL=redis://localhost:6379
 LOG_LEVEL=info

@@ -14,14 +14,14 @@ When a gRPC or HTTPS client connects to the Collector, it checks that the hostna
 
 Typical error messages look like this:
 
-```
+```text
 transport: authentication handshake failed: x509: certificate is valid for
 otel-collector.observability.svc.cluster.local, not otel-collector.default.svc.cluster.local
 ```
 
 Or from the SDK side:
 
-```
+```text
 OTLP exporter error: tls: failed to verify certificate: x509: certificate is
 valid for localhost, not otel-collector.monitoring
 ```

@@ -77,7 +77,7 @@ sudo aa-status
 
 Example output from `aa-status`:
 
-```
+```text
 apparmor module is loaded.
 47 profiles are loaded.
 45 profiles are in enforce mode.
@@ -451,7 +451,7 @@ sudo dmesg | grep apparmor
 
 Example denial message:
 
-```
+```text
 audit: type=1400 audit(1706097600.123:456): apparmor="DENIED"
   operation="open" profile="/usr/local/bin/myapp" name="/etc/secret.conf"
   pid=1234 comm="myapp" requested_mask="r" denied_mask="r"

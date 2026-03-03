@@ -26,7 +26,7 @@ A typical ALB setup includes:
 
 ## Module Structure
 
-```
+```text
 modules/alb/
   main.tf
   listeners.tf

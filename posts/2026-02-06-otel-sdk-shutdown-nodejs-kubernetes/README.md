@@ -236,7 +236,7 @@ The `preStop: sleep 5` gives the Kubernetes load balancer time to remove the pod
 
 Your shutdown timeout should be:
 
-```
+```text
 shutdown_timeout = terminationGracePeriodSeconds - preStop_duration - safety_margin
 shutdown_timeout = 30 - 5 - 5 = 20 seconds
 ```

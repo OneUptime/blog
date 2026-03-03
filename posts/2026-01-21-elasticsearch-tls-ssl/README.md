@@ -432,7 +432,7 @@ curl --cacert ca.crt -u elastic:password \
 
 #### Certificate Not Trusted
 
-```
+```text
 javax.net.ssl.SSLHandshakeException: PKIX path building failed
 ```
 
@@ -446,7 +446,7 @@ keytool -list -v -keystore /etc/elasticsearch/certs/elastic-certificates.p12 \
 
 #### Hostname Verification Failed
 
-```
+```text
 javax.net.ssl.SSLPeerUnverifiedException: Host name does not match
 ```
 

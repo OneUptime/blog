@@ -149,7 +149,7 @@ cilium connectivity test
 
 The `cilium status` command should show all components as OK:
 
-```
+```text
     /----\
  /----\    |
 |      |   |

@@ -189,7 +189,7 @@ One of the most important security principles in operator development is grantin
 
 If your controller updates the status of your custom resource and you forget the status marker, you will see errors like:
 
-```
+```text
 the server does not allow this method on the requested resource
 ```
 
@@ -203,7 +203,7 @@ Fix: Add the status subresource marker:
 
 If your controller uses finalizers and you forget the finalizer marker, you will see errors when trying to add or remove finalizers:
 
-```
+```text
 databases.myapp.example.com "my-database" is forbidden: User "system:serviceaccount:..." cannot update resource "databases/finalizers"
 ```
 

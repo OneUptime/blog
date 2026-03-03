@@ -16,7 +16,7 @@ Hot keys - keys that receive a disproportionately high volume of requests - can 
 
 Hot keys are keys that receive significantly more traffic than others, creating an uneven load distribution:
 
-```
+```text
 Normal Distribution:           Hot Key Scenario:
 Key A: 5% traffic              Key A: 60% traffic  <-- Hot Key!
 Key B: 5% traffic              Key B: 10% traffic

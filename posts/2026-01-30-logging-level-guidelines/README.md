@@ -453,7 +453,7 @@ async function processItems(items: Item[]): Promise<void> {
 
 Use this decision tree when you are unsure which level to use.
 
-```
+```text
 Is the application unable to complete the requested operation?
 ├── Yes → ERROR
 └── No

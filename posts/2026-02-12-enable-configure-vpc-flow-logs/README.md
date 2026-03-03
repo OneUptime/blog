@@ -145,7 +145,7 @@ Some notable custom fields:
 
 Here's what a typical flow log record looks like:
 
-```
+```text
 2 123456789012 eni-abc123 10.0.1.15 10.0.2.25 49152 3306 6 20 4000 1620140661 1620140721 ACCEPT OK
 ```
 
@@ -174,7 +174,7 @@ Protocol 6 is TCP, 17 is UDP, and 1 is ICMP. You'll see these numbers frequently
 
 When flow logs go to S3, they're organized in a specific path structure:
 
-```
+```text
 s3://bucket-name/AWSLogs/account-id/vpcflowlogs/region/year/month/day/
 ```
 

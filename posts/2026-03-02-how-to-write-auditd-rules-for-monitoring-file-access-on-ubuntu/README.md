@@ -238,7 +238,7 @@ sudo ausearch -k auth_changes --format json
 
 A raw audit log entry looks like:
 
-```
+```text
 type=SYSCALL msg=audit(1709389200.123:456): arch=c000003e syscall=257 success=no exit=-13 a0=ffffff9c a1=7f1234567890 a2=0 a3=0 items=1 ppid=1234 pid=5678 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts0 ses=1 comm="cat" exe="/bin/cat" subj=unconfined key="unauthorized_access"
 ```
 

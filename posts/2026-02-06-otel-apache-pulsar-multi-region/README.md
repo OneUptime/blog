@@ -14,7 +14,7 @@ Kafka can do multi-region with MirrorMaker, but it is bolted on and hard to mana
 
 ## Architecture
 
-```
+```text
 Region US-East:
   Apps -> OTel Collector -> Pulsar (us-east cluster) -> Local Backend
 

@@ -433,7 +433,7 @@ Cloudflare provides automatic SSL, but so does **Let's Encrypt**-for free, and w
 
 Caddy is a modern web server that handles TLS certificates automatically:
 
-```
+```text
 # /etc/caddy/Caddyfile
 # Caddy automatically provisions and renews Let's Encrypt certificates
 
@@ -523,7 +523,7 @@ Cloudflare's WAF blocks common attacks. You can achieve similar protection with 
 
 Coraza integrates cleanly with Caddy:
 
-```
+```text
 # /etc/caddy/Caddyfile with Coraza WAF
 # Requires caddy-coraza plugin
 

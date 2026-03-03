@@ -10,7 +10,7 @@ Description: Learn to implement sort keys for optimizing data storage order and 
 
 Sort keys are one of the most powerful optimization techniques in columnar data warehouses like Amazon Redshift, Google BigQuery, and Snowflake. They determine the physical order in which data is stored on disk, directly impacting query performance through efficient data retrieval and zone map utilization.
 
-### Understanding Sort Keys
+## Understanding Sort Keys
 
 Sort keys define how rows are physically ordered within each data block on disk. When you query data with predicates that match the sort key columns, the database can skip entire blocks of data that do not contain relevant values. This is accomplished through zone maps, which store the minimum and maximum values for each block.
 

@@ -66,7 +66,7 @@ service:
 
 ### Cluster Status
 
-```
+```text
 elasticsearch.cluster.health.status - Cluster status (green, yellow, red)
   green:  All primary and replica shards assigned
   yellow: All primaries assigned, some replicas unassigned
@@ -75,7 +75,7 @@ elasticsearch.cluster.health.status - Cluster status (green, yellow, red)
 
 ### Shard Metrics
 
-```
+```text
 elasticsearch.cluster.shards                  - Total shard count
 elasticsearch.cluster.health.active_shards    - Active shards
 elasticsearch.cluster.health.relocating_shards - Shards being moved
@@ -86,7 +86,7 @@ elasticsearch.cluster.health.active_primary_shards - Active primary shards
 
 ### Pending Tasks
 
-```
+```text
 elasticsearch.cluster.pending_tasks - Number of pending cluster tasks
 ```
 
@@ -94,7 +94,7 @@ A growing pending task queue indicates the cluster master node is overloaded.
 
 ### Node Status
 
-```
+```text
 elasticsearch.cluster.health.number_of_nodes       - Total nodes
 elasticsearch.cluster.health.number_of_data_nodes   - Data nodes
 ```

@@ -71,7 +71,7 @@ graph TB
 
 A well-organized project structure makes your application easier to maintain and scale. Here's a proven structure for production FastAPI applications:
 
-```
+```text
 project/
 ├── app/
 │   ├── __init__.py

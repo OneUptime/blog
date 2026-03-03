@@ -20,7 +20,7 @@ Terraform expects the mirror directory to follow a specific layout. There are tw
 
 The packed layout stores providers as zip files with JSON metadata:
 
-```
+```text
 /opt/terraform/providers/
   registry.terraform.io/
     hashicorp/
@@ -71,7 +71,7 @@ The version-specific JSON file (e.g., `5.30.0.json`) lists available platforms a
 
 The unpacked layout stores provider binaries directly in platform-specific directories:
 
-```
+```text
 /opt/terraform/providers/
   registry.terraform.io/
     hashicorp/

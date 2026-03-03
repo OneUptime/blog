@@ -40,7 +40,7 @@ kubectl logs my-pod -n my-namespace -c istio-proxy | grep "bind"
 
 You might see errors like:
 
-```
+```text
 [critical] error: binding to address 0.0.0.0:15001: Address already in use
 ```
 

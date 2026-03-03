@@ -18,7 +18,7 @@ Traditional fixed window rate limiting has a flaw: users can make double the all
 
 The sliding window algorithm calculates the request count based on a weighted combination of the current and previous time windows:
 
-```
+```text
 Weighted Count = (Previous Window Count * Overlap Percentage) + Current Window Count
 ```
 
@@ -29,7 +29,7 @@ For example, if we are 30% into the current minute:
 
 This approach prevents the boundary problem while being memory-efficient.
 
-```
+```text
 Time Windows:
 
 Previous Window          Current Window

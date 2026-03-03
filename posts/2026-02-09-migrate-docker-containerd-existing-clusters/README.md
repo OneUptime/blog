@@ -15,12 +15,12 @@ This migration can be performed on running clusters using a rolling node update 
 ## Understanding the Migration
 
 Docker in Kubernetes uses this stack:
-```
+```text
 kubelet -> dockershim -> Docker -> containerd -> runc
 ```
 
 Direct containerd uses:
-```
+```text
 kubelet -> containerd -> runc
 ```
 

@@ -33,7 +33,7 @@ graph LR
 
 Before configuring the Collector, you need to enable the HAProxy stats interface. Add the following to your HAProxy configuration if it is not already present.
 
-```
+```text
 # In haproxy.cfg
 # Enable the stats page on port 8404
 frontend stats

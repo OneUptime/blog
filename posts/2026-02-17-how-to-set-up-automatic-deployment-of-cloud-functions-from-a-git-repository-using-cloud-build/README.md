@@ -51,7 +51,7 @@ gcloud services enable \
 
 A clean repo structure makes the Cloud Build configuration easier. Here is what I typically use when a repository contains multiple functions.
 
-```
+```text
 my-functions-repo/
   functions/
     processOrders/

@@ -172,7 +172,7 @@ microk8s status --wait-ready
 ```
 
 Expected output:
-```
+```text
 microk8s is running
 high-availability: no
   datastore master nodes: 127.0.0.1:19001
@@ -354,7 +354,7 @@ microk8s add-node
 ```
 
 This outputs something like:
-```
+```text
 From the node you wish to join to this cluster, run the following:
 microk8s join 192.168.1.100:25000/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
 
@@ -738,7 +738,7 @@ sudo nano /var/snap/microk8s/current/args/kube-apiserver
 ```
 
 Add recommended security flags:
-```
+```text
 # Add these flags to kube-apiserver configuration
 --anonymous-auth=false
 --audit-log-path=/var/log/kubernetes/audit.log

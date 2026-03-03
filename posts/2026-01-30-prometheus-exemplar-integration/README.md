@@ -371,7 +371,7 @@ In your Grafana Prometheus data source settings, configure the exemplar section.
 
 For OneUptime, use this URL pattern in the data source configuration.
 
-```
+```text
 ${__value.raw}
 ```
 
@@ -465,7 +465,7 @@ curl -H "Accept: application/openmetrics-text" http://localhost:8080/metrics
 
 You should see exemplars in the output like this.
 
-```
+```text
 http_request_duration_seconds_bucket{method="GET",path="/api",status="200",le="0.1"} 150 # {trace_id="abc123def456"} 0.095 1640000000.000
 ```
 

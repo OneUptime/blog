@@ -84,7 +84,7 @@ The installer takes several minutes to complete. It configures Apache, PostgreSQ
 
 After completion, the installer prints output showing:
 
-```
+```text
   * Foreman is running at https://foreman.example.com
       Default credentials are 'admin:change_this_password'
   * Foreman Proxy is running at https://foreman.example.com:8443

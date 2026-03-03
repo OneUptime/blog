@@ -326,7 +326,7 @@ SET parts_to_throw_insert = 10000;
 
 ### 1. Right-Size Your Batches
 
-```
+```text
 Rows per batch    | Parts created | Merge load | Insert speed
 ------------------|---------------|------------|-------------
 1                 | Very High     | Critical   | Very Slow

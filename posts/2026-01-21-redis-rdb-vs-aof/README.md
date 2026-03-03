@@ -503,7 +503,7 @@ With this option:
 
 ### Hybrid File Structure
 
-```
+```text
 appendonly.aof
 |-- RDB preamble (compact binary snapshot)
 |-- AOF commands (human-readable, recent writes)

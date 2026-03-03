@@ -68,7 +68,7 @@ Verify the setup:
 sudo ufw status verbose
 ```
 
-```
+```text
 Status: active
 Logging: on (low)
 Default: deny (incoming), deny (outgoing), deny (forwarded)
@@ -138,7 +138,7 @@ sudo cat /etc/ufw/before.rules | grep ESTABLISHED
 
 You should see rules allowing established connections:
 
-```
+```text
 -A ufw-before-input -m state --state ESTABLISHED,RELATED -j ACCEPT
 -A ufw-before-output -m state --state ESTABLISHED,RELATED -j ACCEPT
 ```

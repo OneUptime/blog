@@ -30,7 +30,7 @@ sudo make install
 
 Configure HAProxy with the OpenTracing filter:
 
-```
+```text
 # haproxy.cfg
 global
     log stdout format raw local0 info
@@ -96,7 +96,7 @@ Create the tracer configuration file that points to your Collector:
 
 An alternative is using HAProxy's SPOE to send trace data to an agent process:
 
-```
+```text
 # haproxy.cfg - SPOE-based tracing
 global
     log stdout format raw local0
@@ -115,7 +115,7 @@ backend servers
 
 The SPOE configuration:
 
-```
+```text
 # /etc/haproxy/otel-spoe.conf
 [otel-tracing]
 spoe-agent otel-agent
@@ -219,7 +219,7 @@ HAProxy can propagate W3C trace context headers to backends. Configure the propa
 
 And in the HAProxy config, make sure headers are forwarded:
 
-```
+```text
 frontend http_front
     bind *:80
     filter opentracing id ot-front config /etc/haproxy/otel-tracer.json
@@ -233,7 +233,7 @@ frontend http_front
 
 Enable the HAProxy stats page and check tracing stats:
 
-```
+```text
 frontend stats
     bind *:8404
     stats enable

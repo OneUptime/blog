@@ -61,7 +61,7 @@ The table has a single column family `d` (for "data"). Using short column family
 
 Row key design is the most important decision in Bigtable. A bad row key leads to hotspotting where all writes go to the same node. Here is a well-designed row key for IoT time series:
 
-```
+```text
 <device_id_hash>#<device_id>#<reverse_timestamp>
 ```
 

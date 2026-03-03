@@ -23,7 +23,7 @@ This guide covers setting up PM2 with Ansible for single and multiple Node.js ap
 
 ## Project Structure
 
-```
+```text
 pm2-setup/
   inventory/
     hosts.yml

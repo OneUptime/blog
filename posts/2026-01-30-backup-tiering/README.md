@@ -488,7 +488,7 @@ if __name__ == '__main__':
 
 Output:
 
-```
+```text
 Database backup (500GB, 1hr RTO): {'recommended_tier': 'hot', 'estimated_recovery_time_hours': 0.01, 'monthly_storage_cost': 11.5, 'retrieval_cost': 0, 'meets_rto': True}
 Application backup (100GB, 4hr RTO): {'recommended_tier': 'warm', 'estimated_recovery_time_hours': 0.03, 'monthly_storage_cost': 1.25, 'retrieval_cost': 1.0, 'meets_rto': True}
 Compliance archive (1TB, 24hr RTO): {'recommended_tier': 'archive', 'estimated_recovery_time_hours': 14.78, 'monthly_storage_cost': 0.99, 'retrieval_cost': 20.0, 'meets_rto': True}
@@ -628,7 +628,7 @@ if __name__ == '__main__':
 
 Output:
 
-```
+```text
 Backup Tiering Cost Analysis
 ========================================
 

@@ -166,7 +166,7 @@ docker compose exec superset superset set-database-uri \
 
 Common connection string formats:
 
-```
+```text
 # PostgreSQL
 postgresql+psycopg2://user:password@host:5432/database
 

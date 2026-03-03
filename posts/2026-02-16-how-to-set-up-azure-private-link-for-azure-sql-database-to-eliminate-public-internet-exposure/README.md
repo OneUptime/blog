@@ -185,7 +185,7 @@ Your application connection strings do not need to change. The same FQDN (`myser
 
 However, there are a few settings to check:
 
-```
+```text
 # Connection string for Azure SQL with Private Link
 # No changes needed from the standard connection string
 Server=tcp:myserver.database.windows.net,1433;Initial Catalog=myDatabase;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Default;

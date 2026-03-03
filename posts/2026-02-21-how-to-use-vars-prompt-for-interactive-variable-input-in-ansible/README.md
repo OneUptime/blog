@@ -42,7 +42,7 @@ Add `vars_prompt` at the play level to define prompts that appear when the playb
 
 When you run this, Ansible prompts for each variable before executing any tasks:
 
-```
+```text
 Which version do you want to deploy?: 2.4.1
 Deploy to production? Type 'yes' to confirm: yes
 ```
@@ -112,7 +112,7 @@ You can provide default values that are used when the operator just presses Ente
 
 The prompt shows the default in brackets:
 
-```
+```text
 Target environment [staging]:
 Number of workers [4]:
 Log level (debug/info/warn/error) [info]:

@@ -114,7 +114,7 @@ google-authenticator
 
 The utility will ask several questions. Here are the recommended answers for a secure setup:
 
-```
+```text
 Do you want authentication tokens to be time-based (y/n) y
 ```
 
@@ -128,13 +128,13 @@ After selecting yes, you'll see:
 
 **Save this information securely before continuing!**
 
-```
+```text
 Do you want me to update your "/home/username/.google_authenticator" file? (y/n) y
 ```
 
 This saves the configuration to your home directory.
 
-```
+```text
 Do you want to disallow multiple uses of the same authentication
 token? This restricts you to one login about every 30s, but it increases
 your chances to notice or even prevent man-in-the-middle attacks (y/n) y
@@ -142,7 +142,7 @@ your chances to notice or even prevent man-in-the-middle attacks (y/n) y
 
 This prevents replay attacks where an attacker reuses an observed token.
 
-```
+```text
 By default, a new token is generated every 30 seconds by the mobile app.
 In order to compensate for possible time-skew between the client and the server,
 we allow an extra token before and after the current time. This allows for a
@@ -157,7 +157,7 @@ Do you want to do so? (y/n) n
 
 Keep the default window size unless you have time synchronization issues.
 
-```
+```text
 If the computer that you are logging into isn't hardened against brute-force
 login attempts, you can enable rate-limiting for the authentication module.
 By default, this limits attackers to no more than 3 login attempts every 30s.
@@ -266,7 +266,7 @@ sudo nano /etc/pam.d/sshd
 
 Add the following line at the end of the file:
 
-```
+```text
 # Enable Google Authenticator for two-factor authentication
 # nullok allows users without 2FA configured to still log in (remove for strict enforcement)
 auth required pam_google_authenticator.so nullok
@@ -280,7 +280,7 @@ auth required pam_google_authenticator.so nullok
 
 For strict enforcement (all users must have 2FA):
 
-```
+```text
 # Strict mode - all users must have 2FA configured
 auth required pam_google_authenticator.so
 ```
@@ -350,7 +350,7 @@ ssh username@your-server-ip
 
 You should see prompts similar to:
 
-```
+```text
 Password:
 Verification code:
 ```
@@ -480,7 +480,7 @@ google-authenticator
 
 If you've lost your phone, you can use a scratch code instead of the TOTP:
 
-```
+```text
 Password: [your password]
 Verification code: [8-digit scratch code]
 ```
@@ -515,7 +515,7 @@ sudo nano /etc/pam.d/sshd
 
 Add conditional 2FA based on group membership:
 
-```
+```text
 # Only require 2FA for members of the twofactor group
 auth [success=1 default=ignore] pam_succeed_if.so user notingroup twofactor
 auth required pam_google_authenticator.so

@@ -27,7 +27,7 @@ Talos Linux runs all of these components as static pods managed by the Talos run
 
 For most production clusters, three control plane nodes provide the right balance:
 
-```
+```text
 Control Plane Node 1: 192.168.1.10 (etcd member, apiserver, scheduler, controller-manager)
 Control Plane Node 2: 192.168.1.11 (etcd member, apiserver, scheduler, controller-manager)
 Control Plane Node 3: 192.168.1.12 (etcd member, apiserver, scheduler, controller-manager)

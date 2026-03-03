@@ -297,7 +297,7 @@ jobs:
 
 Create a shared workflows repository for your organization:
 
-```
+```text
 shared-workflows/
   .github/
     workflows/

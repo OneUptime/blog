@@ -107,7 +107,7 @@ Do not leave your function wide open. There are several levels of security you s
 
 At minimum, use function-level keys. The URL will look like:
 
-```
+```text
 https://yourfunctionapp.azurewebsites.net/api/ProcessContactChange?code=YOUR_FUNCTION_KEY
 ```
 
@@ -243,7 +243,7 @@ This retries failed calls with increasing delays: 10s, 20s, 40s, 80s.
 
 If all retries fail, write the failed record to a Dataverse "Sync Errors" table:
 
-```
+```text
 Table: Sync Errors
 Columns:
   - Source Record ID (text)
@@ -304,7 +304,7 @@ In Application Insights (connected to your Function App), monitor:
 
 Pass a correlation ID from the flow to the function so you can trace a single Dataverse change through the entire pipeline. Use the flow run ID as the correlation ID by passing it in a header:
 
-```
+```text
 x-correlation-id: @{workflow()['run']['name']}
 ```
 

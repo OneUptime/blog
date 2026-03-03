@@ -18,7 +18,7 @@ Distribution packages are often several major versions behind. Ubuntu 22.04 ship
 
 Here is the complete role structure.
 
-```
+```text
 roles/postgresql_install/
   defaults/main.yml
   tasks/

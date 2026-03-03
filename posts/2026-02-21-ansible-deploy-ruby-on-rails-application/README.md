@@ -21,7 +21,7 @@ This guide builds a complete Ansible playbook for deploying a Rails application 
 
 ## Project Structure
 
-```
+```text
 rails-deploy/
   inventory/
     production.yml

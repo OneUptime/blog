@@ -52,7 +52,7 @@ This is the most frequent privilege escalation error.
 
 ### Error Message
 
-```
+```text
 FAILED! => {"msg": "Missing sudo password"}
 ```
 
@@ -119,7 +119,7 @@ ansible-playbook playbook.yml --ask-vault-pass
 
 ### Error Message
 
-```
+```text
 FAILED! => {"msg": "Incorrect sudo password"}
 ```
 
@@ -175,7 +175,7 @@ sudo usermod -aG sudo username
 
 ### Error Message
 
-```
+```text
 fatal: [host]: FAILED! => {
     "msg": "sudo: a password is required\n"
 }
@@ -226,7 +226,7 @@ become_ask_pass = True
 
 ### Error Message
 
-```
+```text
 sudo: no tty present and no askpass program specified
 ```
 
@@ -262,7 +262,7 @@ Note: Pipelining requires NOPASSWD sudo to be configured.
 
 ### Error Message
 
-```
+```text
 FAILED! => {"msg": "become method 'pbrun' is not supported"}
 ```
 
@@ -305,7 +305,7 @@ become_method: runas # Windows
 
 ### Error Message
 
-```
+```text
 Failed to set permissions on the temporary files Ansible needs to create
 ```
 
@@ -350,7 +350,7 @@ allow_world_readable_tmpfiles = True
 
 ### Error Message
 
-```
+```text
 user is not in the sudoers file. This incident will be reported.
 ```
 
@@ -375,7 +375,7 @@ sudo visudo -f /etc/sudoers.d/ansible
 
 Content for `/etc/sudoers.d/ansible`:
 
-```
+```text
 # Allow ansible user full sudo access
 ansible ALL=(ALL) NOPASSWD: ALL
 

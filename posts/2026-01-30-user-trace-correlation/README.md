@@ -208,7 +208,7 @@ In microservices, user context must flow from the edge gateway to every downstre
 
 ### Architecture Overview
 
-```
+```text
 User Request
     |
     v

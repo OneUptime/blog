@@ -185,7 +185,7 @@ Only copy a file when certain conditions are met:
 
 Inside a role, the `src` path is relative to the role's `files/` directory:
 
-```
+```text
 roles/
   myapp/
     files/

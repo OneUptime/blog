@@ -22,7 +22,7 @@ In Prometheus, a histogram actually creates three underlying time series:
 
 The bucket boundaries (the `le` label values) default to:
 
-```
+```text
 0.5, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 300000, 600000, +Inf
 ```
 
@@ -32,7 +32,7 @@ These are in milliseconds. So the buckets cover from 0.5ms to 600 seconds, which
 
 This metric carries the same labels as `istio_requests_total`:
 
-```
+```text
 istio_request_duration_milliseconds_bucket{
   reporter="destination",
   source_workload="frontend",

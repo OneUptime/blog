@@ -93,7 +93,7 @@ Wireshark display filters let you narrow down captured traffic to exactly what y
 
 ### Basic IPv6 Filters
 
-```
+```text
 # All IPv6 traffic
 ipv6
 
@@ -118,7 +118,7 @@ ipv6.src == 2000::/3
 
 ### Protocol-Specific Filters
 
-```
+```text
 # ICMPv6 (critical for IPv6 operations)
 icmpv6
 
@@ -149,7 +149,7 @@ dhcpv6
 
 ### Advanced Combination Filters
 
-```
+```text
 # IPv6 TCP traffic on port 443 (HTTPS)
 ipv6 and tcp.port == 443
 
@@ -188,7 +188,7 @@ ipv6.hlim < 64
 
 Capture filters (BPF syntax) are applied during capture, reducing file size and CPU load. They use different syntax than display filters:
 
-```
+```text
 # Capture only IPv6 traffic
 ip6
 
@@ -221,7 +221,7 @@ ip6 net fe80::/10
 
 For targeted troubleshooting, combine filters:
 
-```
+```text
 # Web traffic over IPv6
 ip6 and (port 80 or port 443)
 
@@ -243,7 +243,7 @@ ip6 and (port 25 or port 465 or port 587 or port 993)
 
 When you expand an IPv6 packet in Wireshark, you see:
 
-```
+```text
 Internet Protocol Version 6
     0110 .... = Version: 6
     .... 0000 0000 .... .... .... .... .... = Traffic Class: 0x00
@@ -272,7 +272,7 @@ Key fields to understand:
 
 IPv6 uses extension headers for optional features. The `Next Header` field chains them together:
 
-```
+```text
 IPv6 Header (Next Header: 0)
     -> Hop-by-Hop Options (Next Header: 43)
         -> Routing Header (Next Header: 44)
@@ -296,7 +296,7 @@ Common extension headers:
 
 Filter for extension headers:
 
-```
+```text
 # Packets with any extension header
 ipv6.nxt == 0 or ipv6.nxt == 43 or ipv6.nxt == 44 or ipv6.nxt == 60
 
@@ -315,7 +315,7 @@ ICMPv6 is the backbone of IPv6 operations. Unlike ICMP in IPv4, blocking ICMPv6 
 
 ### ICMPv6 Message Types
 
-```
+```text
 # All ICMPv6 messages
 icmpv6
 
@@ -339,7 +339,7 @@ icmpv6.type == 4
 
 NDP replaces ARP and provides additional functionality:
 
-```
+```text
 # Router Solicitation (RS)
 # Hosts ask "Any routers out there?"
 icmpv6.type == 133
@@ -365,7 +365,7 @@ icmpv6.type == 137
 
 Router Advertisements contain critical network configuration:
 
-```
+```text
 ICMPv6 Router Advertisement
     Type: 134
     Cur Hop Limit: 64
@@ -388,7 +388,7 @@ ICMPv6 Router Advertisement
 
 Filter for specific RA options:
 
-```
+```text
 # RAs with prefix information
 icmpv6.type == 134 and icmpv6.opt.type == 3
 
@@ -403,7 +403,7 @@ icmpv6.nd.ra.prefix == 2001:db8::/64
 
 Before using an address, hosts verify it is unique:
 
-```
+```text
 # DAD Neighbor Solicitation (source is ::)
 icmpv6.type == 135 and ipv6.src == ::
 
@@ -421,7 +421,7 @@ icmpv6.type == 135 and ipv6.src == :: and icmpv6.nd.ns.target_address == 2001:db
 
 **Capture and analyze**:
 
-```
+```text
 # Capture NDP traffic
 icmpv6.type >= 133 and icmpv6.type <= 136
 
@@ -444,7 +444,7 @@ icmpv6.type == 134
 
 **Capture and analyze**:
 
-```
+```text
 # Look for ICMPv6 errors
 icmpv6.type >= 1 and icmpv6.type <= 4
 
@@ -470,7 +470,7 @@ icmpv6.type == 3
 
 **Capture and analyze**:
 
-```
+```text
 # TCP retransmissions over IPv6
 ipv6 and tcp.analysis.retransmission
 
@@ -496,7 +496,7 @@ ipv6 and tcp.window_size < 1000
 
 **Capture and analyze**:
 
-```
+```text
 # DNS AAAA queries
 dns.qry.type == 28
 
@@ -523,7 +523,7 @@ ipv6 and dns
 
 Rogue RAs can redirect traffic or cause denial of service:
 
-```
+```text
 # All Router Advertisements
 icmpv6.type == 134
 
@@ -538,7 +538,7 @@ Create a baseline of legitimate routers, then alert on deviations.
 
 ### Detecting IPv6 Scanning
 
-```
+```text
 # Neighbor Solicitations (address probing)
 icmpv6.type == 135
 
@@ -556,7 +556,7 @@ ipv6 and tcp.flags.syn == 1 and tcp.flags.ack == 0
 
 Extension headers can be used to evade security controls:
 
-```
+```text
 # Fragmented traffic (can hide payloads)
 ipv6.nxt == 44
 
@@ -574,7 +574,7 @@ ipv6.nxt == 44 and ipv6.fraghdr.offset == 0
 
 IPv6 can be tunneled over IPv4 (6in4, Teredo, ISATAP):
 
-```
+```text
 # 6in4 tunnels (protocol 41)
 ip.proto == 41
 
@@ -595,7 +595,7 @@ Tunneled IPv6 can bypass IPv4 security controls.
 
 Right-click on a packet and select "Follow -> TCP Stream" or "Follow -> UDP Stream" to see the complete conversation:
 
-```
+```text
 # Filter the specific stream afterward
 tcp.stream == 5
 udp.stream == 3
@@ -629,7 +629,7 @@ For reporting:
 
 Create custom coloring rules (View -> Coloring Rules):
 
-```
+```text
 # Highlight ICMPv6 errors in red
 Filter: icmpv6.type >= 1 and icmpv6.type <= 4
 Color: Red background
@@ -723,7 +723,7 @@ Before troubleshooting, capture normal IPv6 traffic:
 
 For extended captures, use BPF capture filters to limit file size:
 
-```
+```text
 # Capture only problematic subnet
 ip6 net 2001:db8:1234::/48
 

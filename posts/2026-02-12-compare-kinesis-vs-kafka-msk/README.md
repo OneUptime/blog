@@ -126,7 +126,7 @@ This is where things get interesting. Let's compare costs for a moderate workloa
 
 ### Kinesis Cost
 
-```
+```text
 Shards needed: 10 (10 MB/sec / 1 MB per shard)
 Shard-hours: 10 shards x 730 hours = 7,300 shard-hours
 Shard cost: 7,300 x $0.015 = $109.50/month
@@ -142,7 +142,7 @@ Total: ~$314/month
 
 ### MSK Cost
 
-```
+```text
 Brokers: 3 (minimum for production)
 Instance type: kafka.m5.large
 Broker cost: 3 x $0.21/hour x 730 = $459.90/month

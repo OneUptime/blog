@@ -43,7 +43,7 @@ Look for lines that start with pilot-agent error messages.
 
 One of the most common pilot-agent errors. The sidecar can't establish a connection to the control plane:
 
-```
+```text
 pilot-agent: failed to connect to Istiod: connection refused
 ```
 
@@ -75,13 +75,13 @@ kubectl exec <pod-name> -c istio-proxy -n my-namespace -- nslookup istiod.istio-
 
 Pilot-agent handles getting certificates from Istiod for mTLS. If this fails, you'll see errors like:
 
-```
+```text
 failed to fetch certificate: connection error
 ```
 
 or:
 
-```
+```text
 certificate rotation: SDS stream error
 ```
 
@@ -109,7 +109,7 @@ Compare with the node time and your system time.
 
 If Envoy crashes, pilot-agent detects it and restarts the container:
 
-```
+```text
 envoy process exited with error: signal: killed
 ```
 
@@ -144,7 +144,7 @@ Or change the global default in the mesh config.
 
 Pilot-agent generates the Envoy bootstrap config on startup. If the environment is misconfigured, this can fail:
 
-```
+```text
 failed to generate bootstrap config
 ```
 
@@ -224,7 +224,7 @@ metadata:
 
 If you see errors during shutdown like:
 
-```
+```text
 drain listeners: timeout waiting for open connections to complete
 ```
 

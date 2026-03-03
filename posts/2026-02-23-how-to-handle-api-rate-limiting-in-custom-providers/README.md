@@ -16,7 +16,7 @@ In this guide, we will cover how to implement robust rate limiting handling in y
 
 APIs enforce rate limits to protect themselves from being overwhelmed. When you exceed the limit, the API returns an error, typically an HTTP 429 (Too Many Requests) status code. Many APIs also include headers that tell you how long to wait before retrying:
 
-```
+```text
 HTTP/1.1 429 Too Many Requests
 Retry-After: 30
 X-RateLimit-Limit: 100

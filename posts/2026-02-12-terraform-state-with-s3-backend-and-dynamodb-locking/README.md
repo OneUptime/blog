@@ -205,7 +205,7 @@ Only do this if you're sure the other operation isn't actually running. Force un
 
 For larger organizations, organize state files by environment and component.
 
-```
+```text
 s3://my-company-terraform-state/
   prod/
     networking/terraform.tfstate

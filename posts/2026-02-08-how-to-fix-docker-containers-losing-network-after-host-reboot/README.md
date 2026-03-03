@@ -259,7 +259,7 @@ sudo nano /etc/ufw/after.rules
 
 Add these rules at the end of the file (before the COMMIT line):
 
-```
+```text
 # Allow Docker container traffic
 *filter
 :ufw-user-forward - [0:0]

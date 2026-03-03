@@ -155,7 +155,7 @@ The total savings from reducing interactive retention alone could be 40-60% of y
 
 Before optimizing, identify which tables are consuming the most space.
 
-```
+```text
 // Top tables by data volume over the past 30 days
 Usage
 | where TimeGenerated > ago(30d)
@@ -172,7 +172,7 @@ Retention is only half the equation. Reducing what you ingest in the first place
 
 **Use ingestion-time transformations**: Data Collection Rules support KQL transformations that can filter, parse, and drop fields before data is stored. Drop columns you never query and filter out noisy log entries.
 
-```
+```text
 // Example transformation in a DCR that drops DEBUG logs and removes a verbose field
 source
 | where SeverityLevel != "DEBUG"
@@ -212,7 +212,7 @@ Commitment tiers require a 31-day minimum commitment. If your daily volume fluct
 
 Set up alerts and dashboards to track ingestion trends.
 
-```
+```text
 // Daily ingestion trend for the past 30 days
 Usage
 | where TimeGenerated > ago(30d)

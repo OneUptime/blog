@@ -183,7 +183,7 @@ spec:
 
 Add environment-specific files with secrets to `.gitignore`:
 
-```
+```text
 # Keep templates in version control
 # .env.development is safe to commit (no secrets)
 .env.staging

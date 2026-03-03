@@ -39,7 +39,7 @@ Rate quotas limit how frequently you can call APIs or perform operations. They r
 
 You might encounter errors like:
 
-```
+```text
 ERROR: (gcloud.compute.instances.create) Could not fetch resource:
  - Quota 'CPUS' exceeded. Limit: 24.0 in region us-central1.
 ```

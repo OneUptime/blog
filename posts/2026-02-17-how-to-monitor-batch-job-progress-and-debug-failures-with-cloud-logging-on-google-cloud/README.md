@@ -120,7 +120,7 @@ Cloud Logging lets you filter logs by job, task, severity, and any structured fi
 
 ### View All Logs for a Specific Job
 
-```
+```text
 # Cloud Logging query - all logs for a specific Batch job
 resource.type="cloud_batch_job"
 labels."batch.googleapis.com/job_uid"="JOB_UID_HERE"
@@ -128,7 +128,7 @@ labels."batch.googleapis.com/job_uid"="JOB_UID_HERE"
 
 ### Filter by Task Index
 
-```
+```text
 # Logs for a specific task within the job
 resource.type="cloud_batch_job"
 labels."batch.googleapis.com/job_uid"="JOB_UID_HERE"
@@ -137,7 +137,7 @@ labels."batch.googleapis.com/task_id"="task/0/0"
 
 ### Find Failed Tasks
 
-```
+```text
 # All error-level logs from a job
 resource.type="cloud_batch_job"
 labels."batch.googleapis.com/job_uid"="JOB_UID_HERE"
@@ -146,7 +146,7 @@ severity>=ERROR
 
 ### Search Structured Log Fields
 
-```
+```text
 # Find tasks that exceeded the error threshold
 resource.type="cloud_batch_job"
 jsonPayload.phase="processing"
@@ -365,7 +365,7 @@ Here are the most common Batch job failures and how to find them in logs.
 
 **Task timeout**: Look for tasks that stopped logging near the timeout limit. The last log entry often shows where the task was when it timed out.
 
-```
+```text
 resource.type="cloud_batch_job"
 labels."batch.googleapis.com/job_uid"="abc123"
 jsonPayload.phase="processing"
@@ -375,7 +375,7 @@ jsonPayload.phase="processing"
 
 **Permission errors**: Usually appear early in the task execution. Search for "permission denied" or "403" in the logs.
 
-```
+```text
 resource.type="cloud_batch_job"
 textPayload=~"permission denied|403|AccessDenied"
 ```

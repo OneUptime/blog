@@ -35,7 +35,7 @@ Each one points to a different root cause.
 
 The simplest and most common cause is a typo in the image reference. With ECR, the full image URI is long and easy to get wrong:
 
-```
+```text
 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
 |_____________| |___| |__________|                |_____| |_____|
  Account ID    Service  Region               Repo name   Tag

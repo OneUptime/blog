@@ -16,7 +16,7 @@ Every SaaS application faces the same question: how do you store data for multip
 
 All tenants share the same tables with a `tenant_id` column.
 
-```
+```text
 ┌─────────────────────────────────────┐
 │           users table               │
 ├─────────────────────────────────────┤
@@ -32,7 +32,7 @@ All tenants share the same tables with a `tenant_id` column.
 
 Each tenant gets their own PostgreSQL schema within a shared database.
 
-```
+```text
 ┌─────────────────────────────────────┐
 │           Database: saas            │
 ├─────────────────────────────────────┤
@@ -47,7 +47,7 @@ Each tenant gets their own PostgreSQL schema within a shared database.
 
 Each tenant gets their own PostgreSQL database.
 
-```
+```text
 ┌────────────────┐  ┌────────────────┐
 │ Database: acme │  │ Database:globex│
 │  └─ users      │  │  └─ users      │
@@ -377,7 +377,7 @@ conn = pool_manager.get_connection('acme')
 
 Many SaaS applications use a hybrid model:
 
-```
+```text
 ┌─────────────────────────────────────────────┐
 │              Shared Database                │
 │  (Small tenants - shared tables with RLS)   │

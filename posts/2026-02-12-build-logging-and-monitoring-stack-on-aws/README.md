@@ -118,7 +118,7 @@ const orderFunction = new lambda.Function(this, 'OrderFunction', {
 
 CloudWatch Logs Insights lets you query structured logs with a SQL-like syntax. These queries are worth saving.
 
-```
+```text
 # Find all errors in the last hour
 fields @timestamp, @message, level, error, requestId
 | filter level = "ERROR"

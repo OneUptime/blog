@@ -133,7 +133,7 @@ print(json.dumps(metrics, indent=2))
 
 ### Cluster State
 
-```
+```text
 cluster_state: ok | fail
 ```
 
@@ -141,7 +141,7 @@ If `cluster_state` is `fail`, the cluster cannot serve requests for some hash sl
 
 ### Slot Coverage
 
-```
+```text
 cluster_slots_assigned: 16384   - All slots should be assigned
 cluster_slots_ok: 16384         - All slots should be OK
 cluster_slots_pfail: 0          - No slots in PFAIL state
@@ -154,13 +154,13 @@ If `cluster_slots_assigned` is less than 16384, some slots are not covered and t
 
 For each replica node, monitor the replication offset:
 
-```
+```text
 redis.replication.offset - Current replication offset
 ```
 
 Compare the master's offset with the replica's offset to calculate lag:
 
-```
+```text
 replication_lag = master_offset - replica_offset
 ```
 

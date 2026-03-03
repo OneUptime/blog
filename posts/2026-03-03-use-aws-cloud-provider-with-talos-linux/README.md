@@ -98,13 +98,13 @@ This tells Talos to configure the kubelet with `--cloud-provider=external` and d
 
 AWS cloud provider relies on tags to identify which resources belong to which cluster. Every EC2 instance, subnet, and security group that your cluster uses must be tagged:
 
-```
+```text
 kubernetes.io/cluster/my-cluster = owned
 ```
 
 If the resource is shared across multiple clusters (like a VPC or subnet), use `shared` instead of `owned`:
 
-```
+```text
 kubernetes.io/cluster/my-cluster = shared
 ```
 

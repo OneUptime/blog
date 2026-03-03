@@ -42,7 +42,7 @@ The installation process mirrors Proxmox VE:
 
 After installation, access the web interface at:
 
-```
+```text
 https://<pbs-ip>:8007
 ```
 

@@ -14,7 +14,7 @@ There are plenty of reasons you might need to wipe disks or partitions on a Talo
 
 Before wiping anything, it helps to know what Talos puts on the disk during installation. A standard Talos installation creates several partitions:
 
-```
+```text
 Standard Talos Disk Layout:
   /dev/sda1 - EFI System Partition (ESP) or BIOS boot
   /dev/sda2 - BIOS grub partition

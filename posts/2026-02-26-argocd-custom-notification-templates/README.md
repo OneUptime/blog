@@ -39,7 +39,7 @@ A single template can target multiple services simultaneously. When the trigger 
 
 ### Application Metadata
 
-```
+```text
 {{ .app.metadata.name }}                    - Application name
 {{ .app.metadata.namespace }}               - Application namespace
 {{ .app.metadata.annotations }}             - Annotations map
@@ -49,7 +49,7 @@ A single template can target multiple services simultaneously. When the trigger 
 
 ### Application Spec
 
-```
+```text
 {{ .app.spec.project }}                     - ArgoCD project
 {{ .app.spec.source.repoURL }}              - Git repo URL
 {{ .app.spec.source.path }}                 - Path in repo
@@ -60,7 +60,7 @@ A single template can target multiple services simultaneously. When the trigger 
 
 ### Application Status
 
-```
+```text
 {{ .app.status.sync.status }}               - Synced, OutOfSync, Unknown
 {{ .app.status.sync.revision }}             - Current sync revision
 {{ .app.status.health.status }}             - Healthy, Degraded, Missing, etc.
@@ -72,7 +72,7 @@ A single template can target multiple services simultaneously. When the trigger 
 
 ### Context Functions
 
-```
+```text
 {{ .context.argocdUrl }}                    - ArgoCD server URL
 ```
 

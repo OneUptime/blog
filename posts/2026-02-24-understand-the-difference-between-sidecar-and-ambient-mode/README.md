@@ -30,7 +30,7 @@ metadata:
 
 A pod in sidecar mode has at least two containers:
 
-```
+```text
 Pod
 ├── app container (your application)
 ├── istio-proxy container (Envoy sidecar)
@@ -57,7 +57,7 @@ metadata:
 
 A pod in ambient mode has only its application container:
 
-```
+```text
 Pod
 └── app container (your application, that's it)
 

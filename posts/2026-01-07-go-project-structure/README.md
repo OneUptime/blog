@@ -28,7 +28,7 @@ The Go community has converged on a standard project layout that has become the 
 
 Below is a comprehensive view of a well-structured Go project showing all major directories and their contents:
 
-```
+```text
 myproject/
 ├── cmd/
 │   ├── api/

@@ -14,11 +14,11 @@ Redis MISCONF errors occur when Redis cannot write to disk for persistence opera
 
 The most common MISCONF error messages are:
 
-```
+```text
 MISCONF Redis is configured to save RDB snapshots, but it is currently not able to persist on disk. Commands that may modify the data set are disabled, because this instance is configured to report errors during writes if RDB snapshotting fails (stop-writes-on-bgsave-error option). Please check the Redis logs for details about the RDB error.
 ```
 
-```
+```text
 MISCONF Errors writing to the AOF file: No space left on device
 ```
 
@@ -41,7 +41,7 @@ redis-cli INFO persistence
 
 Key fields to examine:
 
-```
+```text
 rdb_last_bgsave_status:ok
 rdb_last_bgsave_time_sec:2
 aof_last_bgrewrite_status:ok

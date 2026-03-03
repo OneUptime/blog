@@ -23,7 +23,7 @@ flowchart TD
 
 When you see this error:
 
-```
+```text
 ERROR 1406 (22001): Data too long for column 'column_name' at row 1
 ```
 

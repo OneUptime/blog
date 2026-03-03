@@ -112,7 +112,7 @@ az rest --method PUT \
 
 The response contains a shareable link URL that looks something like:
 
-```
+```text
 https://bst-xxxxxxxx-xxxx.bastion.azure.com/api/shareable-url/tokenxxxxxxxx
 ```
 
@@ -253,7 +253,7 @@ az monitor diagnostic-settings create \
 
 Query the audit logs in Log Analytics.
 
-```
+```text
 // Show all Bastion connection attempts in the last 24 hours
 MicrosoftAzureBastionAuditLogs
 | where TimeGenerated > ago(24h)

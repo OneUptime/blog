@@ -44,7 +44,7 @@ Istio supports two log encodings: TEXT and JSON.
 
 The default text format looks like this:
 
-```
+```text
 [2024-01-15T10:30:00.000Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 45 43 "-" "curl/7.81.0" "abc-123" "myservice:8080" "10.0.1.5:8080" inbound|8080|| 10.0.1.5:42566 10.0.1.5:8080 10.0.0.3:54321 - default
 ```
 

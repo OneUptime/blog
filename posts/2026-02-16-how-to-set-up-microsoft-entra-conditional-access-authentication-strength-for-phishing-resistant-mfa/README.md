@@ -205,7 +205,7 @@ When rolling out authentication strength enforcement, you will have a transition
 # Look at report-only results in sign-in logs
 ```
 
-```
+```text
 // KQL query for sign-ins affected by report-only authentication strength policy
 SigninLogs
 | where TimeGenerated > ago(7d)
@@ -254,7 +254,7 @@ $campaignParams = @{
 
 Track how authentication strength policies are working in production:
 
-```
+```text
 // Authentication methods used by admins over the past 30 days
 SigninLogs
 | where TimeGenerated > ago(30d)

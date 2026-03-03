@@ -147,7 +147,7 @@ Here is what each option does:
 
 The corresponding fstab entry would be:
 
-```
+```text
 10.0.0.2:/vol1 /mnt/filestore nfs rw,hard,nointr,rsize=1048576,wsize=1048576,timeo=600,retrans=2,_netdev 0 0
 ```
 

@@ -120,7 +120,7 @@ sudo hdparm -I /dev/sda | grep -A 3 "Security"
 
 Look for output like:
 
-```
+```text
 Security:
     Master password revision code = 65534
         supported

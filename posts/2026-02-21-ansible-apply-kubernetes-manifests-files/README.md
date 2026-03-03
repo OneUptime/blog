@@ -255,7 +255,7 @@ You can also apply manifests hosted at a URL, which is common for installing CRD
 
 A practical directory structure for managing manifests across environments:
 
-```
+```text
 project/
   manifests/
     base/

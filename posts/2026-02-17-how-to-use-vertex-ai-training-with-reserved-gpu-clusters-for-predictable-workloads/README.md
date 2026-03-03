@@ -182,7 +182,7 @@ Let us do the math for a concrete scenario. Your team trains models every night 
 
 On-demand pricing for A100 in us-central1 is approximately $3.67/GPU/hour:
 
-```
+```text
 On-demand cost per night: 8 GPUs x 4 hours x $3.67 = $117.44
 On-demand cost per month: $117.44 x 30 = $3,523.20
 On-demand cost per year: $117.44 x 365 = $42,865.60
@@ -190,7 +190,7 @@ On-demand cost per year: $117.44 x 365 = $42,865.60
 
 With a 1-year reservation at approximately 40% discount:
 
-```
+```text
 Reserved price: ~$2.20/GPU/hour
 But you pay for 24 hours regardless: 8 GPUs x 24 hours x $2.20 = $422.40/day
 Reserved cost per month: $422.40 x 30 = $12,672.00

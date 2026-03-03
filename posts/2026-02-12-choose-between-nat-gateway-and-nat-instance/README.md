@@ -39,7 +39,7 @@ Key characteristics:
 
 Here's the honest comparison:
 
-```
+```text
 Feature              NAT Gateway           NAT Instance
 -------------------------------------------------------------
 Availability         Redundant in AZ       Single instance

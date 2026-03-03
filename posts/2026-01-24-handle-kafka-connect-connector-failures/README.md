@@ -142,7 +142,7 @@ flowchart LR
 
 When `errors.deadletterqueue.context.headers.enable` is true, failed messages include diagnostic headers:
 
-```
+```text
 __connect.errors.topic: logs
 __connect.errors.partition: 2
 __connect.errors.offset: 12345

@@ -44,7 +44,7 @@ Create a GitHub App for Atlantis:
 2. Navigate to Developer settings > GitHub Apps > New GitHub App
 3. Configure the app:
 
-```
+```text
 App Name: Atlantis Terraform
 Homepage URL: https://atlantis.mycompany.com
 Webhook URL: https://atlantis.mycompany.com/events
@@ -88,7 +88,7 @@ If not using a GitHub App (which handles webhooks automatically), configure the 
 1. Go to your repository Settings > Webhooks > Add webhook
 2. Configure:
 
-```
+```text
 Payload URL: https://atlantis.mycompany.com/events
 Content type: application/json
 Secret: (same secret used in Atlantis config)
@@ -106,7 +106,7 @@ For organization-wide setup, create the webhook at the organization level instea
 
 Configure GitHub branch protection to enforce the Atlantis workflow:
 
-```
+```text
 Repository Settings > Branches > Branch protection rules
 
 Branch name pattern: main
@@ -210,7 +210,7 @@ projects:
 
 Atlantis creates status checks on PRs for each project:
 
-```
+```text
 atlantis/plan: environments/dev        - Success
 atlantis/plan: environments/production - Success
 atlantis/apply: environments/dev       - Pending (waiting for apply)

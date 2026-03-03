@@ -57,13 +57,13 @@ sudo nano /etc/postgresql/16/main/pg_hba.conf
 
 The file format is:
 
-```
+```text
 # TYPE  DATABASE  USER  ADDRESS        METHOD
 ```
 
 Add rules for remote access. Insert these ABOVE the existing `host all all 127.0.0.1/32` line:
 
-```
+```text
 # pg_hba.conf
 
 # Allow a specific IP to connect to a specific database as a specific user

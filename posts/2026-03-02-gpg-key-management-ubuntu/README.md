@@ -85,7 +85,7 @@ gpg --list-sigs youremail@example.com
 
 Example output:
 
-```
+```text
 pub   rsa4096 2026-01-01 [SC] [expires: 2028-01-01]
       ABCD 1234 5678 90AB CDEF  1234 5678 90AB CDEF 1234
 uid           [ultimate] Your Name <youremail@example.com>

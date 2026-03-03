@@ -12,7 +12,7 @@ The ENOMEM error occurs when Node.js runs out of available memory. This can happ
 
 ## Understanding ENOMEM
 
-```
+```text
 FATAL ERROR: CALL_AND_RETRY_LAST Allocation failed - JavaScript heap out of memory
 
 <--- Last few GCs --->

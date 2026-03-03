@@ -10,7 +10,7 @@ Description: Diagnose and fix AWS Lambda timeout errors by identifying slow depe
 
 You check your Lambda logs and see this:
 
-```
+```text
 Task timed out after 3.00 seconds
 ```
 

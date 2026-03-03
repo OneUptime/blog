@@ -35,7 +35,7 @@ Shards are the unit of:
 
 Formula for primary shard count:
 
-```
+```text
 number_of_shards = ceil(expected_data_size / target_shard_size)
 ```
 
@@ -48,7 +48,7 @@ Example:
 
 Plan for data growth:
 
-```
+```text
 number_of_shards = ceil((current_size + (daily_growth * retention_days)) / target_shard_size)
 ```
 
@@ -114,7 +114,7 @@ curl -X GET "https://localhost:9200/_cat/shards?v&s=store:desc" \
 
 Output:
 
-```
+```text
 index             shard prirep state   docs    store ip           node
 logs-2024.01      0     p      STARTED 5000000 25gb  192.168.1.10 node-1
 logs-2024.01      0     r      STARTED 5000000 25gb  192.168.1.11 node-2
@@ -303,7 +303,7 @@ curl -X PUT "https://localhost:9200/_cluster/settings" \
 ### Calculate Maximum Shards
 
 Formula:
-```
+```text
 max_shards = number_of_nodes * cluster.max_shards_per_node
 ```
 
@@ -433,7 +433,7 @@ Solution: Rebalance or use shard allocation filtering.
 
 ### Capacity Planning
 
-```
+```text
 Heap per node: 31GB
 Shards per GB heap: ~20
 Max shards per node: ~620

@@ -206,7 +206,7 @@ talosctl -n 192.168.1.10 logs ext-phc2sys
 
 In the `ptp4l` logs, look for messages about clock state changes:
 
-```
+```text
 ptp4l: master offset   -12 s2 freq  +3245 path delay   1234
 ptp4l: master offset    -5 s2 freq  +3241 path delay   1231
 ptp4l: master offset     2 s2 freq  +3243 path delay   1233
@@ -241,7 +241,7 @@ Your network architecture affects PTP accuracy:
 
 PTP-aware switches act as boundary clocks, terminating and re-originating PTP messages. This gives the best accuracy because each network segment has its own PTP session:
 
-```
+```text
 Grandmaster --> Switch (Boundary Clock) --> Talos Node
 ```
 
@@ -249,7 +249,7 @@ Grandmaster --> Switch (Boundary Clock) --> Talos Node
 
 Switches add their residence time to PTP messages, allowing end nodes to compensate for switch delay:
 
-```
+```text
 Grandmaster --> Switch (Transparent Clock) --> Talos Node
 ```
 
@@ -257,7 +257,7 @@ Grandmaster --> Switch (Transparent Clock) --> Talos Node
 
 Without PTP-aware switches, accuracy depends on how stable the switch queuing delay is. For many environments, this still provides microsecond-level accuracy:
 
-```
+```text
 Grandmaster --> Regular Switch --> Talos Node
 ```
 

@@ -63,7 +63,7 @@ sudo nano /etc/hostname
 ```
 
 Replace the contents with your new hostname:
-```
+```text
 new-hostname
 ```
 
@@ -76,7 +76,7 @@ sudo nano /etc/hosts
 
 Update the line with your old hostname:
 
-```
+```text
 127.0.0.1       localhost
 127.0.1.1       new-hostname.example.com new-hostname
 
@@ -139,7 +139,7 @@ sudo hostnamectl set-hostname server01
 sudo nano /etc/hosts
 ```
 
-```
+```text
 127.0.0.1       localhost
 127.0.1.1       server01.example.com server01
 
@@ -263,7 +263,7 @@ On each node:
 sudo nano /etc/hosts
 ```
 
-```
+```text
 # Cluster nodes
 192.168.1.10    node1.cluster.local node1
 192.168.1.11    node2.cluster.local node2

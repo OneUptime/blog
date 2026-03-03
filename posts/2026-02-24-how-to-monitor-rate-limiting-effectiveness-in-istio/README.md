@@ -31,7 +31,7 @@ kubectl exec my-service-pod -c istio-proxy -- \
 
 For global rate limiting, you will see metrics like:
 
-```
+```text
 cluster.rate_limit_cluster.upstream_rq_total: 5000
 cluster.rate_limit_cluster.upstream_rq_200: 4900
 cluster.rate_limit_cluster.upstream_rq_timeout: 5
@@ -43,7 +43,7 @@ ratelimit.my-domain.failure_mode_allowed: 0
 
 For local rate limiting:
 
-```
+```text
 http_local_rate_limiter.http_local_rate_limit.enabled: 5000
 http_local_rate_limiter.http_local_rate_limit.enforced: 5000
 http_local_rate_limiter.http_local_rate_limit.ok: 4850

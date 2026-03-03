@@ -61,7 +61,7 @@ ansible --version
 
 You should see output like:
 
-```
+```text
 ansible [core 2.16.x]
   config file = None
   configured module search path = ['/Users/yourname/.ansible/plugins/modules']
@@ -147,7 +147,7 @@ ssh-copy-id -i ~/.ssh/ansible_key.pub deploy@192.168.1.50
 
 You can also configure SSH in your `~/.ssh/config` to simplify connections:
 
-```
+```text
 # ~/.ssh/config
 Host staging-*
     User deploy
@@ -210,7 +210,7 @@ ansible-playbook test.yml
 
 On macOS, you might see this warning:
 
-```
+```text
 objc[12345]: +[__NSCFConstantString initialize] may have been in progress in another thread when fork() was called.
 ```
 
@@ -225,7 +225,7 @@ export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 
 macOS sometimes adds latency to SSH connections. Enable SSH multiplexing in your ansible.cfg (already included in the config above) or in ~/.ssh/config:
 
-```
+```text
 Host *
     ControlMaster auto
     ControlPath ~/.ssh/sockets/%r@%h-%p

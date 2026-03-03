@@ -20,7 +20,7 @@ Consider a search engine that indexes product listings. The API might respond in
 
 A Service Level Indicator (SLI) for coverage measures the ratio of successfully processed items to expected items:
 
-```
+```text
 Coverage SLI = (Items Successfully Processed / Total Expected Items) * 100
 ```
 

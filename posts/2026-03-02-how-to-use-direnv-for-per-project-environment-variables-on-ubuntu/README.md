@@ -265,7 +265,7 @@ export API_KEY="my-personal-dev-key"
 
 direnv handles nested projects correctly. Each `.envrc` in a parent directory loads when you enter any subdirectory. Child `.envrc` files extend the parent's environment:
 
-```
+```text
 ~/projects/
   myapp/
     .envrc          # DATABASE_URL, APP_PORT

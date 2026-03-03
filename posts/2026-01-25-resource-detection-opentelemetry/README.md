@@ -14,7 +14,7 @@ Resource attributes describe the entity producing telemetry: the service name, h
 
 In OpenTelemetry, a resource represents the entity that generates telemetry data. Resources have attributes that describe that entity. For example:
 
-```
+```text
 service.name: checkout-service
 service.version: 1.2.3
 host.name: ip-10-0-1-42

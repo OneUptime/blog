@@ -10,7 +10,7 @@ Description: Learn how to combine node selectors with L2Advertisement in MetalLB
 
 When you run MetalLB in Layer 2 mode, any node in your cluster can respond to ARP requests for a LoadBalancer IP. In larger or multi-zone deployments, you often want only specific nodes to handle that traffic. MetalLB's `L2Advertisement` resource with `nodeSelectors` gives you that control.
 
-### How L2 Mode Works in MetalLB
+## How L2 Mode Works in MetalLB
 
 MetalLB elects one node to "own" each LoadBalancer IP. That node responds to ARP (IPv4) or NDP (IPv6) requests, pulling all traffic for that IP to itself. Kubernetes then routes traffic to the correct pods via kube-proxy.
 

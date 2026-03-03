@@ -71,7 +71,7 @@ The longest chain of dependencies in your graph determines the minimum execution
 
 Look for chains like this:
 
-```
+```text
 aws_vpc -> aws_subnet -> aws_security_group -> aws_instance -> aws_eip
 ```
 
@@ -79,7 +79,7 @@ Each resource must complete before the next can start. If each takes 30 seconds,
 
 Compare this with a wide graph where many resources are independent:
 
-```
+```text
 aws_vpc -> aws_subnet_a (parallel)
         -> aws_subnet_b (parallel)
         -> aws_subnet_c (parallel)

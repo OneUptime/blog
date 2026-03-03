@@ -48,7 +48,7 @@ rate(counter[time_range])
 
 ### Mathematical Definition
 
-```
+```text
 rate = (last_value - first_value) / time_range_seconds
 ```
 
@@ -77,7 +77,7 @@ increase(counter[time_range])
 
 ### Mathematical Definition
 
-```
+```text
 increase = last_value - first_value
 ```
 

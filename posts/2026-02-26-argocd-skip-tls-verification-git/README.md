@@ -16,13 +16,13 @@ This guide covers both approaches, starting with the quick fix (skipping TLS) an
 
 When ArgoCD cannot verify the TLS certificate of your Git server, you will see errors like:
 
-```
+```text
 x509: certificate signed by unknown authority
 ```
 
 or
 
-```
+```text
 unable to access 'https://git.internal.example.com/my-org/my-repo.git/': SSL certificate problem: unable to get local issuer certificate
 ```
 

@@ -176,7 +176,7 @@ wget "https://factory.talos.dev/image/${SCHEMATIC_ID}/v1.7.0/initramfs-amd64.xz"
 
 Configure your PXE server (like Matchbox or a simple TFTP/HTTP server) to serve these files:
 
-```
+```text
 # Example iPXE script
 #!ipxe
 kernel https://pxe.example.com/talos/kernel-amd64 \

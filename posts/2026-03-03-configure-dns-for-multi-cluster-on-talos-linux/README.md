@@ -20,7 +20,7 @@ Each Kubernetes cluster has its own DNS domain (typically `cluster.local`). A se
 
 The simplest approach gives each cluster its own DNS domain:
 
-```
+```text
 Cluster A: cluster-a.local
 Cluster B: cluster-b.local
 Cluster C: cluster-c.local
@@ -114,7 +114,7 @@ curl http://my-service.default.svc.cluster-b.local:8080
 
 Instead of cluster-specific domains, use a shared external DNS zone that both clusters can write to:
 
-```
+```text
 my-service.production.services.example.com -> Resolves to the right cluster
 ```
 
@@ -154,7 +154,7 @@ spec:
 
 Configure CoreDNS to forward the shared zone queries:
 
-```
+```text
 # Forward shared service zone to the external DNS
 services.example.com:53 {
     errors
@@ -196,7 +196,7 @@ spec:
 
 Configure CoreDNS to use the etcd plugin:
 
-```
+```text
 # CoreDNS Corefile with etcd backend
 global.svc:53 {
     errors

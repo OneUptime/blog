@@ -117,7 +117,7 @@ tfenv list
 
 Output looks like:
 
-```
+```text
   1.7.5
   1.6.6
 * 1.5.7 (set by /home/user/.tfenv/version)

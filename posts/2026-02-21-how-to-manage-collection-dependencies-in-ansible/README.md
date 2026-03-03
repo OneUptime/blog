@@ -160,7 +160,7 @@ collections:
 
 When you install collections, understanding where they go helps with troubleshooting.
 
-```
+```text
 # Default installation paths (in order of precedence)
 ~/.ansible/collections/ansible_collections/
 /usr/share/ansible/collections/ansible_collections/

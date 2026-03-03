@@ -199,7 +199,7 @@ Track usage per subscription to identify:
 
 Use Application Insights queries:
 
-```
+```text
 // Request count and error rate per subscription
 requests
 | where timestamp > ago(7d)

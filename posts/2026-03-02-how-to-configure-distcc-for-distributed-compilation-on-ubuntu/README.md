@@ -127,7 +127,7 @@ nano ~/.distcc/hosts
 sudo nano /etc/distcc/hosts
 ```
 
-```
+```text
 # Format: host/maxjobs
 # localhost always included for linking and fallback
 localhost/4
@@ -198,7 +198,7 @@ distccmon-text 1   # Update every 1 second
 
 Sample output:
 
-```
+```text
  Job  Host                  State     File
   0   localhost             Compiling src/main.cpp
   1   192.168.1.20          Compiling src/util.cpp

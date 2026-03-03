@@ -145,7 +145,7 @@ spec:
 
 Organize manifests for ArgoCD:
 
-```
+```text
 my-app-k8s/
   base/
     deployment.yaml

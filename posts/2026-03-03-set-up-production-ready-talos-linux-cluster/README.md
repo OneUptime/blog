@@ -153,7 +153,7 @@ machine:
 
 For production, use a proper load balancer rather than relying solely on VIP. If you are using HAProxy:
 
-```
+```text
 # haproxy.cfg
 frontend k8s-api
     bind *:6443

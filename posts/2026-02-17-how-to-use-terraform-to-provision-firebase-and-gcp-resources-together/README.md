@@ -28,7 +28,7 @@ gcloud services enable cloudresourcemanager.googleapis.com --project YOUR_PROJEC
 
 A clean Terraform layout for a Firebase-plus-GCP project looks like this:
 
-```
+```text
 infrastructure/
   main.tf           # Provider configuration and core resources
   firebase.tf       # Firebase-specific resources

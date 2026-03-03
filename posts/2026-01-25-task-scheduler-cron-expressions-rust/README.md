@@ -44,7 +44,7 @@ The `cron` crate handles parsing and evaluating cron expressions. `chrono` provi
 
 A cron expression consists of five fields (or six if you include seconds):
 
-```
+```text
 ┌───────── minute (0 - 59)
 │ ┌───────── hour (0 - 23)
 │ │ ┌───────── day of month (1 - 31)

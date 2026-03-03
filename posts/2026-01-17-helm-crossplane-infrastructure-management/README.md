@@ -561,7 +561,7 @@ spec:
 
 ### Chart Structure
 
-```
+```text
 crossplane-infrastructure/
 ├── Chart.yaml
 ├── values.yaml

@@ -16,7 +16,7 @@ If your Istio configuration only exists as live resources in the cluster, you're
 
 Start with a clean repository structure that organizes Istio resources logically:
 
-```
+```text
 istio-config/
 ├── base/
 │   ├── istiooperator.yaml

@@ -142,7 +142,7 @@ aws elbv2 modify-listener \
 
 For Google as the OIDC provider, the endpoints are:
 
-```
+```text
 Issuer: https://accounts.google.com
 AuthorizationEndpoint: https://accounts.google.com/o/oauth2/v2/auth
 TokenEndpoint: https://oauth2.googleapis.com/token
@@ -267,7 +267,7 @@ After authentication, ALB forwards several headers containing user information. 
 
 Example headers ALB sends to your backend:
 
-```
+```text
 x-amzn-oidc-accesstoken: eyJraWQ...  (the actual access token)
 x-amzn-oidc-identity: user@example.com  (the subject claim)
 x-amzn-oidc-data: eyJ0eX...  (JWT with user claims)

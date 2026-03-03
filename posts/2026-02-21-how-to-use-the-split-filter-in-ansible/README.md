@@ -260,7 +260,7 @@ Output: `['critical', 'production', 'us-east', 'web']`
 ```
 
 Output:
-```
+```text
 Empty string: ['']
 No delimiter found: ['nodots']
 Multiple delimiters: ['a', '', 'b', '', 'c']

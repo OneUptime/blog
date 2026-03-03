@@ -151,7 +151,7 @@ ansible webservers -m shell -a "for svc in nginx php-fpm redis; do echo \"$svc: 
 
 Output:
 
-```
+```text
 web1 | CHANGED | rc=0 >>
 nginx: active
 php-fpm: active

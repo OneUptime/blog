@@ -217,7 +217,7 @@ sudo arping -c 4 192.168.1.240
 
 Expected output:
 
-```
+```text
 ARPING 192.168.1.240 from 192.168.1.10 eth0
 Unicast reply from 192.168.1.240 [AA:BB:CC:DD:EE:01]  0.987ms
 Unicast reply from 192.168.1.240 [AA:BB:CC:DD:EE:01]  1.023ms

@@ -36,7 +36,7 @@ const service = new ecsPatterns.ApplicationLoadBalancedFargateService(
 
 Your project structure would look like this.
 
-```
+```text
 my-cdk-app/
   docker/
     web-app/

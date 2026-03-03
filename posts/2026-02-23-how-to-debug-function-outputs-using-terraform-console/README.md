@@ -23,7 +23,7 @@ terraform console
 
 You will get a prompt where you can type any Terraform expression and see the result immediately:
 
-```
+```text
 > 1 + 2
 3
 > upper("hello")
@@ -38,7 +38,7 @@ To exit, type `exit` or press Ctrl+D.
 
 Before using a function in your configuration, test it in the console to make sure it behaves the way you think it does:
 
-```
+```text
 # Test string functions
 > split(",", "web,api,worker")
 tolist([
@@ -69,7 +69,7 @@ This is especially useful for functions where the behavior is not immediately ob
 
 The console has access to your entire Terraform configuration, including variables, locals, data sources (if already fetched), and resources (if state exists). This means you can inspect intermediate values:
 
-```
+```text
 # Check what a variable resolves to
 > var.environment
 "staging"
@@ -93,7 +93,7 @@ The console has access to your entire Terraform configuration, including variabl
 
 If you have state, you can also inspect resource attributes:
 
-```
+```text
 # Check an attribute from existing state
 > aws_vpc.main.id
 "vpc-0abc123def456"
@@ -106,7 +106,7 @@ If you have state, you can also inspect resource attributes:
 
 When a complex function chain is not working, break it down and evaluate each step:
 
-```
+```text
 # Suppose this full expression is giving unexpected results:
 # join("-", [for s in split(".", var.hostname) : lower(s)])
 
@@ -141,7 +141,7 @@ By evaluating each step, you can pinpoint exactly where the transformation goes 
 
 Network CIDR calculations are notoriously hard to get right by guessing. The console is invaluable here:
 
-```
+```text
 # Test cidrsubnet calculations
 > cidrsubnet("10.0.0.0/16", 8, 0)
 "10.0.0.0/24"
@@ -172,7 +172,7 @@ false
 
 When you are dealing with encoded data, the console helps you see what the decoded structure looks like:
 
-```
+```text
 # Test JSON decoding
 > jsondecode("{\"name\": \"web\", \"port\": 8080}")
 {
@@ -200,7 +200,7 @@ When you are dealing with encoded data, the console helps you see what the decod
 
 Type mismatches are one of the most common Terraform errors. Use the console to understand how Terraform handles type conversions:
 
-```
+```text
 # String to number
 > tonumber("42")
 42
@@ -247,7 +247,7 @@ This lets you inspect what values resources will have after the plan is applied,
 
 Before writing complex conditional expressions, test them:
 
-```
+```text
 # Test conditional (ternary) expressions
 > var.environment == "prod" ? 3 : 1
 1
@@ -277,7 +277,7 @@ Before writing complex conditional expressions, test them:
 
 Before using expressions in `for_each` or `count`, verify they produce the right structure:
 
-```
+```text
 # Test a for expression that will feed into for_each
 > { for name, config in var.services : name => config if config.enabled }
 {
@@ -345,7 +345,7 @@ Here are some typical issues and how to investigate them in the console.
 
 **"Invalid index" error:** Check the length of your list and the index you are using:
 
-```
+```text
 > length(var.subnets)
 2
 > var.subnets[2]
@@ -354,7 +354,7 @@ Here are some typical issues and how to investigate them in the console.
 
 **"Invalid value for input variable" error:** Check the actual type of your variable:
 
-```
+```text
 > var.instance_config
 {
   "size" = "large"
@@ -364,7 +364,7 @@ Here are some typical issues and how to investigate them in the console.
 
 **Unexpected merge behavior:** Step through the merge:
 
-```
+```text
 > var.default_tags
 { "env" = "prod", "team" = "ops" }
 > var.custom_tags

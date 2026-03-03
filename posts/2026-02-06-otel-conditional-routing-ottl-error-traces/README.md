@@ -14,7 +14,7 @@ OTTL is a domain-specific language built into the OpenTelemetry Collector. It le
 
 ## The Routing Architecture
 
-```
+```text
                                  +--> [error pipeline] --> [Fast Backend]
 [OTLP Receiver] --> [Routing] --|
                                  +--> [default pipeline] --> [Standard Backend]

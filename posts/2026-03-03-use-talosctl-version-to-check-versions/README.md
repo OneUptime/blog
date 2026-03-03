@@ -21,7 +21,7 @@ talosctl version --nodes 192.168.1.10
 
 The output looks something like this:
 
-```
+```text
 Client:
     Tag:         v1.7.0
     SHA:         abc1234
@@ -52,7 +52,7 @@ talosctl version --nodes 192.168.1.10,192.168.1.11,192.168.1.12
 
 The output will include a Server section for each node, making it easy to compare versions across your cluster:
 
-```
+```text
 Client:
     Tag:         v1.7.0
     ...

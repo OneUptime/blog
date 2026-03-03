@@ -12,7 +12,7 @@ The `TopicExistsException` occurs when you attempt to create a Kafka topic that 
 
 ## Understanding the Error
 
-```
+```text
 org.apache.kafka.common.errors.TopicExistsException:
 Topic 'my-topic' already exists.
 ```

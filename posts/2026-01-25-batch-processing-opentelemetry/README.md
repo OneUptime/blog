@@ -323,7 +323,7 @@ Use shorter timeouts for logs to ensure error messages appear quickly.
 
 Batching requires memory to hold pending items. Calculate your memory requirements:
 
-```
+```text
 memory_per_pipeline = max_queue_size * average_item_size
 total_memory = sum(memory_per_pipeline) + overhead
 ```

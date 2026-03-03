@@ -12,7 +12,7 @@ The `max_stream_lifetime` setting in the OTel Arrow exporter is one of the most 
 
 When an OTel Arrow stream starts, here is the sequence:
 
-```
+```text
 Time 0s:    Stream opens. Empty dictionary.
 Time 0-5s:  Dictionary builds rapidly. New attribute values added with each batch.
 Time 5-30s: Dictionary stabilizes. Most values already seen. Compression improving.
@@ -78,7 +78,7 @@ When throughput is very high, the dictionary stabilizes quickly because more dat
 
 `num_streams` controls how many parallel Arrow streams the exporter maintains. Each stream has its own dictionary and its own lifetime timer. The combination of `num_streams` and `max_stream_lifetime` determines the stream recycling rate:
 
-```
+```text
 Recycling rate = num_streams / max_stream_lifetime
 
 Example: 4 streams with 10-minute lifetime

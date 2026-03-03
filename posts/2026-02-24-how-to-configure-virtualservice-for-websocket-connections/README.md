@@ -14,7 +14,7 @@ WebSocket connections are long-lived, bidirectional connections that start as an
 
 A WebSocket connection starts with an HTTP Upgrade request. The client sends:
 
-```
+```text
 GET /ws HTTP/1.1
 Upgrade: websocket
 Connection: Upgrade

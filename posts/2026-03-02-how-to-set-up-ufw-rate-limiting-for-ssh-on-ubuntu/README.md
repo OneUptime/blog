@@ -44,7 +44,7 @@ sudo ufw status verbose
 
 You'll see the SSH rule change from `ALLOW` to `LIMIT`:
 
-```
+```text
 To                         Action      From
 --                         ------      ----
 22/tcp                     LIMIT IN    Anywhere
@@ -60,7 +60,7 @@ If you had a plain `allow ssh` rule before adding `limit ssh`, you now have both
 sudo ufw status numbered
 ```
 
-```
+```text
 [ 1] 22/tcp                     ALLOW IN    Anywhere
 [ 2] 22/tcp                     LIMIT IN    Anywhere
 ```
@@ -105,7 +105,7 @@ sudo grep "LIMIT BLOCK" /var/log/ufw.log | tail -20
 
 Rate limit blocks appear as:
 
-```
+```text
 [UFW LIMIT BLOCK] IN=eth0 OUT= SRC=203.0.113.100 DST=192.168.1.10 ... DPT=22
 ```
 
@@ -127,7 +127,7 @@ sudo ufw status numbered
 
 The rule order matters here. UFW checks rules top to bottom. Trusted IPs match the allow rule first and bypass rate limiting. Unknown IPs fall through to the rate limit rule.
 
-```
+```text
 [ 1] 22/tcp                     ALLOW IN    192.168.1.10
 [ 2] 22/tcp                     ALLOW IN    10.100.0.5
 [ 3] 22/tcp                     LIMIT IN    Anywhere
@@ -152,7 +152,7 @@ sudo nano /etc/ufw/before.rules
 
 Add before the `COMMIT` line:
 
-```
+```text
 # Custom SSH rate limiting - more restrictive than UFW default
 # Block IPs making more than 3 connection attempts in 60 seconds
 -A ufw-before-input -p tcp --dport 22 -m state --state NEW \

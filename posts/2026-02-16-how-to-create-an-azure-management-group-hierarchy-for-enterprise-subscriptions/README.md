@@ -62,7 +62,7 @@ This is a solid starting point for most organizations. Adapt it based on your sp
 
 For large enterprises with distinct business units that need separate governance:
 
-```
+```text
 Tenant Root
   Platform
     Identity
@@ -81,7 +81,7 @@ Tenant Root
 
 For organizations where environment-level governance is more important than business unit separation:
 
-```
+```text
 Tenant Root
   Platform
   Production

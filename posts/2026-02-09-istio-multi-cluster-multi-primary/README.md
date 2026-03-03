@@ -446,7 +446,7 @@ istioctl proxy-config endpoints frontend-xxx.production --context cluster-3
 
 Output shows backends from all clusters:
 
-```
+```text
 ENDPOINT                  STATUS      CLUSTER      SERVICE
 10.1.2.3:8080            HEALTHY     cluster-1    backend.production.svc.cluster.local
 10.1.2.4:8080            HEALTHY     cluster-1    backend.production.svc.cluster.local

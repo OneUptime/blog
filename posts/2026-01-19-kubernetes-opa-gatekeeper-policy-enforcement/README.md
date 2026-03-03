@@ -643,7 +643,7 @@ graph TD
 
 Organize constraints in your Git repository:
 
-```
+```text
 policies/
 ├── templates/
 │   ├── security/

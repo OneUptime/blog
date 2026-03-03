@@ -18,7 +18,7 @@ doas stands for "dedicated openbsd application subexecutor." It was written by T
 
 The doas configuration lives in `/etc/doas.conf` and uses a straightforward syntax:
 
-```
+```text
 # /etc/doas.conf
 # permit or deny, options, user, as target_user, command
 permit nopass deploy as root
@@ -60,7 +60,7 @@ Note the `ansible_python_interpreter` setting. OpenBSD does not include Python i
 
 Before Ansible can use doas, the remote host needs a proper doas.conf.
 
-```
+```text
 # /etc/doas.conf on the OpenBSD host
 # Allow the deploy user to run commands as root without a password
 permit nopass deploy as root
@@ -193,7 +193,7 @@ doas supports switching to any user, not just root.
 
 Your doas.conf needs to allow these transitions:
 
-```
+```text
 # /etc/doas.conf
 # Allow deploy to become root, www, and _postgresql
 permit nopass deploy as root
@@ -218,7 +218,7 @@ sudo apk add doas
 
 The configuration syntax is the same across all platforms.
 
-```
+```text
 # /etc/doas.conf on Linux
 permit nopass deploy as root
 ```
@@ -294,7 +294,7 @@ ansible openbsd_servers -m ping --become --become-method=doas -vvvv
 
 Common errors:
 
-```
+```text
 # "doas: Operation not permitted"
 # The doas.conf does not permit the user to escalate
 # Fix: Check and update /etc/doas.conf

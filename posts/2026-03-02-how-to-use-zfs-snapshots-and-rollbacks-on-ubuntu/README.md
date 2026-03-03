@@ -61,7 +61,7 @@ sudo zfs list -t snapshot datapool/web
 sudo zfs list -t snapshot -o name,used,refer,creation
 ```
 
-```
+```text
 NAME                            USED  REFER  CREATION
 datapool/web@before-upgrade     234M  12.4G  2026-03-01 10:23
 datapool/web@20260302_020000   1.12G  13.6G  2026-03-02 02:00
@@ -117,7 +117,7 @@ If there are newer snapshots than the one you're rolling back to, ZFS will refus
 sudo zfs rollback -r datapool/web@before-upgrade
 ```
 
-```
+```text
 will destroy the following snapshots:
   datapool/web@20260302_020000
   datapool/web@20260303_020000
@@ -166,7 +166,7 @@ sudo zfs destroy -r datapool/databases@old_backup
 sudo nano /etc/cron.d/zfs-snapshots
 ```
 
-```
+```text
 # ZFS Snapshot Schedule
 # Take hourly snapshots, keep 24
 0 * * * * root /usr/local/bin/zfs-snapshot.sh hourly 24 datapool/web datapool/databases

@@ -44,7 +44,7 @@ mvn archetype:generate \
 
 This generates a project with the following structure:
 
-```
+```text
 azure-functions-demo/
   src/main/java/com/example/functions/
     Function.java            # Sample function

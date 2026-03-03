@@ -10,7 +10,7 @@ Description: How to fix Terraform apply timeout errors for slow-creating resourc
 
 You run `terraform apply` and after a long wait, you see:
 
-```
+```text
 Error: error waiting for RDS DB Instance (mydb) to be created:
 timeout while waiting for state to become 'available'
 (last state: 'creating', timeout: 40m0s)
@@ -18,7 +18,7 @@ timeout while waiting for state to become 'available'
 
 Or similar timeout messages for other resources:
 
-```
+```text
 Error: error waiting for EKS Cluster (my-cluster) to become active:
 timeout after 30m0s
 

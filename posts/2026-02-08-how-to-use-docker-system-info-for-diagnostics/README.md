@@ -35,7 +35,7 @@ The top of the output shows the Docker server details.
 docker info --format '{{.ServerVersion}}'
 ```
 
-```
+```text
 Server Version: 24.0.7
 Storage Driver: overlay2
 Logging Driver: json-file
@@ -59,7 +59,7 @@ docker info --format '{{json .DriverStatus}}' | jq .
 
 The storage section reveals how Docker manages image layers and container filesystems.
 
-```
+```text
 Storage Driver: overlay2
  Backing Filesystem: extfs
  Supports d_type: true
@@ -79,7 +79,7 @@ Storage Driver: overlay2
 docker info --format 'CPUs: {{.NCPU}}, Memory: {{.MemTotal}}'
 ```
 
-```
+```text
 CPUs: 8
 Total Memory: 15.63GiB
 ```
@@ -93,7 +93,7 @@ These numbers reflect what Docker can see, which might be less than your total s
 docker info --format '{{.DockerRootDir}}'
 ```
 
-```
+```text
 Docker Root Dir: /var/lib/docker
 ```
 
@@ -113,7 +113,7 @@ docker info --format '{{json .RegistryConfig}}' | jq .
 
 This shows your configured registries, mirrors, and insecure registries. Useful when debugging image pull failures.
 
-```
+```text
 Registry: https://index.docker.io/v1/
 Insecure Registries:
  127.0.0.0/8
@@ -129,7 +129,7 @@ If your organization uses a private registry or a pull-through cache, it will ap
 docker info --format '{{json .SecurityOptions}}' | jq .
 ```
 
-```
+```text
 Security Options:
  apparmor
  seccomp

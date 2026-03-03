@@ -35,7 +35,7 @@ pip install --upgrade build twine
 
 A well-structured Python package looks like this:
 
-```
+```text
 mypackage/
 ├── src/
 │   └── mypackage/
@@ -138,7 +138,7 @@ python3 -m build
 
 This creates a `dist/` directory with two files:
 
-```
+```text
 dist/
 ├── mypackage-0.1.0.tar.gz    # Source distribution
 └── mypackage-0.1.0-py3-none-any.whl  # Wheel
@@ -233,7 +233,7 @@ PyPI does not allow re-uploading a file with the same version number. If you mak
 
 A common versioning approach following semantic versioning (semver):
 
-```
+```text
 0.1.0  -> initial release
 0.1.1  -> bug fix
 0.2.0  -> new feature, backwards compatible

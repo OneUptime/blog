@@ -861,7 +861,7 @@ module.exports = { getCachedOrFetch, buildCacheKey };
 
 Pick a convention and stick to it across all endpoints:
 
-```
+```text
 # Recommended conventions
 
 # Filtering

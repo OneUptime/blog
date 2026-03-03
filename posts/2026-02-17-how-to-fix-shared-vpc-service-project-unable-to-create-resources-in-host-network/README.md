@@ -20,13 +20,13 @@ When a service project tries to create a resource - say, a Compute Engine instan
 
 You might see errors like:
 
-```
+```text
 Required 'compute.subnetworks.use' permission for 'projects/host-project/regions/us-central1/subnetworks/shared-subnet'
 ```
 
 Or sometimes:
 
-```
+```text
 The resource 'projects/host-project/regions/us-central1/subnetworks/shared-subnet' was not found
 ```
 

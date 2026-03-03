@@ -271,7 +271,7 @@ Fine-tune your State Timeline panel with these key settings.
 
 **Row height and spacing**: Control how compact or spacious your timeline appears.
 
-```
+```text
 Show values: Auto (shows state name when bar is wide enough)
 Align values: Center
 Row height: 0.9 (leaves small gap between rows)
@@ -283,7 +283,7 @@ Fill opacity: 70
 
 **Legend configuration**: For multi-service timelines, position the legend at the bottom or right side.
 
-```
+```text
 Legend mode: List
 Legend placement: Bottom
 Legend values: [Last, Count]
@@ -295,7 +295,7 @@ Instead of pre-computing states, you can derive them directly in Grafana using t
 
 Configure threshold steps that map values to colors:
 
-```
+```text
 Base: Gray (unknown/no data)
 0-50: Red (critical)
 50-90: Yellow (warning)
@@ -328,14 +328,14 @@ Make your State Timeline actionable by adding data links. When someone clicks on
 
 Add a data link with this configuration:
 
-```
+```text
 Title: View Logs
 URL: /explore?orgId=1&left={"datasource":"Loki","queries":[{"expr":"{service=\"${__field.labels.service}\"}","refId":"A"}],"range":{"from":"${__from}","to":"${__to}"}}
 ```
 
 For trace integration:
 
-```
+```text
 Title: View Traces
 URL: /explore?orgId=1&left={"datasource":"Tempo","queries":[{"query":"${__field.labels.service}","refId":"A"}],"range":{"from":"${__from}","to":"${__to}"}}
 ```
@@ -442,7 +442,7 @@ State Timeline panels can become slow with large time ranges and many series. Fo
 
 Recommended query settings:
 
-```
+```text
 Min interval: 1m (for 24h view)
 Max data points: 1000
 Instant: false (need time range data)

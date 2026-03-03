@@ -29,7 +29,7 @@ Each of these components runs on Kubernetes and can be managed by ArgoCD.
 
 ## Repository Structure
 
-```
+```text
 data-platform-config/
   infrastructure/
     kafka/

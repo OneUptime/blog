@@ -12,14 +12,14 @@ The "repository not accessible" error in ArgoCD means the repo server cannot con
 
 The error typically appears as:
 
-```
+```text
 repository not accessible: failed to ls-remote https://github.com/org/repo.git:
 authentication required
 ```
 
 Or:
 
-```
+```text
 repository not accessible: failed to ls-remote ssh://git@github.com/org/repo.git:
 dial tcp: lookup github.com: no such host
 ```
@@ -134,7 +134,7 @@ kubectl edit secret private-repo-creds -n argocd
 
 If using SSH and the Git host's SSH key is not in ArgoCD's known hosts:
 
-```
+```text
 repository not accessible: Host key verification failed
 ```
 
@@ -222,7 +222,7 @@ argocd app get my-app -o yaml | grep repoURL
 
 **Common mismatches:**
 
-```
+```text
 # These are treated as different repositories:
 https://github.com/org/repo          # no .git suffix
 https://github.com/org/repo.git      # with .git suffix
@@ -254,7 +254,7 @@ stringData:
 
 **Make sure the template URL is a prefix of the actual repo URL:**
 
-```
+```text
 Template URL: https://github.com/org
 Repo URL:     https://github.com/org/my-repo  # Matches!
 Repo URL:     https://github.com/other-org/repo  # Does NOT match
@@ -264,7 +264,7 @@ Repo URL:     https://github.com/other-org/repo  # Does NOT match
 
 If your Git server uses a self-signed or corporate CA certificate:
 
-```
+```text
 x509: certificate signed by unknown authority
 ```
 

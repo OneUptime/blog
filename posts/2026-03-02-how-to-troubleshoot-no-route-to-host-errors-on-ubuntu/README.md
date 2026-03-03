@@ -14,7 +14,7 @@ Description: Diagnose and fix 'No route to host' errors on Ubuntu, covering rout
 
 The error appears in different forms:
 
-```
+```text
 ssh: connect to host 192.168.1.50 port 22: No route to host
 curl: (7) Failed to connect to 10.0.1.5 port 80: No route to host
 ping: connect: No route to host

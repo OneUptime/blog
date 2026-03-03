@@ -37,7 +37,7 @@ The plan output uses a set of symbols and conventions that you need to know:
 
 ### Create (+)
 
-```
+```text
   # aws_instance.web will be created
   + resource "aws_instance" "web" {
       + ami                          = "ami-0c55b159cbfafe1f0"
@@ -52,7 +52,7 @@ The `+` prefix means this resource will be created. Attributes marked `(known af
 
 ### Update in Place (~)
 
-```
+```text
   # aws_instance.web will be updated in-place
   ~ resource "aws_instance" "web" {
         id            = "i-abc123"
@@ -66,7 +66,7 @@ The `~` prefix means the resource will be modified without being destroyed. The 
 
 ### Destroy (-)
 
-```
+```text
   # aws_instance.old_server will be destroyed
   # (because aws_instance.old_server is not in configuration)
   - resource "aws_instance" "old_server" {
@@ -79,7 +79,7 @@ The `-` prefix means the resource will be deleted. The `-> null` indicates the a
 
 ### Replace (-/+)
 
-```
+```text
   # aws_instance.web must be replaced
   -/+ resource "aws_instance" "web" {
       ~ ami           = "ami-old" -> "ami-new" # forces replacement
@@ -94,7 +94,7 @@ The `-/+` means Terraform must destroy and recreate the resource. This usually h
 
 When nothing needs to change:
 
-```
+```text
 No changes. Your infrastructure matches the configuration.
 
 Terraform has compared your real infrastructure against your configuration
@@ -105,7 +105,7 @@ and found no differences, so no changes are needed.
 
 At the bottom of every plan, you get a summary:
 
-```
+```text
 Plan: 3 to add, 1 to change, 2 to destroy.
 ```
 
@@ -271,7 +271,7 @@ fi
 
 If someone changed a resource manually (through the AWS console, for example), `terraform plan` shows the difference:
 
-```
+```text
   # aws_instance.web has been changed
   ~ resource "aws_instance" "web" {
       ~ instance_type = "t3.large" -> "t3.micro"
@@ -285,7 +285,7 @@ Terraform wants to reconcile the real state back to match your configuration.
 
 Some changes force Terraform to destroy and recreate a resource. The plan marks these clearly:
 
-```
+```text
   # aws_instance.web must be replaced
   -/+ resource "aws_instance" "web" {
       ~ ami = "ami-old" -> "ami-new" # forces replacement

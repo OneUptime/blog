@@ -188,7 +188,7 @@ gcloud logging read 'severity=ERROR AND protoPayload.serviceContext.service="my-
 
 For more advanced queries, use the Cloud Logging query language in the Console:
 
-```
+```text
 resource.type="cloud_run_revision"
 severity=ERROR
 jsonPayload.serviceContext.service="my-api"

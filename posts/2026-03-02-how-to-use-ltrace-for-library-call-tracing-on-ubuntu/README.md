@@ -53,7 +53,7 @@ ltrace -T command
 
 A typical ltrace line looks like:
 
-```
+```text
 printf("Hello, World!\n")                        = 14
 malloc(1024)                                      = 0x55a7b8e5a260
 strlen("some string")                            = 11
@@ -62,7 +62,7 @@ fgets(0x7fff5e3d2a20, 256, 0x7f8a3c001e80)       = 0x7fff5e3d2a20
 ```
 
 The format is:
-```
+```text
 function_name(arguments)  = return_value
 ```
 

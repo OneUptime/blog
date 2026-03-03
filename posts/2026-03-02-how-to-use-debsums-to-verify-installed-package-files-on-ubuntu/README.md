@@ -32,7 +32,7 @@ sudo debsums nginx openssl bash
 
 The output shows the status of each file:
 
-```
+```text
 /usr/sbin/nginx                    OK
 /etc/nginx/nginx.conf              REPLACED  (config file, expected to be modified)
 /usr/share/man/man8/nginx.8.gz     OK

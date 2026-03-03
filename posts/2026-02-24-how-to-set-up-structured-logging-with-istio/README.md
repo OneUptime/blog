@@ -14,7 +14,7 @@ Plain text access logs are hard to work with at scale. When you're running grep 
 
 Unstructured logs look something like this:
 
-```
+```text
 [2026-02-24T10:15:30.123Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 45 43 "-" "curl/7.68.0" "abc-123-def" "users.default.svc.cluster.local" "10.244.0.15:8080"
 ```
 

@@ -124,7 +124,7 @@ During initialization, CDKTF will ask you:
 
 After initialization, you'll have a project structure like this (TypeScript example):
 
-```
+```text
 my-infrastructure/
   cdktf.json              # CDKTF configuration
   main.ts                 # Your infrastructure code

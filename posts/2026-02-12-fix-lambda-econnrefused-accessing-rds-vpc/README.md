@@ -10,13 +10,13 @@ Description: Resolve ECONNREFUSED errors when Lambda functions try to connect to
 
 Your Lambda function tries to connect to an RDS database and throws:
 
-```
+```text
 Error: connect ECONNREFUSED 10.0.1.45:3306
 ```
 
 or
 
-```
+```text
 OperationalError: (2003, "Can't connect to MySQL server on 'my-db.abc123.us-east-1.rds.amazonaws.com' (110)")
 ```
 

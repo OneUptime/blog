@@ -14,7 +14,7 @@ It also offers an S3-compatible API, a POSIX FUSE mount via the filer, and built
 
 ## Architecture
 
-```
+```text
 [Master Server(s)] - track volume locations, handle failover
         |
 [Volume Server(s)] - store actual file data in volumes

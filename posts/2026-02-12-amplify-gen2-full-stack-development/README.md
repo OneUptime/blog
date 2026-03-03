@@ -42,7 +42,7 @@ npm add @aws-amplify/backend @aws-amplify/backend-cli
 
 After setup, your project structure looks like this:
 
-```
+```text
 amplify/
   auth/
     resource.ts        # Authentication config

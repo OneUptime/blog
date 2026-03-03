@@ -22,7 +22,7 @@ CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
 
 ## How It Works
 
-```
+```text
 Standard Index:
 1. Lock table (ACCESS EXCLUSIVE)
 2. Scan table, build index

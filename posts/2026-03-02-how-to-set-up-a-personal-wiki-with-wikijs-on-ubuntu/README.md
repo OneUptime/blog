@@ -299,7 +299,7 @@ Set page and group permissions in Admin > Groups:
 
 Wiki.js organizes pages by path. Suggested structure for a team wiki:
 
-```
+```text
 /
 ├── getting-started
 │   ├── onboarding

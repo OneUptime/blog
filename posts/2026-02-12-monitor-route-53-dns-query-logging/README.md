@@ -130,7 +130,7 @@ aws route53resolver associate-resolver-query-log-config \
 
 ### Public Query Logs
 
-```
+```text
 1.0 2026-02-12T10:30:00Z Z1234567890 example.com A NOERROR UDP
     192.0.2.1 -
 ```
@@ -183,7 +183,7 @@ Resolver logs are much richer - they include the source instance ID, the actual 
 
 Use CloudWatch Logs Insights to analyze your DNS data.
 
-```
+```text
 # Top 20 most queried domain names
 fields @timestamp, query_name
 | stats count(*) as query_count by query_name
@@ -191,7 +191,7 @@ fields @timestamp, query_name
 | limit 20
 ```
 
-```
+```text
 # Find NXDOMAIN responses (domains that do not exist)
 fields @timestamp, query_name, rcode, srcaddr
 | filter rcode = "NXDOMAIN"
@@ -200,7 +200,7 @@ fields @timestamp, query_name, rcode, srcaddr
 | limit 20
 ```
 
-```
+```text
 # DNS queries from a specific instance
 fields @timestamp, query_name, query_type, rcode
 | filter srcids.instance = "i-0123456789abcdef0"
@@ -208,7 +208,7 @@ fields @timestamp, query_name, query_type, rcode
 | limit 100
 ```
 
-```
+```text
 # Detect potential DNS tunneling (unusually long domain names)
 fields @timestamp, query_name, srcaddr
 | filter strlen(query_name) > 50

@@ -33,7 +33,7 @@ Start by defining a hierarchy of glossary terms that reflects your business doma
 
 Here is a practical glossary structure for an e-commerce company:
 
-```
+```text
 Customer Domain
   |-- Customer
   |-- Active Customer
@@ -243,7 +243,7 @@ With the catalog populated and glossary terms linked, let us make sure people ca
 
 Purview's search supports several query patterns:
 
-```
+```text
 # Search by business term
 "Active Customer"
 

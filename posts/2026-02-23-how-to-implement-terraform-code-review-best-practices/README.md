@@ -16,7 +16,7 @@ This guide covers practical code review practices for Terraform that actually wo
 
 Before you can review Terraform code effectively, you need some structure in place. Your repository should have a consistent layout that reviewers can navigate quickly.
 
-```
+```text
 infrastructure/
   modules/
     networking/
@@ -131,7 +131,7 @@ When reviewing a pull request, spend most of your time on the plan output. Here 
 
 The most dangerous thing in a Terraform plan is a destroy-and-recreate. Look for lines that say "must be replaced" or show a `-/+` prefix:
 
-```
+```text
 # aws_instance.web must be replaced
 -/+ resource "aws_instance" "web" {
       ~ ami           = "ami-abc123" -> "ami-def456" # forces replacement
@@ -251,7 +251,7 @@ resource "aws_instance" "application_server" {
 
 Use a CODEOWNERS file to make sure the right people review infrastructure changes:
 
-```
+```text
 # CODEOWNERS
 # Production changes require platform team review
 environments/production/    @my-org/platform-team

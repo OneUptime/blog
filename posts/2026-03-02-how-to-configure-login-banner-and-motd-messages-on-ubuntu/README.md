@@ -31,7 +31,7 @@ sudo nano /etc/ssh/banner
 
 Add your warning text:
 
-```
+```text
 *******************************************************************************
                          AUTHORIZED ACCESS ONLY
 *******************************************************************************
@@ -49,7 +49,7 @@ sudo nano /etc/ssh/sshd_config
 
 Find or add the Banner directive:
 
-```
+```text
 Banner /etc/ssh/banner
 ```
 
@@ -76,7 +76,7 @@ sudo nano /etc/issue
 
 This file supports escape sequences that are replaced at display time:
 
-```
+```text
 Ubuntu \r (\l)
 
 Authorized users only. All access is logged.
@@ -111,7 +111,7 @@ ls -la /etc/update-motd.d/
 
 Typical output on a fresh Ubuntu server:
 
-```
+```text
 -rwxr-xr-x 1 root root  1220 /etc/update-motd.d/00-header
 -rwxr-xr-x 1 root root  1157 /etc/update-motd.d/10-help-text
 -rwxr-xr-x 1 root root  4264 /etc/update-motd.d/50-motd-news
@@ -216,14 +216,14 @@ sudo nano /etc/pam.d/sshd
 
 Comment out the dynamic MOTD lines:
 
-```
+```text
 # session    optional     pam_motd.so  motd=/run/motd.dynamic
 # session    optional     pam_motd.so noupdate
 ```
 
 Uncomment or add:
 
-```
+```text
 session    optional     pam_motd.so motd=/etc/motd
 ```
 
@@ -243,7 +243,7 @@ sudo truncate -s 0 /etc/motd
 
 For SSH specifically, set `PrintMotd no` in `/etc/ssh/sshd_config`:
 
-```
+```text
 PrintMotd no
 ```
 

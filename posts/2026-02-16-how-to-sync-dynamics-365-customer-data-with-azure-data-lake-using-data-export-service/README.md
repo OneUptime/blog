@@ -250,7 +250,7 @@ public class DataverseResponse
 
 Organize the exported data in a way that supports efficient querying:
 
-```
+```text
 d365-export/
     account/
         2026/

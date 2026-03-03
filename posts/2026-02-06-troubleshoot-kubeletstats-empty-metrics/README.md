@@ -12,7 +12,7 @@ The `kubeletstats` receiver in the OpenTelemetry Collector is designed to collec
 
 Every Kubernetes node runs a Kubelet with two API endpoints:
 
-```
+```text
 Port 10250 - Read-write, requires authentication (default)
 Port 10255 - Read-only, no authentication (often disabled in production)
 ```

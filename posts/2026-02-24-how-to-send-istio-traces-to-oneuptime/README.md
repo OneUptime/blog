@@ -200,7 +200,7 @@ Note the `sidecar.istio.io/inject: "false"` annotation on the collector pod. You
 
 This is the part that people often miss. Istio's sidecar can create trace spans, but your application needs to propagate the trace context headers between incoming and outgoing requests. The headers to propagate are:
 
-```
+```text
 traceparent
 tracestate
 x-request-id

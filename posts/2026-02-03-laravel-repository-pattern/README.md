@@ -813,7 +813,7 @@ class FakeUserRepository implements UserRepositoryInterface
 
 Here's how the repository files fit into a Laravel project:
 
-```
+```text
 app/
 ├── Http/
 │   └── Controllers/

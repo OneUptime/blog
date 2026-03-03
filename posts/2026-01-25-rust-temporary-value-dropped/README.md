@@ -28,7 +28,7 @@ fn main() {
 
 The error message looks like this:
 
-```
+```text
 error[E0716]: temporary value dropped while borrowed
  --> src/main.rs:2:19
   |

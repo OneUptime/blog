@@ -22,7 +22,7 @@ helm history istiod -n istio-system
 
 Output looks like this:
 
-```
+```text
 REVISION  UPDATED                   STATUS      CHART          APP VERSION  DESCRIPTION
 1         2026-01-15 10:00:00       superseded  istiod-1.23.0  1.23.0       Install complete
 2         2026-02-01 14:30:00       superseded  istiod-1.23.1  1.23.1       Upgrade complete

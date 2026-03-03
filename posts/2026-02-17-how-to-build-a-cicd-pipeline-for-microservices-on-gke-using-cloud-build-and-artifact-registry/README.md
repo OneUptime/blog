@@ -52,7 +52,7 @@ gcloud projects add-iam-policy-binding my-project \
 
 For a microservices monorepo, organize your code so each service has its own directory with a Dockerfile and Kubernetes manifests:
 
-```
+```text
 /
   services/
     user-service/

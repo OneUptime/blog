@@ -56,7 +56,7 @@ Before acting on these recommendations, do some due diligence:
 
 Here is a KQL query to check a VM's actual utilization pattern before acting on a recommendation.
 
-```
+```text
 // Check the utilization pattern for a specific VM over the past 30 days
 Perf
 | where TimeGenerated > ago(30d)

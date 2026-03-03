@@ -69,7 +69,7 @@ flowchart TB
 
 A well-organized project structure makes maintenance easier and promotes code reuse. Here is a recommended layout for Terraform Kubernetes projects.
 
-```
+```text
 terraform-kubernetes/
 ├── environments/
 │   ├── dev/

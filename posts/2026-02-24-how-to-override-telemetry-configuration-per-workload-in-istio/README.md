@@ -239,7 +239,7 @@ kubectl get telemetry -n production
 
 Output:
 
-```
+```text
 NAME                     AGE
 default                  30d
 frontend-telemetry       2h

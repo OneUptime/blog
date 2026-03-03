@@ -42,7 +42,7 @@ docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 ### Issue 1: QEMU Not Installed or Registered
 
 Symptoms:
-```
+```text
 exec /bin/sh: exec format error
 standard_init_linux.go: exec user process caused "exec format error"
 ```
@@ -80,7 +80,7 @@ jobs:
 ### Issue 2: Base Image Missing Platform Support
 
 Error:
-```
+```text
 ERROR: failed to solve: node:18: no match for platform in manifest
 ```
 

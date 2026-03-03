@@ -191,7 +191,7 @@ In the distribution configuration, the field-level encryption ID goes in the cac
 
 When a user submits a form with `ssn=123-45-6789`, your origin receives something like:
 
-```
+```text
 ssn=AYABeKrawExample...LongBase64String...==
 ```
 

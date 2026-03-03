@@ -20,7 +20,7 @@ Scalr uses a three-level hierarchy:
 
 This hierarchy lets you set policies and variables at any level, with inheritance flowing downward:
 
-```
+```text
 Account (MyCompany)
   |
   |-- Environment: Development
@@ -44,7 +44,7 @@ Account (MyCompany)
 
 For GitHub:
 
-```
+```text
 Provider: GitHub
 Name: github-myorg
 OAuth Application ID: Ov23xxxxxxxxxx
@@ -53,7 +53,7 @@ OAuth Application Secret: xxxxxxxxxx
 
 ### Create an Environment
 
-```
+```text
 Account > New Environment
 
 Name: production
@@ -64,7 +64,7 @@ Policy groups: production-policies
 
 ### Create a Workspace
 
-```
+```text
 Environment: production > New Workspace
 
 Name: prod-networking
@@ -82,7 +82,7 @@ Auto queue runs: Yes (on VCS changes)
 
 When connected to a VCS provider, Scalr automatically triggers runs on commits and pull requests:
 
-```
+```text
 Workflow:
 1. Developer pushes to feature branch and opens PR
 2. Scalr triggers a speculative plan
@@ -364,7 +364,7 @@ terraform apply
 
 Scalr provides cost estimation for plans:
 
-```
+```text
 Run #42 - prod-compute
 
 Plan: 3 to add, 0 to change, 0 to destroy

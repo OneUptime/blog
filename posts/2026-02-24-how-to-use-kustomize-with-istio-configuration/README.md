@@ -16,7 +16,7 @@ Kustomize solves this by letting you define a base configuration and then layer 
 
 The standard Kustomize layout for Istio config:
 
-```
+```text
 istio/
   base/
     kustomization.yaml

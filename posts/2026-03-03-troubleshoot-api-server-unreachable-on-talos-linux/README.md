@@ -116,7 +116,7 @@ Make sure that no network policy or security group is blocking traffic to port 6
 
 If the API server is running but clients cannot connect due to TLS errors, you might see messages like:
 
-```
+```text
 Unable to connect to the server: x509: certificate signed by unknown authority
 ```
 

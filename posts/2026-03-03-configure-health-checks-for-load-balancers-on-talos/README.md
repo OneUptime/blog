@@ -191,7 +191,7 @@ kubectl logs -n metallb-system -l app.kubernetes.io/component=speaker --tail=20
 
 If you are using an external HAProxy in front of your Talos cluster, configure thorough backend health checks:
 
-```
+```text
 # HAProxy configuration with comprehensive health checks
 
 backend k8s-api
@@ -222,7 +222,7 @@ backend app-workers
 
 ### HAProxy Health Check Parameters Explained
 
-```
+```text
 # inter 10s     - Check every 10 seconds when server is up
 # downinter 5s  - Check every 5 seconds when server is down (faster recovery)
 # rise 3        - Server needs 3 consecutive successes to be marked up

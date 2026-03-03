@@ -159,7 +159,7 @@ flowchart LR
 
 Combine the three dimensions into a single impact score. Here is a simple formula:
 
-```
+```text
 Overall Impact = max(User Impact, Business Impact) + (Scope / 2)
 ```
 
@@ -205,7 +205,7 @@ Map the overall impact score to severity levels:
 
 The incident commander (or first responder) should assess impact within the first 5 minutes. Use a structured approach:
 
-```
+```text
 IMPACT ASSESSMENT - [Incident ID]
 Time: [HH:MM UTC]
 

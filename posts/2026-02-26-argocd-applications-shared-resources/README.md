@@ -79,7 +79,7 @@ spec:
 
 The shared resources live in their own Git directory and are managed by this single Application. Service applications reference these resources but do not create or manage them.
 
-```
+```text
 platform-config/
   shared-resources/
     namespaces.yaml       # Shared namespaces

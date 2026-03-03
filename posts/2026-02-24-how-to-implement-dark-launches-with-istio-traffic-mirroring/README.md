@@ -185,7 +185,7 @@ Then use your logging pipeline (ELK, Loki, or similar) to compare v1 and v2 outp
 
 Use Prometheus queries to compare latency and error rates:
 
-```
+```text
 histogram_quantile(0.95,
   sum(rate(istio_request_duration_milliseconds_bucket{
     destination_service="recommendation-engine.default.svc.cluster.local"

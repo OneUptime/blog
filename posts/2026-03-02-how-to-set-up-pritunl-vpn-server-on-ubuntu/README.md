@@ -215,7 +215,7 @@ Users download their connection profile from the web UI:
 
 Provide users with the URL to access the user interface (different from the admin interface):
 
-```
+```text
 https://vpn.example.com/
 ```
 

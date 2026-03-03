@@ -111,7 +111,7 @@ sudo nethogs -t eth0
 
 Tracing mode output looks like:
 
-```
+```text
 Refreshing:
 /usr/bin/python3/1234/root	0.123	0.456
 /usr/bin/rsync/5678/backup	25.301	0.012
@@ -202,7 +202,7 @@ Add a logrotate config to prevent the log from growing without bound:
 sudo nano /etc/logrotate.d/nethogs
 ```
 
-```
+```text
 /var/log/nethogs.log {
     daily
     rotate 7

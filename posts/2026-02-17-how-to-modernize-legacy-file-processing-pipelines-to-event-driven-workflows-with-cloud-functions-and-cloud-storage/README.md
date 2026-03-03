@@ -16,7 +16,7 @@ I have rebuilt several of these pipelines using Cloud Functions triggered by Clo
 
 Traditional file processing usually looks something like this:
 
-```
+```text
 Cron job (every 5 min) -> Check input directory -> Process files -> Write output -> Move originals to archive
 ```
 

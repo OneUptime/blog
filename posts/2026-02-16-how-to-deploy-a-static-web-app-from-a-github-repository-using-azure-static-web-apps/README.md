@@ -168,7 +168,7 @@ The build typically takes 1-3 minutes for a standard React app. Once it complete
 
 Back in the Azure portal, go to your Static Web App resource. The URL is shown on the overview page and looks like:
 
-```
+```text
 https://happy-river-0a1b2c3d4.azurestaticapps.net
 ```
 

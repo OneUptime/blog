@@ -23,7 +23,7 @@ sudo ufw app list
 
 Output on a typical Ubuntu server with common packages installed:
 
-```
+```text
 Available applications:
   Apache
   Apache Full
@@ -48,7 +48,7 @@ sudo ufw app info 'Nginx Full'
 
 Output:
 
-```
+```text
 Profile: Nginx Full
 Title: Web Server (Nginx, HTTP + HTTPS)
 Description: Small, but very powerful and efficient web server
@@ -62,7 +62,7 @@ Ports:
 sudo ufw app info 'Apache Full'
 ```
 
-```
+```text
 Profile: Apache Full
 Title: Web Server (HTTP,HTTPS)
 Description: Apache v2 is the next generation of the omnipresent Apache web
@@ -97,7 +97,7 @@ Check the result:
 sudo ufw status verbose
 ```
 
-```
+```text
 To                         Action      From
 --                         ------      ----
 Nginx Full                 ALLOW IN    Anywhere
@@ -195,7 +195,7 @@ The pipe character `|` separates different port/protocol combinations.
 sudo ufw app info GameServer
 ```
 
-```
+```text
 Profile: GameServer
 Title: Game Server
 Description: Multiplayer game server - TCP for management, UDP for game traffic

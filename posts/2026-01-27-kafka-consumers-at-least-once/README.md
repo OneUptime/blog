@@ -149,7 +149,7 @@ The commit-after-processing pattern ensures at-least-once delivery by structurin
 
 ### Pattern Structure
 
-```
+```text
 1. Poll messages
 2. Process message(s)
 3. Commit offset(s)

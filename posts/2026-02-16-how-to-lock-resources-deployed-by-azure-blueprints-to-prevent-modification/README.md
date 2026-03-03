@@ -128,7 +128,7 @@ Anyone with these permissions can change the lock settings by modifying the assi
 
 When a lock is in place and someone tries to modify a locked resource, they will get an error like this:
 
-```
+```text
 The scope '/subscriptions/.../resourceGroups/myRG/providers/Microsoft.Storage/storageAccounts/myStorage'
 cannot perform write operation because following scope(s) are locked:
 '/subscriptions/.../providers/Microsoft.Blueprint/blueprintAssignments/my-assignment'.

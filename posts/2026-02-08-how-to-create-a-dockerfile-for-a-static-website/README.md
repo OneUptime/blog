@@ -42,7 +42,7 @@ Visit `http://localhost:8080` in your browser and your site is live. The Nginx A
 
 A typical project directory for a static site Docker setup looks like this:
 
-```
+```text
 my-website/
   Dockerfile
   nginx.conf          # Custom Nginx configuration (optional)
@@ -320,7 +320,7 @@ First, always use Alpine-based images. The standard `nginx` image is around 140M
 
 Second, use a `.dockerignore` file to exclude unnecessary files from the build context:
 
-```
+```text
 # .dockerignore - Exclude files not needed in the image
 node_modules
 .git

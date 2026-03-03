@@ -46,7 +46,7 @@ Key memory regions:
 
 ### Error 1: Container Killed by YARN
 
-```
+```text
 Container killed by YARN for exceeding memory limits.
 12.5 GB of 12 GB physical memory used.
 ```
@@ -71,7 +71,7 @@ spark.conf.set("spark.executor.memoryOverhead", f"{overhead_gb}g")
 
 ### Error 2: Java Heap Space
 
-```
+```text
 java.lang.OutOfMemoryError: Java heap space
 ```
 
@@ -95,7 +95,7 @@ spark.conf.set("spark.memory.offHeap.size", "4g")
 
 ### Error 3: GC Overhead Limit Exceeded
 
-```
+```text
 java.lang.OutOfMemoryError: GC overhead limit exceeded
 ```
 

@@ -12,7 +12,7 @@ Your traces look wrong. Child spans appear to start before their parent spans, s
 
 In a distributed trace, each service generates its own spans with timestamps from its local clock. If Service A's clock is 500ms ahead of Service B's clock, a span from Service B might appear to start before the parent span from Service A, even though it actually started after.
 
-```
+```text
 Service A (clock: 10:00:00.000) creates parent span
   -> calls Service B
 Service B (clock: 09:59:59.600) creates child span

@@ -16,7 +16,7 @@ Terraform provides several built-in functions for working with CIDR blocks dynam
 
 The `cidrsubnet` function takes a CIDR block and splits it into smaller subnets. The syntax is:
 
-```
+```text
 cidrsubnet(prefix, newbits, netnum)
 ```
 

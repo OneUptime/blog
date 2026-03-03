@@ -356,7 +356,7 @@ networks:
         - subnet: 172.28.0.0/16
 ```
 
-```
+```text
 # Corefile
 .:53 {
     forward . 8.8.8.8 8.8.4.4

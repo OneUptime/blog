@@ -30,7 +30,7 @@ ClickHouse Cloud offers a free trial with:
 
 ### Service Configuration
 
-```
+```text
 Service Settings:
 - Name: my-analytics-service
 - Cloud Provider: AWS
@@ -298,7 +298,7 @@ In the ClickHouse Cloud console:
 
 ### IP Access Lists
 
-```
+```text
 # Allow specific IPs
 Settings > Security > IP Access List
 - Add: 203.0.113.0/24 (Office network)
@@ -375,7 +375,7 @@ Password: your-password
 
 ### Metabase
 
-```
+```text
 Host: xxxxx.us-east-1.aws.clickhouse.cloud
 Port: 8443
 Database: default

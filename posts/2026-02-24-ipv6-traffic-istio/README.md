@@ -326,7 +326,7 @@ kubectl logs deploy/istiod -n istio-system | grep -i ipv6
 
 When using IPv6 addresses in URLs, they must be enclosed in square brackets:
 
-```
+```text
 http://[2001:db8::1]:8080/api
 ```
 

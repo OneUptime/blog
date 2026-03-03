@@ -14,7 +14,7 @@ The "Exchange Not Found" error in RabbitMQ occurs when a producer or consumer tr
 
 When you see an error like this:
 
-```
+```text
 Channel.close(404, "NOT_FOUND - no exchange 'orders' in vhost '/'")
 ```
 

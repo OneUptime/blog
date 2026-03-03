@@ -79,7 +79,7 @@ kubectl get serviceentry -n payments
 
 You should see:
 
-```
+```text
 NAME         HOSTS              LOCATION        RESOLUTION   AGE
 stripe-api   ["api.stripe.com"] MESH_EXTERNAL   DNS          5s
 ```

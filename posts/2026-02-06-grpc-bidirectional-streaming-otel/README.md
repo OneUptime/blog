@@ -228,7 +228,7 @@ func chatWithServer(client pb.ChatServiceClient, messages []string) error {
 
 The resulting trace has a clear structure:
 
-```
+```text
 ChatService.Chat (parent - server)
   ├── ChatService.Chat.Receive (message 1)
   ├── ChatService.Chat.Send (response 1)

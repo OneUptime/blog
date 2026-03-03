@@ -58,7 +58,7 @@ curl -s "http://jaeger:16686/api/traces?service=checkout-service&minDuration=2s&
 
 In the Jaeger UI, use the "Min Duration" field to filter. In Grafana with Tempo, use TraceQL:
 
-```
+```text
 {resource.service.name = "checkout-service"} | duration > 2s
 ```
 
@@ -86,7 +86,7 @@ For each service-to-service call, there are two spans:
 
 The difference tells you about network latency:
 
-```
+```text
 Network latency (round trip) = Client span duration - Server span duration
 ```
 
@@ -99,7 +99,7 @@ If a client span is 500ms but the server span is only 50ms, you have 450ms of ne
 
 If a parent span is 1000ms but its child spans only add up to 200ms, the remaining 800ms is time the application spent doing work between calls (like database queries, computation, or sleeping).
 
-```
+```text
 Application processing time = Parent span duration - Sum of child span durations
 ```
 
@@ -107,7 +107,7 @@ Application processing time = Parent span duration - Sum of child span durations
 
 Look at whether child spans overlap (concurrent calls) or are sequential:
 
-```
+```text
 Sequential: |--call A--||--call B--||--call C--|  Total: A + B + C
 Concurrent: |--call A--|
             |--call B--|
@@ -122,7 +122,7 @@ If a service makes multiple downstream calls sequentially when they could be con
 
 One downstream service dominates the trace:
 
-```
+```text
 checkout (8s)
   -> cart (50ms)
   -> pricing (7.5s)    <-- bottleneck
@@ -136,7 +136,7 @@ checkout (8s)
 
 Large gaps between the client span start and the server span start:
 
-```
+```text
 Client span starts:  T+0ms
 Server span starts:  T+200ms  <-- 200ms gap
 Server span ends:    T+220ms  (20ms processing)
@@ -169,7 +169,7 @@ Setting `maxRequestsPerConnection: 0` allows unlimited request reuse per connect
 
 The trace shows the same call repeated:
 
-```
+```text
 order-service (3.5s)
   -> payment-service attempt 1 (1.0s, FAILED)
   -> payment-service attempt 2 (1.0s, FAILED)
@@ -190,7 +190,7 @@ kubectl get destinationrule -A -o yaml | grep -A5 outlierDetection
 
 Client spans are much longer than server spans for many services:
 
-```
+```text
 All client spans: ~500ms
 All server spans: ~50ms
 Gap explanation: Connection pool full, requests queuing
@@ -220,7 +220,7 @@ spec:
 
 A gap at the very beginning of the first span in a trace:
 
-```
+```text
 Total trace: 2.5s
 First span starts after: 500ms delay
 Actual processing: 2.0s

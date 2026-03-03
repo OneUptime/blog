@@ -555,7 +555,7 @@ sudo nano /etc/default/ufw
 
 Ensure the following line exists:
 
-```
+```text
 IPV6=yes
 ```
 
@@ -628,7 +628,7 @@ sudo nano /etc/ufw/before.rules
 
 Example: Add port forwarding (NAT) rules:
 
-```
+```text
 # Add before the *filter section
 *nat
 :PREROUTING ACCEPT [0:0]
@@ -654,7 +654,7 @@ sudo nano /etc/ufw/sysctl.conf
 
 Uncomment or add:
 
-```
+```text
 net/ipv4/ip_forward=1
 net/ipv6/conf/default/forwarding=1
 net/ipv6/conf/all/forwarding=1
@@ -678,7 +678,7 @@ sudo nano /etc/default/ufw
 
 Change:
 
-```
+```text
 DEFAULT_FORWARD_POLICY="ACCEPT"
 ```
 
@@ -767,7 +767,7 @@ sudo nano /etc/ufw/after.rules
 
 Add the following at the end of the file:
 
-```
+```text
 # BEGIN UFW AND DOCKER
 *filter
 :ufw-user-forward - [0:0]

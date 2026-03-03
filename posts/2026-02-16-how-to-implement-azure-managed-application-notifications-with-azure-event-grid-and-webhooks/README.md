@@ -59,7 +59,7 @@ For marketplace managed applications, you can also use the notification endpoint
 
 In the Partner Center technical configuration for your managed application plan, specify a notification endpoint URL:
 
-```
+```text
 Notification Endpoint URL: https://api.yoursaas.com/webhooks/managed-app
 ```
 

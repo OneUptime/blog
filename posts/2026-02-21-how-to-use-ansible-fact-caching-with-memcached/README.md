@@ -272,7 +272,7 @@ You can also force fact refresh in specific plays:
 
 Memcached stores all data in memory with no disk backing. Here is how to size it:
 
-```
+```text
 Hosts * Average Fact Size = Required Memory
 
 100 hosts * 50 KB = 5 MB

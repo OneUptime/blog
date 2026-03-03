@@ -115,7 +115,7 @@ gcloud secrets add-iam-policy-binding break-glass-admin-key \
 
 For user account credentials:
 
-```
+```text
 Option 2: Physical credential storage
 - Print the credentials on paper
 - Store in a sealed envelope in a physical safe
@@ -196,7 +196,7 @@ gcloud logging sinks create break-glass-alert-sink \
 
 Create a runbook that on-call engineers can follow during an emergency:
 
-```
+```text
 BREAK-GLASS ACCESS PROCEDURE
 
 WHEN TO USE:

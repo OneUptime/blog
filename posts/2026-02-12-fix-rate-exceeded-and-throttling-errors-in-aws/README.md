@@ -10,7 +10,7 @@ Description: Handle and prevent AWS API throttling and rate exceeded errors by i
 
 Every AWS service has API rate limits, and when you exceed them, you get throttled. The error shows up in various forms:
 
-```
+```text
 An error occurred (Throttling) when calling the DescribeInstances operation:
 Rate exceeded
 

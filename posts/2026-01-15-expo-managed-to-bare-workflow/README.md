@@ -903,7 +903,7 @@ Open your project in Xcode and configure:
    - Add capabilities (Push Notifications, Background Modes, etc.)
 
 2. **Build Settings**
-   ```
+   ```text
    PRODUCT_BUNDLE_IDENTIFIER = com.yourcompany.yourapp
    DEVELOPMENT_TEAM = YOUR_TEAM_ID
    CODE_SIGN_STYLE = Automatic

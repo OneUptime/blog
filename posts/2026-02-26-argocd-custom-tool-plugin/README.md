@@ -115,7 +115,7 @@ ENTRYPOINT ["/usr/local/bin/argocd-cmp-server"]
 
 Here is what a repository using this plugin might look like:
 
-```
+```text
 my-app/
   cue.mod/
     module.cue

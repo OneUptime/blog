@@ -235,7 +235,7 @@ kubectl exec -n chaos-test deploy/productpage-v1 -c istio-proxy -- \
 
 If you have Prometheus and Grafana set up with Istio, monitor these queries:
 
-```
+```text
 # Request success rate
 sum(rate(istio_requests_total{destination_service="reviews.chaos-test.svc.cluster.local",response_code="200"}[1m])) /
 sum(rate(istio_requests_total{destination_service="reviews.chaos-test.svc.cluster.local"}[1m]))

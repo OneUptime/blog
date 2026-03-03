@@ -44,7 +44,7 @@ Listeners define what ports and protocols Envoy accepts connections on. Every Ku
 istioctl pc listeners productpage-v1-abc123.default
 ```
 
-```
+```text
 ADDRESS       PORT  MATCH                                    DESTINATION
 0.0.0.0       15006 ALL                                      Inline Route: /*
 0.0.0.0       15006 Addr: *:15006                            Non-HTTP/Non-TCP
@@ -76,7 +76,7 @@ Routes map incoming requests to upstream clusters based on match criteria:
 istioctl pc routes productpage-v1-abc123.default
 ```
 
-```
+```text
 NAME     DOMAINS                                  MATCH     VIRTUAL SERVICE
 9080     reviews, reviews.default + 1 more...     /*        reviews-vs.default
 9080     ratings, ratings.default + 1 more...     /*
@@ -144,7 +144,7 @@ Clusters represent upstream services with their load balancing and connection se
 istioctl pc clusters productpage-v1-abc123.default
 ```
 
-```
+```text
 SERVICE FQDN                                    PORT   SUBSET   DIRECTION   TYPE   DESTINATION RULE
 reviews.default.svc.cluster.local               9080   v1       outbound    EDS    reviews-dr.default
 reviews.default.svc.cluster.local               9080   v2       outbound    EDS    reviews-dr.default
@@ -182,7 +182,7 @@ istioctl pc endpoints productpage-v1-abc123.default \
   --cluster "outbound|9080|v1|reviews.default.svc.cluster.local"
 ```
 
-```
+```text
 ENDPOINT             STATUS      OUTLIER CHECK   CLUSTER
 10.244.0.15:9080     HEALTHY     OK              outbound|9080|v1|reviews.default.svc.cluster.local
 10.244.0.16:9080     HEALTHY     OK              outbound|9080|v1|reviews.default.svc.cluster.local

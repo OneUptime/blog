@@ -136,7 +136,7 @@ az webapp webjob triggered upload \
 
 If you are using Visual Studio or a CI/CD pipeline, you can include WebJobs directly in your web app deployment. Place your WebJob files in a specific folder structure:
 
-```
+```text
 app_data/
   jobs/
     triggered/

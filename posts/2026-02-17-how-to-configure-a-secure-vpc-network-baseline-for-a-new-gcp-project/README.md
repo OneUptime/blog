@@ -263,7 +263,7 @@ gcloud monitoring policies create \
 
 Keep a living document of your network configuration:
 
-```
+```text
 VPC: prod-vpc
 Region: us-central1
 BGP Routing: Global

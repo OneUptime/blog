@@ -26,7 +26,7 @@ Think of it this way: ztunnel on node A needs to send traffic on behalf of pod X
 
 HBONE uses HTTP/2 CONNECT over mTLS on port 15008. The TLS connection between ztunnel instances uses the ztunnel's own identity for transport security. The application workload identity is carried inside the tunnel.
 
-```
+```text
 Source Pod -> Source ztunnel -> [HBONE tunnel over mTLS on port 15008] -> Dest ztunnel -> Dest Pod
 ```
 
@@ -34,7 +34,7 @@ Source Pod -> Source ztunnel -> [HBONE tunnel over mTLS on port 15008] -> Dest z
 
 HTTP/2 CONNECT creates a bidirectional byte stream tunnel. In HBONE, the CONNECT request includes metadata about the source and destination workloads:
 
-```
+```text
 CONNECT 10.0.2.5:8080 HTTP/2
 :authority: 10.0.2.5:8080
 :method: CONNECT
@@ -46,7 +46,7 @@ The `:authority` field identifies the destination workload. Additional metadata 
 
 Each HBONE tunnel carries the SPIFFE identity of the source workload. This is done through the TLS client certificate. When the source ztunnel establishes the HBONE connection, it presents a certificate that identifies the source workload:
 
-```
+```text
 Subject: spiffe://cluster.local/ns/bookinfo/sa/productpage
 ```
 
@@ -125,7 +125,7 @@ Pod B's response flows back through the same HBONE tunnel to the source ztunnel 
 
 When both pods are on the same node, ztunnel still handles the traffic but can optimize the path. Instead of creating an HBONE tunnel to itself, it can forward traffic directly within its own process:
 
-```
+```text
 Pod A -> ztunnel (local processing) -> Pod B
 ```
 
@@ -177,7 +177,7 @@ kubectl logs -l app=ztunnel -n istio-system --tail=100 | grep -i "hbone\|tunnel\
 
 When a waypoint proxy is in the traffic path, HBONE is used in two segments:
 
-```
+```text
 Source Pod -> Source ztunnel -> [HBONE] -> Waypoint Proxy -> [HBONE] -> Dest ztunnel -> Dest Pod
 ```
 

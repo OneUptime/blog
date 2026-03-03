@@ -52,7 +52,7 @@ talosctl list --nodes 192.168.1.10 /etc/ -r
 
 The output format is similar to `ls -la` on a traditional Linux system:
 
-```
+```text
 NODE           MODE        UID   GID   SIZE    LASTMOD              NAME
 192.168.1.10   -rw-r--r--  0     0     234     2026-03-03 10:00:00  os-release
 192.168.1.10   -rw-r--r--  0     0     1234    2026-03-03 10:00:00  resolv.conf

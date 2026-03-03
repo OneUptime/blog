@@ -66,7 +66,7 @@ When you specify a commit SHA, ArgoCD may need to fetch more history to locate i
 
 ArgoCD does not natively support Git sparse checkout, but you can achieve a similar effect by structuring your repository so that each application points to a specific subdirectory.
 
-```
+```text
 # Repository structure
 repo/
 ├── app-a/

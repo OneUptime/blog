@@ -26,7 +26,7 @@ All components are stateless except the ingester, which buffers traces in a Writ
 
 ## Repository Structure
 
-```
+```text
 tracing/
   tempo/
     Chart.yaml

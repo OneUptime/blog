@@ -38,7 +38,7 @@ Serverless does not mean there are no servers. It means you do not manage them. 
 
 A well-organized serverless project separates handlers, business logic, and shared utilities:
 
-```
+```text
 serverless-api/
 ├── src/
 │   ├── handlers/           # Lambda entry points

@@ -51,7 +51,7 @@ pip install uvicorn[standard]
 
 A well-organized Strawberry project follows this structure. Keeping types, resolvers, and mutations in separate modules makes the codebase easier to navigate as it grows.
 
-```
+```text
 graphql_api/
     __init__.py
     schema.py           # Main schema definition

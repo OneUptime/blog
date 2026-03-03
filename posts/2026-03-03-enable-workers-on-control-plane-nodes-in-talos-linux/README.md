@@ -29,7 +29,7 @@ In Talos Linux, nodes are either control plane nodes or worker nodes based on th
 
 By default, control plane nodes in Kubernetes have a taint that prevents regular pods from being scheduled on them:
 
-```
+```text
 node-role.kubernetes.io/control-plane:NoSchedule
 ```
 

@@ -32,7 +32,7 @@ Each sync history entry contains:
 
 Each entry in the history looks like:
 
-```
+```text
 Revision:   abc1234 (main)
 Date:       2026-02-26 10:30:00
 Author:     jane@example.com
@@ -100,7 +100,7 @@ The sync completed without errors. All resources were applied to the cluster and
 
 The sync encountered an error. Common failure reasons include:
 
-```
+```text
 # Invalid manifest
 ComparisonError: failed to load initial state of resource Deployment:
   error converting YAML to JSON

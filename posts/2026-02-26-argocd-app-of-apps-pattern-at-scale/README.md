@@ -48,7 +48,7 @@ At 10 applications, App-of-Apps works beautifully. At 200+, you start seeing:
 
 Instead of one flat root app, create a tree:
 
-```
+```text
 root-app
   ├── platform-apps (ingress, cert-manager, monitoring)
   ├── team-a-apps (team A microservices)
@@ -222,7 +222,7 @@ This creates a platform App-of-Apps for every production cluster.
 
 Here is a proven directory structure that supports hundreds of apps:
 
-```
+```text
 gitops-config/
 ├── apps/                          # Root-level app manifests
 │   ├── root.yaml                  # The root App-of-Apps

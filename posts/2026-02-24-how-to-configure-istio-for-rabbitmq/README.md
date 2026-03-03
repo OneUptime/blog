@@ -318,13 +318,13 @@ Note the port is 5671, which is the standard AMQPS (AMQP over TLS) port.
 
 For the AMQP port, you get TCP metrics:
 
-```
+```text
 istio_tcp_connections_opened_total{destination_service="rabbitmq.messaging.svc.cluster.local", destination_port="5672"}
 ```
 
 For the management port, you get HTTP metrics:
 
-```
+```text
 istio_requests_total{destination_service="rabbitmq.messaging.svc.cluster.local", destination_port="15672"}
 ```
 

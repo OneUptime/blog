@@ -224,7 +224,7 @@ service:
 
 Now you can search all exceptions across all services in your log backend:
 
-```
+```text
 # LogQL query for all exceptions derived from span events
 {source="span_event"} | json | event_name="exception" | line_format "{{.exception_type}}: {{.exception_message}}"
 ```

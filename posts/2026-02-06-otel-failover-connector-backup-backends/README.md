@@ -12,7 +12,7 @@ Your observability backend going down at the same time as a production incident 
 
 The failover connector monitors export errors on the primary pipeline. When the error rate exceeds a threshold, it reroutes all telemetry to the backup pipeline. Once the primary recovers, it switches back. This happens transparently, with no manual intervention needed.
 
-```
+```text
                                  +--> [Primary Pipeline] --> [OneUptime]
 [OTLP Receiver] --> [failover] --|
                                  +--> [Backup Pipeline]  --> [Local Storage]

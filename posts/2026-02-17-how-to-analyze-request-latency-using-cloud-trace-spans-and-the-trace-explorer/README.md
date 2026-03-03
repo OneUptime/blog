@@ -18,7 +18,7 @@ A **trace** represents a single end-to-end request as it flows through your syst
 
 For example, a single API request might generate this span tree:
 
-```
+```text
 [HTTP GET /api/orders] (total: 450ms)
   [authenticate_user] (35ms)
   [fetch_orders] (380ms)
@@ -51,19 +51,19 @@ The filter bar is your primary tool for narrowing down traces. Here are the most
 
 To find traces from a specific service:
 
-```
+```text
 RootSpan: /api/orders
 ```
 
 To find slow traces over a certain duration:
 
-```
+```text
 Latency > 1s
 ```
 
 To filter by HTTP method and status:
 
-```
+```text
 http.method: GET
 http.status_code: 500
 ```
@@ -133,7 +133,7 @@ If you have instrumented your database client, you can filter traces to find tho
 
 In the Trace Explorer filter:
 
-```
+```text
 SpanName: db.query
 Latency > 500ms
 ```

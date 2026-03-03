@@ -38,7 +38,7 @@ ansible-pull --version
 
 Your playbook repository needs a specific layout for ansible-pull. By default, `ansible-pull` looks for a playbook named after the hostname, falling back to `local.yml`:
 
-```
+```text
 ansible-config/
 ├── local.yml              # Fallback playbook (runs if no hostname match)
 ├── web-server-01.yml      # Runs only on web-server-01

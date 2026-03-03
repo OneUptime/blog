@@ -12,7 +12,7 @@ Without proper tracing, a Stripe outage that triggers failover to Braintree look
 
 ## The Failover Architecture
 
-```
+```text
 Customer -> Payment Service -> Stripe (primary)
                             -> Braintree (secondary)
                             -> Adyen (tertiary)

@@ -42,7 +42,7 @@ Terragrunt will:
 
 ## What the Output Looks Like
 
-```
+```text
 Group 1
 - Module /path/to/live/dev/vpc
 

@@ -277,7 +277,7 @@ ansible windows -i inventory/windows.ini -m win_shell -a "hostname"
 
 Expected successful output:
 
-```
+```text
 win-server-01 | SUCCESS => {
     "changed": false,
     "ping": "pong"

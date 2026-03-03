@@ -14,7 +14,7 @@ Managing Kyverno policies as code in Git repositories enables version control, c
 
 Organize policies in a Git repository:
 
-```
+```text
 kyverno-policies/
 ├── base/
 │   ├── kustomization.yaml

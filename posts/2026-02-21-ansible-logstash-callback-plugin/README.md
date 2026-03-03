@@ -203,7 +203,7 @@ Create an index pattern for `ansible-*`, then build these:
 
 Each playbook run gets a unique session ID. Use this to find all events from a single run:
 
-```
+```text
 # Kibana query - find all events from a specific run
 session: "abc123-def456"
 

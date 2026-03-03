@@ -15,7 +15,7 @@ The rule of thumb is:
 - **Agent (per-node)**: Things that reduce data volume early (head sampling, filtering, basic attribute dropping)
 - **Gateway (centralized)**: Things that need aggregated context (tail sampling, Kubernetes enrichment, transformations, export)
 
-```
+```text
 Agent Layer:                    Gateway Layer:
 [Head Sample] --> [Filter] --> [K8s Enrich] --> [Tail Sample] --> [Transform] --> [Export]
    (reduce)      (drop noise)   (add context)   (smart sample)   (shape data)   (send)
@@ -204,7 +204,7 @@ service:
 
 With this multi-stage pipeline, the effective sampling rate is the product of both stages:
 
-```
+```text
 Agent: 50% head sampling (randomly drops half)
 Gateway: tail sampling keeps:
   - 100% of errors

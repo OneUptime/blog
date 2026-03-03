@@ -16,13 +16,13 @@ This guide walks through building request tracing in Node.js from scratch, then 
 
 Consider a typical microservices flow:
 
-```
+```text
 User Request → API Gateway → User Service → Order Service → Payment Service → Database
 ```
 
 Without tracing, your logs look like this:
 
-```
+```text
 [User Service] Processing user lookup
 [Order Service] Fetching order data
 [Payment Service] Error: timeout
@@ -31,7 +31,7 @@ Without tracing, your logs look like this:
 
 You cannot tell which logs belong to which request. With tracing, every log includes a trace ID:
 
-```
+```text
 [trace-id: abc123] [User Service] Processing user lookup
 [trace-id: abc123] [Order Service] Fetching order data
 [trace-id: abc123] [Payment Service] Error: timeout
@@ -1001,7 +1001,7 @@ With your traces in Jaeger or another backend, you can:
 
 A complete trace for an order creation looks like this:
 
-```
+```text
 Trace ID: 4bf92f3577b34da6a3ce929d0e0e4736
 
 api-gateway (50ms total)

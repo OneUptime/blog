@@ -54,7 +54,7 @@ kubectl logs -n istio-system deploy/istiod --tail=50 | grep "Push"
 
 You will see lines like:
 
-```
+```text
 2024-01-15T10:30:45.123Z  info  ads  Push debounce stable[50] 1 configs updated, pushing
 ```
 
@@ -127,7 +127,7 @@ kubectl exec -n istio-system deploy/istiod -- \
     curl -s localhost:15014/metrics | grep pilot_xds_pushes
 ```
 
-```
+```text
 pilot_xds_pushes{type="cds"} 1234
 pilot_xds_pushes{type="eds"} 5678
 pilot_xds_pushes{type="lds"} 1234
@@ -144,7 +144,7 @@ istioctl proxy-status
 
 Output:
 
-```
+```text
 NAME                                 CDS    LDS    EDS    RDS    ECDS   ISTIOD                    VERSION
 my-app-abc.default                   SYNCED SYNCED SYNCED SYNCED -      istiod-xyz.istio-system   1.20.0
 payment-def.payment                  SYNCED SYNCED SYNCED SYNCED -      istiod-xyz.istio-system   1.20.0

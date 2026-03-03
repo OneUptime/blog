@@ -25,7 +25,7 @@ Each of these states needs different handling. The goal is to make sure every re
 
 Here's the typical failure scenario. Your deployment has 3 replicas and you trigger a rolling update:
 
-```
+```text
 T+0.0s: Kubernetes sends SIGTERM to pod-1
 T+0.1s: Pod-1's sidecar starts draining
 T+0.5s: Kubernetes API updates endpoints (removes pod-1)

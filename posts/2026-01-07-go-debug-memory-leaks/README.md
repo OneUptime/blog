@@ -621,7 +621,7 @@ GODEBUG=gctrace=1 ./myapp
 
 Sample output:
 
-```
+```text
 gc 1 @0.012s 2%: 0.018+1.2+0.017 ms clock, 0.14+0.50/1.0/0+0.13 ms cpu, 4->4->1 MB, 5 MB goal, 8 P
 gc 2 @0.025s 3%: 0.021+0.89+0.015 ms clock, 0.16+0.40/0.80/0+0.12 ms cpu, 4->4->2 MB, 5 MB goal, 8 P
 ```

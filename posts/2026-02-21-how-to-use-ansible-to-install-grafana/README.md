@@ -31,7 +31,7 @@ flowchart TD
 
 ## Project Structure
 
-```
+```text
 grafana-install/
   inventory/
     hosts.yml

@@ -14,7 +14,7 @@ This post builds a role around rsyslog (the default syslog daemon on most Linux 
 
 ## Role Structure
 
-```
+```text
 roles/log_management/
   defaults/main.yml
   handlers/main.yml

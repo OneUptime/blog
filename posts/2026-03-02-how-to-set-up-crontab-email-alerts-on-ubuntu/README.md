@@ -61,7 +61,7 @@ Create the SASL password file:
 sudo nano /etc/postfix/sasl_passwd
 ```
 
-```
+```text
 [smtp.gmail.com]:587 your-email@gmail.com:your-app-password
 ```
 
@@ -184,7 +184,7 @@ The `/etc/crontab` and `/etc/cron.d/` files also support `MAILTO`:
 sudo nano /etc/cron.d/my-system-jobs
 ```
 
-```
+```text
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO="sysadmin@example.com"

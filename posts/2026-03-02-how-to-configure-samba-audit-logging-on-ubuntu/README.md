@@ -114,7 +114,7 @@ By default, syslog sends all messages to `/var/log/syslog`. Redirect Samba audit
 sudo nano /etc/rsyslog.d/samba-audit.conf
 ```
 
-```
+```text
 # Route Samba audit messages (LOCAL5 facility) to a dedicated file
 local5.*    /var/log/samba/audit.log
 
@@ -150,7 +150,7 @@ Audit logs can grow large. Configure logrotate to manage them:
 sudo nano /etc/logrotate.d/samba-audit
 ```
 
-```
+```text
 /var/log/samba/audit.log {
     daily
     missingok
@@ -184,7 +184,7 @@ sudo systemctl restart smbd
 
 With the prefix format `%u|%I|%S`, log entries look like:
 
-```
+```text
 Mar 02 10:23:45 ubuntu smbd_audit: alice|192.168.1.101|audited-share|ok|open|documents/report.docx
 Mar 02 10:23:46 ubuntu smbd_audit: alice|192.168.1.101|audited-share|ok|write|documents/report.docx
 Mar 02 10:24:01 ubuntu smbd_audit: bob|192.168.1.102|audited-share|ok|connect|.
@@ -249,7 +249,7 @@ For enterprise environments, forward Samba audit logs to a centralized Security 
 sudo nano /etc/rsyslog.d/samba-audit.conf
 ```
 
-```
+```text
 # Forward LOCAL5 (Samba audit) to remote syslog server
 local5.*    action(type="omfwd" target="siem.company.com" port="514" protocol="tcp")
 local5.*    /var/log/samba/audit.log

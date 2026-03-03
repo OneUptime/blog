@@ -113,7 +113,7 @@ For the input (prompt) filters, set the threshold for each category. The thresho
 
 For a healthcare application that discusses medical conditions:
 
-```
+```text
 Input Filter Configuration:
   Hate:      Medium and above (default)
   Violence:  High only (allow medical violence descriptions)
@@ -127,7 +127,7 @@ Apply the same logic to output (completion) filters. You might want different th
 
 For the healthcare example:
 
-```
+```text
 Output Filter Configuration:
   Hate:      Medium and above (default)
   Violence:  High only (allow clinical descriptions)

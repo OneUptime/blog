@@ -187,7 +187,7 @@ journalctl -p err --since "1 day ago" | \
 
 When a service generates logs faster than the rate limit allows, you'll see messages like:
 
-```
+```text
 systemd-journald[xxx]: /dev/kmsg buffer overrun, some messages lost.
 ```
 

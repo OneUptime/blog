@@ -16,7 +16,7 @@ This guide covers how to organize state files for multi-team access, configure b
 
 The first step is organizing state files so access can be controlled independently per team:
 
-```
+```text
 s3://org-terraform-state/
   platform-team/
     networking/

@@ -25,7 +25,7 @@ The ecosystem has matured significantly. Libraries like Axum, Tonic, and Tokio p
 
 A well-organized monorepo helps manage multiple services. Here's a structure that scales:
 
-```
+```text
 microservices/
 ├── Cargo.toml              # Workspace root
 ├── services/

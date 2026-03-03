@@ -184,7 +184,7 @@ spec:
 
 Here is what a typical project using kustomized-helm looks like:
 
-```
+```text
 my-nginx-deployment/
   Chart.yaml           # Helm chart metadata (can reference remote chart)
   values.yaml          # Helm values

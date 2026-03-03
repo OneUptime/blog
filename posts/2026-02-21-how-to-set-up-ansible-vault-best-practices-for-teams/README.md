@@ -98,7 +98,7 @@ This separation means that a developer who only works on staging does not need t
 
 Adopt a consistent structure for vault files across your project. The most popular convention uses paired files:
 
-```
+```text
 group_vars/
   all/
     vars.yml          # Non-secret variables
@@ -253,7 +253,7 @@ Now `git diff` will show the decrypted content for vault files (assuming you hav
 
 When changing vault values, be explicit in your commit messages about what changed without revealing the actual values:
 
-```
+```text
 Update production database credentials
 
 - Rotated db_password for the PostgreSQL primary

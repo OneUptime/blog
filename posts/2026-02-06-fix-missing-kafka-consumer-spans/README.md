@@ -16,7 +16,7 @@ The agent instruments:
 
 The expected trace:
 
-```
+```text
 order-service: publish_order     [====] 10ms  (PRODUCER span)
   payment-service: process_order   [========] 50ms  (CONSUMER span, linked to producer)
 ```

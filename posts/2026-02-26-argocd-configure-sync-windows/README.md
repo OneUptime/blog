@@ -49,7 +49,7 @@ A `deny` window means syncs are blocked during the window. Outside a deny window
 
 A standard cron expression defining when the window starts. The five fields are: minute, hour, day-of-month, month, day-of-week.
 
-```
+```text
 # Cron format
 # ┌───────── minute (0-59)
 # │ ┌─────── hour (0-23)
@@ -203,7 +203,7 @@ The UI also shows sync window status. If a sync window is currently blocking an 
 
 Store your AppProject definitions in Git alongside your application manifests. This keeps sync window configuration under version control.
 
-```
+```text
 infra-repo/
   argocd/
     projects/

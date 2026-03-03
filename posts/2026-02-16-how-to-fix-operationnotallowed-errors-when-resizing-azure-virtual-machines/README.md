@@ -16,14 +16,14 @@ I have dealt with this error more times than I can count, and the root cause fal
 
 The OperationNotAllowed error during VM resize typically looks something like this:
 
-```
+```text
 Operation 'resize' is not allowed on VM 'myVM' because the requested VM size
 'Standard_D8s_v5' is not available in the current hardware cluster.
 ```
 
 Or sometimes the more cryptic:
 
-```
+```text
 The requested VM size is not available in the current region/zone.
 Please try a different size or deploy to a different region/zone.
 ```

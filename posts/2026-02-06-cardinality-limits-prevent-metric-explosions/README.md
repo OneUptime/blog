@@ -59,7 +59,7 @@ def handle_request(user_id, endpoint, method):
 ```
 
 Cardinality calculation:
-```
+```text
 1,000,000 users × 200 endpoints × 5 methods × 15 status codes = 15 billion time series
 ```
 

@@ -239,7 +239,7 @@ echo "\"app_user\" \"md5$(echo -n 'passwordapp_user' | md5sum | cut -d' ' -f1)\"
 
 Or use plain text (less secure):
 
-```
+```text
 "app_user" "plain_password"
 ```
 

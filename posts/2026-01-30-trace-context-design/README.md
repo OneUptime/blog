@@ -43,7 +43,7 @@ The W3C Trace Context specification defines two HTTP headers for propagating tra
 
 The `traceparent` header follows a specific format:
 
-```
+```text
 traceparent: {version}-{trace-id}-{parent-id}-{trace-flags}
 ```
 
@@ -58,7 +58,7 @@ Let's break down each component:
 
 Here is an example:
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 ```
 
@@ -66,7 +66,7 @@ traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 
 The `tracestate` header carries vendor-specific trace data as key-value pairs:
 
-```
+```text
 tracestate: vendor1=value1,vendor2=value2
 ```
 

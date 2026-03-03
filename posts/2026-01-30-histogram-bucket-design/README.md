@@ -258,12 +258,12 @@ Every bucket is a separate time series. More buckets = more memory and storage.
 
 ### The Cardinality Formula
 
-```
+```text
 Total time series = buckets * label_combinations
 ```
 
 **Example calculation:**
-```
+```text
 - Histogram with 20 buckets
 - Labels: method (5 values), endpoint (50 values), status (5 values)
 - Total: 20 * 5 * 50 * 5 = 25,000 time series per histogram

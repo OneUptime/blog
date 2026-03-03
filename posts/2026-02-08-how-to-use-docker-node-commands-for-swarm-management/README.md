@@ -42,7 +42,7 @@ docker node ls
 
 The output looks something like this:
 
-```
+```text
 ID                            HOSTNAME   STATUS    AVAILABILITY   MANAGER STATUS   ENGINE VERSION
 abc123def456 *                manager1   Ready     Active         Leader           24.0.7
 ghi789jkl012                  worker1    Ready     Active                          24.0.7

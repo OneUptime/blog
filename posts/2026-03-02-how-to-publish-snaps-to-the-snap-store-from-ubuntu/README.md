@@ -126,7 +126,7 @@ The upload process:
 
 Channels control which users get which version:
 
-```
+```text
 <track>/<risk>/<branch>
 
 Tracks: latest (default), specific versions like 1.0, 2.0

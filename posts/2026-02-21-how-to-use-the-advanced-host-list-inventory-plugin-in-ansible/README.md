@@ -64,7 +64,7 @@ ansible -i 'web[01:05].example.com,' all --list-hosts
 
 Output:
 
-```
+```text
   hosts (5):
     web01.example.com
     web02.example.com

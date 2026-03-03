@@ -361,7 +361,7 @@ gantt
 
 Use clear, consistent language during the exercise.
 
-```
+```text
 [10:00] COORDINATOR: "Game day exercise starting. This is a drill.
         All participants confirm ready status."
 

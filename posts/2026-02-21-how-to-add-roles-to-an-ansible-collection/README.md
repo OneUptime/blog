@@ -16,7 +16,7 @@ This post covers how to add roles to a collection, how namespacing works, how to
 
 Roles live in the `roles/` directory at the root of your collection:
 
-```
+```text
 my_namespace/my_collection/
   galaxy.yml
   plugins/

@@ -92,7 +92,7 @@ vault secrets list -detailed
 
 The output shows seal wrap status:
 
-```
+```text
 Path              Type    Seal Wrap
 ----              ----    ---------
 sensitive-data/   kv      true

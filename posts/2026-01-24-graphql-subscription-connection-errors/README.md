@@ -36,13 +36,13 @@ sequenceDiagram
 
 ### Error Message
 
-```
+```text
 WebSocket connection to 'ws://localhost:4000/graphql' failed
 ```
 
 or
 
-```
+```text
 Error: Could not connect to WebSocket endpoint
 ```
 
@@ -212,13 +212,13 @@ location /graphql {
 
 ### Error Message
 
-```
+```text
 Error: Connection timed out
 ```
 
 or
 
-```
+```text
 WebSocket connection closed before receiving a connection acknowledgment
 ```
 
@@ -297,13 +297,13 @@ const wsClient = createClient({
 
 ### Error Message
 
-```
+```text
 Error: Forbidden
 ```
 
 or
 
-```
+```text
 Connection closed with code 4403
 ```
 
@@ -488,7 +488,7 @@ flowchart TD
 
 ### Error Message
 
-```
+```text
 WebSocket closed with code 1006
 ```
 

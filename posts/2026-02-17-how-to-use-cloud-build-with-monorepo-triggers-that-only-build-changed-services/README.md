@@ -16,7 +16,7 @@ I have worked with monorepos that had 20+ services in a single repository, and w
 
 Let us say your repository looks like this:
 
-```
+```text
 my-monorepo/
   services/
     api/

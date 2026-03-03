@@ -154,7 +154,7 @@ curl http://localhost:9586/metrics
 
 The exporter provides these metrics:
 
-```
+```text
 # Bytes received from peer
 wireguard_received_bytes_total{interface="wg0",public_key="abc123...",allowed_ips="10.10.0.2/32"} 125450000
 

@@ -79,7 +79,7 @@ go env GOPATH
 
 ### GOPATH Structure
 
-```
+```text
 $GOPATH/
   bin/          # Compiled binaries from go install
   pkg/          # Module cache (pkg/mod/)

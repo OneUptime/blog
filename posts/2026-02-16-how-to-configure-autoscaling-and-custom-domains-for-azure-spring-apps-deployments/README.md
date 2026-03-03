@@ -177,7 +177,7 @@ First, create a CNAME record with your DNS provider. The CNAME should point your
 
 For example, to use `api.mycompany.com`:
 
-```
+```text
 Type: CNAME
 Name: api
 Value: myorg-spring-apps-order-service.azuremicroservices.io
@@ -199,7 +199,7 @@ az spring app custom-domain show \
 
 Add the verification TXT record to your DNS:
 
-```
+```text
 Type: TXT
 Name: asuid.api
 Value: <verification-token-from-azure>

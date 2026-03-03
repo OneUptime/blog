@@ -296,7 +296,7 @@ If you see cascading failures or unexpected behavior, you've found a resilience 
 
 When Istio injects an abort, the response includes specific headers and a body that indicate it came from fault injection:
 
-```
+```text
 HTTP/1.1 503 Service Unavailable
 content-length: 18
 content-type: text/plain

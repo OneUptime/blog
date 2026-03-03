@@ -41,7 +41,7 @@ Alternatively, some third-party PPAs package it:
 
 ## Basic Usage
 
-```
+```text
 wrk [options] <URL>
 ```
 
@@ -86,7 +86,7 @@ wrk -t4 -c200 -d60s http://target-server/
 wrk -t4 -c100 -d30s --latency http://localhost/
 ```
 
-```
+```text
 Running 30s test @ http://localhost/
   4 threads and 100 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev

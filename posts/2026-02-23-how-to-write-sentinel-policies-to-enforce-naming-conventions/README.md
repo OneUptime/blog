@@ -26,7 +26,7 @@ Without enforcement, naming conventions exist only in documentation that nobody 
 
 Before writing policies, you need to decide on a naming standard. A common pattern looks like this:
 
-```
+```text
 {environment}-{team}-{application}-{resource-type}-{identifier}
 ```
 

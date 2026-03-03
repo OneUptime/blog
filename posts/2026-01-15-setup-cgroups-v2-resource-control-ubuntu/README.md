@@ -34,7 +34,7 @@ cgroups v2 addresses these limitations with a unified approach:
 - **Pressure Stall Information (PSI)**: Built-in metrics for resource contention
 - **Enhanced security**: Better delegation model for unprivileged users
 
-```
+```text
 # cgroups v1 structure (multiple hierarchies)
 /sys/fs/cgroup/cpu/
 /sys/fs/cgroup/memory/
@@ -1161,7 +1161,7 @@ systemd provides a higher-level interface for managing cgroups through units (se
 
 systemd organizes cgroups into a hierarchy of slices:
 
-```
+```text
 -.slice (root slice)
 ├── user.slice           # User sessions
 │   └── user-1000.slice  # Specific user

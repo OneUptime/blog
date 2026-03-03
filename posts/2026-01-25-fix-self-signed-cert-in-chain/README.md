@@ -10,7 +10,7 @@ Description: Resolve the SELF_SIGNED_CERT_IN_CHAIN error in Node.js by properly 
 
 When you see this error in your Node.js application:
 
-```
+```text
 Error: self signed certificate in certificate chain
     at TLSSocket.onConnectSecure (_tls_wrap.js:1515:34)
 ```
@@ -21,7 +21,7 @@ It means the server's certificate chain includes a certificate that was signed b
 
 Unlike DEPTH_ZERO_SELF_SIGNED_CERT (which means the server certificate itself is self-signed), SELF_SIGNED_CERT_IN_CHAIN means somewhere in the certificate chain, there is a CA certificate that is not in Node.js's trusted root store.
 
-```
+```text
 Server Certificate  <-- Signed by Intermediate CA
        |
 Intermediate CA     <-- Signed by Root CA

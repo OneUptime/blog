@@ -252,7 +252,7 @@ az monitor diagnostic-settings create \
 
 Then query the logs in Log Analytics.
 
-```
+```text
 // Show all denied application rule hits in the last hour
 AzureDiagnostics
 | where Category == "AzureFirewallApplicationRule"

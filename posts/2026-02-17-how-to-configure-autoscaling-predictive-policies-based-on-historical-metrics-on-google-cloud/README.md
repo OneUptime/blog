@@ -88,7 +88,7 @@ gcloud compute instance-groups managed describe my-instance-group \
 
 You can also view the predicted and actual instance counts in Cloud Monitoring. The following MQL query shows both values over time.
 
-```
+```text
 # MQL query for Cloud Monitoring - shows predicted vs actual instance count
 fetch gce_instance_group_manager
 | metric 'compute.googleapis.com/instance_group/predicted_size'

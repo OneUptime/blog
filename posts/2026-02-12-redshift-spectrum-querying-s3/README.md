@@ -143,7 +143,7 @@ LOCATION 's3://my-data-lake/clickstream/';
 
 Your S3 data needs to be organized in directories matching the partition columns.
 
-```
+```text
 s3://my-data-lake/clickstream/year=2026/month=01/day=15/data.parquet
 s3://my-data-lake/clickstream/year=2026/month=01/day=16/data.parquet
 s3://my-data-lake/clickstream/year=2026/month=02/day=01/data.parquet

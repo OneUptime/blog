@@ -91,7 +91,7 @@ spec:
 
 When you have debug logging enabled on Envoy (not just access logs), each connection and stream gets a numeric ID. These IDs are local to the Envoy instance, so they don't correlate across proxies. But they're very useful for tracing a request within a single proxy's debug logs:
 
-```
+```text
 [2026-02-24T10:00:00.000Z][debug][connection] [source/common/network/connection_impl.cc:91] [C12345] current connecting state: Connecting
 [2026-02-24T10:00:00.001Z][debug][http] [source/common/http/conn_manager_impl.cc:265] [C12345][S67890] request headers complete (end_stream=true): method=GET path=/api/users
 [2026-02-24T10:00:00.002Z][debug][router] [source/common/router/router.cc:478] [C12345][S67890] cluster 'outbound|8080||my-service.default.svc.cluster.local' match for URL '/api/users'
@@ -168,7 +168,7 @@ kubectl logs -n istio-system deploy/istiod | grep "my-pod-name"
 
 If you're using Grafana, you can build a dashboard that lets you search by request ID and see all related log entries across the mesh:
 
-```
+```text
 # Loki query for all logs matching a request ID
 {namespace=~".+"} |= "abc12345-def6-7890-ghij-klmnopqrstuv"
 ```

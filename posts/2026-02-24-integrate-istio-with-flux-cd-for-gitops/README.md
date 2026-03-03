@@ -42,7 +42,7 @@ You should see the source-controller, kustomize-controller, helm-controller, and
 
 A well-organized repo structure makes managing Istio configuration much easier:
 
-```
+```text
 clusters/
 ├── production/
 │   ├── flux-system/

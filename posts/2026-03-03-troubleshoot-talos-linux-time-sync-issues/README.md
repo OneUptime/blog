@@ -136,7 +136,7 @@ Time sync problems often present as other errors. Here are the common symptoms:
 
 **Certificate errors:**
 
-```
+```text
 x509: certificate has expired or is not yet valid: current time 2024-01-01T00:00:00Z is before 2025-01-01T00:00:00Z
 ```
 
@@ -144,7 +144,7 @@ The "current time is before" message is a strong indicator that the node clock i
 
 **etcd errors:**
 
-```
+```text
 {"level":"warn","msg":"etcdserver: failed to send out heartbeat on time"}
 ```
 
@@ -152,7 +152,7 @@ If one etcd member has a different time, heartbeat timing gets confused.
 
 **Authentication failures:**
 
-```
+```text
 token has expired
 ```
 

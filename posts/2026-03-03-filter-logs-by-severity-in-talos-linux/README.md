@@ -16,7 +16,7 @@ This guide covers how to filter by severity at every layer of your Talos Linux l
 
 Most logging systems use a standard set of severity levels. While the exact names vary between systems, the concept is consistent:
 
-```
+```text
 # Common severity levels from least to most severe
 DEBUG   - Detailed diagnostic information
 INFO    - General operational messages
@@ -59,7 +59,7 @@ talosctl -n 192.168.1.10 logs kubelet | grep -iv "info\|debug\|I[0-9]\|D[0-9]"
 
 Kubernetes components use the klog library, which has its own format for severity levels. In the default text format, each line starts with a single character indicating the level:
 
-```
+```text
 # klog severity prefixes
 I - Info
 W - Warning
@@ -69,7 +69,7 @@ F - Fatal
 
 A typical klog line looks like:
 
-```
+```text
 I0303 10:15:32.123456   12345 server.go:123] Starting API server
 E0303 10:15:33.234567   12345 handler.go:456] Failed to process request: connection refused
 ```
@@ -172,7 +172,7 @@ When you have logs flowing to a centralized system like Loki, Elasticsearch, or 
 
 ### Elasticsearch (KQL)
 
-```
+```text
 # Filter for error severity
 level: "error" OR level: "ERROR"
 
@@ -208,7 +208,7 @@ machine:
 
 The `v` flag controls verbosity on a scale from 0 to 10:
 
-```
+```text
 # Kubernetes verbosity levels
 # 0 - Generally useful information (always visible)
 # 1 - Reasonable default log level

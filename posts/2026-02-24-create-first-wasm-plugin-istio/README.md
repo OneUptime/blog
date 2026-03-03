@@ -143,7 +143,7 @@ cargo build --target wasm32-wasi --release
 
 The compiled Wasm file will be at:
 
-```
+```text
 target/wasm32-wasi/release/my_first_plugin.wasm
 ```
 

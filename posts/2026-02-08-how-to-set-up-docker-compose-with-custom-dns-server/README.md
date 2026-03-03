@@ -39,7 +39,7 @@ docker compose exec app cat /etc/resolv.conf
 
 The output should show your custom nameservers:
 
-```
+```text
 nameserver 10.0.0.53
 nameserver 8.8.8.8
 ```
@@ -139,7 +139,7 @@ networks:
 
 Create the CoreDNS configuration:
 
-```
+```text
 # dns/Corefile - CoreDNS configuration
 .:53 {
     # Serve custom zone for internal services
@@ -161,7 +161,7 @@ Create the CoreDNS configuration:
 
 And a zone file for your internal domains:
 
-```
+```text
 ; dns/zones/internal.zone - internal DNS records
 $ORIGIN internal.local.
 @       IN SOA  ns.internal.local. admin.internal.local. (
@@ -257,7 +257,7 @@ networks:
 
 The dnsmasq configuration routes queries to different upstream servers based on domain:
 
-```
+```text
 # dnsmasq.conf - split DNS routing
 # Internal company domains go to internal DNS
 server=/mycompany.local/10.0.0.53
@@ -329,7 +329,7 @@ networks:
         - subnet: 172.25.0.0/16
 ```
 
-```
+```text
 # consul-dns.conf - forward .consul to Consul DNS
 server=/consul/172.25.0.2#8600
 server=8.8.8.8

@@ -32,7 +32,7 @@ kubectl logs <pod-name> -c istio-proxy --tail=100
 
 Look for lines with 503 status codes. The response flag tells you what happened. A typical log line looks like:
 
-```
+```text
 [2026-02-24T10:00:00.000Z] "GET /api/data HTTP/1.1" 503 UF 0 91 5 - "-" "curl/7.68.0" "abc-123" "my-service.default.svc.cluster.local:8080" "-" - - 10.0.0.5:8080 10.0.0.3:45678 - default
 ```
 

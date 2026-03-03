@@ -26,7 +26,7 @@ Default Linux limits (1024) are insufficient for Elasticsearch.
 
 ### Common Error Messages
 
-```
+```text
 java.io.IOException: Too many open files
 
 ElasticsearchException: Too many open files
@@ -36,7 +36,7 @@ max file descriptors [4096] for elasticsearch process is too low, increase to at
 
 ### Log Entries
 
-```
+```text
 [WARN ][o.e.b.BootstrapChecks] max file descriptors [1024] for elasticsearch process is too low, increase to at least [65536]
 ```
 
@@ -226,7 +226,7 @@ curl -u elastic:password -X GET "localhost:9200/_nodes/stats/process?pretty" | j
 
 ### Expected Output
 
-```
+```text
 Max open files            65536                65536                files
 Max processes             4096                 4096                 processes
 ```
@@ -308,7 +308,7 @@ LimitNOFILE=65536
 
 Edit `/etc/ssh/sshd_config`:
 
-```
+```text
 UsePAM yes
 ```
 
@@ -337,7 +337,7 @@ For containers, limits must be set at container runtime, not inside the containe
 
 Create `/etc/elasticsearch/jvm.options.d/production.options`:
 
-```
+```text
 # Avoid file descriptor issues
 -XX:+HeapDumpOnOutOfMemoryError
 ```

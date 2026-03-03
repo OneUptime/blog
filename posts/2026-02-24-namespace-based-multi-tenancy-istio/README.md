@@ -16,7 +16,7 @@ Istio's service mesh gives you the tools to enforce hard boundaries between tena
 
 The idea is straightforward: each tenant gets their own Kubernetes namespace, and Istio enforces isolation between those namespaces. Here is what the layout looks like:
 
-```
+```text
 cluster/
   istio-system/          # Istio control plane
   tenant-a/              # Tenant A workloads

@@ -12,7 +12,7 @@ The "MalformedPolicyDocument: Has prohibited field Resource" error is a common p
 
 The error typically looks like this:
 
-```
+```text
 Error: error creating IAM Role (my-role): MalformedPolicyDocument:
 Has prohibited field Resource
 

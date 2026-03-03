@@ -14,7 +14,7 @@ When running Ansible playbooks, encountering the dreaded "UNREACHABLE!" error ca
 
 The unreachable error typically looks like this:
 
-```
+```text
 fatal: [webserver01]: UNREACHABLE! => {
     "changed": false,
     "msg": "Failed to connect to the host via ssh: ssh: connect to host 192.168.1.100 port 22: Connection timed out",

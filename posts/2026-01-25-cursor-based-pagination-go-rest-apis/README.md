@@ -245,7 +245,7 @@ func (h *Handler) ListPosts(w http.ResponseWriter, r *http.Request) {
 
 Clients use the API like this:
 
-```
+```text
 GET /posts?limit=20
 GET /posts?limit=20&cursor=MTY3NDU4NzIwMDAwMDAwMDAwMF8xMjM0
 ```

@@ -310,7 +310,7 @@ deny[msg] {
 
 Policies themselves should be managed through GitOps:
 
-```
+```text
 config-repo/
   policies/
     security/
@@ -376,7 +376,7 @@ spec:
 
 Store exceptions in Git alongside your policies so they are auditable:
 
-```
+```text
 policies/
   exceptions/
     monitoring-privileged-exception.yaml

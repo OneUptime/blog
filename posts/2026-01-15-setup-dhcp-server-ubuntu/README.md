@@ -21,7 +21,7 @@ DHCP (Dynamic Host Configuration Protocol) automatically assigns IP addresses an
 
 Before configuration, plan your network:
 
-```
+```text
 Network: 192.168.1.0/24
 Gateway: 192.168.1.1
 DHCP Server: 192.168.1.10
@@ -329,7 +329,7 @@ grep -E "^lease|hardware ethernet|client-hostname" /var/lib/dhcp/dhcpd.leases
 
 ### Lease File Format
 
-```
+```text
 lease 192.168.1.105 {
   starts 4 2024/01/15 10:30:00;
   ends 4 2024/01/15 12:30:00;
@@ -373,7 +373,7 @@ log-facility local7;
 sudo nano /etc/rsyslog.d/dhcpd.conf
 ```
 
-```
+```text
 local7.*    /var/log/dhcpd.log
 ```
 

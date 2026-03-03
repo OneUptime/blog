@@ -103,7 +103,7 @@ newgrp docker
 
 Proper DNS setup is critical for mail delivery. Configure the following DNS records for your domain (replace `mail.example.com` with your hostname and `203.0.113.10` with your server IP):
 
-```
+```text
 # A Record - Points your mail hostname to your server IP
 mail.example.com.       IN  A       203.0.113.10
 
@@ -194,7 +194,7 @@ Run the interactive configuration script to generate the main configuration file
 
 The script will ask for your mail server's FQDN (Fully Qualified Domain Name). Enter your mail hostname:
 
-```
+```text
 Mail server hostname (FQDN) - this is NOT your mail domain, but your mail servers hostname: mail.example.com
 ```
 
@@ -332,7 +332,7 @@ docker compose logs -f rspamd-mailcow      # Spam filter logs
 
 Once all containers are running, access the web admin interface:
 
-```
+```text
 URL: https://mail.example.com
 Default username: admin
 Default password: moohoo
@@ -503,7 +503,7 @@ Configure mobile devices to access your Mailcow email.
 
 Provide these settings to mail clients:
 
-```
+```text
 # Incoming Mail (IMAP)
 Server: mail.example.com
 Port: 993
@@ -574,7 +574,7 @@ Mailcow supports automatic configuration for Outlook and Thunderbird:
 
 Access webmail and configure CalDAV/CardDAV:
 
-```
+```text
 # Webmail URL
 https://mail.example.com/SOGo
 

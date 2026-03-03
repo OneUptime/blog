@@ -37,7 +37,7 @@ done
 
 Create a map of your current Terraform setup:
 
-```
+```text
 Current State:
 - 15 Terraform configurations
 - 45 workspaces across 3 environments
@@ -51,7 +51,7 @@ Current State:
 
 Map dependencies between Terraform configurations:
 
-```
+```text
 networking/ -> compute/ (provides VPC, subnet IDs)
 compute/ -> monitoring/ (provides instance IDs)
 iam/ -> compute/, databases/ (provides role ARNs)
@@ -62,7 +62,7 @@ databases/ -> applications/ (provides connection strings)
 
 ### Document the Goal
 
-```
+```text
 Target State:
 - Modular Terraform with shared modules
 - All state in HCP Terraform
@@ -76,7 +76,7 @@ Target State:
 
 Map every resource from its current location to its target location:
 
-```
+```text
 Source                              Target
 ------                              ------
 legacy/main.tf:aws_vpc.main     -> networking/vpc.tf:module.vpc.aws_vpc.this
@@ -88,7 +88,7 @@ monolith/db.tf:aws_db_instance  -> databases/rds.tf:module.rds.aws_db_instance.t
 
 ### Classify Resources by Risk Level
 
-```
+```text
 High Risk (causes downtime if disrupted):
   - Production databases
   - Load balancers
@@ -131,7 +131,7 @@ terraform apply
 
 Break the migration into waves ordered by dependency and risk:
 
-```
+```text
 Wave 1: Foundation (Week 1-2)
   - Set up target backends
   - Set up CI/CD pipelines
@@ -162,7 +162,7 @@ Wave 5: Applications (Week 9-10)
 
 ### Define Success Criteria
 
-```
+```text
 Per-wave success criteria:
   [ ] All resources migrated to target state
   [ ] terraform plan shows no changes in target
@@ -235,7 +235,7 @@ echo "Results: $FAILURES failures out of $(echo "$CONFIGS" | wc -l) configuratio
 
 ### Pre-Migration Checklist
 
-```
+```text
 [ ] All team members notified
 [ ] Change window approved
 [ ] State backups taken
@@ -286,7 +286,7 @@ mv legacy/ archived/legacy-$(date +%Y%m%d)/
 
 Document lessons learned:
 
-```
+```text
 Migration Retrospective:
 - Total duration: 10 weeks
 - Resources migrated: 2,500

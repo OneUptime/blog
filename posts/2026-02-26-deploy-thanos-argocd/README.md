@@ -45,7 +45,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 metrics/
   thanos/
     Chart.yaml

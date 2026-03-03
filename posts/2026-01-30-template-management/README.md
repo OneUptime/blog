@@ -62,7 +62,7 @@ A complete template management system needs these building blocks:
 
 Start with a clear directory structure. Each template should be self-contained with metadata, schema, and the actual template files.
 
-```
+```text
 templates/
   service-nodejs/
     template.yaml          # Metadata and schema

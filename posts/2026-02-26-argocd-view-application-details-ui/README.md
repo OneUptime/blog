@@ -16,7 +16,7 @@ After logging into the ArgoCD UI, you will see the application list view showing
 
 You can also navigate directly using the URL pattern:
 
-```
+```text
 https://argocd.example.com/applications/argocd/<application-name>
 ```
 
@@ -40,7 +40,7 @@ At the top of the application details page, you will see a header bar with key i
 
 The header also contains action buttons:
 
-```
+```text
 [SYNC]  [REFRESH]  [DELETE]  [DETAILS]  [DIFF]  [HISTORY]
 ```
 
@@ -60,7 +60,7 @@ Clicking the application name or the "Details" button opens the summary panel. T
 
 The status section shows:
 
-```
+```text
 Sync Status:    Synced to main (abc1234)
 Health Status:  Healthy
 Last Sync:      2 minutes ago
@@ -136,7 +136,7 @@ Access it by clicking the "DIFF" button in the header. The diff view shows:
 
 For each modified resource, you see a side-by-side diff similar to a Git diff:
 
-```
+```text
 Left side (Live):  The current state in the cluster
 Right side (Git):  The desired state from Git
 ```

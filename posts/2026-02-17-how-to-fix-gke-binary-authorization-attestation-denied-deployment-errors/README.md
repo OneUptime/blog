@@ -43,7 +43,7 @@ kubectl describe replicaset -n your-namespace -l app=your-app
 
 The error typically looks like:
 
-```
+```text
 admission webhook "imagepolicywebhook.image-policy.k8s.io" denied the request:
 Image gcr.io/your-project/your-image@sha256:abc123... denied by Binary Authorization
 default admission rule. Denied by always_deny admission rule.
@@ -51,7 +51,7 @@ default admission rule. Denied by always_deny admission rule.
 
 Or with attestation requirements:
 
-```
+```text
 Image gcr.io/your-project/your-image@sha256:abc123... denied by attestor
 projects/your-project/attestors/your-attestor: missing required attestation
 ```

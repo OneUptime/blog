@@ -56,7 +56,7 @@ inputs = {
 
 With this directory structure:
 
-```
+```text
 live/dev/app/
   terragrunt.hcl
   config.json        # {"port": 8080, "replicas": 2}
@@ -96,7 +96,7 @@ This distinction trips people up. Here is the difference:
 
 Example setup:
 
-```
+```text
 live/
   terragrunt.hcl              # root config
   dev/

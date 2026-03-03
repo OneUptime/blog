@@ -8,7 +8,7 @@ Description: Fix OpenTelemetry Collector CrashLoopBackOff in Kubernetes caused b
 
 Your OpenTelemetry Collector pod is in CrashLoopBackOff. You check the logs and see errors like:
 
-```
+```text
 Error: failed to start exporters: failed to create sending queue:
   failed to open persistent storage: corrupted data in queue file
 ```

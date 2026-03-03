@@ -110,7 +110,7 @@ gcloud datastream private-connections create pg-private-conn \
 
 Also update your PostgreSQL `pg_hba.conf` to allow connections from the Datastream IP range:
 
-```
+```text
 # Allow Datastream to connect for replication
 host    mydb    datastream_user    10.2.0.0/29    md5
 host    replication    datastream_user    10.2.0.0/29    md5

@@ -42,7 +42,7 @@ The first thing to document is which multi-cluster model you're using. Istio sup
     └─────────────┘        └─────────────┘       └─────────────┘
           |                       |                      |
      network-east            network-west           network-eu
-```
+```text
 ```
 
 ## Documenting Trust Configuration
@@ -283,7 +283,7 @@ Include operational procedures specific to multi-cluster:
 3. Restart istiod: `kubectl rollout restart deploy/istiod -n istio-system`
 4. Perform rolling restart of all workloads
 5. Verify mTLS is working with the new cert
-```
+```text
 
 ## Documenting Network Configuration
 

@@ -176,7 +176,7 @@ Not everything comes in JSON. Here is how to parse a syslog-formatted log from a
 
 Sample log line:
 
-```
+```text
 Feb 17 10:30:00 fw01 FIREWALL: DENY TCP 10.0.0.5:43210 -> 192.168.1.100:443 rule=block-external
 ```
 
@@ -291,7 +291,7 @@ Upload a file with 10-20 representative log lines covering different event types
 
 After parsing, verify your UDM events look correct by running a search.
 
-```
+```text
 metadata.product_name = "CustomAuditLog" AND metadata.event_timestamp.seconds > timestamp("2026-02-17T00:00:00Z")
 ```
 

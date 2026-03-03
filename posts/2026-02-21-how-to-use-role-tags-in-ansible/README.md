@@ -218,7 +218,7 @@ ansible-playbook site.yml --list-tags
 
 Output:
 
-```
+```text
 playbook: site.yml
 
   play #1 (all): Configure servers

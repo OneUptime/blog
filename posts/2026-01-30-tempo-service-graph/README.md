@@ -372,7 +372,7 @@ Grafana has built-in support for service graphs through the Node Graph panel.
 
 In Grafana, go to Configuration > Data Sources > Tempo:
 
-```
+```text
 Service Graph:
   Data source: Prometheus
 

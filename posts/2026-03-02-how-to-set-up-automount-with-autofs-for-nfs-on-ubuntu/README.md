@@ -44,7 +44,7 @@ The auto master maps directories to map files:
 sudo nano /etc/auto.master
 ```
 
-```
+```text
 # Format: mount-point  map-file  [options]
 
 # Mount NFS shares under /mnt/nfs, using /etc/auto.nfs as the map
@@ -65,7 +65,7 @@ Options:
 sudo nano /etc/auto.nfs
 ```
 
-```
+```text
 # Format: key  [options]  location
 
 # Simple entry: /mnt/nfs/data mounts nfsserver:/srv/nfs/data
@@ -130,7 +130,7 @@ A common use case for autofs is automatic home directory mounting for NFS home d
 sudo nano /etc/auto.home
 ```
 
-```
+```text
 # Wildcard: * matches any subdirectory
 # & is substituted with the matched key value
 *  -rw,hard,intr,noatime  nfsserver.example.com:/srv/nfs/home/&
@@ -168,7 +168,7 @@ mount_verbose = no
 
 For LDAP maps, add to `/etc/auto.master`:
 
-```
+```text
 /home  ldap:ou=automount,dc=example,dc=com  --timeout=600
 ```
 
@@ -196,7 +196,7 @@ Enable the autofs SSSD integration:
 sudo nano /etc/auto.master
 ```
 
-```
+```text
 /home  sss  --timeout=600
 ```
 
@@ -214,7 +214,7 @@ Direct maps specify the exact mount point:
 sudo nano /etc/auto.master
 ```
 
-```
+```text
 # /- means direct map (the map file specifies full paths)
 /-  /etc/auto.direct  --timeout=300
 ```
@@ -223,7 +223,7 @@ sudo nano /etc/auto.master
 sudo nano /etc/auto.direct
 ```
 
-```
+```text
 # Full path specified in direct maps
 /mnt/data      -rw,hard,intr  nfsserver.example.com:/srv/nfs/data
 /opt/software  -ro,hard,intr  nfsserver.example.com:/srv/nfs/software
@@ -304,7 +304,7 @@ A special autofs configuration allows browsing any NFS server:
 sudo nano /etc/auto.master
 ```
 
-```
+```text
 # Automatic NFS browsing: /net/hostname/export mounts hostname:/export
 /net  /etc/auto.net  --timeout=60 --ghost
 ```

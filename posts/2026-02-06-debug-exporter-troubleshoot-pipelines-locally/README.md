@@ -99,7 +99,7 @@ exporters:
 
 Output looks like this:
 
-```
+```text
 2026-02-06T10:15:30.123Z    info    TracesExporter    {"#spans": 5}
 2026-02-06T10:15:35.456Z    info    MetricsExporter   {"#metrics": 12}
 2026-02-06T10:15:40.789Z    info    LogsExporter      {"#logs": 3}
@@ -120,7 +120,7 @@ exporters:
 
 Output includes the resource attributes and span names:
 
-```
+```text
 2026-02-06T10:15:30.123Z    info    TracesExporter
     Resource:
         service.name: payment-service
@@ -144,7 +144,7 @@ exporters:
 
 The output for a single span looks something like this:
 
-```
+```text
 2026-02-06T10:15:30.123Z    info    TracesExporter
     Resource:
         service.name: Str(payment-service)

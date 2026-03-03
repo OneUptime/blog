@@ -52,7 +52,7 @@ Mask a service so it cannot be started:
 
 When you run this, Ansible creates a symlink:
 
-```
+```text
 /etc/systemd/system/bluetooth.service -> /dev/null
 ```
 

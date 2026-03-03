@@ -25,7 +25,7 @@ A severity-1 database corruption might be priority-2 if it affects only a test e
 
 The foundation of priority calculation is the classic ITIL formula:
 
-```
+```text
 Priority = f(Impact, Urgency)
 ```
 

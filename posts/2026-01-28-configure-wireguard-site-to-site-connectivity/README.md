@@ -209,7 +209,7 @@ ip addr show wg0
 
 Expected output from `wg show`:
 
-```
+```text
 interface: wg0
   public key: YOUR_PUBLIC_KEY_HERE
   private key: (hidden)

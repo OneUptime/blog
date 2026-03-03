@@ -64,7 +64,7 @@ sudo apt install -y haproxy
 
 Configure HAProxy for both APIs:
 
-```
+```text
 # /etc/haproxy/haproxy.cfg
 global
     log /dev/log local0
@@ -112,7 +112,7 @@ The key configuration details:
 
 Enable the HAProxy stats page for monitoring:
 
-```
+```text
 # Add to haproxy.cfg
 frontend stats
     bind *:8404
@@ -127,7 +127,7 @@ frontend stats
 
 For high availability of the load balancer itself, pair HAProxy with Keepalived. This runs two HAProxy instances in active-passive mode with a floating VIP:
 
-```
+```text
 # /etc/keepalived/keepalived.conf on the primary
 vrrp_script check_haproxy {
     script "/usr/bin/killall -0 haproxy"
@@ -154,7 +154,7 @@ vrrp_instance VI_1 {
 }
 ```
 
-```
+```text
 # /etc/keepalived/keepalived.conf on the backup
 vrrp_instance VI_1 {
     state BACKUP
@@ -249,7 +249,7 @@ Proper health checks are critical for production load balancing. The load balanc
 
 For TCP health checks (simplest approach):
 
-```
+```text
 # HAProxy TCP health check
 backend talos_api_backend
     option tcp-check
@@ -305,7 +305,7 @@ The Talos API uses gRPC, which creates long-lived HTTP/2 connections. This is im
 
 Configure your load balancer accordingly:
 
-```
+```text
 # HAProxy with least connections balancing
 backend talos_api_backend
     balance leastconn

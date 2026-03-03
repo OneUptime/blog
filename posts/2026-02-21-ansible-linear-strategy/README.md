@@ -40,7 +40,7 @@ Consider a playbook with 3 tasks running against 4 hosts:
 
 The execution order is:
 
-```
+```text
 Task 1: Install packages
   -> web-01 (fork 1)
   -> web-02 (fork 2)
@@ -82,7 +82,7 @@ ansible-playbook site.yml -f 20
 
 With `forks = 5` and 20 hosts:
 
-```
+```text
 Task 1:
   Batch 1: web-01, web-02, web-03, web-04, web-05 (parallel)
   Batch 2: web-06, web-07, web-08, web-09, web-10 (parallel)
@@ -195,7 +195,7 @@ With the linear strategy, the handler runs once after all tasks complete, on all
 
 The linear strategy's lock-step nature means the slowest host determines the pace. If web-01 takes 30 seconds on a task and web-02 takes 2 seconds, web-02 sits idle for 28 seconds waiting.
 
-```
+```text
 Task 1:
   web-01: [=============================] 30s
   web-02: [==] 2s  [waiting................]

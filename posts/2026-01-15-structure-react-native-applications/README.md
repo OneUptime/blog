@@ -20,7 +20,7 @@ The first major architectural decision is how to organize your code at the highe
 
 Layer-based architecture groups code by technical responsibility:
 
-```
+```text
 src/
   components/
     Button.tsx
@@ -57,7 +57,7 @@ This structure is intuitive for small applications. Finding a component or servi
 
 Feature-based architecture groups code by business domain:
 
-```
+```text
 src/
   features/
     auth/
@@ -125,7 +125,7 @@ Benefits of feature-based architecture:
 
 Most large applications benefit from a hybrid approach that combines feature modules with a shared layer:
 
-```
+```text
 src/
   app/                    # Application shell
     App.tsx
@@ -150,7 +150,7 @@ src/
 
 A well-organized directory structure communicates intent. Here's a comprehensive structure for large React Native applications:
 
-```
+```text
 src/
   app/
     App.tsx                       # Root component
@@ -401,7 +401,7 @@ Well-organized components are the foundation of maintainable React Native applic
 
 Each component should be self-contained in its own folder:
 
-```
+```text
 Button/
   Button.tsx           # Component implementation
   Button.styles.ts     # Styles (StyleSheet or styled-components)
@@ -1483,7 +1483,7 @@ export async function requestLocationPermission(): Promise<boolean> {
 
 Mirror your source structure in tests for easy navigation.
 
-```
+```text
 __tests__/
   features/
     auth/

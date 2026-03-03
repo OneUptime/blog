@@ -24,7 +24,7 @@ Before diving into the migration process, it is essential to understand the fund
 
 NSEC records work by creating a chain of all existing domain names in a zone. Each NSEC record points to the next domain name in canonical order and lists the record types that exist for the current name.
 
-```
+```text
 example.com.    IN NSEC api.example.com. A AAAA MX NS SOA RRSIG NSEC DNSKEY
 api.example.com. IN NSEC mail.example.com. A AAAA RRSIG NSEC
 mail.example.com. IN NSEC www.example.com. A AAAA MX RRSIG NSEC
@@ -37,7 +37,7 @@ The problem with this approach is immediately apparent: anyone can query for NSE
 
 NSEC3 addresses the zone enumeration vulnerability by using cryptographic hashes of domain names instead of the actual names. The chain still exists, but it is now composed of hashed values.
 
-```
+```text
 h9p7u7tr2u91d0v0ljs9l1gidnp90u3h.example.com. IN NSEC3 1 0 10 AABBCCDD (
     kohar7mbb8dc2ce8a9qvl8hon4k53uhi A AAAA RRSIG )
 ```
@@ -125,7 +125,7 @@ You will need to decide on several NSEC3 parameters:
 
 Currently, SHA-1 (algorithm 1) is the only widely supported hash algorithm for NSEC3.
 
-```
+```text
 Algorithm 1 = SHA-1
 ```
 
@@ -159,7 +159,7 @@ SALT="-"
 
 The opt-out flag allows unsigned delegations to be excluded from the NSEC3 chain. This is useful for large zones with many unsigned delegations (like TLD zones).
 
-```
+```text
 0 = No opt-out (all delegations included)
 1 = Opt-out enabled (unsigned delegations may be excluded)
 ```
@@ -185,7 +185,7 @@ dig @8.8.8.8 example.com A +dnssec +multiline
 
 Expected output should show the AD (Authenticated Data) flag:
 
-```
+```text
 ;; flags: qr rd ra ad; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1
 ```
 
@@ -236,7 +236,7 @@ Update your zone configuration to use NSEC3.
 
 Edit your named.conf or zone configuration file:
 
-```
+```text
 zone "example.com" {
     type master;
     file "/var/named/zones/example.com.zone";
@@ -567,7 +567,7 @@ If you need to rollback to NSEC, follow these steps:
 
 Remove NSEC3 configuration from named.conf:
 
-```
+```text
 zone "example.com" {
     type master;
     file "/var/named/zones/example.com.zone";
@@ -625,7 +625,7 @@ dig @localhost example.com NSEC3PARAM +short
 
 Following RFC 9276 recommendations:
 
-```
+```text
 Algorithm:  1 (SHA-1, only option currently)
 Flags:      0 (no opt-out for most zones)
 Iterations: 0 (for better performance)

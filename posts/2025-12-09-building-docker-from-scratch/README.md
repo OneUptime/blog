@@ -59,7 +59,7 @@ go mod init minicontainer
 
 Our final structure will look like:
 
-```
+```text
 minicontainer/
 ├── go.mod
 ├── main.go

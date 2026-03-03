@@ -32,7 +32,7 @@ env0 stands out from other Terraform CI/CD platforms in a few ways:
 
 Templates in env0 define what can be deployed. They point to a Terraform directory in your repository:
 
-```
+```text
 Template Settings:
   Name: Production Infrastructure
   VCS: GitHub - myorg/infrastructure
@@ -47,7 +47,7 @@ Template Settings:
 
 Environments are instances of templates. You can create multiple environments from the same template with different variable values:
 
-```
+```text
 Environment Settings:
   Name: production-us-east-1
   Template: Production Infrastructure
@@ -64,7 +64,7 @@ env0 supports multiple credential methods:
 
 ### AWS with OIDC
 
-```
+```text
 Organization Settings > Credentials > Add Credential
 
 Type: AWS Assumed Role
@@ -101,7 +101,7 @@ resource "aws_iam_role" "env0_terraform" {
 
 ### GCP with Workload Identity
 
-```
+```text
 Organization Settings > Credentials > Add Credential
 
 Type: GCP Service Account
@@ -113,7 +113,7 @@ Service Account: terraform@my-gcp-project.iam.gserviceaccount.com
 
 This is where env0 really shines. Set policies on how long environments can live:
 
-```
+```text
 Template Settings > Environment Lifecycle:
 
   TTL:
@@ -135,7 +135,7 @@ This prevents forgotten environments from running up cloud bills. A developer sp
 
 env0 provides multi-level variable scoping:
 
-```
+```text
 Organization Variables (apply to all environments):
   TF_VAR_company_name = "MyCompany"
 
@@ -151,7 +151,7 @@ Environment Variables (specific to this environment):
 
 Sensitive variables are encrypted and never displayed:
 
-```
+```text
 Variable Settings:
   Name: TF_VAR_db_password
   Value: ********
@@ -257,7 +257,7 @@ destroy:
 
 Create templates that non-technical users can deploy through the env0 UI:
 
-```
+```text
 Template: Developer Sandbox
   Description: "Spin up a personal development environment with VPC, ECS cluster, and RDS"
 
@@ -298,7 +298,7 @@ Developers can then deploy without understanding Terraform:
 
 env0 provides detailed cost visibility:
 
-```
+```text
 Dashboard > Cost:
 
   Organization total: $12,450/month
@@ -323,7 +323,7 @@ Dashboard > Cost:
 
 Enable scheduled drift detection:
 
-```
+```text
 Template Settings > Drift Detection:
   Enabled: Yes
   Schedule: Every 6 hours

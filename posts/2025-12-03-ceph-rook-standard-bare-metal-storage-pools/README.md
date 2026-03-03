@@ -36,7 +36,7 @@ Ceph + Rook grew popular because it behaves like cloud storage but runs beside y
 
 ## Architecture in Practice
 
-```
+```text
 [Rook Operator] → Reconciles Ceph CRDs
      ↓
 [Ceph Mons] → Quorum + cluster map

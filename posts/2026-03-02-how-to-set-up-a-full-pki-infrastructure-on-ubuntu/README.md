@@ -14,7 +14,7 @@ A properly designed PKI uses a multi-tier hierarchy: an offline Root CA (kept ai
 
 ## PKI Hierarchy
 
-```
+```text
 Root CA (offline, air-gapped)
     |
     +-- Intermediate CA (online)

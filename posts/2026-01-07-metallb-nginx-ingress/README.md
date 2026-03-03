@@ -113,7 +113,7 @@ kubectl get pods -n metallb-system
 
 Expected output:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-5f784d8f9d-xxxxx   1/1     Running   0          30s
 speaker-xxxxx                 1/1     Running   0          30s
@@ -360,7 +360,7 @@ kubectl get pods -n ingress-nginx
 
 Expected output showing MetalLB IP assignment:
 
-```
+```text
 NAME                                 TYPE           CLUSTER-IP      EXTERNAL-IP     PORT(S)                      AGE
 ingress-nginx-controller             LoadBalancer   10.96.123.45    192.168.1.240   80:31234/TCP,443:31235/TCP   2m
 ingress-nginx-controller-admission   ClusterIP      10.96.234.56    <none>          443/TCP                      2m

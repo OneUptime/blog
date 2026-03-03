@@ -159,7 +159,7 @@ python -m memory_profiler script.py
 
 Output shows memory per line:
 
-```
+```text
 Line #    Mem usage    Increment   Line Contents
 ================================================
      4     15.4 MiB     15.4 MiB   @profile

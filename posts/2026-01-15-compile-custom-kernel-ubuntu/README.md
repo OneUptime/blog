@@ -289,7 +289,7 @@ Here are key configuration options to consider when building your custom kernel.
 
 Navigate to: **Processor type and features**
 
-```
+```text
 # Set your processor family for optimized code generation
 Processor family: Select your CPU (Generic x86-64, Intel Core, AMD)
 
@@ -308,7 +308,7 @@ Preemption Model:
 
 Navigate to: **General setup**
 
-```
+```text
 # Kernel compression format (affects boot time and size)
 Kernel compression mode:
   - GZIP: Compatible, moderate compression
@@ -333,7 +333,7 @@ CONFIG_MEMCG=y
 
 Navigate to: **Kernel Features** or **Processor type and features**
 
-```
+```text
 # NUMA support for multi-socket systems
 CONFIG_NUMA=y
 
@@ -355,7 +355,7 @@ CONFIG_NO_HZ_FULL=y
 
 Navigate to: **File systems**
 
-```
+```text
 # Enable file systems you use (built-in or module)
 CONFIG_EXT4_FS=y        # ext4 (most common for Ubuntu)
 CONFIG_BTRFS_FS=m       # Btrfs
@@ -374,7 +374,7 @@ CONFIG_SQUASHFS=m       # SquashFS (for snap packages)
 
 Navigate to: **Networking support**
 
-```
+```text
 # Core networking
 CONFIG_NET=y
 CONFIG_INET=y           # TCP/IP networking
@@ -399,7 +399,7 @@ CONFIG_NET_NS=y
 
 Navigate to: **Device Drivers**
 
-```
+```text
 # Graphics drivers
 CONFIG_DRM=m                    # Direct Rendering Manager
 CONFIG_DRM_I915=m               # Intel integrated graphics
@@ -422,7 +422,7 @@ CONFIG_INPUT_MOUSE=y            # Mouse support
 
 Navigate to: **Security options**
 
-```
+```text
 # Linux Security Modules
 CONFIG_SECURITY=y
 CONFIG_SECURITYFS=y
@@ -450,7 +450,7 @@ CONFIG_MODULE_SIG=y             # Require signed modules
 
 Navigate to: **Virtualization**
 
-```
+```text
 # KVM virtualization
 CONFIG_VIRTUALIZATION=y
 CONFIG_KVM=m

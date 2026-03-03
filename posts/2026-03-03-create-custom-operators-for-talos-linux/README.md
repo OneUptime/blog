@@ -65,7 +65,7 @@ operator-sdk create api \
 
 This generates a project structure:
 
-```
+```text
 webapp-operator/
   api/v1alpha1/
     webapp_types.go      # Custom resource type definition

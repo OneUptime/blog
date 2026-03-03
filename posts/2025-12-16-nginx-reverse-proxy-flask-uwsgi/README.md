@@ -28,7 +28,7 @@ graph LR
 
 ### Project Structure
 
-```
+```text
 /var/www/myapp/
 ├── app/
 │   ├── __init__.py

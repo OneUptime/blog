@@ -250,7 +250,7 @@ spec:
 
 Create a Grafana dashboard with these panels:
 
-```
+```text
 # Reconciliation duration
 argocd_app_reconcile_bucket
 
@@ -278,7 +278,7 @@ stringData:
 ```
 
 Set up webhooks in your Git provider pointing to:
-```
+```text
 https://argocd.example.com/api/webhook
 ```
 
@@ -290,7 +290,7 @@ How you organize your Git repositories matters at scale.
 
 If all 100 applications share one repository:
 
-```
+```text
 manifests/
   apps/
     service-a/
@@ -312,7 +312,7 @@ Cons: Repo server processes the entire repo for each app
 
 Each team owns their repositories:
 
-```
+```text
 github.com/my-org/service-a-manifests/
 github.com/my-org/service-b-manifests/
 github.com/my-org/platform-manifests/

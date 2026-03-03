@@ -225,7 +225,7 @@ The payments namespace is locked down with REGISTRY_ONLY. The dev namespace is w
 
 Store Sidecar configurations alongside your namespace definitions in Git:
 
-```
+```text
 infrastructure/
   namespaces/
     frontend/

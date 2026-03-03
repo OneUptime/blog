@@ -64,7 +64,7 @@ timedatectl status
 
 You will see output similar to:
 
-```
+```text
                Local time: Tue 2026-01-07 10:30:45 UTC
            Universal time: Tue 2026-01-07 10:30:45 UTC
                  RTC time: Tue 2026-01-07 10:30:45
@@ -92,7 +92,7 @@ timedatectl timesync-status
 
 Example output showing server connection and sync quality:
 
-```
+```text
        Server: 91.189.89.198 (ntp.ubuntu.com)
 Poll interval: 34min 8s (min: 32s; max 34min 8s)
          Leap: normal
@@ -256,7 +256,7 @@ chronyc sources -v
 
 Example output with explanation:
 
-```
+```text
   .-- Source mode  '^' = server, '=' = peer, '#' = local clock.
  / .- Source state '*' = current best, '+' = combined, '-' = not combined,
 | /             'x' = may be in error, '~' = too variable, '?' = unusable.
@@ -283,7 +283,7 @@ chronyc tracking
 
 Example output showing sync quality metrics:
 
-```
+```text
 Reference ID    : D8EF2308 (time.google.com)
 Stratum         : 2
 Ref time (UTC)  : Tue Jan 07 10:45:32 2026

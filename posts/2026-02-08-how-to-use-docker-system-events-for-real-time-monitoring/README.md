@@ -31,7 +31,7 @@ docker run --rm --name test-container alpine echo "hello"
 
 Back in terminal 1, you will see events like:
 
-```
+```text
 2024-01-15T10:30:00.123456Z container create abc123 (image=alpine, name=test-container)
 2024-01-15T10:30:00.234567Z container attach abc123 (image=alpine, name=test-container)
 2024-01-15T10:30:00.345678Z network connect def456 (container=abc123, name=bridge, type=bridge)

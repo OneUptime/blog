@@ -60,7 +60,7 @@ gcloud compute interconnects attachments describe my-partner-attachment \
 ```
 
 The pairing key format looks like:
-```
+```text
 a]7e51371e-72a3-40b5-b844-2e3efefaee59/us-east4/1
 ```
 

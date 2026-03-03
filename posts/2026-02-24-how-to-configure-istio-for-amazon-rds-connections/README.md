@@ -262,7 +262,7 @@ Istio does not change any of this. The sidecar proxy runs on the same node as yo
 
 Track connections to RDS through Istio:
 
-```
+```text
 istio_tcp_connections_opened_total{destination_service="mydb.abc123.us-east-1.rds.amazonaws.com"}
 istio_tcp_sent_bytes_total{destination_service="mydb.abc123.us-east-1.rds.amazonaws.com"}
 istio_tcp_received_bytes_total{destination_service="mydb.abc123.us-east-1.rds.amazonaws.com"}

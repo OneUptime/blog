@@ -146,7 +146,7 @@ locals {
 ```
 
 Directory structure:
-```
+```text
 .
 |-- envs/
 |   |-- development.yaml

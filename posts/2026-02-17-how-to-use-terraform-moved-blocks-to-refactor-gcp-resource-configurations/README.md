@@ -94,7 +94,7 @@ resource "google_compute_instance" "web_server" {
 
 Now when you run `terraform plan`, it shows:
 
-```
+```text
 # google_compute_instance.web has moved to google_compute_instance.web_server
 ```
 
@@ -361,7 +361,7 @@ terraform plan
 
 A correct plan shows:
 
-```
+```text
   # google_compute_instance.web has moved to google_compute_instance.web_server
     resource "google_compute_instance" "web_server" {
         # (all attributes unchanged)

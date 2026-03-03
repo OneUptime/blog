@@ -233,7 +233,7 @@ In Prevention mode, all of these should return a 403 Forbidden response. In Dete
 
 Query the WAF logs in Log Analytics to see what is being blocked.
 
-```
+```text
 // KQL query for WAF logs showing blocked SQL injection attempts
 AzureDiagnostics
 | where ResourceType == "APPLICATIONGATEWAYS"

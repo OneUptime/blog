@@ -24,7 +24,7 @@ Before we begin, make sure you have:
 
 We will organize our project with the following structure:
 
-```
+```text
 myapi/
 ├── go.mod
 ├── go.sum

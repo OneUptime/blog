@@ -484,7 +484,7 @@ test {
 
 Structure your policy repository:
 
-```
+```text
 policies/
 ├── sentinel.hcl
 ├── security/

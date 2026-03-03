@@ -410,7 +410,7 @@ def hello(request):
 
 Create a `requirements.txt` for your function's dependencies:
 
-```
+```text
 # requirements.txt - Dependencies for the Cloud Function
 functions-framework==3.*
 google-cloud-storage==2.*

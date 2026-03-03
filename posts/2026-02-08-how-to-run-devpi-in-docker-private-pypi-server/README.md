@@ -170,7 +170,7 @@ pip install --index-url http://localhost:3141/myteam/stable/+simple/ \
 
 Create and publish an internal Python package:
 
-```
+```text
 # Package directory structure
 my-internal-lib/
   pyproject.toml

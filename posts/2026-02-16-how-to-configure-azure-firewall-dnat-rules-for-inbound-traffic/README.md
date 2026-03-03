@@ -268,7 +268,7 @@ az monitor diagnostic-settings create \
 
 Query the logs in Log Analytics:
 
-```
+```text
 // KQL query to find DNAT rule hits
 AzureFirewallNetworkRule
 | where Action == "DNAT"

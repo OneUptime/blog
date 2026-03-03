@@ -78,7 +78,7 @@ ssh -i ~/keys/my-key.pem ubuntu@ec2-54-123-45-67.compute-1.amazonaws.com
 
 The first time you connect, you'll see a fingerprint verification prompt:
 
-```
+```text
 The authenticity of host '54.123.45.67 (54.123.45.67)' can't be established.
 ED25519 key fingerprint is SHA256:xxxxxxxxxxxxxxxxxxxxxxxxxxx.
 Are you sure you want to continue connecting (yes/no/[fingerprint])?
@@ -97,7 +97,7 @@ nano ~/.ssh/config
 
 Add an entry for your instance:
 
-```
+```text
 # SSH config entry for your EC2 instance
 Host my-ec2
     HostName 54.123.45.67

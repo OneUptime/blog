@@ -67,7 +67,7 @@ curl -H "Origin: https://dashboard.example.com" \
 
 Expected response headers:
 
-```
+```text
 < HTTP/1.1 200 OK
 < Access-Control-Allow-Origin: https://dashboard.example.com
 < Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS

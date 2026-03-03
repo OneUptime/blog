@@ -47,12 +47,12 @@ sequenceDiagram
 
 TCP buffers determine how much data can be in flight before waiting for acknowledgment. The bandwidth-delay product (BDP) tells you the optimal buffer size:
 
-```
+```text
 BDP = Bandwidth (bytes/sec) * RTT (seconds)
 ```
 
 For a 1 Gbps link with 50ms RTT:
-```
+```text
 BDP = (1,000,000,000 / 8) * 0.050 = 6,250,000 bytes (~6MB)
 ```
 

@@ -28,7 +28,7 @@ Offset-based pagination uses an offset and limit to specify which slice of resul
 
 ### API Pattern
 
-```
+```text
 GET /api/v1/servers?offset=0&limit=100
 GET /api/v1/servers?offset=100&limit=100
 GET /api/v1/servers?offset=200&limit=100
@@ -152,7 +152,7 @@ Cursor-based pagination uses an opaque cursor token to fetch the next page. This
 
 ### API Pattern
 
-```
+```text
 GET /api/v1/servers?limit=100
 Response: { "servers": [...], "next_cursor": "eyJpZCI6MTAwfQ==" }
 
@@ -210,7 +210,7 @@ Page-based pagination uses a page number and page size:
 
 ### API Pattern
 
-```
+```text
 GET /api/v1/servers?page=1&per_page=100
 GET /api/v1/servers?page=2&per_page=100
 GET /api/v1/servers?page=3&per_page=100

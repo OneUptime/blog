@@ -12,7 +12,7 @@ The "Incompatible options" error appears when you use two module parameters that
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "parameters are mutually exclusive: src|content"
 }

@@ -155,7 +155,7 @@ template {
 
 ### Template Files
 
-```
+```text
 {{!-- /etc/vault-agent/templates/app-secrets.tpl --}}
 {{!-- Fetches secrets and renders them as environment variable exports --}}
 
@@ -167,7 +167,7 @@ ENCRYPTION_KEY={{ .Data.data.encryption_key }}
 {{ end }}
 ```
 
-```
+```text
 {{!-- /etc/vault-agent/templates/db-creds.tpl --}}
 {{!-- Fetches dynamic database credentials --}}
 
@@ -340,7 +340,7 @@ deploy:
 
 Beyond environment files, Vault Agent can render full configuration files:
 
-```
+```text
 {{!-- /etc/vault-agent/templates/nginx-ssl.tpl --}}
 {{!-- Generate nginx SSL configuration with a certificate from Vault PKI --}}
 

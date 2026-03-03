@@ -444,7 +444,7 @@ graph TD
 
 Project structure for a modular API:
 
-```
+```text
 project/
 ├── app.py
 ├── config.py

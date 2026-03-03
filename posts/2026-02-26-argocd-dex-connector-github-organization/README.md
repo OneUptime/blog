@@ -183,7 +183,7 @@ data:
 
 GitHub supports nested teams (child teams within parent teams). The Dex connector handles these as separate groups. For example:
 
-```
+```text
 engineering (parent team)
   backend (child team)
   frontend (child team)

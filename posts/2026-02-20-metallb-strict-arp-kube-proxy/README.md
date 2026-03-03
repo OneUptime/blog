@@ -194,7 +194,7 @@ kubectl get configmap kube-proxy -n kube-system -o yaml | grep strictARP
 
 You should see:
 
-```
+```text
       strictARP: true
 ```
 

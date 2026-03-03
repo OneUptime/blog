@@ -284,7 +284,7 @@ gcloud functions deploy process-uploads \
 
 Lambda uses a requirements layer or bundles dependencies in the zip. Cloud Functions reads a standard requirements.txt:
 
-```
+```text
 # requirements.txt
 functions-framework==3.*
 google-cloud-storage==2.*

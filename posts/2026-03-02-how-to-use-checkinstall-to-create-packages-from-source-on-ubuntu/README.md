@@ -58,7 +58,7 @@ checkinstall will ask you several questions before creating the package.
 
 After running `sudo checkinstall`, you'll see output like:
 
-```
+```text
 checkinstall 1.6.2, Copyright 2009 Felipe Eduardo Sanchez Diaz Duran
            This software is released under the GNU GPL.
 
@@ -99,22 +99,22 @@ You can press Enter to accept defaults, or type a number to change a field.
 ### Important Fields to Review
 
 **Name (2)** - Should match the package name so apt knows it's installed:
-```
+```text
 2 - Name: [ htop ]
 ```
 
 **Version (3)** - Set this to match the upstream version:
-```
+```text
 3 - Version: [ 3.3.0 ]
 ```
 
 **Requires (10)** - Dependencies that apt will enforce. If your compiled binary needs specific libraries:
-```
+```text
 10 - Requires: [ libncurses6, libc6 ]
 ```
 
 **Conflicts (12)** - If your custom build conflicts with the version in apt repositories:
-```
+```text
 12 - Conflicts: [ htop ]
 ```
 

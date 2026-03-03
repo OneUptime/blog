@@ -110,7 +110,7 @@ kubectl create secret generic sops-age-key \
 
 Here is a complete repository structure for a multi-environment application with SOPS-encrypted secrets:
 
-```
+```text
 my-app/
   base/
     deployment.yaml

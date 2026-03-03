@@ -18,7 +18,7 @@ The masking pipeline uses a combination of processors in a specific order:
 2. **Redaction processor** - catches PII in attribute values using regex
 3. **Transform processor** - scrubs PII from log bodies and metric descriptions using OTTL
 
-```
+```text
 Receiver --> Attributes Processor --> Redaction Processor --> Transform Processor --> Batch --> Exporter
 ```
 

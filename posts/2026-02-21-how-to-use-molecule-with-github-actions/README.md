@@ -91,7 +91,7 @@ jobs:
 
 Create the requirements file for consistent dependency versions.
 
-```
+```text
 # requirements-dev.txt - pinned development dependencies
 ansible-core>=2.15,<2.17
 molecule>=6.0,<7.0

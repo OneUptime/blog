@@ -231,7 +231,7 @@ processors:
 
 Envoy automatically propagates trace context headers (W3C Trace Context by default). Make sure your applications also propagate these headers for end-to-end traces that span both mesh-level and application-level instrumentation:
 
-```
+```text
 Client App -> Client Envoy Sidecar -> Server Envoy Sidecar -> Server App
    (app span)    (envoy span)           (envoy span)         (app span)
 ```

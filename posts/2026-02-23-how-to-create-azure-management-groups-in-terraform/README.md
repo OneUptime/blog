@@ -16,7 +16,7 @@ This guide walks through building a management group hierarchy with Terraform, a
 
 Every Azure tenant has a root management group at the top. Below that, you create a tree structure that reflects your organizational needs. Here is a common pattern based on the Azure Cloud Adoption Framework:
 
-```
+```text
 Root Management Group (Tenant)
   -> Platform
     -> Identity

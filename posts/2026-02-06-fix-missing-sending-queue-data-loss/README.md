@@ -12,7 +12,7 @@ Without a sending queue, the OpenTelemetry Collector drops telemetry data the mo
 
 By default, exporters in the Collector have a basic queue configuration, but it is not always sufficient for production workloads. When the queue fills up or is not enabled, the exporter drops data immediately on failure:
 
-```
+```text
 2024-01-15T10:30:00Z  warn  exporterhelper/queued_retry.go
   Dropping data because sending_queue is full.
   dropped_items: 1024
@@ -47,7 +47,7 @@ exporters:
 
 The sending queue sits between the pipeline processors and the exporter:
 
-```
+```text
 Receivers -> Processors -> [Sending Queue] -> Exporter -> Backend
 ```
 
@@ -65,7 +65,7 @@ During the retry period, new data continues to enter the queue (up to `queue_siz
 
 The queue size determines how much data you can buffer during an outage. Here is how to calculate it:
 
-```
+```text
 queue_size = (outage_duration_seconds / batch_timeout_seconds) * safety_factor
 
 # Example: buffer 5 minutes of data with 5-second batches

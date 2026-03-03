@@ -521,7 +521,7 @@ function validateFlagCreation(request: FlagCreationRequest): string[] {
 
 Consistent naming makes flags discoverable and self-documenting.
 
-```
+```text
 Pattern: {team}-{feature}-{variant}
 
 Examples:

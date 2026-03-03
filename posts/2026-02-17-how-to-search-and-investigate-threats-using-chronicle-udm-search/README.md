@@ -18,7 +18,7 @@ UDM Search queries operate on Chronicle's Unified Data Model, which means you wr
 
 The basic query structure is:
 
-```
+```text
 field_name = "value"
 field_name != "value"
 field_name = /regex_pattern/
@@ -26,7 +26,7 @@ field_name = /regex_pattern/
 
 You can combine conditions with AND, OR, and NOT operators.
 
-```
+```text
 metadata.event_type = "USER_LOGIN" AND security_result.action = "BLOCK" AND principal.ip = "192.168.1.100"
 ```
 
@@ -68,7 +68,7 @@ You get an alert that a user account might be compromised. Here is how to invest
 
 Start by looking at recent login activity for the user.
 
-```
+```text
 principal.user.email_addresses = "suspect@company.com" AND metadata.event_type = "USER_LOGIN"
 ```
 
@@ -76,19 +76,19 @@ This shows all login events. Look at the source IPs and geolocations. If you see
 
 Next, check what the user did after logging in. This query finds all actions taken by the user in the last 24 hours.
 
-```
+```text
 principal.user.email_addresses = "suspect@company.com" AND metadata.event_timestamp.seconds > timestamp_sub(now(), "24h")
 ```
 
 Look for privilege escalation attempts.
 
-```
+```text
 principal.user.email_addresses = "suspect@company.com" AND (metadata.event_type = "USER_RESOURCE_UPDATE_PERMISSIONS" OR metadata.product_event_type = "SetIamPolicy" OR metadata.product_event_type = "CreateRole")
 ```
 
 Check if they created any new service accounts or API keys, which is a common persistence technique.
 
-```
+```text
 principal.user.email_addresses = "suspect@company.com" AND (metadata.product_event_type = "CreateServiceAccount" OR metadata.product_event_type = "CreateServiceAccountKey" OR metadata.product_event_type = "CreateAccessKey")
 ```
 
@@ -96,25 +96,25 @@ principal.user.email_addresses = "suspect@company.com" AND (metadata.product_eve
 
 You notice unusual outbound traffic from an internal server. Start by looking at all network connections from that host.
 
-```
+```text
 principal.ip = "10.0.1.50" AND metadata.event_type = "NETWORK_CONNECTION"
 ```
 
 Filter for external destinations to focus on outbound traffic.
 
-```
+```text
 principal.ip = "10.0.1.50" AND metadata.event_type = "NETWORK_CONNECTION" AND NOT target.ip = /^10\./ AND NOT target.ip = /^172\.(1[6-9]|2[0-9]|3[01])\./ AND NOT target.ip = /^192\.168\./
 ```
 
 Look for connections to known-bad indicators. If you have threat intel feeds in Chronicle, they automatically enrich matching events.
 
-```
+```text
 principal.ip = "10.0.1.50" AND security_result.category_details = "THREAT_INTEL_MATCH"
 ```
 
 Check for data exfiltration patterns - large volumes of data being sent outbound.
 
-```
+```text
 principal.ip = "10.0.1.50" AND metadata.event_type = "NETWORK_CONNECTION" AND network.sent_bytes > 10000000
 ```
 
@@ -124,19 +124,19 @@ When investigating lateral movement, you want to track how an attacker moves bet
 
 Find all RDP and SSH connections from a compromised host.
 
-```
+```text
 principal.ip = "10.0.1.50" AND metadata.event_type = "NETWORK_CONNECTION" AND (target.port = 3389 OR target.port = 22)
 ```
 
 Look for authentication events where the compromised host is the source.
 
-```
+```text
 principal.ip = "10.0.1.50" AND metadata.event_type = "USER_LOGIN" AND target.ip != ""
 ```
 
 Track process execution on the compromised host for signs of attacker tools.
 
-```
+```text
 target.hostname = "compromised-server" AND metadata.event_type = "PROCESS_LAUNCH" AND (target.process.file.full_path = /.*powershell.*/ OR target.process.file.full_path = /.*cmd\.exe.*/ OR target.process.file.full_path = /.*psexec.*/)
 ```
 
@@ -146,7 +146,7 @@ target.hostname = "compromised-server" AND metadata.event_type = "PROCESS_LAUNCH
 
 Narrow your search to specific time ranges for focused investigation.
 
-```
+```text
 principal.user.email_addresses = "suspect@company.com" AND metadata.event_timestamp.seconds > timestamp("2026-02-17T10:00:00Z") AND metadata.event_timestamp.seconds < timestamp("2026-02-17T12:00:00Z")
 ```
 
@@ -156,7 +156,7 @@ Use the statistics view in Chronicle to aggregate results. The search UI lets yo
 
 For example, searching for all login failures and then grouping by `principal.ip` in the statistics panel quickly shows you which IPs are generating the most failed logins.
 
-```
+```text
 metadata.event_type = "USER_LOGIN" AND security_result.action = "BLOCK"
 ```
 
@@ -166,7 +166,7 @@ Regex is powerful for matching patterns in resource names, URLs, or other string
 
 This finds access to any resource with "admin" in the path.
 
-```
+```text
 target.resource.name = /.*admin.*/ AND metadata.event_type = "USER_RESOURCE_ACCESS"
 ```
 
@@ -174,7 +174,7 @@ target.resource.name = /.*admin.*/ AND metadata.event_type = "USER_RESOURCE_ACCE
 
 When investigating, you often need to filter out the noise. Use NOT to exclude known-good patterns.
 
-```
+```text
 principal.user.email_addresses = "suspect@company.com" AND metadata.event_type = "USER_RESOURCE_ACCESS" AND NOT target.resource.name = /.*healthcheck.*/ AND NOT metadata.product_event_type = "list"
 ```
 

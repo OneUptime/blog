@@ -206,7 +206,7 @@ On your on-premises router, configure:
 
 The exact configuration depends on your router vendor. Here is a generic example:
 
-```
+```text
 # Tunnel 0 settings
 Peer IP: [GCP HA VPN Interface 0 IP]
 Local BGP IP: 169.254.0.2

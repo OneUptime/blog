@@ -20,7 +20,7 @@ lsblk
 
 Output on a typical Ubuntu server:
 
-```
+```text
 NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
 sda      8:0    0   50G  0 disk
 ├─sda1   8:1    0  512M  0 part /boot/efi
@@ -66,7 +66,7 @@ lsblk -d -o NAME,ROTA,SIZE,MODEL
 
 Output:
 
-```
+```text
 NAME    ROTA  SIZE MODEL
 sda        1  500G TOSHIBA MQ01ABD100
 nvme0n1    0  500G Samsung SSD 970 EVO
@@ -84,7 +84,7 @@ sudo fdisk -l
 
 Output:
 
-```
+```text
 Disk /dev/sda: 50 GiB, 53687091200 bytes, 104857600 sectors
 Disk model: QEMU HARDDISK
 Units: sectors of 1 * 512 = 512 bytes
@@ -127,7 +127,7 @@ sudo blkid
 
 Output:
 
-```
+```text
 /dev/sda1: UUID="ABC1-DEF2" TYPE="vfat" PARTLABEL="EFI System Partition" PARTUUID="..."
 /dev/sda2: UUID="a1b2c3d4-e5f6-7890-abcd-ef1234567890" TYPE="ext4" PARTUUID="..."
 /dev/sda3: UUID="b2c3d4e5-f6a7-8901-bcde-f01234567890" TYPE="ext4" PARTUUID="..."
@@ -158,7 +158,7 @@ sudo parted /dev/sda print
 
 Output:
 
-```
+```text
 Model: QEMU HARDDISK (scsi)
 Disk /dev/sda: 53.7GB
 Sector size (logical/physical): 512B/512B

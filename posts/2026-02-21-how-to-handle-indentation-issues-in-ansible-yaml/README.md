@@ -104,7 +104,7 @@ cat -A playbook.yml | head -20
 }
 ```
 
-```
+```text
 # .editorconfig
 [*.yml]
 indent_style = space

@@ -696,7 +696,7 @@ class OrderService
 
 For larger applications, organize services by domain or feature:
 
-```
+```text
 app/
 ├── Services/
 │   ├── User/

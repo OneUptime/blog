@@ -139,7 +139,7 @@ kubectl logs <pod-name> -c istio-proxy | grep -i "certificate" | grep -i "error\
 
 Set up Prometheus metrics to track certificate status:
 
-```
+```text
 # Certificate expiry (seconds until expiration)
 citadel_server_root_cert_expiry_timestamp
 

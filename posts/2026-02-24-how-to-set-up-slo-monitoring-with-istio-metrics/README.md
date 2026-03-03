@@ -28,7 +28,7 @@ Istio gives you two primary SLIs out of the box:
 
 **Availability SLI** - The ratio of successful (non-5xx) requests to total requests:
 
-```
+```text
 sum(rate(istio_requests_total{response_code!~"5.."}[5m]))
 /
 sum(rate(istio_requests_total[5m]))
@@ -36,7 +36,7 @@ sum(rate(istio_requests_total[5m]))
 
 **Latency SLI** - The ratio of requests faster than a threshold to total requests:
 
-```
+```text
 sum(rate(istio_request_duration_milliseconds_bucket{le="500"}[5m]))
 /
 sum(rate(istio_request_duration_milliseconds_count[5m]))

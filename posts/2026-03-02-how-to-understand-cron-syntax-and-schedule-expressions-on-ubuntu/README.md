@@ -14,7 +14,7 @@ Cron is the standard job scheduler on Linux systems. You define what to run and 
 
 A cron schedule is defined by five space-separated fields, followed by the command to run:
 
-```
+```text
 * * * * * command_to_run
 │ │ │ │ │
 │ │ │ │ └─ Day of week (0-7, where both 0 and 7 = Sunday)

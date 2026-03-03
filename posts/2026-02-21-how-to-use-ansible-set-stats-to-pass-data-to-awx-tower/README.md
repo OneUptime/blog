@@ -282,7 +282,7 @@ ansible-playbook deploy.yml
 
 The output appears in the play recap section:
 
-```
+```text
 PLAY RECAP *********************************************************************
 web-01   : ok=5    changed=2    unreachable=0    failed=0    skipped=0
 

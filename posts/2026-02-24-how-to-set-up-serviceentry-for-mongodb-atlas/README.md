@@ -16,13 +16,13 @@ If you are running Istio with `REGISTRY_ONLY` outbound policy and your applicati
 
 Atlas clusters have a connection string that looks like this:
 
-```
+```text
 mongodb+srv://username:password@cluster0.abc123.mongodb.net/mydb
 ```
 
 The `mongodb+srv://` scheme tells the MongoDB driver to perform an SRV DNS lookup on `_mongodb._tcp.cluster0.abc123.mongodb.net`. This returns the actual hostnames of the replica set members, which look like:
 
-```
+```text
 cluster0-shard-00-00.abc123.mongodb.net:27017
 cluster0-shard-00-01.abc123.mongodb.net:27017
 cluster0-shard-00-02.abc123.mongodb.net:27017

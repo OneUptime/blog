@@ -41,7 +41,7 @@ terraform state list | sed 's/\[.*//' | sort | uniq -c | sort -rn | head -20
 
 The most effective optimization is splitting one large state into smaller, independent states. Group resources by lifecycle and change frequency.
 
-```
+```text
 # Before: everything in one state
 infrastructure/
   main.tf          # VPC + DB + App + Monitoring

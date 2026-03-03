@@ -120,7 +120,7 @@ This works regardless of import order because it patches the specific app object
 
 Structure your project to ensure correct import order:
 
-```
+```text
 myproject/
   __init__.py
   telemetry.py    # Import this first

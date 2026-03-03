@@ -237,7 +237,7 @@ policy "cost-budget-limit" {
 
 The best approach is to transition policies through levels over time:
 
-```
+```text
 Week 1:   Deploy as advisory
            - Monitor pass/fail rates
            - Collect team feedback

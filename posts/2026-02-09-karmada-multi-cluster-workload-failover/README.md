@@ -45,7 +45,7 @@ kubectl get pods -n karmada-system
 
 You should see:
 
-```
+```text
 karmada-aggregated-apiserver
 karmada-controller-manager
 karmada-scheduler
@@ -82,7 +82,7 @@ kubectl get clusters
 
 Output:
 
-```
+```text
 NAME        VERSION   MODE   READY
 cluster-1   v1.28.0   Push   True
 cluster-2   v1.28.0   Push   True
@@ -430,7 +430,7 @@ kubectl get resourcebindings -n default
 
 Output shows which clusters received which resources:
 
-```
+```text
 NAME                  READY   STATUS
 webapp-deployment     3/3     Success
 webapp-service        3/3     Success

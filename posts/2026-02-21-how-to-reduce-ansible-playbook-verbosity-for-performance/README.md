@@ -45,7 +45,7 @@ stdout_callback = minimal
 
 With minimal, you get just the task name and host status:
 
-```
+```text
 web-01 | SUCCESS
 web-02 | SUCCESS
 web-03 | CHANGED
@@ -53,7 +53,7 @@ web-03 | CHANGED
 
 Compared to the default callback:
 
-```
+```text
 TASK [Install nginx] ***********************************************************
 ok: [web-01]
 ok: [web-02]

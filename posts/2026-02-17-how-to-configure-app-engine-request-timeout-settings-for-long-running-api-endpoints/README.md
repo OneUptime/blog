@@ -16,7 +16,7 @@ The timeout behavior is different between App Engine Standard and Flexible, and 
 
 Here are the timeout limits for each environment and scaling type:
 
-```
+```text
 App Engine Standard Environment:
   - Automatic scaling: 10 minutes (600 seconds)
   - Basic scaling: 24 hours

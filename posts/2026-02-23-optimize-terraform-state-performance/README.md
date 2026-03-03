@@ -54,7 +54,7 @@ time terraform plan -parallelism=50
 
 The optimal value depends on your cloud provider's API rate limits. Here are rough guidelines:
 
-```
+```text
 Provider    | Suggested Parallelism | Notes
 AWS         | 20-30                 | Varies by service, watch for throttling
 GCP         | 20-40                 | Generally higher limits than AWS

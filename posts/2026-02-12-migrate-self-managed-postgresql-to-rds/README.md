@@ -161,7 +161,7 @@ max_wal_senders = 4
 
 And update `pg_hba.conf` to allow the RDS instance to connect:
 
-```
+```text
 # Allow RDS to connect for replication
 host    replication    repl_user    10.0.0.0/8    md5
 ```

@@ -58,7 +58,7 @@ sudo nano /etc/fstab
 
 Add or modify the /dev/shm line:
 
-```
+```text
 # Shared memory with security hardening
 # noexec: prevents execution of programs written to shared memory
 # nosuid: prevents setuid/setgid bits from taking effect
@@ -164,13 +164,13 @@ cat /proc/sys/kernel/shmmax
 
 Choose a size based on your applications' requirements. A conservative limit for servers with no heavy IPC needs:
 
-```
+```text
 tmpfs  /dev/shm  tmpfs  defaults,noexec,nosuid,nodev,size=256M  0 0
 ```
 
 For database servers or high-performance applications:
 
-```
+```text
 tmpfs  /dev/shm  tmpfs  defaults,noexec,nosuid,nodev,size=2G  0 0
 ```
 

@@ -529,7 +529,7 @@ data:
     - Point DNS to DR cluster
     - Update load balancer targets
     - Verify traffic routing
-```
+```text
 
 ## RTO/RPO Considerations
 

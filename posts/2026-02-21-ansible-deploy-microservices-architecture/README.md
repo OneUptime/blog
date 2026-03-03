@@ -34,7 +34,7 @@ graph TD
 
 ## Project Structure
 
-```
+```text
 microservices-deploy/
   inventory/
     production/

@@ -179,7 +179,7 @@ sudo apt install bridge-utils -y
 sudo nano /etc/network/interfaces
 ```
 
-```
+```text
 # Loopback
 auto lo
 iface lo inet loopback

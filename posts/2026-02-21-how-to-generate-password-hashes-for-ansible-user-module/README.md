@@ -14,7 +14,7 @@ One of the most frequently asked questions in Ansible forums is "why can my user
 
 Before jumping into the methods, let us understand what a Linux password hash looks like. Open `/etc/shadow` on any Linux system and you will see entries like:
 
-```
+```text
 username:$6$randomsalt$longhashvalue:18900:0:99999:7:::
 ```
 

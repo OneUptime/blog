@@ -46,7 +46,7 @@ SELECT * FROM orders WHERE customer_id = 42;
 
 Output:
 
-```
+```text
 Index Scan using idx_orders_customer_id on orders  (cost=0.43..8.45 rows=5 width=128) (actual time=0.025..0.031 rows=3 loops=1)
   Index Cond: (customer_id = 42)
 Planning Time: 0.152 ms
@@ -82,7 +82,7 @@ LIMIT 10;
 
 The BUFFERS option is particularly valuable - it shows how many disk blocks were read:
 
-```
+```text
 Limit  (cost=1234.56..1234.58 rows=10 width=64) (actual time=15.234..15.240 rows=10 loops=1)
   Buffers: shared hit=423 read=156
   ->  Sort  (cost=1234.56..1267.89 rows=13320 width=64) (actual time=15.232..15.235 rows=10 loops=1)
@@ -102,7 +102,7 @@ Understanding what each node does:
 
 ### Sequential Scan
 
-```
+```text
 Seq Scan on orders  (cost=0.00..25432.00 rows=1000000 width=128)
   Filter: (order_date > '2025-01-01')
   Rows Removed by Filter: 750000
@@ -112,7 +112,7 @@ Sequential scan reads the entire table row by row. This is fine for small tables
 
 ### Index Scan
 
-```
+```text
 Index Scan using idx_orders_date on orders  (cost=0.43..856.43 rows=250000 width=128)
   Index Cond: (order_date > '2025-01-01')
 ```
@@ -121,7 +121,7 @@ The database uses the index to find matching rows, then fetches the full rows fr
 
 ### Index Only Scan
 
-```
+```text
 Index Only Scan using idx_orders_date_total on orders  (cost=0.43..432.10 rows=250000 width=16)
   Index Cond: (order_date > '2025-01-01')
   Heap Fetches: 0
@@ -131,7 +131,7 @@ Even better than Index Scan - the index contains all the columns needed, so the 
 
 ### Nested Loop Join
 
-```
+```text
 Nested Loop  (cost=0.43..234.56 rows=10 width=128)
   ->  Seq Scan on small_table  (cost=0.00..12.00 rows=10 width=64)
   ->  Index Scan using idx_big_table_id on big_table  (cost=0.43..22.25 rows=1 width=64)
@@ -141,7 +141,7 @@ For each row in the outer table, it looks up matching rows in the inner table. E
 
 ### Hash Join
 
-```
+```text
 Hash Join  (cost=123.00..4567.89 rows=50000 width=128)
   Hash Cond: (o.customer_id = c.customer_id)
   ->  Seq Scan on orders o  (cost=0.00..3456.00 rows=100000 width=64)
@@ -161,7 +161,7 @@ EXPLAIN ANALYZE
 SELECT * FROM events WHERE user_id = 'abc123';
 ```
 
-```
+```text
 Seq Scan on events  (cost=0.00..45000.00 rows=50 width=256) (actual time=234.567..890.123 rows=42 loops=1)
   Filter: (user_id = 'abc123')
   Rows Removed by Filter: 999958
@@ -176,7 +176,7 @@ CREATE INDEX idx_events_user_id ON events(user_id);
 
 ### Problem: Sort Spilling to Disk
 
-```
+```text
 Sort  (cost=56789.00..57012.00 rows=500000 width=128) (actual time=3456.789..4567.890 rows=500000 loops=1)
   Sort Key: order_date DESC
   Sort Method: external merge  Disk: 62MB
@@ -194,7 +194,7 @@ RESET work_mem;
 
 ### Problem: Estimate vs Actual Row Mismatch
 
-```
+```text
 Index Scan on products  (cost=0.43..8.45 rows=1 width=128) (actual time=0.025..45.678 rows=50000 loops=1)
 ```
 

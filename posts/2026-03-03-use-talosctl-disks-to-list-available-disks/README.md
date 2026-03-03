@@ -21,7 +21,7 @@ talosctl disks --nodes 192.168.1.10
 
 The output shows each block device with its details:
 
-```
+```text
 DEV        MODEL              SIZE     BUS    SUBSYS   WWID                           TYPE    UUID
 /dev/sda   Samsung SSD 860    500 GB   scsi   block    naa.5002538e40a85c23           HDD
 /dev/sdb   WDC WD10EZEX       1.0 TB   scsi   block    naa.50014ee2b5c7e3a1           HDD

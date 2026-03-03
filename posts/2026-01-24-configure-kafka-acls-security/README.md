@@ -92,7 +92,7 @@ allow.everyone.if.no.acl.found=false
 
 **Step 3: Create JAAS configuration**
 
-```
+```text
 # kafka_server_jaas.conf
 KafkaServer {
     org.apache.kafka.common.security.scram.ScramLoginModule required

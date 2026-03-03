@@ -38,7 +38,7 @@ cdktf init --template=go --local
 
 This generates:
 
-```
+```text
 cdktf-go-demo/
   main.go              # Entry point
   cdktf.json           # CDKTF configuration

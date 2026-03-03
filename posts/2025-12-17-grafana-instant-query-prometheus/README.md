@@ -36,7 +36,7 @@ Enable instant query in the Grafana panel query options.
 
 In the query editor, expand Query Options and enable Instant:
 
-```
+```text
 Query: up{job="prometheus"}
 Options:
   - Instant: ON

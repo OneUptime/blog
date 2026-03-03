@@ -98,7 +98,7 @@ curl -s http://localhost:9153/metrics | grep coredns_cache
 
 Look for these metrics:
 
-```
+```text
 coredns_cache_entries{server="dns://:53",type="denial"} 245
 coredns_cache_entries{server="dns://:53",type="success"} 8421
 coredns_cache_hits_total{server="dns://:53",type="denial"} 12543
@@ -108,7 +108,7 @@ coredns_cache_misses_total{server="dns://:53"} 92341
 
 Calculate cache hit rate:
 
-```
+```text
 hit_rate = hits / (hits + misses)
 hit_rate = 845231 / (845231 + 92341) = 90.1%
 ```

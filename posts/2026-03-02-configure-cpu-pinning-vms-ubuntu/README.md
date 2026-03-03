@@ -35,7 +35,7 @@ numactl --hardware
 ```
 
 A typical dual-core CPU with hyperthreading:
-```
+```text
 CPU 0: Physical core 0, thread 0 (NUMA node 0)
 CPU 1: Physical core 0, thread 1 (NUMA node 0) <- sibling of CPU 0
 CPU 2: Physical core 1, thread 0 (NUMA node 0)

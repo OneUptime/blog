@@ -14,7 +14,7 @@ Availability tells you if the system responds. Latency tells you how fast. But n
 
 A Correctness Service Level Indicator (SLI) measures the proportion of outputs that are accurate according to defined validation criteria. Unlike availability (did it respond?) or latency (how fast?), correctness asks: did we return the right answer?
 
-```
+```text
 Correctness SLI = (Valid Outputs / Total Outputs) * 100
 ```
 

@@ -313,7 +313,7 @@ runs:
 
 Organize multiple actions in a single repository:
 
-```
+```text
 actions-repo/
   nodejs/
     setup/

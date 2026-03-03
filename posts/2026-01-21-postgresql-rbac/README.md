@@ -35,7 +35,7 @@ GRANT app_readers TO app_user;
 
 ## Privilege Hierarchy
 
-```
+```text
 Superuser
     |
 Database Owner

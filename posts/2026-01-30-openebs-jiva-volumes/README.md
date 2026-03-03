@@ -148,7 +148,7 @@ kubectl get pods -n openebs
 
 Expected output:
 
-```
+```text
 NAME                                           READY   STATUS    RESTARTS   AGE
 openebs-localpv-provisioner-7b8c5d4d9f-x2j4k   1/1     Running   0          2m
 openebs-jiva-csi-controller-0                  5/5     Running   0          2m
@@ -361,7 +361,7 @@ kubectl get pvc demo-jiva-pvc
 
 Output:
 
-```
+```text
 NAME            STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS    AGE
 demo-jiva-pvc   Bound    pvc-a1b2c3d4-e5f6-7890-abcd-ef1234567890   10Gi       RWO            openebs-jiva    30s
 ```
@@ -374,7 +374,7 @@ kubectl get jivavolume -n openebs
 
 Output:
 
-```
+```text
 NAME                                       REPLICACOUNT   PHASE     STATUS
 pvc-a1b2c3d4-e5f6-7890-abcd-ef1234567890   3              Syncing   RW
 ```

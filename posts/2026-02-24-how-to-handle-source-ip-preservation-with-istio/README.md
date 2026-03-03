@@ -16,7 +16,7 @@ Istio uses iptables REDIRECT rules to send traffic to the Envoy proxy. The REDIR
 
 Here's the problem illustrated:
 
-```
+```text
 Client (10.0.1.5) -> Pod IP:8080 -> iptables REDIRECT -> Envoy:15006 -> App:8080
                                                           (source becomes 127.0.0.1)
 ```
@@ -29,7 +29,7 @@ For HTTP traffic, the easiest solution is to use the `X-Forwarded-For` or `X-Rea
 
 The `X-Forwarded-For` header contains the chain of IPs the request passed through:
 
-```
+```text
 X-Forwarded-For: 10.0.1.5, 10.244.0.3
 ```
 
@@ -118,7 +118,7 @@ spec:
 
 With TPROXY, the traffic flow looks like:
 
-```
+```text
 Client (10.0.1.5) -> Pod IP:8080 -> iptables TPROXY -> Envoy:15006 -> App:8080
                                                          (source stays 10.0.1.5)
 ```
@@ -141,7 +141,7 @@ kubectl exec -it <pod-name> -c istio-proxy -- iptables -t mangle -L -v -n
 
 You'll see rules in the mangle table (not just NAT) when TPROXY is active:
 
-```
+```text
 Chain PREROUTING (policy ACCEPT)
 target     prot opt source               destination
 ISTIO_INBOUND  tcp  --  0.0.0.0/0            0.0.0.0/0

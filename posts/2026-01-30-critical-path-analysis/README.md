@@ -108,7 +108,7 @@ Spans where earliest start equals latest start have zero slack. They are on the 
 
 Here is the algorithm in pseudocode:
 
-```
+```text
 function findCriticalPath(spans):
     // Build graph
     graph = buildDependencyGraph(spans)
@@ -507,7 +507,7 @@ console.log(`Parallel Efficiency: ${(result.parallelEfficiency * 100).toFixed(1)
 
 Output:
 
-```
+```text
 Critical Path:
   POST /checkout (350ms) - api-gateway
   validateCart (20ms) - order-service

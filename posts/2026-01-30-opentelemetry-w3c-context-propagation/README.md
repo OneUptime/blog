@@ -84,13 +84,13 @@ W3C Trace Context became a W3C Recommendation in 2020 and is now supported by al
 
 The `traceparent` header contains four fields separated by hyphens:
 
-```
+```text
 traceparent: {version}-{trace-id}-{parent-span-id}-{trace-flags}
 ```
 
 Here is a real example:
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 ```
 
@@ -126,7 +126,7 @@ sequenceDiagram
 
 The `tracestate` header carries vendor-specific data as key-value pairs:
 
-```
+```text
 tracestate: vendor1=value1,vendor2=value2
 ```
 
@@ -139,7 +139,7 @@ Common use cases include:
 
 Example with multiple vendors:
 
-```
+```text
 tracestate: oneuptime=samplerate:0.1,congo=t61rcWkgMzE
 ```
 

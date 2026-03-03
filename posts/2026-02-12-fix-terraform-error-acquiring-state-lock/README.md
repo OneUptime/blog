@@ -41,7 +41,7 @@ Before assuming the lock is stale, verify nobody else is actively running Terraf
 
 The error output looks something like:
 
-```
+```text
 Error: Error acquiring the state lock
 
 Error message: ConditionalCheckFailedException: The conditional request failed

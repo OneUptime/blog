@@ -214,7 +214,7 @@ This ExternalSecret resource is safe to store in Git because it only contains re
 
 ### Repository Structure
 
-```
+```text
 my-app/
   base/
     deployment.yaml

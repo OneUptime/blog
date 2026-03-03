@@ -368,7 +368,7 @@ Or configure in logback-spring.xml.
 
 Now logs can be correlated with traces.
 
-```
+```text
 2024-01-15 10:23:45.123  INFO [order-service,abc123def456,789xyz] [http-nio-8080-exec-1] c.e.OrderController : Creating order for customer C001
 2024-01-15 10:23:45.456  INFO [order-service,abc123def456,012abc] [http-nio-8080-exec-1] c.e.InventoryService : Checking inventory for SKU-123
 ```

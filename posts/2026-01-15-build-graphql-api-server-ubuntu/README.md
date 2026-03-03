@@ -136,7 +136,7 @@ touch src/index.ts src/schema/index.ts src/resolvers/index.ts
 
 The project structure looks like this:
 
-```
+```text
 graphql-api-server/
 ├── src/
 │   ├── index.ts              # Application entry point

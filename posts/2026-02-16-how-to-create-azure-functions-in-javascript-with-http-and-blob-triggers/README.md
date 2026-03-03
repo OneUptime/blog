@@ -30,7 +30,7 @@ npm install
 
 The project structure looks like this:
 
-```
+```text
 blob-functions/
   src/
     functions/       # Your function files go here

@@ -27,7 +27,7 @@ talosctl etcd members --nodes 192.168.1.10
 
 The output shows each etcd member along with its ID, hostname, peer URLs, and client URLs:
 
-```
+```text
 ID                   HOSTNAME         PEER URLS                      CLIENT URLS
 8e9e05c52164694d     cp-1            https://192.168.1.10:2380      https://192.168.1.10:2379
 91bc3c398fb3c146     cp-2            https://192.168.1.11:2380      https://192.168.1.11:2379

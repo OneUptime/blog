@@ -45,7 +45,7 @@ bluetoothctl
 
 Once inside the interactive shell:
 
-```
+```text
 # Power on the adapter
 [bluetooth]# power on
 Changing power on succeeded
@@ -170,7 +170,7 @@ Keyboards use the passkey entry method - the keyboard will prompt you to type a 
 bluetoothctl
 ```
 
-```
+```text
 # Start the agent
 [bluetooth]# agent on
 [bluetooth]# default-agent

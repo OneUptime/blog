@@ -16,7 +16,7 @@ The standard defines two headers:
 
 ### traceparent
 
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
               |   |                                |                |
               v   v                                v                v
@@ -30,7 +30,7 @@ traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 
 ### tracestate
 
-```
+```text
 tracestate: vendor1=opaque-value,vendor2=another-value
 ```
 

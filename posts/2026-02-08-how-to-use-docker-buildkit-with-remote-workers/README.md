@@ -183,7 +183,7 @@ docker buildx inspect remote-tls --bootstrap
 
 The build context (your project files) must be transferred to the remote builder. For large repositories, this can be slow. Minimize the context with a `.dockerignore` file.
 
-```
+```text
 # .dockerignore - Exclude files from the build context
 .git
 node_modules

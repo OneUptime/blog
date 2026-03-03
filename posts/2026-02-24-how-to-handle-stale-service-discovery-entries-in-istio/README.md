@@ -28,7 +28,7 @@ There are several ways stale entries creep into Istio's service registry:
 
 The first sign of stale entries is usually connection errors in your application logs or a spike in 503 responses:
 
-```
+```text
 sum(rate(istio_requests_total{response_code="503",reporter="source"}[5m])) by (destination_workload)
 ```
 

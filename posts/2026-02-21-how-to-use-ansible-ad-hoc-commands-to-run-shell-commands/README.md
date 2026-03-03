@@ -153,7 +153,7 @@ ansible all -a "hostname" --one-line
 ```
 
 Output:
-```
+```text
 web1 | CHANGED | rc=0 | (stdout) web1.example.com
 web2 | CHANGED | rc=0 | (stdout) web2.example.com
 db1 | CHANGED | rc=0 | (stdout) db1.example.com

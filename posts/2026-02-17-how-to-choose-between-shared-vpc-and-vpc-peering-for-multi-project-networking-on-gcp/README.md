@@ -243,14 +243,14 @@ gcloud compute firewall-rules create allow-monitoring \
 
 The biggest limitation of VPC Peering is that it is not transitive. If Project A peers with Project B, and Project B peers with Project C, Project A cannot reach Project C through Project B.
 
-```
+```text
 Shared VPC:         A <--> B <--> C (all can communicate)
 VPC Peering:        A <--> B     B <--> C     A cannot reach C
 ```
 
 If you need A-to-C communication with peering, you must create a direct peering connection between them. This creates a full mesh that becomes hard to manage at scale:
 
-```
+```text
 3 projects = 3 peering connections
 5 projects = 10 peering connections
 10 projects = 45 peering connections

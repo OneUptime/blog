@@ -54,7 +54,7 @@ wget https://cdimage.ubuntu.com/releases/24.04/release/ubuntu-24.04-live-server-
 
 From the z/VM XEDIT or SMAPI interface, define a virtual machine. A minimal definition in DIRECTORY ENTRY format:
 
-```
+```text
 IDENTITY UBUNTU1 password 512M 4G G
   ACCOUNT usergroup billing-code
   CPU 00 BASE
@@ -113,7 +113,7 @@ EOF
 
 From the z/VM console, boot the guest using the network or from a punched card reader:
 
-```
+```text
 /* IPL the guest from the TFTP server */
 VMFIPLD UBUNTU1 PROFILE EXEC
 /* Or use the HMC to load the kernel/initrd */

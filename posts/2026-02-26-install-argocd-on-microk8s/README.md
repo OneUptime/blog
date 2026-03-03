@@ -105,7 +105,7 @@ kubectl get pods -n argocd -w
 
 You should see something like this once everything is healthy:
 
-```
+```text
 NAME                                  READY   STATUS    RESTARTS   AGE
 argocd-application-controller-0       1/1     Running   0          2m
 argocd-dex-server-6dcf645b6-xxxxx     1/1     Running   0          2m

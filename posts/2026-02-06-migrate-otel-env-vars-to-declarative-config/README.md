@@ -12,7 +12,7 @@ If your services are running OpenTelemetry with environment variables today, mig
 
 Here is the reference table you will need. Each `OTEL_*` variable maps to a specific location in the YAML structure:
 
-```
+```text
 OTEL_SERVICE_NAME
   -> resource.attributes.service.name
 
@@ -96,7 +96,7 @@ kubectl get deployments -n "$NAMESPACE" -o json | \
 
 Sample output:
 
-```
+```text
 cart-service/app: OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
 cart-service/app: OTEL_RESOURCE_ATTRIBUTES=service.name=cart-service,deployment.environment=production
 cart-service/app: OTEL_TRACES_SAMPLER=parentbased_traceidratio

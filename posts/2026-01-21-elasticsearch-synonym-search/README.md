@@ -93,7 +93,7 @@ For large synonym lists, use a file:
 
 Create `/etc/elasticsearch/synonyms/products.txt`:
 
-```
+```text
 # Product synonyms
 laptop, notebook, portable computer
 phone, mobile, cellphone, smartphone
@@ -159,7 +159,7 @@ Or use updateable synonyms (see below).
 
 Map specific terms to a canonical form:
 
-```
+```text
 notebook => laptop
 cellphone => phone
 automobile => car
@@ -171,7 +171,7 @@ automobile => car
 
 All terms expand to each other:
 
-```
+```text
 laptop, notebook, portable computer
 ```
 
@@ -533,7 +533,7 @@ curl -X PUT "https://localhost:9200/products" \
 
 ### E-commerce
 
-```
+```text
 # Size
 xs, extra small
 s, sm, small
@@ -554,7 +554,7 @@ sweater, jumper, pullover
 
 ### Technology
 
-```
+```text
 # Abbreviations
 cpu, processor, central processing unit
 ram, memory, random access memory
@@ -571,7 +571,7 @@ monitor, display, screen
 
 ### Medical
 
-```
+```text
 # Conditions
 heart attack, myocardial infarction, mi
 high blood pressure, hypertension
@@ -733,7 +733,7 @@ Too many synonyms can hurt precision. Monitor search quality.
 
 Map variations to a canonical form:
 
-```
+```text
 colour => color
 grey => gray
 ```

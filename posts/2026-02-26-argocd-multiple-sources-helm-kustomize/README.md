@@ -76,7 +76,7 @@ spec:
 
 The most common pattern is adding resources that the Helm chart does not create. For example, adding a ServiceMonitor for Prometheus monitoring and a PodDisruptionBudget:
 
-```
+```text
 k8s-configs/
   overlays/
     ingress-extras/
@@ -193,7 +193,7 @@ This pulls the Helm chart from JetStack, values from your config repo, and addit
 
 Different environments can use the same Helm chart but with different Kustomize overlays:
 
-```
+```text
 k8s-configs/
   cert-manager/
     values-base.yaml

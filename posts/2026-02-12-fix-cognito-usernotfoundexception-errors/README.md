@@ -14,7 +14,7 @@ Getting a `UserNotFoundException` from AWS Cognito seems pretty self-explanatory
 
 The error typically looks like this:
 
-```
+```text
 UserNotFoundException: User does not exist.
 ```
 

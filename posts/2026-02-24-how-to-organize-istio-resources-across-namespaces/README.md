@@ -27,7 +27,7 @@ Istio resources have specific scoping rules. Some resources are namespace-scoped
 
 The simplest approach is to put Istio resources in the same namespace as the workload they configure. Each team owns their namespace and all the Istio resources within it.
 
-```
+```text
 namespaces/
   team-a/
     deployment.yaml
@@ -125,7 +125,7 @@ The key here is the `istio-system/main-gateway` reference, which uses the `names
 
 If you run multiple environments in the same cluster (which many teams do for cost reasons), organize by environment:
 
-```
+```text
 namespaces/
   dev/
     orders-vs.yaml
@@ -290,7 +290,7 @@ spec:
 
 For your Git repository, mirror the namespace structure:
 
-```
+```text
 istio-configs/
   istio-system/
     main-gateway.yaml

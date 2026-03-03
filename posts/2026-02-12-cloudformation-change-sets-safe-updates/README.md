@@ -116,7 +116,7 @@ aws cloudformation describe-change-set \
 
 This produces something like:
 
-```
+```text
 ------------------------------------------------------------
 |                    DescribeChangeSet                      |
 +--------+------------------+------------------------+-----+

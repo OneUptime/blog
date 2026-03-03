@@ -60,7 +60,7 @@ When `poll` is greater than 0, Ansible starts the task, then periodically checks
 
 With `poll: 30`, Ansible will show status updates every 30 seconds:
 
-```
+```text
 TASK [Compile application from source] ****************************************
 ASYNC POLL on web1.example.com: jid=820581062177.3135 started=1 finished=0
 ASYNC POLL on web1.example.com: jid=820581062177.3135 started=1 finished=0

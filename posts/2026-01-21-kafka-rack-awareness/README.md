@@ -581,7 +581,7 @@ groups:
 
 Have at least as many racks as your replication factor:
 
-```
+```text
 Replication Factor = 3 -> At least 3 racks
 ```
 
@@ -589,7 +589,7 @@ Replication Factor = 3 -> At least 3 racks
 
 Distribute brokers evenly:
 
-```
+```text
 Rack A: Brokers 1, 2
 Rack B: Brokers 3, 4
 Rack C: Brokers 5, 6

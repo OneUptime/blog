@@ -277,7 +277,7 @@ envoy_cluster_circuit_breakers_default_cx_open{
 
 TCP metrics carry these labels:
 
-```
+```text
 istio_tcp_connections_opened_total{
   reporter="destination",
   source_workload="order-service",

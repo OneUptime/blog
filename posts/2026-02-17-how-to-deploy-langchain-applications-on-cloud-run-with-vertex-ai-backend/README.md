@@ -16,7 +16,7 @@ This guide covers everything from containerizing your LangChain app to deploying
 
 Let us start with a clean project structure for a LangChain API service.
 
-```
+```text
 langchain-service/
     app/
         __init__.py
@@ -135,7 +135,7 @@ async def health():
 
 ### Requirements File
 
-```
+```text
 # requirements.txt
 fastapi==0.109.0
 uvicorn==0.27.0
@@ -173,7 +173,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--worker
 
 ### Docker Ignore File
 
-```
+```text
 # .dockerignore
 __pycache__
 *.pyc

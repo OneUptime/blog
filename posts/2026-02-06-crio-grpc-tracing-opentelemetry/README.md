@@ -83,14 +83,14 @@ service:
 With tracing enabled, CRI-O produces spans for every CRI gRPC method. Here are the key operations:
 
 ### Pod Sandbox Operations
-```
+```text
 runtime.v1.RuntimeService/RunPodSandbox     - Create a new pod sandbox
 runtime.v1.RuntimeService/StopPodSandbox    - Stop a running sandbox
 runtime.v1.RuntimeService/RemovePodSandbox  - Remove a stopped sandbox
 ```
 
 ### Container Operations
-```
+```text
 runtime.v1.RuntimeService/CreateContainer   - Create a container in a sandbox
 runtime.v1.RuntimeService/StartContainer    - Start a created container
 runtime.v1.RuntimeService/StopContainer     - Stop a running container
@@ -98,7 +98,7 @@ runtime.v1.RuntimeService/RemoveContainer   - Remove a stopped container
 ```
 
 ### Image Operations
-```
+```text
 runtime.v1.ImageService/PullImage           - Pull a container image
 runtime.v1.ImageService/ListImages          - List available images
 runtime.v1.ImageService/ImageStatus         - Get image status
@@ -108,7 +108,7 @@ runtime.v1.ImageService/ImageStatus         - Get image status
 
 A typical pod start trace shows the full chain of operations:
 
-```
+```text
 RunPodSandbox                          [total: 450ms]
   setup_network                        [200ms]
   create_sandbox_container             [50ms]
@@ -129,7 +129,7 @@ If network setup consistently takes 200ms, that points to a CNI plugin performan
 
 Kubernetes 1.27+ supports tracing at the API server and kubelet levels. When all layers are instrumented, you get an end-to-end trace:
 
-```
+```text
 kubectl apply -> API Server -> Scheduler -> Kubelet -> CRI-O
 ```
 
@@ -190,7 +190,7 @@ service:
 
 Key CRI-O metrics to watch:
 
-```
+```text
 # Operation latency histograms
 crio_operations_latency_microseconds_bucket{operation="ContainerCreate"}
 crio_operations_latency_microseconds_bucket{operation="ContainerStart"}

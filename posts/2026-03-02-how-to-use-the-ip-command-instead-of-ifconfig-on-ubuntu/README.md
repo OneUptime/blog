@@ -61,7 +61,7 @@ ip addr show dev eth0
 
 ### Understanding ip addr Output
 
-```
+```text
 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
     link/ether 52:54:00:ab:cd:ef brd ff:ff:ff:ff:ff:ff
     inet 192.168.1.100/24 brd 192.168.1.255 scope global dynamic eth0
@@ -239,7 +239,7 @@ ip -br link show
 
 Brief output is particularly clean:
 
-```
+```text
 lo               UNKNOWN        127.0.0.1/8 ::1/128
 eth0             UP             192.168.1.100/24 fe80::5054:ff:feab:cdef/64
 ```

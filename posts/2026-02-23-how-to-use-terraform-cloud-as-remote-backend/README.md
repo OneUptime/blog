@@ -359,7 +359,7 @@ terraform {
 
 Do not try to manage staging and production in the same workspace. Keep them separate:
 
-```
+```text
 my-app-development   -> dev AWS account
 my-app-staging       -> staging AWS account
 my-app-production    -> production AWS account

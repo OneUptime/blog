@@ -92,7 +92,7 @@ gcloud app describe --project=your-project-id --format="value(locationId)"
 
 Install the Cloud Tasks client library:
 
-```
+```text
 # requirements.txt
 google-cloud-tasks==2.15.0
 ```

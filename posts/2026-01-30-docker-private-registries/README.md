@@ -164,7 +164,7 @@ sudo cp client.key /etc/docker/certs.d/registry.company.com:5000/client.key
 
 **Directory structure for TLS configuration:**
 
-```
+```text
 /etc/docker/certs.d/
 └── registry.company.com:5000/
     ├── ca.crt           # CA certificate

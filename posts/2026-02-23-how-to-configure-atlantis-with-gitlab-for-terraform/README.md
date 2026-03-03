@@ -30,7 +30,7 @@ Create a dedicated user for Atlantis (e.g., `atlantis-bot`) and generate an acce
 
 For group-level access, create a group access token instead:
 
-```
+```text
 Group Settings > Access Tokens > Add new token
 Name: atlantis-terraform
 Role: Developer
@@ -71,7 +71,7 @@ Configure the webhook in your GitLab project or group:
 1. Go to Project Settings > Webhooks
 2. Add a new webhook:
 
-```
+```text
 URL: https://atlantis.mycompany.com/events
 Secret Token: (same as --gitlab-webhook-secret)
 Trigger:
@@ -85,7 +85,7 @@ SSL verification: Enable
 
 For managing multiple projects from one webhook:
 
-```
+```text
 Group Settings > Webhooks
 URL: https://atlantis.mycompany.com/events
 Secret Token: your-random-secret
@@ -136,7 +136,7 @@ projects:
 
 The workflow mirrors the GitHub experience but uses GitLab terminology:
 
-```
+```text
 Developer: Creates merge request modifying environments/production/main.tf
 
 atlantis-bot:
@@ -152,7 +152,7 @@ atlantis-bot:
       }
 
   Plan: 1 to add, 0 to change, 0 to destroy.
-  ```
+  ```text
 
   To **apply** this plan, comment:
     `atlantis apply -d environments/production`
@@ -167,7 +167,7 @@ atlantis-bot:
 
 Configure GitLab to require Atlantis plan success before merging:
 
-```
+```text
 Project Settings > Merge Requests
 
 Merge checks:

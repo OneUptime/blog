@@ -32,7 +32,7 @@ A hotspot occurs when too many requests go to the same tablet (and therefore the
 
 The most common mistake is using sequentially increasing keys like timestamps or auto-incrementing IDs.
 
-```
+```text
 // BAD: Monotonically increasing row keys
 // All new writes go to the same tablet at the end of the sorted range
 2026-02-17T10:00:01
@@ -48,7 +48,7 @@ When you use timestamps as row keys, every new write goes to the end of the sort
 
 Starting all your keys with the same prefix is just as bad.
 
-```
+```text
 // BAD: Most keys start with the same prefix
 web#user1#event1
 web#user1#event2

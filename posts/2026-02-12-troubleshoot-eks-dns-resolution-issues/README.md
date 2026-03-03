@@ -107,7 +107,7 @@ kubectl get configmap coredns -n kube-system -o yaml
 
 A healthy default configuration looks like:
 
-```
+```text
 .:53 {
     errors
     health {
@@ -144,7 +144,7 @@ kubectl exec my-pod -- cat /etc/resolv.conf
 
 Expected output:
 
-```
+```text
 nameserver 10.100.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local us-west-2.compute.internal
 options ndots:5

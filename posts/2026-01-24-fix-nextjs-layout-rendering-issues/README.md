@@ -384,7 +384,7 @@ Nested layouts require specific file structure to work correctly.
 
 ### The Problem
 
-```
+```text
 app/
   dashboard/
     layout.tsx      // Dashboard layout

@@ -166,7 +166,7 @@ In large meshes, the full graph is overwhelming during debugging. Use the Find/H
 
 ### Hide Healthy Services
 
-```
+```text
 %healthy = true
 ```
 
@@ -174,7 +174,7 @@ Type this in the "Hide" box to remove all healthy nodes from the graph, leaving 
 
 ### Find a Specific Service
 
-```
+```text
 node = "reviews"
 ```
 
@@ -182,7 +182,7 @@ This highlights the reviews service and its immediate connections, dimming every
 
 ### Find All Services with Errors
 
-```
+```text
 %error > 0
 ```
 

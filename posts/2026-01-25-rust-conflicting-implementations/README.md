@@ -37,7 +37,7 @@ impl<T: std::fmt::Display> Greet for T {
 
 The error message looks like this:
 
-```
+```text
 error[E0119]: conflicting implementations of trait `Greet` for type `String`
  --> src/main.rs:13:1
   |

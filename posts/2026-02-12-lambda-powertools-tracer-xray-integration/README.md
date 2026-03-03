@@ -271,7 +271,7 @@ def test_handler():
 
 Once your traces are flowing, use filter expressions to find specific traces in the X-Ray console.
 
-```
+```text
 # Find traces for a specific order
 annotation.OrderId = "ORD-12345"
 

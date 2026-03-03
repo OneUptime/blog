@@ -36,7 +36,7 @@ graph LR
 
 Here's the directory layout for a custom platform.
 
-```
+```text
 my-custom-platform/
 ├── platform.yaml
 ├── packer/

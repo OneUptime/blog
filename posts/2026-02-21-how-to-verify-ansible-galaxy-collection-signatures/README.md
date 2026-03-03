@@ -113,7 +113,7 @@ ansible-galaxy collection install community.general \
 
 If the signature is valid, installation proceeds normally. If the signature is invalid or missing, you will see an error:
 
-```
+```text
 ERROR! Signature verification failed for collection community.general
 ```
 

@@ -211,7 +211,7 @@ This approach eliminates `node_modules` entirely from the production image. The 
 
 Prevent unnecessary files from entering the build context:
 
-```
+```text
 # .dockerignore
 node_modules
 .git

@@ -22,7 +22,7 @@ Click "Create table" to get started.
 
 Choose a name that describes the data you're storing. Table names must be unique within your AWS account and region. Common naming patterns:
 
-```
+```text
 Users
 Orders
 Products
@@ -45,7 +45,7 @@ Enter a name for your partition key and select the data type:
 
 For a Users table, you might use `userId` as the partition key with type String:
 
-```
+```text
 Partition key: userId (String)
 ```
 
@@ -57,7 +57,7 @@ The sort key is optional. Adding one creates a composite primary key (partition 
 
 For example, an orders table might use:
 
-```
+```text
 Partition key: customerId (String)
 Sort key: orderDate (String)
 ```
@@ -66,7 +66,7 @@ This lets you query all orders for a customer and sort them by date. Without a s
 
 Common sort key patterns:
 
-```
+```text
 # Timestamp-based
 Sort key: createdAt (String)  - store ISO dates like "2026-02-12T10:30:00Z"
 
@@ -98,14 +98,14 @@ For more details on choosing between these, see our post on [DynamoDB on-demand 
 
 If you choose Provisioned, you'll need to set:
 
-```
+```text
 Read capacity units (RCUs): 5  (1 RCU = one 4KB strongly consistent read per second)
 Write capacity units (WCUs): 5  (1 WCU = one 1KB write per second)
 ```
 
 You can also enable Auto Scaling, which adjusts capacity based on usage:
 
-```
+```text
 Auto Scaling settings:
   Minimum capacity: 5
   Maximum capacity: 100
@@ -122,7 +122,7 @@ You can add Global Secondary Indexes (GSIs) and Local Secondary Indexes (LSIs) a
 
 If you need to query users by email instead of userId, you'd add a GSI:
 
-```
+```text
 GSI Name: email-index
 Partition key: email (String)
 Sort key: (none)
@@ -143,7 +143,7 @@ For most applications, the default AWS owned key is sufficient. Use customer man
 
 Tags help you organize and track costs. Add key-value pairs like:
 
-```
+```text
 Environment: production
 Team: backend
 Project: ecommerce
@@ -183,7 +183,7 @@ After adding a few items, you can query them from the "Explore table items" tab.
 
 Select the table or index to query, enter the partition key value, and optionally filter by sort key:
 
-```
+```text
 Query settings:
   Partition key (userId): user-001
   Sort key condition: begins_with "2026-02"
@@ -196,14 +196,14 @@ This is much more efficient than scanning the entire table. Scans read every ite
 Here are a few common patterns to get you started:
 
 **User profiles table:**
-```
+```text
 Table: Users
 Partition key: userId (String)
 No sort key needed - one item per user
 ```
 
 **Order history table:**
-```
+```text
 Table: Orders
 Partition key: customerId (String)
 Sort key: orderTimestamp (String)
@@ -211,7 +211,7 @@ GSI: orderStatus-index (partition key: status, sort key: orderTimestamp)
 ```
 
 **Chat messages table:**
-```
+```text
 Table: Messages
 Partition key: channelId (String)
 Sort key: timestamp (String)

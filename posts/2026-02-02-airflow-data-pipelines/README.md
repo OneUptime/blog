@@ -79,7 +79,7 @@ Let us start with a complete ETL pipeline that extracts data from a source, tran
 
 Organize your Airflow project for maintainability and scalability.
 
-```
+```text
 airflow/
 ├── dags/
 │   ├── __init__.py

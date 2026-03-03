@@ -121,7 +121,7 @@ You can customize mappings by:
 
 Here is an expression example that constructs a username from first and last name:
 
-```
+```text
 // Expression to create a username from given name and surname
 // Converts to lowercase and removes spaces
 ToLower(Join(".", [givenName], [surname]))
@@ -143,7 +143,7 @@ To add a scoping filter:
 
 Example: Provision only users in the Sales department who have a manager assigned:
 
-```
+```text
 Clause 1: department EQUALS "Sales"
 AND
 Clause 2: manager IS NOT NULL

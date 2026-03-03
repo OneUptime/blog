@@ -252,7 +252,7 @@ spec:
 
 Track mTLS adoption with Prometheus:
 
-```
+```text
 # All mTLS traffic by service pair
 sum(rate(istio_requests_total{connection_security_policy="mutual_tls", reporter="source"}[5m])) by (source_workload, destination_service)
 ```

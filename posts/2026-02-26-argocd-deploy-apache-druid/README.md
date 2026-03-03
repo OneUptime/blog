@@ -32,7 +32,7 @@ graph TD
 
 ## Repository Structure
 
-```
+```text
 druid/
   base/
     kustomization.yaml

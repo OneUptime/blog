@@ -24,7 +24,7 @@ Most automated deployment workflows use an HTTP-hosted preseed file, which is re
 
 A preseed file is structured by topic. Here is a complete working example for Ubuntu 22.04:
 
-```
+```text
 ### Preseed configuration for Ubuntu 22.04 LTS ###
 
 ## Localization
@@ -105,7 +105,7 @@ d-i preseed/late_command string \
 
 The `atomic` recipe creates a single root partition. For more control, define a custom recipe:
 
-```
+```text
 ## Custom partitioning recipe
 # Creates: 512MB /boot (ext4), 2GB swap, remaining space for /
 d-i partman-auto/expert_recipe string   \
@@ -159,7 +159,7 @@ When booting from the Ubuntu installation ISO, you need to add boot parameters t
 
 At the GRUB or isolinux boot menu, press Tab (for isolinux) or E (for GRUB) to edit the boot command and append:
 
-```
+```text
 auto=true priority=critical url=http://your-server:8080/ubuntu-preseed.cfg
 ```
 
@@ -167,7 +167,7 @@ auto=true priority=critical url=http://your-server:8080/ubuntu-preseed.cfg
 
 The GRUB command line needs:
 
-```
+```text
 auto=true priority=critical url=http://your-server:8080/ubuntu-preseed.cfg
 ```
 
@@ -198,7 +198,7 @@ nano ~/custom-ubuntu-iso/isolinux/txt.cfg
 
 Modify the default boot entry in `txt.cfg`:
 
-```
+```text
 default live-install
 label live-install
   menu label ^Install Ubuntu Server (automated)
@@ -237,7 +237,7 @@ openssl passwd -6 'your_secure_password_here'
 
 The `late_command` section runs after the base installation completes and is the best place to add SSH keys and final configuration:
 
-```
+```text
 d-i preseed/late_command string \
   in-target mkdir -p /home/deploy/.ssh; \
   in-target bash -c 'echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... user@host" > /home/deploy/.ssh/authorized_keys'; \
@@ -248,7 +248,7 @@ d-i preseed/late_command string \
 
 For more complex post-install scripts, download and run a script:
 
-```
+```text
 d-i preseed/late_command string \
   wget -q -O /target/tmp/post-install.sh http://your-server/post-install.sh; \
   in-target bash /tmp/post-install.sh

@@ -25,7 +25,7 @@ Templates are the most flexible and the approach we will focus on.
 
 ## Project Structure
 
-```
+```text
 config-management/
   inventory/
     staging.yml

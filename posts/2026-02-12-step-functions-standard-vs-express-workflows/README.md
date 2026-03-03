@@ -149,7 +149,7 @@ Express workflow pricing is based on number of executions and duration. You pay 
 
 That's a 40x cost difference for the same workload. Here's a comparison at different scales:
 
-```
+```text
 Monthly Executions | Standard (5 states) | Express (2s each)
 10,000             | $1.25               | $0.03
 100,000            | $12.50              | $0.31

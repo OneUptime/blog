@@ -67,7 +67,7 @@ rules:
 
 Example commits:
 
-```
+```text
 deploy(payment-service): update to v2.1.0
 
 Changelog: https://github.com/org/payment-service/releases/tag/v2.1.0

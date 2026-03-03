@@ -351,7 +351,7 @@ spec:
 
 Add the hostnames to your local DNS or `/etc/hosts` file on your devices:
 
-```
+```text
 192.168.1.200  jellyfin.home.lab music.home.lab photos.home.lab
 ```
 

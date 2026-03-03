@@ -165,7 +165,7 @@ Your app redirects the user to the authorization server.
 
 This URL initiates the OAuth flow by directing the user to Google's login page. Each parameter serves a specific purpose in identifying your application and securing the flow. The state parameter is particularly important as it prevents cross-site request forgery attacks.
 
-```
+```text
 https://accounts.google.com/o/oauth2/v2/auth?
   client_id=YOUR_CLIENT_ID&                         # Identifies your registered application
   redirect_uri=https://yourapp.com/callback&        # Where Google sends user after auth
@@ -184,7 +184,7 @@ After approval, Google redirects back to your app.
 
 The authorization server sends the user back to your redirect_uri with a short-lived authorization code. Always verify the state parameter matches what you originally sent to prevent CSRF attacks. The code itself is only valid for a few minutes and can only be used once.
 
-```
+```text
 https://yourapp.com/callback?
   code=AUTHORIZATION_CODE&                    # Short-lived code to exchange for tokens
   state=random_string_for_csrf_protection     # Must match the state you sent (verify this!)

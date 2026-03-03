@@ -18,7 +18,7 @@ When Docker reports an "Input/Output Error" on a volume mount, it means the unde
 
 The error typically looks like this in your application logs:
 
-```
+```text
 OSError: [Errno 5] Input/output error: '/data/myfile.txt'
 ```
 

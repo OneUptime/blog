@@ -26,7 +26,7 @@ The plugin binary is installed at `/usr/local/libexec/trafficserver/otel_tracer.
 
 Add the plugin to `plugin.config`:
 
-```
+```text
 # /etc/trafficserver/plugin.config
 otel_tracer.so --config /etc/trafficserver/otel_tracer.yaml
 ```
@@ -66,7 +66,7 @@ trace_phases:
 
 ATS processes each request through several phases. The plugin creates spans for each:
 
-```
+```text
 Client Request
   |
   +-- read_request           [Parse and validate the request]
@@ -85,7 +85,7 @@ Client Request
 
 A cache hit trace is shorter because it skips the origin fetch phases:
 
-```
+```text
 Trace (cache hit): total 5ms
   read_request:              1ms
   cache_lookup:              2ms (result: HIT)
@@ -94,7 +94,7 @@ Trace (cache hit): total 5ms
 
 A cache miss trace includes the origin fetch:
 
-```
+```text
 Trace (cache miss): total 250ms
   read_request:              1ms
   cache_lookup:              2ms (result: MISS)
@@ -151,7 +151,7 @@ service:
 
 The plugin adds these attributes to each span:
 
-```
+```text
 http.method:            GET
 http.url:               /images/logo.png
 http.status_code:       200
@@ -170,7 +170,7 @@ The `cache.status` attribute is particularly valuable. It tells you whether the 
 
 Configure ATS to propagate trace context to origin servers:
 
-```
+```text
 # /etc/trafficserver/remap.config
 map http://cdn.example.com/ http://origin.example.com/
 ```
@@ -181,7 +181,7 @@ The OTel plugin automatically injects `traceparent` and `tracestate` headers int
 
 Use trace data to calculate cache hit ratios:
 
-```
+```text
 # From your observability backend
 cache_hit_ratio = count(spans where cache.status = "HIT") / count(all spans)
 ```

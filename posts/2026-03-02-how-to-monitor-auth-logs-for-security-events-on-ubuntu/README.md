@@ -14,7 +14,7 @@ Authentication logs record every login attempt, sudo command, SSH session, and P
 
 Authentication log entries follow syslog format:
 
-```
+```text
 Mar  2 14:23:01 hostname sshd[12345]: Failed password for root from 192.168.1.50 port 45231 ssh2
 Mar  2 14:23:05 hostname sshd[12346]: Accepted publickey for admin from 10.0.0.5 port 52341 ssh2
 Mar  2 14:24:01 hostname sudo: admin : TTY=pts/0 ; PWD=/home/admin ; USER=root ; COMMAND=/usr/bin/apt update

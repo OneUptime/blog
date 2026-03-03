@@ -133,7 +133,7 @@ builder --config manifest.yaml
 
 This generates Go source code in the `./build` directory and compiles it into a binary. The output looks something like this:
 
-```
+```text
 2026-02-06T10:00:00.000Z  INFO  builder/main.go  Building custom collector
 2026-02-06T10:00:00.100Z  INFO  builder/main.go  Generating source code
 2026-02-06T10:00:05.000Z  INFO  builder/main.go  Compiling

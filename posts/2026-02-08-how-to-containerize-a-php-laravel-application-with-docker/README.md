@@ -14,7 +14,7 @@ Laravel is the most popular PHP framework, and containerizing it properly requir
 
 A typical Laravel Docker setup includes several configuration files:
 
-```
+```text
 my-laravel-app/
   app/
   config/

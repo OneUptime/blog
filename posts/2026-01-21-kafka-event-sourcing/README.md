@@ -599,7 +599,7 @@ public class OrderCreated {
 
 ### 3. Use Topic Per Aggregate Type
 
-```
+```text
 events.orders      -> Order events
 events.customers   -> Customer events
 events.inventory   -> Inventory events

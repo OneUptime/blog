@@ -124,7 +124,7 @@ kubectl get kustomizations -n cluster-config
 
 Structure your Git repository for effective cluster management:
 
-```
+```text
 k8s-configs/
 ├── infrastructure/
 │   ├── namespaces/
@@ -241,7 +241,7 @@ Flux detects the change and deploys the Helm chart.
 
 Use Kustomize overlays for environment-specific configurations:
 
-```
+```text
 k8s-configs/
 ├── base/
 │   ├── deployment.yaml
@@ -483,7 +483,7 @@ az k8s-configuration flux create \
 
 Use cluster-specific overlays:
 
-```
+```text
 k8s-configs/
 ├── base/
 ├── clusters/

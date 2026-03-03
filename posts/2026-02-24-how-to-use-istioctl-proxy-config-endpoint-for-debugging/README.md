@@ -26,7 +26,7 @@ istioctl proxy-config endpoint productpage-v1-6b746f74dc-9rlmh.bookinfo
 
 Output:
 
-```
+```text
 ENDPOINT                         STATUS      OUTLIER CHECK     CLUSTER
 10.244.0.15:9080                 HEALTHY     OK                outbound|9080||details.bookinfo.svc.cluster.local
 10.244.0.16:9080                 HEALTHY     OK                outbound|9080||ratings.bookinfo.svc.cluster.local
@@ -112,7 +112,7 @@ istioctl proxy-config endpoint productpage-v1-6b746f74dc-9rlmh.bookinfo | \
 
 When an endpoint shows `FAILED` in the OUTLIER CHECK column, it has been ejected by the circuit breaker:
 
-```
+```text
 ENDPOINT           STATUS      OUTLIER CHECK     CLUSTER
 10.244.0.17:9080   HEALTHY     FAILED            outbound|9080||reviews.bookinfo.svc.cluster.local
 10.244.0.18:9080   HEALTHY     OK                outbound|9080||reviews.bookinfo.svc.cluster.local

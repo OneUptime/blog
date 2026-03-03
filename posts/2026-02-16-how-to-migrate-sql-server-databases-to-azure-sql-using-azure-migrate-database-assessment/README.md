@@ -56,7 +56,7 @@ You can (and should) run separate assessments for each target type. This gives y
 
 Connect to your SQL Server instance:
 
-```
+```text
 Server name: your-sql-server.domain.local
 Authentication: Windows Authentication (or SQL Authentication)
 Connection properties: Encrypt connection = True, Trust server certificate = True

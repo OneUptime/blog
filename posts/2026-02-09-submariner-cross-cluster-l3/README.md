@@ -182,7 +182,7 @@ subctl show connections
 
 You should see output like:
 
-```
+```text
 Cluster "cluster-a"
  ✓ Showing Connections
 GATEWAY                      CLUSTER    REMOTE IP       CABLE DRIVER  SUBNETS                   STATUS

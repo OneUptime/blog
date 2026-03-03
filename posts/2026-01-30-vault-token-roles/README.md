@@ -66,7 +66,7 @@ vault read auth/token/roles/app-token-role
 
 Output:
 
-```
+```text
 Key                         Value
 ---                         -----
 allowed_policies            [app-read app-write]

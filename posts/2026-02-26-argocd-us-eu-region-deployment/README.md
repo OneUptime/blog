@@ -97,7 +97,7 @@ stringData:
 
 Organize your deployment manifests to clearly separate US and EU configurations:
 
-```
+```text
 deploy/
   base/
     kustomization.yaml

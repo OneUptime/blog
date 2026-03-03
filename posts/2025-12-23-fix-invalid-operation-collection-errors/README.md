@@ -12,7 +12,7 @@ The "InvalidOperationException: Collection was modified" error is one of the mos
 
 This error typically appears as:
 
-```
+```text
 System.InvalidOperationException: Collection was modified; enumeration operation may not execute.
 ```
 

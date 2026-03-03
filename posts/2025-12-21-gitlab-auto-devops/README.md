@@ -375,7 +375,7 @@ variables:
 
 Create a custom chart in your repository.
 
-```
+```text
 chart/
   Chart.yaml
   values.yaml

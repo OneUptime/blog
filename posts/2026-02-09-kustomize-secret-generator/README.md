@@ -249,7 +249,7 @@ spec:
 
 Structure for multiple environments:
 
-```
+```text
 .
 ├── base/
 │   ├── kustomization.yaml

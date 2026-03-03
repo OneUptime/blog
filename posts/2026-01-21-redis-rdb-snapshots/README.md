@@ -292,7 +292,7 @@ redis-cli INFO persistence
 
 Key metrics to monitor:
 
-```
+```text
 rdb_changes_since_last_save:0
 rdb_bgsave_in_progress:0
 rdb_last_save_time:1705849200

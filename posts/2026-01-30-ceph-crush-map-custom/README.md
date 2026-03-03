@@ -58,7 +58,7 @@ A CRUSH map consists of four main components:
 
 The default bucket type hierarchy from lowest to highest:
 
-```
+```text
 osd (device)
     └── host
         └── chassis
@@ -96,7 +96,7 @@ cat /tmp/crushmap.txt
 
 A typical decompiled CRUSH map looks like this:
 
-```
+```text
 # begin crush map
 tunable choose_local_tries 0
 tunable choose_local_fallback_tries 0
@@ -184,7 +184,7 @@ Consider this cluster layout:
 
 Create a new file `/tmp/custom-crushmap.txt`:
 
-```
+```text
 # Custom CRUSH map for multi-rack datacenter
 # Optimized for mixed SSD/HDD workloads
 
@@ -333,7 +333,7 @@ The `firstn 0` means "use the pool's replication count."
 
 Add these rules to your CRUSH map:
 
-```
+```text
 # Rule for replicated pools - distribute across racks
 rule replicated_rack {
     id 0
@@ -363,7 +363,7 @@ rule replicated_cross_rack {
 
 Device classes let you target specific storage tiers. Create rules that only use SSDs or HDDs:
 
-```
+```text
 # Rule for SSD-only pools (databases, hot data)
 rule ssd_only {
     id 2
@@ -399,7 +399,7 @@ rule ssd_cross_rack {
 
 For erasure-coded pools, the rule type changes:
 
-```
+```text
 # Rule for erasure coded pools
 # EC pools need more OSDs than replicated pools
 rule erasure_hdd {
@@ -427,7 +427,7 @@ rule erasure_cross_rack {
 
 Here is the full CRUSH map combining all elements:
 
-```
+```text
 # Complete custom CRUSH map
 # Datacenter: dc1
 # Layout: 2 racks, 4 hosts, mixed SSD/HDD
@@ -784,7 +784,7 @@ ceph osd pool get fast_pool crush_rule
 
 For clusters spanning multiple datacenters:
 
-```
+```text
 # Additional datacenter bucket type usage
 datacenter dc1 {
     id -10
@@ -825,7 +825,7 @@ rule replicated_cross_dc {
 
 Control replica distribution with choose statements:
 
-```
+```text
 # Place 2 replicas in dc1, 1 in dc2
 rule primary_dc1 {
     id 11
@@ -853,7 +853,7 @@ Different algorithms for different use cases:
 
 Example using different algorithms:
 
-```
+```text
 # Use uniform for identical SSDs
 host ssd_host {
     id -20

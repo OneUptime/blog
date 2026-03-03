@@ -33,7 +33,7 @@ tar czf my_webserver-1.0.0.tar.gz my_webserver/
 
 The tarball should contain the role's top-level directory with the standard structure inside:
 
-```
+```text
 my_webserver/
     defaults/
         main.yml

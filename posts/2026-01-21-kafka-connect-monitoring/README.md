@@ -229,7 +229,7 @@ export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote \
 
 #### Connector Metrics
 
-```
+```text
 kafka.connect:type=connector-metrics,connector="{connector}"
 - connector-class
 - connector-type
@@ -246,7 +246,7 @@ kafka.connect:type=connector-task-metrics,connector="{connector}",task="{task}"
 
 #### Source Connector Metrics
 
-```
+```text
 kafka.connect:type=source-task-metrics,connector="{connector}",task="{task}"
 - source-record-poll-rate
 - source-record-poll-total
@@ -260,7 +260,7 @@ kafka.connect:type=source-task-metrics,connector="{connector}",task="{task}"
 
 #### Sink Connector Metrics
 
-```
+```text
 kafka.connect:type=sink-task-metrics,connector="{connector}",task="{task}"
 - sink-record-read-rate
 - sink-record-read-total
@@ -277,7 +277,7 @@ kafka.connect:type=sink-task-metrics,connector="{connector}",task="{task}"
 
 #### Worker Metrics
 
-```
+```text
 kafka.connect:type=connect-worker-metrics
 - connector-count
 - connector-startup-attempts-total

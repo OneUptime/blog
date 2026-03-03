@@ -12,7 +12,7 @@ Running a single collector is a single point of failure. The natural solution is
 
 In a high-availability setup, applications send telemetry to two collectors simultaneously. If one collector goes down, the other keeps receiving data. No gap in observability.
 
-```
+```text
                     +--> [Collector A] --\
 [Application] ---->|                     +--> [Dedup Collector] --> [Backend]
                     +--> [Collector B] --/

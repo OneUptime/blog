@@ -12,7 +12,7 @@ Creating ECS services with Terraform involves coordinating multiple AWS resource
 
 ## What the Error Looks Like
 
-```
+```text
 Error: error creating ECS Service (my-service):
 InvalidParameterException: Unable to assume the service linked
 role. Please verify that the ECS service linked role exists.

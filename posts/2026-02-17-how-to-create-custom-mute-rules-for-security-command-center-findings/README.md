@@ -289,7 +289,7 @@ gcloud scc findings list YOUR_ORG_ID \
 
 When creating a mute rule, document it with:
 
-```
+```text
 Description format: [CATEGORY] - [REASON] - Approved by [NAME] - Ticket [NUMBER] - Review by [DATE]
 
 Example: "PUBLIC_BUCKET_ACL - Static website hosting bucket - Approved by Jane Doe - SEC-2026-089 - Review by 2026-08-01"

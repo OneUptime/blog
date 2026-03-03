@@ -14,7 +14,7 @@ SSH connection failures are the most fundamental problem you can hit with Ansibl
 
 SSH failures in Ansible typically look like one of these:
 
-```
+```text
 fatal: [web-01]: UNREACHABLE! => {"changed": false, "msg": "Failed to connect to the host via ssh: ssh: connect to host web-01 port 22: Connection timed out", "unreachable": true}
 
 fatal: [web-01]: UNREACHABLE! => {"changed": false, "msg": "Failed to connect to the host via ssh: Permission denied (publickey,password).", "unreachable": true}
@@ -53,7 +53,7 @@ ansible web-01 -m ping -vvvv
 
 Look for the `SSH: EXEC` lines in the output:
 
-```
+```text
 <web-01> SSH: EXEC ssh -C -o ControlMaster=auto -o ControlPersist=60s
   -o 'IdentityFile="/home/deploy/.ssh/id_ed25519"'
   -o KbdInteractiveAuthentication=no
@@ -68,7 +68,7 @@ Copy this SSH command and run it manually to see the exact error.
 
 ## Common Failure: Connection Timed Out
 
-```
+```text
 ssh: connect to host web-01 port 22: Connection timed out
 ```
 
@@ -112,7 +112,7 @@ remote_port = 2222
 
 ## Common Failure: Permission Denied
 
-```
+```text
 Permission denied (publickey,password).
 ```
 
@@ -171,7 +171,7 @@ chmod 600 ~/.ssh/authorized_keys
 
 ## Common Failure: Host Key Verification Failed
 
-```
+```text
 Host key verification failed.
 ```
 
@@ -204,7 +204,7 @@ ssh-keyscan -H web-01 >> ~/.ssh/known_hosts
 
 ## Common Failure: Cannot Resolve Hostname
 
-```
+```text
 ssh: Could not resolve hostname web-01: Name or service not known
 ```
 
@@ -232,7 +232,7 @@ echo "10.0.1.50 web-01" | sudo tee -a /etc/hosts
 
 Ansible uses SSH multiplexing (ControlMaster) to speed up connections. Sometimes the control socket gets corrupted:
 
-```
+```text
 ssh: Connection to web-01 timed out
 ```
 
@@ -276,7 +276,7 @@ ansible webservers -m ping
 
 Create a dedicated SSH config for your Ansible hosts:
 
-```
+```text
 # ~/.ssh/config
 
 Host web-*

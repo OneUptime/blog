@@ -443,7 +443,7 @@ service:
 
 Key metrics:
 
-```
+```text
 # Spans received per collector
 sum(rate(otelcol_receiver_accepted_spans[5m])) by (pod)
 

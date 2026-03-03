@@ -139,7 +139,7 @@ Group related panels in repeating rows:
 
 ### Example Structure
 
-```
+```text
 Dashboard
 ├── Row: $service metrics (repeated)
 │   ├── Panel: Request Rate

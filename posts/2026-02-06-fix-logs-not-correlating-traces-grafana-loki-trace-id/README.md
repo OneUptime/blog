@@ -151,7 +151,7 @@ processors:
 
 In Grafana, configure the Loki data source to recognize the trace ID field:
 
-```
+```text
 Settings -> Data Sources -> Loki
   -> Derived fields
     -> Name: traceID
@@ -161,7 +161,7 @@ Settings -> Data Sources -> Loki
 
 Or if trace_id is a label:
 
-```
+```text
   -> Derived fields
     -> Name: TraceID
     -> Label: traceID
@@ -173,7 +173,7 @@ Or if trace_id is a label:
 After configuration, send a test request and check:
 
 1. In Grafana Explore, query Loki:
-```
+```text
 {service_name="my-service"} | json
 ```
 

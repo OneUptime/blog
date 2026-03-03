@@ -50,7 +50,7 @@ WebSockets provide several advantages over HTTP polling:
 
 Deno requires no package.json or npm install. You can start writing WebSocket code immediately. However, for better organization, create a project structure:
 
-```
+```text
 websocket-server/
 ├── main.ts
 ├── handlers/

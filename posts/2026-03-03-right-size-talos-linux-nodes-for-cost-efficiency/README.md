@@ -110,7 +110,7 @@ Common workload profiles include:
 
 For each node pool, calculate the optimal instance size using this formula:
 
-```
+```text
 Optimal Node Resources =
   (Sum of pod resource requests in the pool) /
   (Target utilization rate) /
@@ -123,7 +123,7 @@ A target utilization rate of 65-75% gives you room for spikes while avoiding was
 
 Here is an example calculation for a worker pool:
 
-```
+```text
 Total pod CPU requests: 48 cores
 Target utilization: 70%
 Number of nodes: 6

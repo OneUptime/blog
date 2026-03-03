@@ -36,7 +36,7 @@ The row key determines how data is sorted, distributed, and queried. For IoT tel
 
 Here is the row key structure I recommend:
 
-```
+```text
 <device_type>#<device_id>#<reverse_timestamp>
 ```
 

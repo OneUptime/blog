@@ -10,7 +10,7 @@ Description: Fix CORS errors when calling Lambda Function URLs from web browsers
 
 Lambda Function URLs give you a simple HTTP endpoint for your Lambda function without needing API Gateway. But when you call that URL from a web browser, you'll likely hit a CORS error:
 
-```
+```text
 Access to fetch at 'https://abc123.lambda-url.us-east-1.on.aws/'
 from origin 'https://myapp.com' has been blocked by CORS policy
 ```

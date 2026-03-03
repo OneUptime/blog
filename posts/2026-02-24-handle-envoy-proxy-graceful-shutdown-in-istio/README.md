@@ -32,7 +32,7 @@ Steps 2 and 3 happen at roughly the same time but are independent processes. Thi
 
 The pilot-agent manages Envoy's lifecycle. When it receives SIGTERM:
 
-```
+```text
 SIGTERM -> pilot-agent
   |
   |-> POST /drain_listeners to Envoy admin (starts listener drain)

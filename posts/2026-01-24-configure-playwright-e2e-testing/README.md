@@ -40,7 +40,7 @@ The init command creates a basic configuration and example tests. It also instal
 
 A well-organized Playwright project looks like this:
 
-```
+```text
 project/
 ├── playwright.config.ts      # Main configuration
 ├── tests/

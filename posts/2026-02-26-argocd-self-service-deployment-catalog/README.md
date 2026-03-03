@@ -42,7 +42,7 @@ The self-service catalog uses three main ArgoCD features:
 
 Create a Git repository that holds your deployment templates. Each template defines how a specific type of service should be deployed:
 
-```
+```text
 deployment-catalog/
   templates/
     web-service/

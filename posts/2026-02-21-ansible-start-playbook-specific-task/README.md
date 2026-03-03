@@ -110,7 +110,7 @@ ansible-playbook -i inventory.ini deploy.yml --start-at-task "Deploy nginx confi
 
 Output:
 
-```
+```text
 PLAY [Deploy web application] *************************************************
 
 TASK [Gathering Facts] ********************************************************
@@ -167,7 +167,7 @@ ansible-playbook -i inventory.ini deploy.yml --list-tasks
 
 Output:
 
-```
+```text
 playbook: deploy.yml
 
   play #1 (webservers): Deploy web application    TAGS: []

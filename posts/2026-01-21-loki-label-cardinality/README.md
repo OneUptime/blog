@@ -16,7 +16,7 @@ Label cardinality - the number of unique label value combinations - directly imp
 
 Cardinality refers to the number of unique values for a label or unique combinations of all labels (streams):
 
-```
+```text
 Labels: {job="api", instance="pod-1", env="prod"}
 
 Cardinality examples:

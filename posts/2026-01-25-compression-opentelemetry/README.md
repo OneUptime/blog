@@ -258,7 +258,7 @@ service:
 
 Key metrics to monitor:
 
-```
+```text
 # Bytes exported (after compression)
 otelcol_exporter_sent_bytes_total
 
@@ -365,7 +365,7 @@ benchmarkCompression(sampleSpans);
 ```
 
 Sample output:
-```
+```text
 Original size: 15234 bytes
 Level 1: 2845 bytes, 45ms for 1000 ops
   Ratio: 5.35:1

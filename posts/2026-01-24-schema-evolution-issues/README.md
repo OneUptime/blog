@@ -35,14 +35,14 @@ graph TD
 
 When you see errors like:
 
-```
+```text
 Schema evolution not compatible:
 Cannot remove required field 'user_id' without default value
 ```
 
 Or in Kafka:
 
-```
+```text
 io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException:
 Schema being registered is incompatible with an earlier schema; error code: 409
 ```

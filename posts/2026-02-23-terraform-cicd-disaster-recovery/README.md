@@ -24,7 +24,7 @@ There are three common DR patterns, each with different Terraform approaches:
 
 Organize your code to support multiple regions:
 
-```
+```text
 infrastructure/
   modules/
     app-stack/        # Reusable module for the full application stack

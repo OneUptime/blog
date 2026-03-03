@@ -53,7 +53,7 @@ The `host` declaration creates a reservation. It can appear inside or outside of
 sudo nano /etc/dhcp/dhcpd.conf
 ```
 
-```
+```text
 # Global settings
 default-lease-time 86400;
 max-lease-time 604800;
@@ -101,7 +101,7 @@ host nas-storage {
 
 The fixed addresses in reservations don't have to be outside the dynamic pool, but it's cleaner to keep them separate. Configure your pool to start higher, leaving room for reservations at the low end:
 
-```
+```text
 subnet 192.168.1.0 netmask 255.255.255.0 {
     # Dynamic pool starts at .100, reservations use .10-.99
     range 192.168.1.100 192.168.1.200;
@@ -125,7 +125,7 @@ sudo nano /etc/dhcp/dhcpd.conf
 
 Add at the end:
 
-```
+```text
 # Include reservation files
 include "/etc/dhcp/reservations/servers.conf";
 include "/etc/dhcp/reservations/printers.conf";
@@ -138,7 +138,7 @@ sudo mkdir /etc/dhcp/reservations
 sudo nano /etc/dhcp/reservations/servers.conf
 ```
 
-```
+```text
 # Server reservations
 host server1 {
     hardware ethernet aa:bb:cc:dd:ee:01;

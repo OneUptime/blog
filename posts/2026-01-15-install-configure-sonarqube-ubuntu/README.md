@@ -34,7 +34,7 @@ SonarQube is an open-source platform for continuous inspection of code quality. 
 sudo nano /etc/sysctl.conf
 ```
 
-```
+```text
 vm.max_map_count=524288
 fs.file-max=131072
 ```
@@ -47,7 +47,7 @@ sudo sysctl -p
 sudo nano /etc/security/limits.conf
 ```
 
-```
+```text
 sonarqube   -   nofile   131072
 sonarqube   -   nproc    8192
 ```

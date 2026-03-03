@@ -34,13 +34,13 @@ kubectl logs -n kube-system -l k8s-app=kube-proxy | grep "Using.*proxy"
 
 You'll see output like:
 
-```
+```text
 mode: "iptables"
 ```
 
 or
 
-```
+```text
 Using ipvs Proxier
 ```
 
@@ -86,7 +86,7 @@ sudo iptables -t nat -L -n -v | grep 10.96.100.50
 
 You'll see something like:
 
-```
+```text
 KUBE-SVC-ABCDEF1234  tcp  --  *  *  0.0.0.0/0  10.96.100.50  tcp dpt:80
 ```
 
@@ -98,7 +98,7 @@ sudo iptables -t nat -L KUBE-SVC-ABCDEF1234 -n -v
 
 Output shows backend pod endpoints:
 
-```
+```text
 Chain KUBE-SVC-ABCDEF1234 (1 references)
  pkts bytes target     prot opt in     out     source               destination
     5   300 KUBE-SEP-POD1ABC  all  --  *      *       0.0.0.0/0            0.0.0.0/0            statistic mode random probability 0.33333333349
@@ -118,7 +118,7 @@ sudo iptables -t nat -L KUBE-SEP-POD1ABC -n -v
 
 You'll see the DNAT rule that rewrites destination to the pod IP:
 
-```
+```text
 Chain KUBE-SEP-POD1ABC (1 references)
  pkts bytes target     prot opt in     out     source               destination
     0     0 KUBE-MARK-MASQ  all  --  *      *       10.244.1.5           0.0.0.0/0
@@ -200,7 +200,7 @@ sudo ipvsadm -L -n
 
 Output shows virtual IPs (service IPs) and their real servers (pod IPs):
 
-```
+```text
 IP Virtual Server version 1.2.1 (size=4096)
 Prot LocalAddress:Port Scheduler Flags
   -> RemoteAddress:Port           Forward Weight ActiveConn InActConn
@@ -238,7 +238,7 @@ sudo ipvsadm -L -n --rate
 
 Example output:
 
-```
+```text
 IP Virtual Server version 1.2.1 (size=4096)
 Prot LocalAddress:Port               Conns   InPkts  OutPkts  InBytes OutBytes
   -> RemoteAddress:Port

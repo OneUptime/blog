@@ -681,7 +681,7 @@ Common issues and solutions:
 
 Once data is flowing, query traces in the X-Ray console:
 
-```
+```text
 # Find slow requests
 responsetime > 3
 

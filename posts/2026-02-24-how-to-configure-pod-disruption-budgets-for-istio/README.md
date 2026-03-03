@@ -232,7 +232,7 @@ If istiod has only 2 replicas and `minAvailable: 2`, Kubernetes can never evict 
 
 The fix is to make sure your replica count is always at least `minAvailable + 1`:
 
-```
+```text
 replicas = 3, minAvailable = 2  -> OK (1 can be evicted)
 replicas = 3, minAvailable = 1  -> OK (2 can be evicted)
 replicas = 2, minAvailable = 2  -> BROKEN (nothing can be evicted)
@@ -284,7 +284,7 @@ kubectl describe pdb istiod -n istio-system
 
 The output shows:
 
-```
+```text
 Status:
     Conditions:
       ...

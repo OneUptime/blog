@@ -417,7 +417,7 @@ class UserServiceTest {
 
 By default, Mockito cannot mock final classes. Add the configuration:
 
-```
+```text
 // src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker
 mock-maker-inline
 ```

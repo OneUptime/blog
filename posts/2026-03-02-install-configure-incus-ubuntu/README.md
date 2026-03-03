@@ -68,7 +68,7 @@ sudo incus admin init
 
 The wizard asks several questions:
 
-```
+```text
 Would you like to use clustering? (yes/no) [default=no]: no
 Do you want to configure a new storage pool? (yes/no) [default=yes]: yes
 Name of the new storage pool [default=default]: default

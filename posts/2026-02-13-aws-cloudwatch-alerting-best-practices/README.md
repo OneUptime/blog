@@ -173,7 +173,7 @@ Other useful alarm actions include:
 
 As your alarm count grows, naming conventions become essential. A pattern that works well:
 
-```
+```text
 {environment}-{service}-{metric}-{severity}
 ```
 

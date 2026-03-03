@@ -78,12 +78,12 @@ Here's a task definition that injects database credentials.
 The `valueFrom` format is important. You can reference the entire secret or specific JSON keys within it.
 
 For the entire secret as a single string:
-```
+```text
 arn:aws:secretsmanager:REGION:ACCOUNT:secret:SECRET_NAME
 ```
 
 For a specific JSON key within the secret:
-```
+```text
 arn:aws:secretsmanager:REGION:ACCOUNT:secret:SECRET_NAME:JSON_KEY::
 ```
 

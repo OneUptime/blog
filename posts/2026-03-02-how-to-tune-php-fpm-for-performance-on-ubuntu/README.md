@@ -37,7 +37,7 @@ ps aux | grep php-fpm | grep -v grep | \
 
 Calculate max_children:
 
-```
+```text
 Available RAM = Total RAM - OS RAM - Database RAM - Other services RAM
 max_children = Available RAM / Average worker RAM
 ```

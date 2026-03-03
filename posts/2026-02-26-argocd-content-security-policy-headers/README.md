@@ -141,37 +141,37 @@ kubectl rollout restart deployment argocd-server -n argocd
 
 ArgoCD's UI requires specific CSP directives to function properly. Here is what each directive does and why it is needed:
 
-```
+```text
 default-src 'self'
 ```
 Only allow content from the same origin by default.
 
-```
+```text
 script-src 'self' 'unsafe-inline' 'unsafe-eval'
 ```
 ArgoCD's React UI uses inline scripts and eval for certain features. Unfortunately, these are required for the UI to function.
 
-```
+```text
 style-src 'self' 'unsafe-inline'
 ```
 The UI uses inline styles for dynamic layouts.
 
-```
+```text
 img-src 'self' data:
 ```
 Allows images from the same origin and data URIs (used for inline SVGs and icons).
 
-```
+```text
 font-src 'self' data:
 ```
 Fonts are loaded from the same origin or embedded as data URIs.
 
-```
+```text
 connect-src 'self' wss:
 ```
 Allows API connections to the same origin and WebSocket connections (used for real-time updates).
 
-```
+```text
 frame-ancestors 'none'
 ```
 Prevents the ArgoCD UI from being embedded in iframes on other sites, protecting against clickjacking.

@@ -45,7 +45,7 @@ This means:
 
 Here is a diagram showing how containers communicate within a Pod:
 
-```
+```text
 +--------------------------------------------------+
 |                      POD                          |
 |  +------------------+    +--------------------+   |

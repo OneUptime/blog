@@ -303,7 +303,7 @@ Two to three dedicated nodes with 16 CPU / 32GB RAM each would provide this capa
 
 At 1,000 applications, a single monorepo is a performance bottleneck. Split by team or domain.
 
-```
+```text
 # Repository structure per team
 github.com/my-org/platform-manifests/     # ~50 apps
 github.com/my-org/payments-manifests/      # ~80 apps

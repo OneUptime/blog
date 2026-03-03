@@ -169,7 +169,7 @@ kubectl describe pod postgres-second-attempt
 
 You'll see an event like:
 
-```
+```text
 Events:
   Type     Reason            Message
   ----     ------            -------

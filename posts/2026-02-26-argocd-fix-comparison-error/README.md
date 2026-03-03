@@ -20,7 +20,7 @@ A `ComparisonError` means this comparison process has failed entirely. Instead o
 
 You will typically see this in the ArgoCD UI as a red error banner on your application, or in the CLI output:
 
-```
+```text
 CONDITION       MESSAGE
 ComparisonError rpc error: code = Unknown desc = Manifest generation error
 ```

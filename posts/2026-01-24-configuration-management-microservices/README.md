@@ -194,7 +194,7 @@ management:
 
 **Git Repository Structure:**
 
-```
+```text
 config-repo/
   application.yml           # Shared defaults for all services
   application-production.yml # Production overrides

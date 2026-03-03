@@ -67,7 +67,7 @@ argocd cluster list
 
 Organize your Git repository to support multi-cluster deployments. Here is a structure that works well.
 
-```
+```text
 gitops-repo/
   base/                    # Base Kubernetes manifests
     deployment.yaml

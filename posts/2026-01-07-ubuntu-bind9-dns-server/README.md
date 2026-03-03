@@ -1055,7 +1055,7 @@ Set up log rotation for BIND9 logs.
 sudo nano /etc/logrotate.d/bind9
 ```
 
-```
+```text
 # /etc/logrotate.d/bind9
 # Log rotation configuration for BIND9 logs
 

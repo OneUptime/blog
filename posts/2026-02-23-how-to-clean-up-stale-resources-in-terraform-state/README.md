@@ -34,7 +34,7 @@ terraform plan
 
 Look for these patterns in the output:
 
-```
+```text
 # Resource in state but not in config - will be destroyed
 - aws_instance.old_server will be destroyed
   (because aws_instance.old_server is not in configuration)

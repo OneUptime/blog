@@ -123,7 +123,7 @@ sudo nano /etc/apt/apt.conf.d/50unattended-upgrades
 
 Add ESM origins to the allowed upgrades list:
 
-```
+```text
 Unattended-Upgrade::Allowed-Origins {
     "${distro_id}:${distro_codename}";
     "${distro_id}:${distro_codename}-security";

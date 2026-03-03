@@ -52,7 +52,7 @@ sudo nano /etc/cups/cupsd.conf
 
 Find and modify these sections:
 
-```
+```text
 # Listen for connections (add network interface)
 Listen localhost:631
 Listen 192.168.1.10:631

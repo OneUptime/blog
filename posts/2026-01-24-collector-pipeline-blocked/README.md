@@ -128,7 +128,7 @@ service:
 
 Look for messages like:
 
-```
+```text
 Dropping data because sending_queue is full
 Exporter is not ready to send: context deadline exceeded
 Pipeline blocked: batch processor queue is full

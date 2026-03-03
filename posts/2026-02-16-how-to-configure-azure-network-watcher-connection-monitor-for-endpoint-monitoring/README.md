@@ -196,7 +196,7 @@ az monitor metrics alert create \
 
 View the monitoring results in the Azure Portal under Network Watcher > Connection Monitor, or query them through Log Analytics:
 
-```
+```text
 // KQL query to see connection monitor test results
 NWConnectionMonitorTestResult
 | where TimeGenerated > ago(24h)
@@ -211,7 +211,7 @@ NWConnectionMonitorTestResult
 
 To see the network path and identify where failures occur:
 
-```
+```text
 // KQL query to see path analysis
 NWConnectionMonitorPathResult
 | where TimeGenerated > ago(1h)

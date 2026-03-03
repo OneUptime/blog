@@ -42,7 +42,7 @@ kubectl logs deploy/my-app -n default -c istio-proxy --previous
 
 By default, Istio configures Envoy to log each request in a text format. A typical log line looks like:
 
-```
+```text
 [2024-03-15T10:30:45.123Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 15 14 "-" "curl/7.88.1" "abc-def-123" "my-service.default.svc.cluster.local:8080" "10.244.1.15:8080" inbound|8080|| 10.244.2.20:54321 10.244.1.15:8080 10.244.2.20:0 - default
 ```
 

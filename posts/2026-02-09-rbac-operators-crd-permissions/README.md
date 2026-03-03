@@ -348,7 +348,7 @@ kubectl logs -n operator-system -l app=application-operator -f | grep -i forbidd
 
 Common error message format:
 
-```
+```text
 Error: Forbidden: User "system:serviceaccount:operator-system:application-operator"
 cannot create resource "deployments" in API group "apps" in the namespace "default"
 ```

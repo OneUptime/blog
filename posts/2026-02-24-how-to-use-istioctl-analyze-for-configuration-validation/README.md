@@ -32,7 +32,7 @@ istioctl analyze --all-namespaces
 
 The output looks like this:
 
-```
+```text
 Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection.
 Warning [IST0101] (VirtualService production/api-routes) Referenced host not found: "api-service-typo"
 Error [IST0134] (DestinationRule production/api-dr) This subset references a host with no endpoints
@@ -73,7 +73,7 @@ Here are the most frequent messages you'll encounter and what to do about them:
 
 ### IST0101: ReferencedResourceNotFound
 
-```
+```text
 Warning [IST0101] (VirtualService default/my-vs) Referenced host not found: "payment-svc"
 ```
 
@@ -86,7 +86,7 @@ hosts:
 
 ### IST0104: GatewayPortNotOnWorkload
 
-```
+```text
 Warning [IST0104] (Gateway default/my-gateway) The gateway refers to a port that is not exposed by the gateway workload
 ```
 
@@ -94,7 +94,7 @@ Your Gateway resource specifies a port that the gateway pod doesn't listen on. F
 
 ### IST0106: SchemaValidationError
 
-```
+```text
 Error [IST0106] (VirtualService default/my-vs) Schema validation error: unknown field "matchh" in v1beta1.HTTPMatchRequest
 ```
 
@@ -102,7 +102,7 @@ A typo in your YAML. Fix: correct the field name.
 
 ### IST0108: UnknownAnnotation
 
-```
+```text
 Warning [IST0108] (Pod default/my-pod) Unknown annotation: networking.istio.io/exportToo
 ```
 
@@ -110,7 +110,7 @@ An annotation that Istio doesn't recognize. Usually a typo.
 
 ### IST0128: NoServerCertificateVerificationDestinationLevel
 
-```
+```text
 Warning [IST0128] (DestinationRule default/my-dr) DestinationRule enables TLS but doesn't configure caCertificates
 ```
 
@@ -118,7 +118,7 @@ You've enabled TLS in your DestinationRule but didn't provide CA certificates fo
 
 ### IST0131: VirtualServiceIneffectiveMatch
 
-```
+```text
 Warning [IST0131] (VirtualService default/my-vs) This match clause is not used because a previous match clause (HTTP route 0) is a superset
 ```
 

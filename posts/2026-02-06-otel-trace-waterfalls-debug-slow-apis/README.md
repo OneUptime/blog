@@ -16,7 +16,7 @@ A trace waterfall is a visual representation of all the spans in a single reques
 
 Start by querying your trace backend for slow requests. You want to find a representative trace, not just the absolute worst one:
 
-```
+```text
 # Tempo/Grafana TraceQL - find traces between 3s and 6s
 {
   resource.service.name = "order-service"
@@ -38,7 +38,7 @@ Pick a trace that is representative of the slow behavior. If latency varies wild
 
 Open the trace in your UI. Here is how to interpret what you see:
 
-```
+```text
 Trace: abc123 (total: 4.2s)
 
 [========================================] HTTP POST /api/v1/orders     4200ms
@@ -85,7 +85,7 @@ Slow spans generally fall into one of these categories:
 
 **Sequential calls that should be parallel**: Look for spans that execute one after another when they have no data dependency:
 
-```
+```text
 # Bad: sequential calls to independent services
 [=========] inventory.check       1000ms
             [=========] pricing.calculate  1000ms

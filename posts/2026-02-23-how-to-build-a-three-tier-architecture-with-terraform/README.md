@@ -14,7 +14,7 @@ This guide walks through building a complete three-tier architecture on AWS usin
 
 ## Architecture Overview
 
-```
+```text
 Internet
     |
 [ALB - Public Subnet]       <- Presentation Tier
@@ -31,7 +31,7 @@ The three tiers:
 
 ## Project Structure
 
-```
+```text
 three-tier/
   main.tf          # Root module
   variables.tf     # Input variables

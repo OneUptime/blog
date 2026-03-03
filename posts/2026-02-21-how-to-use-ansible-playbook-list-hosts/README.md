@@ -21,7 +21,7 @@ ansible-playbook --list-hosts deploy.yml
 
 Output:
 
-```
+```text
 playbook: deploy.yml
 
   play #1 (webservers): Deploy web application	TAGS: []
@@ -65,7 +65,7 @@ Running `--list-hosts` first would have shown every server in your inventory, ca
 ansible-playbook --list-hosts oops.yml
 ```
 
-```
+```text
 playbook: oops.yml
 
   play #1 (all): Remove old data	TAGS: []
@@ -125,7 +125,7 @@ ansible-playbook --list-hosts --limit 'all:!db1.example.com' deploy.yml
 
 Output with limit:
 
-```
+```text
 playbook: deploy.yml
 
   play #1 (webservers): Deploy web application	TAGS: []
@@ -178,7 +178,7 @@ Check each play's host resolution:
 ansible-playbook --list-hosts pattern-examples.yml
 ```
 
-```
+```text
 playbook: pattern-examples.yml
 
   play #1 (webservers): Web servers only	TAGS: []

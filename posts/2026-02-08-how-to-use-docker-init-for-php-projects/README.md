@@ -30,7 +30,7 @@ docker init
 
 Docker init detects the composer.json and identifies the project as PHP:
 
-```
+```text
 ? What application platform does your project use? PHP with Apache
 ? What version of PHP do you want to use? 8.3
 ? What port does your server listen on? 80
@@ -351,7 +351,7 @@ RUN composer dump-autoload --optimize --classmap-authoritative && \
 
 ## .dockerignore for PHP
 
-```
+```text
 # Dependencies (installed inside the container)
 vendor
 

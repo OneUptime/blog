@@ -18,7 +18,7 @@ Before diving into the installation, it is essential to understand the core conc
 
 A brick is the basic unit of storage in GlusterFS. It is a directory on a server that is exported to be part of a volume. Each brick is identified by a server name (or IP address) and a directory path:
 
-```
+```text
 server1:/data/brick1
 ```
 
@@ -175,7 +175,7 @@ sudo systemctl status glusterd
 
 Expected output:
 
-```
+```text
 ● glusterd.service - GlusterFS, a clustered file-system server
      Loaded: loaded (/lib/systemd/system/glusterd.service; enabled; vendor preset: enabled)
      Active: active (running) since Mon 2026-01-15 10:00:00 UTC; 5s ago
@@ -217,7 +217,7 @@ sudo nano /etc/hosts
 
 Add entries for all nodes:
 
-```
+```text
 # GlusterFS Cluster Nodes
 192.168.1.101   gluster1
 192.168.1.102   gluster2
@@ -242,7 +242,7 @@ sudo gluster peer probe gluster3
 
 Expected output:
 
-```
+```text
 peer probe: success
 ```
 
@@ -255,7 +255,7 @@ sudo gluster peer status
 
 Expected output:
 
-```
+```text
 Number of Peers: 2
 
 Hostname: gluster2
@@ -276,7 +276,7 @@ sudo gluster pool list
 
 Expected output:
 
-```
+```text
 UUID                                    Hostname        State
 12345678-1234-1234-1234-123456789abc    gluster2        Connected
 87654321-4321-4321-4321-cba987654321    gluster3        Connected
@@ -397,7 +397,7 @@ sudo gluster volume status repl-vol
 
 Example volume info output:
 
-```
+```text
 Volume Name: repl-vol
 Type: Replicate
 Volume ID: 12345678-1234-1234-1234-123456789abc
@@ -451,7 +451,7 @@ echo 'gluster1:/repl-vol /mnt/glusterfs glusterfs defaults,_netdev,backupvolfile
 
 The mount options explained:
 
-```
+```text
 # defaults          - Use default mount options
 # _netdev           - Wait for network before mounting
 # backupvolfile-server=gluster2 - Fallback server if gluster1 is unavailable
@@ -517,7 +517,7 @@ sudo gluster volume rebalance dist-vol stop
 
 Rebalance status output example:
 
-```
+```text
                                     Node Rebalanced-files          size       scanned      failures       skipped               status  run time in h:m:s
                                ---------      -----------   -----------   -----------   -----------   -----------         ------------     --------------
                                gluster1              245        1.2GB          1000             0             0            completed        0:5:32

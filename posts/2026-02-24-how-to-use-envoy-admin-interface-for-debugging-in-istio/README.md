@@ -103,7 +103,7 @@ kubectl exec my-pod -c istio-proxy -- curl -s localhost:15000/stats/prometheus
 
 Key stats to watch:
 
-```
+```text
 # Active connections to upstream
 cluster.outbound|9080||reviews.default.svc.cluster.local.upstream_cx_active: 5
 
@@ -133,7 +133,7 @@ kubectl exec my-pod -c istio-proxy -- curl -s localhost:15000/clusters
 
 Output:
 
-```
+```text
 outbound|9080||reviews.default.svc.cluster.local::10.244.0.15:9080::cx_active::2
 outbound|9080||reviews.default.svc.cluster.local::10.244.0.15:9080::cx_total::45
 outbound|9080||reviews.default.svc.cluster.local::10.244.0.15:9080::rq_active::0
@@ -244,7 +244,7 @@ If `cx_open: 1` or `rq_open: 1`, the circuit breaker is actively rejecting reque
 kubectl exec my-pod -c istio-proxy -- curl -s localhost:15000/stats | grep "upstream_cx"
 ```
 
-```
+```text
 cluster.outbound|9080||reviews.upstream_cx_active: 10
 cluster.outbound|9080||reviews.upstream_cx_connect_fail: 2
 cluster.outbound|9080||reviews.upstream_cx_destroy: 45

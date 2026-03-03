@@ -754,7 +754,7 @@ Tail-based sampling trades memory for intelligence. Consider these factors:
 
 Calculate buffer size:
 
-```
+```text
 buffer_size = traces_per_second * decision_wait_seconds * avg_spans_per_trace * span_size_bytes
 ```
 
@@ -764,7 +764,7 @@ Example:
 - 10 spans per trace average
 - 2KB per span
 
-```
+```text
 buffer_size = 5000 * 30 * 10 * 2KB = 3GB
 ```
 

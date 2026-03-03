@@ -112,7 +112,7 @@ The Cloud Logging query language is powerful but takes some getting used to. Her
 
 ### Find All Errors for a Specific Function
 
-```
+```text
 resource.type="cloud_function"
 resource.labels.function_name="my-function"
 severity>=ERROR
@@ -122,7 +122,7 @@ severity>=ERROR
 
 If you use structured logging, you can filter by any JSON field:
 
-```
+```text
 resource.type="cloud_function"
 resource.labels.function_name="my-function"
 jsonPayload.userId="user-123"
@@ -130,7 +130,7 @@ jsonPayload.userId="user-123"
 
 ### Find Logs Within a Time Range
 
-```
+```text
 resource.type="cloud_function"
 resource.labels.function_name="my-function"
 timestamp>="2024-01-15T10:00:00Z"
@@ -139,7 +139,7 @@ timestamp<="2024-01-15T11:00:00Z"
 
 ### Find Slow Executions
 
-```
+```text
 resource.type="cloud_function"
 resource.labels.function_name="my-function"
 jsonPayload.processingTimeMs>5000
@@ -147,7 +147,7 @@ jsonPayload.processingTimeMs>5000
 
 ### Find Specific Error Messages
 
-```
+```text
 resource.type="cloud_function"
 resource.labels.function_name="my-function"
 textPayload=~"connection refused"
@@ -155,7 +155,7 @@ textPayload=~"connection refused"
 
 ### Combine Multiple Filters
 
-```
+```text
 resource.type="cloud_function"
 resource.labels.function_name="my-function"
 severity>=WARNING
@@ -282,7 +282,7 @@ functions.http('handler', async (req, res) => {
 
 Now you can filter logs by trace ID to see everything related to a single request:
 
-```
+```text
 jsonPayload.traceId="abc-123-def-456"
 ```
 

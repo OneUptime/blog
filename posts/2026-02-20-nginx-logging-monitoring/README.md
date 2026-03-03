@@ -30,7 +30,7 @@ http {
 
 The default `combined` format looks like this:
 
-```
+```text
 10.0.1.5 - - [20/Feb/2026:14:30:00 +0000] "GET /api/users HTTP/1.1" 200 1234 "https://example.com" "Mozilla/5.0..."
 ```
 

@@ -47,13 +47,13 @@ This is particularly useful when you are actively troubleshooting and want to se
 
 Each line in the dmesg output typically follows this structure:
 
-```
+```text
 [timestamp] facility.level: message
 ```
 
 Here is an example of what you might see:
 
-```
+```text
 [    0.000000] Linux version 6.1.58-talos ...
 [    0.000000] Command line: talos.platform=metal ...
 [    1.234567] ACPI: Core revision 20220331
@@ -79,7 +79,7 @@ talosctl dmesg --nodes 192.168.1.10 | grep -i "boot\|acpi\|pci"
 
 Network issues are common in Kubernetes clusters. The dmesg output shows when network interfaces are detected and initialized:
 
-```
+```text
 [    3.456789] igb 0000:01:00.0: eth0: igb
 [    3.567890] igb 0000:01:00.0: eth0: (PCIe:5.0Gb/s:Width x4)
 [    4.678901] IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
@@ -92,7 +92,7 @@ If you see "link is not ready" messages that never resolve, it points to a physi
 
 Storage problems show up clearly in dmesg. Look for messages about disk detection, partition scanning, and filesystem errors:
 
-```
+```text
 [    2.123456] sd 0:0:0:0: [sda] 976773168 512-byte logical blocks
 [    2.234567] sd 0:0:0:0: [sda] Write Protect is off
 [    2.345678]  sda: sda1 sda2 sda3 sda4 sda5 sda6
@@ -100,7 +100,7 @@ Storage problems show up clearly in dmesg. Look for messages about disk detectio
 
 If a disk is failing, you might see messages like:
 
-```
+```text
 [  123.456789] ata1.00: exception Emask 0x0 SAct 0x0 SErr 0x0 action 0x0
 [  123.567890] ata1.00: irq_stat 0x40000001
 [  123.678901] ata1.00: failed command: READ DMA
@@ -114,7 +114,7 @@ These "UNC" (uncorrectable) errors typically indicate a failing drive that needs
 
 Out-of-memory (OOM) situations are critical in Kubernetes environments. The kernel OOM killer will log its actions in dmesg:
 
-```
+```text
 [  456.789012] node1 invoked oom-killer: gfp_mask=0x100cca(GFP_HIGHUSER_MOVABLE)
 [  456.890123] Out of memory: Killed process 12345 (kubelet) total-vm:2048000kB
 ```
@@ -141,7 +141,7 @@ Kernel warnings might indicate driver issues, misconfigured hardware, or softwar
 
 ### EDAC Memory Errors
 
-```
+```text
 [  789.012345] EDAC MC0: 1 CE memory read error on CPU_SrcID#0_Ha#0_Chan#0_DIMM#1
 ```
 
@@ -149,7 +149,7 @@ CE stands for Correctable Error. A few of these are normal, but a growing count 
 
 ### NIC Link Flapping
 
-```
+```text
 [  100.123456] e1000e: eth0 NIC Link is Down
 [  105.234567] e1000e: eth0 NIC Link is Up 1000 Mbps Full Duplex
 [  110.345678] e1000e: eth0 NIC Link is Down
@@ -159,7 +159,7 @@ Repeated link up/down messages indicate a flapping network connection. Check cab
 
 ### Filesystem Errors
 
-```
+```text
 [  200.456789] EXT4-fs error (device sda3): ext4_lookup:1690: inode #131073: comm systemd
 ```
 

@@ -74,7 +74,7 @@ kubectl apply -f codecommit-https-creds.yaml
 ```
 
 The URL pattern for CodeCommit is region-specific:
-```
+```text
 https://git-codecommit.{region}.amazonaws.com/v1/repos/{repo-name}
 ```
 
@@ -149,7 +149,7 @@ stringData:
 ```
 
 The SSH URL format for CodeCommit is:
-```
+```text
 ssh://APKAEIBAERJR2EXAMPLE@git-codecommit.us-east-1.amazonaws.com/v1/repos/repo-name
 ```
 

@@ -22,7 +22,7 @@ docker run --rm --add-host api.example.com:192.168.1.50 alpine \
 
 The output shows the custom entry added to `/etc/hosts`:
 
-```
+```text
 127.0.0.1       localhost
 ::1             localhost ip6-localhost ip6-loopback
 192.168.1.50    api.example.com

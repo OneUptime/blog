@@ -19,7 +19,7 @@ Total end-to-end latency consists of:
 3. **Broker latency**: Time to write to disk and replicate
 4. **Consumer latency**: Time to fetch and process
 
-```
+```text
 Total Latency = Producer Batching + Network (Send) + Broker Write +
                 Replication + Network (Fetch) + Consumer Processing
 ```

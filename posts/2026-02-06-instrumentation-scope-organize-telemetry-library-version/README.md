@@ -230,7 +230,7 @@ Backends that understand the OTLP data model let you filter by instrumentation s
 
 If you suspect a bug in version 2.1.0 of your HTTP client library, filter for spans with that scope:
 
-```
+```text
 # Pseudo-query for a trace backend
 scope.name = "com.mycompany.http-client" AND scope.version = "2.1.0"
 ```
@@ -239,7 +239,7 @@ scope.name = "com.mycompany.http-client" AND scope.version = "2.1.0"
 
 When rolling out version 2.2.0, compare its behavior against the existing 2.1.0:
 
-```
+```text
 # Find error rates by version
 scope.name = "com.mycompany.http-client"
 | group by scope.version
@@ -250,7 +250,7 @@ scope.name = "com.mycompany.http-client"
 
 If your telemetry volume spikes unexpectedly, group by scope to find which library is producing the most data:
 
-```
+```text
 # Count spans by instrumentation scope
 group by scope.name, scope.version
 | sort by count desc

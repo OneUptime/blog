@@ -189,7 +189,7 @@ Create `.vscode/tasks.json` for build tasks.
 
 To start your function locally, press F5 in VS Code (or use the Run menu). VS Code will build your project, start the Functions host, and attach the debugger. You should see output like this in the terminal.
 
-```
+```text
 Azure Functions Core Tools
 Core Tools Version: 4.0.xxxx
 

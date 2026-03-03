@@ -77,7 +77,7 @@ sudo nano /etc/rsyslog.conf
 
 Ensure the following module is loaded near the top of the file:
 
-```
+```text
 # Load the Unix socket input module
 module(load="imuxsock"
        SysSock.Use="off")  # Disable the default /dev/log socket
@@ -107,7 +107,7 @@ The most common use case is shipping logs to a central log server. rsyslog handl
 sudo nano /etc/rsyslog.d/50-remote-forwarding.conf
 ```
 
-```
+```text
 # Forward all logs to a remote syslog server using UDP
 *.* @192.168.1.100:514
 
@@ -161,7 +161,7 @@ sudo apt install syslog-ng syslog-ng-mod-journal
 sudo nano /etc/syslog-ng/syslog-ng.conf
 ```
 
-```
+```text
 # Source from systemd journal
 source s_journal {
     systemd-journal(prefix(".SDATA.journald."));
@@ -193,7 +193,7 @@ Forwarding every log message to a remote server can generate significant network
 sudo nano /etc/rsyslog.d/51-filtered-forwarding.conf
 ```
 
-```
+```text
 # Forward only warnings and above to the remote server
 *.warn @@192.168.1.100:514
 
@@ -215,7 +215,7 @@ When the remote server is unreachable, rsyslog needs to queue messages locally r
 sudo nano /etc/rsyslog.d/50-remote-forwarding.conf
 ```
 
-```
+```text
 # Configure a disk-assisted queue for reliable forwarding
 action(type="omfwd"
        target="192.168.1.100"

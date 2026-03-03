@@ -14,7 +14,7 @@ Nuxt 3 uses Nitro as its server engine, which produces a self-contained output d
 
 When you run `nuxt build`, Nitro produces a `.output/` directory:
 
-```
+```text
 .output/
   server/
     index.mjs       # Server entry point
@@ -103,7 +103,7 @@ CMD ["node", ".output/server/index.mjs"]
 
 ## The .dockerignore File
 
-```
+```text
 # .dockerignore
 node_modules
 .output

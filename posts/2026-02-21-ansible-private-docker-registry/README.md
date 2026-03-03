@@ -18,7 +18,7 @@ You need Ansible 2.12+ on your control node, a target server running Ubuntu 22.0
 
 ## Project Layout
 
-```
+```text
 docker-registry/
   inventory/
     hosts.ini

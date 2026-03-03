@@ -239,7 +239,7 @@ helmfile -e production apply
 
 A well-organized values directory makes maintenance easier. Here is a recommended structure.
 
-```
+```text
 helmfile/
 ├── helmfile.yaml
 ├── environments/

@@ -107,7 +107,7 @@ Before forecasting peaks, you need baseline metrics. Collect at least 12 months 
 
 Calculate your baseline by averaging metrics during normal periods, excluding known peak events:
 
-```
+```text
 Baseline RPS = (Total requests during normal period) / (Duration in seconds)
 
 Example:
@@ -120,7 +120,7 @@ Example:
 
 Compare historical peaks to baseline:
 
-```
+```text
 Peak Multiplier = (Peak RPS) / (Baseline RPS)
 
 Example from last Black Friday:
@@ -135,7 +135,7 @@ Historical data gives you a starting point. Adjust for growth and changing condi
 
 ### Growth-Adjusted Peak Formula
 
-```
+```text
 Forecasted Peak = (Historical Peak) * (1 + Growth Rate)^Years * (Event Factor)
 
 Where:
@@ -148,7 +148,7 @@ Where:
 
 Planning for next Black Friday:
 
-```
+```text
 Historical Black Friday Peak: 166.5 RPS (last year)
 YoY Growth Rate: 30%
 Event Factor: 1.2 (bigger marketing push planned)
@@ -158,7 +158,7 @@ Forecasted Peak = 166.5 * 1.30 * 1.2 = 259.7 RPS
 
 Round up and add safety margin:
 
-```
+```text
 Target Capacity = Forecasted Peak * 1.25 (25% headroom)
 Target Capacity = 259.7 * 1.25 = 324.6 RPS
 ```
@@ -356,7 +356,7 @@ Create a calendar of known peaks and preparation timelines:
 
 Track these metrics during peak events:
 
-```
+```text
 Primary Indicators:
 - Current RPS vs. Capacity
 - p99 Latency vs. SLO
@@ -387,7 +387,7 @@ Peak capacity is expensive. Optimize without sacrificing reliability:
 
 ### Right-Sizing Peak Resources
 
-```
+```text
 Annual Cost = (Baseline Cost * Normal Hours) + (Peak Cost * Peak Hours)
 
 Example:

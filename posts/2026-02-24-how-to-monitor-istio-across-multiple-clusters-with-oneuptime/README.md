@@ -136,7 +136,7 @@ Create a dashboard that shows the health of all clusters side by side:
 
 **Row 1: Cluster Status Grid**
 
-```
+```text
 # Request rate per cluster
 sum(rate(istio_requests_total[5m])) by (cluster)
 
@@ -152,7 +152,7 @@ Display this as a table with one row per cluster, showing request rate, error ra
 
 In a multi-cluster mesh, services communicate across clusters. Monitor this traffic:
 
-```
+```text
 # Cross-cluster request rate
 sum(rate(istio_requests_total{source_cluster!="", destination_cluster!="", source_cluster!=destination_cluster}[5m])) by (source_cluster, destination_cluster)
 ```
@@ -161,7 +161,7 @@ Display this as a heatmap or table showing traffic flow between clusters.
 
 **Row 3: Per-Cluster Latency Comparison**
 
-```
+```text
 # P99 latency per cluster
 histogram_quantile(0.99,
   sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le, cluster)
@@ -178,7 +178,7 @@ Depending on your topology, you need different monitoring:
 
 Each cluster has its own istiod. Monitor each independently:
 
-```
+```text
 # istiod health per cluster
 # Connected proxies per istiod instance
 pilot_xds{cluster="us-east-1"}
@@ -198,7 +198,7 @@ histogram_quantile(0.99,
 
 The primary cluster's istiod is the single point of failure. Monitor it extra carefully:
 
-```
+```text
 # Primary istiod connectivity from remote clusters
 # If remote clusters can't reach the primary istiod, they'll show stale config
 
@@ -330,7 +330,7 @@ kubectl get events -n istio-system --sort-by='.lastTimestamp' | tail -10
 
 Use OneUptime to track per-cluster capacity trends:
 
-```
+```text
 # Request volume growth per cluster (weekly comparison)
 sum(rate(istio_requests_total{cluster="us-east-1"}[1h]))
 

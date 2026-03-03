@@ -223,7 +223,7 @@ The switch port configuration is usually the culprit. Verify:
 3. The VLAN exists in the switch's VLAN database
 
 For Cisco switches:
-```
+```text
 show interfaces GigabitEthernet0/1 trunk
 show vlan brief
 ```

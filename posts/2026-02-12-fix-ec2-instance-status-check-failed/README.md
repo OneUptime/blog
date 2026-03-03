@@ -123,7 +123,7 @@ Look for:
 
 If the console output shows file system errors:
 
-```
+```text
 /dev/xvda1: UNEXPECTED INCONSISTENCY; RUN fsck MANUALLY.
 ```
 

@@ -44,7 +44,7 @@ npm install workbox-window workbox-background-sync workbox-core workbox-routing 
 
 Your project should have the following structure for background sync:
 
-```
+```text
 src/
   components/
     OfflineIndicator.tsx

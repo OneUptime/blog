@@ -179,7 +179,7 @@ server {{ .Address }}:{{ .Port }};
 
 ### HAProxy Configuration
 
-```
+```text
 # /etc/consul-template/templates/haproxy.cfg.ctmpl
 global
   daemon

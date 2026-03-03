@@ -16,7 +16,7 @@ This guide breaks down the trade-offs with real examples so you can make the rig
 
 All modules live in one repository:
 
-```
+```text
 terraform-modules/
   modules/
     vpc/
@@ -71,7 +71,7 @@ module "ecs" {
 
 Each module has its own repository:
 
-```
+```text
 terraform-aws-vpc/
   main.tf
   variables.tf
@@ -231,7 +231,7 @@ Polyrepo CI/CD is simpler because every change is relevant to the module. No nee
 
 Modules in a monorepo can share utilities:
 
-```
+```text
 terraform-modules/
   modules/
     vpc/
@@ -303,7 +303,7 @@ Use a polyrepo when:
 
 Many organizations use a hybrid approach:
 
-```
+```text
 # Monorepo for small, closely related modules
 terraform-aws-networking/
   modules/

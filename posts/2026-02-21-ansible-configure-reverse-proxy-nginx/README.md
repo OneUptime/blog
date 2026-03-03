@@ -25,7 +25,7 @@ You need a reverse proxy when your application server (Node.js, Python, Java, et
 
 ## Project Structure
 
-```
+```text
 nginx-proxy/
   inventory/
     hosts.yml

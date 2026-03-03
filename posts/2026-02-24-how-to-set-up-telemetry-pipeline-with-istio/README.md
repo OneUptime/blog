@@ -22,7 +22,7 @@ A well-designed telemetry pipeline has three stages:
 
 The pipeline looks like this:
 
-```
+```text
 Envoy Proxies --> OTel Collector --> Backends
   (metrics)         (batch)           (Prometheus)
   (traces)          (filter)          (Jaeger/Tempo)

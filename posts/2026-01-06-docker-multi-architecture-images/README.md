@@ -61,7 +61,7 @@ docker buildx inspect multiarch
 ```
 
 Output shows supported platforms:
-```
+```text
 Platforms: linux/amd64, linux/amd64/v2, linux/amd64/v3, linux/arm64, linux/arm/v7, linux/arm/v6
 ```
 
@@ -391,7 +391,7 @@ docker buildx imagetools inspect myregistry/myapp:latest
 ```
 
 Output:
-```
+```text
 Name:      myregistry/myapp:latest
 MediaType: application/vnd.oci.image.index.v1+json
 Digest:    sha256:abc123...

@@ -224,7 +224,7 @@ This gives you a clear separation between modules you need outputs from (use `de
 
 The `dependencies` block primarily matters when you use `run-all` commands like `terragrunt run-all plan` or `terragrunt run-all apply`. Terragrunt builds a dependency graph from all `dependency` and `dependencies` declarations, then executes modules in the correct topological order.
 
-```
+```text
 # Example dependency graph for a dev environment:
 #
 # iam-roles ----+

@@ -63,7 +63,7 @@ gitleaks detect --source . --report-format json --report-path results.json
 
 When gitleaks finds a secret, it outputs the file, line, commit, and secret type:
 
-```
+```text
 Finding:     AKIAIOSFODNN7EXAMPLE
 Secret:      AKIAIOSFODNN7EXAMPLE
 RuleID:      aws-access-key-id

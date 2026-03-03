@@ -127,7 +127,7 @@ gcloud scheduler jobs create pubsub weekly-report \
 
 Cloud Scheduler uses the standard Unix-cron format with five fields.
 
-```
+```text
 # Field layout:
 # Minute (0-59)  Hour (0-23)  Day of Month (1-31)  Month (1-12)  Day of Week (0-6, Sun=0)
 

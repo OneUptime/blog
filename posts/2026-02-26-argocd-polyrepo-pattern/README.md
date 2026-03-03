@@ -41,7 +41,7 @@ You typically have one central repository that contains the ArgoCD Application d
 
 This repo contains only ArgoCD Application and ApplicationSet definitions:
 
-```
+```text
 argocd-config/
 ├── apps/
 │   ├── root.yaml
@@ -65,7 +65,7 @@ argocd-config/
 
 Each service repo has its own deployment configuration:
 
-```
+```text
 service-a-config/
 ├── base/
 │   ├── deployment.yaml

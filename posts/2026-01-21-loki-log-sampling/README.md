@@ -446,7 +446,7 @@ rate(promtail_dropped_entries_total{reason="info_sampled"}[5m])
 
 For sampled logs to be statistically valid:
 
-```
+```text
 Minimum sample size for 95% confidence, 5% margin:
 n = (Z^2 * p * (1-p)) / E^2
 n = (1.96^2 * 0.5 * 0.5) / 0.05^2

@@ -137,7 +137,7 @@ processors:
 
 In Sumo Logic, you can then search with:
 
-```
+```text
 _sourceCategory=production/api/traces
 | where service.name = "checkout-service"
 ```
@@ -236,7 +236,7 @@ processors:
 
 After starting the Collector, open the Sumo Logic log search and query:
 
-```
+```text
 _sourceCategory=prod/otel/*
 ```
 

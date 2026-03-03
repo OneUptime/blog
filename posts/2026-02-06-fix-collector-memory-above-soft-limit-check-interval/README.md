@@ -8,7 +8,7 @@ Description: Fix the OpenTelemetry Collector refusing data with memory usage abo
 
 You check your Collector logs and see this warning repeated every second:
 
-```
+```text
 warn  memorylimiter/memorylimiter.go:186  Memory usage is above soft limit. Refusing data.
 ```
 
@@ -80,7 +80,7 @@ This adapts automatically if you change the container memory limit.
 
 Make sure `GOMEMLIMIT` is set between the memory limiter's hard limit and the container limit:
 
-```
+```text
 Container limit: 1024 MiB
 GOMEMLIMIT:       850 MiB   (83% of container)
 memory_limiter:   800 MiB   (limit_mib)
@@ -107,7 +107,7 @@ service:
 
 Then query these metrics:
 
-```
+```text
 # Current memory usage as seen by the memory limiter
 otelcol_process_memory_rss
 

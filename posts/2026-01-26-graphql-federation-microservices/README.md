@@ -59,7 +59,7 @@ Let's build a practical example with three microservices: Users, Products, and R
 
 ### Project Structure
 
-```
+```text
 federation-demo/
 ├── gateway/
 │   ├── package.json

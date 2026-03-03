@@ -37,7 +37,7 @@ kubectl get servicel2status -A
 
 Example output:
 
-```
+```text
 NAMESPACE   NAME                   SERVICE      NODE       IPS
 default     my-service-l2-status   my-service   worker-1   ["192.168.1.100"]
 ```

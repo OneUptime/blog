@@ -317,7 +317,7 @@ node app.js
 
 You should see:
 
-```
+```text
 OpenTelemetry tracing initialized
 Server running on http://localhost:3000
 ```

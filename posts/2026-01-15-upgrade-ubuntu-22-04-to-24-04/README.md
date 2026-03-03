@@ -151,7 +151,7 @@ sudo nano /etc/update-manager/release-upgrades
 
 Ensure it says:
 
-```
+```text
 Prompt=lts
 ```
 
@@ -181,7 +181,7 @@ The upgrade process takes 30-90 minutes depending on your system and internet sp
 
 When prompted about configuration files:
 
-```
+```text
 Configuration file '/etc/someconfig'
  ==> Modified (by you or by a script) since installation.
  ==> Package distributor has shipped an updated version.

@@ -169,7 +169,7 @@ ansible-galaxy collection install -r requirements.yml -p ./collections/ --offlin
 
 After installation, a collection has this layout:
 
-```
+```text
 ~/.ansible/collections/ansible_collections/community/general/
     docs/                    # Documentation
     meta/                    # Collection metadata

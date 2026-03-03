@@ -128,7 +128,7 @@ cilium clustermesh status
 
 The status should show cluster-2 as connected and ready:
 
-```
+```text
 ClusterMesh: OK
   - cluster-2: connected, 15 services, 3/3 endpoints
 ```

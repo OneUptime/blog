@@ -16,7 +16,7 @@ This guide walks through setting up Varnish in front of Nginx on Ubuntu, includi
 
 The request flow looks like this:
 
-```
+```text
 Client -> Nginx (port 443, SSL termination) -> Varnish (port 6081) -> Nginx backend (port 8080)
 ```
 

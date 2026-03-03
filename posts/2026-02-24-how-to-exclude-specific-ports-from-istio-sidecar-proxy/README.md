@@ -156,7 +156,7 @@ kubectl logs deploy/my-app -c istio-init -n default
 
 The output will show lines like:
 
-```
+```text
 Environment:
   ISTIO_INBOUND_PORTS=8080
   ISTIO_LOCAL_EXCLUDE_PORTS=

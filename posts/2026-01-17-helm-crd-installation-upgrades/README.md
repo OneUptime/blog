@@ -39,7 +39,7 @@ flowchart TB
 
 ### Standard CRD Location
 
-```
+```text
 charts/myapp/
 ├── Chart.yaml
 ├── values.yaml

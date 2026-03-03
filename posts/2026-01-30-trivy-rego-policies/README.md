@@ -394,7 +394,7 @@ Before deploying policies, test them locally to verify they work correctly.
 
 ### Directory Structure
 
-```
+```text
 policies/
   kubernetes/
     no_root_containers.rego

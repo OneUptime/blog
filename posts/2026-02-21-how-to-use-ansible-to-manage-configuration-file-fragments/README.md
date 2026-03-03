@@ -116,7 +116,7 @@ Both roles trigger the same handler:
 
 A consistent numbering scheme prevents headaches as your config grows. Here is a convention that works well:
 
-```
+```text
 00-09: Global settings
 10-19: Defaults
 20-29: Frontend definitions

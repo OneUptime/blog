@@ -287,7 +287,7 @@ spec:
 
 Create a custom source type in Splunk for Istio access logs. In `props.conf`:
 
-```
+```text
 [istio:access:json]
 SHOULD_LINEMERGE = false
 LINE_BREAKER = ([\r\n]+)

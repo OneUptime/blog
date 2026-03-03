@@ -373,7 +373,7 @@ Create JAAS config:
 sudo nano /opt/kafka/config/kafka_server_jaas.conf
 ```
 
-```
+```text
 KafkaServer {
     org.apache.kafka.common.security.plain.PlainLoginModule required
     username="admin"

@@ -58,7 +58,7 @@ ansible-vault view group_vars/production/vault.yml
 
 A common and effective pattern is to split each group's variables into two files: one plain text, one encrypted. Ansible will automatically load both.
 
-```
+```text
 inventory/
   production/
     hosts.yml

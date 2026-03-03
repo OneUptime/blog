@@ -205,7 +205,7 @@ flowchart TD
 
 The probability formula considers time remaining until expiration and a tunable parameter beta:
 
-```
+```text
 probability = exp(-beta * (expiry - now) / delta)
 ```
 

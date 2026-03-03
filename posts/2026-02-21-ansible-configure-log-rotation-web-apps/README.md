@@ -28,7 +28,7 @@ Each rotation: the current log is renamed, a new empty log is created, old logs 
 
 ## Project Structure
 
-```
+```text
 logrotate-setup/
   inventory/
     hosts.yml
@@ -171,7 +171,7 @@ disk_alert_threshold: 85
 
 ## Nginx Logrotate Template
 
-```
+```text
 # roles/logrotate/templates/nginx-logrotate.conf.j2
 {{ nginx_log_dir }}/*.log {
     {{ log_rotation_frequency }}
@@ -195,7 +195,7 @@ disk_alert_threshold: 85
 
 ## Apache Logrotate Template
 
-```
+```text
 # roles/logrotate/templates/apache-logrotate.conf.j2
 /var/log/apache2/*.log {
     {{ log_rotation_frequency }}
@@ -221,7 +221,7 @@ disk_alert_threshold: 85
 
 This is the flexible template that works for any application.
 
-```
+```text
 # roles/logrotate/templates/app-logrotate.conf.j2
 {{ item.log_dir }}/{{ item.log_pattern | default('*.log') }} {
     {{ log_rotation_frequency }}
@@ -258,7 +258,7 @@ This is the flexible template that works for any application.
 
 ## Gunicorn Logrotate Template
 
-```
+```text
 # roles/logrotate/templates/gunicorn-logrotate.conf.j2
 /var/log/gunicorn/*.log {
     daily

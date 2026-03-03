@@ -27,7 +27,7 @@ aws elbv2 modify-load-balancer-attributes \
 ```
 
 Logs are delivered to S3 in this structure:
-```
+```text
 s3://my-alb-logs/alb-logs/AWSLogs/123456789012/elasticloadbalancing/us-east-1/2025/01/15/
 ```
 
@@ -37,7 +37,7 @@ Each file is gzip-compressed and contains space-delimited log entries.
 
 Each line has these fields (in order):
 
-```
+```text
 type timestamp elb client:port target:port request_processing_time
 target_processing_time response_processing_time elb_status_code
 target_status_code received_bytes sent_bytes "request" "user_agent"

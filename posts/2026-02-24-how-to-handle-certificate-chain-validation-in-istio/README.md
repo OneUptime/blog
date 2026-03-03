@@ -14,7 +14,7 @@ Certificate chain validation is what makes TLS trust work. When two services in 
 
 A certificate chain is a sequence of certificates where each certificate is signed by the next one in the chain:
 
-```
+```text
 Workload Certificate (leaf)
   ├── Signed by: Intermediate CA
   │     ├── Signed by: Root CA
@@ -34,7 +34,7 @@ In Istio, this happens automatically for in-mesh traffic. The root CA certificat
 
 By default, Istio uses a self-signed root CA. The chain looks like this:
 
-```
+```text
 Workload Certificate
   └── Signed by: istiod self-signed CA
 ```
@@ -136,7 +136,7 @@ Here are the most common certificate chain validation errors and how to fix them
 
 If the workload certificate does not include the intermediate CA certificate, the chain cannot be validated:
 
-```
+```text
 error:0A000086:SSL routines::certificate verify failed
 ```
 

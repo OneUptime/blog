@@ -46,7 +46,7 @@ flowchart TB
 
 ### Project Structure
 
-```
+```text
 myservice/
 ├── proto/
 │   └── user.proto

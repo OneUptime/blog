@@ -254,7 +254,7 @@ def process_data(data):
 
 The error message tells you exactly which line failed:
 
-```
+```text
 AttributeError: 'NoneType' object has no attribute 'upper'
   File "script.py", line 10, in process
     return text.upper()

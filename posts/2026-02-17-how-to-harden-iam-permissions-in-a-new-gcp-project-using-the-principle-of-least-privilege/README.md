@@ -50,7 +50,7 @@ The default Compute Engine service account gets the Editor role automatically. T
 
 Before granting any access, map out what each team member or service actually needs:
 
-```
+```text
 Developer:
   - View and deploy to Cloud Run (roles/run.developer)
   - Read logs (roles/logging.viewer)

@@ -268,7 +268,7 @@ After your application starts sending telemetry, you can verify it in the Azure 
 
 Here is a quick KQL query to verify traces are arriving:
 
-```
+```text
 // Query recent traces in Application Insights
 // This shows the last 10 requests received
 requests

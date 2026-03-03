@@ -37,7 +37,7 @@ graph TD
 
 The sampling decision is based on comparing a hash of the trace ID against a threshold value. For a sampling rate of P (where 0 < P <= 1):
 
-```
+```text
 threshold = P * MAX_UINT64
 sample = hash(trace_id) < threshold
 ```
@@ -247,7 +247,7 @@ public class TracingConfig {
 
 Consistent probability sampling provides predictable overhead reduction. Calculate your expected savings:
 
-```
+```text
 Original volume = requests_per_second * avg_spans_per_trace * span_size
 Sampled volume = original_volume * sampling_rate
 Savings = original_volume - sampled_volume
@@ -258,7 +258,7 @@ Example calculation for a system with:
 - Average 15 spans per trace
 - Average span size 2 KB
 
-```
+```text
 Original: 10,000 * 15 * 2 KB = 300 MB/sec = 25.9 TB/day
 With 10% sampling: 300 MB/sec * 0.1 = 30 MB/sec = 2.59 TB/day
 Savings: 23.31 TB/day (90% reduction)
@@ -329,7 +329,7 @@ Key metrics to monitor:
 
 Calculate actual sampling rate:
 
-```
+```text
 actual_rate = sampled_traces / (sampled_traces + dropped_traces)
 ```
 
@@ -341,7 +341,7 @@ While sampling reduces volume, it must maintain statistical validity for your me
 
 **Sample size requirements**: For 95% confidence with 5% margin of error:
 
-```
+```text
 min_samples = (1.96^2 * 0.5 * 0.5) / 0.05^2 = 384 traces
 ```
 

@@ -129,7 +129,7 @@ audit = true
 
 The PAM stack must reference faillock in the auth section of `/etc/pam.d/common-auth`:
 
-```
+```text
 auth  required  pam_faillock.so preauth
 auth  [success=1 default=ignore]  pam_unix.so nullok
 auth  [default=die]  pam_faillock.so authfail
@@ -285,7 +285,7 @@ Moving SSH off port 22 significantly reduces automated attack volume. It is not 
 sudo nano /etc/ssh/sshd_config
 ```
 
-```
+```text
 Port 2222
 ```
 

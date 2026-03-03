@@ -120,7 +120,7 @@ pip check
 
 Example output:
 
-```
+```text
 opentelemetry-instrumentation-flask 0.44b0 requires
   opentelemetry-semantic-conventions==0.44b0,
   but you have opentelemetry-semantic-conventions 0.43b0.

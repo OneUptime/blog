@@ -149,7 +149,7 @@ fn load_and_validate_config() -> Result<Config> {
 
 The `context` method adds human-readable context to errors. When you print the error, you get a full chain:
 
-```
+```text
 Error: failed to load application config
 
 Caused by:

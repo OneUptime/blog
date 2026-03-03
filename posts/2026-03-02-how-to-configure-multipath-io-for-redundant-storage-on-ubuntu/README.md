@@ -55,7 +55,7 @@ sudo multipathd show config
 
 A typical `/etc/multipath.conf` for iSCSI paths:
 
-```
+```text
 defaults {
     # Use device name from udev rather than just numbers
     user_friendly_names yes
@@ -135,7 +135,7 @@ sudo multipath -ll
 ```
 
 Example output:
-```
+```text
 mpatha (360000000000000001) dm-0 VENDOR,PRODUCT
 size=50G features='0' hwhandler='0' wp=rw
 |-+- policy='round-robin 0' prio=1 status=active
@@ -153,7 +153,7 @@ size=50G features='0' hwhandler='0' wp=rw
 
 Different policies suit different scenarios:
 
-```
+```text
 # All paths in one group - simplest, all active simultaneously
 path_grouping_policy multibus
 

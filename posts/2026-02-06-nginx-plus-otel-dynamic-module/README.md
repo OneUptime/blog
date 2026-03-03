@@ -163,7 +163,7 @@ Keep the max path tag length reasonable:
 
 Here is a rough comparison of request latency with different tracing configurations:
 
-```
+```text
 Configuration                    | P99 Latency Overhead
 ---------------------------------|---------------------
 No tracing                       | baseline

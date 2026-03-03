@@ -16,7 +16,7 @@ This guide walks through a production-ready Redshift setup in Terraform, from VP
 
 Here's how I organize Redshift Terraform files.
 
-```
+```text
 redshift-infra/
   main.tf          # Provider and backend configuration
   variables.tf     # Input variables

@@ -178,7 +178,7 @@ Addresses:
 
 A full resource address follows this pattern:
 
-```
+```text
 [module.MODULE_NAME[INDEX].]...[module.MODULE_NAME[INDEX].]RESOURCE_TYPE.RESOURCE_NAME[INDEX]
 ```
 

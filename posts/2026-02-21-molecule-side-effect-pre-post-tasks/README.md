@@ -265,7 +265,7 @@ molecule converge && molecule side-effect && molecule verify
 
 If you need different side effect scenarios, create multiple Molecule scenarios rather than trying to cram everything into one side_effect.yml.
 
-```
+```text
 molecule/
   default/
     molecule.yml

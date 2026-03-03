@@ -117,7 +117,7 @@ jobs:
 
 This is the most explicit and arguably the safest approach:
 
-```
+```text
 infrastructure/
   modules/
     app/
@@ -264,7 +264,7 @@ jobs:
 
 A middle ground that keeps one directory with environment-specific `.tfvars` files:
 
-```
+```text
 infrastructure/
   main.tf
   variables.tf

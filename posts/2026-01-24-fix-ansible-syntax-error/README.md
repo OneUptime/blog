@@ -43,7 +43,7 @@ graph TD
 ### Error 1: Indentation Problems
 
 **Error message:**
-```
+```text
 ERROR! Syntax Error while loading YAML.
   mapping values are not allowed in this context
 ```
@@ -88,7 +88,7 @@ indent_size = 2
 ### Error 2: Missing Colon After Key
 
 **Error message:**
-```
+```text
 ERROR! Syntax Error while loading YAML.
   could not find expected ':'
 ```
@@ -116,7 +116,7 @@ ERROR! Syntax Error while loading YAML.
 ### Error 3: Incorrect List Formatting
 
 **Error message:**
-```
+```text
 ERROR! Syntax Error while loading YAML.
   did not find expected '-' indicator
 ```
@@ -151,7 +151,7 @@ tasks:
 ### Error 4: Quoting Issues
 
 **Error message:**
-```
+```text
 ERROR! Syntax Error while loading YAML.
   found unexpected ':'
 ```
@@ -184,7 +184,7 @@ ERROR! Syntax Error while loading YAML.
 ### Error 5: Boolean Values
 
 **Error message:**
-```
+```text
 ERROR! Syntax Error while loading YAML.
   could not determine a constructor for the tag
 ```
@@ -215,7 +215,7 @@ ERROR! Syntax Error while loading YAML.
 ### Error 6: Undefined Variable
 
 **Error message:**
-```
+```text
 ERROR! 'my_variable' is undefined
 ```
 
@@ -246,7 +246,7 @@ ERROR! 'my_variable' is undefined
 ### Error 7: Unclosed Braces
 
 **Error message:**
-```
+```text
 ERROR! template error while templating string
   unexpected end of template
 ```
@@ -274,7 +274,7 @@ ERROR! template error while templating string
 ### Error 8: Jinja2 in Wrong Context
 
 **Error message:**
-```
+```text
 ERROR! Syntax Error while loading YAML.
   found undefined alias
 ```
@@ -305,7 +305,7 @@ ERROR! Syntax Error while loading YAML.
 ### Error 9: Filter Syntax Errors
 
 **Error message:**
-```
+```text
 ERROR! template error while templating string
   no filter named 'bad_filter'
 ```
@@ -341,7 +341,7 @@ ERROR! template error while templating string
 ### Error 10: Nested Quotes
 
 **Error message:**
-```
+```text
 ERROR! Syntax Error while loading YAML.
   found unexpected end of stream
 ```
@@ -376,7 +376,7 @@ ERROR! Syntax Error while loading YAML.
 ### Error 11: Invalid Module Parameters
 
 **Error message:**
-```
+```text
 ERROR! Unsupported parameters for (module) module: wrong_param
 ```
 
@@ -409,7 +409,7 @@ ansible-doc -l | grep package
 ### Error 12: Incorrect Task Structure
 
 **Error message:**
-```
+```text
 ERROR! conflicting action statements: command, shell
 ```
 
@@ -436,7 +436,7 @@ ERROR! conflicting action statements: command, shell
 ### Error 13: Invalid Play Structure
 
 **Error message:**
-```
+```text
 ERROR! 'tasks' is not a valid attribute for a Play
 ```
 
@@ -464,7 +464,7 @@ ERROR! 'tasks' is not a valid attribute for a Play
 ### Error 14: When Condition Syntax
 
 **Error message:**
-```
+```text
 ERROR! The conditional check 'ansible_os_family = "Debian"' failed
 ```
 

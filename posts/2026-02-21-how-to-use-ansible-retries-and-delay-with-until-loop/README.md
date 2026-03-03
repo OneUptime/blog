@@ -33,7 +33,7 @@ This gives a total window of about 15 seconds (3 attempts, 5 seconds apart). For
 
 The formula for total maximum wait time is:
 
-```
+```text
 total_wait = (retries - 1) * delay + task_execution_time * retries
 ```
 

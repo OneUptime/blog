@@ -23,7 +23,7 @@ func main() {
 ```
 
 **Error:**
-```
+```text
 ./main.go:4:2: x declared and not used
 ```
 

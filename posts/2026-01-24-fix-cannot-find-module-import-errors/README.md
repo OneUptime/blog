@@ -299,7 +299,7 @@ import { Button } from './components/Button';
 
 When importing a directory, Node looks for an index file:
 
-```
+```text
 // File structure:
 // src/
 //   components/

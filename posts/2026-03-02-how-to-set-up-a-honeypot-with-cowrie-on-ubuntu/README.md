@@ -127,7 +127,7 @@ Define username/password combinations that "work" on the honeypot:
 nano ~/cowrie/etc/userdb.txt
 ```
 
-```
+```text
 # Cowrie userdb.txt - credentials that are accepted
 # Format: username:uid:password
 # Use * as wildcard password (accepts anything)

@@ -269,7 +269,7 @@ The metadata reveals the exact path through your kustomization structure, making
 
 In complex hierarchies, build metadata tracks the full chain:
 
-```
+```text
 base/
 └── kustomization.yaml
 

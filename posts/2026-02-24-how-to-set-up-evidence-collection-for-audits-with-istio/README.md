@@ -302,7 +302,7 @@ Create a Grafana dashboard that tracks evidence collection status:
 
 Organize your evidence in a structure that makes sense to auditors. Map it to the compliance framework:
 
-```
+```text
 evidence/
   soc2/
     CC6.1-encryption/

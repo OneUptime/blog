@@ -191,7 +191,7 @@ Key permissions:
 
 For area paths, you can control which teams can view and edit work items in specific areas:
 
-```
+```text
 Area Path: MyProject
   /Frontend    -> Frontend Developers (edit), Others (read)
   /Backend     -> Backend Developers (edit), Others (read)

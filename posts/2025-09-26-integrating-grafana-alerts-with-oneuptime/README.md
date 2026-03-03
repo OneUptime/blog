@@ -85,7 +85,7 @@ flowchart LR
 2. Click **Create Monitor**
 3. Select **Incoming Request** as the monitor type
 4. Configure monitor settings:
-   ```
+   ```text
    Monitor Name: Grafana Alert Integration
    Description: Receives alert notifications from Grafana instances
    ```
@@ -94,7 +94,7 @@ flowchart LR
 
 After creating the monitor, OneUptime provides a unique URL:
 
-```
+```text
 https://oneuptime.com.com/heartbeat/abc123
 ```
 
@@ -108,7 +108,7 @@ In Grafana, create a new contact point:
 2. Click **Add contact point**
 3. Select **Webhook** as the integration type
 4. Configure the webhook:
-   ```
+   ```text
    Name: OneUptime Integration
    URL: https://oneuptime.com.com/heartbeat/abc123
    HTTP Method: POST
@@ -227,7 +227,7 @@ Configure OneUptime to create incidents based on webhook data:
 - `info` → Log only, no incident creation
 
 **Incident Title Generation:**
-```
+```text
 [{{requestBody.alerts[0].labels.severity}}] {{requestBody.alerts[0].annotations.summary}}
 ```
 
@@ -286,7 +286,7 @@ Configure status pages to update based on alert severity:
 Set up escalation policies for different alert types:
 
 **Critical Production Alerts:**
-```
+```text
 Immediate: Page primary on-call engineer
 5 minutes: Escalate to secondary on-call
 15 minutes: Notify entire team
@@ -294,7 +294,7 @@ Immediate: Page primary on-call engineer
 ```
 
 **Non-Critical Alerts:**
-```
+```text
 Immediate: Slack notification to on-call channel
 30 minutes: Email notification
 4 hours: Escalate if unacknowledged

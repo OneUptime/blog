@@ -12,13 +12,13 @@ DNS resolution failures are a sneaky problem in Kubernetes-based OpenTelemetry d
 
 You will typically see errors like these in your application or SDK logs:
 
-```
+```text
 failed to export spans: rpc error: code = Unavailable desc = name resolver error
 ```
 
 Or in the Collector logs when it tries to export to a backend:
 
-```
+```text
 error sending batch: dial tcp: lookup otel-backend.example.com: no such host
 ```
 

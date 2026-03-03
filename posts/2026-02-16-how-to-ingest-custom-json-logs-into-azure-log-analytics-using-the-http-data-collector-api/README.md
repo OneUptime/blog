@@ -18,7 +18,7 @@ The HTTP Data Collector API accepts JSON payloads via HTTP POST. You send your d
 
 The endpoint URL follows this pattern:
 
-```
+```text
 https://<workspace-id>.ods.opinsights.azure.com/api/logs?api-version=2016-04-01
 ```
 
@@ -38,7 +38,7 @@ The trickiest part of using this API is constructing the authorization header. I
 
 The string to sign follows this format:
 
-```
+```text
 POST\n{content-length}\napplication/json\nx-ms-date:{date}\n/api/logs
 ```
 
@@ -256,7 +256,7 @@ If you are starting a new integration, consider using the Logs Ingestion API ins
 
 Once your data is ingested, query it in Log Analytics.
 
-```
+```text
 // Query the custom log table
 MyApplicationLogs_CL
 | where TimeGenerated > ago(24h)

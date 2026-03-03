@@ -48,7 +48,7 @@ sudo apt install mkusb-nox    # Command line version
 7. Confirm and let it run
 
 mkusb creates a proper partition layout:
-```
+```text
 /dev/sdX1  ISO9660   Ubuntu Live ISO (read-only)
 /dev/sdX2  ext2      casper-rw (persistence partition, writable)
 /dev/sdX3  vfat      usbdata (additional FAT32 storage, optional)
@@ -150,7 +150,7 @@ sudo mkfs.ext4 -L casper-rw /dev/sdX3
 
 When booting from the USB, the persistence parameter must be passed to the kernel. At the GRUB menu, press `e` to edit the boot entry and find the line starting with `linux`. Add `persistent` at the end:
 
-```
+```text
 linux   /casper/vmlinuz  boot=casper quiet splash persistent ---
 ```
 
@@ -176,7 +176,7 @@ sudo nano /mnt/boot/grub/grub.cfg
 
 Find the `linux` line in the default boot stanza and add `persistent`:
 
-```
+```text
 # Find a line like this:
 linux   /casper/vmlinuz  file=/cdrom/preseed/ubuntu.seed boot=casper quiet splash ---
 

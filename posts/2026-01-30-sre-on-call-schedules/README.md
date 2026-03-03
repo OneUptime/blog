@@ -880,7 +880,7 @@ Engineers who carry the pager deserve recognition. Compensation models vary, but
 
 This structure combines base compensation with workload-based bonuses.
 
-```
+```text
 On-Call Compensation Policy
 ---------------------------
 

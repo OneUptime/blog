@@ -261,7 +261,7 @@ az monitor diagnostic-settings create \
 
 Then query the logs in Log Analytics:
 
-```
+```text
 // Check IKE negotiation events
 AzureDiagnostics
 | where Category == "IKEDiagnosticLog"

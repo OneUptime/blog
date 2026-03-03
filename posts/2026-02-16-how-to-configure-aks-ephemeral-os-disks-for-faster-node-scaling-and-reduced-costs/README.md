@@ -208,7 +208,7 @@ az aks nodepool delete \
 
 Here is a quick cost comparison for a 50-node cluster running for a year.
 
-```
+```text
 Managed Premium SSD (128GB P10):
   50 nodes x $19.71/month = $985.50/month = $11,826/year
 

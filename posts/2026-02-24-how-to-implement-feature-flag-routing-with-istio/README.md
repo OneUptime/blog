@@ -24,7 +24,7 @@ else:
 
 You deploy both versions and let Istio decide which one each request goes to:
 
-```
+```text
 User Request -> Istio Sidecar -> [Route based on headers/cookies] -> v1 or v2
 ```
 

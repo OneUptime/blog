@@ -123,7 +123,7 @@ services:
 
 MirrorMaker 2 uses a naming convention to avoid replication loops:
 
-```
+```text
 Source topic: orders
 Replicated topic: dc1.orders (in dc2)
 

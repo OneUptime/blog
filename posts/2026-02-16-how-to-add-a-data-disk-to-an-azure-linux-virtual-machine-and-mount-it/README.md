@@ -77,7 +77,7 @@ lsblk -o NAME,SIZE,TYPE,MOUNTPOINT
 
 Output will look something like:
 
-```
+```text
 NAME    SIZE TYPE MOUNTPOINT
 sda      30G disk
 |-sda1 29.9G part /
@@ -173,7 +173,7 @@ sudo blkid /dev/sdc1
 
 This outputs something like:
 
-```
+```text
 /dev/sdc1: LABEL="datastore" UUID="a1b2c3d4-e5f6-7890-abcd-ef1234567890" TYPE="ext4"
 ```
 

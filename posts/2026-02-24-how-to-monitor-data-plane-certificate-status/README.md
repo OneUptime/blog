@@ -21,7 +21,7 @@ Istio uses a component called the Secret Discovery Service (SDS) to distribute c
 5. Before the certificate expires, the sidecar requests a new one through SDS
 
 The certificates follow the SPIFFE standard, with identities in the format:
-```
+```text
 spiffe://cluster.local/ns/<namespace>/sa/<service-account>
 ```
 
@@ -35,7 +35,7 @@ istioctl proxy-config secret deploy/my-app -n default
 
 This shows you:
 
-```
+```text
 RESOURCE NAME     TYPE           STATUS     VALID CERT     SERIAL NUMBER     NOT AFTER               NOT BEFORE
 default           Cert Chain     ACTIVE     true           abc123...         2024-01-16T12:00:00Z    2024-01-15T12:00:00Z
 ROOTCA            CA             ACTIVE     true           def456...         2034-01-13T12:00:00Z    2024-01-15T12:00:00Z
@@ -64,7 +64,7 @@ istioctl authn tls-check deploy/my-app -n default
 
 This shows you the TLS status for each destination:
 
-```
+```text
 HOST:PORT                                STATUS     SERVER       CLIENT     AUTHN POLICY     DESTINATION RULE
 my-service.default.svc.cluster.local     OK         STRICT       ISTIO_MUTUAL   default/         default/my-service
 ```

@@ -90,7 +90,7 @@ steps:
 
 When you check out multiple repositories, the directory structure changes from the single-repo default. Each repository gets its own subdirectory:
 
-```
+```text
 $(Pipeline.Workspace)/
     app/                    (self checkout)
         src/

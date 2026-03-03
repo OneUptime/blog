@@ -26,7 +26,7 @@ The built-in Node.js runtime works for straightforward applications. Use a custo
 
 Here is the project structure we will work with:
 
-```
+```text
 my-node-app/
   src/
     server.js
@@ -147,7 +147,7 @@ Two critical things to note. First, the app must listen on the port specified by
 
 Keep your Docker build context clean by ignoring unnecessary files:
 
-```
+```text
 # .dockerignore - Files to exclude from Docker build
 node_modules
 npm-debug.log

@@ -36,7 +36,7 @@ istioctl dashboard kiali
 
 This finds the Kiali service in your cluster, creates a port-forward, and opens the Kiali UI in your default browser. By default, it uses port 20001:
 
-```
+```text
 http://localhost:20001/kiali
 ```
 
@@ -222,7 +222,7 @@ Common issues and fixes:
 
 **Service not found.** The addon isn't installed:
 
-```
+```text
 Error: no Kiali pods found in namespace istio-system
 ```
 
@@ -243,7 +243,7 @@ kubectl apply -f samples/addons/jaeger.yaml
 
 **Port already in use.** Another process is using the default port:
 
-```
+```text
 Error: listen tcp 127.0.0.1:20001: bind: address already in use
 ```
 
@@ -261,7 +261,7 @@ lsof -i :20001
 
 **Pod not ready.** The addon pod is still starting up:
 
-```
+```text
 Error: pod is not running
 ```
 

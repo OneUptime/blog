@@ -113,7 +113,7 @@ vpc_access_connector:
 
 Beanstalk Procfile:
 
-```
+```text
 # Procfile (Elastic Beanstalk)
 web: gunicorn app:application --bind 0.0.0.0:8080
 ```

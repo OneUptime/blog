@@ -66,7 +66,7 @@ volumes:
 
 Create a Squid configuration file:
 
-```
+```text
 # squid.conf - Basic forward proxy configuration
 
 # Define the port Squid listens on
@@ -117,7 +117,7 @@ forwarded_for delete
 
 One of the best uses for Squid in Docker is caching package manager downloads. This speeds up builds dramatically when multiple containers or CI jobs download the same packages:
 
-```
+```text
 # squid.conf - Optimized for package caching
 http_port 3128
 
@@ -232,7 +232,7 @@ volumes:
 
 Block access to specific domains or content types:
 
-```
+```text
 # squid.conf - With content filtering
 
 http_port 3128
@@ -271,7 +271,7 @@ docker exec squid htpasswd -b /etc/squid/passwords user2 another_secret
 
 Update the Squid configuration:
 
-```
+```text
 # squid.conf - With basic authentication
 
 http_port 3128
@@ -337,7 +337,7 @@ openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
 cat certs/squid-ca-cert.pem certs/squid-ca-key.pem > certs/squid-ca-cert-key.pem
 ```
 
-```
+```text
 # squid.conf - With SSL bump for HTTPS interception (development only)
 http_port 3128 ssl-bump \
   cert=/etc/squid/certs/squid-ca-cert-key.pem \

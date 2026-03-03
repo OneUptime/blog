@@ -24,7 +24,7 @@ For most ArgoCD-managed deployments, the Simple Scalable mode provides the best 
 
 ## Repository Structure
 
-```
+```text
 logging/
   loki/
     Chart.yaml

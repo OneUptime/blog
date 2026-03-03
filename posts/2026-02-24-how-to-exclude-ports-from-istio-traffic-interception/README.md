@@ -186,7 +186,7 @@ kubectl exec -it <pod-name> -c istio-proxy -- iptables -t nat -S ISTIO_INBOUND
 
 For excluded inbound ports, you'll see rules like:
 
-```
+```text
 -A ISTIO_INBOUND -p tcp --dport 3306 -j RETURN
 -A ISTIO_INBOUND -p tcp --dport 5432 -j RETURN
 ```

@@ -52,7 +52,7 @@ In this post, I will walk through setting up Flyway for Cloud SQL in a GKE-deplo
 
 Flyway migration files go in `src/main/resources/db/migration/`. The naming convention is important:
 
-```
+```text
 src/main/resources/db/migration/
     V1__create_users_table.sql
     V2__create_orders_table.sql

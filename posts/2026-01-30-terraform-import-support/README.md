@@ -120,7 +120,7 @@ terraform plan
 
 Output shows:
 
-```
+```text
 aws_instance.web_server: Preparing import... [id=i-1234567890abcdef0]
 aws_instance.web_server: Refreshing state... [id=i-1234567890abcdef0]
 
@@ -224,7 +224,7 @@ terraform state show aws_instance.web_server
 
 Output:
 
-```
+```text
 # aws_instance.web_server:
 resource "aws_instance" "web_server" {
     ami                          = "ami-0c55b159cbfafe1f0"
@@ -282,7 +282,7 @@ flowchart TD
 
 Initial plan after import shows:
 
-```
+```text
   # aws_instance.web_server will be updated in-place
   ~ resource "aws_instance" "web_server" {
       ~ instance_type = "t3.medium" -> "t2.micro"  # wrong in config
@@ -531,7 +531,7 @@ resource "aws_db_instance" "main" {
 
 ### Resource Not Found
 
-```
+```text
 Error: Cannot import non-existent remote object
 ```
 
@@ -539,7 +539,7 @@ Verify the resource ID and that you have the correct credentials/region.
 
 ### Resource Already Managed
 
-```
+```text
 Error: Resource already managed by Terraform
 ```
 
@@ -547,7 +547,7 @@ The resource is already in state. Use `terraform state rm` first if you need to 
 
 ### Invalid Resource Address
 
-```
+```text
 Error: Invalid target address
 ```
 
@@ -563,7 +563,7 @@ terraform import module.vpc.aws_vpc.main vpc-123
 
 ### Provider Configuration Missing
 
-```
+```text
 Error: Provider configuration not present
 ```
 

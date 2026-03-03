@@ -227,7 +227,7 @@ BuildKit executes independent stages in parallel, so all three binaries compile 
 
 ## Technique 7: Use a .dockerignore File
 
-```
+```text
 # .dockerignore - exclude non-essential files
 .git
 .gitignore

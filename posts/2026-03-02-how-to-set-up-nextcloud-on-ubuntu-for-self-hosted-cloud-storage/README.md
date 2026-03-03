@@ -76,7 +76,7 @@ sudo nano /etc/redis/redis.conf
 ```
 
 Uncomment and set:
-```
+```text
 unixsocket /var/run/redis/redis-server.sock
 unixsocketperm 770
 ```
@@ -340,7 +340,7 @@ sudo crontab -u www-data -e
 ```
 
 Add:
-```
+```text
 */5 * * * * php -f /var/www/nextcloud/cron.php
 ```
 

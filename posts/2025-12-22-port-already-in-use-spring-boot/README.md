@@ -18,7 +18,7 @@ When you see `Web server failed to start. Port 8080 was already in use`, it mean
 
 The full error typically looks like this:
 
-```
+```text
 ***************************
 APPLICATION FAILED TO START
 ***************************

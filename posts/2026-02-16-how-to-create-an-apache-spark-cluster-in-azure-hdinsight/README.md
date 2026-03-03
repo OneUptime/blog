@@ -116,7 +116,7 @@ Once the cluster is provisioned, you have several ways to interact with it.
 
 HDInsight comes with Jupyter Notebook pre-installed. Access it at:
 
-```
+```text
 https://my-spark-cluster.azurehdinsight.net/jupyter
 ```
 
@@ -145,7 +145,7 @@ pyspark
 
 Zeppelin is another notebook interface available at:
 
-```
+```text
 https://my-spark-cluster.azurehdinsight.net/zeppelin
 ```
 
@@ -178,7 +178,7 @@ If this runs successfully and returns word counts, your cluster is properly conf
 
 You often need to tune Spark configuration for your specific workloads. HDInsight lets you do this through Ambari, the cluster management interface:
 
-```
+```text
 https://my-spark-cluster.azurehdinsight.net
 ```
 

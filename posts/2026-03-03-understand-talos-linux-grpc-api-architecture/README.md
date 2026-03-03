@@ -45,7 +45,7 @@ The architecture has three main layers:
 2. **Authentication layer** - Mutual TLS certificate validation
 3. **Service layer** - Individual API services that handle specific operations
 
-```
+```text
 Client (talosctl)                     Talos Node
 +------------------+                  +------------------+
 |                  |  gRPC/mTLS       |     apid         |

@@ -143,7 +143,7 @@ kubectl get pods -n cert-manager
 
 Expected output:
 
-```
+```text
 NAME                                       READY   STATUS    RESTARTS   AGE
 cert-manager-5c6866597-xvpjt              1/1     Running   0          60s
 cert-manager-cainjector-577f6d9fd7-lnkhm  1/1     Running   0          60s

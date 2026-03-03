@@ -261,7 +261,7 @@ When you run the test for the first time, it generates a snapshot file like this
 
 When a snapshot test fails, the output shows you exactly what changed:
 
-```
+```text
 FAILED tests/test_telemetry_snapshots.py::test_create_order_telemetry
   Snapshot "create_order_spans.json" does not match:
 

@@ -112,7 +112,7 @@ export { application }
 
 ### Controller Directory Structure
 
-```
+```text
 app/javascript/
 ├── application.js           # Main entry point
 └── controllers/

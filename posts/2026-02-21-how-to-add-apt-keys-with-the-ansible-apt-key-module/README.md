@@ -57,7 +57,7 @@ Or add a key from data stored in a variable or file:
 
 If you have used `apt_key` recently, you have probably seen this warning:
 
-```
+```text
 Warning: apt-key is deprecated. Manage keyring files in trusted.gpg.d instead.
 ```
 

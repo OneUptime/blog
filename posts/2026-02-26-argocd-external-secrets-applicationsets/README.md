@@ -84,7 +84,7 @@ spec:
 
 Organize your Git repository so ApplicationSets can template paths and values:
 
-```
+```text
 repo/
   apps/
     service-a/

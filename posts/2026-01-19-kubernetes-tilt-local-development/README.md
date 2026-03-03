@@ -89,7 +89,7 @@ k8s_resource('myapp', port_forwards='3000:3000')
 
 ### Project Structure
 
-```
+```text
 myapp/
 ├── Tiltfile
 ├── Dockerfile

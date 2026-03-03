@@ -72,7 +72,7 @@ SELECT * FROM crosstab(
 
 This query produces output like:
 
-```
+```text
 product_name | january  | february | march    | april
 -------------+----------+----------+----------+---------
 Widget A     | 15000.00 | 18500.00 | 22000.00 | 19500.00

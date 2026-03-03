@@ -38,7 +38,7 @@ npm run dev
 
 A well-organized Vite React project:
 
-```
+```text
 my-react-app/
 ├── public/
 │   └── favicon.ico

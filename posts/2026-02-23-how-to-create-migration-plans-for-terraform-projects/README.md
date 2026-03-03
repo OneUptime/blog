@@ -126,7 +126,7 @@ project/
       main.tf
     production/
       main.tf
-```
+```text
 
 ### Backend Configuration
 - Type: S3 with DynamoDB locking

@@ -70,7 +70,7 @@ The key connection is:
 
 Organize your values repository to mirror your deployment structure:
 
-```
+```text
 helm-values/
   monitoring/
     prometheus/

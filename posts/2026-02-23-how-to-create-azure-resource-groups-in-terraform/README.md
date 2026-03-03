@@ -58,7 +58,7 @@ The `name` and `location` are required. Once created, the location cannot be cha
 
 A consistent naming convention makes resource groups discoverable. The Microsoft recommended pattern is:
 
-```
+```text
 rg-<app-or-service>-<environment>-<region>-<instance>
 ```
 

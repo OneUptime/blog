@@ -48,7 +48,7 @@ kubectl get crd | grep federation
 
 You should see CRDs like:
 
-```
+```text
 federatedconfigmaps.types.kubefed.io
 federateddeployments.types.kubefed.io
 federatedservices.types.kubefed.io
@@ -67,7 +67,7 @@ kubectl config get-contexts
 
 Output shows your clusters:
 
-```
+```text
 CURRENT   NAME           CLUSTER        AUTHINFO       NAMESPACE
 *         cluster-1      cluster-1      admin-1
           cluster-2      cluster-2      admin-2
@@ -109,7 +109,7 @@ kubectl get kubefedclusters -n kube-federation-system
 
 Output:
 
-```
+```text
 NAME        AGE   READY
 cluster-2   1m    True
 cluster-3   1m    True

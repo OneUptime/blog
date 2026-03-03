@@ -58,7 +58,7 @@ Benefits you get:
 
 Here is a clean project structure that works well for medium to large Flask applications:
 
-```
+```text
 myapp/
 ├── app/
 │   ├── __init__.py          # Application factory lives here

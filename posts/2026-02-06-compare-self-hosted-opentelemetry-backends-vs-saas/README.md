@@ -138,7 +138,7 @@ Assume a medium-sized deployment:
 
 ### Self-Hosted Costs
 
-```
+```text
 # Self-hosted infrastructure cost estimate
 # Running on Kubernetes with cloud VMs
 
@@ -164,7 +164,7 @@ Total self-hosted: ~$8,540/mo
 
 ### SaaS Vendor Costs
 
-```
+```text
 # SaaS vendor cost estimate (ranges vary by vendor)
 
 Traces:

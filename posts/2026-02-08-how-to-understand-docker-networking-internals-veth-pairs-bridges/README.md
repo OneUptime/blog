@@ -154,7 +154,7 @@ sudo iptables -t nat -L DOCKER -n -v
 
 You will see a rule like:
 
-```
+```text
 DNAT tcp -- 0.0.0.0/0 0.0.0.0/0 tcp dpt:8080 to:172.17.0.4:80
 ```
 

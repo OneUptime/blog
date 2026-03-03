@@ -51,7 +51,7 @@ neofetch
 
 On an Ubuntu server, output looks something like:
 
-```
+```text
             .-/+oossssoo+/-.               user@hostname
         `:+ssssssssssssssssss+:`           -----------------
       -+ssssssssssssssssssyyssss+-         OS: Ubuntu 22.04.3 LTS x86_64

@@ -735,7 +735,7 @@ Ubuntu supports full disk encryption during installation.
 
 ### During Ubuntu Installation
 
-```
+```text
 1. Boot Ubuntu installer (live USB)
 2. Choose "Install Ubuntu"
 3. Select "Erase disk and install Ubuntu"

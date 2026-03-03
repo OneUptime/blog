@@ -188,7 +188,7 @@ The most useful part of a runbook is often the diagnostic query. Instead of maki
 
 Here are example Cloud Logging queries to include in runbooks:
 
-```
+```text
 # Find all errors in the API Gateway in the last hour
 resource.type="cloud_run_revision"
 resource.labels.service_name="api-gateway"
@@ -208,7 +208,7 @@ protoPayload.methodName="google.cloud.run.v1.Services.ReplaceService"
 
 You can generate clickable Cloud Logging links that pre-populate the query. The URL format is:
 
-```
+```text
 https://console.cloud.google.com/logs/query;query=ENCODED_QUERY?project=my-project
 ```
 

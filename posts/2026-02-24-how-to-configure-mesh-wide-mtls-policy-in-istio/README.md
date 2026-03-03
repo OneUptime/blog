@@ -184,7 +184,7 @@ Once you have a mesh-wide policy, track its effectiveness:
 
 ### Total mTLS Coverage
 
-```
+```text
 sum(rate(istio_requests_total{connection_security_policy="mutual_tls", reporter="destination"}[5m]))
 /
 sum(rate(istio_requests_total{reporter="destination"}[5m]))
@@ -195,7 +195,7 @@ This should be at or near 100% for a strict mesh.
 
 ### Non-mTLS Traffic Detection
 
-```
+```text
 sum(rate(istio_requests_total{connection_security_policy="none", reporter="destination"}[5m])) by (destination_service, source_workload)
 ```
 
@@ -203,7 +203,7 @@ Any results here in a strict mesh indicate a problem. Investigate each source wo
 
 ### Failed Connection Attempts
 
-```
+```text
 sum(rate(istio_requests_total{response_code="503", response_flags="UF", reporter="destination"}[5m])) by (source_workload, destination_service)
 ```
 

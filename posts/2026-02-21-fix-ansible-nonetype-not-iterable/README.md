@@ -12,7 +12,7 @@ The "argument of type NoneType is not iterable" error occurs when you try to loo
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "argument of type 'NoneType' is not iterable"
 }

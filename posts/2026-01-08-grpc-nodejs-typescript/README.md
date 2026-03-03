@@ -52,7 +52,7 @@ npx tsc --init
 
 Create the following directory structure:
 
-```
+```text
 grpc-nodejs-typescript/
 ├── protos/
 │   └── user.proto

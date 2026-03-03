@@ -16,7 +16,7 @@ Every Lambda function automatically gets a CloudWatch Log Group named `/aws/lamb
 
 A typical log stream looks like:
 
-```
+```text
 START RequestId: abc-123 Version: $LATEST
 2026-02-12T10:00:00.000Z abc-123 INFO Processing order ORD-001
 2026-02-12T10:00:00.100Z abc-123 INFO Order saved to database
@@ -144,7 +144,7 @@ Logs Insights is where structured logging pays off. You can query across all log
 
 Find all errors in the last hour:
 
-```
+```text
 fields @timestamp, @message
 | filter level = "ERROR"
 | sort @timestamp desc
@@ -153,14 +153,14 @@ fields @timestamp, @message
 
 Find slow invocations:
 
-```
+```text
 filter @type = "REPORT"
 | stats avg(@duration), max(@duration), count(*) as invocations by bin(1h)
 ```
 
 Find cold starts:
 
-```
+```text
 filter @message like /Init Duration/
 | parse @message "Init Duration: * ms" as initDuration
 | stats avg(initDuration), max(initDuration), count(*) as coldStarts by bin(1h)
@@ -168,7 +168,7 @@ filter @message like /Init Duration/
 
 Find specific order processing:
 
-```
+```text
 fields @timestamp, level, message, orderId, orderStatus
 | filter orderId = "ORD-001"
 | sort @timestamp asc
@@ -176,7 +176,7 @@ fields @timestamp, level, message, orderId, orderStatus
 
 Find errors by type:
 
-```
+```text
 fields @timestamp, errorName, errorMessage, requestId
 | filter level = "ERROR"
 | stats count(*) as errorCount by errorName
@@ -185,7 +185,7 @@ fields @timestamp, errorName, errorMessage, requestId
 
 Find memory-intensive invocations:
 
-```
+```text
 filter @type = "REPORT"
 | parse @message "Max Memory Used: * MB" as memoryUsed
 | parse @message "Memory Size: * MB" as memorySize
@@ -322,7 +322,7 @@ exports.handler = async (event, context) => {
 
 Cold starts show up in the REPORT line as "Init Duration." To find and analyze them:
 
-```
+```text
 filter @type = "REPORT"
 | filter @message like /Init Duration/
 | parse @message "Init Duration: * ms" as initDuration

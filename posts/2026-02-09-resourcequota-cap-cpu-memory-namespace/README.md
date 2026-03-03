@@ -77,7 +77,7 @@ kubectl get resourcequota -n development
 
 Output:
 
-```
+```text
 NAME            AGE   REQUEST                                     LIMIT
 compute-quota   5m    requests.cpu: 6/10, requests.memory: 12Gi/20Gi
 ```

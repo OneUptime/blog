@@ -208,7 +208,7 @@ resource "kubernetes_manifest" "storage_bucket" {
 
 Establishing clear boundaries is essential for avoiding conflicts. A common pattern is:
 
-```
+```text
 Terraform manages:
   - VPC networks and subnets
   - GKE clusters and node pools

@@ -41,7 +41,7 @@ docker scout cves nginx:latest
 
 This produces a report organized by severity:
 
-```
+```text
     ✗ HIGH    CVE-2024-1234 - openssl 3.0.11
       Fixed in: 3.0.13
       https://scout.docker.com/v/CVE-2024-1234
@@ -118,7 +118,7 @@ docker scout recommendations nginx:latest
 
 The output suggests updated base images that resolve known vulnerabilities:
 
-```
+```text
 Recommended fixes:
   Base image update: nginx:1.25.4 fixes 3 CVEs
   Base image change: nginx:1.25.4-alpine fixes 7 CVEs (smaller image)

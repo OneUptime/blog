@@ -372,7 +372,7 @@ resource "aws_vpc_peering_connection_accepter" "cross_region" {
 
 Multi-region configurations can get large. Consider splitting into separate state files:
 
-```
+```text
 infrastructure/
   networking/        # VPCs, peering, transit gateways
   us-east-1/         # Regional resources

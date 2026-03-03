@@ -260,7 +260,7 @@ out/
 
 You can have .gitignore files in subdirectories:
 
-```
+```text
 project/
 ├── .gitignore           # Root patterns
 ├── src/

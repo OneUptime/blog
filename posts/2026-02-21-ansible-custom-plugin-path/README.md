@@ -100,7 +100,7 @@ Environment variables override the ansible.cfg settings.
 
 Here is a recommended project layout that organizes custom plugins:
 
-```
+```text
 my-ansible-project/
   ansible.cfg
   inventory/
@@ -312,7 +312,7 @@ Use it in a playbook:
 
 Roles can include their own plugin directories. Ansible automatically looks for them:
 
-```
+```text
 roles/
   myapp/
     filter_plugins/

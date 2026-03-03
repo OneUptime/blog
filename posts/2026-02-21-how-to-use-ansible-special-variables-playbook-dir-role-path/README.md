@@ -110,7 +110,7 @@ While Ansible automatically searches the `files/` and `templates/` subdirectorie
 
 The directory structure for this role would look like:
 
-```
+```text
 roles/database/
   tasks/
     main.yml
@@ -239,7 +239,7 @@ Here is a real-world example that uses several special variables to handle a mul
 
 The project structure for this setup:
 
-```
+```text
 project/
   deploy.yml
   configs/
@@ -286,7 +286,7 @@ You can pass `role_path` into templates through variables, which is useful when 
 
 When you import a playbook with `ansible.builtin.import_playbook`, the `playbook_dir` variable still points to the main playbook's directory, not the imported playbook's directory. This catches people when they have a directory structure like:
 
-```
+```text
 main.yml
 sub/
   included.yml

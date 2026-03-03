@@ -20,7 +20,7 @@ EKS supports three combinations of public and private endpoint access:
 
 The API server is accessible from the internet. All traffic from nodes to the API server goes through the public endpoint.
 
-```
+```text
 Public Access:  Enabled
 Private Access: Disabled
 ```
@@ -31,7 +31,7 @@ This is the default when you create an EKS cluster. It's fine for testing and de
 
 The API server is accessible both from the internet and from within the VPC. Node-to-API traffic stays within the VPC through the private endpoint, while developers can access it from anywhere.
 
-```
+```text
 Public Access:  Enabled (optionally with CIDR restrictions)
 Private Access: Enabled
 ```
@@ -42,7 +42,7 @@ This is the sweet spot for most organizations. You get the convenience of extern
 
 The API server is only accessible from within the VPC. No internet access at all.
 
-```
+```text
 Public Access:  Disabled
 Private Access: Enabled
 ```

@@ -815,7 +815,7 @@ This runbook covers automated failover from us-east-1 to us-west-2 when primary 
 - Primary: On-call SRE (PagerDuty)
 - Secondary: Infrastructure Lead
 - Executive: VP Engineering (data loss scenarios only)
-```
+```text
 
 ## Automated Failover Workflow
 

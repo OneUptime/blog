@@ -62,7 +62,7 @@ Set up a Slack channel (or whatever messaging tool your team uses) specifically 
 
 Post regular updates there:
 
-```
+```text
 [Migration Update - Day 3]
 - Completed: staging namespace (12 services)
 - Issues found: 2 services needed port renaming, 1 needed ServiceEntry

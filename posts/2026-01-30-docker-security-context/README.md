@@ -368,7 +368,7 @@ cat /etc/apparmor.d/docker-default
 
 Create a custom restrictive profile:
 
-```
+```text
 # /etc/apparmor.d/docker-custom-webapp
 
 #include <tunables/global>

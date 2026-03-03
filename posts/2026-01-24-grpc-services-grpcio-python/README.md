@@ -24,7 +24,7 @@ pip install grpcio==1.60.0 grpcio-tools==1.60.0
 
 ### Project Structure
 
-```
+```text
 myservice/
     protos/
         user_service.proto

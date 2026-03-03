@@ -38,7 +38,7 @@ helm create my-app
 
 This creates a directory structure like this:
 
-```
+```text
 my-app/
   Chart.yaml          # Chart metadata (name, version, description)
   values.yaml         # Default configuration values

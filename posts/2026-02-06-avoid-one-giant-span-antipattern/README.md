@@ -28,7 +28,7 @@ def handle_order(order_data):
 
 This trace looks like:
 
-```
+```text
 handle_order [=====================================] 850ms
 ```
 
@@ -72,7 +72,7 @@ def handle_order(order_data):
 
 Now the trace shows:
 
-```
+```text
 handle_order        [=====================================] 850ms
   validate_user     [====]                                   50ms
   check_inventory        [=======]                          120ms

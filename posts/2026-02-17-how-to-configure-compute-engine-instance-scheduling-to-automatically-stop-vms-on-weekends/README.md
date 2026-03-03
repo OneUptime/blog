@@ -171,7 +171,7 @@ def manage_instances(request):
 
 The requirements file:
 
-```
+```text
 # requirements.txt
 functions-framework==3.*
 google-cloud-compute==1.*

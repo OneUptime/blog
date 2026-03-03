@@ -16,7 +16,7 @@ In this guide, I will walk through deploying a Go application to App Engine Flex
 
 Here is a typical Go project layout for an App Engine Flex deployment:
 
-```
+```text
 my-go-app/
   cmd/
     server/
@@ -294,7 +294,7 @@ ENTRYPOINT ["/server"]
 
 Keep the build context clean:
 
-```
+```text
 # .dockerignore
 .git
 .gitignore

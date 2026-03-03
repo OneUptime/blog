@@ -26,7 +26,7 @@ You can create a library panel from scratch or convert an existing panel. Let's 
 
 Open any dashboard containing a panel you want to reuse. Click the panel title, then select "More" from the dropdown menu.
 
-```
+```text
 Panel Menu > More > Create library panel
 ```
 
@@ -72,7 +72,7 @@ Adding a library panel to a dashboard takes just a few clicks.
 
 Open your dashboard in edit mode. In the panel list on the left, you will see a "Library panels" tab. Browse or search for the panel you need, then drag it onto your dashboard.
 
-```
+```text
 Dashboard Edit Mode > Add panel > Library panels tab > Drag to dashboard
 ```
 
@@ -133,7 +133,7 @@ As your library grows, organization becomes critical.
 
 Create folders that mirror your organizational structure:
 
-```
+```text
 Library Panels/
 ├── Infrastructure/
 │   ├── CPU Usage
@@ -153,7 +153,7 @@ Library Panels/
 
 Adopt consistent naming to make panels discoverable:
 
-```
+```text
 [Team/Domain] - [Metric] - [Aggregation/Detail]
 
 Examples:
@@ -206,7 +206,7 @@ Permissions on a library panel folder determine who can:
 - **Edit**: Modify the panel definition
 - **Admin**: Manage permissions and delete panels
 
-```
+```text
 Library Panel Folder Permissions:
 ├── Platform Team: Admin
 ├── Dev Teams: Edit

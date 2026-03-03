@@ -330,7 +330,7 @@ data "aws_vpc" "main" {
 
 Data sources fail loudly when they cannot find the requested resource. This is a good thing - it catches configuration errors early.
 
-```
+```text
 Error: no matching VPC found
 
   on main.tf line 1, in data "aws_vpc" "main":

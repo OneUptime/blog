@@ -278,7 +278,7 @@ ansible legacy_servers -m shell -a "which su"
 
 Common errors:
 
-```
+```text
 # "su: Authentication failure"
 # The become password is wrong
 # Fix: Verify you are entering the ROOT password, not the operator password

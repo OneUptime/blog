@@ -12,7 +12,7 @@ The `InvalidParameterValueException` is a catch-all error that AWS Lambda return
 
 ## What the Error Looks Like
 
-```
+```text
 Error: error creating Lambda Function (my-function):
 InvalidParameterValueException: The role defined for the function
 cannot be assumed by Lambda.
@@ -206,7 +206,7 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc" {
 
 Lambda environment variable names must match the pattern shown below:
 
-```
+```text
 [a-zA-Z]([a-zA-Z0-9_])+
 ```
 

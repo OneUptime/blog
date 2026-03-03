@@ -14,7 +14,7 @@ The two components serve different purposes: GRE handles encapsulation and creat
 
 ## Architecture Overview
 
-```
+```text
 Site A                                 Site B
 192.168.1.0/24                        192.168.2.0/24
 
@@ -227,7 +227,7 @@ sudo systemctl restart frr
 sudo vtysh
 ```
 
-```
+```text
 configure terminal
 
 router ospf

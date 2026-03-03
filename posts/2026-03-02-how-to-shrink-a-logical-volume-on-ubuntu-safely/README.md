@@ -76,7 +76,7 @@ sudo e2fsck -f /dev/data_vg/db_data
 
 The `-f` flag forces a check even if the filesystem was cleanly unmounted. You should see:
 
-```
+```text
 e2fsck 1.46.5 (30-Dec-2021)
 Pass 1: Checking inodes, blocks, and sizes
 Pass 2: Checking directory structure
@@ -113,7 +113,7 @@ sudo resize2fs /dev/data_vg/db_data 100G
 ```
 
 Expected output:
-```
+```text
 resize2fs 1.46.5 (30-Dec-2021)
 Resizing the filesystem on /dev/data_vg/db_data to 26214400 (4k) blocks.
 The filesystem on /dev/data_vg/db_data is now 26214400 (4k) blocks long.
@@ -134,7 +134,7 @@ sudo lvreduce -L 100G /dev/data_vg/db_data
 
 LVM will warn you:
 
-```
+```text
   WARNING: Reducing active logical volume to 100.00 GiB.
   THIS MAY DESTROY YOUR DATA (filesystem etc.)
   Do you really want to reduce data_vg/db_data? [y/n]: y
@@ -221,7 +221,7 @@ Then reboot from the main system and verify.
 
 ## Summary of the Correct Order
 
-```
+```text
 1. Backup / snapshot
 2. Stop services
 3. Unmount filesystem

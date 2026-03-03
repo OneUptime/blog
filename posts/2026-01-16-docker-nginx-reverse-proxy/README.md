@@ -25,7 +25,7 @@ A reverse proxy sits in front of your services and provides:
 
 ### Project Structure
 
-```
+```text
 project/
 ├── docker-compose.yml
 ├── nginx/

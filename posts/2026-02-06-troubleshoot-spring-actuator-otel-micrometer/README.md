@@ -110,7 +110,7 @@ When the bridge is active, these Micrometer metrics become available in OpenTele
 
 Check that metrics appear in your OpenTelemetry backend with the `micrometer` scope:
 
-```
+```text
 # Metric names in OpenTelemetry backend
 jvm.memory.used{area="heap", id="G1 Eden Space"}
 http.server.requests{method="GET", uri="/api/users", status="200"}

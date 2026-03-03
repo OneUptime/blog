@@ -18,7 +18,7 @@ Well-designed failover handling ensures your application survives Redis topology
 
 ### Failover Events
 
-```
+```text
 Scenario 1: Sentinel Failover
 ─────────────────────────────────────────────────────────
 Time 0s:    Master fails

@@ -333,7 +333,7 @@ resource "aws_security_group" "app" {
 
 For small projects, put related resources in the same file. For larger projects, group by concern:
 
-```
+```text
 project/
   main.tf          # Primary resources
   networking.tf    # VPC, subnets, route tables

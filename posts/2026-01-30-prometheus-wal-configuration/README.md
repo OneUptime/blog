@@ -92,7 +92,7 @@ ls -la /var/lib/prometheus/data/wal/
 
 Example output:
 
-```
+```text
 -rw-r--r-- 1 prometheus prometheus 134217728 Jan 30 10:00 00000001
 -rw-r--r-- 1 prometheus prometheus 134217728 Jan 30 12:00 00000002
 -rw-r--r-- 1 prometheus prometheus  67108864 Jan 30 14:00 00000003
@@ -271,7 +271,7 @@ curl -s http://localhost:9090/metrics | grep prometheus_tsdb_wal
 
 Look for:
 
-```
+```text
 prometheus_tsdb_wal_segment_current 3
 prometheus_tsdb_wal_truncations_total 15
 prometheus_tsdb_wal_corruptions_total 0
@@ -471,7 +471,7 @@ Use XFS or ext4 with appropriate mount options:
 
 Estimate WAL size based on ingestion rate:
 
-```
+```text
 WAL Size (GB) = (samples_per_second * bytes_per_sample * retention_seconds) / 1e9
 ```
 
@@ -481,7 +481,7 @@ Where:
 
 Example for 100,000 samples/second:
 
-```
+```text
 WAL Size = (100000 * 1.5 * 7200) / 1e9 = 1.08 GB
 ```
 

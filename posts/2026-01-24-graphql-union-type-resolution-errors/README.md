@@ -37,7 +37,7 @@ flowchart TD
 
 **Error Message:**
 
-```
+```text
 Abstract type "SearchResult" must resolve to an Object type at runtime
 for field "Query.search". Either the "SearchResult" type should provide
 a "resolveType" function or each possible type should provide an "isTypeOf" function.
@@ -134,7 +134,7 @@ const resolvers = {
 
 **Error Message:**
 
-```
+```text
 Abstract type "MediaItem" was resolved to a type "video" that does not exist
 inside the schema.
 ```
@@ -335,7 +335,7 @@ const resolvers = {
 
 **Error Message:**
 
-```
+```text
 Cannot return non-Object type "Promise" from resolveType
 ```
 

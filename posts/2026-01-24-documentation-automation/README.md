@@ -362,7 +362,7 @@ class PaymentClient:
         """
         # Implementation here
         pass
-```
+```text
 
 ### Solution: Auto-Update Changelogs
 

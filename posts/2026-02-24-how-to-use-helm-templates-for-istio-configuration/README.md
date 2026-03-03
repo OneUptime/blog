@@ -16,7 +16,7 @@ The trade-off is complexity. Helm templates can become hard to read and debug. B
 
 Create a Helm chart specifically for Istio resources:
 
-```
+```text
 istio-config/
   Chart.yaml
   values.yaml

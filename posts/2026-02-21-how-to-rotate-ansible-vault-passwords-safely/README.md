@@ -78,7 +78,7 @@ done
 
 Sample output:
 
-```
+```text
 ./group_vars/dev/vault.yml                              version=1.2  vault-id=dev
 ./group_vars/staging/vault.yml                          version=1.2  vault-id=staging
 ./group_vars/prod/vault.yml                             version=1.2  vault-id=prod
@@ -254,7 +254,7 @@ git push origin main
 
 Send a notification to the team:
 
-```
+```text
 Subject: Ansible Vault Password Rotated
 
 The Ansible Vault password has been rotated.

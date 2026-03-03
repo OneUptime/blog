@@ -18,7 +18,7 @@ Before burndown and velocity work, your project needs properly configured iterat
 
 Add your sprints with specific start and end dates. Azure Boards uses these dates to calculate the burndown ideal line and to associate completed work with specific sprints for velocity calculation.
 
-```
+```text
 Sprint structure example:
   Product Backlog
   Sprint 23 (Feb 3 - Feb 14, 2026)
@@ -62,7 +62,7 @@ Step 3: Search for "Sprint Burndown" and add it.
 
 Step 4: Configure the widget settings:
 
-```
+```text
 Widget Configuration:
   Team: Your Team Name
   Sprint: Current sprint (or select a specific one)
@@ -118,7 +118,7 @@ The velocity chart shows bars for each sprint, broken into:
 
 Use velocity data to plan future sprints. The simplest approach is to use the average velocity of the last 3-6 sprints as your planning baseline.
 
-```
+```text
 Example velocity data:
   Sprint 18: 34 points
   Sprint 19: 28 points
@@ -145,7 +145,7 @@ For each team member, set:
 
 The capacity tool then calculates the total available capacity for the sprint and compares it against the assigned work. If total remaining work exceeds capacity, the bar turns red.
 
-```
+```text
 Capacity calculation:
   Sprint duration: 10 working days
   Team member A: 6 hrs/day, 0 days off = 60 hours

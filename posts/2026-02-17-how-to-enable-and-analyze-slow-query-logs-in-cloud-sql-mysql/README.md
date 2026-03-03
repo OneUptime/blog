@@ -84,7 +84,7 @@ gcloud logging read \
 
 A typical slow query log entry looks like this:
 
-```
+```text
 # Time: 2025-06-15T10:23:45.123456Z
 # User@Host: appuser[appuser] @ [10.0.0.5]
 # Query_time: 3.456789  Lock_time: 0.000123  Rows_sent: 42  Rows_examined: 1500000
@@ -143,7 +143,7 @@ pt-query-digest slow_queries.log > analysis_report.txt
 
 pt-query-digest produces a detailed report that groups similar queries, shows execution statistics, and provides optimization suggestions. Here is what a typical entry looks like:
 
-```
+```text
 # Query 1: 45.23% of total time, 234 occurrences
 # Median query time: 2.34s
 # Rows examined: avg 1,234,567

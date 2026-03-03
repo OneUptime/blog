@@ -1004,7 +1004,7 @@ end
 
 Organize Query Objects in a logical namespace:
 
-```
+```text
 app/
   queries/
     application_query.rb          # Base class

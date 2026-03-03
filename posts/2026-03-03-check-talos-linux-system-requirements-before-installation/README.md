@@ -165,7 +165,7 @@ Talos works on all major hypervisors:
 
 ### VM Configuration Tips
 
-```
+```text
 # Recommended VM settings for Talos:
 # - CPU: Enable hardware virtualization passthrough
 # - Disk Controller: Use virtio (KVM) or PVSCSI (VMware) for best performance

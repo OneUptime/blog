@@ -207,7 +207,7 @@ nslookup github.com 10.0.0.4
 
 Enable diagnostic logging on the firewall and send logs to a Log Analytics workspace. Then query:
 
-```
+```text
 # KQL query to check DNS proxy activity
 AzureDiagnostics
 | where Category == "AzureFirewallDnsProxy"

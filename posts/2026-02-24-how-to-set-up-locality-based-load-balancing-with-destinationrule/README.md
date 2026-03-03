@@ -63,7 +63,7 @@ kubectl get nodes --show-labels | grep topology
 
 You should see labels like:
 
-```
+```text
 topology.kubernetes.io/region=us-east-1
 topology.kubernetes.io/zone=us-east-1a
 ```
@@ -208,7 +208,7 @@ istioctl proxy-config endpoint <pod-name> \
 
 The output shows each endpoint along with its locality:
 
-```
+```text
 ENDPOINT          STATUS    OUTLIER CHECK   CLUSTER     LOCALITY
 10.0.1.5:8080     HEALTHY   OK             ...         us-east-1/us-east-1a
 10.0.2.3:8080     HEALTHY   OK             ...         us-east-1/us-east-1b

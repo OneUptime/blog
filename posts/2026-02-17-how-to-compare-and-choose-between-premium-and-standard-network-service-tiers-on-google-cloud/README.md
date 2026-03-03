@@ -54,7 +54,7 @@ The big ones to notice: if you need global load balancing, Cloud CDN, or anycast
 
 Premium Tier costs more for egress traffic, but the pricing structure differs by region and volume. Here is a rough comparison for North America egress:
 
-```
+```text
 Premium Tier:
   0-1 TB/month:    $0.12/GB
   1-10 TB/month:   $0.11/GB

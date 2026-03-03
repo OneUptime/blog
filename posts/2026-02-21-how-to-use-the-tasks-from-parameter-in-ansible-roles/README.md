@@ -36,7 +36,7 @@ Stuffing all of that into `main.yml` (even with includes) means every playbook t
 
 First, organize your role with separate task files for each operation:
 
-```
+```text
 roles/postgresql/
   tasks/
     main.yml          # Default entry point - full installation

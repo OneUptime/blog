@@ -116,7 +116,7 @@ Once streaming is configured, audit events will appear in the `AzureDevOpsAuditi
 
 You can then query audit data using Kusto Query Language (KQL):
 
-```
+```text
 // Find all permission changes in the last 24 hours
 AzureDevOpsAuditing
 | where TimeGenerated > ago(24h)
@@ -153,7 +153,7 @@ For Splunk integration:
 
 Auditors want specific reports about access control, change management, and security events. Here are KQL queries that address common compliance requirements:
 
-```
+```text
 // SOC 2 - Access control changes report
 // Shows all permission and group membership changes
 AzureDevOpsAuditing

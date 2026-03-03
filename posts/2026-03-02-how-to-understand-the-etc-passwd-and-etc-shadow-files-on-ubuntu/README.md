@@ -39,7 +39,7 @@ The passwd file is readable by everyone (644 permissions). This is intentional -
 
 Each line represents one account, with seven colon-separated fields:
 
-```
+```text
 username:password:UID:GID:GECOS:home_directory:login_shell
 ```
 
@@ -151,7 +151,7 @@ The shadow file is readable by root and the `shadow` group. Only root can write 
 
 ### The Nine Fields of /etc/shadow
 
-```
+```text
 username:hashed_password:last_changed:min_days:max_days:warn_days:inactive_days:expires:reserved
 ```
 

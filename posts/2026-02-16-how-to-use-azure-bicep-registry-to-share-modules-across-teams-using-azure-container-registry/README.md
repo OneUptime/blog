@@ -329,7 +329,7 @@ az deployment group create \
 
 As your organization grows, structure your registry with a clear module hierarchy.
 
-```
+```text
 modules/
   compute/
     virtual-machine/main.bicep

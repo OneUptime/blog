@@ -53,7 +53,7 @@ async def health_check():
 
 Create `requirements.txt`:
 
-```
+```text
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
 ```
@@ -109,7 +109,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--worker
 
 ## The .dockerignore File
 
-```
+```text
 venv
 __pycache__
 *.pyc
@@ -147,7 +147,7 @@ Most FastAPI applications connect to a database. Here is a Compose file with Pos
 
 Install additional dependencies:
 
-```
+```text
 # Add to requirements.txt
 sqlalchemy>=2.0
 psycopg2-binary>=2.9
@@ -278,7 +278,7 @@ FastAPI excels at async operations. Use an async database driver for better perf
 
 Install async dependencies:
 
-```
+```text
 asyncpg>=0.29.0
 sqlalchemy[asyncio]>=2.0
 ```

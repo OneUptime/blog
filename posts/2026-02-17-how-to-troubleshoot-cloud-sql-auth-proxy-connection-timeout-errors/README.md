@@ -14,19 +14,19 @@ Connection timeout errors with the Cloud SQL Auth Proxy are frustrating because 
 
 Timeout errors from the Auth Proxy typically look like one of these:
 
-```
+```text
 dial tcp 127.0.0.1:5432: connect: connection refused
 ```
 
-```
+```text
 failed to connect to instance: connection timed out
 ```
 
-```
+```text
 googleapi: Error 403: Access Not Configured
 ```
 
-```
+```text
 error: connect ETIMEDOUT
 ```
 

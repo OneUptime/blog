@@ -75,7 +75,7 @@ spec:
 
 Setting `idleTimeout: 0s` disables the idle timeout. If you prefer not to disable it entirely, set it to something generous like `3600s`. Just make sure your application sends heartbeat events more frequently than this timeout. A common pattern is to send a comment line (starting with `:`) every 30 seconds as a keepalive:
 
-```
+```text
 : keepalive
 
 data: {"event": "update", "value": 42}

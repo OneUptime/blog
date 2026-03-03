@@ -169,7 +169,7 @@ This opens ports 137, 138 (UDP) and 139, 445 (TCP).
 
 On the Mac, open Finder and select Go > Connect to Server, then enter:
 
-```
+```text
 smb://ubuntu-server-ip/TimeMachine
 ```
 

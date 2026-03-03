@@ -24,7 +24,7 @@ Change Data Capture captures INSERT, UPDATE, and DELETE operations from database
 
 ### Debezium Architecture
 
-```
+```text
 Database -> Transaction Log -> Debezium Connector -> Kafka Connect -> Kafka Topics
 ```
 
@@ -513,7 +513,7 @@ curl -X DELETE http://localhost:8083/connectors/postgres-connector
 
 Key metrics to monitor:
 
-```
+```text
 debezium.postgres.connector:type=connector-metrics,context=streaming
 - NumberOfEventsFiltered
 - MilliSecondsSinceLastEvent

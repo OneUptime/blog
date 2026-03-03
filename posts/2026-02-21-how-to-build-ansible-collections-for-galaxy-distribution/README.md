@@ -14,7 +14,7 @@ Building an Ansible collection that is ready for Galaxy distribution involves mo
 
 A distributable collection follows this directory layout:
 
-```
+```text
 my_namespace/my_collection/
     changelogs/
         changelog.yml           # Machine-readable changelog
@@ -233,7 +233,7 @@ ansible-test sanity --docker
 
 Create ignore files for known issues:
 
-```
+```text
 # tests/sanity/ignore-2.14.txt
 plugins/modules/app_deploy.py validate-modules:missing-gplv3-license
 ```

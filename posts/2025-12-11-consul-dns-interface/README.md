@@ -107,7 +107,7 @@ dig @127.0.0.1 -p 8600 my-query.query.consul
 
 Example output:
 
-```
+```text
 ;; ANSWER SECTION:
 api.service.consul.     5       IN      A       10.0.1.10
 api.service.consul.     5       IN      A       10.0.1.11
@@ -143,7 +143,7 @@ sudo resolvectl status
 
 `/etc/dnsmasq.d/10-consul`
 
-```
+```text
 # Forward consul domain to Consul DNS
 server=/consul/127.0.0.1#8600
 

@@ -122,7 +122,7 @@ resource "datadog_monitor" "backend_api_latency" {
 
 Fixed thresholds work for catching obvious problems, but they miss gradual degradation. Datadog's anomaly detection can learn your latency patterns and alert when things deviate from normal.
 
-```
+```text
 # Datadog anomaly detection query for load balancer latency
 # Uses the agile algorithm with 2 standard deviations
 avg(last_4h):anomalies(
@@ -232,7 +232,7 @@ resource "datadog_dashboard" "lb_latency" {
 
 Latency spikes often coincide with traffic surges. Create a composite monitor that considers both metrics.
 
-```
+```text
 # Composite monitor: alert only when latency is high AND request volume is above normal
 # This reduces false positives during low-traffic periods
 avg(last_5m):avg:gcp.loadbalancing.https.total_latencies{project_id:my-project} > 300 &&

@@ -189,7 +189,7 @@ goaccess /var/log/nginx/access.log --log-format=COMBINED
 
 The terminal interface provides these keyboard shortcuts.
 
-```
+```text
 # Navigation shortcuts:
 # TAB or SHIFT+TAB  - Move between panels
 # j/k or Arrow keys - Scroll within a panel
@@ -334,7 +334,7 @@ When your logs do not match predefined formats, define a custom format string.
 
 GoAccess uses these specifiers to match log fields.
 
-```
+```text
 # Time and Date specifiers:
 # %d - Date (formats: %d/%b/%Y, %Y-%m-%d, etc.)
 # %t - Time (formats: %H:%M:%S, %H:%M:%S %z, etc.)

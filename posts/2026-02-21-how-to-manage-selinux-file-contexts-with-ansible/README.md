@@ -14,7 +14,7 @@ SELinux (Security-Enhanced Linux) adds mandatory access control to Linux systems
 
 Every file on an SELinux-enabled system has a security context that looks like this:
 
-```
+```text
 system_u:object_r:httpd_sys_content_t:s0
 ```
 

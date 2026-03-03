@@ -597,7 +597,7 @@ EXPOSE 9090
 CMD ["python", "exporter.py", "--api-url", "http://api:8080"]
 ```
 
-```
+```text
 # requirements.txt
 prometheus-client==0.19.0
 requests==2.31.0

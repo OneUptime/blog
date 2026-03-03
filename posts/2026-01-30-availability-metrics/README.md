@@ -31,7 +31,7 @@ graph TD
 
 The traditional approach measures availability as the percentage of time a system is operational:
 
-```
+```text
 Availability = (Total Time - Downtime) / Total Time * 100
 ```
 

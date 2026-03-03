@@ -597,7 +597,7 @@ export default {
 
 ### 2. Organize Components by Feature
 
-```
+```text
 src/
   components/
     common/           # Shared/base components

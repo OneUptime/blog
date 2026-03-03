@@ -197,7 +197,7 @@ Display this as a "Stat" panel with a threshold at 100 to quickly see if all tra
 
 Make your dashboards interactive with template variables. In Grafana, go to Dashboard Settings > Variables and add:
 
-```
+```text
 Name: namespace
 Type: Query
 Query: label_values(istio_requests_total, destination_workload_namespace)
@@ -223,7 +223,7 @@ This lets users select a namespace and workload from dropdowns instead of editin
 
 Grafana can trigger alerts based on dashboard panels. Go to a panel, click the Alert tab, and set conditions:
 
-```
+```text
 WHEN avg() OF query(A) IS ABOVE 0.05
 FOR 5m
 ```

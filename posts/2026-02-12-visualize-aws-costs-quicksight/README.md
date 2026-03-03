@@ -219,17 +219,17 @@ quicksight.create_dashboard(
 QuickSight supports calculated fields that add derived metrics to your dashboard.
 
 **Daily Average**:
-```
+```text
 total_cost / distinctCountOver(usage_date, [billing_month])
 ```
 
 **Month-over-Month Change**:
-```
+```text
 percentDifference(sum(total_cost), [billing_month], -1, ASC)
 ```
 
 **Cost per Unit**:
-```
+```text
 ifelse(total_usage > 0, total_cost / total_usage, 0)
 ```
 

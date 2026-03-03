@@ -28,7 +28,7 @@ When modules are shared across teams, several problems emerge:
 
 A dedicated platform or infrastructure team owns and maintains all shared modules:
 
-```
+```text
 Platform Team owns:
   - terraform-aws-vpc
   - terraform-aws-ecs-service
@@ -50,7 +50,7 @@ Product teams consume modules:
 
 Different teams own modules related to their domain:
 
-```
+```text
 Networking team owns:
   - terraform-aws-vpc
   - terraform-aws-transit-gateway

@@ -16,7 +16,7 @@ This guide covers installing ZFS on Ubuntu and getting your first pool running.
 
 Traditional storage stack on Linux:
 
-```
+```text
 Application
     |
 Filesystem (ext4, XFS)
@@ -30,7 +30,7 @@ Physical disks
 
 ZFS stack:
 
-```
+```text
 Application
     |
 ZFS (filesystem + volume manager + RAID)
@@ -94,7 +94,7 @@ Before creating a pool, decide on the vdev topology:
 
 Simple pool, no protection against disk failure. Good for testing or non-critical data:
 
-```
+```text
 zpool: tank
   vdev: /dev/sdb
 ```
@@ -103,7 +103,7 @@ zpool: tank
 
 Two or more disks with identical data. Can lose all but one disk:
 
-```
+```text
 zpool: tank
   mirror
     /dev/sdb
@@ -114,7 +114,7 @@ zpool: tank
 
 One parity disk. Minimum 3 disks, can lose 1:
 
-```
+```text
 zpool: tank
   raidz
     /dev/sdb
@@ -126,7 +126,7 @@ zpool: tank
 
 Two parity disks. Minimum 4 disks, can lose 2:
 
-```
+```text
 zpool: tank
   raidz2
     /dev/sdb
@@ -167,7 +167,7 @@ The pool is immediately available. ZFS automatically creates a root dataset at `
 sudo zpool status
 ```
 
-```
+```text
   pool: tank
  state: ONLINE
   scan: none requested
@@ -185,7 +185,7 @@ errors: No known data errors
 sudo zpool list
 ```
 
-```
+```text
 NAME    SIZE  ALLOC   FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT
 tank    496G   312K   496G        -         -     0%     0%  1.00x    ONLINE  -
 ```
@@ -215,7 +215,7 @@ sudo zfs create tank/home
 sudo zfs list
 ```
 
-```
+```text
 NAME                      USED  AVAIL     REFER  MOUNTPOINT
 tank                      624K  480G       120K  /tank
 tank/databases            240K  480G       120K  /tank/databases
@@ -257,7 +257,7 @@ Check compression ratio:
 sudo zfs get compressratio tank
 ```
 
-```
+```text
 NAME  PROPERTY       VALUE     SOURCE
 tank  compressratio  1.45x     -
 ```
@@ -304,7 +304,7 @@ sudo zfs list -r tank
 sudo zpool iostat 2
 ```
 
-```
+```text
               capacity     operations     bandwidth
 pool        alloc   free   read  write   read  write
 ----------  -----  -----  -----  -----  -----  -----

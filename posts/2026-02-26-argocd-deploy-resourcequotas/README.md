@@ -259,7 +259,7 @@ metadata:
 
 When a sync attempts to create resources that would exceed the quota, ArgoCD reports a sync failure. The error looks like:
 
-```
+```text
 Error creating: pods "myapp-abc123" is forbidden: exceeded quota: production-quota,
 requested: requests.cpu=2, used: requests.cpu=19, limited: requests.cpu=20
 ```
@@ -284,7 +284,7 @@ kubectl describe resourcequota production-quota -n production
 
 Output shows:
 
-```
+```text
 Name:                   production-quota
 Namespace:              production
 Resource                Used   Hard

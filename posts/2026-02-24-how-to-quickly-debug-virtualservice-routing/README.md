@@ -32,7 +32,7 @@ This catches common problems like:
 - Conflicting routes
 - Gateway references that do not match any Gateway resource
 
-```
+```text
 Warning [IST0101] (VirtualService default/my-vs) Referenced host not found: "my-service.wrong-namespace"
 Warning [IST0104] (VirtualService default/my-vs) Gateway not found: "missing-gateway"
 ```

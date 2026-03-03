@@ -237,7 +237,7 @@ All spans in a trace share the same Trace ID. Each span has a unique Span ID and
 
 When a request crosses service boundaries (HTTP, gRPC, message queues), the trace context must be propagated. OpenTelemetry uses the W3C Trace Context standard:
 
-```
+```text
 # W3C traceparent header format
 traceparent: 00-<trace-id>-<parent-span-id>-<trace-flags>
 

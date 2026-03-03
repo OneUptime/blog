@@ -375,7 +375,7 @@ Higher-priority pods consume guaranteed resources even when not fully utilized. 
 
 Calculate the cost of priority protection:
 
-```
+```text
 Without priorities:
 - 100% cluster utilization possible
 - Higher risk of service disruption

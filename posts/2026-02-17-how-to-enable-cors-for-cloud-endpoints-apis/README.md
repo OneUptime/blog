@@ -162,7 +162,7 @@ curl -X OPTIONS \
 
 A successful response should include these headers:
 
-```
+```text
 Access-Control-Allow-Origin: https://app.example.com
 Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
 Access-Control-Allow-Headers: Content-Type, Authorization

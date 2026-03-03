@@ -69,7 +69,7 @@ kubectl get nodes -o wide
 
 You should see output showing all your nodes in Ready state:
 
-```
+```text
 NAME       STATUS   ROLES           AGE   VERSION   INTERNAL-IP     EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION      CONTAINER-RUNTIME
 node1      Ready    control-plane   10d   v1.28.3   192.168.1.101   <none>        Ubuntu 22.04.3 LTS   5.15.0-88-generic   containerd://1.7.6
 node2      Ready    worker          10d   v1.28.3   192.168.1.102   <none>        Ubuntu 22.04.3 LTS   5.15.0-88-generic   containerd://1.7.6
@@ -138,7 +138,7 @@ lsblk -f
 ```
 
 Example output showing a raw disk (/dev/sdb) ready for Ceph:
-```
+```text
 NAME   FSTYPE LABEL UUID                                 MOUNTPOINT
 sda
 |-sda1 ext4         8a9c2d1e-5f6g-7h8i-9j0k-1l2m3n4o5p6q /boot
@@ -206,7 +206,7 @@ kubectl create -f crds.yaml
 ```
 
 Expected output:
-```
+```text
 customresourcedefinition.apiextensions.k8s.io/cephblockpoolradosnamespaces.ceph.rook.io created
 customresourcedefinition.apiextensions.k8s.io/cephblockpools.ceph.rook.io created
 customresourcedefinition.apiextensions.k8s.io/cephbucketnotifications.ceph.rook.io created
@@ -246,7 +246,7 @@ kubectl -n rook-ceph logs -l app=rook-ceph-operator --tail=50
 ```
 
 Expected output showing the operator is ready:
-```
+```text
 NAME                                  READY   STATUS    RESTARTS   AGE
 rook-ceph-operator-6b8b9bc96c-5xvkj   1/1     Running   0          2m
 ```
@@ -475,7 +475,7 @@ You'll see pods appear in this order:
 3. OSDs (rook-ceph-osd-0, osd-1, etc.)
 
 Example output of a healthy cluster:
-```
+```text
 NAME                                              READY   STATUS      RESTARTS   AGE
 csi-cephfsplugin-5x7ck                           2/2     Running     0          5m
 csi-cephfsplugin-provisioner-7b8fbf88b4-k4r2j    5/5     Running     0          5m
@@ -596,7 +596,7 @@ ceph status
 ```
 
 Expected output for a healthy cluster:
-```
+```text
   cluster:
     id:     a1b2c3d4-e5f6-7890-abcd-ef1234567890
     health: HEALTH_OK
@@ -621,7 +621,7 @@ ceph osd status
 ```
 
 Example output:
-```
+```text
 ID  HOST   USED  AVAIL  WR OPS  WR DATA  RD OPS  RD DATA  STATE
  0  node1  1.0G  99.0G      0        0       0        0   exists,up
  1  node1  1.0G  99.0G      0        0       0        0   exists,up
@@ -639,7 +639,7 @@ ceph osd tree
 ```
 
 Example output:
-```
+```text
 ID   CLASS  WEIGHT   TYPE NAME       STATUS  REWEIGHT  PRI-AFF
  -1         0.58319  root default
  -3         0.19440      host node1
@@ -661,7 +661,7 @@ ceph mon stat
 ```
 
 Example output:
-```
+```text
 e3: 3 mons at {a=[v2:10.96.142.115:3300/0,v1:10.96.142.115:6789/0],b=[v2:10.96.143.116:3300/0,v1:10.96.143.116:6789/0],c=[v2:10.96.144.117:3300/0,v1:10.96.144.117:6789/0]}, election epoch 12, leader 0 a, quorum 0,1,2 a,b,c
 ```
 
@@ -860,7 +860,7 @@ kubectl get storageclass
 ```
 
 Expected output:
-```
+```text
 NAME                        PROVISIONER                     RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
 rook-ceph-block (default)   rook-ceph.rbd.csi.ceph.com     Delete          WaitForFirstConsumer   true                   1m
 rook-cephfs                 rook-ceph.cephfs.csi.ceph.com   Delete          WaitForFirstConsumer   true                   30s
@@ -924,7 +924,7 @@ kubectl logs test-rbd-pod
 ```
 
 Expected output:
-```
+```text
 Hello from Ceph RBD!
 ```
 

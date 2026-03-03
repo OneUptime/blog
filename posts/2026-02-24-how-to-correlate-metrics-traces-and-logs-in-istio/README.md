@@ -94,7 +94,7 @@ Metrics are aggregated, so you cannot link a single metric data point to a trace
 
 Istio metrics include labels like `destination_service_name`, `source_workload`, and `response_code`. Your traces have the same information as span attributes. So when your metric alert says "error rate on payment-service is 5%", you can query your trace backend for:
 
-```
+```text
 service.name = "payment-service" AND http.status_code >= 500 AND timestamp > <alert-time>
 ```
 
@@ -259,7 +259,7 @@ This lets you click a trace ID in a log line and jump directly to the trace in T
 
 Here is how correlation works in practice during an incident:
 
-```
+```text
 1. Prometheus alert fires: error rate > 5% on payment-service
    Query: sum(rate(istio_requests_total{response_code=~"5..", destination_service_name="payment-service"}[5m]))
 

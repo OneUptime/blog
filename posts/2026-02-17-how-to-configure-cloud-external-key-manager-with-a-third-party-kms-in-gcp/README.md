@@ -73,7 +73,7 @@ The exact steps depend on your provider. Here is the general process:
 5. Configure authentication credentials or mutual TLS certificates
 
 The key URI typically looks something like:
-```
+```text
 https://your-ekm-provider.example.com/api/v1/cckm/ekm/endpoints/my-key-endpoint
 ```
 

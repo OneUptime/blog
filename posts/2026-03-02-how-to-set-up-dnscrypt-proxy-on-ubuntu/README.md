@@ -201,7 +201,7 @@ Point specific domains to custom IP addresses - useful for local development or 
 sudo nano /etc/dnscrypt-proxy/cloaking-rules.txt
 ```
 
-```
+```text
 # Override dev.example.com to point to your local development server
 dev.example.com  192.168.1.50
 

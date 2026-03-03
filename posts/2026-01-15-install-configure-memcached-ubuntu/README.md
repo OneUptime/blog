@@ -177,7 +177,7 @@ sudo mkdir -p /etc/sasl2
 sudo nano /etc/sasl2/memcached.conf
 ```
 
-```
+```text
 mech_list: plain
 log_level: 5
 sasldb_path: /etc/sasl2/memcached-sasldb2
@@ -207,7 +207,7 @@ telnet localhost 11211
 ```
 
 Test commands:
-```
+```text
 # Store a value
 set mykey 0 900 5
 hello

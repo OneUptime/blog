@@ -23,7 +23,7 @@ argocd app get my-app --show-operation
 
 The output shows which phase failed and which resources had issues:
 
-```
+```text
 Operation:          Sync
 Sync Revision:      abc1234
 Phase:              Failed
@@ -117,7 +117,7 @@ kubectl get events -n my-app --field-selector=type=Warning --sort-by='.lastTimes
 
 The hook image does not exist or cannot be pulled:
 
-```
+```text
 Events:
   Type     Reason     Age   Message
   ----     ------     ----  -------
@@ -142,7 +142,7 @@ kubectl get serviceaccount default -n my-app -o yaml
 
 The hook container exceeded its memory limit:
 
-```
+```text
 Events:
   Type     Reason    Age   Message
   ----     ------    ----  -------
@@ -179,7 +179,7 @@ spec:
 
 The migration cannot connect to the database:
 
-```
+```text
 kubectl logs -n my-app -l job-name=db-migrate
 # psycopg2.OperationalError: could not connect to server: Connection refused
 ```
@@ -200,7 +200,7 @@ kubectl get endpoints postgres -n my-app
 
 The hook does not have RBAC permissions for the operations it performs:
 
-```
+```text
 Error from server (Forbidden): configmaps is forbidden: User "system:serviceaccount:my-app:default"
 cannot list resource "configmaps" in API group "" in the namespace "my-app"
 ```
@@ -260,7 +260,7 @@ spec:
 
 The hook script has a bug or encounters unexpected data:
 
-```
+```text
 kubectl logs -n my-app -l job-name=db-migrate
 # Traceback (most recent call last):
 #   File "manage.py", line 22, in <module>

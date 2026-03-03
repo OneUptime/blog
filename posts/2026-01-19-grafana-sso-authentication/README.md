@@ -349,7 +349,7 @@ filters = auth.generic_oauth:debug
 ### Common Issues
 
 **Redirect URI mismatch**: Ensure the callback URL in your IdP matches exactly:
-```
+```text
 https://grafana.company.com/login/generic_oauth
 ```
 

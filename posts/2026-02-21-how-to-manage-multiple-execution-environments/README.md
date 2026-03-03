@@ -23,7 +23,7 @@ A single EE that contains everything becomes bloated and hard to maintain. It al
 
 I recommend a monorepo structure where all EE definitions live in one repository. This makes it easy to share common configurations and build all images from one pipeline.
 
-```
+```text
 ansible-execution-environments/
   common/
     ansible.cfg

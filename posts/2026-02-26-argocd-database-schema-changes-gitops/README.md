@@ -136,7 +136,7 @@ python manage.py migrate --no-input
 
 Or with Flyway, enable locking:
 
-```
+```text
 flyway.lockRetryCount=10
 ```
 

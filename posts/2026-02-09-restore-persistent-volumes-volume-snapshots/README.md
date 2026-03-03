@@ -74,7 +74,7 @@ kubectl describe pvc mysql-restored-pvc
 
 The PVC will show `Bound` status when restoration completes:
 
-```
+```text
 Name:          mysql-restored-pvc
 Namespace:     default
 StorageClass:  standard

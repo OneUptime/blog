@@ -578,7 +578,7 @@ Understanding the chart directory structure is crucial for creating and customiz
 
 A complete chart directory has the following structure.
 
-```
+```text
 myapp/
 ├── Chart.yaml           # Required: Chart metadata and dependencies
 ├── Chart.lock           # Generated: Locked dependency versions
@@ -606,7 +606,7 @@ myapp/
 
 Specify files to exclude when packaging the chart.
 
-```
+```text
 # .helmignore
 # Patterns to ignore when building packages
 

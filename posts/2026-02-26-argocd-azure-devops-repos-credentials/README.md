@@ -14,7 +14,7 @@ Azure DevOps Repos is Microsoft's Git hosting service used by many organizations
 
 Azure DevOps has two URL formats you need to be aware of:
 
-```
+```text
 # New format (recommended)
 https://dev.azure.com/organization/project/_git/repository
 
@@ -24,7 +24,7 @@ https://organization.visualstudio.com/project/_git/repository
 
 Both formats work with ArgoCD, but the new format is recommended. Some organizations also run Azure DevOps Server (formerly TFS) on-premises:
 
-```
+```text
 # Azure DevOps Server (on-premises)
 https://azuredevops.company.com/organization/project/_git/repository
 ```
@@ -86,7 +86,7 @@ Note: Azure DevOps requires RSA keys. ED25519 keys are supported on Azure DevOps
 
 The SSH URL format for Azure DevOps is different:
 
-```
+```text
 # Azure DevOps SSH URL
 git@ssh.dev.azure.com:v3/organization/project/repository
 ```

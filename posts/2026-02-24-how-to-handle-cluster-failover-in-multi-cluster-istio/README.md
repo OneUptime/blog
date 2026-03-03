@@ -233,7 +233,7 @@ Gateway errors include 502, 503, and 504, plus connection timeouts. These often 
 
 Track failover in your observability stack:
 
-```
+```text
 # Prometheus: check if traffic shifted between clusters
 sum(rate(istio_requests_total{
   destination_service="helloworld.sample.svc.cluster.local",

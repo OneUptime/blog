@@ -56,7 +56,7 @@ spec:
 
 Use CODEOWNERS to require specific team approvals:
 
-```
+```text
 # CODEOWNERS
 /services/*/overlays/production/  @org/platform-team @org/security-team
 /platform/                        @org/platform-team

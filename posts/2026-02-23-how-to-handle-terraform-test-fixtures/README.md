@@ -24,7 +24,7 @@ Fixtures come in several forms:
 
 Organize your fixtures alongside your tests:
 
-```
+```text
 modules/
   networking/
     main.tf

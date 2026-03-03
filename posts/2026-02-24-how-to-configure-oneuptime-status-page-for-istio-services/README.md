@@ -18,7 +18,7 @@ Users don't care that you have an Istio mesh with VirtualServices and Destinatio
 
 ### Good Status Page Structure
 
-```
+```text
 API Services
   - REST API
   - GraphQL API
@@ -41,7 +41,7 @@ Third-Party Integrations
 
 ### Bad Status Page Structure
 
-```
+```text
 istio-ingressgateway
 api-gateway-deployment
 auth-service-v2
@@ -65,7 +65,7 @@ In OneUptime, navigate to Status Pages and create a new page:
 
 Set up a CNAME record for your status page domain:
 
-```
+```text
 status.yourcompany.com  CNAME  statuspage.oneuptime.com
 ```
 
@@ -123,7 +123,7 @@ monitor:
 
 Here's how to think about the mapping between your internal Istio services and public-facing status page entries:
 
-```
+```text
 Internal Istio Architecture          Status Page Service
 ================================     ===================
 istio-ingressgateway                 (not shown directly)
@@ -183,7 +183,7 @@ Prepare templates for common Istio-related incidents so you're not writing statu
 
 ### Investigating Template
 
-```
+```text
 We are currently investigating reports of [increased errors / degraded
 performance / intermittent failures] affecting [service name]. Our team
 is looking into the issue and we will provide updates as we learn more.
@@ -191,7 +191,7 @@ is looking into the issue and we will provide updates as we learn more.
 
 ### Identified Template
 
-```
+```text
 We have identified the cause of the [service name] issues. [Brief
 description of the cause without technical jargon]. Our team is
 working on a fix. We expect to have this resolved within [time estimate].
@@ -199,7 +199,7 @@ working on a fix. We expect to have this resolved within [time estimate].
 
 ### Monitoring Template
 
-```
+```text
 A fix has been implemented for the [service name] issues. We are
 monitoring the situation to ensure stability. Service performance
 is returning to normal levels.
@@ -207,7 +207,7 @@ is returning to normal levels.
 
 ### Resolved Template
 
-```
+```text
 The issue affecting [service name] has been resolved. Service is
 operating normally. The issue lasted approximately [duration] and
 was caused by [simple explanation]. We apologize for any inconvenience.
@@ -247,7 +247,7 @@ notification_rules:
 
 When you need to upgrade Istio or perform mesh maintenance, create a maintenance window on the status page:
 
-```
+```text
 Scheduled Maintenance: Istio Service Mesh Upgrade
 
 Date: March 5, 2026
@@ -279,7 +279,7 @@ This historical data builds trust with your users. When they see 99.99% uptime o
 
 Consider creating a separate internal status page with more technical detail:
 
-```
+```text
 Internal Status Page (status-internal.yourcompany.com)
 
 Istio Control Plane

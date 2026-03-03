@@ -154,7 +154,7 @@ CMD ["node", "dist/server.js"]
 
 Keep the Docker build context small:
 
-```
+```text
 node_modules
 .git
 .gitignore

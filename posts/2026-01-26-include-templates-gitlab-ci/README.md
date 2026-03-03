@@ -369,7 +369,7 @@ include:
 
 Structure your template repository for clarity:
 
-```
+```text
 ci-templates/
   templates/
     build/

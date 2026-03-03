@@ -239,7 +239,7 @@ checkov -d . --output sarif  # GitHub Security tab
 
 ### Understanding Checkov Output
 
-```
+```text
 Passed checks: 42, Failed checks: 3, Skipped checks: 0
 
 Check: CKV_AWS_19: "Ensure the S3 bucket has server-side-encryption enabled"
@@ -358,7 +358,7 @@ mv conftest /usr/local/bin/
 
 ### Project Structure
 
-```
+```text
 terraform/
   main.tf
   variables.tf
@@ -960,7 +960,7 @@ deny contains msg if {
 
 ### 4. Version and Review Policies
 
-```
+```text
 policies/
   CHANGELOG.md
   README.md

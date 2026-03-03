@@ -34,7 +34,7 @@ Under the hood, `terraform state mv` reads the resource from the source address,
 
 ## Error: Invalid Source Address
 
-```
+```text
 Error: Invalid target address
 
   Cannot move to
@@ -60,7 +60,7 @@ Always quote addresses containing brackets. Without quotes, your shell may inter
 
 ## Error: Resource Not Found
 
-```
+```text
 Error: Invalid target address
 
   Cannot move "aws_instance.server": resource not found in state.
@@ -86,7 +86,7 @@ terraform state mv module.compute.aws_instance.server module.compute.aws_instanc
 
 ## Error: Resource Already Exists at Destination
 
-```
+```text
 Error: Cannot move to aws_instance.new_name: there is already
 a resource instance at that address in the state.
 ```
@@ -138,7 +138,7 @@ terraform state mv aws_instance.web module.web_server.aws_instance.main
 
 ## Error: Type Mismatch
 
-```
+```text
 Error: Cannot move aws_instance.web to aws_lb.web: resource types don't match.
 ```
 
@@ -194,7 +194,7 @@ terraform state push local-copy.tfstate
 
 ## Error: State Lock Conflicts
 
-```
+```text
 Error: Error acquiring the state lock
 
   Lock Info:

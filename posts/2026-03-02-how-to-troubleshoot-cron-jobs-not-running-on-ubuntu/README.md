@@ -91,7 +91,7 @@ sudo grep CRON /var/log/syslog | grep "your_script_name"
 
 A successfully executed cron job will show a `CMD` entry like:
 
-```
+```text
 Mar  2 10:00:01 server CRON[12345]: (user) CMD (/usr/local/bin/script.sh)
 ```
 

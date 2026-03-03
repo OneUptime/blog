@@ -466,14 +466,14 @@ Deno Deploy allows you to configure custom domains for your applications. This p
 You will need to add either a CNAME record or A records depending on whether you are using a subdomain or apex domain.
 
 For a subdomain (recommended):
-```
+```text
 Type: CNAME
 Name: app
 Value: your-project.deno.dev
 ```
 
 For an apex domain:
-```
+```text
 Type: A
 Name: @
 Value: [IP addresses provided by Deno Deploy]

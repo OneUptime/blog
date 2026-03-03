@@ -208,7 +208,7 @@ deploy:
 
 Your Helm chart structure:
 
-```
+```text
 chart/
   Chart.yaml
   values.yaml

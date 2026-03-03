@@ -14,14 +14,14 @@ The BigQuery Storage Write API is a high-performance data ingestion interface th
 
 When this error occurs, you will typically see something like:
 
-```
+```text
 ALREADY_EXISTS: The offset 42 has already been committed to stream
 projects/my-project/datasets/my_dataset/tables/my_table/streams/_default
 ```
 
 Or in your application logs:
 
-```
+```text
 com.google.api.gax.rpc.AlreadyExistsException: io.grpc.StatusRuntimeException:
 ALREADY_EXISTS: Offset already exists.
 ```

@@ -38,7 +38,7 @@ aws ec2 describe-route-tables \
 
 You should see a route like:
 
-```
+```text
 Destination: 0.0.0.0/0  ->  Target: nat-0abc123def456
 ```
 
@@ -63,7 +63,7 @@ aws ec2 describe-route-tables \
 
 You need:
 
-```
+```text
 Destination: 0.0.0.0/0  ->  Target: igw-0abc123
 ```
 

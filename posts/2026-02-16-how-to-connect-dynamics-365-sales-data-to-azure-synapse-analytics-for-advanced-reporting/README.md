@@ -247,7 +247,7 @@ GO
 
 Create a Power BI report that connects to the Synapse serverless SQL pool:
 
-```
+```text
 Connection type: Azure Synapse Analytics SQL
 Server: synapse-d365-analytics-ondemand.sql.azuresynapse.net
 Database: SalesAnalytics

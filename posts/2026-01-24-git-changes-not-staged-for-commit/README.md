@@ -159,7 +159,7 @@ git reset --hard
 
 Create a `.gitattributes` file for consistent handling:
 
-```
+```text
 # Set default behavior
 * text=auto
 
@@ -224,7 +224,7 @@ git add -p src/app.js
 
 In patch mode, you will see each change hunk and can choose:
 
-```
+```text
 Stage this hunk [y,n,q,a,d,s,e,?]?
 ```
 

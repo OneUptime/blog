@@ -61,7 +61,7 @@ kubeconform -verbose -summary apps/
 
 Example output for a manifest with errors:
 
-```
+```text
 apps/my-app/deployment.yaml - Deployment my-app is invalid:
   problem validating against schema for Deployment:
   - spec.template.spec.containers.0.ports.0:

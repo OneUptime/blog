@@ -258,7 +258,7 @@ mc admin info myminio
 
 The output shows your erasure set configuration:
 
-```
+```text
 # Example output showing erasure coding details
 Uptime: 2 hours
 Version: 2026-01-15T00:00:00Z

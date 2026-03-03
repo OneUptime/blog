@@ -301,7 +301,7 @@ Large meshes suffer from slow configuration propagation. Every time a service ch
 
 Without Sidecars, a change to any service triggers config push to all proxies.
 
-```
+```text
 Service A updated -> Push to all 500 proxies -> Each proxy processes 50MB config
 ```
 
@@ -309,7 +309,7 @@ Service A updated -> Push to all 500 proxies -> Each proxy processes 50MB config
 
 With Sidecars, only proxies that reference the changed service receive updates.
 
-```
+```text
 Service A updated -> Push to 20 proxies that use Service A -> Each proxy processes 5MB config
 ```
 
@@ -480,7 +480,7 @@ Here is a complete example for an e-commerce platform with multiple teams and se
 
 ### Architecture Overview
 
-```
+```text
 Namespaces:
 - frontend (web UI, mobile BFF)
 - catalog (product service, search service)

@@ -419,7 +419,7 @@ legacy_app = pool_mode=session
 
 ### Multiple PgBouncer Instances with HAProxy
 
-```
+```text
 # /etc/haproxy/haproxy.cfg
 frontend pgbouncer_front
     bind *:5432
@@ -451,7 +451,7 @@ mydb = host=primary.example.com port=5432 dbname=mydb connect_query='SELECT 1'
 
 ### Calculate Pool Size
 
-```
+```text
 pool_size = (num_cores * 2) + effective_spindle_count
 
 # For SSD-based systems:

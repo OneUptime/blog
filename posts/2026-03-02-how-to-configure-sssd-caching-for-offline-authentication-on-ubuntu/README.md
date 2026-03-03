@@ -144,7 +144,7 @@ Some services should never allow offline authentication. You can configure this 
 sudo nano /etc/pam.d/sudo
 ```
 
-```
+```text
 # Add the 'use_first_pass' option removed and 'online_auth' flag
 auth    required    pam_sss.so use_first_pass forward_pass
 ```

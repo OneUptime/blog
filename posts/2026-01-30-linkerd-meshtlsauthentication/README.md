@@ -62,13 +62,13 @@ spec:
 
 Linkerd identities follow a specific format derived from the workload's ServiceAccount:
 
-```
+```text
 <service-account-name>.<namespace>.serviceaccount.identity.linkerd.cluster.local
 ```
 
 For example, a pod running with ServiceAccount `payment-processor` in namespace `finance` has the identity:
 
-```
+```text
 payment-processor.finance.serviceaccount.identity.linkerd.cluster.local
 ```
 

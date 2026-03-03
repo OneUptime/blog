@@ -38,7 +38,7 @@ ipfs init
 
 Output shows your node's peer ID:
 
-```
+```text
 initializing IPFS node at /home/user/.ipfs
 generating ED25519 keypair...done
 peer identity: 12D3KooWGTGTLBUZ...
@@ -224,7 +224,7 @@ ipfs config Gateway.NoFetch false
 
 Access content via the gateway:
 
-```
+```text
 http://your-server:8080/ipfs/QmHash...
 ```
 

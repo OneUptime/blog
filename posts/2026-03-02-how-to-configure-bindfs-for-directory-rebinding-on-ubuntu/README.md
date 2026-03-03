@@ -139,14 +139,14 @@ For permanent bindfs mounts, add them to `/etc/fstab`.
 sudo nano /etc/fstab
 ```
 
-```
+```text
 # bindfs mount: present /srv/source as owned by www-data
 /srv/source  /var/www/data  fuse.bindfs  force-user=www-data,force-group=www-data,perms=0644:+X  0  0
 ```
 
 The options for fstab use the long-form names:
 
-```
+```text
 # Common fstab bindfs options:
 # force-user=USERNAME   - force owner to this user
 # force-group=GROUPNAME - force group to this group

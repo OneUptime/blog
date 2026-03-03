@@ -39,7 +39,7 @@ First, set up a client application in your identity provider. In Keycloak:
 2. Create a new client for Kubernetes
 3. Configure the client:
 
-```
+```text
 Client ID: kubernetes
 Client Protocol: openid-connect
 Access Type: confidential
@@ -48,7 +48,7 @@ Valid Redirect URIs: http://localhost:8000/*
 
 4. Create a client scope that includes group membership:
 
-```
+```text
 Scope Name: groups
 Protocol: openid-connect
 Mapper Type: Group Membership

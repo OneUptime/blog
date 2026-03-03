@@ -28,7 +28,7 @@ In all these cases, the Terraform process needs to run from a network location t
 
 The agent architecture is based on a pull model:
 
-```
+```text
 HCP Terraform (Cloud)
         |
         | (HTTPS - outbound only)

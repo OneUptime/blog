@@ -40,7 +40,7 @@ There are several federation topologies to consider.
 
 **Hub and spoke**: One mesh acts as the central hub, and all other meshes connect to it. Simple to manage, but the hub becomes a single point of failure and a potential bottleneck.
 
-```
+```text
 mesh-east ----\
                \
 mesh-west -------> mesh-hub
@@ -50,7 +50,7 @@ mesh-south ---/
 
 **Full mesh**: Every mesh connects to every other mesh. Provides the best resilience but gets complex quickly. With N meshes, you have N*(N-1)/2 connections to manage.
 
-```
+```text
 mesh-east <-----> mesh-west
     ^                ^
     |                |
@@ -60,7 +60,7 @@ mesh-south <---> mesh-north
 
 **Hierarchical**: Meshes are organized in a tree structure. Regional meshes connect to a regional hub, and regional hubs connect to a global hub.
 
-```
+```text
 global-hub
 ├── region-us-hub
 │   ├── mesh-us-west
@@ -78,7 +78,7 @@ Your trust model is one of the most important architectural decisions. You have 
 
 **Shared root CA**: Generate a root CA that all meshes trust, and derive intermediate CAs for each mesh. This is the simplest approach and what Istio documentation recommends.
 
-```
+```text
            Root CA
           /       \
    Intermediate    Intermediate
@@ -107,7 +107,7 @@ Common approaches:
 
 **Suffix-based**: Local services use `.svc.cluster.local`, remote services use `.global` or `.federation`:
 
-```
+```text
 checkout.shop.svc.cluster.local  -> local service
 checkout.shop.global             -> federated service (any mesh)
 checkout.shop.east.global        -> specific remote mesh
@@ -115,7 +115,7 @@ checkout.shop.east.global        -> specific remote mesh
 
 **Namespace isolation**: Federated services are imported into separate namespaces:
 
-```
+```text
 checkout.shop                    -> local service
 checkout.shop-east               -> remote service from east mesh
 ```
@@ -204,7 +204,7 @@ Istio supports federation between meshes running different versions, but with li
 
 Create an upgrade schedule:
 
-```
+```text
 Week 1: Upgrade staging meshes, test federation
 Week 2: Upgrade mesh-east production
 Week 3: Validate cross-mesh traffic, monitor for issues

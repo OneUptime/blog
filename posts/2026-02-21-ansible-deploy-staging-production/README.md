@@ -16,7 +16,7 @@ This post shows you how to organize inventories, variables, and playbooks so dep
 
 Here is a clean project structure that supports multiple environments.
 
-```
+```text
 ansible-project/
   inventories/
     staging/

@@ -104,7 +104,7 @@ images:
 
 Now the execution timeline looks like:
 
-```
+```text
 Time: 0s    60s    75s    150s   270s
       |-----|      |      |------|
       install      lint   docker-build

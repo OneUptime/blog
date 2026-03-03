@@ -155,7 +155,7 @@ sudo nano /etc/postgresql/*/main/pg_hba.conf
 
 Find the line for local connections and ensure it uses `scram-sha-256` or `md5`:
 
-```
+```text
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
 local   wikijs          wikijs                                  scram-sha-256
 host    wikijs          wikijs          127.0.0.1/32            scram-sha-256
@@ -718,7 +718,7 @@ Wiki.js supports numerous authentication methods. Configure them through the Adm
 
 Local authentication is enabled by default and stores credentials in the database:
 
-```
+```text
 # Local authentication settings (configured via admin panel)
 Strategy: Local
 Self-registration: Enable/Disable as needed
@@ -763,7 +763,7 @@ Wiki.js supports many OAuth2 providers. Here's how to configure common ones:
 
 For enterprise environments using Active Directory or OpenLDAP:
 
-```
+```text
 Strategy: LDAP
 Server URL: ldap://ldap.yourdomain.com:389 (or ldaps:// for SSL)
 Bind DN: cn=wikijs,ou=service-accounts,dc=yourdomain,dc=com
@@ -778,7 +778,7 @@ TLS: Enable if using LDAPS
 
 For Single Sign-On with SAML identity providers:
 
-```
+```text
 Strategy: SAML
 Entry Point: https://idp.yourdomain.com/saml/sso
 Issuer: wiki.yourdomain.com
@@ -1021,7 +1021,7 @@ sudo crontab -e
 
 Add the following line for daily backups at 2 AM:
 
-```
+```text
 0 2 * * * /usr/local/bin/backup-wikijs.sh >> /var/log/wikijs-backup.log 2>&1
 ```
 

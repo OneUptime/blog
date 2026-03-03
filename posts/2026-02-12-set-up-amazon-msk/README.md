@@ -21,7 +21,7 @@ Before creating anything, decide on a few things:
 
 Quick storage calculation: if you're ingesting 10 MB/sec with 3x replication and 7-day retention:
 
-```
+```text
 10 MB/sec x 86,400 sec/day x 7 days x 3 replicas = ~18 TB
 Divided by 3 brokers = ~6 TB per broker
 Add 20% overhead = ~7.2 TB per broker

@@ -25,7 +25,7 @@ The PAM architecture consists of four main components:
 
 When a user attempts to log in, the following sequence occurs:
 
-```
+```text
 User -> Application -> libpam -> Configuration Files -> PAM Modules -> Authentication Backend
 ```
 
@@ -66,7 +66,7 @@ ls -la /etc/pam.d/
 
 Each line in a PAM configuration file follows this format:
 
-```
+```text
 type  control  module-path  [module-arguments]
 ```
 

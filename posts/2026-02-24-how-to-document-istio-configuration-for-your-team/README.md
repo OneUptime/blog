@@ -54,7 +54,7 @@ graph LR
 - `payments` - Payment processing
 - `catalog` - Product catalog and search
 - `istio-system` - Istio control plane
-```
+```text
 
 Keep this diagram updated when services are added or removed. It should live in the same Git repository as your Istio configuration.
 
@@ -244,7 +244,7 @@ spec:
   resolution: DNS
   location: MESH_EXTERNAL
 ```
-```
+```text
 
 ## Troubleshooting Guide
 

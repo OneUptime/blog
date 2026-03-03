@@ -10,7 +10,7 @@ Description: How to fix Duplicate Resource Address errors in Terraform caused by
 
 You add a resource to your Terraform configuration and get:
 
-```
+```text
 Error: Duplicate resource "aws_instance" configuration
 
 on main.tf line 20:
@@ -22,7 +22,7 @@ Resource names must be unique per type in each module.
 
 Or the state-related variant:
 
-```
+```text
 Error: Duplicate resource address
 
 The resource address "aws_instance.web" is already used in the current state.

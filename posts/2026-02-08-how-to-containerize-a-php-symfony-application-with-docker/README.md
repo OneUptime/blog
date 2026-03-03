@@ -14,7 +14,7 @@ Symfony is a robust PHP framework built for enterprise applications. Its explici
 
 Organize Docker configuration files alongside your Symfony project:
 
-```
+```text
 my-symfony-app/
   config/
   public/

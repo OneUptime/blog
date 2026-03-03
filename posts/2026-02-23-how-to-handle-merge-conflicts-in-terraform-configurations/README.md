@@ -211,7 +211,7 @@ Structure your Terraform code so that different teams work in different files:
 
 Use a CODEOWNERS file to formalize this ownership:
 
-```
+```text
 # .github/CODEOWNERS
 networking.tf  @network-team
 compute.tf     @compute-team

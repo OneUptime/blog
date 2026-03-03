@@ -14,7 +14,7 @@ ClickHouse can consume all available memory if not properly configured. A single
 
 ClickHouse memory usage comes from several sources:
 
-```
+```text
 Total Memory Usage
 ├── Query Memory
 │   ├── Read buffers
@@ -499,7 +499,7 @@ SET os_thread_priority = 0;
 
 ### Sizing Guidelines
 
-```
+```text
 Server RAM     | max_server_memory | Query limit | Cache
 -------------- | ----------------- | ----------- | -----
 16 GB          | 12 GB             | 4 GB        | 2 GB

@@ -158,7 +158,7 @@ parts:
 
 Snapcraft processes each part through a series of lifecycle steps:
 
-```
+```text
 pull -> build -> stage -> prime -> snap
 ```
 

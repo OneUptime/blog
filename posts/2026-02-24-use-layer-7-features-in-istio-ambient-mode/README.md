@@ -26,7 +26,7 @@ Verify it is running:
 kubectl get gateway -n bookinfo
 ```
 
-```
+```text
 NAME                CLASS            ADDRESS       PROGRAMMED   AGE
 bookinfo-waypoint   istio-waypoint   10.96.10.50   True         1m
 ```

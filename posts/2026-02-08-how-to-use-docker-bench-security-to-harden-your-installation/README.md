@@ -58,7 +58,7 @@ The output is color-coded: green for PASS, red for WARN, blue for INFO, and yell
 
 A typical run produces output like this:
 
-```
+```text
 [INFO] 1 - Host Configuration
 [WARN] 1.1.1 - Ensure a separate partition for containers has been created
 [PASS] 1.1.2 - Ensure only trusted users are allowed to control Docker daemon

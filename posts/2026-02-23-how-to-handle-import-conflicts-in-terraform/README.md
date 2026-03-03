@@ -26,7 +26,7 @@ Understanding which type of conflict you are facing is the first step toward res
 
 The most common conflict occurs when you try to import a resource that is already tracked in the Terraform state:
 
-```
+```text
 Error: Resource already managed by Terraform
 
 aws_instance.web is already managed by Terraform. To import this resource,
@@ -155,7 +155,7 @@ terraform providers
 
 If an import fails partway through, it may leave a state lock:
 
-```
+```text
 Error: Error locking state: Error acquiring the state lock
 
 Lock Info:

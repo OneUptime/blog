@@ -62,7 +62,7 @@ meshConfig:
 
 Produces logs like:
 
-```
+```text
 [2024-01-15T10:30:00.000Z] "GET /api/v1/users HTTP/1.1" 200 - via_upstream - "-" 0 512 45 42 "-" "python-requests/2.28" "abc-def-123" "users.default:8080" "10.244.1.15:8080" inbound|8080|| 10.244.1.15:49152 10.244.1.15:8080 10.244.2.3:52384 - default
 ```
 

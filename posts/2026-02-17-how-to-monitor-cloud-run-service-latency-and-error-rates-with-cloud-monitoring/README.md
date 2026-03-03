@@ -28,7 +28,7 @@ For latency and error rate monitoring, the first two metrics are what we care ab
 
 Navigate to **Monitoring** > **Dashboards** > **Create Dashboard** and add a new chart. Use this MQL query to visualize p50, p95, and p99 latency:
 
-```
+```text
 # P50 latency for Cloud Run service
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_latencies'
@@ -39,7 +39,7 @@ fetch cloud_run_revision
 
 Create separate charts or use multiple datasets for different percentiles. The p95 version:
 
-```
+```text
 # P95 latency for Cloud Run service
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_latencies'
@@ -50,7 +50,7 @@ fetch cloud_run_revision
 
 And p99:
 
-```
+```text
 # P99 latency - catches the tail latency outliers
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_latencies'
@@ -105,7 +105,7 @@ Error rate is the ratio of failed requests (5xx responses) to total requests. Yo
 
 Here is an MQL query that calculates the error rate:
 
-```
+```text
 # Error rate calculation: 5xx responses divided by total requests
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_count'
@@ -241,7 +241,7 @@ graph TD
 
 For the cold start metric, use this query:
 
-```
+```text
 # Count of container startup events (cold starts)
 fetch cloud_run_revision
 | metric 'run.googleapis.com/container/startup_latencies'

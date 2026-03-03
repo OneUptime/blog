@@ -100,7 +100,7 @@ When you add a waypoint proxy and associate it with the namespace or service, L7
 
 The decision flow inside ztunnel is:
 
-```
+```text
 1. Intercept outbound traffic from pod
 2. Look up destination service
 3. Apply L4 authorization policies

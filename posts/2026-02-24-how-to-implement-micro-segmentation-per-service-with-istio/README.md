@@ -32,7 +32,7 @@ istioctl dashboard prometheus
 
 Then run this PromQL query:
 
-```
+```text
 sum(rate(istio_requests_total{reporter="destination"}[5m])) by (source_workload, source_workload_namespace, destination_workload, destination_workload_namespace)
 ```
 

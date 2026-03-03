@@ -177,7 +177,7 @@ privacy_utility_sweep(
 ```
 
 Typical output:
-```
+```text
     Noise Multiplier    Epsilon        Privacy Level
 --------------------------------------------------
                0.5      45.21            Very Weak

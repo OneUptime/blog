@@ -182,7 +182,7 @@ docker info | grep -A 20 "Storage Driver"
 
 You should see output similar to:
 
-```
+```text
  Storage Driver: devicemapper
   Pool Name: docker--vg-thinpool
   Pool Blocksize: 524.3kB

@@ -56,7 +56,7 @@ OpenTelemetry uses the W3C Baggage specification for propagating baggage across 
 
 The W3C Baggage header follows this format:
 
-```
+```text
 baggage: key1=value1,key2=value2;property1=propertyValue,key3=value3
 ```
 

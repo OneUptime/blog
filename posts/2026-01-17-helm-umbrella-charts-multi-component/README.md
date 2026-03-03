@@ -43,7 +43,7 @@ flowchart TB
 
 ### Directory Layout
 
-```
+```text
 myapp-umbrella/
 ├── Chart.yaml
 ├── Chart.lock

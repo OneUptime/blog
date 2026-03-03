@@ -14,7 +14,7 @@ Description: Learn to diagnose and fix Go's 'undefined' errors caused by missing
 
 ## Common "Undefined" Error Messages
 
-```
+```text
 undefined: SomeFunction
 undefined: SomeType
 undefined: SomeVariable
@@ -115,7 +115,7 @@ Or use the correct exported name.
 
 All `.go` files in a directory must have the same package name:
 
-```
+```text
 myapp/
   main.go      // package main
   utils.go     // package utils  <-- WRONG!
@@ -234,7 +234,7 @@ mv helper_test.go helper.go
 
 Go doesn't allow circular imports:
 
-```
+```text
 package a imports package b
 package b imports package a
 ```

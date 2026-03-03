@@ -48,7 +48,7 @@ sudo ausearch -m AVC --start recent | grep apparmor
 
 A typical AppArmor denial looks like this in the log:
 
-```
+```text
 kernel: audit: type=1400 audit(1709000000.123:456): apparmor="DENIED" operation="open" profile="/usr/bin/myapp" name="/etc/shadow" pid=1234 comm="myapp" requested_mask="r" denied_mask="r" fsuid=1000 ouid=0
 ```
 
@@ -127,7 +127,7 @@ sudo aa-logprof -f /var/log/syslog
 
 For each denial, you'll see something like:
 
-```
+```text
 Profile:  /usr/bin/myapp
 Path:     /etc/myapp/config.json
 Mode:     r
@@ -209,26 +209,26 @@ sudo apparmor_parser -r /etc/apparmor.d/usr.bin.myapp
 
 ### Application can't read its config file
 
-```
+```text
 apparmor="DENIED" operation="open" name="/etc/myapp/config.conf" requested_mask="r"
 ```
 
 Add a read rule to the profile:
 
-```
+```text
 # In /etc/apparmor.d/usr.bin.myapp
 /etc/myapp/config.conf r,
 ```
 
 ### Application can't connect to the network
 
-```
+```text
 apparmor="DENIED" operation="connect" profile="/usr/bin/myapp"
 ```
 
 Add network access to the profile:
 
-```
+```text
 # Allow outbound TCP connections
 network inet tcp,
 network inet6 tcp,
@@ -236,13 +236,13 @@ network inet6 tcp,
 
 ### Application can't execute a helper binary
 
-```
+```text
 apparmor="DENIED" operation="exec" name="/usr/bin/helper" requested_mask="x"
 ```
 
 Add an exec rule:
 
-```
+```text
 /usr/bin/helper Px,   # execute with helper's own profile
 # or
 /usr/bin/helper ix,   # execute inheriting current profile

@@ -14,7 +14,7 @@ The "cannot borrow as mutable" error is one of the most common errors Rust devel
 
 The error appears in several forms:
 
-```
+```text
 error[E0596]: cannot borrow `x` as mutable, as it is not declared as mutable
 error[E0502]: cannot borrow `x` as mutable because it is also borrowed as immutable
 error[E0499]: cannot borrow `x` as mutable more than once at a time

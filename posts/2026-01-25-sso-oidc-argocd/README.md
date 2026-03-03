@@ -339,7 +339,7 @@ kubectl logs -n argocd deployment/argocd-dex-server -f
 ### Common Issues
 
 **Callback URL mismatch:**
-```
+```text
 Error: redirect_uri_mismatch
 ```
 Ensure the callback URL in your IdP matches exactly: `https://argocd.example.com/api/dex/callback`

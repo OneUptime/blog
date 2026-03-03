@@ -164,7 +164,7 @@ kubectl get namespaces -L istio-injection -L istio.io/rev
 
 This shows:
 
-```
+```text
 NAME              STATUS   AGE    ISTIO-INJECTION   REV
 default           Active   30d
 kube-system       Active   30d    disabled

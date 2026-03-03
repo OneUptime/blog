@@ -171,7 +171,7 @@ RUN pip install --no-cache-dir -e /template/
 
 The requirements.txt includes all Python dependencies.
 
-```
+```text
 apache-beam[gcp]==2.53.0
 lxml==5.1.0
 google-cloud-bigquery==3.14.0

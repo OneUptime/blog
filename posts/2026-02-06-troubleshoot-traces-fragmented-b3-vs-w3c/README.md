@@ -12,7 +12,7 @@ Your traces should show a complete call chain from Service A through Service B t
 
 Different tracing systems use different HTTP headers to propagate trace context:
 
-```
+```text
 W3C TraceContext:
   traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 
@@ -115,7 +115,7 @@ otel.SetTextMapPropagator(
 
 With a composite propagator, the outgoing request will include both sets of headers:
 
-```
+```text
 traceparent: 00-abc123...-def456...-01
 X-B3-TraceId: abc123...
 X-B3-SpanId: def456...

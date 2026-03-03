@@ -251,7 +251,7 @@ kafka-storage.sh format -t $KAFKA_CLUSTER_ID -c /etc/kafka/controller-3.properti
 
 The output should show:
 
-```
+```text
 Formatting /var/lib/kafka/metadata with metadata.version 3.7-IV4.
 ```
 

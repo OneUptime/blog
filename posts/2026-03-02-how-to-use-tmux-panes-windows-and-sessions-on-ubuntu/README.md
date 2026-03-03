@@ -53,7 +53,7 @@ tmux ls
 
 Inside tmux:
 
-```
+```text
 Ctrl+b s    - Open interactive session list (navigate with arrows, Enter to switch)
 Ctrl+b (    - Switch to previous session
 Ctrl+b )    - Switch to next session
@@ -95,7 +95,7 @@ tmux kill-server
 
 ### Creating and Naming Windows
 
-```
+```text
 Ctrl+b c    - Create new window
 Ctrl+b ,    - Rename current window
 ```
@@ -112,7 +112,7 @@ tmux new-window -t api-project -n "server" 'python manage.py runserver'
 
 ### Navigating Windows
 
-```
+```text
 Ctrl+b n    - Next window (by number)
 Ctrl+b p    - Previous window
 Ctrl+b l    - Last (most recently active) window
@@ -124,7 +124,7 @@ Ctrl+b f    - Find window by name
 
 ### Reordering and Managing Windows
 
-```
+```text
 Ctrl+b .    - Move current window to a different index (prompts for number)
 Ctrl+b &    - Kill current window (asks for confirmation)
 Ctrl+b :swap-window -s 2 -t 3    - Swap windows 2 and 3
@@ -150,7 +150,7 @@ tmux shows status flags in the window list:
 
 ### Creating Panes
 
-```
+```text
 Ctrl+b %    - Split current pane vertically (left/right)
 Ctrl+b "    - Split current pane horizontally (top/bottom)
 ```
@@ -165,7 +165,7 @@ tmux split-window -v -t api-project:editor  # vertical
 
 ### Navigating Panes
 
-```
+```text
 Ctrl+b arrow keys  - Move to pane in that direction
 Ctrl+b o           - Move to next pane (cycle)
 Ctrl+b ;           - Move to last active pane
@@ -173,7 +173,7 @@ Ctrl+b q           - Display pane numbers briefly; press number to jump
 ```
 
 With Vim-style keybindings configured:
-```
+```text
 Ctrl+b h    - Move left
 Ctrl+b j    - Move down
 Ctrl+b k    - Move up
@@ -182,13 +182,13 @@ Ctrl+b l    - Move right
 
 ### Resizing Panes
 
-```
+```text
 Ctrl+b Ctrl+arrow   - Resize pane in arrow direction (one row/col at a time)
 Ctrl+b Alt+arrow    - Resize in larger steps
 ```
 
 From command mode (`Ctrl+b :`):
-```
+```text
 resize-pane -D 5    - Resize down 5 rows
 resize-pane -U 5    - Resize up 5 rows
 resize-pane -L 10   - Resize left 10 columns
@@ -197,7 +197,7 @@ resize-pane -R 10   - Resize right 10 columns
 
 ### Zooming Panes
 
-```
+```text
 Ctrl+b z    - Toggle zoom on current pane (makes it full-screen temporarily)
 ```
 
@@ -205,14 +205,14 @@ Zoom is useful when you need to focus on a single pane. Press `Ctrl+b z` again t
 
 ### Moving and Swapping Panes
 
-```
+```text
 Ctrl+b {    - Move current pane left (swap with previous pane)
 Ctrl+b }    - Move current pane right (swap with next pane)
 Ctrl+b !    - Break current pane into its own window
 ```
 
 From command prompt:
-```
+```text
 Ctrl+b :join-pane -s window.pane   - Pull a pane into current window
 Ctrl+b :swap-pane -U               - Swap with pane above
 Ctrl+b :swap-pane -D               - Swap with pane below
@@ -220,7 +220,7 @@ Ctrl+b :swap-pane -D               - Swap with pane below
 
 ### Killing Panes
 
-```
+```text
 Ctrl+b x    - Kill current pane (asks for confirmation)
 exit        - Type exit in the pane to close it naturally
 ```
@@ -229,7 +229,7 @@ exit        - Type exit in the pane to close it naturally
 
 tmux has built-in pane layouts:
 
-```
+```text
 Ctrl+b Alt+1    - even-horizontal (all panes in a row)
 Ctrl+b Alt+2    - even-vertical (all panes stacked)
 Ctrl+b Alt+3    - main-horizontal (one large pane top, others at bottom)
@@ -307,7 +307,7 @@ chmod +x setup_workspace.sh
 
 ## Navigation Quick Reference
 
-```
+```text
 Sessions:
   Ctrl+b s   - List sessions
   Ctrl+b d   - Detach

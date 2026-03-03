@@ -22,7 +22,7 @@ kubectl get nodes -L kubernetes.io/arch
 
 You will see something like:
 
-```
+```text
 NAME          STATUS   ROLES    AGE   VERSION   ARCH
 node-x86-1   Ready    <none>   10d   v1.28.0   amd64
 node-x86-2   Ready    <none>   10d   v1.28.0   amd64
@@ -210,7 +210,7 @@ spec:
 
 Then in your Prometheus queries, you can filter by architecture:
 
-```
+```text
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{node_arch="arm64"}[5m])) by (le, destination_service))
 ```
 

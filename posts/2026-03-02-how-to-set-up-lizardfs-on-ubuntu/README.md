@@ -14,7 +14,7 @@ This guide sets up a basic LizardFS cluster on Ubuntu with one master server, tw
 
 ## Architecture
 
-```
+```text
                    [Master Server]
                    192.168.1.10
                    Manages metadata
@@ -90,7 +90,7 @@ Configure exports (which paths are accessible):
 sudo nano /etc/lizardfs/mfsexports.cfg
 ```
 
-```
+```text
 # Allow any host to mount the root filesystem with full access
 *    /    rw,alldirs,maproot=0
 ```
@@ -150,7 +150,7 @@ Create the disk configuration file listing storage paths:
 sudo nano /etc/lizardfs/mfshdd.cfg
 ```
 
-```
+```text
 # List one storage directory per line
 /data/lizardfs
 ```

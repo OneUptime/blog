@@ -43,7 +43,7 @@ sudo visudo -f /etc/sudoers.d/myconfig
 
 The basic rule format:
 
-```
+```text
 user   host=(runas_user)   NOPASSWD: command
 ```
 

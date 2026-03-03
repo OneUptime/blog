@@ -20,7 +20,7 @@ Before diving into implementation, let's understand what makes anycast different
 
 ### Unicast vs. Anycast vs. Multicast
 
-```
+```text
 Unicast:    One source -> One destination
             Client connects to a specific server IP
 
@@ -129,7 +129,7 @@ flowchart TB
 Each RIR has specific requirements:
 
 **ARIN (North America)**
-```
+```text
 Minimum allocation: /48 for end-users, /32 for ISPs
 Requirements:
   - Demonstrate immediate need
@@ -139,7 +139,7 @@ Cost: ~$250-500/year for small allocations
 ```
 
 **RIPE NCC (Europe, Middle East, Central Asia)**
-```
+```text
 Minimum allocation: /29 for LIRs
 Requirements:
   - LIR membership required
@@ -148,7 +148,7 @@ Cost: ~EUR 1,400/year membership
 ```
 
 **APNIC (Asia Pacific)**
-```
+```text
 Minimum allocation: /48 for end-users
 Requirements:
   - Membership or sponsorship
@@ -350,7 +350,7 @@ sudo apt install frr frr-pythontools
 
 Edit `/etc/frr/daemons`:
 
-```
+```text
 bgpd=yes
 zebra=yes
 ```
@@ -1005,7 +1005,7 @@ filter import_rpki_checked {
 
 Anycast inherently provides DDoS resilience by distributing attack traffic:
 
-```
+```text
 Attack traffic distributed:
   Location A: 33% of attack
   Location B: 33% of attack

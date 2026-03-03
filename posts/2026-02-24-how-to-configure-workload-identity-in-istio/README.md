@@ -14,13 +14,13 @@ Every service in your mesh needs an identity. Without it, you cannot answer the 
 
 Istio assigns each workload a SPIFFE ID based on its Kubernetes service account. The format looks like this:
 
-```
+```text
 spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
 ```
 
 For example, a workload running with the service account `order-service` in the `production` namespace with the default trust domain would get:
 
-```
+```text
 spiffe://cluster.local/ns/production/sa/order-service
 ```
 
@@ -76,7 +76,7 @@ spec:
 
 With this configuration, workload identities become:
 
-```
+```text
 spiffe://mycompany.com/ns/production/sa/order-service
 ```
 
@@ -100,7 +100,7 @@ istioctl proxy-config secret deployment/order-service -n production -o json | \
 
 You should see something like:
 
-```
+```text
 URI:spiffe://mycompany.com/ns/production/sa/order-service
 ```
 

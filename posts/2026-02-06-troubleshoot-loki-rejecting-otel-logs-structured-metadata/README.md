@@ -8,14 +8,14 @@ Description: Fix Grafana Loki rejecting OpenTelemetry log records because the al
 
 You configure the OpenTelemetry Collector to send logs to Grafana Loki via OTLP. The Collector reports export failures, and Loki returns errors like:
 
-```
+```text
 server returned HTTP status 400 Bad Request:
   structured metadata is not allowed for tenant
 ```
 
 Or:
 
-```
+```text
 err="structured metadata feature is not enabled"
 ```
 
@@ -182,7 +182,7 @@ Only explicitly indexed attributes become Loki labels. Everything else goes to s
 
 In Grafana Explore, you can query structured metadata using LogQL:
 
-```
+```text
 # Filter by structured metadata
 {service_name="my-service"} | trace_id="abc123"
 

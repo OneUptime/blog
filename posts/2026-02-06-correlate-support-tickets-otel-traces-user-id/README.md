@@ -123,7 +123,7 @@ Create a template in your support tool:
 
 With the user ID and approximate time, query your trace backend:
 
-```
+```text
 # Tempo/Grafana TraceQL
 {
   span.user.id = "usr_k8x9m2"

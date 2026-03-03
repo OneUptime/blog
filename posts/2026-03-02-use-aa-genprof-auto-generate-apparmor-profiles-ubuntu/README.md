@@ -59,7 +59,7 @@ sudo aa-genprof /usr/local/bin/myapp
 
 ### What You See When It Starts
 
-```
+```text
 Writing updated profile for /usr/local/bin/myapp.
 Setting /usr/local/bin/myapp to complain mode.
 
@@ -102,14 +102,14 @@ The more thoroughly you exercise the application, the more complete the generate
 
 Once you've run the application, go back to the `aa-genprof` terminal and press `S` to scan the system log:
 
-```
+```text
 [(S)can system log for AppArmor events] / (F)inish
 S
 ```
 
 `aa-genprof` will then present each access event and ask what to do with it:
 
-```
+```text
 Profile:  /usr/local/bin/myapp
 Path:     /etc/myapp/config.json
 Mode:     r
@@ -144,7 +144,7 @@ For each access, you need to decide how to handle it:
 
 ### Decision Guidelines
 
-```
+```text
 # Specific config files the app needs - Allow with specific path
 Path: /etc/myapp/config.json  -> Allow (rule: /etc/myapp/config.json r,)
 
@@ -168,7 +168,7 @@ Path: /etc/shadow -> Deny
 
 When the application makes network connections, `aa-genprof` will ask about those too:
 
-```
+```text
 Profile:  /usr/local/bin/myapp
 Network:  inet tcp
 Severity: 6
@@ -182,7 +182,7 @@ For applications that need to make or accept TCP connections, allow network acce
 
 Some operations require Linux capabilities:
 
-```
+```text
 Profile:   /usr/local/bin/myapp
 Capability: net_bind_service
 Severity:  8
@@ -196,7 +196,7 @@ Only allow capabilities the application genuinely needs. `net_bind_service` is r
 
 After handling all events from one run, `aa-genprof` asks if you want to scan again:
 
-```
+```text
 [(S)can system log for AppArmor events] / (F)inish
 ```
 
@@ -204,7 +204,7 @@ If you want to exercise more of the application's functionality, go back to the 
 
 When you're satisfied, press `F` to finish:
 
-```
+```text
 Writing updated profile for /usr/local/bin/myapp.
 Reloaded AppArmor profiles in enforce mode.
 ```

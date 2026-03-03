@@ -36,7 +36,7 @@ istioctl proxy-status
 
 The output shows each proxy and its sync status:
 
-```
+```text
 NAME                                  CDS     LDS     EDS     RDS     ECDS    ISTIOD
 my-app-abc123.production              SYNCED  SYNCED  SYNCED  SYNCED  -       istiod-xyz
 payment-def456.production             STALE   STALE   SYNCED  SYNCED  -       istiod-xyz

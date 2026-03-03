@@ -16,7 +16,7 @@ This guide covers setting up each major private VCS provider with TFE, including
 
 Before configuring anything, make sure the network allows bidirectional communication:
 
-```
+```text
 TFE Server  <-->  VCS Server
 
 TFE needs to reach:
@@ -47,7 +47,7 @@ On your GitHub Enterprise Server:
 1. Go to your organization settings (or site admin for global)
 2. Navigate to **Developer settings** > **OAuth Apps** > **New OAuth App**
 
-```
+```text
 Application name:       Terraform Enterprise
 Homepage URL:           https://tfe.example.com
 Authorization callback URL: https://tfe.example.com/auth/github_enterprise/callback
@@ -97,7 +97,7 @@ After creating the OAuth client, you need to complete the OAuth flow:
 1. Log in to GitLab as an admin
 2. Go to **Admin Area** > **Applications** > **New application**
 
-```
+```text
 Name:         Terraform Enterprise
 Redirect URI: https://tfe.example.com/auth/gitlab_self_managed/callback
 Trusted:      Yes
@@ -150,7 +150,7 @@ curl -s \
 2. Enter the TFE URL: `https://tfe.example.com`
 3. Configure the incoming link:
 
-```
+```text
 Consumer Key:     terraform-enterprise
 Consumer Name:    Terraform Enterprise
 Public Key:       [paste your RSA public key]

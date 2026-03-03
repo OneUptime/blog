@@ -38,7 +38,7 @@ flowchart TD
 
 You might encounter these errors related to temporary tables:
 
-```
+```text
 ERROR 1114 (HY000): The table 'sql_xxx' is full
 ERROR 1030 (HY000): Got error 28 from storage engine
 ERROR 3 (HY000): Error writing file '/tmp/MYxxxxx' (Errcode: 28 - No space left on device)

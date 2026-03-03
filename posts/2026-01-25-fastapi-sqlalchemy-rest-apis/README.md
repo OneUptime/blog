@@ -45,7 +45,7 @@ pip install fastapi uvicorn sqlalchemy asyncpg alembic pydantic-settings
 
 Organize your project with a clear structure that separates concerns:
 
-```
+```text
 my_api/
     app/
         __init__.py

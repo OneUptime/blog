@@ -49,7 +49,7 @@ Ports:
 
 Triton requires a specific directory structure:
 
-```
+```text
 models/
   text_classifier/
     config.pbtxt            # Model configuration

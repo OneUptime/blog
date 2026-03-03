@@ -72,7 +72,7 @@ CREATE INDEX idx_migrations_active ON migrations.schema_migrations(version)
 
 Organize migrations in a structured directory that makes it easy to track changes and maintain order.
 
-```
+```text
 migrations/
     versions/
         20260202120000_create_users_table.sql

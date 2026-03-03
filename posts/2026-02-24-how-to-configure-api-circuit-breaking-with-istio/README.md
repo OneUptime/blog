@@ -256,7 +256,7 @@ kubectl exec deploy/fortio -c istio-proxy -- pilot-agent request GET stats | gre
 
 Look for these metrics:
 
-```
+```text
 cluster.outbound|8000||httpbin.default.svc.cluster.local.upstream_rq_pending_overflow: 42
 cluster.outbound|8000||httpbin.default.svc.cluster.local.upstream_rq_pending_total: 258
 ```

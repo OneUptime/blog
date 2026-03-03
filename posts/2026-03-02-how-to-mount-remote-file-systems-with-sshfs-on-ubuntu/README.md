@@ -86,7 +86,7 @@ sshfs -o port=2222 user@remote:/home/user ~/remote
 nano ~/.ssh/config
 ```
 
-```
+```text
 Host myserver
     HostName 192.168.1.100
     User alice
@@ -126,7 +126,7 @@ sudo nano /etc/fstab
 
 Add a line for each persistent sshfs mount:
 
-```
+```text
 # Format: sshfs#user@host:/remote/path  /local/mount  fuse  options  0  0
 
 sshfs#alice@192.168.1.100:/srv/app  /mnt/remote-app  fuse  defaults,_netdev,IdentityFile=/home/alice/.ssh/id_ed25519,allow_other,reconnect,ServerAliveInterval=15  0  0
@@ -250,7 +250,7 @@ sudo nano /etc/auto.master
 ```
 
 Add:
-```
+```text
 /mnt/remote  /etc/auto.sshfs  --timeout=60  --ghost
 ```
 
@@ -259,7 +259,7 @@ Add:
 sudo nano /etc/auto.sshfs
 ```
 
-```
+```text
 # Format: mount-name  fuse.sshfs options  :user@host:/remote/path
 app  -fstype=fuse.sshfs,IdentityFile=/home/alice/.ssh/id_ed25519,allow_other  :alice@192.168.1.100:/srv/app
 logs  -fstype=fuse.sshfs,IdentityFile=/home/alice/.ssh/id_ed25519,allow_other  :alice@192.168.1.100:/var/log

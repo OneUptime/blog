@@ -258,7 +258,7 @@ spec:
 
 ## Organizing Cluster Manifests
 
-```
+```text
 argocd-config/
   clusters/
     production/

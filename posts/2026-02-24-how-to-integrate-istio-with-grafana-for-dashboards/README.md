@@ -100,7 +100,7 @@ If you already have Grafana running (maybe through the Grafana Operator or a Hel
 
 In Grafana, go to Configuration > Data Sources > Add data source:
 
-```
+```text
 Name: Prometheus
 Type: Prometheus
 URL: http://prometheus.istio-system.svc:9090
@@ -229,7 +229,7 @@ Use the Node Graph panel (available in newer Grafana versions) to visualize serv
 
 Add a template variable for service selection:
 
-```
+```text
 Name: service
 Type: Query
 Query: label_values(istio_requests_total{reporter="destination"}, destination_service)

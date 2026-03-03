@@ -489,7 +489,7 @@ See [Migration Guide](./MIGRATION.md) for breaking changes.
 ## Contributors
 
 Thanks to all contributors who made this release possible!
-```
+```text
 
 ## Best Practices
 

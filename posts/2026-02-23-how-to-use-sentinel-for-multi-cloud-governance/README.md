@@ -473,7 +473,7 @@ main = rule {
 
 Structure your policy repository to handle multiple clouds clearly:
 
-```
+```text
 sentinel-policies/
   global/
     multi-cloud-tagging.sentinel

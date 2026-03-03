@@ -93,7 +93,7 @@ For large lists of domains, using external files is much more maintainable:
 sudo nano /etc/squid/blocked_domains.txt
 ```
 
-```
+```text
 # Format: one domain per line
 # The leading dot matches the domain and all subdomains
 .facebook.com

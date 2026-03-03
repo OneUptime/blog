@@ -108,7 +108,7 @@ Make hdparm settings persistent:
 sudo nano /etc/hdparm.conf
 ```
 
-```
+```text
 /dev/sda {
     apm = 127
     spindown_time = 120

@@ -179,7 +179,7 @@ SecRule REQUEST_HEADERS:User-Agent "@pmFromFile /etc/modsecurity/bad-user-agents
 sudo nano /etc/modsecurity/bad-user-agents.txt
 ```
 
-```
+```text
 sqlmap
 nikto
 havij
@@ -276,7 +276,7 @@ sudo grep "id \"" /var/log/apache2/modsec_audit.log | awk '{print $NF}' | sort |
 
 A typical audit log entry:
 
-```
+```text
 ---abcdef---A--
 [02/Mar/2026:10:23:45.123456 +0000] AbCdEf localhost 192.168.1.50 46821 localhost 80
 ---abcdef---B--

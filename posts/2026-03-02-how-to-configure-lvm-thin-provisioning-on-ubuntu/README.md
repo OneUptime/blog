@@ -39,7 +39,7 @@ If you have a 100GB thin pool, you can create 5 thin volumes of 50GB each (250GB
 sudo vgs
 ```
 
-```
+```text
   VG       #PV #LV #SN Attr   VSize    VFree
   data_vg    1   0   0 wz--n- 500.00g  500.00g
 ```
@@ -53,7 +53,7 @@ sudo lvcreate -L 200G --thinpool thin_pool data_vg
 ```
 
 Output:
-```
+```text
   Thin pool volume with chunk size 64.00 KiB can address at most 15.81 TiB of data.
   Logical volume "thin_pool" created.
 ```
@@ -77,7 +77,7 @@ Rule of thumb: metadata needs approximately 48 bytes per 64KB chunk. For a 1TB p
 sudo lvs -a data_vg
 ```
 
-```
+```text
   LV                  VG       Attr       LSize   Pool      Origin Data%  Meta%
   thin_pool           data_vg  twi-a-tz-- 200.00g                  0.00   10.43
   [thin_pool_tdata]   data_vg  Twi-ao---- 200.00g
@@ -106,7 +106,7 @@ Check: these four volumes total 400GB provisioned, but only 200GB physical stora
 sudo lvs data_vg
 ```
 
-```
+```text
   LV        VG       Attr       LSize   Pool      Origin Data%
   backups   data_vg  Vwi-a-tz-- 200.00g thin_pool        0.00
   db_data   data_vg  Vwi-a-tz-- 50.00g  thin_pool        0.00
@@ -136,7 +136,7 @@ sudo mount /dev/data_vg/logs /var/log/apps
 
 Add to `/etc/fstab` for persistence:
 
-```
+```text
 /dev/data_vg/web_data  /var/www         ext4  defaults  0  2
 /dev/data_vg/db_data   /var/lib/db      ext4  defaults  0  2
 /dev/data_vg/logs      /var/log/apps    xfs   defaults  0  2
@@ -151,7 +151,7 @@ Monitoring thin pool fill percentage is critical. If the pool fills, all thin vo
 sudo lvs -o lv_name,lv_size,data_percent,metadata_percent data_vg
 ```
 
-```
+```text
   LV        LSize   Data%  Meta%
   thin_pool 200.00g 35.20  12.45
 ```
@@ -166,7 +166,7 @@ sudo nano /etc/lvm/lvm.conf
 
 Find and set:
 
-```
+```text
 # In the activation section:
 thin_pool_autoextend_threshold = 80   # start extending at 80% full
 thin_pool_autoextend_percent = 20     # extend by 20% each time
@@ -200,7 +200,7 @@ No need to specify a size - thin snapshots grow from the same pool as needed.
 sudo lvs
 ```
 
-```
+```text
   LV           VG       Attr       LSize   Pool      Origin
   web_data     data_vg  Vwi-a-tz-- 50.00g  thin_pool
   web_data_snap data_vg Vwi---tz-- 50.00g  thin_pool web_data

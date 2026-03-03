@@ -18,7 +18,7 @@ Distributed tracing connects the dots between service calls, showing you the com
 
 Context propagation carries trace information (trace ID, span ID, sampling decisions) between services. The W3C Trace Context standard defines headers for HTTP:
 
-```
+```text
 traceparent: 00-<trace-id>-<span-id>-<flags>
 tracestate: <vendor-specific-data>
 ```
@@ -748,7 +748,7 @@ sequenceDiagram
 
 Once configured, your traces will show the complete request flow:
 
-```
+```text
 Trace: abc123def456...
 ├── API Gateway: POST /api/orders (150ms)
 │   ├── Order Service: CreateOrder (120ms)

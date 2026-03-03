@@ -135,7 +135,7 @@ sudo nano /etc/security/limits.conf
 
 Add the following lines to `/etc/security/limits.conf`:
 
-```
+```text
 # Allow all users to lock unlimited memory for eBPF programs
 # This is necessary for large eBPF maps and ring buffers
 *               soft    memlock         unlimited

@@ -145,7 +145,7 @@ tail -f $TOMCAT_HOME/logs/catalina.out
 
 You should see output indicating the OpenTelemetry agent has loaded:
 
-```
+```text
 [otel.javaagent 2026-02-06 10:15:30:123] OpenTelemetry Javaagent started
 [otel.javaagent 2026-02-06 10:15:30:124] Service name: my-tomcat-app
 [otel.javaagent 2026-02-06 10:15:30:125] Instrumentation enabled: [servlet, jdbc, httpclient, ...]

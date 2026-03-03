@@ -164,7 +164,7 @@ Each pod should show 2/2 in the READY column, indicating both your application c
 
 From the frontend service, calling the backend is a simple HTTP call to the local DAPR sidecar. The URL pattern is:
 
-```
+```text
 http://localhost:3500/v1.0/invoke/<app-id>/method/<endpoint>
 ```
 

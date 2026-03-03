@@ -20,7 +20,7 @@ An exporter receives processed telemetry data and sends it somewhere. It needs t
 
 ## Project Structure
 
-```
+```text
 myexporter/
     factory.go
     config.go

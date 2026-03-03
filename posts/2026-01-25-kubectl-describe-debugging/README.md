@@ -41,7 +41,7 @@ kubectl describe pod api-server-xyz -n production
 
 Key sections to examine:
 
-```
+```text
 Name:         api-server-xyz
 Namespace:    production
 Node:         worker-2/192.168.1.102
@@ -128,7 +128,7 @@ kubectl describe deployment api-server -n production
 
 Key sections:
 
-```
+```text
 Name:                   api-server
 Namespace:              production
 Selector:               app=api-server
@@ -167,7 +167,7 @@ Service describe shows endpoint mapping:
 kubectl describe service api-server -n production
 ```
 
-```
+```text
 Name:              api-server
 Namespace:         production
 Labels:            app=api-server
@@ -202,7 +202,7 @@ kubectl describe node worker-1
 
 Key sections:
 
-```
+```text
 # Resource capacity and usage
 Capacity:
   cpu:                4
@@ -248,7 +248,7 @@ PVC describe shows binding status and storage details:
 kubectl describe pvc data-volume -n production
 ```
 
-```
+```text
 Name:          data-volume
 Namespace:     production
 StorageClass:  fast-ssd

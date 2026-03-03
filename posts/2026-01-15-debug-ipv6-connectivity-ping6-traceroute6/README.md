@@ -32,7 +32,7 @@ Before debugging, you need to understand IPv6 address structure.
 
 IPv6 addresses are 128 bits represented as eight groups of four hexadecimal digits:
 
-```
+```text
 2001:0db8:85a3:0000:0000:8a2e:0370:7334
 ```
 
@@ -95,7 +95,7 @@ ping6 2001:4860:4860::8888
 
 Expected output:
 
-```
+```text
 PING 2001:4860:4860::8888(2001:4860:4860::8888) 56 data bytes
 64 bytes from 2001:4860:4860::8888: icmp_seq=1 ttl=117 time=12.3 ms
 64 bytes from 2001:4860:4860::8888: icmp_seq=2 ttl=117 time=11.8 ms
@@ -200,7 +200,7 @@ traceroute6 2001:4860:4860::8888
 
 Expected output:
 
-```
+```text
 traceroute to 2001:4860:4860::8888 (2001:4860:4860::8888), 30 hops max, 80 byte packets
  1  2001:db8::1 (2001:db8::1)  0.523 ms  0.498 ms  0.481 ms
  2  2001:db8:1::1 (2001:db8:1::1)  1.234 ms  1.198 ms  1.167 ms
@@ -323,7 +323,7 @@ cat /proc/sys/net/ipv6/conf/all/disable_ipv6
 
 Expected output when IPv6 is working:
 
-```
+```text
 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP
     inet6 2001:db8::100/64 scope global dynamic
        valid_lft 86400sec preferred_lft 14400sec
@@ -364,7 +364,7 @@ ip -6 route show default
 
 Expected output with working routing:
 
-```
+```text
 default via 2001:db8::1 dev eth0 metric 1024
 2001:db8::/64 dev eth0 proto kernel metric 256
 fe80::/64 dev eth0 proto kernel metric 256

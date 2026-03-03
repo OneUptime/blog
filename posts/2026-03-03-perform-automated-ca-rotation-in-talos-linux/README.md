@@ -31,7 +31,7 @@ The pipeline has four main stages:
 3. **Final Deployment**: Roll out the configuration with only the new CA
 4. **Validation**: Verify the entire cluster is healthy
 
-```
+```text
 [Generate Certs] -> [Deploy Bundle] -> [Validate] -> [Deploy Final] -> [Validate]
                           |                                |
                      [Rollback if                    [Rollback if

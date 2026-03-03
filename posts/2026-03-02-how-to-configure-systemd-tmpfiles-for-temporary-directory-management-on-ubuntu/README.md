@@ -23,7 +23,7 @@ This is used heavily by the system itself. The contents of `/tmp`, `/run`, and `
 
 tmpfiles configuration files go in:
 
-```
+```text
 /etc/tmpfiles.d/          # Local overrides (highest priority)
 /run/tmpfiles.d/          # Runtime-generated configuration
 /usr/lib/tmpfiles.d/      # Package-installed configuration (do not edit)
@@ -35,7 +35,7 @@ Files in `/etc/tmpfiles.d/` override files with the same name in `/usr/lib/tmpfi
 
 Each line in a tmpfiles.d configuration file specifies one action:
 
-```
+```text
 Type  Path              Mode  User  Group  Age  Argument
 ```
 

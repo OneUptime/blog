@@ -84,7 +84,7 @@ Jobs that are NOT good candidates:
 
 Let's do the math on a real example:
 
-```
+```text
 Job: Daily sales data ETL
 Worker type: G.1X (4 vCPU, 16 GB)
 Number of workers: 10

@@ -246,7 +246,7 @@ spec:
 
 ## Repository Structure
 
-```
+```text
 load-balancer-config/
   base/
     kustomization.yaml

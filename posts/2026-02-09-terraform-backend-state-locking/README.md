@@ -287,7 +287,7 @@ resource "aws_iam_policy" "terraform_state" {
 
 Use different state files for different environments or components:
 
-```
+```text
 terraform/
 ├── infrastructure/
 │   ├── backend.tf (key: infra/terraform.tfstate)

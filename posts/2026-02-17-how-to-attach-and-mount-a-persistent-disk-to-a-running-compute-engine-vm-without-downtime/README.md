@@ -72,7 +72,7 @@ lsblk
 
 You should see output similar to this:
 
-```
+```text
 NAME   MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
 sda      8:0    0    10G  0 disk
 |-sda1   8:1    0   9.9G  0 part /
@@ -141,7 +141,7 @@ sudo blkid /dev/sdb
 
 This outputs something like:
 
-```
+```text
 /dev/sdb: UUID="a1b2c3d4-e5f6-7890-abcd-ef1234567890" TYPE="ext4"
 ```
 

@@ -231,7 +231,7 @@ python3 -c "import locale; locale.setlocale(locale.LC_NUMERIC, ''); print(locale
 
 A common issue is seeing locale warnings in terminal:
 
-```
+```text
 perl: warning: Setting locale failed.
 perl: warning: Please check that your locale settings:
         LANG = "en_US.UTF-8"

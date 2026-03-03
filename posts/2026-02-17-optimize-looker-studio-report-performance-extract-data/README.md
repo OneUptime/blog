@@ -44,7 +44,7 @@ Choose your fields carefully. Only include dimensions and metrics that your dash
 
 For a typical sales dashboard, your extract might include:
 
-```
+```text
 Dimensions:
 - order_date
 - region

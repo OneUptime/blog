@@ -28,7 +28,7 @@ Nginx handles incoming HTTP traffic and forwards requests to PHP-FPM. Laravel ta
 
 ## Project Structure
 
-```
+```text
 laravel-docker/
 ├── docker-compose.yml
 ├── Dockerfile

@@ -42,13 +42,13 @@ If a proxy isn't in the list at all, it hasn't connected to Istiod.
 
 The xDS connection is a gRPC stream. Common failure symptoms include:
 
-```
+```text
 xds stream error: connection refused
 ```
 
 or:
 
-```
+```text
 xds stream disconnected: rpc error: code = Unavailable
 ```
 

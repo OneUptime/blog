@@ -115,13 +115,13 @@ flowchart LR
 
 The bandwidth-delay product (BDP) determines optimal window size:
 
-```
+```text
 BDP = Bandwidth (bytes/sec) x Round-Trip Time (seconds)
 ```
 
 For a 1 Gbps link with 50ms RTT:
 
-```
+```text
 BDP = (1,000,000,000 / 8) x 0.050 = 6,250,000 bytes (~6MB)
 ```
 

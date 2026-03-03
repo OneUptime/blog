@@ -32,7 +32,7 @@ Three main patterns exist for multi-cluster GitOps. Each has tradeoffs.
 
 Single repository containing all clusters and environments:
 
-```
+```text
 gitops-fleet/
 ├── base/
 │   ├── apps/
@@ -80,7 +80,7 @@ Base definitions live in `base/`, environment-specific overlays in `environments
 
 Separate repository for each environment:
 
-```
+```text
 gitops-development/
 ├── clusters/
 │   ├── us-east-1/
@@ -109,7 +109,7 @@ Provides clear separation and access control. Promoting changes from dev to stag
 
 Shared library repository plus environment repositories:
 
-```
+```text
 gitops-library/
 ├── apps/
 │   ├── frontend/
@@ -135,7 +135,7 @@ Library repository contains base definitions. Environment repositories reference
 
 For most organizations, the monorepo with Kustomize overlays provides the best balance. Here's a complete example:
 
-```
+```text
 fleet-gitops/
 ├── README.md
 ├── base/
@@ -470,7 +470,7 @@ Include a README at the repository root:
 git revert <commit-hash>
 git push origin main
 ```
-```
+```text
 
 ## Testing Your Structure
 

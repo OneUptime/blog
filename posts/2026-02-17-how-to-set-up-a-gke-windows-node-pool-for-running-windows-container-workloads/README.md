@@ -78,7 +78,7 @@ Windows nodes will show `Windows` in the OS column and have a taint applied auto
 
 GKE automatically applies a taint to Windows nodes:
 
-```
+```text
 node.kubernetes.io/os=windows:NoSchedule
 ```
 

@@ -12,7 +12,7 @@ Disk full errors can crash PostgreSQL and prevent recovery. This guide covers em
 
 ## Symptoms
 
-```
+```text
 PANIC: could not write to file "pg_wal/...": No space left on device
 ERROR: could not extend file "base/...": No space left on device
 ```

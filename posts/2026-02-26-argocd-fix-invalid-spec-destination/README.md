@@ -12,13 +12,13 @@ The "invalid spec.destination" error in ArgoCD means your application's destinat
 
 The error appears when creating or updating an application:
 
-```
+```text
 application spec for my-app has an invalid destination: application destination can't have both name and server
 ```
 
 Or:
 
-```
+```text
 application spec is invalid: InvalidSpecError: application destination server is missing
 ```
 
@@ -43,7 +43,7 @@ The rules are:
 
 ## Error 1: Both Server and Name Specified
 
-```
+```text
 application destination can't have both name and server defined
 ```
 
@@ -83,7 +83,7 @@ argocd cluster list
 
 ## Error 2: Neither Server Nor Name Specified
 
-```
+```text
 application destination server and/or name is missing
 ```
 
@@ -105,7 +105,7 @@ destination:
 
 ## Error 3: Empty Server URL
 
-```
+```text
 application destination server is empty
 ```
 
@@ -136,7 +136,7 @@ server: https://kubernetes.default.svc
 
 While not technically an "invalid spec" error, a similar issue occurs when the server URL does not match any registered cluster:
 
-```
+```text
 cluster 'https://wrong-url.example.com' has not been configured
 ```
 
@@ -158,7 +158,7 @@ argocd app set my-app --dest-server https://correct-url.example.com
 
 ## Error 5: Cluster Name Not Found
 
-```
+```text
 cluster 'nonexistent-cluster' has not been configured
 ```
 

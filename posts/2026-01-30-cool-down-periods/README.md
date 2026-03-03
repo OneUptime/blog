@@ -174,7 +174,7 @@ Metrics don't update instantly. There's inherent lag in the collection pipeline.
 
 Use this formula to determine your minimum cool-down period:
 
-```
+```text
 Minimum Cool-Down = Pod Startup Time + Metric Collection Interval + Safety Buffer
 
 Example:

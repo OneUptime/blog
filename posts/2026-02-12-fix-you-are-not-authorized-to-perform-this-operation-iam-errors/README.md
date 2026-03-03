@@ -10,14 +10,14 @@ Description: Diagnose and resolve AWS IAM authorization errors by understanding 
 
 You try to do something in AWS and get slapped with:
 
-```
+```text
 An error occurred (AccessDeniedException) when calling the DescribeInstances operation:
 You are not authorized to perform this operation.
 ```
 
 Or its close cousin:
 
-```
+```text
 User: arn:aws:iam::123456789:user/devuser is not authorized to perform:
 ec2:DescribeInstances on resource: *
 ```
@@ -44,7 +44,7 @@ Make sure this matches what you expect. Sometimes you're authenticated as a diff
 
 AWS error messages have gotten better over the years. Parse the message carefully:
 
-```
+```text
 User: arn:aws:iam::123456789:user/devuser
 is not authorized to perform: ec2:DescribeInstances
 on resource: *

@@ -142,7 +142,7 @@ argocd app get my-app -o json | jq '.spec.source'
 
 Example output from `--show-params`:
 
-```
+```text
 NAME                       VALUE
 helm-set:image.tag         v1.2.3
 helm-set:replicaCount      3

@@ -24,7 +24,7 @@ Talos machine configurations contain everything about your nodes: network settin
 
 Organize your Talos configuration repository:
 
-```
+```text
 talos-config/
   /clusters/
     /production/

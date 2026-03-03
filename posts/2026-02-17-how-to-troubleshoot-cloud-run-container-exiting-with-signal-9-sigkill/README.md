@@ -16,7 +16,7 @@ Let me walk through the common reasons Cloud Run sends SIGKILL to your container
 
 Signal 9 (SIGKILL) is an uncatchable, unblockable kill signal. Unlike SIGTERM (signal 15), which your application can intercept and handle gracefully, SIGKILL terminates the process immediately. On Cloud Run, you will see this in your logs.
 
-```
+```text
 Container called exit(137).
 ```
 

@@ -144,7 +144,7 @@ After enabling, it can take a few hours for the first logs to appear.
 
 Here's what a single log record looks like (wrapped for readability):
 
-```
+```text
 79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be
 my-source-bucket [12/Feb/2026:10:30:45 +0000] 192.168.1.100
 arn:aws:iam::123456789012:user/admin 3E57427F3EXAMPLE

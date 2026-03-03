@@ -41,7 +41,7 @@ output "database_connection_string" {
 
 When you run `terraform output`, sensitive values display as `<sensitive>`:
 
-```
+```text
 Outputs:
 
 api_key                    = <sensitive>
@@ -84,7 +84,7 @@ variable "tls_private_key" {
 
 When a sensitive variable is used in a resource, Terraform suppresses the value in plan output:
 
-```
+```text
 # aws_db_instance.main will be created
 + resource "aws_db_instance" "main" {
     + password = (sensitive value)
@@ -117,7 +117,7 @@ output "connection_info" {
 
 If you try to output a sensitive value without the `sensitive = true` flag, Terraform gives you an error:
 
-```
+```text
 Error: Output refers to sensitive values
 
 Output "connection_info" includes a sensitive value. Add sensitive = true

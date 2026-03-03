@@ -133,7 +133,7 @@ export JMX_PORT=9999
 
 ### Key Consumer Lag JMX Metrics
 
-```
+```text
 # Consumer metrics (available on consumer JVM)
 kafka.consumer:type=consumer-fetch-manager-metrics,client-id=*,topic=*,partition=*
   - records-lag                    # Current lag per partition

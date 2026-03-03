@@ -78,7 +78,7 @@ kdestroy
 
 Expected `klist` output:
 
-```
+```text
 Ticket cache: FILE:/tmp/krb5cc_1000
 Default principal: jsmith@EXAMPLE.COM
 
@@ -134,7 +134,7 @@ Enable GSSAPI (Kerberos) authentication in the SSH client configuration:
 sudo nano /etc/ssh/ssh_config
 ```
 
-```
+```text
 Host *.example.com
     GSSAPIAuthentication yes
     GSSAPIDelegateCredentials yes
@@ -148,7 +148,7 @@ Configure the SSH daemon to accept Kerberos authentication:
 sudo nano /etc/ssh/sshd_config
 ```
 
-```
+```text
 # Enable GSSAPI (Kerberos) authentication
 GSSAPIAuthentication yes
 GSSAPICleanupCredentials yes
@@ -270,7 +270,7 @@ By default, Kerberos maps `jsmith@EXAMPLE.COM` to local user `jsmith`. Customize
 nano /home/jsmith/.k5login
 ```
 
-```
+```text
 jsmith@EXAMPLE.COM
 jsmith/admin@EXAMPLE.COM
 ```

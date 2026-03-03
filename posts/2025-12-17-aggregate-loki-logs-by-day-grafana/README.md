@@ -99,7 +99,7 @@ sum by (service) (
 
 For semi-structured logs:
 
-```
+```text
 2024-01-15 10:30:00 INFO [api-service] Request processed in 150ms
 ```
 

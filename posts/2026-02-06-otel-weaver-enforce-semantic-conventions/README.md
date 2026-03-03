@@ -35,7 +35,7 @@ weaver --version
 
 Create a directory structure for your semantic conventions:
 
-```
+```text
 semantic-conventions/
   groups/
     order.yaml

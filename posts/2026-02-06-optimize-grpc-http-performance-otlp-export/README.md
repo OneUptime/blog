@@ -56,7 +56,7 @@ gRPC typically offers 20-30% higher throughput than HTTP due to:
 
 Benchmark results (1000 traces/second, 15 spans each):
 
-```
+```text
 gRPC throughput:    ~45,000 spans/second
 HTTP/2 throughput:  ~35,000 spans/second
 HTTP/1.1 throughput: ~25,000 spans/second
@@ -66,7 +66,7 @@ HTTP/1.1 throughput: ~25,000 spans/second
 
 gRPC provides lower latency for high-frequency exports:
 
-```
+```text
 gRPC average latency:      5-8ms (p50), 12-15ms (p99)
 HTTP/2 average latency:    8-12ms (p50), 20-25ms (p99)
 HTTP/1.1 average latency:  15-25ms (p50), 50-80ms (p99)
@@ -76,7 +76,7 @@ HTTP/1.1 average latency:  15-25ms (p50), 50-80ms (p99)
 
 gRPC is more efficient with resources:
 
-```
+```text
 CPU usage (1000 req/s):
   gRPC:     ~200 mCPU
   HTTP/2:   ~280 mCPU
@@ -568,7 +568,7 @@ Compare metrics between gRPC and HTTP endpoints to determine which performs bett
 
 Both protocols support compression, but effectiveness varies:
 
-```
+```text
 Uncompressed span: ~2 KB
 gRPC + gzip:      ~600 bytes (70% reduction)
 HTTP + gzip:      ~650 bytes (67.5% reduction)
@@ -601,7 +601,7 @@ When switching protocols:
 
 Protocol choice affects infrastructure costs:
 
-```
+```text
 gRPC advantages:
 - 20-30% lower bandwidth costs due to efficiency
 - 15-25% lower compute costs due to lower CPU usage

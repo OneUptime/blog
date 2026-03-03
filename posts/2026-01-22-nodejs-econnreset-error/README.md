@@ -12,7 +12,7 @@ The ECONNRESET error occurs when a TCP connection is abruptly closed by the remo
 
 ## Understanding ECONNRESET
 
-```
+```text
 Error: read ECONNRESET
     at TCP.onStreamRead (internal/stream_base_commons.js:209:20)
     at TCP.callbackTrampoline (internal/async_hooks.js:134:14)

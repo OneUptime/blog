@@ -14,7 +14,7 @@ When Istio's outlier detection ejects a pod from the load balancing pool, it doe
 
 The ejection time in Istio uses progressive backoff. The first ejection lasts for the `baseEjectionTime`. Each subsequent ejection multiplies the base by the number of times that instance has been ejected.
 
-```
+```text
 First ejection:  baseEjectionTime * 1 = 30s
 Second ejection: baseEjectionTime * 2 = 60s
 Third ejection:  baseEjectionTime * 3 = 90s

@@ -14,7 +14,7 @@ Pushing images to multiple registries is common for disaster recovery, multi-clo
 
 ### Tag Syntax
 
-```
+```text
 [registry/][repository/]image[:tag]
 
 registry.example.com/mycompany/myapp:v1.0.0

@@ -60,7 +60,7 @@ json.dump(result, sys.stdout)
 
 ## Error 1: Program Not Found
 
-```
+```text
 Error: Failed to execute data source
 
 data.external.example: failed to execute
@@ -91,7 +91,7 @@ chmod +x scripts/get_data.py
 
 ## Error 2: Invalid JSON Output
 
-```
+```text
 Error: Failed to parse result
 
 data.external.example: command produced invalid JSON:
@@ -145,7 +145,7 @@ echo "{\"name\": \"my-resource\", \"id\": \"$RESOURCE_ID\"}"
 
 ## Error 3: Non-String Values in Output
 
-```
+```text
 Error: Failed to parse result
 
 data.external.example: command produced invalid result: all values must
@@ -184,7 +184,7 @@ locals {
 
 ## Error 4: Script Exit Code Non-Zero
 
-```
+```text
 Error: Failed to execute data source
 
 data.external.example: command exited with non-zero status: 1

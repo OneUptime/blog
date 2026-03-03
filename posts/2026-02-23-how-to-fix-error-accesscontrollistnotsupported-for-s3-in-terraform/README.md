@@ -16,7 +16,7 @@ Let us look at why this happens and how to fix it properly.
 
 When running `terraform apply`, you see:
 
-```
+```text
 Error: error creating S3 Bucket (my-bucket) ACL: AccessControlListNotSupported:
 The bucket does not allow ACLs
     status code: 400, request id: ABC123XYZ
@@ -24,7 +24,7 @@ The bucket does not allow ACLs
 
 Or sometimes:
 
-```
+```text
 Error: error putting S3 Bucket ACL: AccessControlListNotSupported:
 The bucket does not allow ACLs
 ```

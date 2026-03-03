@@ -99,7 +99,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO dms_user;
 
 Update `pg_hba.conf` to allow connections from GCP:
 
-```
+```text
 # Allow DMS to connect for replication
 host    replication    dms_user    0.0.0.0/0    md5
 host    mydb           dms_user    0.0.0.0/0    md5

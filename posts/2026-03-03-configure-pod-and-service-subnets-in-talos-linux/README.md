@@ -18,7 +18,7 @@ Kubernetes uses two separate virtual networks. The pod network assigns an IP add
 
 The default CIDR ranges in Talos Linux are:
 
-```
+```text
 # Default Talos Linux network configuration
 Pod CIDR:     10.244.0.0/16  (65,534 addresses)
 Service CIDR: 10.96.0.0/12   (1,048,574 addresses)
@@ -65,7 +65,7 @@ Proper CIDR planning prevents address conflicts and ensures your cluster can sca
 
 Each node gets a slice of the pod CIDR. The default per-node allocation is a /24 (256 addresses). Calculate the maximum number of nodes your pod CIDR supports:
 
-```
+```text
 # Pod CIDR calculation
 # CIDR: 172.16.0.0/16
 # Per-node allocation: /24
@@ -98,7 +98,7 @@ cluster:
 
 The service CIDR determines how many ClusterIP services you can create:
 
-```
+```text
 # Service CIDR calculation
 # /16 = 65,534 services
 # /12 = 1,048,574 services
@@ -116,7 +116,7 @@ The pod and service CIDRs must not overlap with:
 - Corporate network ranges
 - Cloud provider reserved ranges
 
-```
+```text
 # Example of a conflict-free network design
 Node network:     192.168.1.0/24    (Physical nodes)
 Pod CIDR:         10.244.0.0/16     (Pod IPs)

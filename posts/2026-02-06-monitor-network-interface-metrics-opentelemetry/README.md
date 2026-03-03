@@ -280,13 +280,13 @@ The raw `system.network.io` metric gives you cumulative bytes, not utilization p
 
 On Linux, the interface speed is available from `/sys/class/net/<interface>/speed` (in Mbps). You can use the `transform` processor in the collector or compute utilization in your backend:
 
-```
+```text
 utilization = (rate_of_bytes_per_second * 8) / (interface_speed_mbps * 1_000_000) * 100
 ```
 
 For example, if `eth0` transfers 50 MB per second on a 1 Gbps link:
 
-```
+```text
 utilization = (50_000_000 * 8) / (1000 * 1_000_000) * 100 = 40%
 ```
 

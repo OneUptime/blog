@@ -114,7 +114,7 @@ Java exceptions span multiple lines with a predictable pattern. The first line s
 
 Example log that gets concatenated:
 
-```
+```text
 2024-02-09 10:30:45.123 ERROR [main] Application failed to start
 java.lang.NullPointerException: Cannot invoke method on null object
     at com.example.Application.initialize(Application.java:45)
@@ -150,7 +150,7 @@ Python stack traces have a different structure, starting with "Traceback":
 
 Example Python traceback:
 
-```
+```text
 2024-02-09 10:30:45,123 ERROR Exception occurred
 Traceback (most recent call last):
   File "/app/main.py", line 42, in process_request

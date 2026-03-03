@@ -147,7 +147,7 @@ Here is how you use log-trace correlation to debug a production error without re
 
 Start from an alert, a customer report, or an error in your logging dashboard:
 
-```
+```text
 # Search logs for errors in the order service
 level:error AND service:order-service AND message:"payment failed"
 
@@ -159,7 +159,7 @@ level:error AND service:order-service AND message:"payment failed"
 
 Open the trace ID in your trace viewer. The waterfall shows you the request flow:
 
-```
+```text
 Trace: abc123 (14:30:00 UTC)
 [ERROR] HTTP POST /api/v1/orders                    1200ms
   [OK]    order.validate                              50ms
@@ -173,7 +173,7 @@ Trace: abc123 (14:30:00 UTC)
 
 Query your log backend for every log entry with this trace ID:
 
-```
+```text
 # Loki query
 {service="order-service"} |= "abc123"
 
@@ -183,7 +183,7 @@ trace_id:"abc123"
 
 This gives you a complete narrative:
 
-```
+```text
 14:30:00.001 INFO  [trace_id=abc123] Starting order processing, order_id=ord_789
 14:30:00.051 INFO  [trace_id=abc123] Order validated, items=3, total=$149.99
 14:30:00.052 INFO  [trace_id=abc123] Reserving inventory for 3 items
@@ -202,7 +202,7 @@ Now you know exactly what happened, in what order, without reproducing anything.
 
 If the trace spans multiple services, check logs from each service:
 
-```
+```text
 # Get logs from the payment service for the same trace
 {service="payment-service"} |= "abc123"
 

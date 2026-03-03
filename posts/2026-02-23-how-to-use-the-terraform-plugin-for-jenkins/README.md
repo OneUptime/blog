@@ -45,7 +45,7 @@ After installation, configure the Terraform versions your organization uses:
 
 You can add multiple versions for different projects:
 
-```
+```text
 Name: terraform-1.7.5
 Install automatically: checked
 Version: 1.7.5

@@ -369,7 +369,7 @@ kubectl exec <pod> -c istio-proxy -- curl -s localhost:15000/memory
 
 When planning buffer sizes, consider the formula:
 
-```
+```text
 Total buffer memory = connections * per_connection_buffer * 2 (in + out) + http_buffer * concurrent_buffered_requests
 ```
 

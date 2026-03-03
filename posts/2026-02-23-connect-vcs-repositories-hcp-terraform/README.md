@@ -95,7 +95,7 @@ Once the VCS provider is connected, link it to a workspace.
 5. Choose the repository
 6. Configure options:
 
-```
+```text
 Repository: myorg/infrastructure
 Branch: main
 Terraform Working Directory: environments/production/networking
@@ -156,7 +156,7 @@ curl \
 
 In a monorepo, multiple workspaces share one repository. Each workspace watches a different directory:
 
-```
+```text
 infrastructure/
   environments/
     production/

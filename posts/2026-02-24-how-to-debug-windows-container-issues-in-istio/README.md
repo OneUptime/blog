@@ -31,7 +31,7 @@ kubectl get pods -n windows-apps
 
 You might see:
 
-```
+```text
 NAME                          READY   STATUS                  RESTARTS
 windows-api-7b4d5f6-x9k2j    0/1     Init:CrashLoopBackOff   5
 ```

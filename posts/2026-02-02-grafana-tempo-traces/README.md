@@ -934,7 +934,7 @@ TraceQL provides a powerful query language for searching and filtering traces in
 
 TraceQL queries use curly braces to define span selectors.
 
-```
+```text
 # Find all traces from a specific service
 { resource.service.name = "order-service" }
 
@@ -961,7 +961,7 @@ TraceQL queries use curly braces to define span selectors.
 
 Filter traces by timing characteristics.
 
-```
+```text
 # Find slow spans - duration over 500ms
 { duration > 500ms }
 
@@ -979,7 +979,7 @@ Filter traces by timing characteristics.
 
 Query traces based on parent-child relationships between spans.
 
-```
+```text
 # Find traces where api-gateway calls order-service
 { resource.service.name = "api-gateway" } >> { resource.service.name = "order-service" }
 
@@ -1000,7 +1000,7 @@ Query traces based on parent-child relationships between spans.
 
 Perform aggregate operations on trace data.
 
-```
+```text
 # Count traces by service
 { } | count() by (resource.service.name)
 
@@ -1018,7 +1018,7 @@ Perform aggregate operations on trace data.
 
 Common queries for debugging and analysis.
 
-```
+```text
 # Find all failed payment transactions in the last hour
 { resource.service.name = "payment-service" && status = error && span.payment.method != nil }
 
@@ -1708,7 +1708,7 @@ Use advanced techniques to extract insights from trace data.
 
 Analyze trace data to find slow operations.
 
-```
+```text
 # Find the slowest operations across all services
 { duration > 500ms } | avg(duration) by (resource.service.name, name) | sort(desc)
 
@@ -1726,7 +1726,7 @@ Analyze trace data to find slow operations.
 
 Analyze performance differences between versions.
 
-```
+```text
 # Compare latency between deployments
 # Run these queries separately and compare in Grafana
 
@@ -1744,7 +1744,7 @@ Analyze performance differences between versions.
 
 Map service dependencies from trace data.
 
-```
+```text
 # Find all services that call the payment service
 { } >> { resource.service.name = "payment-service" } | count() by (resource.service.name)
 

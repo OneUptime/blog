@@ -16,19 +16,19 @@ Ambient mode changes this fundamentally. Instead of a sidecar per pod, it uses a
 
 In the sidecar model, traffic flows like this:
 
-```
+```text
 App A → Sidecar A → Network → Sidecar B → App B
 ```
 
 In ambient mode, L4 traffic flows through the ztunnel:
 
-```
+```text
 App A → ztunnel (Node A) → Network → ztunnel (Node B) → App B
 ```
 
 For L7 features (HTTP routing, retries, header-based routing), traffic goes through a waypoint proxy:
 
-```
+```text
 App A → ztunnel → Waypoint Proxy → ztunnel → App B
 ```
 

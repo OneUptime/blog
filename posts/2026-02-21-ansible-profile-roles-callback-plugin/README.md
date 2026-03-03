@@ -31,7 +31,7 @@ ANSIBLE_CALLBACK_WHITELIST=profile_roles ansible-playbook site.yml
 
 After the play recap, profile_roles adds a sorted summary of role execution times:
 
-```
+```text
 PLAY RECAP *******************************************************************
 web-01  : ok=15  changed=3  unreachable=0  failed=0
 web-02  : ok=15  changed=3  unreachable=0  failed=0
@@ -84,7 +84,7 @@ The output includes three summaries:
 2. Per-role timing from profile_roles (which roles aggregate to the most time)
 3. Total elapsed time from timer
 
-```
+```text
 ===============================================================================
 # profile_tasks output
 database : Install PostgreSQL 14 ------------------------------------- 89.45s

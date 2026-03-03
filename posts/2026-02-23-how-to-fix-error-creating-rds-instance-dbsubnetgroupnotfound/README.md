@@ -12,7 +12,7 @@ When Terraform throws a `DBSubnetGroupNotFoundFault` while trying to create an R
 
 ## What the Error Looks Like
 
-```
+```text
 Error: error creating RDS DB Instance (my-database):
 DBSubnetGroupNotFoundFault: DB Subnet Group 'my-db-subnet-group'
 not found.

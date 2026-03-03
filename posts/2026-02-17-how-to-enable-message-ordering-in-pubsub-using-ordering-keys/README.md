@@ -18,7 +18,7 @@ When you publish a message with an ordering key, Pub/Sub ensures that all messag
 
 For example, if you publish these messages:
 
-```
+```text
 Message 1: key="order-123", data="created"
 Message 2: key="order-456", data="created"
 Message 3: key="order-123", data="paid"

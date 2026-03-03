@@ -16,7 +16,7 @@ In this post, I will build a Terraform module that provisions a complete Cloud R
 
 A well-organized Terraform module has a clear structure:
 
-```
+```text
 modules/cloud-run-service/
   main.tf          # Core resources
   variables.tf     # Input variables

@@ -344,7 +344,7 @@ echo "Report saved to $REPORT_FILE"
 
 Organize your tests by compliance framework for clarity:
 
-```
+```text
 tests/
   compliance/
     soc2/

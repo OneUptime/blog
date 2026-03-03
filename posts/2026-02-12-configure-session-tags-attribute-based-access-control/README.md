@@ -236,7 +236,7 @@ s3.list_objects_v2(Bucket="project-alpha-data")
 
 When using SAML-based federation, your IdP can pass session tags as SAML attributes. This means the IdP controls what project/team a user belongs to:
 
-```
+```text
 # SAML attribute mapping in your IdP
 https://aws.amazon.com/SAML/Attributes/PrincipalTag:Project    -> user.project
 https://aws.amazon.com/SAML/Attributes/PrincipalTag:Department -> user.department

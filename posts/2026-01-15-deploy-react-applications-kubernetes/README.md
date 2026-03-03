@@ -237,7 +237,7 @@ server {
 
 Create a `.dockerignore` file to exclude unnecessary files:
 
-```
+```text
 node_modules
 npm-debug.log
 build
@@ -325,7 +325,7 @@ Let us create a complete set of Kubernetes manifests for our React application.
 
 ### Directory Structure
 
-```
+```text
 k8s/
 ├── namespace.yaml
 ├── deployment.yaml

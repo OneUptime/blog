@@ -236,7 +236,7 @@ esac
 
 When to roll back versus push forward:
 
-```
+```text
 Roll Back If:
   - Resources would be destroyed unintentionally
   - State is corrupted or inconsistent

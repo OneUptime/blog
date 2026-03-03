@@ -21,7 +21,7 @@ Config repo conflicts typically happen because of:
 
 The most common conflict looks like this:
 
-```
+```text
 <<<<<<< HEAD
     newTag: v2.3.5
 =======
@@ -71,7 +71,7 @@ Now, CI pipelines updating different services modify different files, eliminatin
 
 In a monorepo setup, give each service its own directory tree:
 
-```
+```text
 config-repo/
 ├── services/
 │   ├── frontend/
@@ -245,7 +245,7 @@ jobs:
 
 Configure Git to handle YAML files better:
 
-```
+```text
 # .gitattributes
 *.yaml merge=union
 *.yml merge=union
@@ -255,7 +255,7 @@ The `merge=union` strategy automatically merges by keeping both sides of the con
 
 A safer approach is a custom merge driver:
 
-```
+```text
 # .gitattributes
 kustomization.yaml merge=kustomize-merge
 ```

@@ -171,7 +171,7 @@ For `ansible-galaxy` to install a collection from Git, the repository must conta
 
 Here is the minimum structure that ansible-galaxy expects:
 
-```
+```text
 my-collection/
   galaxy.yml          # Required: Collection metadata
   plugins/            # Optional: Modules and plugins

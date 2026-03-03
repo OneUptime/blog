@@ -103,7 +103,7 @@ When you run `terraform init`, Terraform Cloud prompts you to select from worksp
 
 Terraform Cloud Projects group workspaces:
 
-```
+```text
 Organization: acme
   Project: platform
     Workspace: platform-networking-dev
@@ -268,7 +268,7 @@ resource "tfe_run_trigger" "networking_to_compute" {
 
 This is useful when infrastructure has dependencies:
 
-```
+```text
 networking-prod (apply) --> triggers --> compute-prod (plan + apply)
                        --> triggers --> database-prod (plan + apply)
 ```

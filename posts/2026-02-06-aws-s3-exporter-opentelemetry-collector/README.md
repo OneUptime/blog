@@ -180,7 +180,7 @@ exporters:
 ```
 
 This creates a structure like:
-```
+```text
 s3://telemetry-data/
 ├── traces/
 │   └── year=2026/

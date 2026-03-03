@@ -313,7 +313,7 @@ kubectl port-forward -n monitoring svc/prometheus 9090:9090
 
 Once metrics are flowing, here are the most important ones to track for Talos Linux nodes:
 
-```
+```text
 # CPU usage by node
 node_cpu_seconds_total
 

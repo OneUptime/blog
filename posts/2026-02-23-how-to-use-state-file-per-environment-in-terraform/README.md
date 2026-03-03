@@ -28,7 +28,7 @@ Separate state files solve all of these. Each environment has its own lifecycle,
 
 The simplest approach is giving each environment its own directory with a separate backend configuration:
 
-```
+```text
 terraform/
   modules/
     app/
@@ -176,7 +176,7 @@ resource "aws_instance" "app" {
 
 S3 stores workspace state under the `env:` prefix:
 
-```
+```text
 myorg-terraform-state/
   env:/
     dev/

@@ -31,7 +31,7 @@ ANSIBLE_STDOUT_CALLBACK=oneline ansible-playbook site.yml
 
 The oneline callback produces output like this:
 
-```
+```text
 web-01 | SUCCESS => {"changed": false, "ping": "pong"}
 web-02 | SUCCESS => {"changed": false, "ping": "pong"}
 web-03 | FAILED! => {"changed": false, "msg": "Connection refused"}
@@ -42,19 +42,19 @@ Each line follows the pattern: `hostname | STATUS => {result_json}`
 
 For changed tasks:
 
-```
+```text
 web-01 | CHANGED => {"changed": true, "dest": "/etc/nginx/nginx.conf", "md5sum": "a1b2c3..."}
 ```
 
 For failures:
 
-```
+```text
 web-03 | FAILED! => {"changed": false, "msg": "No package matching 'nginx' found"}
 ```
 
 For unreachable hosts:
 
-```
+```text
 web-04 | UNREACHABLE! => {"changed": false, "msg": "Failed to connect to the host", "unreachable": true}
 ```
 
@@ -64,7 +64,7 @@ Here is the same playbook run shown with three different callbacks:
 
 Default callback output:
 
-```
+```text
 TASK [Install nginx] *********************************************************
 ok: [web-01]
 changed: [web-02]
@@ -77,7 +77,7 @@ ok: [web-02]
 
 Minimal callback output:
 
-```
+```text
 web-01 | SUCCESS => {"changed": false}
 web-02 | CHANGED => {"changed": true}
 web-03 | FAILED! => {"changed": false, "msg": "Package not found"}
@@ -87,7 +87,7 @@ web-02 | SUCCESS => {"changed": false}
 
 Oneline callback output:
 
-```
+```text
 web-01 | SUCCESS => {"changed": false}
 web-02 | CHANGED => {"changed": true}
 web-03 | FAILED! => {"changed": false, "msg": "Package not found"}
@@ -151,7 +151,7 @@ ANSIBLE_STDOUT_CALLBACK=oneline ansible all -m shell -a "df -h / | tail -1"
 
 Output:
 
-```
+```text
 web-01 | CHANGED => {"changed": true, "stdout": "/dev/sda1  50G  23G  25G  48% /"}
 web-02 | CHANGED => {"changed": true, "stdout": "/dev/sda1  50G  45G  3.2G  94% /"}
 db-01 | CHANGED => {"changed": true, "stdout": "/dev/sda1  100G  34G  62G  36% /"}

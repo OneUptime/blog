@@ -404,7 +404,7 @@ Centralized policy management ensures consistent enforcement across all teams an
 
 When policies detect violations, developers see clear error messages during preview:
 
-```
+```text
 Previewing update (dev):
      Type                           Name                    Plan       Info
  +   pulumi:pulumi:Stack            myapp-dev               create     2 errors

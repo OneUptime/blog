@@ -16,7 +16,7 @@ Description: Learn how to diagnose and fix 'out of memory' errors in PostgreSQL.
 
 Out of memory errors can appear in several forms:
 
-```
+```text
 ERROR: out of memory
 DETAIL: Failed on request of size 1073741824.
 

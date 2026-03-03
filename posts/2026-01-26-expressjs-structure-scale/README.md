@@ -75,7 +75,7 @@ Each layer has a specific responsibility:
 
 Here is a folder structure that works well for medium to large Express applications:
 
-```
+```text
 src/
 ├── config/
 │   ├── index.js           # Configuration aggregator

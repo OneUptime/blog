@@ -139,7 +139,7 @@ receivers:
 ```
 
 Example log:
-```
+```text
 Application started successfully
 User logged in: john.doe
 Database connection established
@@ -204,7 +204,7 @@ receivers:
 ```
 
 Example log:
-```
+```text
 time="2024-02-06 10:30:00" level=info msg="Request processed" service=api duration=125ms
 ```
 
@@ -233,7 +233,7 @@ receivers:
 ```
 
 Example multiline log:
-```
+```text
 2024-02-06 10:30:00 [ERROR] Exception occurred
 java.lang.NullPointerException: null
     at com.example.Service.process(Service.java:42)

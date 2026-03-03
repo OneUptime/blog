@@ -22,7 +22,7 @@ RTO measures the maximum acceptable downtime. An RTO of 30 minutes means your ap
 
 Your backup frequency must match or exceed your RPO requirement:
 
-```
+```text
 Backup Frequency <= RPO
 ```
 
@@ -234,7 +234,7 @@ fi
 
 Tighter RPO and RTO increase costs. Calculate the cost of your DR strategy:
 
-```
+```text
 Backup Cost = Storage Cost + Transfer Cost + Snapshot Cost
 Storage Cost = Backup Size * Retention Days * Storage Price/GB/Day
 Transfer Cost = Backup Size * Backup Frequency * Transfer Price/GB

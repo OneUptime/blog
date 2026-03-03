@@ -62,7 +62,7 @@ kics scan -p ./modules -p ./environments
 
 The default output is a table:
 
-```
+```text
 Scanning with KICS v1.7.0
 
 Files scanned: 23

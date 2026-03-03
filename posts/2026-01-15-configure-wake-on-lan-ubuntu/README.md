@@ -73,7 +73,7 @@ sudo ethtool enp0s3 | grep -i wake
 
 The output will show two lines similar to this:
 
-```
+```text
 Supports Wake-on: pumbg
 Wake-on: d
 ```
@@ -464,7 +464,7 @@ wakeonlan -i 192.168.2.255 aa:bb:cc:dd:ee:ff
 
 On Cisco routers, enable directed broadcast forwarding on the target interface:
 
-```
+```text
 # Cisco IOS configuration (router CLI)
 interface GigabitEthernet0/1
   ip directed-broadcast

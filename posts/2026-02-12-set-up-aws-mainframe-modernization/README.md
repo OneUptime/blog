@@ -279,7 +279,7 @@ response = m2.create_environment(
 
 Blu Age converts your COBOL/PL1 code to Java:
 
-```
+```text
 COBOL Source                    -->  Java Output
 IDENTIFICATION DIVISION.             @Service
 PROGRAM-ID. CALC-INTEREST.           public class CalcInterest {

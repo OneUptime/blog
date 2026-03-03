@@ -12,7 +12,7 @@ Java stack traces are the classic multiline log problem. A single exception can 
 
 A typical Java exception in a log file looks like this:
 
-```
+```text
 2026-02-06 14:23:45.123 ERROR c.e.PaymentService - Payment processing failed
 java.lang.RuntimeException: Transaction declined
     at com.example.payment.PaymentProcessor.process(PaymentProcessor.java:42)
@@ -117,7 +117,7 @@ service:
 
 ### Logback/SLF4J Default Format
 
-```
+```text
 14:23:45.123 [main] ERROR com.example.App - Something failed
 ```
 
@@ -128,7 +128,7 @@ multiline:
 
 ### Log4j2 Default Pattern
 
-```
+```text
 2026-02-06 14:23:45,123 ERROR [com.example.App] (main) Something failed
 ```
 
@@ -139,7 +139,7 @@ multiline:
 
 ### Spring Boot Default
 
-```
+```text
 2026-02-06T14:23:45.123+00:00 ERROR 1 --- [main] c.e.App : Something failed
 ```
 
@@ -152,7 +152,7 @@ multiline:
 
 Java stack traces often have chained "Caused by" sections. The multiline grouping handles these automatically since "Caused by" lines do not match the timestamp pattern. The entire chain ends up in a single log record:
 
-```
+```text
 2026-02-06 14:23:45.123 ERROR c.e.App - Failed
 com.example.AppException: Operation failed
     at com.example.App.run(App.java:10)
@@ -169,7 +169,7 @@ All of this becomes one log record with the full stack trace in the body.
 
 Java 7+ supports suppressed exceptions that appear with a different indentation:
 
-```
+```text
 java.lang.Exception: Main exception
     at com.example.App.method(App.java:10)
     Suppressed: java.lang.Exception: Suppressed one

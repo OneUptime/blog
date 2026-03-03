@@ -98,7 +98,7 @@ A common question is whether `maxConnections: 100` means 100 connections per pod
 
 If your service has 5 pods and `maxConnections` is 100, Envoy might distribute them like:
 
-```
+```text
 Pod A: 25 connections
 Pod B: 18 connections
 Pod C: 22 connections
@@ -121,13 +121,13 @@ To figure out a good `maxConnections` value, consider:
 
 A formula that works as a starting point:
 
-```
+```text
 maxConnections = (service_fd_limit * 0.8) / number_of_client_pods
 ```
 
 For example, if your service allows 10,000 file descriptors and you have 20 client pods:
 
-```
+```text
 maxConnections = (10000 * 0.8) / 20 = 400
 ```
 

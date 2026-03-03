@@ -570,7 +570,7 @@ graph TB
 
 Keep your pipeline definitions, component code, and configurations in version control:
 
-```
+```text
 ml-project/
 ├── components/
 │   ├── data_loader/

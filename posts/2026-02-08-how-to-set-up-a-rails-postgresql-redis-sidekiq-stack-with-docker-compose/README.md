@@ -22,7 +22,7 @@ The stack includes five services:
 
 ## Project Structure
 
-```
+```text
 myapp/
   Dockerfile
   Dockerfile.dev

@@ -35,7 +35,7 @@ flowchart TD
 
 Create a dynamic route by adding a folder with square brackets:
 
-```
+```text
 app/
   products/
     [id]/
@@ -100,7 +100,7 @@ async function getProducts() {
 
 You can have multiple dynamic segments in a single path:
 
-```
+```text
 app/
   shop/
     [category]/
@@ -157,7 +157,7 @@ export async function generateStaticParams() {
 
 Catch-all routes capture multiple path segments:
 
-```
+```text
 app/
   docs/
     [...slug]/
@@ -213,7 +213,7 @@ function Breadcrumbs({ segments }: { segments: string[] }) {
 
 Double brackets make the catch-all optional:
 
-```
+```text
 app/
   docs/
     [[...slug]]/
@@ -249,7 +249,7 @@ export default async function DocsPage({ params }: DocsPageProps) {
 
 ### Basic Dynamic Route
 
-```
+```text
 pages/
   products/
     [id].tsx         # Matches /products/1, /products/abc
@@ -533,7 +533,7 @@ export default function Home({ products }) {
 
 Organize routes without affecting URL structure:
 
-```
+```text
 app/
   (marketing)/
     about/
@@ -551,7 +551,7 @@ app/
 
 Render multiple pages simultaneously:
 
-```
+```text
 app/
   @modal/
     (.)products/
@@ -587,7 +587,7 @@ export default function Layout({
 
 ### Locale-Based Routing
 
-```
+```text
 app/
   [locale]/
     page.tsx              # /en, /fr, /de

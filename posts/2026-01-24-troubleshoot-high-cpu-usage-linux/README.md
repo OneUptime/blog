@@ -104,7 +104,7 @@ pidstat -u 1 5
 
 **Output analysis**:
 
-```
+```text
 USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
 mysql    12345 95.0  5.0 2345678 512000 ?      Sl   10:00  45:30 /usr/sbin/mysqld
 www-data 12346 45.0  2.0  500000 200000 ?      S    10:00  20:15 /usr/sbin/apache2
@@ -139,7 +139,7 @@ vmstat 1 10
 
 **Sample output**:
 
-```
+```text
 procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
  r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
  5  0      0 500000  50000 2000000    0    0     5    10  500 1000 85  5 10  0  0

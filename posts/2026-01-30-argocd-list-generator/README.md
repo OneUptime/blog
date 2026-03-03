@@ -42,7 +42,7 @@ kubectl get pods -n argocd | grep applicationset
 
 You should see output similar to:
 
-```
+```text
 argocd-applicationset-controller-xxx   1/1     Running   0          10m
 ```
 

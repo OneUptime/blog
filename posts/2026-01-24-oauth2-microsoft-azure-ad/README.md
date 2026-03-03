@@ -46,7 +46,7 @@ Navigate to Azure Portal > Azure Active Directory > App registrations > New regi
 
 ### Configure Authentication
 
-```
+```text
 Azure Portal > Your App > Authentication
 
 Platform configurations:

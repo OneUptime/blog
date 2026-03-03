@@ -31,7 +31,7 @@ kubectl exec deploy/my-service -n default -c istio-proxy -- curl -s localhost:15
 
 You should see histogram bucket counters like:
 
-```
+```text
 istio_request_duration_milliseconds_bucket{...le="100"...} 450
 istio_request_duration_milliseconds_bucket{...le="250"...} 480
 istio_request_duration_milliseconds_bucket{...le="500"...} 499

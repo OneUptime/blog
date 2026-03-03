@@ -46,7 +46,7 @@ A typical proxy in a mesh with 500 services might receive 2-5 MB of initial conf
 
 **Ongoing xDS traffic estimate:**
 
-```
+```text
 Per_Proxy_xDS = Initial_Config_Size + (Changes_Per_Hour x Avg_Delta_Size)
 
 Example:
@@ -67,7 +67,7 @@ TLS adds overhead in two ways:
 
 For small payloads, the relative overhead is higher:
 
-```
+```text
 Original payload: 100 bytes
 TLS overhead: ~40 bytes
 Total: ~140 bytes (40% overhead)
@@ -81,7 +81,7 @@ For most real-world workloads with average payloads of 1-10 KB, expect mTLS to a
 
 **Calculation for a mesh doing 50,000 RPS with an average 2 KB payload:**
 
-```
+```text
 Without mTLS: 50,000 x 2 KB = 100 MB/s
 TLS record overhead: 50,000 x 40 bytes = 2 MB/s
 TLS handshake (assuming 1000 new connections/sec): 1000 x 7 KB = 7 MB/s (bursty)
@@ -101,7 +101,7 @@ kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15090/stats/promethe
 
 Typical metrics response size is 50-200 KB per sidecar, depending on the number of destination services.
 
-```
+```text
 Metrics bandwidth = Num_Proxies x Metrics_Size / Scrape_Interval
 
 Example:
@@ -135,7 +135,7 @@ spec:
 
 Trace data volume depends on sampling rate and span size:
 
-```
+```text
 Trace bandwidth = RPS x Sampling_Rate x Avg_Span_Size x Avg_Spans_Per_Request
 
 Example at 1% sampling:
@@ -151,7 +151,7 @@ This is why you almost never want 100% trace sampling in production.
 
 If you have access logging enabled and shipping logs to a centralized system:
 
-```
+```text
 Access log bandwidth = RPS x Avg_Log_Entry_Size
 
 Example:
@@ -164,7 +164,7 @@ That is a lot of data. Consider sampling or only enabling access logs for specif
 
 For a mesh with 500 pods, 50,000 RPS, 2 KB average payload:
 
-```
+```text
 Application traffic (baseline):       100 MB/s
 mTLS overhead:                         +5 MB/s
 xDS config distribution:               +0.15 MB/s

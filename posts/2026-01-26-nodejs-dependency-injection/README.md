@@ -151,7 +151,7 @@ Let's build a complete example with manual dependency injection. This approach w
 
 ### Setting Up the Project Structure
 
-```
+```text
 src/
   config/
     index.js

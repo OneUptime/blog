@@ -35,7 +35,7 @@ kubectl get svc istio-ingressgateway -n istio-system
 
 Expected output:
 
-```
+```text
 NAME                   TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)
 istio-ingressgateway   LoadBalancer   10.0.10.50     34.120.1.100   15021:30991/TCP,80:30080/TCP,443:30443/TCP
 ```

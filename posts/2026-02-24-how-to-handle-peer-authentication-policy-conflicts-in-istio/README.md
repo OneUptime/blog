@@ -27,7 +27,7 @@ This is the most common accidental conflict. Someone creates a namespace-wide po
 kubectl get peerauthentication -n backend
 ```
 
-```
+```text
 NAME              MODE        AGE
 default           STRICT      30d
 backend-policy    PERMISSIVE  2d

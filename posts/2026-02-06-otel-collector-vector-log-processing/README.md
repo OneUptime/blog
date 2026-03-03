@@ -21,7 +21,7 @@ You should consider adding Vector when you need to:
 
 The pipeline looks like this:
 
-```
+```text
 Apps -> OTel Collector (OTLP receiver) -> Vector (processing) -> Backend
 ```
 

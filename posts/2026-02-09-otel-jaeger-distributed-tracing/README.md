@@ -154,7 +154,7 @@ spec:
 
 Use Jaeger UI to search and analyze traces.
 
-```
+```text
 # Jaeger search capabilities:
 
 1. Search by service name

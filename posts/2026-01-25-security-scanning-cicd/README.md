@@ -471,7 +471,7 @@ jobs:
 
 ZAP configuration file:
 
-```
+```text
 # .zap/rules.tsv
 # Rule ID	Action	Description
 10015	IGNORE	Incomplete or No Cache-control and Pragma HTTP Header Set

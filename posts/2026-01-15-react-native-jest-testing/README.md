@@ -1226,7 +1226,7 @@ npm test -- --coverage --collectCoverageFrom='src/components/**/*.tsx'
 
 ### 1. Follow the Testing Trophy
 
-```
+```text
     /\
    /  \      E2E Tests (few)
   /----\     Integration Tests (some)

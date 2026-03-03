@@ -20,7 +20,7 @@ Burn rate measures how fast you are consuming your error budget relative to the 
 
 The formula is straightforward:
 
-```
+```text
 Burn Rate = Current Error Rate / Allowed Error Rate
 ```
 

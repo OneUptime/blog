@@ -192,7 +192,7 @@ kubectl get pods -n metallb-system
 
 Expected output shows the controller and speaker pods running:
 
-```
+```text
 NAME                          READY   STATUS    RESTARTS   AGE
 controller-5f98465b6b-xxxxx   1/1     Running   0          60s
 speaker-xxxxx                 1/1     Running   0          60s
@@ -368,7 +368,7 @@ kubectl get service my-app-lb -n production
 
 Expected output showing the external IP assigned:
 
-```
+```text
 NAME        TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
 my-app-lb   LoadBalancer   10.96.100.50    10.0.0.100    80:31234/TCP,443:31235/TCP   30s
 ```

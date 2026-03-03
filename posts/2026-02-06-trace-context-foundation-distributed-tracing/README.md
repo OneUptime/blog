@@ -28,7 +28,7 @@ Trace context is lightweight metadata that travels with each request. The W3C Tr
 
 A unique 16-byte identifier for the entire distributed trace. Every span in the trace shares this ID. When Service A calls Service B, both services use the same trace ID.
 
-```
+```text
 trace-id: 4bf92f3577b34da6a3ce929d0e0e4736
 ```
 
@@ -38,7 +38,7 @@ The trace ID is globally unique. Two different user requests will never have the
 
 An 8-byte identifier for the current operation. Each span gets a unique span ID. When Service A creates a span and calls Service B, Service B's span gets a different span ID but the same trace ID.
 
-```
+```text
 span-id: 00f067aa0ba902b7
 ```
 
@@ -48,7 +48,7 @@ The span ID identifies one specific operation within the trace. Combined with th
 
 A single byte of flags controlling trace behavior. The most important flag is the sampled flag, which indicates whether this trace should be recorded.
 
-```
+```text
 trace-flags: 01  (sampled)
 trace-flags: 00  (not sampled)
 ```
@@ -72,7 +72,7 @@ tracestate: vendor1=value1,vendor2=value2
 
 The `traceparent` header contains trace context in a compact format:
 
-```
+```text
 version-trace_id-parent_span_id-trace_flags
 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
 ```
@@ -294,7 +294,7 @@ graph TD
 
 All these spans share the same trace ID. Each span has its own span ID. Each span records its parent's span ID, creating the tree structure.
 
-```
+```text
 Trace ID: 4bf92f3577b34da6a3ce929d0e0e4736
 
 Span: process_request

@@ -129,7 +129,7 @@ async function handleListOrders(req, res) {
 
 The client passes the cursor from the previous response to get the next page:
 
-```
+```text
 GET /api/customers/cust-001/orders?pageSize=20
 GET /api/customers/cust-001/orders?pageSize=20&cursor=eyJjdXN0b21lcklkIjoiY3Vz...
 ```

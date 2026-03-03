@@ -24,7 +24,7 @@ The rules engine uses a YAML-based syntax that lets you define conditions based 
 
 ## Repository Structure
 
-```
+```text
 security/
   falco/
     Chart.yaml

@@ -215,7 +215,7 @@ web-03     priority_weight=10    # Processed last
 
 Place your strategy plugin in one of these locations:
 
-```
+```text
 # Project-level (recommended)
 your_project/
   strategy_plugins/

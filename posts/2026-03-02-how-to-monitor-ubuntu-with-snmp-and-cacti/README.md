@@ -31,7 +31,7 @@ sudo nano /etc/snmp/snmpd.conf
 
 Replace the default content with a secure configuration:
 
-```
+```text
 # Listen on all interfaces (change to specific IP for better security)
 agentaddress  udp:161
 
@@ -204,7 +204,7 @@ sudo crontab -u www-data -e
 
 Add this line:
 
-```
+```text
 */5 * * * * php /var/www/html/cacti/poller.php > /dev/null 2>&1
 ```
 
@@ -218,7 +218,7 @@ sudo apt install cacti-spine
 sudo nano /etc/cacti/spine.conf
 ```
 
-```
+```text
 DB_Host        localhost
 DB_Database    cacti
 DB_User        cacti

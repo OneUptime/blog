@@ -47,7 +47,7 @@ flowchart TD
 
 Create a dedicated repository for cluster configuration:
 
-```
+```text
 cluster-bootstrap/
   root-app.yaml              # The single entry point
   infrastructure/

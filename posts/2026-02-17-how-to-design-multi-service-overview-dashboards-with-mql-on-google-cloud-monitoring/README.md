@@ -26,7 +26,7 @@ Before MQL, you were limited to the point-and-click metric explorer, which works
 
 The first thing your overview dashboard needs is a quick health indicator for each service. Here is an MQL query that computes the error rate for every Cloud Run service:
 
-```
+```text
 # Error rate by service over the last 5 minutes
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_count'
@@ -52,7 +52,7 @@ This gives you a table or chart showing the error rate for each service, making 
 
 Next, show the P50 and P99 latency for each service side by side:
 
-```
+```text
 # P99 latency by service
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_latencies'
@@ -63,7 +63,7 @@ fetch cloud_run_revision
 
 For GKE services using custom metrics:
 
-```
+```text
 # P99 latency for services reporting via OpenTelemetry
 fetch k8s_container
 | metric 'custom.googleapis.com/http/server/request_duration'
@@ -77,7 +77,7 @@ fetch k8s_container
 
 A traffic heatmap shows how request volume is distributed across services over time:
 
-```
+```text
 # Requests per second by service
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_count'
@@ -200,7 +200,7 @@ create_overview_dashboard('my-project')
 
 Add infrastructure metrics alongside application metrics:
 
-```
+```text
 # CPU utilization across all GKE nodes
 fetch k8s_node
 | metric 'kubernetes.io/node/cpu/allocatable_utilization'
@@ -209,7 +209,7 @@ fetch k8s_node
 | condition val() > 0.8
 ```
 
-```
+```text
 # Memory utilization by service
 fetch k8s_container
 | metric 'kubernetes.io/container/memory/used_bytes'
@@ -217,7 +217,7 @@ fetch k8s_container
 | group_by [resource.pod_name], [mem_used: mean(val())]
 ```
 
-```
+```text
 # Cloud SQL instance health
 fetch cloudsql_database
 | metric 'cloudsql.googleapis.com/database/cpu/utilization'
@@ -229,7 +229,7 @@ fetch cloudsql_database
 
 Add a section that tracks your service level indicators:
 
-```
+```text
 # Availability SLI - percentage of successful requests over 30 days
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_count'
@@ -246,7 +246,7 @@ fetch cloud_run_revision
 | value [availability: good / total * 100]
 ```
 
-```
+```text
 # Latency SLI - percentage of requests under 500ms
 fetch cloud_run_revision
 | metric 'run.googleapis.com/request_latencies'

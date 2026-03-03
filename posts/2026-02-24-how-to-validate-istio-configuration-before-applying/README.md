@@ -58,14 +58,14 @@ istioctl validate -f istio-config/
 
 Example output for a valid configuration:
 
-```
+```text
 virtual-service.yaml: valid
 destination-rule.yaml: valid
 ```
 
 Example output for an invalid configuration:
 
-```
+```text
 Error: 1 error occurred:
   * virtual-service.yaml:1: VirtualService default/my-service references subset "v3" but it is not found in any DestinationRule
 ```
@@ -95,7 +95,7 @@ istioctl analyze -f virtual-service.yaml --use-kube
 
 `istioctl analyze` catches a broader range of issues because it knows what's actually deployed:
 
-```
+```text
 Warning [IST0101] (VirtualService default/my-vs) Referenced host not found: "typo-service.default.svc.cluster.local"
 Warning [IST0104] (Gateway default/my-gateway) The gateway selector istio=ingressgatway does not match any workloads
 Error [IST0134] (DestinationRule default/my-dr) This host has no endpoints
@@ -112,7 +112,7 @@ kubectl get validatingwebhookconfigurations | grep istio
 
 You should see `istio-validator-istio-system` or similar. This webhook automatically validates resources when you `kubectl apply` them. If validation fails, the apply is rejected:
 
-```
+```text
 Error from server: error when creating "bad-config.yaml": admission webhook "validation.istio.io" denied the request: configuration is invalid: ...
 ```
 

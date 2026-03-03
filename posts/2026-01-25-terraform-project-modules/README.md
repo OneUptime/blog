@@ -28,7 +28,7 @@ Modules provide:
 
 Here is a battle-tested structure for medium to large Terraform projects:
 
-```
+```text
 terraform/
 ├── modules/                    # Reusable modules
 │   ├── networking/
@@ -390,7 +390,7 @@ module "application" {
 
 Create a test directory within each module:
 
-```
+```text
 modules/networking/
 ├── main.tf
 ├── variables.tf

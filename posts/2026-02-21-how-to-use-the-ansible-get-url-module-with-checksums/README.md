@@ -48,7 +48,7 @@ When you pass a URL as the checksum value, Ansible downloads the checksum file, 
 
 Here is what a typical SHA256SUMS file looks like:
 
-```
+```text
 b84b0baf5cc32476c2632d09a5c59c37e6cb00e5a6f4fbe8038a3b22315d1e9e  terraform_1.7.3_darwin_amd64.zip
 a1b2c3d4e5f6...  terraform_1.7.3_linux_amd64.zip
 ```

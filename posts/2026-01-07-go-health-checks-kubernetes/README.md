@@ -48,7 +48,7 @@ The startup probe is used for applications with slow startup times. While the st
 
 Let us start by setting up a well-organized project structure for our health check implementation.
 
-```
+```text
 health-checks/
 ├── main.go
 ├── health/

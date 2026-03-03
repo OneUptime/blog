@@ -76,7 +76,7 @@ pipeline {
 
 The polling schedule uses cron syntax with Jenkins extensions:
 
-```
+```text
 MINUTE HOUR DOM MONTH DOW
   |      |   |    |    |
   |      |   |    |    +-- Day of Week (0-7, Sun=0 or 7)

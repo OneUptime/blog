@@ -59,7 +59,7 @@ tree myapp/
 
 The generated structure looks like this:
 
-```
+```text
 myapp/
   Chart.yaml          # Metadata about the chart
   values.yaml         # Default configuration values

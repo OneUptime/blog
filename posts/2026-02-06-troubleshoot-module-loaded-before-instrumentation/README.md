@@ -19,7 +19,7 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
 You might see:
 
-```
+```text
 @opentelemetry/instrumentation-express Module express has been loaded before
 @opentelemetry/instrumentation-express can patch it. Instrumentation may not work.
 ```
@@ -156,7 +156,7 @@ This prints a stack trace every time a key module is loaded, showing you exactly
 
 After fixing the load order, you should see in the debug output:
 
-```
+```text
 @opentelemetry/instrumentation-http Applying instrumentation patch for module http on require hook
 @opentelemetry/instrumentation-express Applying instrumentation patch for module express on require hook
 ```

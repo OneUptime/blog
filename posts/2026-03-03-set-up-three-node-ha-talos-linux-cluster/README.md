@@ -212,7 +212,7 @@ talosctl etcd members --nodes 192.168.1.101
 
 The etcd members command should show all three nodes:
 
-```
+```text
 ID                 HOSTNAME  MEMBER ID          PEER URLS
 192.168.1.101:2380 cp1       xxxxxxxxxx         https://192.168.1.101:2380
 192.168.1.102:2380 cp2       xxxxxxxxxx         https://192.168.1.102:2380
@@ -231,7 +231,7 @@ kubectl get nodes
 
 You should see three nodes, all with the `control-plane` role and `Ready` status:
 
-```
+```text
 NAME   STATUS   ROLES           AGE   VERSION
 cp1    Ready    control-plane   5m    v1.29.x
 cp2    Ready    control-plane   4m    v1.29.x

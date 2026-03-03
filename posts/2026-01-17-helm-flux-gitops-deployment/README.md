@@ -203,7 +203,7 @@ prometheus:
 
 ### Mono-repo Structure
 
-```
+```text
 fleet-infra/
 ├── clusters/
 │   ├── production/

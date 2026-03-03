@@ -31,7 +31,7 @@ npm init playwright@latest
 
 This creates the following structure:
 
-```
+```text
 project/
   playwright.config.ts
   tests/

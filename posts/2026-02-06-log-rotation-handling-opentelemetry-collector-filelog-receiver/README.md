@@ -136,7 +136,7 @@ Logrotate often compresses old files (`app.log.1.gz`). The Filelog receiver cann
 
 1. **Delay compression**: Configure logrotate to wait before compressing, giving the collector time to finish reading the rotated file:
 
-```
+```text
 # /etc/logrotate.d/myapp
 /var/log/myapp/app.log {
     daily

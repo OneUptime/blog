@@ -62,7 +62,7 @@ Utilization measures how much of a resource is currently in use relative to its 
 
 ### The Formula
 
-```
+```text
 Utilization % = (Used / Total) * 100
 ```
 

@@ -331,7 +331,7 @@ spec:
 
 Organize everything in Git and deploy with ArgoCD.
 
-```
+```text
 resource-policies/
   gatekeeper/
     templates/

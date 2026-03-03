@@ -16,13 +16,13 @@ Paths in Parameter Store work exactly like directory paths. A parameter named `/
 
 Before creating a single parameter, settle on a naming convention. Here's one that works well for most organizations:
 
-```
+```text
 /<organization>/<application>/<environment>/<category>/<parameter-name>
 ```
 
 For example:
 
-```
+```text
 /acme/orders-api/production/database/host
 /acme/orders-api/production/database/port
 /acme/orders-api/production/database/password
@@ -35,11 +35,11 @@ For example:
 
 Simpler projects might use fewer levels:
 
-```
+```text
 /<application>/<environment>/<parameter-name>
 ```
 
-```
+```text
 /orders-api/production/database-host
 /orders-api/production/database-password
 /orders-api/staging/database-host

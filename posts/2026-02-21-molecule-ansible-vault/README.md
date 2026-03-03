@@ -14,7 +14,7 @@ Testing Ansible roles that use Vault-encrypted secrets with Molecule requires so
 
 When your role uses Vault-encrypted variables, Molecule's converge step calls Ansible, which tries to read those encrypted files. Without the vault password, Ansible fails with an error like:
 
-```
+```text
 ERROR! Attempting to decrypt but no vault secrets found
 ```
 
@@ -32,7 +32,7 @@ chmod 600 .vault-password
 
 Add it to your `.gitignore`.
 
-```
+```text
 # .gitignore
 .vault-password
 ```
@@ -137,7 +137,7 @@ provisioner:
 
 A typical role structure with Vault looks like this:
 
-```
+```text
 my_role/
   defaults/
     main.yml          # Default variables (not encrypted)

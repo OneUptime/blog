@@ -12,7 +12,7 @@ Terraform provisioners that use SSH (`remote-exec`, `file`) connect to instances
 
 ## The Error
 
-```
+```text
 Error: timeout - last error: dial tcp 10.0.1.50:22: i/o timeout
 
   on main.tf line 15, in resource "aws_instance" "web":
@@ -26,7 +26,7 @@ methods remain
 
 Or after waiting for the default 5-minute timeout:
 
-```
+```text
 Error: timeout - last error: dial tcp 54.123.45.67:22: connect:
 connection refused
 ```

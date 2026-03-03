@@ -38,7 +38,7 @@ Use `defaults_from` when you want to provide suggested values that users are exp
 
 Let's build an application deployment role with different default profiles:
 
-```
+```text
 roles/app_deploy/
   defaults/
     main.yml             # Balanced defaults (loaded by default)

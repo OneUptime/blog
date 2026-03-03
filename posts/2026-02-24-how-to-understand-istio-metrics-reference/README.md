@@ -20,7 +20,7 @@ The metrics follow Prometheus naming conventions and use labels (also called dim
 
 ### istio_requests_total
 
-```
+```text
 istio_requests_total{
   reporter="source",
   source_workload="productpage-v1",
@@ -118,7 +118,7 @@ A counter for gRPC response messages (streaming).
 
 ### istio_tcp_connections_opened_total
 
-```
+```text
 istio_tcp_connections_opened_total{
   reporter="source",
   source_workload="backend-v1",
@@ -162,7 +162,7 @@ Every Istio metric includes a set of standard labels. Here is what each one mean
 
 ### Reporter
 
-```
+```text
 reporter="source"   # Metric reported by the client-side proxy
 reporter="destination"  # Metric reported by the server-side proxy
 ```

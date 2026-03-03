@@ -14,7 +14,7 @@ Migrating from the ELK Stack to Grafana Loki can significantly reduce costs whil
 
 ### Cost Comparison
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                    ELK vs Loki Cost Analysis                     │
 │                                                                  │

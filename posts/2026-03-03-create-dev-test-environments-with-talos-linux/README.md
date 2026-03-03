@@ -187,7 +187,7 @@ For teams that want centralized dev environment management, use a management clu
 
 ### Architecture
 
-```
+```text
 Management Cluster (persistent)
   - Environment Controller
   - Developer Portal UI

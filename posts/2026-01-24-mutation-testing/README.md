@@ -161,7 +161,7 @@ describe('calculateDiscount', () => {
 
 Running Stryker reveals surviving mutants:
 
-```
+```text
 Mutant survived: Changed price > 100 to price >= 100
 Mutant survived: Changed price * 0.2 to price * 0.1
 Mutant survived: Changed && to ||
@@ -230,7 +230,7 @@ flowchart TD
 
 ### Mutation Score
 
-```
+```text
 Mutation Score = (Killed Mutants / Total Mutants) * 100
 ```
 

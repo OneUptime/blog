@@ -56,7 +56,7 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 
 Let's say you're building a user service. Create a directory structure like this:
 
-```
+```text
 myservice/
 ├── proto/
 │   └── user.proto
@@ -162,7 +162,7 @@ The `paths=source_relative` option tells protoc to place generated files relativ
 
 After running this, you'll have two new files:
 
-```
+```text
 proto/
 ├── user.proto
 ├── user.pb.go        # Message types
@@ -523,7 +523,7 @@ message Event {
 
 **Organize with packages.** As your system grows, split protos by domain and use imports:
 
-```
+```text
 proto/
 ├── common/
 │   └── pagination.proto

@@ -21,7 +21,7 @@ ansible-galaxy role init webserver
 
 This creates a directory named `webserver` with the following structure:
 
-```
+```text
 webserver/
     defaults/
         main.yml

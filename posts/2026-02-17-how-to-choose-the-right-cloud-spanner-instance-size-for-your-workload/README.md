@@ -38,7 +38,7 @@ The first constraint to check is data storage. While each node can technically h
 
 Here is a simple calculation:
 
-```
+```text
 Total data size: 50 GB
 Recommended data per node: 10 GB
 Minimum nodes for data: 50 / 10 = 5 nodes
@@ -60,7 +60,7 @@ gcloud spanner databases describe my-database \
 
 If your application is read-heavy, calculate the nodes needed based on reads per second:
 
-```
+```text
 Peak reads per second: 35,000
 Reads per node: 10,000
 Minimum nodes for reads: 35,000 / 10,000 = 3.5 -> 4 nodes
@@ -72,7 +72,7 @@ Keep in mind that complex queries (joins, aggregations, range scans) consume mor
 
 Write-heavy workloads often hit their limit before read-heavy ones:
 
-```
+```text
 Peak writes per second: 8,000
 Writes per node: 2,000
 Minimum nodes for writes: 8,000 / 2,000 = 4 nodes
@@ -84,7 +84,7 @@ Writes are more expensive than reads because they need to be replicated across S
 
 Take the maximum of all three sizing dimensions:
 
-```
+```text
 Nodes for data volume:     5 nodes
 Nodes for read throughput: 4 nodes
 Nodes for write throughput: 4 nodes
@@ -93,7 +93,7 @@ Recommended instance size: 5 nodes (5000 processing units)
 
 Then add a buffer for headroom. Google recommends keeping CPU utilization below 65% for regional instances and below 45% for multi-region instances during normal operations. This leaves room for traffic spikes.
 
-```
+```text
 Base requirement: 5 nodes
 With 65% utilization target: 5 / 0.65 = 7.7 -> 8 nodes
 ```

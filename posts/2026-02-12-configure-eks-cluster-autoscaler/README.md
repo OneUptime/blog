@@ -203,7 +203,7 @@ The default settings work for most cases, but you'll likely want to tune a few p
 
 Your Auto Scaling Groups must have the right tags for auto-discovery to work. If you created your cluster with eksctl, these should already be set:
 
-```
+```text
 k8s.io/cluster-autoscaler/enabled = true
 k8s.io/cluster-autoscaler/my-cluster = owned
 ```

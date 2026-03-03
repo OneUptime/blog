@@ -238,7 +238,7 @@ How you organize data in S3 directly impacts Athena's performance and cost.
 
 **Use partitions.** If your data is time-series, organize it by date:
 
-```
+```text
 s3://my-data-bucket/events/year=2025/month=01/day=15/data.parquet
 s3://my-data-bucket/events/year=2025/month=01/day=16/data.parquet
 ```

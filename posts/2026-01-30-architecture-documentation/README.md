@@ -221,7 +221,7 @@ We will use PostgreSQL as our primary database.
 
 Organize ADRs in a dedicated directory:
 
-```
+```text
 docs/
   architecture/
     decisions/
@@ -285,7 +285,7 @@ Keep diagrams in sync with code by generating them automatically.
 
 Structurizr provides a domain-specific language for defining C4 models:
 
-```
+```text
 workspace "E-Commerce Platform" "Architecture documentation" {
 
     model {
@@ -536,7 +536,7 @@ Track documentation changes alongside code changes.
 
 Store documentation in the same repository as code:
 
-```
+```text
 project/
   src/
   docs/

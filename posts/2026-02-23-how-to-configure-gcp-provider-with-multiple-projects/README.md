@@ -371,7 +371,7 @@ resource "google_project_service" "container" {
 
 For complex multi-project setups, organize your Terraform code by concern rather than by project:
 
-```
+```text
 infrastructure/
   modules/
     networking/       # VPCs, subnets, peering across projects

@@ -360,7 +360,7 @@ trigger-sync:
 
 Organize a large project with multiple child pipelines.
 
-```
+```text
 .gitlab/
   ci/
     build/

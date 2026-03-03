@@ -39,7 +39,7 @@ sudo ovs-vsctl show
 
 Expected output showing the bond:
 
-```
+```text
 Bridge br0
     Port bond0
         Interface eth0

@@ -139,7 +139,7 @@ def process_image(bucket_name, file_name):
 
 Create `requirements.txt`:
 
-```
+```text
 functions-framework==3.*
 google-cloud-storage==2.*
 ```

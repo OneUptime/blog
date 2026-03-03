@@ -16,7 +16,7 @@ Cloud Build's path filter feature solves this. You can create triggers that only
 
 Here is a typical monorepo layout:
 
-```
+```text
 my-monorepo/
   services/
     api-gateway/

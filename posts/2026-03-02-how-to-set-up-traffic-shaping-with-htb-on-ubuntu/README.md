@@ -24,7 +24,7 @@ The borrowing mechanism is key: when a high-priority class is not using its full
 
 This example shapes traffic on a 1 Gbit server that runs a web application, a backup process, and management access.
 
-```
+```text
 Total: 1 Gbit
 ├── Management (SSH, monitoring): guaranteed 50 Mbit, max 1 Gbit
 ├── Web traffic (HTTP/S, API): guaranteed 600 Mbit, max 1 Gbit

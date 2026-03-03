@@ -39,7 +39,7 @@ kubectl port-forward -n istio-system svc/prometheus 9090:9090
 
 Open `http://localhost:9090` and query:
 
-```
+```text
 istio_requests_total
 ```
 
@@ -72,13 +72,13 @@ The default Istio dashboards are great for operations, but for API analytics you
 
 ### Total API Requests per Endpoint
 
-```
+```text
 sum(rate(istio_requests_total{reporter="source", destination_service=~".*", request_host="api.example.com"}[5m])) by (destination_service, request_url_path)
 ```
 
 ### Error Rate by Endpoint
 
-```
+```text
 sum(rate(istio_requests_total{reporter="source", response_code=~"5.*", request_host="api.example.com"}[5m])) by (destination_service)
 /
 sum(rate(istio_requests_total{reporter="source", request_host="api.example.com"}[5m])) by (destination_service)
@@ -86,13 +86,13 @@ sum(rate(istio_requests_total{reporter="source", request_host="api.example.com"}
 
 ### P95 Latency
 
-```
+```text
 histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{reporter="source", request_host="api.example.com"}[5m])) by (le, destination_service))
 ```
 
 ### Request Volume Over Time
 
-```
+```text
 sum(increase(istio_requests_total{reporter="source", request_host="api.example.com"}[1h])) by (destination_service)
 ```
 
@@ -135,19 +135,19 @@ This adds `request_url_path`, `request_method`, `api_version`, and `client_id` a
 
 With the custom `client_id` dimension, track usage per client:
 
-```
+```text
 sum(increase(istio_requests_total{client_id!=""}[24h])) by (client_id)
 ```
 
 Top clients by request volume:
 
-```
+```text
 topk(10, sum(increase(istio_requests_total{client_id!=""}[24h])) by (client_id))
 ```
 
 Client error rates:
 
-```
+```text
 sum(rate(istio_requests_total{client_id!="", response_code=~"5.*"}[1h])) by (client_id)
 ```
 
@@ -284,22 +284,22 @@ spec:
 Here are some Prometheus queries you will use regularly:
 
 **Requests per second by service:**
-```
+```text
 sum(rate(istio_requests_total{reporter="source"}[5m])) by (destination_service_name)
 ```
 
 **Success rate:**
-```
+```text
 sum(rate(istio_requests_total{reporter="source", response_code!~"5.*"}[5m])) / sum(rate(istio_requests_total{reporter="source"}[5m]))
 ```
 
 **Average response size:**
-```
+```text
 sum(rate(istio_response_bytes_sum[5m])) / sum(rate(istio_response_bytes_count[5m]))
 ```
 
 **Busiest hours:**
-```
+```text
 sum(increase(istio_requests_total{request_host="api.example.com"}[1h])) by (hour)
 ```
 

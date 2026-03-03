@@ -44,7 +44,7 @@ metadata:
 
 ## Repository Structure
 
-```
+```text
 pod-security/
   namespaces/
     production/

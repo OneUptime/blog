@@ -14,7 +14,7 @@ The "Maximum update depth exceeded" error is one of the most common React errors
 
 When React detects that a component is updating itself repeatedly without stopping, it throws this error:
 
-```
+```text
 Error: Maximum update depth exceeded. This can happen when a component
 calls setState inside useEffect, but useEffect either doesn't have a
 dependency array, or one of the dependencies changes on every render.

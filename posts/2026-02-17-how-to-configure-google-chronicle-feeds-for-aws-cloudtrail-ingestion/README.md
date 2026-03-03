@@ -244,13 +244,13 @@ After configuring the feed, wait a few minutes and then check the Chronicle Data
 
 Run a quick UDM search to verify the data.
 
-```
+```text
 metadata.product_name = "AWS CloudTrail" AND metadata.event_timestamp.seconds > timestamp("2026-02-17T00:00:00Z")
 ```
 
 You can also search for specific event types to confirm proper parsing.
 
-```
+```text
 metadata.product_name = "AWS CloudTrail" AND metadata.product_event_type = "ConsoleLogin"
 ```
 
@@ -258,7 +258,7 @@ metadata.product_name = "AWS CloudTrail" AND metadata.product_event_type = "Cons
 
 Once CloudTrail data is in Chronicle alongside your GCP logs, you can write detection rules that correlate across clouds. Here is an example YARA-L rule that detects when the same user authenticates to both AWS and GCP from different IP addresses within a short window.
 
-```
+```text
 rule cross_cloud_suspicious_auth {
     meta:
         author = "security-team"

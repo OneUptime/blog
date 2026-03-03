@@ -26,7 +26,7 @@ tune2fs -l /dev/sda1 | grep "Default mount options"
 
 If ACL support is not listed, you can add it to `/etc/fstab`:
 
-```
+```text
 UUID=xxxx-xxxx  /  ext4  defaults,acl  0  1
 ```
 
@@ -50,7 +50,7 @@ getfacl /var/www/html
 
 Example output for a file with no extra ACL entries:
 
-```
+```text
 # file: some-config-file
 # owner: root
 # group: root
@@ -61,7 +61,7 @@ other::r--
 
 Example output after adding an ACL entry:
 
-```
+```text
 # file: some-config-file
 # owner: root
 # group: root
@@ -174,7 +174,7 @@ getfacl /srv/webapp
 
 Output:
 
-```
+```text
 # file: webapp
 # owner: www-data
 # group: www-data
@@ -228,7 +228,7 @@ sudo setfacl -m m:rwx /srv/shared
 
 Check the effective permissions (what mask allows) in getfacl output - they appear as a comment after the entry:
 
-```
+```text
 user:alice:rwx        #effective:r--
 ```
 

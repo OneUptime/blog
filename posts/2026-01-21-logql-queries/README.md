@@ -22,7 +22,7 @@ Before starting, ensure you have:
 
 A LogQL query consists of two main parts:
 
-```
+```text
 {stream_selector} | line_filters | parser | label_filter | line_format | ...
 ```
 

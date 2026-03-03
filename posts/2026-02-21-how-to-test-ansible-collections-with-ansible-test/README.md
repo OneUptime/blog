@@ -80,7 +80,7 @@ Here are the sanity tests that catch the most issues:
 
 Sometimes a sanity test flags something you cannot or should not fix. Create an ignore file for the specific Ansible version:
 
-```
+```text
 # tests/sanity/ignore-2.16.txt
 # Format: path test-name message
 plugins/modules/legacy_module.py pep8 E501  # Long lines in documentation strings
@@ -97,7 +97,7 @@ Unit tests validate your Python code logic without connecting to any external sy
 
 Unit tests go in the `tests/unit/` directory, mirroring the plugin structure:
 
-```
+```text
 tests/
   unit/
     plugins/
@@ -260,7 +260,7 @@ Integration tests run actual Ansible tasks and verify the results. They are slow
 
 ### Integration Test Structure
 
-```
+```text
 tests/
   integration/
     targets/
@@ -351,7 +351,7 @@ ansible-test integration --docker ubuntu2204
 
 If your tests need specific services (like a database), create an `aliases` file:
 
-```
+```text
 # tests/integration/targets/database_module/aliases
 # Mark as requiring specific setup
 needs/target/setup_postgresql

@@ -72,7 +72,7 @@ docker buildx inspect --bootstrap | grep Platforms
 ```
 
 This typically outputs platforms like:
-```
+```text
 Platforms: linux/amd64, linux/amd64/v2, linux/amd64/v3, linux/arm64, linux/arm/v7, linux/arm/v6
 ```
 

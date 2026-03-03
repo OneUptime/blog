@@ -125,7 +125,7 @@ xpack.security.transport.ssl.enabled: true
 sudo nano /etc/elasticsearch/jvm.options.d/heap.options
 ```
 
-```
+```text
 # Set heap to 50% of available RAM (max 31GB)
 -Xms4g
 -Xmx4g
@@ -147,7 +147,7 @@ sudo nano /etc/security/limits.conf
 
 Add:
 
-```
+```text
 elasticsearch soft nofile 65535
 elasticsearch hard nofile 65535
 elasticsearch soft nproc 4096

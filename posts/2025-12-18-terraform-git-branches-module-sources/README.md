@@ -57,7 +57,7 @@ graph TD
 
 The Git source format has four components:
 
-```
+```text
 git::<protocol>://<host>/<org>/<repo>.git//<path>?ref=<reference>
 ```
 
@@ -222,7 +222,7 @@ module "vpc" {
 
 Organize modules in a monorepo:
 
-```
+```text
 terraform-modules/
 ├── vpc/
 │   ├── main.tf

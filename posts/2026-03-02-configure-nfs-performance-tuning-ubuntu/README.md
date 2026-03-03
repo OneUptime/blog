@@ -104,7 +104,7 @@ Export options significantly affect performance:
 sudo nano /etc/exports
 ```
 
-```
+```text
 # Performance-optimized export
 /srv/exports 192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash,anonuid=1000,anongid=1000)
 
@@ -163,7 +163,7 @@ For write-heavy workloads:
 sudo nano /etc/fstab
 ```
 
-```
+```text
 # High-performance NFS mount
 192.168.1.100:/srv/exports /mnt/nfs nfs rw,hard,intr,rsize=1048576,wsize=1048576,timeo=600,nfsvers=4.2,_netdev 0 0
 ```
@@ -234,7 +234,7 @@ echo "none" | sudo tee /sys/block/sda/queue/scheduler
 sudo nano /etc/udev/rules.d/60-io-scheduler.rules
 ```
 
-```
+```text
 # Set scheduler for SSDs
 ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="none"
 

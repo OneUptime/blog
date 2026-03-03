@@ -26,7 +26,7 @@ For most organizations, a single repository for mesh-level configuration (Gatewa
 
 Here is a structure that has proven effective for production environments:
 
-```
+```text
 istio-config/
   README.md
   .github/
@@ -175,14 +175,14 @@ spec:
 
 Use branches to represent environments:
 
-```
+```text
 main          -> staging cluster (auto-deploy)
 release/prod  -> production cluster (auto-deploy after approval)
 ```
 
 Or use a single branch with directory-based environment separation (simpler, and Kustomize overlays handle the differences):
 
-```
+```text
 main -> All environments, differentiated by path
   overlays/staging/    -> staging cluster
   overlays/production/ -> production cluster
@@ -194,7 +194,7 @@ The single-branch approach is simpler and avoids the complexity of cherry-pickin
 
 Use CODEOWNERS to enforce review requirements:
 
-```
+```text
 # .github/CODEOWNERS
 
 # Platform team owns all mesh-level configuration
@@ -213,7 +213,7 @@ Use CODEOWNERS to enforce review requirements:
 
 Standardize commit messages so the history is useful:
 
-```
+```text
 [service-name] action: brief description
 
 Examples:

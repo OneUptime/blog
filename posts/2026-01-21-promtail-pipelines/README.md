@@ -23,7 +23,7 @@ Before starting, ensure you have:
 
 ### Pipeline Architecture
 
-```
+```text
 Log Entry -> Stage 1 -> Stage 2 -> Stage 3 -> ... -> Loki
                 |           |           |
             Extract      Labels      Output

@@ -128,7 +128,7 @@ Savings Plans apply discounts automatically. AWS processes your hourly usage and
 
 Here's an example of how a $5/hour Compute Savings Plan gets applied:
 
-```
+```text
 Hourly usage:
   3x m5.large  @ $0.096/hr = $0.288 (SP rate: $0.058/hr = $0.174)
   2x c5.xlarge @ $0.170/hr = $0.340 (SP rate: $0.103/hr = $0.206)
@@ -145,7 +145,7 @@ The SP discount is applied starting with the highest hourly rate instances, sque
 
 Let's compare the options for running 10 m5.large instances in us-east-1 for a full year:
 
-```
+```text
 On-Demand:
   10 x $0.096/hr x 8,760 hours = $8,409.60/year
 

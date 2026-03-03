@@ -16,7 +16,7 @@ GPG verification failures in ArgoCD can be some of the most frustrating errors t
 
 The commit does not have a GPG signature at all:
 
-```
+```text
 FATA[0001] rpc error: code = Unknown desc = application spec is invalid:
 InvalidSpecError: GnuPG verification required but commit is not signed
 ```
@@ -25,7 +25,7 @@ InvalidSpecError: GnuPG verification required but commit is not signed
 
 The commit has a signature, but it could not be verified:
 
-```
+```text
 FATA[0001] rpc error: code = Unknown desc = GnuPG signature verification
 failed for commit abc123: signature made by unknown key
 ```
@@ -34,7 +34,7 @@ failed for commit abc123: signature made by unknown key
 
 The signing key is not in ArgoCD's keyring:
 
-```
+```text
 FATA[0001] rpc error: code = Unknown desc = GnuPG verification failed:
 key ID 3AA5C34371567BD2 not found in ArgoCD keyring
 ```

@@ -271,7 +271,7 @@ exports.handler = withTelemetry('create-order', handler);
 
 Configure your OpenTelemetry settings in the Netlify dashboard. Go to Site settings, then Environment variables.
 
-```
+```text
 OTEL_EXPORTER_OTLP_ENDPOINT = https://your-collector.example.com
 OTEL_SERVICE_NAME = my-netlify-site
 ONEUPTIME_TOKEN = your-auth-token

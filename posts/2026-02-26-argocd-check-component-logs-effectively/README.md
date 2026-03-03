@@ -122,7 +122,7 @@ The `stern` tool is particularly useful because it shows logs from all ArgoCD po
 
 ArgoCD logs use a structured format. Here is how to read them:
 
-```
+```text
 time="2024-01-15T10:30:45Z" level=info msg="Sync operation to abc1234" application=my-app dest-namespace=production dest-server="https://kubernetes.default.svc" reason=OperationCompleted type=Normal
 ```
 

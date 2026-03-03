@@ -14,7 +14,7 @@ Each unique combination of metric name and label values creates a time series. T
 
 For example, if an application exports:
 
-```
+```text
 http_requests_total{method="GET", path="/users/1", status="200"} 42
 http_requests_total{method="GET", path="/users/2", status="200"} 15
 http_requests_total{method="GET", path="/users/3", status="200"} 8
@@ -39,7 +39,7 @@ This shows the top 20 metric names by series count. Look for metrics with thousa
 
 You can also use the `prometheusreceiver` internal metrics:
 
-```
+```text
 # Total number of active time series
 prometheus_tsdb_head_series
 

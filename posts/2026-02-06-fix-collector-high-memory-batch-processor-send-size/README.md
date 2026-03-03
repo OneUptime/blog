@@ -25,7 +25,7 @@ With this configuration, the batch processor accumulates up to 50,000 spans befo
 
 ## Calculating Memory Impact
 
-```
+```text
 memory_per_batch = send_batch_size * avg_span_size
 concurrent_batches = num_pipeline_goroutines + batches_in_export
 
@@ -36,7 +36,7 @@ Example with bad config:
 5 concurrent batches = 500MB
 ```
 
-```
+```text
 Example with good config:
 1,024 spans * 2KB = 2MB per batch
 5 concurrent batches = 10MB
@@ -122,7 +122,7 @@ Larger batches with shorter timeout. The higher throughput justifies larger batc
 
 The Collector exposes batch processor metrics:
 
-```
+```text
 # Batch size distribution
 otelcol_processor_batch_batch_send_size
 
@@ -151,7 +151,7 @@ exporters:
 ```
 
 If `queue_size` is 1000 and each batch is 2048 spans at 2KB each, the queue alone can hold:
-```
+```text
 1000 * 2048 * 2KB = ~4GB
 ```
 

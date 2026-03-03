@@ -41,13 +41,13 @@ Permissions flow downward in the hierarchy. A role granted at the organization l
 
 You might encounter these errors in various forms:
 
-```
+```text
 Error: googleapi: Error 403: Required 'compute.instances.create' permission for 'projects/my-project'
 ```
 
 Or from the gcloud CLI:
 
-```
+```text
 ERROR: (gcloud.compute.instances.create) Could not fetch resource:
  - Required 'compute.instances.create' permission for 'projects/my-project/zones/us-central1-a/instances/my-instance'
 ```

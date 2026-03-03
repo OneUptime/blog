@@ -55,7 +55,7 @@ ls -la /home/
 ```
 
 Example output:
-```
+```text
 drwx------ 5 alice alice 4096 Mar  2 10:15 alice
 drwx------ 4 bob   bob   4096 Mar  1 09:30 bob
 drwx------ 3 carol carol 4096 Feb 28 14:22 carol
@@ -71,7 +71,7 @@ sudo nano /etc/login.defs
 
 Find and set:
 
-```
+```text
 HOME_MODE 0700
 ```
 

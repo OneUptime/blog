@@ -192,7 +192,7 @@ go mod vendor
 
 The `go.sum` file contains cryptographic checksums of module versions:
 
-```
+```text
 github.com/gin-gonic/gin v1.9.1 h1:4+fr/el88TOO3ewCmQr8cx/CtZ/umlIRIs5M4NTNjf8=
 github.com/gin-gonic/gin v1.9.1/go.mod h1:hPrL7YrpYKXt5YId3A/Tnip5kqbEAP+KLuI3SUcPTeU=
 ```
@@ -298,7 +298,7 @@ A well-organized project structure makes your code maintainable and follows Go c
 
 ### Basic Project Structure
 
-```
+```text
 myapp/
 ├── go.mod              # Module definition
 ├── go.sum              # Dependency checksums
@@ -849,7 +849,7 @@ dlv exec ./myapp
 
 ### Delve Commands Inside the Debugger
 
-```
+```text
 # Breakpoints
 (dlv) break main.go:25                 # Set breakpoint at line 25
 (dlv) break main.main                  # Set breakpoint at function

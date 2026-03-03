@@ -18,7 +18,7 @@ This error typically appears when running `@SpringBootTest` and Spring's test fr
 
 The full error message:
 
-```
+```text
 java.lang.IllegalStateException: Unable to find a @SpringBootConfiguration,
 you need to use @ContextConfiguration or @SpringBootTest(classes=...)
 with your test
@@ -49,7 +49,7 @@ flowchart TD
 
 The most common cause - your test is not in a package that's a subpackage of your main application.
 
-```
+```text
 // Wrong package structure
 src/main/java/com/example/myapp/
     MyApplication.java        // @SpringBootApplication
@@ -287,7 +287,7 @@ class MockRepositoryConfig {
 
 ### Recommended Structure
 
-```
+```text
 src/
 ├── main/
 │   └── java/

@@ -43,7 +43,7 @@ CMD cron && tail -f /var/log/cron.log
 
 Create the crontab file that defines your schedule:
 
-```
+```text
 # crontab - Run the backup script every hour
 # Format: minute hour day month weekday command
 0 * * * * /usr/local/bin/backup.sh >> /var/log/cron.log 2>&1
@@ -98,7 +98,7 @@ cron && tail -f /var/log/cron.log
 
 Update your crontab to source the environment file:
 
-```
+```text
 # crontab - Source environment variables before running the job
 0 * * * * . /etc/environment; /usr/local/bin/backup.sh >> /var/log/cron.log 2>&1
 
@@ -215,7 +215,7 @@ CMD ["crond", "-f", "-l", "2"]
 
 The crontab file for Alpine goes in `/etc/crontabs/root`:
 
-```
+```text
 # Alpine crontab format is the same
 */5 * * * * /usr/local/bin/health-check.sh
 0 2 * * * /usr/local/bin/cleanup.sh

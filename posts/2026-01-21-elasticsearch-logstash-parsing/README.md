@@ -307,7 +307,7 @@ filter {
 
 Create `/etc/logstash/patterns/custom`:
 
-```
+```text
 # Custom patterns
 APP_TIMESTAMP %{YEAR}-%{MONTHNUM}-%{MONTHDAY}[T ]%{HOUR}:%{MINUTE}:%{SECOND}(?:\.%{INT})?(?:Z|%{ISO8601_TIMEZONE})?
 APP_LOGLEVEL (?:DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL|TRACE)
@@ -695,7 +695,7 @@ queue.checkpoint.writes: 1024
 
 Use Kibana's Grok Debugger or online tools:
 
-```
+```text
 Sample log: 2024-01-21 10:30:00 ERROR [user-service] Failed to process request
 
 Pattern: %{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} \[%{DATA:service}\] %{GREEDYDATA:message}

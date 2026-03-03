@@ -76,7 +76,7 @@ wsl --install -d Ubuntu
 
 ### Configure WSL2 Integration
 
-```
+```text
 Docker Desktop > Settings > Resources > WSL Integration
 
 [x] Enable integration with my default WSL distro
@@ -118,7 +118,7 @@ wsl --shutdown
 
 ### Docker Desktop Settings
 
-```
+```text
 Settings > Resources > Advanced
 - CPUs: 4 (adjust based on system)
 - Memory: 8 GB
@@ -150,7 +150,7 @@ cp -r /mnt/c/Users/user/project ~/projects/
 
 ### Access WSL2 Files from Windows
 
-```
+```text
 # In Windows Explorer
 \\wsl$\Ubuntu\home\user\projects
 

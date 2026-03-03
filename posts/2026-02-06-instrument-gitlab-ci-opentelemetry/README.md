@@ -79,7 +79,7 @@ Once these variables are set, GitLab will automatically export trace data for ev
 
 With tracing enabled, each pipeline run generates a trace with the following structure. Understanding this hierarchy helps you write effective queries against your trace data.
 
-```
+```text
 Trace: gitlab-pipeline-run
   |
   |-- Span: Pipeline #12345

@@ -70,7 +70,7 @@ sudo tcpdump -i eth0 -e -n arp
 
 Sample output when MetalLB is healthy:
 
-```
+```text
 14:32:01.123456 aa:bb:cc:dd:ee:01 > ff:ff:ff:ff:ff:ff, ARP, length 42: Request who-has 192.168.1.100 tell 192.168.1.1
 14:32:01.123789 aa:bb:cc:dd:ee:01 > aa:bb:cc:dd:ee:99, ARP, length 42: Reply 192.168.1.100 is-at aa:bb:cc:dd:ee:01
 ```
@@ -94,7 +94,7 @@ sudo tcpdump -i eth0 -e -n arp and host 192.168.1.100
 
 Here is a breakdown of a single ARP reply line:
 
-```
+```text
 14:32:01.123789 aa:bb:cc:dd:ee:01 > aa:bb:cc:dd:ee:99, ARP, length 42: Reply 192.168.1.100 is-at aa:bb:cc:dd:ee:01
 ```
 
@@ -139,7 +139,7 @@ kubectl get l2advertisement -n metallb-system -o yaml
 
 **Symptom:** You see two Reply lines with different source MACs for the same request.
 
-```
+```text
 14:32:01.123789 aa:bb:cc:dd:ee:01 > ff:ff:ff:ff:ff:ff, ARP, length 42: Reply 192.168.1.100 is-at aa:bb:cc:dd:ee:01
 14:32:01.124012 aa:bb:cc:dd:ee:02 > ff:ff:ff:ff:ff:ff, ARP, length 42: Reply 192.168.1.100 is-at aa:bb:cc:dd:ee:02
 ```

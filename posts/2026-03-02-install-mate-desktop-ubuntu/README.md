@@ -254,7 +254,7 @@ EOF
 
 MATE uses mostly standard keyboard shortcuts. A few useful ones to know:
 
-```
+```text
 Alt+F1          Open Applications menu
 Alt+F2          Run application dialog
 Super+E         Open file manager (Caja)

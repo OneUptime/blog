@@ -95,7 +95,7 @@ The Console view shows:
 
 This recommendation appears when your instance consistently runs close to or above resource limits:
 
-```
+```text
 Recommendation: Upgrade machine type
 Current: db-custom-2-8192 (2 vCPUs, 8 GB RAM)
 Suggested: db-custom-4-16384 (4 vCPUs, 16 GB RAM)
@@ -115,7 +115,7 @@ gcloud sql instances patch my-instance \
 
 The most common recommendation. Your instance has more resources than it uses:
 
-```
+```text
 Recommendation: Downsize machine type
 Current: db-custom-8-32768 (8 vCPUs, 32 GB RAM)
 Suggested: db-custom-4-16384 (4 vCPUs, 16 GB RAM)
@@ -143,7 +143,7 @@ If peak CPU stays under 60% of the suggested tier, it is safe to downsize.
 
 Instances with zero or near-zero connections over an extended period:
 
-```
+```text
 Recommendation: Delete idle instance
 Instance: staging-db-old
 Reason: No connections in the past 14 days
@@ -185,7 +185,7 @@ gcloud sql instances delete staging-db-old
 
 For production instances without HA:
 
-```
+```text
 Recommendation: Enable high availability
 Instance: production-db
 Reason: Instance handles production traffic but has no failover capability

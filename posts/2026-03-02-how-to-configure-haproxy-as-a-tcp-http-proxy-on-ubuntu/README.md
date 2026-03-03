@@ -286,7 +286,7 @@ Configure rsyslog to capture HAProxy logs:
 sudo nano /etc/rsyslog.d/49-haproxy.conf
 ```
 
-```
+```text
 # Capture HAProxy logs
 $AddUnixListenSocket /dev/log
 local0.*   -/var/log/haproxy.log

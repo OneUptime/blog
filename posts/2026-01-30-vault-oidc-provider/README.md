@@ -149,7 +149,7 @@ vault write -f identity/oidc/key/app-key/rotate
 
 Relying parties fetch public keys from the well-known endpoint:
 
-```
+```text
 https://vault.example.com/v1/identity/oidc/provider/main/.well-known/keys
 ```
 

@@ -138,7 +138,7 @@ spec:
 
 If locality-aware load balancing is enabled and you have an uneven number of pods per zone, the zone with fewer pods will have hotter instances:
 
-```
+```text
 Zone A: 5 pods, receives 50% of traffic -> 10% per pod
 Zone B: 2 pods, receives 50% of traffic -> 25% per pod
 ```

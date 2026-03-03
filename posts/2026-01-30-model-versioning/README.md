@@ -87,7 +87,7 @@ Let us build a simple but functional model registry in Python. This implementati
 
 Organize your model registry code in a clear structure that separates concerns: core registry logic, storage backends, and CLI interface.
 
-```
+```text
 model_registry/
     __init__.py
     registry.py      # Core registry logic

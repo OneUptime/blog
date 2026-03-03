@@ -56,7 +56,7 @@ Open your Grafana dashboard and enter edit mode. Add a new panel and search for 
 
 Navigate to your dashboard, click the "Add" button, and select "Visualization":
 
-```
+```text
 Dashboard -> Add -> Visualization -> News
 ```
 
@@ -68,7 +68,7 @@ The News Panel requires a feed URL. For testing, use Grafana's official blog fee
 
 In the panel editor, locate the "Feed URL" field under the panel options and enter your RSS feed URL:
 
-```
+```text
 https://grafana.com/blog/index.xml
 ```
 
@@ -226,7 +226,7 @@ If you use OneUptime for incident management, you can display your status page u
 
 OneUptime provides RSS feeds for status pages. The feed URL format is:
 
-```
+```text
 https://status.yourdomain.com/feed.xml
 ```
 
@@ -267,7 +267,7 @@ In the panel options, configure the refresh interval:
 
 You can also set dashboard-level refresh in the dashboard settings:
 
-```
+```text
 Dashboard Settings -> General -> Auto refresh -> 5m
 ```
 
@@ -277,7 +277,7 @@ When fetching external feeds, you may encounter CORS restrictions. Grafana's bui
 
 Enable the proxy option in the panel settings:
 
-```
+```text
 Panel Options -> Use proxy -> On
 ```
 

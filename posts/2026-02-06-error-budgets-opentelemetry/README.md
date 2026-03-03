@@ -12,7 +12,7 @@ An error budget is the maximum amount of unreliability your service is allowed b
 
 The math behind error budgets is straightforward.
 
-```
+```text
 Error Budget = 1 - SLO Target
 Error Budget Consumed = (1 - Current SLI) / (1 - SLO Target)
 Error Budget Remaining = 1 - Error Budget Consumed
@@ -20,7 +20,7 @@ Error Budget Remaining = 1 - Error Budget Consumed
 
 For a 99.9% availability SLO where your current availability is 99.95%:
 
-```
+```text
 Error Budget = 1 - 0.999 = 0.001 (0.1%)
 Error Budget Consumed = (1 - 0.9995) / (1 - 0.999) = 0.0005 / 0.001 = 0.5 (50%)
 Error Budget Remaining = 1 - 0.5 = 0.5 (50%)

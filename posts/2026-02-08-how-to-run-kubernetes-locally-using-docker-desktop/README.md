@@ -30,7 +30,7 @@ kubectl get nodes
 
 You should see output like:
 
-```
+```text
 NAME             STATUS   ROLES           AGE   VERSION
 docker-desktop   Ready    control-plane   2m    v1.29.1
 ```

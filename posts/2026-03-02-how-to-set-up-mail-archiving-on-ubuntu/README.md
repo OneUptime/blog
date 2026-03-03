@@ -35,7 +35,7 @@ For more granular control, use sender/recipient BCC maps:
 sudo nano /etc/postfix/sender_bcc_maps
 ```
 
-```
+```text
 # Archive all mail from the sales team
 sales@example.com    archive-sales@archive.example.com
 finance@example.com  archive-finance@archive.example.com
@@ -49,7 +49,7 @@ finance@example.com  archive-finance@archive.example.com
 sudo nano /etc/postfix/recipient_bcc_maps
 ```
 
-```
+```text
 # Archive all mail sent to executives
 ceo@example.com    archive-exec@archive.example.com
 cfo@example.com    archive-exec@archive.example.com
@@ -104,7 +104,7 @@ virtual_alias_maps = hash:/etc/postfix/virtual
 sudo nano /etc/postfix/virtual
 ```
 
-```
+```text
 # Map archive@ to the local archive user
 archive@example.com   mailarchive
 ```
@@ -113,7 +113,7 @@ archive@example.com   mailarchive
 sudo nano /etc/postfix/transport
 ```
 
-```
+```text
 # Deliver archive@ to local Maildir
 mailarchive  local:
 ```
@@ -173,7 +173,7 @@ sudo useradd -r -s /usr/sbin/nologin archivist
 sudo nano /etc/postfix/master.cf
 ```
 
-```
+```text
 # Archive pipe service
 mailarchive  unix  -       n       n       -       -       pipe
   flags=Fq user=archivist argv=/usr/local/bin/mail_archive.sh
@@ -184,7 +184,7 @@ mailarchive  unix  -       n       n       -       -       pipe
 sudo nano /etc/postfix/transport
 ```
 
-```
+```text
 archive@example.com   mailarchive:
 ```
 
@@ -231,7 +231,7 @@ transport_maps = hash:/etc/postfix/transport
 sudo nano /etc/postfix/transport
 ```
 
-```
+```text
 archive@localhost  smtp:[127.0.0.1]:8090
 ```
 

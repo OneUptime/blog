@@ -56,7 +56,7 @@ sudo apt install httpie
 
 HTTPie's basic syntax is:
 
-```
+```text
 http [FLAGS] METHOD URL [ITEM...]
 ```
 

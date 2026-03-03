@@ -264,7 +264,7 @@ kubectl exec my-pod -- cat /etc/resolv.conf
 
 Output shows the actual DNS configuration:
 
-```
+```text
 nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5

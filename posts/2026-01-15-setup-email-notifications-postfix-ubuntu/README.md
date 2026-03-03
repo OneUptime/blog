@@ -42,7 +42,7 @@ sudo nano /etc/postfix/main.cf
 
 Send-only configuration:
 
-```
+```text
 # Basic settings
 smtpd_banner = $myhostname ESMTP
 biff = no
@@ -137,7 +137,7 @@ sudo nano /etc/postfix/main.cf
 
 Add:
 
-```
+```text
 # Gmail SMTP relay
 relayhost = [smtp.gmail.com]:587
 smtp_sasl_auth_enable = yes
@@ -153,7 +153,7 @@ Create password file:
 sudo nano /etc/postfix/sasl_passwd
 ```
 
-```
+```text
 [smtp.gmail.com]:587 your-email@gmail.com:your-app-password
 ```
 
@@ -170,7 +170,7 @@ sudo systemctl restart postfix
 
 ### SendGrid SMTP Relay
 
-```
+```text
 relayhost = [smtp.sendgrid.net]:587
 smtp_sasl_auth_enable = yes
 smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
@@ -179,13 +179,13 @@ smtp_tls_security_level = encrypt
 ```
 
 Password file:
-```
+```text
 [smtp.sendgrid.net]:587 apikey:your-sendgrid-api-key
 ```
 
 ### Amazon SES SMTP Relay
 
-```
+```text
 relayhost = [email-smtp.us-east-1.amazonaws.com]:587
 smtp_sasl_auth_enable = yes
 smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
@@ -202,7 +202,7 @@ smtp_tls_security_level = encrypt
 sudo nano /etc/postfix/sender_canonical
 ```
 
-```
+```text
 # Map local users to email addresses
 root    admin@example.com
 www-data noreply@example.com
@@ -224,7 +224,7 @@ sudo systemctl reload postfix
 sudo nano /etc/postfix/generic
 ```
 
-```
+```text
 # Rewrite all local addresses
 root@server.example.com notifications@example.com
 @server.example.com @example.com
@@ -246,7 +246,7 @@ sudo systemctl reload postfix
 sudo nano /etc/aliases
 ```
 
-```
+```text
 # Required aliases
 postmaster: root
 mailer-daemon: postmaster
@@ -350,12 +350,12 @@ MAILFROM=cron@example.com
 
 Add to your domain's DNS:
 
-```
+```text
 v=spf1 a mx ip4:YOUR_SERVER_IP -all
 ```
 
 Or for relay through Gmail:
-```
+```text
 v=spf1 include:_spf.google.com ~all
 ```
 
@@ -371,7 +371,7 @@ Contact your hosting provider to set PTR record for your IP to match your mail h
 sudo nano /etc/postfix/main.cf
 ```
 
-```
+```text
 # Only accept mail from localhost
 mynetworks = 127.0.0.0/8
 inet_interfaces = loopback-only
@@ -382,7 +382,7 @@ smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination
 
 ### Rate Limiting
 
-```
+```text
 # Limit outgoing rate
 smtp_destination_concurrency_limit = 2
 smtp_destination_rate_delay = 1s
@@ -391,7 +391,7 @@ default_destination_rate_delay = 1s
 
 ### Enable TLS
 
-```
+```text
 # Outgoing TLS
 smtp_tls_security_level = encrypt
 smtp_tls_note_starttls_offer = yes

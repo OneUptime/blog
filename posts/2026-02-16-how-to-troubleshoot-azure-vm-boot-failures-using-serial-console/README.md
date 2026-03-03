@@ -153,7 +153,7 @@ For Windows VMs, Serial Console connects to the Special Administrative Console (
 
 After connecting, you will see a SAC> prompt. Here are the key commands:
 
-```
+```text
 SAC> cmd
 # This creates a new command channel
 

@@ -36,7 +36,7 @@ IAM policies and organization policies inherit downward. A policy set at the org
 Before creating projects, plan your folder hierarchy. There are two common approaches:
 
 **Environment-based** (recommended for smaller organizations):
-```
+```text
 Organization
   - Production
   - Staging
@@ -45,7 +45,7 @@ Organization
 ```
 
 **Business unit-based** (better for larger organizations):
-```
+```text
 Organization
   - Engineering
     - Production
@@ -84,7 +84,7 @@ gcloud resource-manager folders create \
 
 Pick a naming convention and stick with it. Here is a pattern that works well:
 
-```
+```text
 {environment}-{team}-{application}-{random-suffix}
 ```
 

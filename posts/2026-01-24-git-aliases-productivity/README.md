@@ -174,7 +174,7 @@ These are the most impactful aliases for visualizing repository history.
 
 **Example output of `git lg`:**
 
-```
+```text
 * a1b2c3d (HEAD -> main) Add authentication
 | * d4e5f6g (feature-api) Implement REST endpoints
 | * h7i8j9k Add API routes

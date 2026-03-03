@@ -99,7 +99,7 @@ sudo git log --oneline -5
 ```
 
 You'll see commits like:
-```
+```text
 a1b2c3d pre-install commit
 d4e5f6g committing changes in /etc made by "apt install nginx"
 ```

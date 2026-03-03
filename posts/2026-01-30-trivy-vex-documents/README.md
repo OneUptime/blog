@@ -616,7 +616,7 @@ Always include detailed impact statements explaining your analysis:
 
 Maintain separate VEX documents for different products or components:
 
-```
+```text
 security/
   vex/
     frontend-app.json

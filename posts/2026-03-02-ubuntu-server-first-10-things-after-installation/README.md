@@ -45,7 +45,7 @@ cat /etc/apt/apt.conf.d/20auto-upgrades
 
 The file should contain:
 
-```
+```text
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 ```

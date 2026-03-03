@@ -146,7 +146,7 @@ android {
 
 The directory structure follows KMP conventions, with source sets organized by target. Shared code goes in `commonMain`, while platform-specific code goes in the respective target directories.
 
-```
+```text
 shared/
 ├── src/
 │   ├── commonMain/

@@ -91,7 +91,7 @@ ansible all -m blockinfile -a "path=/etc/hosts block='# Application servers
 
 The `blockinfile` module wraps your entries in marker comments:
 
-```
+```text
 # BEGIN ANSIBLE MANAGED - Internal Services
 # Application servers
 10.0.1.10 app1.internal app1

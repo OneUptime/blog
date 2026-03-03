@@ -379,7 +379,7 @@ helm template myapp charts/myapp | kube-score score - \
 
 ### Example Output
 
-```
+```text
 apps/v1/Deployment myapp
     [CRITICAL] Container Security Context ReadOnlyRootFilesystem
         · myapp -> The pod has a container with a writable root filesystem

@@ -33,7 +33,7 @@ I prefer file-based provisioning for standard dashboards and API-based for dashb
 
 ## Project Structure
 
-```
+```text
 grafana-dashboards/
   inventory/
     hosts.yml

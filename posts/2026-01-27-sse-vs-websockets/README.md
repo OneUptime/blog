@@ -44,7 +44,7 @@ Key characteristics:
 
 The protocol is straightforward - the server responds with `Content-Type: text/event-stream` and sends events in a specific format:
 
-```
+```text
 event: message
 data: {"user": "alice", "action": "joined"}
 
@@ -70,7 +70,7 @@ Key characteristics:
 
 The handshake starts as HTTP:
 
-```
+```text
 GET /chat HTTP/1.1
 Upgrade: websocket
 Connection: Upgrade
@@ -786,7 +786,7 @@ function sendMessage(text) {
 
 Use this flowchart to choose between SSE and WebSockets:
 
-```
+```text
 START
   |
   v

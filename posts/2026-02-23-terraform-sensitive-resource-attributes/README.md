@@ -32,7 +32,7 @@ variable "api_key" {
 
 When a variable is marked sensitive, Terraform redacts its value from plan output and any log output:
 
-```
+```text
 # aws_db_instance.main will be created
 + resource "aws_db_instance" "main" {
     + password = (sensitive value)
@@ -75,7 +75,7 @@ output "generated_api_key" {
 
 Without the `sensitive` flag, Terraform will refuse to output a value derived from a sensitive variable:
 
-```
+```text
 Error: Output refers to sensitive values
 
   Output "db_password" includes a sensitive value. Use sensitive = true

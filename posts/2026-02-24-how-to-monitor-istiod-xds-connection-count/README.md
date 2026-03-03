@@ -20,7 +20,7 @@ kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | 
 
 The key metric is:
 
-```
+```text
 pilot_xds_connected 247
 ```
 

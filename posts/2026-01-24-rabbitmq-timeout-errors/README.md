@@ -32,7 +32,7 @@ flowchart TD
 
 ### Symptoms
 
-```
+```text
 Error: Connection timeout
 AMQP connection failed: timed out
 Socket timeout during connection
@@ -229,7 +229,7 @@ sequenceDiagram
 
 ### Symptoms
 
-```
+```text
 Error: Heartbeat timeout
 Connection reset by peer
 Missed heartbeats from client, timeout: 60s
@@ -338,7 +338,7 @@ class NonBlockingConsumer:
 
 ### Symptoms
 
-```
+```text
 Error: Channel timeout
 Operation timed out
 RPC timeout
@@ -435,7 +435,7 @@ flowchart LR
 
 ### Symptoms
 
-```
+```text
 Consumer timeout exceeded
 Delivery acknowledgement timed out
 Channel exception: delivery acknowledgement timeout

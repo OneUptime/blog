@@ -65,7 +65,7 @@ You can also enable or disable diff mode on individual tasks using the `diff` di
 
 The diff output uses the unified diff format that most developers are familiar with. Here is what it looks like in practice.
 
-```
+```text
 TASK [Update nginx worker count] **********************************************
 --- before: /etc/nginx/nginx.conf
 +++ after: /home/admin/.ansible/tmp/ansible-tmp-nginx.conf
@@ -135,7 +135,7 @@ ansible-playbook -i inventory.ini sysctl-hardening.yml --diff
 
 The output will show something like this for each changed parameter:
 
-```
+```text
 TASK [Apply sysctl parameters] ************************************************
 --- before
 +++ after

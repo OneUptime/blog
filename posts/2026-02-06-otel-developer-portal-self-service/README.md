@@ -20,7 +20,7 @@ You do not need a fancy UI. A well-organized Git repository with good documentat
 
 ## Repository Structure
 
-```
+```text
 otel-portal/
   templates/
     node/

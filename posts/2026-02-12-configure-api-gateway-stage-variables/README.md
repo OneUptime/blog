@@ -65,7 +65,7 @@ The most powerful use case is pointing different stages at different Lambda func
 
 In your API Gateway integration, set the Lambda function URI to:
 
-```
+```text
 arn:aws:lambda:us-east-1:123456789012:function:order-processor:${stageVariables.lambdaAlias}
 ```
 
@@ -203,7 +203,7 @@ Stage variables aren't just for Lambda. You can use them for HTTP proxy integrat
 
 Set the integration endpoint URL to:
 
-```
+```text
 https://${stageVariables.backendHost}/api/v1/orders
 ```
 

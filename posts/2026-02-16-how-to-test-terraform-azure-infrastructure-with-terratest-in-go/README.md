@@ -47,7 +47,7 @@ go get github.com/stretchr/testify/assert
 
 Your project structure should look like this:
 
-```
+```text
 terraform-azure-modules/
   modules/
     resource-group/

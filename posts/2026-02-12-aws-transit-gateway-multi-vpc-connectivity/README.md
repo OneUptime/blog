@@ -231,7 +231,7 @@ Compare this to VPC peering, which has no hourly fee but charges $0.01/GB for da
 
 ## VPC Peering vs. Transit Gateway
 
-```
+```text
 Scenario                              Best Choice
 3 VPCs, simple connectivity           VPC Peering
 5+ VPCs, full mesh needed             Transit Gateway

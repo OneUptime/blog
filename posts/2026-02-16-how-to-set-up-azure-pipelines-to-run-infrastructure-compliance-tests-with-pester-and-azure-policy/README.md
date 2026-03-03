@@ -22,7 +22,7 @@ The big advantage over just relying on Azure Policy is timing. Azure Policy eval
 
 Create a directory structure for your infrastructure tests alongside your IaC templates.
 
-```
+```text
 infrastructure/
   templates/
     main.bicep

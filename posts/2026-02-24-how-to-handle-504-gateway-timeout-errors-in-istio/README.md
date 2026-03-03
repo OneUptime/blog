@@ -231,7 +231,7 @@ In a microservice architecture, service A calls service B, which calls service C
 
 The rule of thumb is to set timeouts from the inside out:
 
-```
+```text
 Service C: timeout = 15s (innermost)
 Service B calling C: timeout = 12s
 Service A calling B: timeout = 10s (outermost)
@@ -239,7 +239,7 @@ Service A calling B: timeout = 10s (outermost)
 
 Wait, that looks wrong. Actually, the outer timeout should be the largest because it needs to account for the total chain time:
 
-```
+```text
 Service C processing: up to 5s
 Service B timeout for C: 8s (5s + buffer)
 Service B processing: up to 3s

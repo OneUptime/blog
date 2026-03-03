@@ -229,7 +229,7 @@ If you split the install and cleanup into separate RUN instructions, the cleanup
 
 ## Step 8: Use .dockerignore
 
-```
+```text
 # .dockerignore
 __pycache__
 *.pyc

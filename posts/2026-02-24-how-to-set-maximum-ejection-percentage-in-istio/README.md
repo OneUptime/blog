@@ -57,7 +57,7 @@ This says: no matter how many pods are failing, never eject more than 50% of the
 
 The ejection percentage is calculated against the total number of hosts in the load balancing pool:
 
-```
+```text
 max_ejectable = floor(total_hosts * maxEjectionPercent / 100)
 ```
 

@@ -302,7 +302,7 @@ When trace IDs differ between services, check propagation format compatibility.
 
 Different systems use different header formats:
 
-```
+```text
 W3C Trace Context (OpenTelemetry default):
   traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
 

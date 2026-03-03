@@ -140,7 +140,7 @@ ansible all -i ~/ansible-inventory.ini -m ping
 
 If everything is configured correctly, you should see output like this:
 
-```
+```text
 192.168.1.100 | SUCCESS => {
     "changed": false,
     "ping": "pong"

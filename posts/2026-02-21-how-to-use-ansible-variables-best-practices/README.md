@@ -14,7 +14,7 @@ Variables are how you make Ansible flexible, but they are also the most common s
 
 Ansible evaluates variables from many sources, and order matters. Here are the most important levels from lowest to highest priority:
 
-```
+```text
 1.  Role defaults (roles/x/defaults/main.yml)      <- Lowest
 2.  Inventory group_vars/all
 3.  Inventory group_vars/<group>

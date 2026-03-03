@@ -12,7 +12,7 @@ You deployed a Kubernetes service of type LoadBalancer, MetalLB assigned it an e
 
 This guide walks through a systematic debugging flow to find and fix the root cause.
 
-### How MetalLB Layer 2 Mode Works
+## How MetalLB Layer 2 Mode Works
 
 Before debugging, it helps to understand how MetalLB Layer 2 mode actually delivers traffic. Unlike BGP mode, Layer 2 does not use routing protocols. Instead, a single MetalLB speaker pod claims the external IP by responding to ARP (IPv4) or NDP (IPv6) requests on the local network.
 
@@ -178,7 +178,7 @@ This is called **anti-spoofing** or **forged transmits protection**. MetalLB Lay
 
 **VMware ESXi:**
 
-```
+```text
 # In vSphere, navigate to the port group or vSwitch settings
 # Security Policy settings that need to be changed:
 #   - Promiscuous Mode: Accept

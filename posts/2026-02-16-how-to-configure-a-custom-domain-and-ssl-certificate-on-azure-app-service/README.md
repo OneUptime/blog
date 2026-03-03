@@ -27,7 +27,7 @@ Azure needs to verify that you actually own the domain before it lets you map it
 
 Add a CNAME record in your DNS provider that points your subdomain to your App Service:
 
-```
+```text
 Type: CNAME
 Host: www
 Value: myapp.azurewebsites.net
@@ -38,7 +38,7 @@ TTL: 3600
 
 For root domains, you cannot use a CNAME (it breaks DNS standards). Instead, add a TXT record for verification and an A record for routing:
 
-```
+```text
 Type: TXT
 Host: asuid
 Value: <verification-id>
@@ -57,7 +57,7 @@ az webapp show \
 
 Then add the TXT record:
 
-```
+```text
 Type: TXT
 Host: asuid.myapp.com
 Value: <the-verification-id-from-above>
@@ -74,7 +74,7 @@ az webapp show \
   --query "inboundIpAddress" -o tsv
 ```
 
-```
+```text
 Type: A
 Host: @
 Value: <app-service-ip>

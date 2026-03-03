@@ -58,7 +58,7 @@ A very common reason for this error is an expired or invalid authentication toke
 
 If you cannot even reach the login page, clear your browser's local storage for the ArgoCD domain:
 
-```
+```text
 # In browser DevTools (F12) > Application > Local Storage
 # Delete the 'token' entry for your ArgoCD domain
 ```

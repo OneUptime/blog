@@ -31,7 +31,7 @@ To use Kustomize as a post-renderer, you need to create a `kustomization.yaml` f
 
 The cleanest approach is to use a multi-source application that combines Helm output with Kustomize patches:
 
-```
+```text
 # Repository structure
 my-app/
   helm/

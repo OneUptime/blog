@@ -14,7 +14,7 @@ Cognito sign-in errors can be frustrating because the error messages are often v
 
 Here's a quick reference of Cognito error codes you'll encounter:
 
-```
+```text
 NotAuthorizedException        - Wrong password, disabled user, or invalid refresh token
 UserNotFoundException         - User doesn't exist (if your pool allows this error)
 UserNotConfirmedException     - User hasn't verified their email/phone

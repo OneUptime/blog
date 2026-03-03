@@ -128,7 +128,7 @@ rabbitmq-plugins list | grep shovel
 
 Expected output:
 
-```
+```text
 [E*] rabbitmq_shovel               3.12.0
 [E*] rabbitmq_shovel_management    3.12.0
 ```
@@ -687,7 +687,7 @@ Effective monitoring ensures shovels operate reliably and helps catch issues ear
 
 Access the Shovel status page in the RabbitMQ Management UI:
 
-```
+```text
 http://localhost:15672/#/shovels
 ```
 

@@ -76,7 +76,7 @@ ORDER BY path;
 
 The `level` column tracks how deep we are in the hierarchy, and `path` builds a human-readable breadcrumb trail. The output might look like:
 
-```
+```text
 | employee_id | name          | title        | level | path                            |
 |-------------|---------------|--------------|-------|---------------------------------|
 | 1           | Alice Chen    | CEO          | 1     | Alice Chen                      |
@@ -157,7 +157,7 @@ ORDER BY full_path;
 ```
 
 This produces output like:
-```
+```text
 Electronics / Computers / Laptops / Gaming Laptops
 Electronics / Computers / Laptops / Business Laptops
 Electronics / Phones / Smartphones / Android

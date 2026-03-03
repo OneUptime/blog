@@ -59,7 +59,7 @@ az monitor app-insights component show \
 ```
 
 The connection string looks like:
-```
+```text
 InstrumentationKey=12345678-abcd-1234-abcd-123456789abc;IngestionEndpoint=https://eastus-1.in.applicationinsights.azure.com/;LiveEndpoint=https://eastus.livediagnostics.monitor.azure.com/
 ```
 

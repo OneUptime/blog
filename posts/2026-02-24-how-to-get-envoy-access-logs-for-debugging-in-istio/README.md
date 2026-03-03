@@ -83,7 +83,7 @@ This produces much more output than access logs and should only be used for shor
 
 A typical access log entry looks like this:
 
-```
+```text
 [2026-02-24T10:30:45.123Z] "GET /api/users HTTP/1.1" 503 UF via_upstream - "-" 0 91 3005 - "-" "python-requests/2.28.0" "a1b2c3d4-e5f6-7890" "user-service.default.svc.cluster.local" "10.244.2.15:8080" outbound|8080||user-service.default.svc.cluster.local 10.244.1.12:44556 10.96.123.45:8080 10.244.1.12:33444 - default
 ```
 

@@ -31,7 +31,7 @@ For example, with 10 distinct prefixes, you could theoretically handle 55,000 GE
 
 The most common pattern. Great for time-series data, logs, and events.
 
-```
+```text
 logs/2026/02/12/00/access-001.log
 logs/2026/02/12/00/access-002.log
 logs/2026/02/12/01/access-001.log
@@ -99,7 +99,7 @@ store_with_hash_prefix('my-bucket', 'users/12346/profile.json', b'...')
 
 Organize by data type or category. Good for applications with distinct data types that have different access patterns.
 
-```
+```text
 raw-data/sensor-a/2026-02-12/readings.parquet
 raw-data/sensor-b/2026-02-12/readings.parquet
 processed/sensor-a/2026-02-12/aggregated.parquet
@@ -111,7 +111,7 @@ exports/daily/2026-02-12/full-export.csv
 
 If you're using Athena, Spark, or any Hive-compatible tool, this partitioning style is the standard. The tools automatically detect partition columns from the path.
 
-```
+```text
 events/year=2026/month=02/day=12/hour=14/data.parquet
 events/year=2026/month=02/day=12/hour=15/data.parquet
 events/year=2026/month=02/day=13/hour=00/data.parquet
@@ -159,7 +159,7 @@ TBLPROPERTIES (
 
 ### Sequential Numeric Prefixes
 
-```
+```text
 # BAD: All objects land on the same partition initially
 data/0000001.json
 data/0000002.json
@@ -172,7 +172,7 @@ data/c3d4/0000002.json
 
 ### Single Flat Prefix
 
-```
+```text
 # BAD: Everything in one prefix
 files/upload1.jpg
 files/upload2.jpg
@@ -186,7 +186,7 @@ files/documents/2026/02/doc1.pdf
 
 ### Timestamp-First Keys
 
-```
+```text
 # PROBLEMATIC: All recent writes hit the same prefix
 2026-02-12T14:30:00-data.json
 2026-02-12T14:30:01-data.json

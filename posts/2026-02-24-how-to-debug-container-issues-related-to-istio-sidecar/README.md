@@ -45,7 +45,7 @@ kubectl logs my-app-xyz -c istio-proxy --tail=20
 ```
 
 If the sidecar can't connect to istiod, you'll see errors like:
-```
+```text
 Failed to connect to Pilot
 Connection refused to istiod.istio-system.svc:15012
 ```

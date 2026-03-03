@@ -259,7 +259,7 @@ istioctl ztunnel-config policies
 
 Output:
 
-```
+```text
 NAMESPACE    POLICY NAME                      ACTION    SCOPE
 bookinfo     deny-all                         ALLOW     Namespace
 bookinfo     allow-productpage-ingress        ALLOW     Namespace
@@ -279,7 +279,7 @@ kubectl logs -l app=ztunnel -n istio-system --tail=50 | grep "RBAC"
 
 You should see entries like:
 
-```
+```text
 info    access  connection complete src.addr=10.0.1.5:34567
   src.identity="spiffe://cluster.local/ns/bookinfo/sa/ratings"
   dst.addr=10.0.1.6:9080 dst.service="reviews.bookinfo.svc.cluster.local"

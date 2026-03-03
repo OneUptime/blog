@@ -112,7 +112,7 @@ Navigate to Project Settings, then Service connections, then "New service connec
 
 Fill in the fields:
 
-```
+```text
 Service connection name: Azure-OIDC-Connection  (must match the subject claim)
 Subscription ID: your-subscription-id
 Subscription name: Your Subscription Name

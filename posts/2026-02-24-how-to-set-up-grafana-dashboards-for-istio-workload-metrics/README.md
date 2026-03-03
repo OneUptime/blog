@@ -148,7 +148,7 @@ sum(rate(istio_tcp_received_bytes_total{
 
 Set up these template variables for your workload dashboard:
 
-```
+```text
 # Namespace variable
 label_values(istio_requests_total{reporter="destination"}, destination_workload_namespace)
 

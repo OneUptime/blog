@@ -48,7 +48,7 @@ This is fine for a single security group. But when you have 50 services across 3
 
 Start with a clean directory layout:
 
-```
+```text
 modules/security-group/
   main.tf          # Security group resource and rules
   variables.tf     # Input variables

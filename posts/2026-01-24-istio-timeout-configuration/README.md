@@ -214,7 +214,7 @@ Requests take much longer than your configured timeout before failing.
 
 Calculate the worst-case time:
 
-```
+```text
 Worst case = attempts * perTryTimeout + retry backoff
 ```
 

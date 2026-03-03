@@ -93,7 +93,7 @@ spec:
 
 Since each branch represents a full environment, the structure within each branch is identical:
 
-```
+```text
 myapp-config/
 ├── manifests/
 │   ├── deployment.yaml

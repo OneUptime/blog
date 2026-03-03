@@ -26,7 +26,7 @@ GitHub provides comprehensive branch protection through its repository settings.
 
 Navigate to your repository settings, then to Branches, and add a branch protection rule for your main branch:
 
-```
+```text
 Branch name pattern: main
 
 Required settings:
@@ -137,7 +137,7 @@ terraform-security:
 
 In GitLab, configure protected branches under Settings > Repository > Protected Branches:
 
-```
+```text
 Branch: main
 Allowed to merge: Maintainers
 Allowed to push: No one
@@ -147,7 +147,7 @@ Code owner approval required: Yes
 
 Set up merge request approval rules under Settings > General > Merge request approvals:
 
-```
+```text
 Rule: Infrastructure Review
 Approvers: @platform-team
 Approvals required: 2
@@ -196,7 +196,7 @@ GitHub Environments let you define separate protection rules for each environmen
 
 Force pushes are especially dangerous in Terraform repositories because they can rewrite history, removing evidence of previous infrastructure states:
 
-```
+```text
 # GitHub branch protection rule
 - Allow force pushes: NEVER
 - Allow deletions: NEVER
@@ -208,7 +208,7 @@ If someone force pushes over a commit that was already applied, the Terraform st
 
 If you use tags for versioning your Terraform modules, protect them as well:
 
-```
+```text
 # GitHub tag protection rule
 Tag name pattern: v*
 Restrict who can create matching tags: @platform-team

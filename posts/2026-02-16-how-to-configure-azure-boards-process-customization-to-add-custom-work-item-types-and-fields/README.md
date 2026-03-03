@@ -144,7 +144,7 @@ Rules automate work item behavior based on conditions. They reduce manual work a
 
 ### Rule Examples for Common Workflows
 
-```
+```text
 Rule: Auto-assign bugs to triage
   When: Work item type = Bug AND State = New
   Then: Set Assigned To = "Bug Triage Team"

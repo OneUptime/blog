@@ -280,7 +280,7 @@ In non-production environments, this always prints. In production, it only appea
 
 For reference, here is what Ansible itself shows at each verbosity level (in addition to your debug tasks):
 
-```
+```text
 Level 0 (no -v):     Task names and status (ok/changed/failed)
 Level 1 (-v):        Task results with key return values
 Level 2 (-vv):       Input parameters for each task

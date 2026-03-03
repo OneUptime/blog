@@ -268,7 +268,7 @@ mvn org.pitest:pitest-maven:mutationCoverage -DoutputFormats=HTML
 
 The mutation score is calculated as:
 
-```
+```text
 Mutation Score = (Killed Mutants / Total Mutants) x 100%
 ```
 
@@ -348,7 +348,7 @@ describe('calculateDiscount', () => {
 
 Running mutation testing on the weak test reveals survivors:
 
-```
+```text
 Mutant survived: Changed discountPercent > 100 to discountPercent >= 100
 Mutant survived: Changed memberStatus === 'premium' to memberStatus !== 'premium'
 Mutant survived: Changed discount > maxDiscount to discount >= maxDiscount

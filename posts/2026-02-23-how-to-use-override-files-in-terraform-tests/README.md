@@ -16,7 +16,7 @@ Override files are Terraform configuration files named with an `_override` suffi
 
 The key rule: override files replace blocks at the block level, not the attribute level. If you override a resource block, the entire resource definition is replaced.
 
-```
+```text
 my-module/
   main.tf              # Original configuration
   variables.tf         # Original variables

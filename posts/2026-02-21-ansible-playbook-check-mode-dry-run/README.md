@@ -34,7 +34,7 @@ ansible-playbook -i inventory.ini site.yml --check --diff
 
 The output will look something like this:
 
-```
+```text
 TASK [Deploy nginx config] ****************************************************
 --- before: /etc/nginx/nginx.conf
 +++ after: /home/deploy/.ansible/tmp/nginx.conf

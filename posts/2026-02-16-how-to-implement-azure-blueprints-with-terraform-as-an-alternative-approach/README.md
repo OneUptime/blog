@@ -30,7 +30,7 @@ Terraform can do all of this and more.
 
 Organize your Terraform code to mirror the Blueprint concept. A "landing zone" module replaces a Blueprint definition:
 
-```
+```text
 azure-landing-zone/
     modules/
         resource-groups/

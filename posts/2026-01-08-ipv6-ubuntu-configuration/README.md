@@ -37,7 +37,7 @@ graph TB
 
 Global Unicast Addresses are the IPv6 equivalent of public IPv4 addresses. They are globally routable and unique across the internet.
 
-```
+```text
 2001:0db8:85a3:0000:0000:8a2e:0370:7334
 |    |    |    |         |
 |    |    |    |         +-- Interface ID (64 bits)
@@ -59,7 +59,7 @@ ip -6 addr show | grep fe80
 
 Similar to private IPv4 addresses (10.x.x.x, 192.168.x.x), ULAs are used for local communications and are not routable on the public internet.
 
-```
+```text
 fc00::/7 range, commonly using fd00::/8
 Example: fd12:3456:789a::/48
 ```
@@ -298,7 +298,7 @@ ifconfig eth0 | grep inet6
 
 Example output:
 
-```
+```text
 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP
     inet6 2001:db8:1::100/64 scope global
        valid_lft forever preferred_lft forever

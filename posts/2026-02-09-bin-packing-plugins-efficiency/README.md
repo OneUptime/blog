@@ -373,7 +373,7 @@ Test pods use this scheduler and only land on labeled nodes. Compare utilization
 
 Calculate expected savings from bin packing:
 
-```
+```text
 Before bin packing:
 - 50 nodes at 40% average utilization
 - Monthly cost: $10,000

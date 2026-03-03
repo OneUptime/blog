@@ -161,7 +161,7 @@ kubectl get pdb web-app-pdb
 
 The output shows:
 
-```
+```text
 NAME          MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
 web-app-pdb   N/A             1                 1                     10s
 ```

@@ -32,7 +32,7 @@ talosctl services --nodes <node-ip>
 
 This produces output similar to:
 
-```
+```text
 NODE        SERVICE      STATE     HEALTH   LAST CHANGE
 10.0.0.1    apid         Running   OK       5h30m ago
 10.0.0.1    containerd   Running   OK       5h30m ago
@@ -187,12 +187,12 @@ If a lower-level service fails, higher-level services that depend on it will als
 Control plane nodes run more services than workers. Here is a typical comparison:
 
 **Control plane node:**
-```
+```text
 apid, containerd, cri, etcd, kubelet, machined, trustd, udevd
 ```
 
 **Worker node:**
-```
+```text
 apid, containerd, cri, kubelet, machined, trustd, udevd
 ```
 

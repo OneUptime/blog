@@ -103,7 +103,7 @@ stringData:
 
 Here is a typical repository structure using submodules:
 
-```
+```text
 app-repo/
   .gitmodules
   kustomization.yaml
@@ -121,7 +121,7 @@ app-repo/
 
 The `.gitmodules` file defines the submodule:
 
-```
+```text
 [submodule "shared-base"]
     path = shared-base
     url = https://github.com/my-org/shared-k8s-base.git
@@ -189,7 +189,7 @@ stringData:
 
 If your `.gitmodules` uses SSH URLs:
 
-```
+```text
 [submodule "shared-base"]
     path = shared-base
     url = git@github.com:shared-org/shared-k8s-base.git

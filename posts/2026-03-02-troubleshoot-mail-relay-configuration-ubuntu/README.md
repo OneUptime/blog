@@ -45,7 +45,7 @@ swaks --to test@example.com \
 
 The mail log (`/var/log/mail.log`) records every step of message processing. A typical successful delivery looks like:
 
-```
+```text
 Mar  2 10:00:00 server postfix/pickup[1234]: ABCDEF123456: uid=1000 from=<sender@example.com>
 Mar  2 10:00:00 server postfix/cleanup[1235]: ABCDEF123456: message-id=<...@example.com>
 Mar  2 10:00:00 server postfix/qmgr[1236]: ABCDEF123456: from=<sender@example.com>, size=500, nrcpt=1 (queue active)
@@ -55,7 +55,7 @@ Mar  2 10:00:01 server postfix/qmgr[1236]: ABCDEF123456: removed
 
 A deferred delivery shows why it was deferred:
 
-```
+```text
 Mar  2 10:00:01 server postfix/smtp[1237]: ABCDEF123456: to=<recipient@example.com>, relay=smtp.provider.com[x.x.x.x]:587, delay=5, status=deferred (SASL authentication failed; server smtp.provider.com[x.x.x.x] said: 535 5.7.3 Authentication unsuccessful)
 ```
 
@@ -65,7 +65,7 @@ The important parts: `status=`, the relay host, and the error message in parenth
 
 The most common relay problem. Symptoms:
 
-```
+```text
 status=deferred (SASL authentication failed)
 status=deferred (Authentication unsuccessful)
 status=deferred (535 5.7.8 Error: authentication failed)
@@ -111,7 +111,7 @@ swaks \
 
 TLS problems show up as:
 
-```
+```text
 status=deferred (Cannot start TLS: handshake failure)
 status=deferred (certificate verification failed)
 status=deferred (no matching cipher found)
@@ -153,7 +153,7 @@ postconf smtp_tls_protocols
 
 Postfix needs to look up relay host names. DNS failures cause:
 
-```
+```text
 status=deferred (Host or domain name not found. Name service error ...)
 status=deferred (Network is unreachable)
 ```
@@ -252,7 +252,7 @@ If relaying through SendGrid/Mailgun/SES, sender authentication usually comes wi
 
 ## Bounced Messages (Permanent Failures)
 
-```
+```text
 status=bounced (550 User unknown)
 status=bounced (550 5.1.1 The email account does not exist)
 ```
@@ -273,7 +273,7 @@ sudo mail
 
 ## Sender Address Rejected
 
-```
+```text
 status=deferred (550 5.7.1 Invalid sender address)
 status=deferred (550 not allowed to send as domain)
 ```

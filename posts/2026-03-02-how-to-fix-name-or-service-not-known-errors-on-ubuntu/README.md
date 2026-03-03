@@ -57,7 +57,7 @@ ls -la /etc/resolv.conf
 
 On modern Ubuntu, `/etc/resolv.conf` is typically a symlink to systemd-resolved's stub resolver:
 
-```
+```text
 /etc/resolv.conf -> ../run/systemd/resolve/stub-resolv.conf
 ```
 
@@ -131,7 +131,7 @@ cat /etc/nsswitch.conf | grep hosts
 
 Normal output:
 
-```
+```text
 hosts:          files dns
 ```
 
@@ -139,7 +139,7 @@ This means: check `/etc/hosts` first, then DNS.
 
 If the line reads:
 
-```
+```text
 hosts:          files
 ```
 
@@ -153,13 +153,13 @@ sudo nano /etc/nsswitch.conf
 
 If `mdns4_minimal` or `resolve` are in the line:
 
-```
+```text
 hosts:          files mdns4_minimal [NOTFOUND=return] dns resolve [!UNAVAIL=return] mach
 ```
 
 This is Ubuntu's default with Avahi. The `[NOTFOUND=return]` after `mdns4_minimal` can cause issues if mdns fails before DNS is tried. For servers, simplify to:
 
-```
+```text
 hosts:          files dns
 ```
 
@@ -204,7 +204,7 @@ grep $(hostname) /etc/hosts
 
 Ensure `/etc/hosts` has at minimum:
 
-```
+```text
 127.0.0.1    localhost
 127.0.1.1    hostname.yourdomain.com hostname
 ::1          localhost ip6-localhost ip6-loopback

@@ -217,7 +217,7 @@ machine:
 
 IPSec uses specific ports and protocols that must be allowed through any network firewalls:
 
-```
+```text
 # Required for IKE negotiation
 UDP 500 (IKE)
 UDP 4500 (IKE NAT-Traversal)
@@ -249,7 +249,7 @@ ipsec pki --issue --lifetime 730 --cacert ca.crt --cakey ca.key \
 
 ### Configure Certificate-Based Authentication
 
-```
+```text
 conn site-to-site-cert
   type=tunnel
   auto=start
@@ -277,7 +277,7 @@ conn site-to-site-cert
 
 When connecting a Talos cluster to an AWS VPC:
 
-```
+```text
 conn aws-vpc
   type=tunnel
   auto=start
@@ -307,7 +307,7 @@ conn aws-vpc
 
 ### Azure VPN Connection
 
-```
+```text
 conn azure-vnet
   type=tunnel
   auto=start
@@ -377,7 +377,7 @@ kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- ip xfrm state
 
 If either side is behind NAT, ensure NAT-T is enabled (UDP 4500):
 
-```
+```text
 conn nat-traversal
   # Force NAT-T even if not behind NAT
   forceencaps=yes

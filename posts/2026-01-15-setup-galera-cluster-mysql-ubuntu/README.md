@@ -457,7 +457,7 @@ mysql -u root -p -e "SHOW STATUS LIKE 'wsrep%';" | grep -E 'wsrep_cluster_size|w
 
 Expected output:
 
-```
+```text
 wsrep_cluster_size      3
 wsrep_cluster_status    Primary
 wsrep_connected         ON

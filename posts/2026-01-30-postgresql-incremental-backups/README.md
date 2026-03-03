@@ -287,7 +287,7 @@ sudo -u postgres pgbackrest --stanza=main check
 
 Expected output:
 
-```
+```text
 P00   INFO: check command begin
 P00   INFO: check repo1 (path)
 P00   INFO: switch wal not performed because this is a new stanza
@@ -331,7 +331,7 @@ sudo -u postgres pgbackrest --stanza=main info
 
 Output example:
 
-```
+```text
 stanza: main
     status: ok
     cipher: none

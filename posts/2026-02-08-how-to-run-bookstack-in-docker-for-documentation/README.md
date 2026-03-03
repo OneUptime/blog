@@ -147,7 +147,7 @@ Navigate to Settings > Application:
 
 Under Settings > Registration, decide whether users can self-register or if an admin must create accounts. For internal documentation, disable public registration:
 
-```
+```text
 # In the Settings > Registration panel:
 Registration Enabled: No
 ```

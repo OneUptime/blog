@@ -26,7 +26,7 @@ istioctl proxy-config cluster productpage-v1-6b746f74dc-9rlmh.bookinfo
 
 Output:
 
-```
+```text
 SERVICE FQDN                                    PORT     SUBSET     DIRECTION     TYPE           DESTINATION RULE
 BlackHoleCluster                                 -        -          -             STATIC
 agent                                            -        -          -             STATIC

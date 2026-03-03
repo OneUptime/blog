@@ -242,7 +242,7 @@ After rotating passwords, verify that the change took effect.
 
 For production use, organize this into an Ansible role.
 
-```
+```text
 roles/password_rotation/
   tasks/
     main.yml

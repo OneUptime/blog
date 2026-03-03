@@ -8,7 +8,7 @@ Description: Learn how to use node selectors in MetalLB BGPPeer resources to lim
 
 ---
 
-### Why Limit BGP Peers to Specific Nodes?
+## Why Limit BGP Peers to Specific Nodes?
 
 By default, every node running a MetalLB speaker will try to establish a BGP session with every configured BGPPeer. In large clusters, this creates unnecessary sessions and can overwhelm upstream routers that have limited peer capacity.
 

@@ -70,7 +70,7 @@ cat /etc/cron.allow
 
 After this, any user not in `/etc/cron.allow` who tries to edit their crontab will see:
 
-```
+```text
 You (username) are not allowed to use this program (crontab)
 ```
 

@@ -137,7 +137,7 @@ Once diagnostic data flows to Log Analytics, you can query it with Kusto Query L
 
 Find the slowest queries in the last 24 hours:
 
-```
+```text
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.SQL"
 | where Category == "QueryStoreRuntimeStatistics"
@@ -149,7 +149,7 @@ AzureDiagnostics
 
 Find deadlocks:
 
-```
+```text
 AzureDiagnostics
 | where ResourceProvider == "MICROSOFT.SQL"
 | where Category == "Deadlocks"
@@ -159,7 +159,7 @@ AzureDiagnostics
 
 Track connection failures over time:
 
-```
+```text
 AzureMetrics
 | where ResourceProvider == "MICROSOFT.SQL"
 | where MetricName == "connection_failed"

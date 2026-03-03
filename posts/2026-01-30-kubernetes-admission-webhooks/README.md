@@ -40,7 +40,7 @@ Here is a comparison of the two webhook types:
 
 Let's build a complete webhook server. Here is the project layout:
 
-```
+```text
 admission-webhook/
 ├── cmd/
 │   └── webhook/
@@ -1093,7 +1093,7 @@ Keep your webhook logic fast. Move heavy processing to async workers if needed.
 
 The CA bundle in your webhook configuration must match the certificate authority that signed your server certificate. Symptoms include:
 
-```
+```text
 Error from server: Internal error occurred: failed calling webhook
 ```
 

@@ -56,7 +56,7 @@ graph TB
 
 A clean CIDR scheme makes troubleshooting and security rules much easier. Here's what I recommend for a `/16` VPC:
 
-```
+```text
 VPC: 10.0.0.0/16
 
 Web Tier (Public):

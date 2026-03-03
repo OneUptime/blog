@@ -24,7 +24,7 @@ Consider migrating when you notice these patterns:
 
 You are going from this:
 
-```
+```text
 # Workspace-based (before)
 project/
   main.tf
@@ -38,7 +38,7 @@ project/
 
 To this:
 
-```
+```text
 # Directory-based (after)
 project/
   modules/

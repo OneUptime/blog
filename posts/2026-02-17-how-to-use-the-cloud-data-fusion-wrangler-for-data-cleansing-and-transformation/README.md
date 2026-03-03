@@ -41,14 +41,14 @@ The power of the Wrangler comes from its directive system. You can either use th
 
 To standardize a column with inconsistent casing, click the column header dropdown and select "Uppercase" or "Lowercase." This generates a directive like:
 
-```
+```text
 // Convert the customer_name column to lowercase for consistency
 lowercase customer_name
 ```
 
 To trim whitespace from string fields:
 
-```
+```text
 // Remove leading and trailing spaces from the email column
 trim email
 ```
@@ -57,14 +57,14 @@ trim email
 
 The Wrangler lets you filter or fill null values. If you want to fill null values in a numeric column with a default:
 
-```
+```text
 // Replace null values in the revenue column with 0
 fill-null-or-empty revenue '0'
 ```
 
 To drop rows where a critical field is missing:
 
-```
+```text
 // Remove rows where the customer_id column is empty
 filter-rows-on condition-if-matched customer_id =~ '^\s*$'
 ```
@@ -73,14 +73,14 @@ filter-rows-on condition-if-matched customer_id =~ '^\s*$'
 
 If you have a column that contains combined data - say a full address in a single field - you can split it:
 
-```
+```text
 // Split the address column on commas into separate fields
 split-to-columns address ','
 ```
 
 For dates that arrive in a non-standard format, you can parse them:
 
-```
+```text
 // Parse the order_date column from a custom format to a standard date
 parse-as-datetime order_date "MM/dd/yyyy"
 ```
@@ -89,7 +89,7 @@ parse-as-datetime order_date "MM/dd/yyyy"
 
 The Wrangler often infers types incorrectly, especially when reading from CSV files. You can explicitly set column types:
 
-```
+```text
 // Convert the amount column from string to decimal
 set-type amount decimal
 ```
@@ -98,14 +98,14 @@ set-type amount decimal
 
 To rename a column for clarity:
 
-```
+```text
 // Rename the cryptic column name to something readable
 rename col_7 shipping_cost
 ```
 
 To drop columns you do not need:
 
-```
+```text
 // Remove the internal_notes column before loading to BigQuery
 drop internal_notes
 ```
@@ -147,7 +147,7 @@ The pipeline YAML that gets generated will include your Wrangler directives as a
 
 You can apply transformations conditionally using the `set-column` directive with expressions:
 
-```
+```text
 // Set a new column based on a condition - categorize orders by size
 set-column order_category exp:{order_amount > 1000 ? 'large' : 'small'}
 ```
@@ -156,7 +156,7 @@ set-column order_category exp:{order_amount > 1000 ? 'large' : 'small'}
 
 To combine multiple columns into one:
 
-```
+```text
 // Merge first_name and last_name into a full_name column
 merge first_name last_name full_name ' '
 ```
@@ -165,7 +165,7 @@ merge first_name last_name full_name ' '
 
 The Wrangler supports JEXL expressions for more advanced logic:
 
-```
+```text
 // Calculate a discount column based on customer tier
 set-column discount exp:{tier == 'gold' ? amount * 0.2 : amount * 0.1}
 ```

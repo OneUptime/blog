@@ -14,7 +14,7 @@ If you have worked with Redis long enough, you have probably encountered the dre
 
 The "BUSY Redis is busy" error occurs when Redis is executing a Lua script that takes longer than the configured timeout. Redis is single-threaded for command execution, which means while a script is running, nothing else can happen. Every other client has to wait.
 
-```
+```text
 BUSY Redis is busy running a script. You can only call SCRIPT KILL or SHUTDOWN NOSAVE.
 ```
 

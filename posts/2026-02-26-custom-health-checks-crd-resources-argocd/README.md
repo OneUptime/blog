@@ -36,7 +36,7 @@ ArgoCD might show this as Healthy because the resource exists, even though the d
 
 Custom health checks are defined in the `argocd-cm` ConfigMap in the `argocd` namespace. The key format is:
 
-```
+```text
 resource.customizations.health.<group>_<kind>
 ```
 

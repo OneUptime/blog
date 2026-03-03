@@ -377,7 +377,7 @@ fn main() {
 
 ## Choosing the Right Smart Pointer
 
-```
+```text
 Do you need heap allocation?
 ├── Yes → Box<T>
 └── No → Use regular value

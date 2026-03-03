@@ -620,14 +620,14 @@ Most modern tracing backends support span links. Here is how to query them:
 
 ### Querying in Jaeger
 
-```
+```text
 # Find traces with links to a specific trace ID
 service=my-service AND link.traceID=abc123
 ```
 
 ### Querying in Grafana Tempo
 
-```
+```text
 { span.links.traceID = "abc123" }
 ```
 

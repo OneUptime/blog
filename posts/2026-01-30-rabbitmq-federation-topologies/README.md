@@ -60,7 +60,7 @@ rabbitmq-plugins list | grep federation
 
 You should see output similar to:
 
-```
+```text
 [E*] rabbitmq_federation               3.12.0
 [E*] rabbitmq_federation_management    3.12.0
 ```
@@ -409,7 +409,7 @@ Federation supports various topologies. Choose based on your requirements.
 
 A central hub receives messages from multiple regional spokes:
 
-```
+```text
     [Spoke-East] ----\
                       \
     [Spoke-West] ------> [Central Hub]
@@ -443,7 +443,7 @@ rabbitmqctl set_policy hub-federation \
 
 Each broker federates with every other broker for full message distribution:
 
-```
+```text
     [DC-East] <-----> [DC-West]
         ^                ^
         |                |

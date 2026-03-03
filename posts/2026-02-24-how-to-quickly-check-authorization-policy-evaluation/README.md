@@ -56,7 +56,7 @@ istioctl x authz check deploy/my-app.default
 
 This shows:
 
-```
+```text
 LISTENER[FilterChain]     HTTP ROUTE     AUTHZ POLICY                     ACTION
 virtualInbound[0]         inbound|80     deny-all.default                 DENY
 virtualInbound[0]         inbound|80     allow-frontend.default           ALLOW
@@ -100,13 +100,13 @@ kubectl logs deploy/my-app -n default -c istio-proxy --tail=20
 
 You will see log lines like:
 
-```
+```text
 enforced denied, matched policy deny-all
 ```
 
 or
 
-```
+```text
 enforced allowed, matched policy allow-frontend
 ```
 
@@ -238,7 +238,7 @@ kubectl exec deploy/my-app -n default -c istio-proxy -- \
 
 Key stats:
 
-```
+```text
 rbac.allowed: 150     # Requests that passed authorization
 rbac.denied: 23       # Requests denied by authorization
 rbac.shadow_allowed: 0  # Would-be-allowed in shadow mode

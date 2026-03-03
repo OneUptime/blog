@@ -206,7 +206,7 @@ for entity in entities:
 ```
 
 Expected output:
-```
+```text
   [DRUG_NAME] 'Lisinopril' (confidence: 0.95)
   [DOSAGE] '20mg' (confidence: 0.93)
   [FREQUENCY] 'daily' (confidence: 0.91)

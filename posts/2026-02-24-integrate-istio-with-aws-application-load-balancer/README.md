@@ -14,7 +14,7 @@ If you are running Istio on Amazon EKS, there is a good chance you want to use t
 
 The standard architecture puts the ALB in front of the Istio ingress gateway. AWS traffic flows like this:
 
-```
+```text
 Internet -> ALB -> Target Group -> Istio Ingress Gateway Pods -> Mesh Services
 ```
 

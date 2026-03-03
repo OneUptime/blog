@@ -113,13 +113,13 @@ For high-concurrency services, I recommend "CPU always allocated" because it giv
 
 Each concurrent request consumes memory. You need to estimate the per-request memory overhead and multiply by your concurrency target, then add your application's base memory usage.
 
-```
+```text
 total_memory = base_memory + (per_request_memory * concurrency)
 ```
 
 For example, if your Go API server uses 50MB at rest and each request needs about 2MB for processing:
 
-```
+```text
 # For concurrency of 150:
 total_memory = 50MB + (2MB * 150) = 350MB
 # Set memory limit to ~512Mi for headroom

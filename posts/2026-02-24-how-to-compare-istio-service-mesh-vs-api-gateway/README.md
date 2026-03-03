@@ -107,7 +107,7 @@ These are fundamentally different use cases even though they both involve contro
 
 Here is how they typically work together:
 
-```
+```text
 External Client
       |
 [API Gateway]  <-- Authentication, rate limiting, API key validation,

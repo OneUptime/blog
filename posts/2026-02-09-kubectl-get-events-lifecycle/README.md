@@ -39,7 +39,7 @@ kubectl get events --sort-by='.lastTimestamp'
 
 Standard output shows:
 
-```
+```text
 LAST SEEN   TYPE      REASON              OBJECT                MESSAGE
 2m          Normal    Scheduled           pod/myapp-xyz         Successfully assigned default/myapp-xyz to node-1
 1m          Normal    Pulling             pod/myapp-xyz         Pulling image "nginx:latest"

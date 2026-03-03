@@ -26,7 +26,7 @@ The main drawbacks are repository size, build times, and the need for fine-grain
 
 Here is a proven monorepo structure for ArgoCD:
 
-```
+```text
 gitops-monorepo/
 ├── apps/                              # ArgoCD Application/ApplicationSet definitions
 │   ├── root.yaml                      # Root App-of-Apps
@@ -324,7 +324,7 @@ When you have many apps, make sure each Application only watches its specific pa
 
 Use CODEOWNERS to enforce review requirements per directory:
 
-```
+```text
 # CODEOWNERS
 /platform/          @platform-team
 /services/team-a/   @team-a

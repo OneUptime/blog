@@ -23,7 +23,7 @@ kubectl describe daemonset otel-collector -n observability | grep -A20 "Events"
 
 Look for events like:
 
-```
+```text
 Warning  FailedScheduling  0/5 nodes are available: 2 node(s) had untolerated taint
 {node-pool=gpu: NoSchedule}, 3 node(s) matched pod affinity/anti-affinity rules
 ```

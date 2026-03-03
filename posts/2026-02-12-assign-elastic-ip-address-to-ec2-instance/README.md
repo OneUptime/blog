@@ -143,7 +143,7 @@ Once released, the IP address goes back into Amazon's pool. You can't get the sa
 
 One of the most common reasons to use an Elastic IP is to point a DNS record at it. Since the IP doesn't change, your DNS stays valid:
 
-```
+```text
 # Example DNS record in Route 53 or your DNS provider
 Type: A
 Name: api.example.com

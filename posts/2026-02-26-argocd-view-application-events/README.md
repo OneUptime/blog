@@ -16,7 +16,7 @@ Events are short-lived records that describe state changes and errors in Kuberne
 
 Events have a standard structure:
 
-```
+```text
 Type:     Normal or Warning
 Reason:   Short code describing what happened
 Message:  Human-readable description
@@ -39,7 +39,7 @@ To see events for the ArgoCD Application resource itself:
 
 Application-level events show ArgoCD-specific operations:
 
-```
+```text
 LAST SEEN   TYPE      REASON              MESSAGE
 1m ago      Normal    OperationStarted    Sync operation started
 1m ago      Normal    OperationCompleted  Sync operation to abc1234 succeeded
@@ -63,7 +63,7 @@ Resource-level events come directly from Kubernetes and provide detailed operati
 Pod events are the most frequently examined because they reveal scheduling, image pull, and container startup issues.
 
 **Successful Pod startup:**
-```
+```text
 LAST SEEN   TYPE     REASON      MESSAGE
 2m ago      Normal   Scheduled   Successfully assigned my-app/web-abc123 to node-1
 2m ago      Normal   Pulling     Pulling image "myregistry.io/web:v1.2.0"
@@ -73,7 +73,7 @@ LAST SEEN   TYPE     REASON      MESSAGE
 ```
 
 **Failed image pull:**
-```
+```text
 LAST SEEN   TYPE      REASON          MESSAGE
 30s ago     Normal    Scheduled       Successfully assigned my-app/web-def456 to node-2
 25s ago     Normal    Pulling         Pulling image "myregistry.io/web:v9.9.9"
@@ -85,7 +85,7 @@ LAST SEEN   TYPE      REASON          MESSAGE
 ```
 
 **Insufficient resources:**
-```
+```text
 LAST SEEN   TYPE      REASON             MESSAGE
 1m ago      Warning   FailedScheduling   0/3 nodes are available:
                                          3 Insufficient memory.
@@ -94,7 +94,7 @@ LAST SEEN   TYPE      REASON             MESSAGE
 ```
 
 **CrashLoopBackOff:**
-```
+```text
 LAST SEEN   TYPE      REASON      MESSAGE
 30s ago     Normal    Created     Created container web
 28s ago     Normal    Started     Started container web
@@ -109,14 +109,14 @@ LAST SEEN   TYPE      REASON      MESSAGE
 
 Deployment events show scaling operations:
 
-```
+```text
 LAST SEEN   TYPE     REASON              MESSAGE
 5m ago      Normal   ScalingReplicaSet   Scaled up replica set web-abc123 to 3
 3m ago      Normal   ScalingReplicaSet   Scaled down replica set web-xyz789 to 0
 ```
 
 **Stuck rollout:**
-```
+```text
 LAST SEEN   TYPE      REASON                MESSAGE
 10m ago     Normal    ScalingReplicaSet     Scaled up replica set web-new123 to 1
 10m ago     Warning   ProgressDeadlineExceeded
@@ -127,7 +127,7 @@ LAST SEEN   TYPE      REASON                MESSAGE
 
 PVC events show storage provisioning status:
 
-```
+```text
 LAST SEEN   TYPE      REASON                MESSAGE
 2m ago      Normal    Provisioning          External provisioner is provisioning
                                             volume for claim "my-app/data-pvc"
@@ -135,7 +135,7 @@ LAST SEEN   TYPE      REASON                MESSAGE
 ```
 
 **Failed provisioning:**
-```
+```text
 LAST SEEN   TYPE      REASON               MESSAGE
 5m ago      Warning   ProvisioningFailed   storageclass.storage.k8s.io "fast-ssd"
                                            not found
@@ -145,7 +145,7 @@ LAST SEEN   TYPE      REASON               MESSAGE
 
 Service events typically relate to endpoint management:
 
-```
+```text
 LAST SEEN   TYPE     REASON                MESSAGE
 1m ago      Normal   EnsuringLoadBalancer   Ensuring load balancer
 30s ago     Normal   EnsuredLoadBalancer    Ensured load balancer
@@ -153,7 +153,7 @@ LAST SEEN   TYPE     REASON                MESSAGE
 
 ### Ingress Events
 
-```
+```text
 LAST SEEN   TYPE      REASON    MESSAGE
 2m ago      Normal    Sync      Scheduled for sync
 1m ago      Normal    CREATE    Ingress my-app/web-ingress
@@ -194,7 +194,7 @@ ArgoCD generates its own events on Application resources during sync operations:
 
 ### Successful Sync
 
-```
+```text
 Type:     Normal
 Reason:   OperationStarted
 Message:  Sync operation to abc1234 started
@@ -206,7 +206,7 @@ Message:  Sync operation to abc1234 succeeded
 
 ### Failed Sync
 
-```
+```text
 Type:     Warning
 Reason:   OperationCompleted
 Message:  Sync operation to abc1234 failed:
@@ -218,7 +218,7 @@ Message:  Sync operation to abc1234 failed:
 
 ### Sync with Hooks
 
-```
+```text
 Type:     Normal
 Reason:   PreSyncHookStarted
 Message:  Running PreSync hook: Job/db-migrate

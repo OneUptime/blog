@@ -142,7 +142,7 @@ exit 1
 
 The best way to reduce lock contention is to minimize the blast radius of each state file:
 
-```
+```text
 infrastructure/
   networking/
     main.tf          # VPCs, subnets, route tables

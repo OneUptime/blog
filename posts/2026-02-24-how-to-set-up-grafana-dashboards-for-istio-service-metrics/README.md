@@ -171,17 +171,17 @@ gRPC status codes are different from HTTP status codes, so you need a separate p
 Create variables so one dashboard works for any service:
 
 **Variable: namespace**
-```
+```text
 label_values(istio_requests_total{reporter="destination"}, destination_workload_namespace)
 ```
 
 **Variable: service** (dependent on namespace)
-```
+```text
 label_values(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace"}, destination_service)
 ```
 
 **Variable: workload** (dependent on namespace)
-```
+```text
 label_values(istio_requests_total{reporter="destination", destination_workload_namespace=~"$namespace"}, destination_workload)
 ```
 

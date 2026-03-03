@@ -87,7 +87,7 @@ docker logs -t --since 1h my-container
 
 The output includes ISO 8601 timestamps:
 
-```
+```text
 2026-02-08T14:30:01.123456789Z GET /api/health 200 OK
 2026-02-08T14:30:05.456789012Z POST /api/users 201 Created
 2026-02-08T14:30:12.789012345Z GET /api/users/42 404 Not Found

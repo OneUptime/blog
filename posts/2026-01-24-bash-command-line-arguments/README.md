@@ -102,7 +102,7 @@ demo_args "$@"
 
 Output when called with `./script.sh "hello world" foo bar`:
 
-```
+```text
 Using $@:
   Arg: 'hello world'
   Arg: 'foo'

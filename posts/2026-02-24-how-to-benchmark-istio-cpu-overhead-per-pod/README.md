@@ -353,7 +353,7 @@ If sidecars are consuming more than 5-10% of your total cluster CPU, consider:
 
 Translate CPU overhead into actual cost:
 
-```
+```text
 Total sidecar CPU (cores) x Cost per CPU core per hour x Hours per month = Monthly cost
 ```
 

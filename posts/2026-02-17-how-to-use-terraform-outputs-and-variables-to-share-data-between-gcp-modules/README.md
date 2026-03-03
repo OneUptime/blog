@@ -18,7 +18,7 @@ Say you have two modules. One creates a VPC network, and the other deploys a GKE
 
 Here is what a typical project structure looks like:
 
-```
+```text
 project/
   main.tf
   variables.tf

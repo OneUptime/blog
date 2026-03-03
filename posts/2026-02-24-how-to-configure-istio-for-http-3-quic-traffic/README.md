@@ -16,7 +16,7 @@ This guide covers how to enable and configure HTTP/3 support in Istio.
 
 HTTP/3 support in Istio is primarily at the ingress gateway level. The internal mesh traffic between sidecars continues to use HTTP/2 over mTLS on TCP. The architecture looks like this:
 
-```
+```text
 Client --(HTTP/3 over QUIC)--> Ingress Gateway --(HTTP/2 over mTLS)--> Service
 ```
 

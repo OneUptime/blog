@@ -109,7 +109,7 @@ spec:
 
 Apply security standards to namespaces using labels. The label format follows this pattern:
 
-```
+```text
 pod-security.kubernetes.io/<MODE>: <LEVEL>
 pod-security.kubernetes.io/<MODE>-version: <VERSION>
 ```

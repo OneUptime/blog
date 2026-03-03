@@ -68,7 +68,7 @@ The optimal value depends on your repo server's resources and the complexity of 
 
 ### Based on CPU Allocation
 
-```
+```text
 Recommended parallelism = (Repo server CPU cores) * 2
 ```
 
@@ -81,13 +81,13 @@ For example:
 
 Each concurrent manifest generation holds repository data and rendered manifests in memory. A rough estimate:
 
-```
+```text
 Memory per concurrent operation = 100MB to 500MB (depending on repo size)
 Recommended parallelism = (Available memory - 500MB baseline) / 300MB
 ```
 
 For a repo server with 4GB memory limit:
-```
+```text
 (4096MB - 500MB) / 300MB = ~12
 ```
 
@@ -152,7 +152,7 @@ With this configuration, the total cluster-wide parallelism is 3 replicas * 5 = 
 
 ### Sizing for Multiple Replicas
 
-```
+```text
 Total parallelism = Replicas * Per-replica limit
 Per-replica limit = Desired total parallelism / Replicas
 ```

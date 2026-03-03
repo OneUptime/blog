@@ -62,7 +62,7 @@ go test ./...
 
 The OpenTofu codebase is large, but understanding the high-level structure helps you find your way around:
 
-```
+```text
 opentofu/
   cmd/tofu/         # Main entry point for the CLI
   internal/         # Core internal packages

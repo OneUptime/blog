@@ -23,7 +23,7 @@ A typical multi-cloud Crossplane setup consists of:
 3. Composite Resource Definitions (XRDs) that define your platform API
 4. Compositions that implement the platform API for each cloud provider
 
-```
+```text
                     ┌─────────────────────┐
                     │  Management Cluster  │
                     │     (Crossplane)     │

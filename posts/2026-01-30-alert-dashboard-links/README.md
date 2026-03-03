@@ -39,7 +39,7 @@ flowchart LR
 
 Grafana dashboard URLs follow a predictable pattern:
 
-```
+```text
 https://grafana.example.com/d/{dashboard-uid}/{dashboard-slug}?{parameters}
 ```
 
@@ -160,7 +160,7 @@ Grafana supports multiple time range formats. Understanding each helps you build
 
 Most precise, ideal for alert links:
 
-```
+```text
 ?from=1706644800000&to=1706648400000
 ```
 
@@ -168,7 +168,7 @@ Most precise, ideal for alert links:
 
 Useful for dashboards that should always show recent data:
 
-```
+```text
 ?from=now-1h&to=now
 ```
 
@@ -176,7 +176,7 @@ Useful for dashboards that should always show recent data:
 
 Human-readable alternative:
 
-```
+```text
 ?from=2026-01-30T10:00:00Z&to=2026-01-30T11:00:00Z
 ```
 

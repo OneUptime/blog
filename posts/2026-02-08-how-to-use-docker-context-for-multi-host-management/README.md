@@ -213,7 +213,7 @@ docker --context production logs -f api &
 
 SSH contexts use your local SSH configuration. Optimize it for Docker context usage.
 
-```
+```text
 # ~/.ssh/config - Optimized for Docker contexts
 
 Host staging.example.com

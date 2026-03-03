@@ -59,7 +59,7 @@ This helps you see exactly what the application looked like when a command ran o
 
 Cypress error messages are detailed. Read them carefully before reaching for other tools.
 
-```
+```text
 CypressError: Timed out retrying after 4000ms: Expected to find element:
 '[data-cy="submit-button"]', but never found it.
 

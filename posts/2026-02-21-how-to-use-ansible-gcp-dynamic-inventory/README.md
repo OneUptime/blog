@@ -115,7 +115,7 @@ ansible -i inventory.gcp.yml all -m ping
 
 The `--graph` output will look something like this:
 
-```
+```text
 @all:
   |--@env_production:
   |  |--web-server-1
@@ -311,7 +311,7 @@ inventory = ./inventory/
 
 Then put your files in the `inventory/` directory:
 
-```
+```text
 inventory/
   01-static-hosts.ini
   02-gcp.gcp.yml

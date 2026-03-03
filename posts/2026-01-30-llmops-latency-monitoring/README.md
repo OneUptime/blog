@@ -43,7 +43,7 @@ LLM request latency is not a single number. It breaks down into several distinct
 | Inter-Token Latency (ITL) | Time between consecutive tokens | 10-50ms |
 | Total Generation Time | Full time from request to completion | 500ms-60s+ |
 
-```
+```text
 Request Timeline (Streaming Response)
 |------ TTFT ------|
 |                  |---- Token 1 ----|- Token 2 -|- Token 3 -|... |- Token N -|

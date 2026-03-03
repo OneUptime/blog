@@ -46,7 +46,7 @@ The `--no-traffic` flag means 0% of production traffic goes to this new revision
 
 After deployment, gcloud will output something like:
 
-```
+```text
 Service [my-service] revision [my-service-00002-abc] has been deployed with tag [canary]
 Traffic: https://canary---my-service-xxxxx-uc.a.run.app
 ```

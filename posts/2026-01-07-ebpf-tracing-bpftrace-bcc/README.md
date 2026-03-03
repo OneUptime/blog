@@ -166,7 +166,7 @@ flowchart LR
 
 The basic syntax follows this pattern:
 
-```
+```text
 probe_type:probe_name /filter/ { action }
 ```
 

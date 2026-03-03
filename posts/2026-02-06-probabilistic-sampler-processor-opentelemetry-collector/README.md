@@ -534,7 +534,7 @@ Key metrics to monitor:
 - `otelcol_receiver_accepted_spans` - Total spans received
 
 Calculate actual sampling rate:
-```
+```text
 Actual Rate = (sampled_traces / total_traces) × 100
 ```
 

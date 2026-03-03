@@ -20,7 +20,7 @@ The Azure deployment follows a similar pattern to other cloud providers:
 - Azure Application Gateway or Load Balancer for HTTPS access
 - Virtual Network with subnets for network isolation
 
-```
+```text
 [Internet]
     |
 [Application Gateway - HTTPS:443]

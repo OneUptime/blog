@@ -22,7 +22,7 @@ For the first transfer (when no destination exists), rsync copies the full file.
 
 ## Basic Syntax
 
-```
+```text
 rsync [options] source destination
 ```
 
@@ -37,7 +37,7 @@ The trailing slash on the source matters:
 
 ## Common rsync Options
 
-```
+```text
 -a, --archive    Archive mode: recursive, preserves symlinks, permissions, timestamps,
                  owner, group. Equivalent to -rlptgoD.
 -v, --verbose    Show files being transferred
@@ -178,7 +178,7 @@ sudo crontab -e
 ```
 
 Add:
-```
+```text
 0 2 * * * /usr/local/bin/daily-backup.sh
 ```
 

@@ -42,7 +42,7 @@ ip -6 addr show
 
 Example output:
 
-```
+```text
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 state UNKNOWN qlen 1000
     inet6 ::1/128 scope host
        valid_lft forever preferred_lft forever
@@ -81,7 +81,7 @@ sudo ufw status verbose
 
 If UFW is inactive, you'll see:
 
-```
+```text
 Status: inactive
 ```
 
@@ -99,7 +99,7 @@ sudo nano /etc/default/ufw
 
 Locate the `IPV6` parameter and ensure it's set to `yes`:
 
-```
+```text
 # /etc/default/ufw
 #
 
@@ -130,7 +130,7 @@ grep IPV6 /etc/default/ufw
 
 Expected output:
 
-```
+```text
 IPV6=yes
 ```
 
@@ -158,7 +158,7 @@ sudo ufw status verbose
 
 Output:
 
-```
+```text
 Status: active
 Logging: on (low)
 Default: deny (incoming), allow (outgoing), disabled (routed)
@@ -219,7 +219,7 @@ sudo ufw app list
 
 Example output:
 
-```
+```text
 Available applications:
   Apache
   Apache Full
@@ -325,7 +325,7 @@ sudo ufw status numbered
 
 Example output:
 
-```
+```text
 Status: active
 
      To                         Action      From
@@ -389,7 +389,7 @@ sudo nano /etc/ufw/before6.rules
 
 The default ICMPv6 rules look like:
 
-```
+```text
 # allow all ICMP types for IPv6
 -A ufw6-before-input -p icmpv6 --icmpv6-type destination-unreachable -j ACCEPT
 -A ufw6-before-input -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT

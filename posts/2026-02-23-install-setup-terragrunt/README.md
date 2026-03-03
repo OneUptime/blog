@@ -109,7 +109,7 @@ terragrunt --version
 
 Terragrunt projects follow a specific directory structure. The key idea is separating your Terraform modules (reusable code) from your live infrastructure (environment-specific configuration).
 
-```
+```text
 infrastructure/
   # Reusable Terraform modules
   modules/

@@ -24,7 +24,7 @@ graph TD
 
 ## Project Layout
 
-```
+```text
 k8s/
   base/
     kustomization.yaml

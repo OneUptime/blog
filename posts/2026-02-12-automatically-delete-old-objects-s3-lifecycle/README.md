@@ -350,7 +350,7 @@ aws s3api list-objects-v2 \
 
 Quick math for a typical scenario:
 
-```
+```text
 Current state: 5 TB in Standard = $117.50/month
 
 With lifecycle rules:

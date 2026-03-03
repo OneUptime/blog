@@ -12,7 +12,7 @@ When the OpenTelemetry Collector sits behind a corporate proxy or needs to reach
 
 Your Collector is deployed inside a corporate network. It needs to send telemetry to an external observability backend (like OneUptime, Jaeger, or any SaaS provider) that sits behind a load balancer. The network path looks something like:
 
-```
+```text
 Collector -> Corporate Proxy -> Internet -> Load Balancer -> Backend
 ```
 
@@ -22,7 +22,7 @@ Each hop can introduce problems.
 
 gRPC requires HTTP/2. Many corporate HTTP proxies only support HTTP/1.1. When the Collector tries to establish a gRPC connection through such a proxy, the connection fails or degrades.
 
-```
+```text
 rpc error: code = Internal desc = transport: received the unexpected content-type "text/html"
 ```
 
@@ -56,7 +56,7 @@ Many Layer 4 load balancers (TCP-level) work fine with gRPC. But Layer 7 load ba
 
 Symptoms include:
 
-```
+```text
 rpc error: code = Unavailable desc = transport is closing
 rpc error: code = Internal desc = unexpected HTTP status code received from server: 502
 ```

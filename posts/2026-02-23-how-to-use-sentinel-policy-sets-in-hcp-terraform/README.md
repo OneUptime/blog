@@ -60,7 +60,7 @@ policy "cost-limit" {
 
 The complete repository structure:
 
-```
+```text
 my-policy-repo/
   sentinel.hcl
   policies/
@@ -197,7 +197,7 @@ curl \
 
 Most organizations use multiple policy sets with different scopes:
 
-```
+```text
 Global Policy Set (all workspaces):
   - enforce-tags (hard-mandatory)
   - restrict-regions (hard-mandatory)

@@ -14,13 +14,13 @@ Knowing whether a file is vault-encrypted before operating on it is important fo
 
 Every Ansible Vault encrypted file starts with a specific header on the first line:
 
-```
+```text
 $ANSIBLE_VAULT;1.1;AES256
 ```
 
 Or, for files encrypted with a vault ID:
 
-```
+```text
 $ANSIBLE_VAULT;1.2;AES256;prod
 ```
 

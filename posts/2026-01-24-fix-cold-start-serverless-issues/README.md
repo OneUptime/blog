@@ -77,7 +77,7 @@ export const handler = async (event, context) => {
 
 Query cold start frequency with CloudWatch Insights:
 
-```
+```text
 fields @timestamp, @requestId, @duration, @billedDuration, @initDuration
 | filter @type = "REPORT"
 | filter ispresent(@initDuration)

@@ -22,7 +22,7 @@ The solution is not a single magic bullet. It is a combination of structural dec
 
 This is the single most impactful thing you can do. Instead of one giant state file for your entire infrastructure, break it up into smaller, independent pieces.
 
-```
+```text
 infrastructure/
   networking/
     main.tf

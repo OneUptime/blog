@@ -235,7 +235,7 @@ istioctl dashboard prometheus
 
 Then query for metrics like:
 
-```
+```text
 istio_tcp_connections_opened_total{destination_service="mysql.database.svc.cluster.local"}
 istio_tcp_connections_closed_total{destination_service="mysql.database.svc.cluster.local"}
 istio_tcp_sent_bytes_total{destination_service="mysql.database.svc.cluster.local"}

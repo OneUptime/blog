@@ -50,7 +50,7 @@ Add the server's IP to `/etc/hosts` so it resolves locally before DNS is configu
 sudo nano /etc/hosts
 ```
 
-```
+```text
 # Add this line (replace with your actual IP)
 192.168.1.10   ipa.example.com ipa
 ```

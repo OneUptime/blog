@@ -28,7 +28,7 @@ docker compose version
 
 Here is how the project directory should look:
 
-```
+```text
 spring-redis-mysql/
 ├── docker-compose.yml
 ├── Dockerfile

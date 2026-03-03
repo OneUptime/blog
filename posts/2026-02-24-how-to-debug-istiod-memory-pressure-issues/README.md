@@ -82,7 +82,7 @@ kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/sync
 
 This shows the number of connected proxies. Each proxy has its own cached configuration. Estimate memory:
 
-```
+```text
 proxies * average_config_size = xDS_cache_memory
 ```
 

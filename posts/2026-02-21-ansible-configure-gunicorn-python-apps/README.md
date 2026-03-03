@@ -18,7 +18,7 @@ Gunicorn's default settings are fine for development but not for production. The
 
 ## Project Structure
 
-```
+```text
 gunicorn-setup/
   inventory/
     hosts.yml
@@ -299,7 +299,7 @@ WantedBy=multi-user.target
 
 ## Logrotate Configuration
 
-```
+```text
 # roles/gunicorn/templates/logrotate.conf.j2
 {{ gunicorn_log_dir }}/*.log {
     daily

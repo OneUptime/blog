@@ -30,7 +30,7 @@ If you have 10 HTTP methods, 500 paths, and 20 status codes, that is 10 * 500 * 
 
 The OpenTelemetry SDK defaults to 2000 unique attribute combinations per metric instrument. Once this limit is hit, any new combinations are dropped and an "overflow" attribute set is used to aggregate them:
 
-```
+```text
 # The SDK creates a special overflow series:
 # otel.metric.overflow = true
 # All new attribute combinations get lumped into this overflow bucket

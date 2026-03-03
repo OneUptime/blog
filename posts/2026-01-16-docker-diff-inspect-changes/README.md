@@ -66,7 +66,7 @@ docker diff nginx-test
 ```
 
 Example output:
-```
+```text
 C /var
 C /var/cache
 C /var/cache/nginx

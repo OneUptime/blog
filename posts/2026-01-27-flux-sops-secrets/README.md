@@ -487,7 +487,7 @@ metadata:
 
 ### Repository Structure
 
-```
+```text
 fleet-repo/
 ├── .sops.yaml                    # SOPS configuration
 ├── clusters/

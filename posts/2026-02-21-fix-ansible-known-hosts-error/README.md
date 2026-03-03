@@ -12,7 +12,7 @@ When connecting to a host for the first time, SSH checks its key against the kno
 
 ## The Error
 
-```
+```text
 fatal: [server1]: UNREACHABLE! => {
     "msg": "Failed to connect to the host via ssh: Host key verification failed."
 }
@@ -56,7 +56,7 @@ ssh-keyscan -H 10.0.1.11 >> ~/.ssh/known_hosts
 
 ### Fix 4: SSH Config Approach
 
-```
+```text
 # ~/.ssh/config - Accept new keys automatically for trusted networks
 Host 10.0.*
     StrictHostKeyChecking accept-new

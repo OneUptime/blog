@@ -396,7 +396,7 @@ curl -N -H "Accept: text/event-stream" http://localhost/events
 ```
 
 Expected headers:
-```
+```text
 Content-Type: text/event-stream
 Cache-Control: no-cache
 Connection: keep-alive

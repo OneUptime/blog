@@ -138,7 +138,7 @@ spec:
 
 The default text format looks like this:
 
-```
+```text
 [2024-01-15T10:30:45.123Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 45 43 "-" "curl/7.68.0" "abc123-def456" "users-service:8080" "10.244.1.5:8080" inbound|8080|| 10.244.2.3:54321 10.244.1.5:8080 10.244.2.3:0 - default
 ```
 
@@ -845,7 +845,7 @@ flowchart LR
 
 Here is an example LogQL query for Grafana to analyze access logs:
 
-```
+```text
 # Query to find all 5xx errors in the last hour
 {source="istio", response_category="server_error"} |= "response_code"
 

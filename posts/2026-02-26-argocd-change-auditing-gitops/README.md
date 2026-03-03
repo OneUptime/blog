@@ -86,7 +86,7 @@ argocd app history my-app
 
 The output shows each sync operation with the revision, date, and initiator:
 
-```
+```text
 ID  DATE                           REVISION
 1   2024-03-15T10:30:00Z          abc123f
 2   2024-03-16T14:22:00Z          def456a

@@ -32,7 +32,7 @@ ethtool -g eth0
 
 Example output:
 
-```
+```text
 Ring parameters for eth0:
 Pre-set maximums:
 RX:             4096
@@ -201,7 +201,7 @@ ethtool -c eth0
 
 Example output:
 
-```
+```text
 Coalesce parameters for eth0:
 Adaptive RX: on  TX: off
 ...

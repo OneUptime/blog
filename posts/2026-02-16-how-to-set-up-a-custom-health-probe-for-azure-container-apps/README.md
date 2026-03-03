@@ -233,7 +233,7 @@ Each parameter affects how the probe behaves.
 
 The total time before a container is restarted (for liveness) or removed from the load balancer (for readiness) is roughly:
 
-```
+```text
 initialDelaySeconds + (periodSeconds * failureThreshold)
 ```
 

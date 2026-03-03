@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
 Create a requirements file for Python dependencies:
 
-```
+```text
 # requirements.txt - Python package dependencies
 flask==3.0.0
 ```
@@ -122,7 +122,7 @@ The `-t` flag tags the image with a name. The `.` at the end tells Docker to use
 
 You will see output for each step as Docker executes the instructions:
 
-```
+```text
 Step 1/7 : FROM python:3.11-slim
  ---> abc123def456
 Step 2/7 : WORKDIR /app
@@ -289,7 +289,7 @@ CMD ["node", "server.js"]
 
 Just like `.gitignore`, a `.dockerignore` file tells Docker which files to exclude from the build context. This speeds up builds and prevents sensitive files from being included in the image.
 
-```
+```text
 # .dockerignore - files and directories to exclude from the build
 node_modules
 .git

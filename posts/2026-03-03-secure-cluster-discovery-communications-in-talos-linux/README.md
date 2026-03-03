@@ -27,7 +27,7 @@ ls -la secrets.yaml
 
 The encryption chain works like this:
 
-```
+```text
 Cluster Secrets -> Key Derivation -> AES-256-GCM Encryption -> Discovery Service
 ```
 
@@ -254,7 +254,7 @@ done
 
 Place the discovery service in a network segment with restricted access:
 
-```
+```text
 +-------------------+
 | Cluster Nodes     | <-- Can reach discovery service
 +-------------------+

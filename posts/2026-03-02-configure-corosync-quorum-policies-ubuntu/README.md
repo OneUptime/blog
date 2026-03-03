@@ -33,7 +33,7 @@ sudo pcs quorum status
 
 Sample output from `corosync-quorumtool -s`:
 
-```
+```text
 Quorum information
 ------------------
 Date:             Mon Mar  2 10:00:00 2026
@@ -69,7 +69,7 @@ sudo cat /etc/corosync/corosync.conf
 
 A typical configuration looks like:
 
-```
+```text
 totem {
     version: 2
     cluster_name: ha-cluster
@@ -131,7 +131,7 @@ sudo corosync-quorumtool -n 2 -v 2
 
 In the configuration file, assign votes per node:
 
-```
+```text
 nodelist {
     node {
         ring0_addr: 192.168.1.10
@@ -231,7 +231,7 @@ sudo nano /etc/corosync/corosync.conf
 
 Add to the totem section:
 
-```
+```text
 totem {
     version: 2
     cluster_name: ha-cluster
@@ -268,7 +268,7 @@ sudo systemctl reload corosync
 
 Three-node clusters are often the recommended minimum for production because they can tolerate one node failure while maintaining quorum:
 
-```
+```text
 quorum {
     provider: corosync_votequorum
     # No two_node setting - standard majority quorum

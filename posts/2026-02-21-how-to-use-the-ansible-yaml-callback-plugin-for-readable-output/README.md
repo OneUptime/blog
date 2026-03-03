@@ -14,7 +14,7 @@ Ansible's default output format dumps task results as single-line JSON. When a t
 
 Here is what the default Ansible output looks like when gathering facts:
 
-```
+```text
 ok: [web-01] => {"ansible_facts": {"ansible_all_ipv4_addresses": ["10.0.1.50", "172.17.0.1"], "ansible_architecture": "x86_64", "ansible_bios_date": "12/01/2023", "ansible_bios_version": "1.15.0-1", "ansible_cmdline": {"BOOT_IMAGE": "/vmlinuz-5.15.0-91-generic", "ro": true, "root": "UUID=abc-123"}}, "changed": false}
 ```
 
@@ -68,7 +68,7 @@ Every key is on its own line, lists are properly formatted with dashes, and nest
 
 Default:
 
-```
+```text
 changed: [web-01] => {"changed": true, "checksum": "abc123def456", "dest": "/etc/nginx/nginx.conf", "gid": 0, "group": "root", "md5sum": "789xyz", "mode": "0644", "owner": "root", "size": 2048, "src": "/home/deploy/.ansible/tmp/source", "state": "file", "uid": 0}
 ```
 
@@ -94,7 +94,7 @@ changed: [web-01] =>
 
 Default:
 
-```
+```text
 ok: [web-01] => {"changed": false, "cmd": ["df", "-h"], "delta": "0:00:00.003", "end": "2026-02-21 10:15:22", "rc": 0, "start": "2026-02-21 10:15:22", "stderr": "", "stdout": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   12G   35G  26% /\ntmpfs           3.9G     0  3.9G   0% /dev/shm\n/dev/sdb1       100G   45G   50G  48% /data", "stdout_lines": ["Filesystem      Size  Used Avail Use% Mounted on", "/dev/sda1        50G   12G   35G  26% /", "tmpfs           3.9G     0  3.9G   0% /dev/shm", "/dev/sdb1       100G   45G   50G  48% /data"]}
 ```
 
@@ -129,7 +129,7 @@ The `stdout` field is rendered as a proper multi-line block with `|-` notation. 
 
 Default:
 
-```
+```text
 ok: [web-01] => {"msg": "Server web-01 is running Ubuntu 22.04 with 8192MB RAM and 4 CPUs"}
 ```
 
@@ -144,7 +144,7 @@ ok: [web-01] =>
 
 Default:
 
-```
+```text
 fatal: [web-01]: FAILED! => {"changed": false, "msg": "Unable to start service nginx: Job for nginx.service failed because the control process exited with error code.\nSee \"systemctl status nginx.service\" and \"journalctl -xe\" for details.\n", "name": "nginx", "state": "started"}
 ```
 

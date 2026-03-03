@@ -149,7 +149,7 @@ talosctl apply-config --nodes 192.168.1.20 --patch @talos-bgp-patch.yaml
 
 On your router, configure a BGP peer pointing at each Kubernetes node. The exact syntax depends on your router vendor. Here is an example for a FRR (Free Range Routing) based router:
 
-```
+```text
 ! FRR configuration example
 router bgp 65001
  bgp router-id 192.168.1.1

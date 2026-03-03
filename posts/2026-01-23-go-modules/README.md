@@ -22,7 +22,7 @@ go mod init github.com/username/myproject
 
 This creates `go.mod`:
 
-```
+```text
 module github.com/username/myproject
 
 go 1.21
@@ -59,7 +59,7 @@ go mod tidy
 
 The `go.mod` is updated:
 
-```
+```text
 module github.com/username/myproject
 
 go 1.21
@@ -71,7 +71,7 @@ require github.com/gin-gonic/gin v1.9.1
 
 ## Understanding go.mod
 
-```
+```text
 module github.com/username/myproject
 
 go 1.21
@@ -109,7 +109,7 @@ replace github.com/original/pkg => github.com/fork/pkg v1.0.0
 
 The `go.sum` file contains cryptographic checksums:
 
-```
+```text
 github.com/gin-gonic/gin v1.9.1 h1:4idEAncQnU5cB7BeOkPtxjfCSye0AAm1R0RVIqJ+Jmg=
 github.com/gin-gonic/gin v1.9.1/go.mod h1:hPrL...=
 ```
@@ -202,7 +202,7 @@ import (
 
 Module declaration for v2+:
 
-```
+```text
 // go.mod for v2
 module github.com/user/pkg/v2
 
@@ -217,7 +217,7 @@ go 1.21
 
 Replace a dependency with local code:
 
-```
+```text
 replace github.com/original/pkg => ../local-pkg
 ```
 
@@ -225,7 +225,7 @@ replace github.com/original/pkg => ../local-pkg
 
 Use your fork of a dependency:
 
-```
+```text
 replace github.com/original/pkg => github.com/yourfork/pkg v1.0.0
 ```
 
@@ -233,7 +233,7 @@ replace github.com/original/pkg => github.com/yourfork/pkg v1.0.0
 
 Replace a vulnerable transitive dependency:
 
-```
+```text
 replace github.com/vulnerable/pkg v1.2.3 => github.com/vulnerable/pkg v1.2.4
 ```
 
@@ -259,7 +259,7 @@ go build -mod=vendor
 - Air-gapped environments
 
 **go.mod with vendor:**
-```
+```text
 module myproject
 
 go 1.21
@@ -303,7 +303,7 @@ go work use ./module-c
 
 Creates `go.work`:
 
-```
+```text
 go 1.21
 
 use (
@@ -327,7 +327,7 @@ go list -m -u all
 
 Output shows available updates:
 
-```
+```text
 github.com/gin-gonic/gin v1.9.0 [v1.9.1]
 github.com/stretchr/testify v1.8.0 [v1.8.4]
 ```
@@ -358,7 +358,7 @@ govulncheck ./...
 
 If you published a broken version, retract it in go.mod:
 
-```
+```text
 module github.com/user/pkg
 
 go 1.21
@@ -396,7 +396,7 @@ Both files should be in version control.
 
 For libraries, use minimal version requirements:
 
-```
+```text
 require github.com/pkg v1.0.0
 ```
 

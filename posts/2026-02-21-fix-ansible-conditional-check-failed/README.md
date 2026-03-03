@@ -12,7 +12,7 @@ The "conditional check failed" error occurs when a `when` condition in your play
 
 ## The Error
 
-```
+```text
 fatal: [server1]: FAILED! => {
     "msg": "The conditional check 'result.rc == 0' failed. The error was: error while evaluating conditional (result.rc == 0): 'dict object' has no attribute 'rc'"
 }

@@ -74,7 +74,7 @@ protocol = http
 
 ### Connection String
 
-```
+```text
 jdbc:clickhouse://clickhouse.example.com:8443/analytics?ssl=true&sslmode=strict
 ```
 
@@ -109,7 +109,7 @@ SSLMode = require
 
 ### Windows DSN Configuration
 
-```
+```text
 1. Open ODBC Data Sources (64-bit)
 2. Add new System DSN
 3. Select "ClickHouse ODBC Driver"
@@ -236,7 +236,7 @@ SET optimize_read_in_order = 1;
 
 ### Extract vs Live Connection
 
-```
+```text
 Live Connection:
 - Use for real-time dashboards
 - Best for summary tables

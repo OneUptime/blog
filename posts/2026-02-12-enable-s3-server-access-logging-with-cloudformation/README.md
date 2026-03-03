@@ -231,7 +231,7 @@ aws cloudformation deploy \
 
 S3 access logs are delivered as space-delimited text files. Each line represents one request. Here's what a log entry looks like:
 
-```
+```text
 79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be my-bucket [06/Feb/2026:00:00:38 +0000] 192.0.2.3 79a59df900b949e55d96a1e698fbacedfd6e09d98eacf8f8d5218e7cd47ef2be 3E57427F3EXAMPLE REST.GET.OBJECT key.json "GET /key.json HTTP/1.1" 200 - 1234 1234 15 10 "-" "aws-sdk-java/1.11.0" - DHixKFIoh9GToG/123abc= SigV4 ECDHE-RSA-AES128-GCM-SHA256 AuthHeader my-bucket.s3.amazonaws.com TLSv1.2
 ```
 

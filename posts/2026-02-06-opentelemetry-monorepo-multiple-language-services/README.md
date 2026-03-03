@@ -16,7 +16,7 @@ This post covers a practical approach to organizing OpenTelemetry instrumentatio
 
 A typical polyglot monorepo might look like this:
 
-```
+```text
 monorepo/
   services/
     api-gateway/          (Go)
@@ -323,7 +323,7 @@ For Node.js services using a tool like Turborepo or Nx, define the OpenTelemetry
 
 For Python services, maintain a shared constraints file:
 
-```
+```text
 # packages/otel-config/python-constraints.txt
 # Pin OpenTelemetry versions across all Python services
 opentelemetry-api==1.25.0

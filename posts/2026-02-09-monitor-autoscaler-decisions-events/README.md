@@ -20,7 +20,7 @@ kubectl describe hpa webapp-hpa -n production
 
 Events section shows scaling history:
 
-```
+```text
 Events:
   Type    Reason             Age    From                       Message
   ----    ------             ----   ----                       -------

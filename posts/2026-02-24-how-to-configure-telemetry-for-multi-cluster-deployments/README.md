@@ -27,7 +27,7 @@ There are two main approaches:
 
 **Centralized Collection** - All clusters send telemetry to a single backend cluster:
 
-```
+```text
 Cluster A (workloads) --> Central Collector --> Backends
 Cluster B (workloads) --> Central Collector --> Backends
 Cluster C (workloads) --> Central Collector --> Backends
@@ -35,7 +35,7 @@ Cluster C (workloads) --> Central Collector --> Backends
 
 **Federated Collection** - Each cluster has its own collector and backend, with a federation layer:
 
-```
+```text
 Cluster A --> Local Collector --> Local Backend --> Federation
 Cluster B --> Local Collector --> Local Backend --> Federation
 Cluster C --> Local Collector --> Local Backend --> Federation
@@ -198,7 +198,7 @@ For distributed traces to work across clusters, the trace context headers must b
 
 The critical headers to propagate:
 
-```
+```text
 x-request-id
 x-b3-traceid
 x-b3-spanid

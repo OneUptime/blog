@@ -26,13 +26,13 @@ terragrunt run-all destroy
 
 When you apply, dependencies are applied first:
 
-```
+```text
 Apply order: vpc -> rds -> ecs -> app
 ```
 
 When you destroy, the order is reversed - dependents are destroyed first:
 
-```
+```text
 Destroy order: app -> rds, ecs (parallel) -> vpc
 ```
 
@@ -48,7 +48,7 @@ terragrunt run-all destroy
 
 You will see a confirmation prompt:
 
-```
+```text
 WARNING: Are you sure you want to run 'terragrunt destroy' in each folder of the stack described above?
 There is no undo!
   Module /path/to/live/dev/app

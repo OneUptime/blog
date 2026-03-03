@@ -39,7 +39,7 @@ lsblk -o NAME,DISC-GRAN,DISC-MAX
 
 Output:
 
-```
+```text
 NAME        DISC-GRAN DISC-MAX
 sda               512B    2G
 ├─sda1            512B    2G    # Non-zero values = TRIM supported
@@ -65,7 +65,7 @@ sudo systemctl list-timers fstrim.timer
 
 Output:
 
-```
+```text
 NEXT                         LEFT     LAST                         PASSED       UNIT          ACTIVATES
 Mon 2026-03-09 00:00:00 UTC  6d left  Mon 2026-03-02 00:15:00 UTC  9h ago       fstrim.timer  fstrim.service
 ```
@@ -86,7 +86,7 @@ sudo fstrim -av
 
 Output:
 
-```
+```text
 /boot/efi: 208 MiB (218234880 bytes) trimmed on /dev/sda1
 /boot: 721 MiB (756023296 bytes) trimmed on /dev/sda2
 /: 15.5 GiB (16676339712 bytes) trimmed on /dev/sda3
@@ -180,7 +180,7 @@ sudo nano /etc/lvm/lvm.conf
 
 Find and set:
 
-```
+```text
 issue_discards = 1
 ```
 
@@ -212,7 +212,7 @@ sudo nano /etc/crypttab
 
 Add `discard` to the options column:
 
-```
+```text
 # <name>    <device>    <keyfile>   <options>
 cryptdisk   UUID=xxx    none        luks,discard
 ```

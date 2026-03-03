@@ -37,7 +37,7 @@ kubectl get endpointslices
 
 You'll see output like:
 
-```
+```text
 NAME                 ADDRESSTYPE   PORTS   ENDPOINTS   AGE
 kubernetes           IPv4          6443    3           45d
 my-service-7x9km     IPv4          80      47          2d
@@ -209,7 +209,7 @@ kubectl get endpointslices -l kubernetes.io/service-name=dual-stack-app
 
 Output:
 
-```
+```text
 NAME                      ADDRESSTYPE   PORTS   ENDPOINTS   AGE
 dual-stack-app-ipv4-abc   IPv4          80      45          1d
 dual-stack-app-ipv6-xyz   IPv6          80      45          1d

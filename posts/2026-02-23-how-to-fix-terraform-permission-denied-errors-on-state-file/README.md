@@ -14,7 +14,7 @@ Terraform state files hold the mapping between your configuration and real infra
 
 Permission denied errors vary by backend but generally look like:
 
-```
+```text
 Error: Failed to load state
 
 Error loading state: AccessDenied: Access Denied
@@ -23,7 +23,7 @@ Error loading state: AccessDenied: Access Denied
 
 Or for local state:
 
-```
+```text
 Error: Failed to save state
 
 Error saving state: open terraform.tfstate: permission denied
@@ -31,7 +31,7 @@ Error saving state: open terraform.tfstate: permission denied
 
 Or for DynamoDB locking:
 
-```
+```text
 Error: Error acquiring the state lock
 
 Error message: AccessDeniedException: User: arn:aws:iam::123456789012:user/deploy

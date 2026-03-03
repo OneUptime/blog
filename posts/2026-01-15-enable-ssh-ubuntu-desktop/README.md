@@ -241,7 +241,7 @@ sudo usermod -aG sshusers john
 
 Add to `~/.ssh/config` on client:
 
-```
+```text
 Host *
     ServerAliveInterval 60
     ServerAliveCountMax 3
@@ -254,7 +254,7 @@ Host *
 nano ~/.ssh/config
 ```
 
-```
+```text
 Host mydesktop
     HostName 192.168.1.100
     User john

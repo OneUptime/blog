@@ -193,7 +193,7 @@ The real power of DNS monitoring through OpenTelemetry is correlation. When DNS 
 
 Here is a simple Grafana dashboard query structure:
 
-```
+```text
 # Panel 1: DNS Resolution Latency by Hostname
 # Shows resolution time trend for each monitored hostname
 dnscheck_duration_ms{dns_resolver="internal"}

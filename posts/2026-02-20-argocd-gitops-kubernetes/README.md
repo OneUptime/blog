@@ -72,7 +72,7 @@ argocd account update-password
 
 Organize your manifests in a Git repository for ArgoCD to manage.
 
-```
+```text
 gitops-repo/
   apps/
     my-app/

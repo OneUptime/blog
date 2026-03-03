@@ -200,7 +200,7 @@ For complex mappings, store the mapping data in an Azure Table Storage table and
 
 Salesforce uses ISO 8601 date format (YYYY-MM-DD) while Dynamics 365 also uses ISO 8601 but with full datetime precision. Use the `formatDateTime` function in Logic Apps to ensure consistency:
 
-```
+```text
 @formatDateTime(triggerBody()?['CreatedDate'], 'yyyy-MM-ddTHH:mm:ssZ')
 ```
 

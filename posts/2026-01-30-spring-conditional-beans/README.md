@@ -645,7 +645,7 @@ public class RedisCacheProperties {
 
 Create `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`:
 
-```
+```text
 com.example.cache.RedisCacheAutoConfiguration
 ```
 

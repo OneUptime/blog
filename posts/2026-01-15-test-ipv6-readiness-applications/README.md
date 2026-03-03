@@ -39,7 +39,7 @@ Before testing, ensure you understand these key IPv6 concepts:
 
 ### IPv6 Address Format
 
-```
+```text
 Full format:    2001:0db8:85a3:0000:0000:8a2e:0370:7334
 Compressed:     2001:db8:85a3::8a2e:370:7334
 Loopback:       ::1

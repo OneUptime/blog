@@ -45,7 +45,7 @@ The auto-upgrades file controls when the system checks for and applies updates:
 cat /etc/apt/apt.conf.d/20auto-upgrades
 ```
 
-```
+```text
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Download-Upgradeable-Packages "1";
 APT::Periodic::AutocleanInterval "7";
@@ -64,7 +64,7 @@ sudo nano /etc/apt/apt.conf.d/50unattended-upgrades
 
 The key section is `Unattended-Upgrade::Allowed-Origins`:
 
-```
+```text
 Unattended-Upgrade::Allowed-Origins {
     // Only apply Ubuntu security updates (safe default)
     "${distro_id}:${distro_codename}-security";
@@ -257,7 +257,7 @@ sudo systemctl restart apt-daily-upgrade.timer
 
 Here's a production-ready 50unattended-upgrades configuration:
 
-```
+```text
 Unattended-Upgrade::Allowed-Origins {
     "${distro_id}:${distro_codename}-security";
 };

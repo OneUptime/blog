@@ -223,7 +223,7 @@ spec:
 
 The team's config repo contains their Application manifests:
 
-```
+```text
 team-a-config/
   argocd-apps/
     user-service.yaml

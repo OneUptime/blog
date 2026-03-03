@@ -42,7 +42,7 @@ mkdir -p mosquitto-docker/{config,data,log}
 
 Create the Mosquitto configuration file:
 
-```
+```text
 # mosquitto-docker/config/mosquitto.conf - Basic Mosquitto configuration
 
 # Listen on all interfaces for standard MQTT
@@ -133,7 +133,7 @@ docker exec mosquitto mosquitto_passwd /mosquitto/config/passwd webapp
 
 Update the configuration to require authentication:
 
-```
+```text
 # mosquitto-docker/config/mosquitto.conf - Secured configuration
 
 listener 1883
@@ -170,7 +170,7 @@ docker exec mosquitto mosquitto_sub -t "test" -u webapp -P "your_password"
 
 ACLs let you control which users can publish or subscribe to specific topics:
 
-```
+```text
 # mosquitto-docker/config/acl.conf - Topic access control rules
 
 # device1 can publish to its own sensor topics and subscribe to commands
@@ -191,7 +191,7 @@ topic write commands/#
 
 Add the ACL file to the Mosquitto configuration:
 
-```
+```text
 # Add this line to mosquitto.conf
 acl_file /mosquitto/config/acl.conf
 ```
@@ -232,7 +232,7 @@ openssl x509 -req -in config/certs/server.csr -CA config/certs/ca.crt \
 
 Update the configuration for TLS:
 
-```
+```text
 # mosquitto-docker/config/mosquitto.conf - With TLS encryption
 
 # Standard MQTT over TLS on port 8883
@@ -329,7 +329,7 @@ services:
 
 Connect two Mosquitto instances so messages flow between them:
 
-```
+```text
 # mosquitto-bridge.conf - Bridge configuration for edge-to-cloud sync
 connection cloud-bridge
 address cloud-mqtt.example.com:8883

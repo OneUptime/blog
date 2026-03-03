@@ -78,7 +78,7 @@ ifconfig en0
 
 Example output:
 
-```
+```text
 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT group default qlen 1000
     link/ether 00:11:22:33:44:55 brd ff:ff:ff:ff:ff:ff
 ```
@@ -98,7 +98,7 @@ ip -6 route show cache | grep -i mtu
 
 Example output:
 
-```
+```text
 2001:db8::1 via fe80::1 dev eth0 src 2001:db8::2 metric 1024
     cache mtu 1400
 ```
@@ -209,7 +209,7 @@ sudo tcpdump -i eth0 -nn -v 'icmp6 and ip6[40] == 2'
 
 Example output of a Packet Too Big message:
 
-```
+```text
 12:34:56.789012 IP6 2001:db8:1::1 > 2001:db8:2::1: ICMP6, packet too big, mtu 1400, length 1240
 ```
 
@@ -217,7 +217,7 @@ Example output of a Packet Too Big message:
 
 If you have captured packets to a file, use these Wireshark display filters:
 
-```
+```text
 # All ICMPv6 Packet Too Big messages
 icmpv6.type == 2
 
@@ -245,7 +245,7 @@ ss -6 -t -m
 
 Example output:
 
-```
+```text
 State    Recv-Q Send-Q Local Address:Port    Peer Address:Port
 ESTAB    0      0      [2001:db8::1]:22      [2001:db8::2]:54321
          cubic wscale:7,7 rto:204 rtt:3.5/1.5 ato:40 mss:1380 pmtu:1400

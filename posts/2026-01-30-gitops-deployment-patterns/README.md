@@ -44,7 +44,7 @@ How you organize your Git repositories shapes your entire GitOps workflow. Three
 
 Everything lives in one repository. Application code, Kubernetes manifests, and environment configs share the same Git history.
 
-```
+```text
 myapp/
 ├── src/
 │   └── main.go
@@ -78,7 +78,7 @@ myapp/
 
 Application code and deployment configs live in different repositories. CI builds images and updates image tags in the config repo.
 
-```
+```text
 # App repository (myapp)
 myapp/
 ├── src/
@@ -132,7 +132,7 @@ jobs:
 
 A central repository manages deployments for multiple applications across multiple clusters. Platform teams own the structure; app teams submit PRs for their namespaces.
 
-```
+```text
 platform-config/
 ├── clusters/
 │   ├── dev-us-east/

@@ -43,7 +43,7 @@ kubectl describe pod your-pod-name -n your-namespace
 
 Look for these indicators in the output:
 
-```
+```text
 Last State:     Terminated
   Reason:       OOMKilled
   Exit Code:    137

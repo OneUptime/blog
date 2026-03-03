@@ -18,14 +18,14 @@ This error typically appears as `NoSuchBeanDefinitionException: No bean named 'u
 
 The full error message usually looks like:
 
-```
+```text
 org.springframework.beans.factory.NoSuchBeanDefinitionException:
 No bean named 'userService' available
 ```
 
 Or when injecting by type:
 
-```
+```text
 org.springframework.beans.factory.NoSuchBeanDefinitionException:
 No qualifying bean of type 'com.example.UserService' available
 ```

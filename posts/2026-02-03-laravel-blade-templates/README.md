@@ -1393,7 +1393,7 @@ Laravel provides helpers for handling forms securely.
 
 ### 3. Organize Views Logically
 
-```
+```text
 resources/views/
 ├── components/          # Reusable components
 │   ├── forms/

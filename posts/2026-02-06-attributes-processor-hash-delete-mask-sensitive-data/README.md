@@ -125,7 +125,7 @@ processors:
 
 Before hashing, a span might look like this:
 
-```
+```text
 user.id: "user_alice_12345"
 session.id: "sess_abc-def-ghi"
 http.method: "GET"
@@ -134,7 +134,7 @@ http.route: "/api/orders"
 
 After hashing:
 
-```
+```text
 user.id: "a1b2c3d4e5f6...64-char-hex-string"
 session.id: "f6e5d4c3b2a1...64-char-hex-string"
 http.method: "GET"
@@ -182,7 +182,7 @@ processors:
 
 If the incoming span has `user.email: alice@acme-corp.com`, this produces:
 
-```
+```text
 email_domain: "acme-corp.com"
 # user.email is gone
 ```
@@ -244,7 +244,7 @@ processors:
 
 After processing, a span with `user.phone: +1-555-867-5309` becomes:
 
-```
+```text
 user.phone: "e3b0c44298fc...hashed"
 phone_country_code: "+1"
 user.has_phone: true

@@ -59,7 +59,7 @@ Set-AzSqlInstance `
 
 Once enabled, the public endpoint has a specific FQDN format:
 
-```
+```text
 myManagedInstance.public.abc123.database.windows.net,3342
 ```
 

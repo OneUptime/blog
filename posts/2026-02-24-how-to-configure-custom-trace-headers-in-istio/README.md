@@ -15,7 +15,7 @@ Istio supports multiple trace header formats, and the choice of format matters m
 Istio supports two main trace header formats:
 
 **B3 (Zipkin format):**
-```
+```text
 X-B3-TraceId: 463ac35c9f6413ad48485a3953bb6124
 X-B3-SpanId: 0020000000000001
 X-B3-ParentSpanId: 0020000000000000
@@ -24,12 +24,12 @@ X-B3-Flags: 0
 ```
 
 Also available in single-header format:
-```
+```text
 b3: 463ac35c9f6413ad48485a3953bb6124-0020000000000001-1-0020000000000000
 ```
 
 **W3C Trace Context:**
-```
+```text
 traceparent: 00-463ac35c9f6413ad48485a3953bb6124-0020000000000001-01
 tracestate: istio=...
 ```

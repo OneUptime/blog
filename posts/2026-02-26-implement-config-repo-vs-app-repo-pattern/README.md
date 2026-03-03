@@ -51,7 +51,7 @@ The app repo contains everything needed to build the application. The config rep
 
 The app repo is where developers work daily:
 
-```
+```text
 backend-api/
 ├── src/                    # Application source code
 │   ├── main.go
@@ -117,7 +117,7 @@ jobs:
 
 The config repo is what ArgoCD watches. It contains only deployment configuration:
 
-```
+```text
 backend-api-config/
 ├── base/
 │   ├── kustomization.yaml
@@ -220,7 +220,7 @@ This gives you a clear audit trail. Every production deployment has an approved 
 
 When multiple services share common configuration (like monitoring settings or network policies), create a shared config repo:
 
-```
+```text
 shared-config/
 ├── monitoring/
 │   ├── prometheus-rules/

@@ -281,7 +281,7 @@ sudo security add-trusted-cert -d -r trustRoot \
 
 Check the firewall logs for TLS-related issues:
 
-```
+```text
 // Query for TLS inspection failures
 AzureDiagnostics
 | where Category == "AzureFirewallApplicationRule"

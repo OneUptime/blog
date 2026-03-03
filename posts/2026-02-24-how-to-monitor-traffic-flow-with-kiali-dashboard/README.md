@@ -75,7 +75,7 @@ To see exact error numbers, click on an edge. The side panel shows the error rat
 
 You can also check the health of all services in a namespace by going to the Services or Workloads list view. Each entry shows a health indicator:
 
-```
+```text
 Service          Health    Request Rate    Error Rate
 productpage      [green]   150 req/s       0.0%
 reviews          [yellow]  120 req/s       2.3%

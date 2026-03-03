@@ -112,7 +112,7 @@ kubectl logs deploy/httpbin -c istio-proxy --tail=5
 
 You should see output similar to:
 
-```
+```text
 [2026-02-24T10:15:30.123Z] "GET /status/200 HTTP/1.1" 200 - via_upstream - "-" 0 0 3 2 "-" "curl/7.88.1" "abc123-def456" "httpbin.default:8000" "10.244.1.5:80" inbound|8000|| 10.244.1.3:0 10.244.1.5:8000 10.244.1.3:45678 - default
 ```
 

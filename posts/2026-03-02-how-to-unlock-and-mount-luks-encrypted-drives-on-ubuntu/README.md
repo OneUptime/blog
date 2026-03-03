@@ -32,7 +32,7 @@ lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINT
 
 A LUKS device shows `crypto_LUKS` in the FSTYPE column:
 
-```
+```text
 NAME   SIZE FSTYPE      LABEL   MOUNTPOINT
 sda    500G
 ├─sda1 100G ext4        system  /
@@ -96,7 +96,7 @@ sudo blkid /dev/mapper/encrypted_data
 ```
 
 Output example:
-```
+```text
 /dev/mapper/encrypted_data: UUID="a1b2c3d4-..." TYPE="ext4"
 ```
 

@@ -349,7 +349,7 @@ This tells CDNs and browser caches to cache product compositions for 60 seconds.
 
 Track the overall composition latency and per-service contribution:
 
-```
+```text
 # Overall composition latency
 histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="product-composer.production.svc.cluster.local"}[5m])) by (le))
 

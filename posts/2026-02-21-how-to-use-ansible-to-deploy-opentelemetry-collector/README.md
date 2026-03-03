@@ -28,7 +28,7 @@ flowchart LR
 
 ## Project Structure
 
-```
+```text
 otel-collector/
   inventory/
     hosts.yml

@@ -186,7 +186,7 @@ done
 Some common errors you'll encounter and how to fix them:
 
 **Namespace doesn't exist:**
-```
+```text
 Error from server (NotFound): namespaces "my-app" not found
 ```
 Fix: Create the namespace first.
@@ -196,7 +196,7 @@ kubectl create namespace my-app
 ```
 
 **Resource already exists:**
-```
+```text
 Error from server (AlreadyExists): ...
 ```
 Fix: Use `--server-side --force-conflicts` or delete the existing resource first.
@@ -206,13 +206,13 @@ kubectl apply -f resource.yaml --server-side --force-conflicts
 ```
 
 **Invalid field:**
-```
+```text
 Error from server (BadRequest): error when creating "resource.yaml": ... unknown field "xyz"
 ```
 Fix: This usually means a version mismatch. The exported resource has fields that don't exist in the target cluster's CRD version. You'll need to manually edit the YAML to remove the unknown fields.
 
 **CRD not found:**
-```
+```text
 error: the server doesn't have a resource type "virtualservices"
 ```
 Fix: Install the Istio CRDs first (Step 1).
@@ -251,7 +251,7 @@ istioctl proxy-status
 
 The `istioctl analyze` output will tell you about any configuration issues:
 
-```
+```text
 Warning [IST0101] (VirtualService my-namespace/my-vs) Referenced host not found: "my-service.my-namespace.svc.cluster.local"
 ```
 

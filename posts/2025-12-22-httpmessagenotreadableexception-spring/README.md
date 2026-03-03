@@ -18,7 +18,7 @@ This error means the incoming HTTP request body cannot be converted to the expec
 
 Common error messages include:
 
-```
+```text
 HttpMessageNotReadableException: JSON parse error: Cannot deserialize value
 of type `java.time.LocalDate` from String "2024-01-15T10:30:00"
 

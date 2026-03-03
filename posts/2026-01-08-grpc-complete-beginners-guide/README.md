@@ -387,7 +387,7 @@ go run client/main.go
 
 Expected output:
 
-```
+```text
 # Server output
 2024/01/15 10:00:00 gRPC server listening on :50051
 2024/01/15 10:00:05 Received request from: World
@@ -403,7 +403,7 @@ Expected output:
 
 ## Project Structure Best Practices
 
-```
+```text
 myproject/
 ├── proto/
 │   ├── greeter/

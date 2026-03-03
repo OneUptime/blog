@@ -20,7 +20,7 @@ Common problems include configuration drift between nodes, forgetting to apply a
 
 Set up your project to separate concerns cleanly:
 
-```
+```text
 talos-config-management/
   ansible.cfg
   inventory/

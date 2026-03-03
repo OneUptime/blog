@@ -16,7 +16,7 @@ This guide explains the problem source-based routing solves and shows you how to
 
 Consider a Talos Linux node with two network interfaces:
 
-```
+```text
 eth0: 192.168.1.10/24 (gateway: 192.168.1.1)
 eth1: 10.0.0.10/24   (gateway: 10.0.0.1)
 ```
@@ -117,7 +117,7 @@ kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- ip rule show
 
 Expected output:
 
-```
+```text
 0:      from all lookup local
 100:    from 192.168.1.10 lookup 100
 200:    from 10.0.0.10 lookup 200

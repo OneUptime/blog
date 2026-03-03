@@ -78,7 +78,7 @@ users:
 
 The `subelements` lookup over `users` and `roles` produces these iterations:
 
-```
+```text
 Iteration 1: item.0 = {name: alice, roles: [admin, developer]}, item.1 = admin
 Iteration 2: item.0 = {name: alice, roles: [admin, developer]}, item.1 = developer
 Iteration 3: item.0 = {name: bob, roles: [developer]},          item.1 = developer

@@ -34,7 +34,7 @@ git log v1.0.0..v2.0.0 --oneline
 
 Different changes require different migration strategies:
 
-```
+```text
 | Change Type                | State Impact | Migration Required |
 |----------------------------|--------------|-------------------|
 | New optional variable      | None         | No                |

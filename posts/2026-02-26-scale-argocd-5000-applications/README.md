@@ -202,7 +202,7 @@ flowchart TD
 There are several ways to divide applications across instances:
 
 **By team/business unit:**
-```
+```text
 ArgoCD Instance A: Platform team (500 apps)
 ArgoCD Instance B: Payments team (800 apps)
 ArgoCD Instance C: Data team (1200 apps)
@@ -211,14 +211,14 @@ ArgoCD Instance E: Shared services (1900 apps)
 ```
 
 **By target cluster:**
-```
+```text
 ArgoCD Instance A: Production clusters (1500 apps)
 ArgoCD Instance B: Staging clusters (1500 apps)
 ArgoCD Instance C: Development clusters (2000 apps)
 ```
 
 **By region:**
-```
+```text
 ArgoCD Instance A: US-East clusters (1800 apps)
 ArgoCD Instance B: EU-West clusters (1500 apps)
 ArgoCD Instance C: AP-Southeast clusters (1700 apps)
@@ -341,7 +341,7 @@ data:
 
 Create a dedicated Grafana dashboard.
 
-```
+```text
 # Applications per controller shard
 count(argocd_app_info) by (controller)
 
@@ -366,7 +366,7 @@ Track these trends for capacity planning:
 - Controller memory growth trend
 - Redis memory utilization trend
 
-```
+```text
 # Project memory growth
 predict_linear(container_memory_usage_bytes{container="argocd-application-controller"}[7d], 86400 * 30)
 ```

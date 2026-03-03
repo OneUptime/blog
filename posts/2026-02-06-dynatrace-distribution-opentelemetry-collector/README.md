@@ -158,7 +158,7 @@ service:
 
 The API token needs specific scopes for each signal type. Here are the required scopes:
 
-```
+```text
 Traces:    openTelemetryTrace.ingest
 Metrics:   metrics.ingest
 Logs:      logs.ingest

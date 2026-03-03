@@ -282,7 +282,7 @@ spec:
       image: myapp:1.0
 ```
 
-```
+```text
 # /etc/apparmor.d/custom-profile
 #include <tunables/global>
 

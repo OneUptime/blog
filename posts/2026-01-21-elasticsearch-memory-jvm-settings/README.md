@@ -41,7 +41,7 @@ sudo nano /etc/elasticsearch/jvm.options.d/heap.options
 
 Add the following content:
 
-```
+```text
 # Set minimum and maximum heap size to the same value
 -Xms16g
 -Xmx16g
@@ -83,7 +83,7 @@ curl -s -u elastic:password "https://localhost:9200/_nodes/jvm?pretty" | grep co
 
 Elasticsearch 8.x uses G1GC by default. Configure it in `/etc/elasticsearch/jvm.options.d/gc.options`:
 
-```
+```text
 # Use G1 Garbage Collector
 -XX:+UseG1GC
 
@@ -151,7 +151,7 @@ bootstrap.memory_lock: true
 
 Edit `/etc/security/limits.conf`:
 
-```
+```text
 elasticsearch soft memlock unlimited
 elasticsearch hard memlock unlimited
 elasticsearch soft nofile 65535
@@ -446,7 +446,7 @@ curl -s -u elastic:password -X POST "https://localhost:9200/_cache/clear?fieldda
 
 Complete recommended JVM options for production:
 
-```
+```text
 # /etc/elasticsearch/jvm.options.d/production.options
 
 # Heap size (set to 50% of RAM, max 31g)

@@ -120,7 +120,7 @@ In the portal, go to your Automation account and click "Update management." You 
 
 You can also query the data directly in Log Analytics:
 
-```
+```text
 // KQL query to find machines with critical missing updates
 // Run this in the Log Analytics workspace
 Update
@@ -132,7 +132,7 @@ Update
 
 Another useful query shows you which specific updates are missing across your environment:
 
-```
+```text
 // KQL query for the most common missing updates
 Update
 | where UpdateState == "Needed"

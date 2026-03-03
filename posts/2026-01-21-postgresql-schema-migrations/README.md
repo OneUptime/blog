@@ -326,7 +326,7 @@ ALTER TABLE users DROP COLUMN status;
 
 ### Migration Naming
 
-```
+```text
 V001__create_users_table.sql
 V002__add_email_index.sql
 V003__create_orders_table.sql

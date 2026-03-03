@@ -350,7 +350,7 @@ This approach works well for simpler configs, but `templatefile` shines when the
 
 Keep your templates organized. A common project structure looks like this:
 
-```
+```text
 project/
   main.tf
   variables.tf

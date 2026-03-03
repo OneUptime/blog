@@ -315,7 +315,7 @@ Instead of storing API keys, you can use instance principals for OKE worker node
 
 Then create IAM policies:
 
-```
+```text
 Allow dynamic-group oke-workers to read secret-family in compartment my-compartment
 Allow dynamic-group oke-workers to use vaults in compartment my-compartment
 ```
@@ -345,7 +345,7 @@ kubectl describe svc argocd-server-lb -n argocd
 
 The OCIR username format is specific. Make sure it follows the pattern:
 
-```
+```text
 <tenancy-namespace>/oracleidentitycloudservice/<username>
 ```
 

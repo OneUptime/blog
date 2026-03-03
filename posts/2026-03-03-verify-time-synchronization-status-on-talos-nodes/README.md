@@ -87,14 +87,14 @@ talosctl -n 192.168.1.10 logs timed -f
 
 Healthy synchronization logs look something like this:
 
-```
+```text
 timed: synced to time.cloudflare.com, offset: +0.002341s
 timed: adjusted clock by 0.002341 seconds
 ```
 
 Warning signs in the logs include:
 
-```
+```text
 timed: failed to query time.cloudflare.com: i/o timeout
 timed: no reachable time servers
 timed: clock offset too large: 3600.001s

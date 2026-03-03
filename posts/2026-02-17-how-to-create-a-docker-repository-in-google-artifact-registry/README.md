@@ -89,7 +89,7 @@ gcloud auth configure-docker \
 
 Now let us build and push an image. The image tag format for Artifact Registry is:
 
-```
+```text
 LOCATION-docker.pkg.dev/PROJECT_ID/REPOSITORY/IMAGE:TAG
 ```
 

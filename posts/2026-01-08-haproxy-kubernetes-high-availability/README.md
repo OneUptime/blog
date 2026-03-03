@@ -787,7 +787,7 @@ frontend prometheus
 sudo vim /etc/rsyslog.d/49-haproxy.conf
 ```
 
-```
+```text
 # HAProxy logging configuration
 $AddUnixListenSocket /var/lib/haproxy/dev/log
 
@@ -812,7 +812,7 @@ sudo systemctl restart rsyslog
 
 Create `/etc/logrotate.d/haproxy`:
 
-```
+```text
 /var/log/haproxy/*.log {
     daily
     rotate 14

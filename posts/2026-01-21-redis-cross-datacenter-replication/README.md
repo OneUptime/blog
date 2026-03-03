@@ -633,7 +633,7 @@ def monitor_cross_dc_replication(dc1_master, dc2_replica, dc1_name, dc2_name):
    ```bash
    redis-cli -h dc2-redis -a password REPLICAOF dc1-master 6379
    ```
-```
+```text
 
 ---
 

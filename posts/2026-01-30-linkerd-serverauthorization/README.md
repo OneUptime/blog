@@ -579,7 +579,7 @@ spec:
 
 Group Server and ServerAuthorization resources together:
 
-```
+```text
 policies/
   production/
     payments/

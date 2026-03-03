@@ -707,7 +707,7 @@ export const userService = new UserService();
 
 Here is the recommended project structure for a TypeScript Express application:
 
-```
+```text
 express-typescript-app/
   src/
     index.ts              # Application entry point

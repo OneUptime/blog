@@ -130,7 +130,7 @@ dmesg -T | grep -i "i/o error\|blk_update_request\|ata.*error"
 
 A message like:
 
-```
+```text
 [Mon Mar  2 10:23:45 2026] blk_update_request: I/O error, dev sda, sector 4096
 ```
 
@@ -154,7 +154,7 @@ dmesg -T | grep -i "link\|carrier\|eth\|bond\|dropped"
 
 Link down/up events show as:
 
-```
+```text
 [Mon Mar  2 10:15:32 2026] eth0: renamed from eth0 to ens3
 [Mon Mar  2 10:15:33 2026] ens3: Link is Up - 1Gbps
 ```
@@ -253,7 +253,7 @@ dmesg | grep -i "segfault\|general protection\|trap"
 
 Output:
 
-```
+```text
 [12345.678] myapp[1234]: segfault at 0 ip 0000... sp 0000... error 4 in myapp[...]
 ```
 

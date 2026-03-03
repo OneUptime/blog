@@ -16,7 +16,7 @@ In this guide, I will walk through building a production-ready Terraform module 
 
 A Terraform module is just a directory with `.tf` files. Here is the structure we will build:
 
-```
+```text
 modules/
   compute-instance/
     main.tf          # Resource definitions

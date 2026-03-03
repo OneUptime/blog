@@ -59,7 +59,7 @@ sudo cupsaccept OfficeHP
 sudo nano /etc/cups/cupsd.conf
 ```
 
-```
+```text
 # Listen on all interfaces (not just localhost)
 Listen 0.0.0.0:631
 
@@ -200,7 +200,7 @@ For shared printers with access controls:
 sudo nano /etc/cups/cupsd.conf
 ```
 
-```
+```text
 <Location /printers/OfficeHP>
   Order allow,deny
   Allow localhost

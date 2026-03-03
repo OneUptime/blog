@@ -12,7 +12,7 @@ Setting up individual profiling components is one thing. Wiring them together in
 
 The pipeline has three stages:
 
-```
+```text
 [eBPF Profiler Agent]  -->  [OTel Collector]  -->  [Pyroscope Backend]
    (per host)              (gateway/pool)         (storage + query)
 ```

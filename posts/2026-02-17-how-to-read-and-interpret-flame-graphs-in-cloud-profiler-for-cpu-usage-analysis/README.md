@@ -76,7 +76,7 @@ A wide, flat bar at the top of the stack (no children above it) represents code 
 
 ### Pattern: One Dominant Hotspot
 
-```
+```text
 |          main()                              |
 |    handle_request()                          |
 |  process_data()                              |
@@ -87,7 +87,7 @@ One function dominates the graph. This is the easiest case - optimize that one f
 
 ### Pattern: Many Small Hotspots
 
-```
+```text
 |              main()                          |
 |         handle_request()                     |
 | func_a() | func_b() | func_c() | func_d()  |
@@ -97,7 +97,7 @@ No single function dominates. The time is spread across many functions. This usu
 
 ### Pattern: Deep Call Stack
 
-```
+```text
 |                main()                        |
 |           handle_request()                   |
 |         middleware_a()                        |
@@ -120,7 +120,7 @@ When you see a library function taking significant time (like `json.dumps`, `re.
 
 Let's say your flame graph for a Python Flask service shows:
 
-```
+```text
 flask.app.wsgi_app          (100%)
   flask.app.full_dispatch   (98%)
     your_handler()          (95%)

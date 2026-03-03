@@ -58,7 +58,7 @@ otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
 
 For Java, check the logs for:
 
-```
+```text
 WARNING: Metric name http.requests has already been registered with a different type
 ```
 

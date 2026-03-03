@@ -16,7 +16,7 @@ Talos Linux uses cgroup v2 by default, which provides a unified hierarchy and im
 
 In the cgroup v2 hierarchy, each pod gets its own cgroup under the kubelet's cgroup root. The structure looks like this:
 
-```
+```text
 /sys/fs/cgroup/
   kubepods/
     burstable/

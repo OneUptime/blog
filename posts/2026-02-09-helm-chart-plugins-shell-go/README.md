@@ -20,7 +20,7 @@ The plugin system is flexible and supports any programming language, but shell s
 
 Every Helm plugin follows a standard structure:
 
-```
+```text
 helm-myplugin/
 ├── plugin.yaml          # Plugin metadata and configuration
 ├── myplugin.sh          # Main executable (shell script)
@@ -29,7 +29,7 @@ helm-myplugin/
 
 For Go-based plugins, the structure is similar:
 
-```
+```text
 helm-myplugin/
 ├── plugin.yaml
 ├── main.go              # Go source code

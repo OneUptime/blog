@@ -95,7 +95,7 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
 
 ### Project Structure
 
-```
+```text
 project/
 ├── docker-compose.yml           # Base configuration
 ├── docker-compose.override.yml  # Local development (auto-loaded)

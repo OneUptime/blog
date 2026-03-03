@@ -12,7 +12,7 @@ The `DisconnectException` in Kafka indicates that the connection between your cl
 
 ## Understanding the Error
 
-```
+```text
 org.apache.kafka.common.errors.DisconnectException:
 Unexpected error in join group response: The coordinator is not available.
 

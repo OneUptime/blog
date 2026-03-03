@@ -282,7 +282,7 @@ kubectl rollout restart deployment/api-server -n production
 
 ## Escalation
 If connections don't stabilize after restart, escalate to database team.
-```
+```text
 
 ## Implement Status Page Integration
 

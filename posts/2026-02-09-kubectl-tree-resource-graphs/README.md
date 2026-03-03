@@ -42,7 +42,7 @@ kubectl tree deployment nginx
 
 Output shows the full resource tree:
 
-```
+```text
 NAMESPACE  NAME                                   READY  REASON  AGE
 default    Deployment/nginx                       -              5d
 default    └─ReplicaSet/nginx-7c5ddbdf54          -              5d

@@ -172,7 +172,7 @@ analytics = host=localhost dbname=analytics pool_size=10
 
 ### Calculating Pool Size
 
-```
+```text
 Required pool size = (Peak concurrent transactions) / (Average transaction time in seconds)
 
 Example:

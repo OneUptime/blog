@@ -233,7 +233,7 @@ Send the code challenge (not the verifier) along with your authorization request
 
 This HTTP request initiates the OAuth flow by redirecting the user to the authorization server. The code challenge is included so the server can store it and verify against the verifier later. The S256 method indicates SHA-256 hashing was used.
 
-```
+```text
 GET /authorize?
   response_type=code&                    # Request an authorization code (not a token)
   client_id=your-client-id&              # Your application's registered client ID
@@ -249,7 +249,7 @@ When exchanging the authorization code for tokens, include the original `code_ve
 
 This POST request is the token exchange step. The server will hash the provided code_verifier and compare it to the code_challenge that was stored earlier. Only if they match will the server issue tokens, proving that the same application that started the flow is completing it.
 
-```
+```text
 POST /token
 Content-Type: application/x-www-form-urlencoded
 
@@ -453,7 +453,7 @@ flowchart LR
 
 The `S256` method uses SHA-256 hashing:
 
-```
+```text
 code_challenge = BASE64URL(SHA256(code_verifier))
 ```
 
@@ -463,7 +463,7 @@ This is the recommended and most secure method. Always use this unless the clien
 
 The `plain` method sends the verifier as-is:
 
-```
+```text
 code_challenge = code_verifier
 ```
 

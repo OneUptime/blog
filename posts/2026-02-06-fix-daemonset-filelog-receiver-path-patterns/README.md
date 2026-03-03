@@ -12,7 +12,7 @@ Running the OpenTelemetry Collector as a DaemonSet is the standard approach for 
 
 Containers write to stdout/stderr, and the container runtime captures those streams and writes them to files on the node. The file location depends on the runtime:
 
-```
+```text
 # Docker (older clusters)
 /var/log/containers/<pod-name>_<namespace>_<container-name>-<container-id>.log
 
@@ -132,7 +132,7 @@ kubectl logs -n observability -l app=otel-collector --tail=100 | grep -i "filelo
 
 Kubernetes rotates container logs when they reach a size limit (usually 10MB). The rotated files get a numeric suffix:
 
-```
+```text
 0.log       # Current log file
 0.log.1     # Previous rotation
 0.log.2     # Older rotation

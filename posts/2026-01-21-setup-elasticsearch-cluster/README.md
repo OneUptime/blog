@@ -201,7 +201,7 @@ sudo /usr/share/elasticsearch/bin/elasticsearch-certutil http
 
 When running the HTTP certificate utility, you will be prompted for configuration. Use these settings:
 
-```
+```text
 Generate a CSR? [y/N] n
 Use an existing CA? [y/N] y
 CA Path: /etc/elasticsearch/certs/elastic-stack-ca.p12
@@ -291,7 +291,7 @@ curl -k -u elastic:your_password "https://192.168.1.10:9200/_cat/nodes?v"
 
 Expected output:
 
-```
+```text
 ip           heap.percent ram.percent cpu load_1m load_5m load_15m node.role master name
 192.168.1.10           45          72   3    0.12    0.08     0.05 dm        *      es-master-1
 192.168.1.11           38          68   2    0.08    0.06     0.04 dm        -      es-master-2
@@ -426,7 +426,7 @@ curl -k -u elastic:your_password -X PUT "https://192.168.1.10:9200/_cluster/sett
 
 Configure HAProxy to distribute requests across nodes:
 
-```
+```text
 # /etc/haproxy/haproxy.cfg
 frontend elasticsearch_frontend
     bind *:9200

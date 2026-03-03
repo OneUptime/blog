@@ -40,7 +40,7 @@ graph TD
 
 ### Catalog Repository Structure
 
-```
+```text
 app-catalog/
 ├── templates/
 │   ├── microservice/
@@ -255,7 +255,7 @@ Add a JSON schema to validate inputs:
 
 Teams create a simple values file that references the catalog template:
 
-```
+```text
 team-a-config/
 ├── services/
 │   ├── user-service/

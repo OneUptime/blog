@@ -27,7 +27,7 @@ istioctl proxy-status
 
 The `istioctl proxy-status` output is your first clue. If proxies show `STALE`, it means they haven't received the latest configuration from Istiod. If they show `NOT SENT`, Istiod may not even know about them.
 
-```
+```text
 NAME                                  CLUSTER        CDS        LDS        EDS        RDS        ECDS        ISTIOD
 my-pod.my-namespace                   Kubernetes     SYNCED     SYNCED     SYNCED     SYNCED                  istiod-abc123
 ```
@@ -49,7 +49,7 @@ kubectl logs -n istio-system deploy/istiod -f | grep -i "push\|xds\|ads"
 
 You'll see messages about configuration pushes. Look for:
 
-```
+```text
 # Healthy push
 info	ads	Push debounce stable 5 for: config ServiceEntry/default/my-service, 100ms since last change
 
@@ -85,7 +85,7 @@ kubectl logs -n istio-system deploy/istiod | grep -i "ca\|cert\|sign"
 ```
 
 Look for errors like:
-```
+```text
 error	Failed to sign certificate: ca certificate has expired
 error	SDS: failed to generate secret for proxy: authentication failure
 ```
@@ -138,7 +138,7 @@ kubectl logs -n istio-system deploy/istiod | grep -i "webhook\|validation\|injec
 
 Common webhook issues:
 
-```
+```text
 # Injection webhook failing
 error	Failed to inject sidecar: template error: ...
 
@@ -183,7 +183,7 @@ kubectl exec -n istio-system deploy/istiod -- \
 
 If push times are high or you're seeing rejects, Istiod might be under too much load. In the logs, you'll see:
 
-```
+```text
 warn	ads	Push debounce stable, delay exceeded max: 5s
 ```
 

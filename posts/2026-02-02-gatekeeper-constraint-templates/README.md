@@ -1131,7 +1131,7 @@ Organize templates for maintainability and reuse across clusters.
 
 ### Directory Structure
 
-```
+```text
 policies/
 ├── constraint-templates/
 │   ├── security/

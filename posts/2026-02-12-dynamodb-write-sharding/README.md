@@ -177,7 +177,7 @@ With 10 shards, you can handle 10,000 increments per second on a single logical 
 
 How many shards should you use? It depends on your peak write throughput:
 
-```
+```text
 Shards needed = Peak writes per second / 1,000 WCUs per partition
 ```
 

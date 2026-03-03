@@ -41,7 +41,7 @@ In the default linear strategy, when a host fails a task, that host is removed f
 
 The play recap shows:
 
-```
+```text
 host-01: ok=3  changed=0  failed=0
 ...
 host-05: ok=0  changed=0  failed=1  # Failed on task 1
@@ -295,7 +295,7 @@ With the free strategy, failures behave similarly but other hosts do not wait. A
 
 With host_pinned, a failed host stops its entire sequence but the fork immediately picks up the next host:
 
-```
+```text
 Fork 1: host-01/task1 -> host-01/task2(FAIL) -> host-06/task1 -> host-06/task2 -> ...
 Fork 2: host-02/task1 -> host-02/task2 -> host-02/task3 -> host-07/task1 -> ...
 ```

@@ -31,7 +31,7 @@ For RAIDZ pools, the most practical expansion strategy is usually adding an enti
 sudo zpool status tank
 ```
 
-```
+```text
   pool: tank
  state: ONLINE
   scan: scrub repaired 0 in 01:23:45 with 0 errors
@@ -53,7 +53,7 @@ errors: No known data errors
 sudo zpool list tank
 ```
 
-```
+```text
 NAME  SIZE  ALLOC   FREE  FRAG    CAP
 tank  7.27T  5.52T  1.75T  35%    75%
 ```
@@ -94,7 +94,7 @@ sudo zpool add tank raidz2 \
 sudo zpool status tank
 ```
 
-```
+```text
 config:
 
         NAME           STATE
@@ -115,7 +115,7 @@ config:
 sudo zpool list tank
 ```
 
-```
+```text
 NAME   SIZE   ALLOC   FREE  FRAG  CAP
 tank  14.55T  5.52T  9.02T  18%   37%
 ```
@@ -149,7 +149,7 @@ ZFS immediately begins resilvering (copying data from the remaining mirror membe
 sudo zpool status tank
 ```
 
-```
+```text
   pool: tank
  state: ONLINE
 status: One or more devices is currently being resilvered.
@@ -207,7 +207,7 @@ Verify the expanded size:
 sudo zpool list tank
 ```
 
-```
+```text
 NAME   SIZE   ALLOC  FREE  FRAG  CAP
 tank  1.82T  0.99T  840G  22%   54%
 ```
@@ -227,7 +227,7 @@ sudo zpool add tank spare /dev/disk/by-id/ata-spare-disk
 sudo zpool status tank
 ```
 
-```
+```text
 config:
 
         NAME               STATE
@@ -261,7 +261,7 @@ sudo zpool add tank cache /dev/disk/by-id/nvme-Samsung-SSD-xxxx
 sudo zpool status tank | grep cache
 ```
 
-```
+```text
         cache
           nvme-Samsung-SSD  ONLINE
 ```
@@ -302,7 +302,7 @@ sudo zpool iostat -v tank 2
 sudo zpool status tank
 ```
 
-```
+```text
 NAME        SIZE  ALLOC   FREE  READ  WRITE
 tank       14.5T  5.52T  9.02T     0      0
   raidz2   7.27T  5.52T  1.75T     0      0

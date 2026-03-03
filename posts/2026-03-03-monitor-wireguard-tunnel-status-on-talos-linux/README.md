@@ -135,7 +135,7 @@ kubectl apply -f wireguard-exporter-daemonset.yaml
 
 The exporter produces metrics like these:
 
-```
+```text
 # Bytes received from the peer
 wireguard_received_bytes_total{interface="wg0",public_key="YH7Bs3g...",allowed_ips="10.10.0.2/32"} 15234567
 

@@ -41,12 +41,12 @@ flowchart LR
 
 The `traceparent` header follows this exact format:
 
-```
+```text
 traceparent: {version}-{trace-id}-{parent-id}-{flags}
 ```
 
 Example of a valid traceparent:
-```
+```text
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
              |  |                                |                |
              |  |                                |                +-- flags (01 = sampled)

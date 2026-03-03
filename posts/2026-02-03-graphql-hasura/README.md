@@ -113,7 +113,7 @@ sequenceDiagram
 
 Navigate to Data > Manage > Connect Database and enter your connection string.
 
-```
+```text
 postgresql://user:password@hostname:5432/database_name
 ```
 
@@ -127,7 +127,7 @@ environment:
 
 Then reference it in Hasura.
 
-```
+```text
 {{PG_DATABASE_URL}}
 ```
 
@@ -443,7 +443,7 @@ type SignupOutput {
 
 Set the handler URL to your service endpoint.
 
-```
+```text
 https://your-api.com/actions/signup
 ```
 
@@ -590,7 +590,7 @@ Connect existing GraphQL services to create a unified API.
 
 If you have an existing GraphQL API for payments or search, stitch it into Hasura.
 
-```
+```text
 https://payments.your-api.com/graphql
 ```
 

@@ -548,7 +548,7 @@ spec:
 
 ### Chart Structure
 
-```
+```text
 gatekeeper-policies/
 ├── Chart.yaml
 ├── values.yaml

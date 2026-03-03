@@ -26,7 +26,7 @@ GODEBUG=gctrace=1 ./otelcol-contrib --config config.yaml
 
 This prints GC information to stderr:
 
-```
+```text
 gc 42 @120.305s 5%: 0.12+45.3+0.089 ms clock, 0.48+12.1/42.5/0+0.35 ms cpu, 380->395->210 MB, 400 MB goal, 4 P
 ```
 
@@ -143,7 +143,7 @@ curl -s http://collector:1777/debug/pprof/heap?debug=1 | head -30
 
 You can also expose GC metrics through the Collector's telemetry:
 
-```
+```text
 # Go runtime metrics
 go_gc_duration_seconds
 go_memstats_alloc_bytes

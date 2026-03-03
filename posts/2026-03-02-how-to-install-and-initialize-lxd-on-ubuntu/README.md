@@ -61,7 +61,7 @@ You will be prompted through a series of questions. Here is what each question m
 
 ### Clustering
 
-```
+```text
 Would you like to use LXD clustering? (yes/no) [default=no]:
 ```
 
@@ -69,7 +69,7 @@ Choose **no** for a single-node setup. Clustering is for multi-server deployment
 
 ### Storage Backend
 
-```
+```text
 Do you want to configure a new storage pool? (yes/no) [default=yes]:
 
 Name of the new storage pool [default=default]:
@@ -85,7 +85,7 @@ Recommended backends:
 
 For a development machine, ZFS is ideal:
 
-```
+```text
 Name of the storage backend to use (btrfs, dir, lvm, zfs, ceph) [default=zfs]: zfs
 
 Create a new ZFS pool? (yes/no) [default=yes]: yes
@@ -97,14 +97,14 @@ Size in GiB of the new loop device (1GiB minimum) [default=5GiB]: 30
 
 If you have a dedicated disk for LXD, use it instead of a loop device:
 
-```
+```text
 Would you like to use an existing empty block device? (yes/no) [default=no]: yes
 Path to the existing block device: /dev/sdb
 ```
 
 ### Networking (MAAS)
 
-```
+```text
 Would you like to connect to a MAAS server? (yes/no) [default=no]:
 ```
 
@@ -112,7 +112,7 @@ Choose **no** unless you are using Canonical's Metal as a Service platform.
 
 ### Bridge Networking
 
-```
+```text
 Would you like to create a new local network bridge? (yes/no) [default=yes]:
 
 What should the new bridge be called? [default=lxdbr0]:
@@ -126,7 +126,7 @@ Accept defaults. LXD creates a `lxdbr0` bridge with NAT, giving containers inter
 
 ### Remote Access
 
-```
+```text
 Would you like the LXD server to be available over the network? (yes/no) [default=no]:
 ```
 
@@ -134,7 +134,7 @@ Choose **no** for a local setup. For remote management or clustering, choose yes
 
 ### Stale Image Caching
 
-```
+```text
 Would you like stale cached images to be updated automatically? (yes/no) [default=yes]:
 ```
 

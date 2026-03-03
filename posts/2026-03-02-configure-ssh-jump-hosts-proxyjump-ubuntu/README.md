@@ -37,7 +37,7 @@ The traffic is forwarded transparently. Your private key (if using key auth) is 
 
 For servers you access frequently, put the configuration in `~/.ssh/config`:
 
-```
+```text
 # The bastion/jump host
 Host bastion
     HostName bastion.example.com
@@ -99,7 +99,7 @@ A common misconception is that you need SSH agent forwarding (`-A`) to use jump 
 
 Agent forwarding (`ForwardAgent yes`) passes your SSH agent socket to the jump host, which means the jump host's processes can use your keys. This is a security risk - a compromised jump host could use your forwarded agent to authenticate as you to other servers. Avoid it.
 
-```
+```text
 # Do NOT do this for ProxyJump scenarios
 Host bastion
     ForwardAgent yes  # Unnecessary and a security risk with ProxyJump
@@ -197,7 +197,7 @@ ssh -v -J user@bastion user@10.0.1.50
 
 If you're working with OpenSSH older than 7.3, use `ProxyCommand` instead:
 
-```
+```text
 # Older method using ProxyCommand (still works on modern systems)
 Host app-server
     HostName 10.0.1.50

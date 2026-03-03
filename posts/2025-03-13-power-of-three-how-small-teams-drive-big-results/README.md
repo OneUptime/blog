@@ -8,7 +8,7 @@ Description: At OneUptime, we’ve cracked the code: teams of three.
 
 In the fast-paced world of software development, team structure can make or break productivity. At OneUptime, we’ve cracked the code: teams of three. Whether it’s engineering squads or management hierarchies, we’ve found that **keeping teams small and focused isn’t just efficient -  it’s transformative**. Here’s how this approach helped us deliver platforms rivaling the scope of Incident.io, StatusPage.io, and more- all with just two tiny teams - we call pods.
 
-### Why Three? The Magic Behind Small Teams
+## Why Three? The Magic Behind Small Teams
 
 Large teams often drown in meetings, miscommunication, and mismatched priorities. By contrast, three-person teams strike the perfect balance:
 

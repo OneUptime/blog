@@ -68,7 +68,7 @@ With an exact version pin, Terraform can skip the version resolution step and go
 
 Local modules have zero download cost. If you find yourself using a registry module but only need a fraction of its functionality, consider copying the relevant parts into a local module:
 
-```
+```text
 project/
   modules/
     vpc/

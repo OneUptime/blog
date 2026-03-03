@@ -28,7 +28,7 @@ Talos Linux has several properties that make it particularly well-suited for spo
 
 A well-designed spot architecture separates workloads by their tolerance for interruption:
 
-```
+```text
 Control Plane: Always on-demand instances (3 nodes)
 Worker Pool 1 (on-demand): Critical workloads, databases, stateful sets
 Worker Pool 2 (spot): Stateless services, web frontends, batch jobs
@@ -266,7 +266,7 @@ spec:
 
 Here is a realistic example of what spot savings look like:
 
-```
+```text
 On-demand cluster (10 x m5.xlarge workers):
   $0.192/hr x 10 nodes x 730 hrs/month = $1,401.60/month
 

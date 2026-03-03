@@ -33,7 +33,7 @@ flowchart LR
 
 ## Project Structure
 
-```
+```text
 nginx-gzip/
   inventory/
     hosts.yml

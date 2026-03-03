@@ -223,7 +223,7 @@ Consistent naming makes your telemetry queryable and maintainable. Here are some
 
 Once events are flowing, query them in Log Analytics.
 
-```
+```text
 // Count of OrderPlaced events per region over the last 24 hours
 customEvents
 | where timestamp > ago(24h)
@@ -237,7 +237,7 @@ Properties end up in `customDimensions` and measurements end up in `customMeasur
 
 ## Querying Custom Metrics
 
-```
+```text
 // Average queue depth over time in 5-minute buckets
 customMetrics
 | where timestamp > ago(6h)
@@ -250,7 +250,7 @@ customMetrics
 
 You can create alert rules based on custom events and metrics. For example, alert when the error rate for a specific business operation exceeds a threshold.
 
-```
+```text
 // Alert query: more than 10 payment failures in the last 15 minutes
 customEvents
 | where timestamp > ago(15m)

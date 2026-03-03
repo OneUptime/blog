@@ -63,7 +63,7 @@ talosctl ls /boot/ --nodes <NODE_IP>
 
 With GRUB, you will typically see:
 
-```
+```text
 /boot/
   ├── A/
   │   ├── vmlinuz
@@ -77,7 +77,7 @@ With GRUB, you will typically see:
 
 With systemd-boot, the kernel and initramfs are bundled into Unified Kernel Images (UKI):
 
-```
+```text
 /boot/EFI/Linux/
   ├── talos-A.efi
   └── talos-B.efi
@@ -96,7 +96,7 @@ talosctl dmesg --nodes <NODE_IP> | grep -i "efi\|grub\|systemd-boot\|stub"
 
 systemd-boot typically leaves traces like:
 
-```
+```text
 EFI stub: Loaded initrd from LINUX_EFI_INITRD_MEDIA_GUID device path
 ```
 

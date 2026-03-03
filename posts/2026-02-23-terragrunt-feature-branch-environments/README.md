@@ -22,7 +22,7 @@ When a developer creates a feature branch called `feature/add-auth`, the CI pipe
 
 You don't need a separate directory for each feature branch. Instead, use a template that's parameterized by the branch name:
 
-```
+```text
 infrastructure/
   terragrunt.hcl              # Root config
   _envcommon/

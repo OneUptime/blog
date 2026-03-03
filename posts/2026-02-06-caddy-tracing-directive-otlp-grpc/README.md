@@ -12,7 +12,7 @@ Caddy Server has built-in OpenTelemetry tracing support through its `tracing` di
 
 Add the `tracing` directive to your Caddyfile:
 
-```
+```text
 # Caddyfile
 :8080 {
     # Enable tracing for this site with a custom span name
@@ -74,7 +74,7 @@ service:
 
 Each HTTP request through Caddy produces a span with these attributes:
 
-```
+```text
 Span Name: HTTP GET /api/users
 Attributes:
   http.method:       GET
@@ -138,7 +138,7 @@ networks:
 
 The Caddyfile for this setup:
 
-```
+```text
 # Caddyfile
 :80 {
     tracing {
@@ -152,7 +152,7 @@ The Caddyfile for this setup:
 
 You can enable tracing on specific route matchers instead of globally:
 
-```
+```text
 :80 {
     # Only trace API routes
     @api path /api/*
@@ -173,7 +173,7 @@ You can enable tracing on specific route matchers instead of globally:
 
 Use the `header_up` directive in combination with tracing to add custom headers that become span attributes:
 
-```
+```text
 :80 {
     tracing
 

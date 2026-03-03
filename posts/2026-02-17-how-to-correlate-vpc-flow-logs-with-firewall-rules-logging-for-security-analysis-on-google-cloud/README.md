@@ -130,7 +130,7 @@ Use Cloud Logging queries to join flow logs and firewall logs based on their con
 
 ### Find All Denied Traffic with Flow Context
 
-```
+```text
 # Query to find denied connections and their corresponding flow details
 resource.type="gce_subnetwork"
 logName="projects/my-project/logs/compute.googleapis.com%2Ffirewall"
@@ -141,7 +141,7 @@ jsonPayload.disposition="DENIED"
 
 Look for traffic that was allowed but might indicate lateral movement.
 
-```
+```text
 # Find allowed SSH connections between non-bastion hosts
 resource.type="gce_subnetwork"
 logName="projects/my-project/logs/compute.googleapis.com%2Ffirewall"
@@ -152,7 +152,7 @@ NOT jsonPayload.connection.src_ip="10.0.0.5"
 
 ### Correlate High-Volume Flows with Firewall Decisions
 
-```
+```text
 # Find high-bandwidth flows and cross-reference with firewall rules
 resource.type="gce_subnetwork"
 logName="projects/my-project/logs/compute.googleapis.com%2Fvpc_flows"

@@ -77,7 +77,7 @@ Commands mutate state through a domain model optimized for business rules. Queri
 
 Let's build a practical example - an e-commerce order system. First, set up the project structure:
 
-```
+```text
 src/
   commands/
     createOrder.js

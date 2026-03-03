@@ -28,7 +28,7 @@ Before diving in, make sure you have:
 
 A well-organized project structure saves you headaches down the road. Here is a layout that scales well:
 
-```
+```text
 myapi/
 ├── cmd/
 │   └── server/

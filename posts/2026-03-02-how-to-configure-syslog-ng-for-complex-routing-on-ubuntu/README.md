@@ -63,7 +63,7 @@ sudo nano /etc/syslog-ng/syslog-ng.conf
 
 The default configuration looks like:
 
-```
+```text
 @version: 3.38
 @include "scl.conf"
 
@@ -88,7 +88,7 @@ options {
 
 Sources define where syslog-ng reads log messages from:
 
-```
+```text
 # Collect from the local system journal via /dev/log socket
 source s_local {
     system();     # Platform-specific local source (handles journal, /dev/log, etc.)
@@ -141,7 +141,7 @@ source s_gelf {
 
 Filters select which log messages to process:
 
-```
+```text
 # Match messages by severity (level)
 filter f_error    { level(err .. emerg); };
 filter f_warning  { level(warning); };
@@ -190,7 +190,7 @@ filter f_not_debug {
 
 Destinations define where syslog-ng sends log messages:
 
-```
+```text
 # Write to a file
 destination d_all {
     file("/var/log/syslog-ng/all.log"
@@ -250,7 +250,7 @@ destination d_syslog_pipe {
 
 Log statements tie sources, filters, and destinations together:
 
-```
+```text
 # Basic: all local logs to a file
 log {
     source(s_local);

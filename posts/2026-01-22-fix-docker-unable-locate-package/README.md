@@ -248,7 +248,7 @@ docker run --rm alpine:3.20 apk info -a nginx
 
 ### Error: Package Has No Installation Candidate
 
-```
+```text
 E: Package 'package-name' has no installation candidate
 ```
 
@@ -264,7 +264,7 @@ RUN apt-get update && apt-get install -y -t bookworm-backports package-name
 
 ### Error: Unable to Fetch Archive
 
-```
+```text
 E: Failed to fetch http://... 404 Not Found
 ```
 
@@ -280,7 +280,7 @@ FROM ubuntu:24.04  # Instead of ubuntu:20.04
 
 ### Error: GPG Key Not Available
 
-```
+```text
 The following signatures couldn't be verified because the public key is not available
 ```
 

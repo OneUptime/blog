@@ -1689,7 +1689,7 @@ mindmap
 
 Organize your migration files logically:
 
-```
+```text
 src/main/resources/
   db/
     migration/

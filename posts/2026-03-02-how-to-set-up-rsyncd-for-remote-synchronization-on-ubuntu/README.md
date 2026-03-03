@@ -101,7 +101,7 @@ For modules that require authentication, create a secrets file:
 sudo nano /etc/rsyncd.secrets
 ```
 
-```
+```text
 # Format: username:password
 backupuser:securepassword123
 sysadmin:anothersecurepassword
@@ -275,7 +275,7 @@ For cases where you want rsync users who are not system users:
 ```
 
 In `/etc/rsyncd.secrets`:
-```
+```text
 alice:alicespassword
 bob:bobspassword
 charlie:charliespassword
@@ -328,7 +328,7 @@ sudo crontab -e
 ```
 
 Add:
-```
+```text
 0 */6 * * * /usr/local/bin/sync-from-rsyncd.sh
 ```
 
@@ -351,7 +351,7 @@ rsync rsync://localhost/
 ## rsyncd Log Format
 
 The default log format shows:
-```
+```text
 2026/03/02 10:30:15 [12345] connect from backup-client (192.168.1.100)
 2026/03/02 10:30:15 [12345] rsync on backups/ from backupuser@192.168.1.100
 2026/03/02 10:30:16 [12345] sent 1048576 bytes  received 100 bytes  total size 10485760

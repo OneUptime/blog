@@ -14,7 +14,7 @@ WebSocket provides full-duplex communication over a single TCP connection, enabl
 
 A WebSocket connection starts as an HTTP request with special upgrade headers:
 
-```
+```text
 GET /ws HTTP/1.1
 Host: example.com
 Upgrade: websocket

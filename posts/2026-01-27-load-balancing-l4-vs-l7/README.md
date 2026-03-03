@@ -39,7 +39,7 @@ L4 load balancers route traffic based on:
 
 **How it works:**
 
-```
+```text
 Client --> L4 LB --> Backend Server
           (NAT or DSR)
 
@@ -67,7 +67,7 @@ L7 load balancers terminate client connections and make new connections to backe
 
 **How it works:**
 
-```
+```text
 Client --> L7 LB --> Backend Server
        (SSL)    (new connection)
 
@@ -552,7 +552,7 @@ backend api_backend
 
 Use this flowchart to choose between L4 and L7:
 
-```
+```text
 Start
   |
   v

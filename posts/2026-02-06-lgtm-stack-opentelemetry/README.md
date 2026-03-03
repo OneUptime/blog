@@ -53,7 +53,7 @@ The beauty of this architecture is that your applications only need to know abou
 
 Let's organize the configuration files into a clean project structure.
 
-```
+```text
 lgtm-stack/
   docker-compose.yaml
   otel-collector-config.yaml

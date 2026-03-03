@@ -34,7 +34,7 @@ The official `siderolabs/talos` Terraform provider handles Talos-specific operat
 
 Create your Terraform project structure:
 
-```
+```text
 terraform-talos/
   /main.tf           # Main configuration
   /variables.tf      # Input variables

@@ -120,7 +120,7 @@ sudo nano /etc/environment
 
 Add:
 
-```
+```text
 JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
 ```
 
@@ -153,7 +153,7 @@ sudo update-alternatives --config java
 
 The interactive mode shows a numbered menu:
 
-```
+```text
 There are 3 choices for the alternative java (providing /usr/bin/java).
 
   Selection    Path                                            Priority   Status

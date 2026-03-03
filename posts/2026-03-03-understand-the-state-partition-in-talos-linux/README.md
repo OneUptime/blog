@@ -40,7 +40,7 @@ talosctl get nodename --nodes 192.168.1.10
 
 Talos creates several partitions during installation. Here is a quick comparison to help you understand where the STATE partition fits:
 
-```
+```text
 Disk Layout on a Talos Node:
   EFI/BIOS  - Boot firmware partition
   BOOT      - Kernel and initramfs

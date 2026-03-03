@@ -246,7 +246,7 @@ ssl_config={"cert_path": "/etc/ssl/cert.pem", "key_path": "/etc/ssl/key.pem", "p
 
 However, complex structures like these are much easier to read and maintain in `group_vars` YAML files. Keep the INI file for simple host and group definitions, and move complex variables to `group_vars/`:
 
-```
+```text
 inventory/
   hosts.ini
   group_vars/

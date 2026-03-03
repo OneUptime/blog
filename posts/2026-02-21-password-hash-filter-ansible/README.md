@@ -26,7 +26,7 @@ The `password_hash` filter takes a hashing algorithm as its argument:
 
 This generates a SHA-512 hash that looks something like:
 
-```
+```text
 $6$rounds=656000$randomsalt$longhashstring...
 ```
 

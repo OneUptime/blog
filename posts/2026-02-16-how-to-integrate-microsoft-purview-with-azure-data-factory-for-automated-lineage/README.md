@@ -239,7 +239,7 @@ The lineage typically appears within 5-15 minutes of the pipeline run completing
 
 Data Flows provide the most detailed lineage. Here is what a typical Data Flow looks like and what Purview captures:
 
-```
+```text
 Source: SQL customers table
   |-> Select: Pick relevant columns (customer_id, name, email, signup_date)
   |-> DerivedColumn: Create full_name from first_name + last_name

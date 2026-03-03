@@ -14,7 +14,7 @@ Staging an upgrade in Talos Linux lets you separate the preparation phase from t
 
 When you stage an upgrade in Talos Linux, the system downloads the new installer image and writes the new kernel and initramfs to the inactive boot slot, but it does not reboot the node. The node continues running the current version until you explicitly reboot it.
 
-```
+```text
 Normal Upgrade:
   1. Download new image     -|
   2. Write to inactive slot  |-- Happens immediately
@@ -176,7 +176,7 @@ The biggest advantage is separating preparation from execution. You can download
 
 Since the image is already downloaded and written to disk, the maintenance window only needs to cover the reboot time and health verification. On most hardware, a Talos reboot takes 2-5 minutes.
 
-```
+```text
 Without staging (per node):
   Download image: 2-5 minutes (depends on bandwidth)
   Write to disk: 1-2 minutes

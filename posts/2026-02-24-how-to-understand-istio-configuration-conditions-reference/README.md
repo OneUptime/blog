@@ -25,7 +25,7 @@ When you run `istioctl analyze`, it returns messages with codes like `IST0101`, 
 
 ### IST0101 - ReferencedResourceNotFound
 
-```
+```text
 Warning [IST0101] (VirtualService default/my-vs) Referenced gateway not found: "my-gateway"
 ```
 
@@ -47,7 +47,7 @@ kubectl get gateway my-gateway -n istio-system
 
 ### IST0106 - SchemaValidationError
 
-```
+```text
 Error [IST0106] (VirtualService default/my-vs) Schema validation error: unknown field "matchs"
 ```
 
@@ -55,7 +55,7 @@ A field in your YAML does not match the expected schema. This is usually a typo.
 
 ### IST0108 - UnknownAnnotation
 
-```
+```text
 Warning [IST0108] (Pod default/my-pod) Unknown annotation: networking.istio.io/exportToo
 ```
 
@@ -63,7 +63,7 @@ You used an Istio-related annotation that is not recognized. Again, usually a ty
 
 ### IST0104 - GatewayPortNotOnWorkload
 
-```
+```text
 Warning [IST0104] (Gateway istio-system/my-gateway) The gateway refers to a port that is not exposed on the workload
 ```
 
@@ -75,7 +75,7 @@ kubectl get svc istio-ingressgateway -n istio-system -o yaml
 
 ### IST0109 - ConflictingMeshGatewayVirtualServiceHosts
 
-```
+```text
 Warning [IST0109] (VirtualService default/vs-a) Conflicting hosts for mesh gateway: reviews is also used by VirtualService default/vs-b
 ```
 
@@ -83,7 +83,7 @@ Two VirtualServices are trying to route traffic for the same hostname on the mes
 
 ### IST0110 - ConflictingSidecarWorkloadSelectors
 
-```
+```text
 Warning [IST0110] (Sidecar default/sidecar-a) Conflicting sidecar workload selectors: sidecar-b also selects the same workload
 ```
 
@@ -91,7 +91,7 @@ Multiple Sidecar resources are targeting the same workload. Only one Sidecar sho
 
 ### IST0112 - ConflictingTelemetryWorkloadSelectors
 
-```
+```text
 Warning [IST0112] (Telemetry default/telemetry-a) Multiple Telemetry resources select the same workload
 ```
 
@@ -99,7 +99,7 @@ Same as IST0110 but for Telemetry resources.
 
 ### IST0113 - ConflictingPeerAuthentication
 
-```
+```text
 Warning [IST0113] Multiple PeerAuthentication policies match workload X
 ```
 
@@ -107,7 +107,7 @@ Multiple PeerAuthentication policies without workload selectors exist in the sam
 
 ### IST0116 - DeploymentAssociatedToMultipleServices
 
-```
+```text
 Info [IST0116] (Deployment default/my-app) Pods associated with multiple services without proper port naming
 ```
 
@@ -115,7 +115,7 @@ A workload matches multiple Kubernetes services. While this is valid, it can cau
 
 ### IST0118 - DeprecatedAnnotation
 
-```
+```text
 Warning [IST0118] (Pod default/my-pod) Annotation policy.istio.io/check is deprecated
 ```
 
@@ -123,7 +123,7 @@ You are using an annotation that has been deprecated in the current Istio versio
 
 ### IST0122 - InvalidRegexp
 
-```
+```text
 Error [IST0122] (VirtualService default/my-vs) Invalid regex in URI match: "[invalid"
 ```
 
@@ -131,7 +131,7 @@ A regex pattern in your configuration is not valid. Test your regex separately b
 
 ### IST0128 - NoServerCertificateVerificationPortLevel
 
-```
+```text
 Warning [IST0128] (DestinationRule default/my-dr) No server certificate verification for port 443
 ```
 
@@ -143,7 +143,7 @@ Same as IST0128 but at the destination level rather than port level.
 
 ### IST0131 - VirtualServiceUnreachableRule
 
-```
+```text
 Warning [IST0131] (VirtualService default/my-vs) Rule 2 is unreachable because a previous rule matches the same traffic
 ```
 
@@ -151,7 +151,7 @@ A routing rule in your VirtualService will never be reached because an earlier r
 
 ### IST0132 - VirtualServiceIneffectiveMatch
 
-```
+```text
 Warning [IST0132] (VirtualService default/my-vs) This match duplicates a match in a previous rule
 ```
 
@@ -159,7 +159,7 @@ Similar to IST0131 - you have duplicate match conditions.
 
 ### IST0134 - ServiceEntryAddressesRequired
 
-```
+```text
 Warning [IST0134] (ServiceEntry default/my-se) Addresses required for TCP ServiceEntries with NONE resolution
 ```
 
@@ -167,7 +167,7 @@ TCP ServiceEntries with `resolution: NONE` need addresses to route traffic prope
 
 ### IST0138 - ConflictingGateways
 
-```
+```text
 Warning [IST0138] (Gateway istio-system/gw-a) Conflicting listeners on port 443
 ```
 
@@ -175,7 +175,7 @@ Multiple gateways define listeners on the same port and host, creating a conflic
 
 ### IST0139 - InvalidGatewayCredential
 
-```
+```text
 Error [IST0139] (Gateway istio-system/my-gw) The credential referenced by gateway is not found or is not valid
 ```
 
@@ -191,7 +191,7 @@ kubectl get secret my-tls-secret -n istio-system -o jsonpath='{.data}'
 
 ### IST0145 - HostAlreadyDefined
 
-```
+```text
 Warning [IST0145] (VirtualService default/my-vs) Host already defined in another VirtualService
 ```
 

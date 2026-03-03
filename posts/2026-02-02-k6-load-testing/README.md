@@ -79,7 +79,7 @@ k6 run basic-test.js
 
 k6 prints metrics after each run. Here's what matters.
 
-```
+```text
           /\      |‾‾| /‾‾/   /‾‾/
      /\  /  \     |  |/  /   /  /
     /  \/    \    |     (   /   ‾‾\

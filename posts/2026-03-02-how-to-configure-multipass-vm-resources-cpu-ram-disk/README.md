@@ -130,7 +130,7 @@ multipass exec workstation -- bash -c "
 
 Sample output:
 
-```
+```text
 === CPU ===
 4
 === Memory ===

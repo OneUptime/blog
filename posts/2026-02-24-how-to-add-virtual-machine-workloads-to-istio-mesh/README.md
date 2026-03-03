@@ -180,7 +180,7 @@ cat /var/lib/istio/envoy/cluster.env
 
 It should contain entries like:
 
-```
+```text
 ISTIO_META_CLUSTER_ID=cluster1
 ISTIO_META_MESH_ID=mesh1
 ISTIO_META_NETWORK=vm-network

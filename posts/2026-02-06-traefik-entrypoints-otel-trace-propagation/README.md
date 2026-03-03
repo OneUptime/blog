@@ -172,7 +172,7 @@ Traefik automatically propagates W3C Trace Context headers. When a request arriv
 
 The trace flow looks like:
 
-```
+```text
 Client -> Traefik (span: entrypoint) -> Middleware (span: retry) -> Backend (span: service)
 ```
 

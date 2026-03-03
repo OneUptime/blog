@@ -172,13 +172,13 @@ When running in permissive mode, you probably want to know how much traffic is u
 
 In Prometheus, you can query:
 
-```
+```text
 istio_requests_total{connection_security_policy="mutual_tls", reporter="destination"}
 ```
 
 versus:
 
-```
+```text
 istio_requests_total{connection_security_policy="none", reporter="destination"}
 ```
 

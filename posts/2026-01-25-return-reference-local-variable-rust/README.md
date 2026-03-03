@@ -24,7 +24,7 @@ fn create_greeting() -> &str {
 
 The error message looks like this:
 
-```
+```text
 error[E0515]: cannot return reference to local variable `greeting`
  --> src/main.rs:3:5
   |

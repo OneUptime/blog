@@ -61,7 +61,7 @@ az eventgrid system-topic event-subscription create \
 You almost never want to receive events for every blob in every container. Use subject filters to narrow it down.
 
 The subject for blob events follows this format:
-```
+```text
 /blobServices/default/containers/{container-name}/blobs/{blob-name}
 ```
 

@@ -16,7 +16,7 @@ If team A upgrades to the latest SDK while team B stays on a version from six mo
 
 Each language SDK has its own version number, and they do not stay in sync:
 
-```
+```text
 Java SDK:     1.36.0
 Python SDK:   1.25.0
 Go SDK:       1.28.0
@@ -184,7 +184,7 @@ Use a shared dependency constraint at the root level:
 
 Maintain a shared constraints file:
 
-```
+```text
 # otel-constraints.txt
 # Shared across all Python services. Reference with:
 # pip install -c otel-constraints.txt -r requirements.txt
@@ -198,7 +198,7 @@ opentelemetry-instrumentation-sqlalchemy==0.46b0
 
 ### For Go (go.work or shared tooling)
 
-```
+```text
 // go.work
 // Use a workspace to align Go module versions across services
 go 1.22

@@ -29,7 +29,7 @@ flowchart LR
 
 Here are typical serialization error messages you might encounter:
 
-```
+```text
 Error: failed to serialize span: invalid UTF-8 in string
 Error: proto: cannot convert invalid UTF-8 string to Text
 Error: serialization failed: attribute value exceeds maximum length

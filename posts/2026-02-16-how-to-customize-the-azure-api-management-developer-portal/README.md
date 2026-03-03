@@ -113,7 +113,7 @@ Go to your APIM instance in the Azure Portal (not the developer portal editor), 
 
 For Azure AD, you need to register an application and provide the client ID, client secret, and tenant information. Here is the redirect URI format:
 
-```
+```text
 https://yourinstance.developer.azure-api.net/signin-aad
 ```
 

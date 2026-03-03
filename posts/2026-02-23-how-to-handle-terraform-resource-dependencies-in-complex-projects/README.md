@@ -196,7 +196,7 @@ echo "Graph generated: dependency-graph.svg"
 
 Design your Terraform configurations so dependencies flow in one direction:
 
-```
+```text
 Foundation Layer (no dependencies):
   - VPC, Subnets, Route Tables
 

@@ -518,7 +518,7 @@ for cpu, timestamp in readings:
 ```
 
 Output:
-```
+```text
 Time 0s: CPU=80%, State=OK
 Time 10s: CPU=86%, State=ALERTING (changed)
 Time 20s: CPU=82%, State=ALERTING

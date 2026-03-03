@@ -16,7 +16,7 @@ This guide covers the common load balancer scenarios and how to configure mTLS c
 
 With a load balancer in front of your Istio mesh, the traffic flow looks like this:
 
-```
+```text
 Client -> Load Balancer -> Istio Ingress Gateway -> Service (with sidecar)
 ```
 
@@ -26,7 +26,7 @@ mTLS applies between the ingress gateway and the service (and between services).
 
 This is the most common setup. The cloud load balancer (AWS ALB, GCP HTTPS LB, Azure Application Gateway) terminates TLS from the client and forwards traffic to the Istio ingress gateway over HTTP or a new TLS connection.
 
-```
+```text
 Client --HTTPS--> Cloud LB --HTTP--> Ingress Gateway --mTLS--> Service
 ```
 
@@ -74,7 +74,7 @@ spec:
 
 In passthrough mode, the load balancer does not terminate TLS. It forwards the raw TCP connection to the Istio ingress gateway, which handles TLS termination.
 
-```
+```text
 Client --TLS--> Cloud LB (passthrough) --TLS--> Ingress Gateway --mTLS--> Service
 ```
 
@@ -114,7 +114,7 @@ With passthrough, the ingress gateway sees the original TLS connection and can r
 
 Some architectures use internal load balancers between service tiers, especially when migrating from a traditional load-balanced architecture to a mesh:
 
-```
+```text
 Service A (sidecar) --mTLS--> Internal LB --???--> Service B (sidecar)
 ```
 
@@ -144,7 +144,7 @@ Service A's sidecar will automatically load balance across all pods of Service B
 
 If your load balancer is running as a pod in the cluster without a sidecar (like an nginx ingress controller without sidecar injection), it cannot participate in mTLS:
 
-```
+```text
 nginx-ingress (no sidecar) --plaintext--> Service B (sidecar, STRICT mTLS)
 ```
 

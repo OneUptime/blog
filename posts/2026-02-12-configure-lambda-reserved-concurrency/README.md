@@ -270,7 +270,7 @@ resource "aws_lambda_function" "order_processor" {
 
 When planning reserved concurrency across your functions, keep track of the math:
 
-```
+```text
 Total account limit:    1,000
 Function A reserved:     -200
 Function B reserved:     -100

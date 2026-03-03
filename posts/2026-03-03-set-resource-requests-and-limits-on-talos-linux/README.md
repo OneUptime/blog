@@ -40,7 +40,7 @@ spec:
 
 On a Talos Linux node, the allocatable resources are calculated as:
 
-```
+```text
 Allocatable = Capacity - System Reserved - Kube Reserved - Eviction Threshold
 ```
 

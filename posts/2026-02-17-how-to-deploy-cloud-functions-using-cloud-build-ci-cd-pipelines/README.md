@@ -49,7 +49,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 A typical Cloud Functions project looks like this:
 
-```
+```text
 my-function/
   index.js          # Function code
   package.json      # Dependencies and scripts

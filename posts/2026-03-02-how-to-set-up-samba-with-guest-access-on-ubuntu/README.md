@@ -180,7 +180,7 @@ sudo ufw status
 
 In File Explorer's address bar:
 
-```
+```text
 \\192.168.1.50\public
 ```
 
@@ -188,7 +188,7 @@ Windows may show a credential dialog. Click "Connect without a credential" or ju
 
 On Windows 10/11, guest access via SMB2/3 may be blocked by default. Enable it via Group Policy or a registry change:
 
-```
+```text
 HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters
 EnableInsecureGuestLogons = 1 (DWORD)
 ```
@@ -215,7 +215,7 @@ sudo mount -t cifs //192.168.1.50/public /mnt/public -o guest,uid=$(id -u)
 
 In Finder, `Cmd+K` and enter:
 
-```
+```text
 smb://192.168.1.50/public
 ```
 

@@ -18,7 +18,7 @@ When you start a new Node.js project, it's tempting to throw everything into a s
 
 Most Node.js tutorials show you something like this:
 
-```
+```text
 my-app/
   index.js
   routes.js
@@ -33,7 +33,7 @@ This falls apart quickly. Where do you put middleware? How do you organize busin
 
 Here's a structure that scales from small APIs to large enterprise applications:
 
-```
+```text
 src/
   config/           # Configuration files and environment handling
   controllers/      # Request handlers

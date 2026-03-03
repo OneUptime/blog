@@ -290,7 +290,7 @@ kubectl exec deploy/my-service -c istio-proxy -- \
 
 Track 5xx errors in Prometheus during deployments:
 
-```
+```text
 sum(rate(istio_requests_total{destination_service="my-service.production.svc.cluster.local",response_code=~"5.*"}[1m]))
 ```
 

@@ -184,7 +184,7 @@ async function instrumentedFetch(url: string, options: RequestInit = {}) {
 
 With metrics and span events flowing, create a dashboard that shows:
 
-```
+```text
 # Which deprecated endpoints still have traffic
 sum(rate(api_deprecated_requests_total[1h])) by (api_route)
 

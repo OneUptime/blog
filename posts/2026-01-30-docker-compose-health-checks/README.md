@@ -446,7 +446,7 @@ docker compose ps
 
 Output shows health status in the STATUS column:
 
-```
+```text
 NAME                STATUS                    PORTS
 myapp-postgres-1    Up 2 minutes (healthy)    5432/tcp
 myapp-api-1         Up 1 minute (unhealthy)   0.0.0.0:8080->8080/tcp

@@ -75,7 +75,7 @@ All pipeline logs are sent to Cloud Logging. You can access them from the pipeli
 
 To find logs for a specific pipeline run in Cloud Logging:
 
-```
+```text
 # Cloud Logging query for a specific pipeline's logs
 resource.type="cloud_data_fusion_pipeline"
 resource.labels.pipeline_name="my_etl_pipeline"
@@ -84,7 +84,7 @@ severity>=WARNING
 
 For more targeted searches, filter by the run ID:
 
-```
+```text
 # Filter logs for a specific pipeline run
 resource.type="cloud_data_fusion_pipeline"
 labels.run_id="abc123-def456"
@@ -99,19 +99,19 @@ When a pipeline fails, the first thing to check is the error message on the fail
 Common error patterns and what they mean:
 
 **Connection timeout errors:**
-```
+```text
 java.net.ConnectException: Connection timed out
 ```
 This means Data Fusion cannot reach the source or sink system. Check network connectivity, firewall rules, and VPC peering settings.
 
 **Authentication errors:**
-```
+```text
 java.sql.SQLException: Access denied for user 'cdf_user'@'10.x.x.x'
 ```
 The credentials stored in Data Fusion are wrong or the user permissions have been revoked. Update the connection credentials and test the connection.
 
 **Schema mismatch errors:**
-```
+```text
 io.cdap.cdap.api.data.schema.SchemaException: Field 'amount' is of type 'string' but expected 'double'
 ```
 The source data type does not match what the pipeline expects. Either update the pipeline schema or add a transform to cast the field.
@@ -171,14 +171,14 @@ bq show --format=prettyjson my-project:my_dataset | jq '.access'
 If your pipeline fails with `java.lang.OutOfMemoryError`, you have a few options:
 
 1. Increase the executor memory in the pipeline runtime arguments:
-```
+```text
 system.resources.memory=4096
 ```
 
 2. Reduce the number of records processed per batch by adjusting the source fetch size
 
 3. If using the Spark execution engine, adjust the Spark executor memory:
-```
+```text
 system.spark.executor.memory=8g
 ```
 

@@ -386,7 +386,7 @@ cat /var/lib/netdata/cloud.d/cloud.conf
 
 Access specific charts:
 
-```
+```text
 # Single chart
 http://localhost:19999/api/v1/chart?chart=system.cpu
 

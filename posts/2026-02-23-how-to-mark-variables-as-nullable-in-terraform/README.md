@@ -69,7 +69,7 @@ variable "environment" {
 
 With `nullable = false`, attempting to pass `null` produces an error:
 
-```
+```text
 Error: Invalid value for variable
 
 The given value is not suitable for variable "environment":

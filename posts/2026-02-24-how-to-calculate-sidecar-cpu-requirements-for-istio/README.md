@@ -73,7 +73,7 @@ rate(istio_requests_total[5m])
 
 A practical formula for estimating sidecar CPU:
 
-```
+```text
 CPU (millicores) = Base + (RPS x Per_Request_Cost) + (New_Connections_Per_Sec x TLS_Handshake_Cost)
 
 Where:
@@ -84,7 +84,7 @@ Where:
 
 Example for a service handling 1,000 RPS with mTLS enabled and 50 new connections per second:
 
-```
+```text
 CPU = 5m + (1000 x 0.25m) + (50 x 2m)
 CPU = 5m + 250m + 100m
 CPU = 355m

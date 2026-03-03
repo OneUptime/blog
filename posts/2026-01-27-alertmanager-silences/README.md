@@ -258,7 +258,7 @@ For integration with deployment pipelines, incident management tools, or custom 
 
 ### API Endpoint Overview
 
-```
+```text
 POST   /api/v2/silences     - Create a new silence
 GET    /api/v2/silences     - List all silences
 GET    /api/v2/silence/{id} - Get a specific silence
@@ -789,7 +789,7 @@ Following these best practices will help you use silences effectively without co
 
 ### Recommended Silence Workflow
 
-```
+```text
 1. Identify the need for silence (maintenance, deployment, known issue)
 2. Define specific matchers (service, environment, alertname)
 3. Calculate appropriate duration (maintenance window + 10% buffer)

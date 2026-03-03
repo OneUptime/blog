@@ -134,7 +134,7 @@ For GitHub, the token needs the `repo` scope, which includes LFS access. For Git
 
 Here is a realistic example where LFS is useful. An ML team stores model metadata as large JSON files tracked by LFS:
 
-```
+```text
 ml-deployments/
   .gitattributes
   models/
@@ -147,7 +147,7 @@ ml-deployments/
 
 The `.gitattributes` file configures LFS tracking:
 
-```
+```text
 models/**/*.json filter=lfs diff=lfs merge=lfs -text
 ```
 
@@ -206,7 +206,7 @@ LFS adds overhead to repository cloning because ArgoCD must make additional HTTP
 
 Only track files that actually need LFS. Small configuration files should stay as regular Git objects:
 
-```
+```text
 # .gitattributes - be specific about what needs LFS
 *.bin filter=lfs diff=lfs merge=lfs -text
 *.model filter=lfs diff=lfs merge=lfs -text
@@ -266,7 +266,7 @@ data:
 
 If you see LFS pointer content in your manifests:
 
-```
+```text
 version https://git-lfs.github.com/spec/v1
 oid sha256:abc123...
 size 52428800

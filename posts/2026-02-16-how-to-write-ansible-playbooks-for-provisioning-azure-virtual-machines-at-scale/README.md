@@ -45,7 +45,7 @@ export AZURE_TENANT="your-tenant-id"
 
 I organize Ansible Azure projects like this:
 
-```
+```text
 ansible-azure/
   inventories/
     azure_rm.yml          # Dynamic inventory plugin

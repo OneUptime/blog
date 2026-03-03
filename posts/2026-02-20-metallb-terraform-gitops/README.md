@@ -286,7 +286,7 @@ terraform apply plan.out
 
 ### Repository Structure
 
-```
+```text
 infrastructure/
   clusters/
     production/

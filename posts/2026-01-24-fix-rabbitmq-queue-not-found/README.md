@@ -14,13 +14,13 @@ The "queue not found" error (NOT_FOUND) is a common issue in RabbitMQ that occur
 
 When RabbitMQ cannot find a queue, you will see errors like:
 
-```
+```text
 pika.exceptions.ChannelClosedByBroker: (404, "NOT_FOUND - no queue 'my_queue' in vhost '/'")
 ```
 
 Or in Node.js:
 
-```
+```text
 Error: Channel closed by server: 404 (NOT-FOUND) with message "NOT_FOUND - no queue 'my_queue' in vhost '/'"
 ```
 

@@ -43,7 +43,7 @@ Standard syslog uses UDP port 514, but many modern syslog servers also accept TC
 
 Traditional syslog messages follow the RFC 3164 or RFC 5424 format:
 
-```
+```text
 <134>Mar 01 12:00:00 hostname servicename: Log message here
 ```
 
@@ -103,7 +103,7 @@ sudo systemctl restart rsyslog
 
 For syslog-ng, the configuration looks like this:
 
-```
+```text
 # /etc/syslog-ng/conf.d/talos.conf
 
 # Source for Talos logs
@@ -254,7 +254,7 @@ talosctl service kubelet restart --nodes 192.168.1.20
 
 On the syslog server side, you can filter and route Talos logs based on their content:
 
-```
+```text
 # rsyslog example: Route logs by service
 template(name="TalosServiceLog" type="string"
     string="/var/log/talos/%fromhost-ip%/%$!talos-service%.log")

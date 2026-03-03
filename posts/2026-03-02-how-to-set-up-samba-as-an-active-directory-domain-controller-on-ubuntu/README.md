@@ -69,7 +69,7 @@ Update `/etc/hosts`:
 sudo nano /etc/hosts
 ```
 
-```
+```text
 127.0.0.1       localhost
 192.168.1.10    dc1.corp.example.com dc1
 ```
@@ -124,7 +124,7 @@ Parameters:
 
 Expected output:
 
-```
+```text
 Once the smb.conf is updated, you can use these commands to check the DC:
   host -t SRV _ldap._tcp.corp.example.com.
   host -t SRV _kerberos._udp.corp.example.com.
@@ -147,7 +147,7 @@ Samba's internal DNS needs to be the resolver for the domain. Update `/etc/resol
 sudo nano /etc/resolv.conf
 ```
 
-```
+```text
 nameserver 127.0.0.1
 search corp.example.com
 ```

@@ -14,7 +14,7 @@ Who can deploy to production? Who can view logs but not sync? ArgoCD RBAC answer
 
 ArgoCD RBAC is built on Casbin and uses a simple policy language:
 
-```
+```text
 p, <subject>, <resource>, <action>, <object>, <effect>
 g, <user/group>, <role>
 ```
@@ -36,7 +36,7 @@ ArgoCD comes with two built-in roles:
 
 Can view everything but change nothing:
 
-```
+```text
 p, role:readonly, applications, get, */*, allow
 p, role:readonly, certificates, get, *, allow
 p, role:readonly, clusters, get, *, allow
@@ -51,7 +51,7 @@ p, role:readonly, logs, get, */*, allow
 
 Full access to everything:
 
-```
+```text
 p, role:admin, applications, *, */*, allow
 p, role:admin, clusters, *, *, allow
 p, role:admin, repositories, *, *, allow

@@ -70,7 +70,7 @@ cdk diff
 
 Here's what typical diff output looks like.
 
-```
+```text
 Stack MyStack
 IAM Statement Changes
 +-----+------------------+--------+-----------+-----------------------------------------+
@@ -108,7 +108,7 @@ Resource replacements are dangerous because:
 
 Here's an example of a dangerous diff.
 
-```
+```text
 Resources
 [-] AWS::RDS::DBInstance MyDatabase MyDatabaseABC123 (will be destroyed)
 [+] AWS::RDS::DBInstance MyDatabase MyDatabaseDEF456 (will be created)
@@ -148,7 +148,7 @@ cdk synth > template.yaml
 
 CDK diff highlights IAM and security group changes prominently. This is intentional - these are the changes most likely to cause security incidents.
 
-```
+```text
 IAM Statement Changes
 +-----+------------------+--------+------------------+------------------+
 | +   | ${Role.Arn}      | Allow  | *                | *                |

@@ -54,7 +54,7 @@ graph TB
 The most frequent cause of checkpoint failures is insufficient permissions on the checkpoint directory.
 
 **Error Message:**
-```
+```text
 org.apache.hadoop.security.AccessControlException: Permission denied:
 user=spark, access=WRITE, path=hdfs://namenode:8020/checkpoints/app
 ```
@@ -111,7 +111,7 @@ checkpoint_dir = "hdfs://namenode:8020/checkpoints/spark-app"
 Checkpoint failures often occur when objects in your streaming application cannot be serialized.
 
 **Error Message:**
-```
+```text
 org.apache.spark.SparkException: Task not serializable
 Caused by: java.io.NotSerializableException: com.example.DatabaseConnection
 ```
@@ -191,7 +191,7 @@ class StreamProcessor extends Serializable {
 When a streaming job crashes during checkpoint writing, the checkpoint directory can become corrupted.
 
 **Error Message:**
-```
+```text
 java.io.IOException: Could not read checkpoint from hdfs://namenode:8020/checkpoints/app
 Caused by: java.io.EOFException: Premature EOF from inputStream
 ```
@@ -286,7 +286,7 @@ def backup_corrupted_checkpoint(checkpoint_dir: str):
 When the checkpoint interval is shorter than the time required to write checkpoints, you get cascading failures.
 
 **Error Message:**
-```
+```text
 WARN scheduler.JobScheduler: Streaming job could not be submitted
 because the previous job has not completed yet
 ```
@@ -352,7 +352,7 @@ def update_function(new_values, running_state):
 Large state can cause out-of-memory errors during checkpoint serialization.
 
 **Error Message:**
-```
+```text
 java.lang.OutOfMemoryError: Java heap space
 at java.io.ObjectOutputStream.writeObject
 ```

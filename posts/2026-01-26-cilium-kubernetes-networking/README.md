@@ -177,7 +177,7 @@ cilium connectivity test
 
 The connectivity test deploys test pods and verifies that networking works correctly. A successful output looks like this:
 
-```
+```text
 All 42 tests (295 actions) successful, 0 tests skipped, 0 scenarios skipped.
 ```
 

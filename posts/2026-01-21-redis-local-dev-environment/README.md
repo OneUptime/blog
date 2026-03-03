@@ -318,7 +318,7 @@ Use the Database tool window:
 
 ### Project Structure
 
-```
+```text
 my-redis-project/
 ├── app/
 │   ├── __init__.py
@@ -414,7 +414,7 @@ load_dotenv()
 
 ### Project Structure
 
-```
+```text
 my-redis-project/
 ├── src/
 │   ├── redis.js

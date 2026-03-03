@@ -165,7 +165,7 @@ When you open a heap dump, MAT creates index files that speed up subsequent anal
 
 **Histogram View**: Shows all classes sorted by memory usage.
 
-```
+```text
 Class Name                           | Objects | Shallow Heap | Retained Heap
 ------------------------------------|---------|--------------|---------------
 byte[]                              | 125,432 | 524,288,000  | 524,288,000
@@ -177,7 +177,7 @@ java.util.HashMap$Node              | 200,432 | 6,413,824    | 45,234,112
 
 **Dominator Tree**: Shows objects that "dominate" retained memory. If object A is the only path through which object B is reachable, A dominates B.
 
-```
+```text
 Object                              | Shallow Heap | Retained Heap | Percentage
 ------------------------------------|--------------|---------------|------------
 com.example.CacheManager            | 32           | 312,000,000   | 45.2%
@@ -196,7 +196,7 @@ MAT automatically identifies suspicious objects. The report shows objects that h
 
 Right-click on a suspect object and select "Path to GC Roots > exclude weak/soft references":
 
-```
+```text
 com.example.CachedEntity @0x7f3a4b2c1000
   <- elementData[] @0x7f3a4b2c0f00 (array element)
     <- java.util.ArrayList @0x7f3a4b2c0e00 (field)
@@ -247,7 +247,7 @@ In MAT, use "Compare Tables" feature:
 2. Generate histograms for each
 3. Use "Compare Tables" to see class count differences
 
-```
+```text
 Class Name                    | Dump 1 Objects | Dump 2 Objects | Delta
 ------------------------------|----------------|----------------|--------
 com.example.SessionData       | 1,000          | 15,000         | +14,000
@@ -291,7 +291,7 @@ java -Dcom.sun.management.jmxremote \
 
 **Summary View**: Quick overview of heap contents.
 
-```
+```text
 Heap Size: 4,096 MB
 Used: 3,245 MB
 Classes: 12,456

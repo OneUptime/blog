@@ -98,7 +98,7 @@ kafka-topics.sh --create --topic __my-topic  # Bad practice, may fail
 ### Scenario 1: Invalid Characters in Topic Name
 
 **Error:**
-```
+```text
 org.apache.kafka.common.errors.InvalidTopicException:
 Topic name "user@events" is illegal, contains a character other than
 ASCII alphanumerics, '.', '_' and '-'
@@ -151,7 +151,7 @@ public class TopicNameValidator {
 ### Scenario 2: Topic Name Too Long
 
 **Error:**
-```
+```text
 org.apache.kafka.common.errors.InvalidTopicException:
 Topic name is illegal, it exceeds max length of 249
 ```
@@ -175,7 +175,7 @@ public String createTopicName(String service, String entity, String action) {
 ### Scenario 3: Topic Does Not Exist (Auto-Create Disabled)
 
 **Error:**
-```
+```text
 org.apache.kafka.common.errors.InvalidTopicException:
 Topic user-events not found in metadata after 60000 ms
 ```
@@ -232,7 +232,7 @@ public class TopicCreator {
 ### Scenario 4: Attempting to Create Internal Topic
 
 **Error:**
-```
+```text
 org.apache.kafka.common.errors.InvalidTopicException:
 Topic name "__custom-offsets" is illegal, it starts with reserved prefix "__"
 ```
@@ -252,7 +252,7 @@ String topicName = "internal-custom-offsets";
 Topics with periods and underscores can collide in metrics. Kafka warns about this.
 
 **Warning:**
-```
+```text
 WARN Topic name my.topic collides with existing topic my_topic
 ```
 

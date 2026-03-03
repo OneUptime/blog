@@ -43,12 +43,12 @@ Upload this to a blob container with a path pattern that includes date component
 
 The recommended path pattern looks like this:
 
-```
+```text
 reference-data/devices/{date}/{time}/devices.csv
 ```
 
 For example:
-```
+```text
 reference-data/devices/2026-02-16/14-00-00/devices.csv
 ```
 

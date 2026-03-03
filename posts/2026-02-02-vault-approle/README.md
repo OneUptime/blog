@@ -64,7 +64,7 @@ vault auth list
 
 Expected output:
 
-```
+```text
 Path         Type        Description
 ----         ----        -----------
 approle/     approle     n/a

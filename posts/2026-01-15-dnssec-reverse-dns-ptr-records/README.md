@@ -194,7 +194,7 @@ dnssec-keygen -a ECDSAP256SHA256 -n ZONE 2.0.192.in-addr.arpa
 ```
 
 This creates four files:
-```
+```text
 K2.0.192.in-addr.arpa.+013+12345.key      # KSK public key
 K2.0.192.in-addr.arpa.+013+12345.private  # KSK private key
 K2.0.192.in-addr.arpa.+013+54321.key      # ZSK public key
@@ -375,7 +375,7 @@ dnssec-dsfromkey -2 /etc/bind/keys/K2.0.192.in-addr.arpa.+013+12345.key
 ```
 
 Output:
-```
+```text
 2.0.192.in-addr.arpa. IN DS 12345 13 2 E2D3C9F8A7B6E5D4C3B2A1F0E9D8C7B6A5F4E3D2C1B0A9F8E7D6C5B4A3F2E1D0
 ```
 
@@ -399,7 +399,7 @@ For reverse DNS, the parent zone is controlled by:
 
 Submit via RIPE Database:
 
-```
+```text
 domain:         2.0.192.in-addr.arpa
 descr:          Example Company reverse zone
 admin-c:        ADMIN-RIPE

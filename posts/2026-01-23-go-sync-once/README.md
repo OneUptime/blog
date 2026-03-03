@@ -41,7 +41,7 @@ func main() {
 ```
 
 **Output:**
-```
+```text
 Initializing...
 Done
 ```
@@ -95,7 +95,7 @@ func main() {
 ```
 
 **Output:**
-```
+```text
 Loading configuration...
 Goroutine 0: host=localhost
 Goroutine 1: host=localhost

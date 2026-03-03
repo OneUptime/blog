@@ -76,7 +76,7 @@ The ideal jitter value depends on your application count and reconciliation inte
 
 A good rule of thumb is:
 
-```
+```text
 Optimal Jitter = Reconciliation Interval * (Number of Apps / Target Concurrent Reconciliations) / Number of Apps
 ```
 
@@ -170,7 +170,7 @@ curl -s http://localhost:8082/metrics | grep argocd_app_reconcile
 
 Create a Grafana panel showing reconciliation rate:
 
-```
+```text
 # PromQL: Rate of reconciliations per second
 rate(argocd_app_reconcile_count[1m])
 ```
@@ -179,7 +179,7 @@ Without jitter, this graph shows sharp spikes every reconciliation interval. Wit
 
 You can also monitor the Git fetch rate:
 
-```
+```text
 # PromQL: Rate of Git requests per second
 rate(argocd_git_request_total[1m])
 ```

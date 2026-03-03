@@ -278,7 +278,7 @@ export class SharedModule {}
 
 **Follow a consistent file structure.** The CLI generates a standard structure that works well:
 
-```
+```text
 src/
   users/
     dto/

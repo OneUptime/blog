@@ -34,7 +34,7 @@ flowchart TB
 
 ### Error 1: Soft Timeout (execution_timeout)
 
-```
+```text
 airflow.exceptions.AirflowTaskTimeout:
 Timeout, waited 7200 seconds for <Task(FileSensor): wait_for_file>
 ```
@@ -80,7 +80,7 @@ with DAG(
 
 ### Error 2: Sensor Deadlock (Worker Pool Exhaustion)
 
-```
+```text
 No workers available - all slots occupied by sensors
 ```
 
@@ -124,7 +124,7 @@ flowchart LR
 
 ### Error 3: Connection Timeout
 
-```
+```text
 airflow.exceptions.AirflowSensorTimeout:
 Snap. Time is OUT. Operation failed due to timeout.
 Caused by: ConnectionError: HTTPConnectionPool timed out

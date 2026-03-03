@@ -29,7 +29,7 @@ Here is the full set of security headers and what each one does:
 
 ## Project Structure
 
-```
+```text
 nginx-security-headers/
   inventory/
     hosts.yml

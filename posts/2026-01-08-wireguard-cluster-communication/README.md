@@ -367,7 +367,7 @@ sudo wg show wg0
 
 Expected output:
 
-```
+```text
 interface: wg0
   public key: <CLUSTER_A_PUBLIC_KEY>
   private key: (hidden)
