@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Maintenance Windows, Operations, Infrastructure
+Tags: Talos Linux, Kubernetes, Maintenance Window, Operations, Infrastructure
 
 Description: Learn how to define, implement, and enforce maintenance windows for Talos Linux clusters to keep operations predictable and minimize service disruptions.
 

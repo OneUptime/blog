@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Worker Node, Node Removal, Kubernetes, Cluster Management
+Tags: Talos Linux, Worker Nodes, Node Removal, Kubernetes, Cluster Management
 
 Description: A step-by-step guide to safely removing a worker node from a Talos Linux Kubernetes cluster while preserving workload availability and data integrity.
 

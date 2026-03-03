@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Machine Configuration, Files, Kubernetes, System Administration
+Tags: Talos Linux, Machine Configuration, File, Kubernetes, System Administration
 
 Description: Learn how to create and manage files on Talos Linux nodes using the machine files configuration for custom configs and scripts.
 

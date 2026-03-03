@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Worker Node, Kubernetes, Cluster Management, Scaling
+Tags: Talos Linux, Worker Nodes, Kubernetes, Cluster Management, Scaling
 
 Description: A focused guide to adding a new worker node to an existing Talos Linux Kubernetes cluster, covering configuration, provisioning, and verification steps.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kaniko, Container Images, Kubernetes, CI/CD
+Tags: Talos Linux, Kaniko, Container Image, Kubernetes, CI/CD
 
 Description: Learn how to set up Kaniko on Talos Linux for building container images inside Kubernetes without requiring Docker-in-Docker or privileged containers.
 

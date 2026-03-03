@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Omni, Kubernetes, Upgrades, Cluster Management
+Tags: Talos Linux, Omni, Kubernetes, Upgrade, Cluster Management
 
 Description: Step-by-step guide to performing Talos Linux upgrades through Sidero Omni, including rolling upgrades, version management, and rollback strategies.
 

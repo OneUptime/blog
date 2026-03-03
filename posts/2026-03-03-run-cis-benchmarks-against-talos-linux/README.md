@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, CIS Benchmarks, Security, Kubernetes, Compliance
+Tags: Talos Linux, CIS Benchmark, Security, Kubernetes, Compliance
 
 Description: A practical guide to running CIS benchmarks against Talos Linux clusters to verify compliance and identify security hardening opportunities.
 

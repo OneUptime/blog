@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Longhorn, Kubernetes Storage, Persistent Volumes, CNCF
+Tags: Talos Linux, Longhorn, Kubernetes Storage, Persistent Volume, CNCF
 
 Description: Deploy Longhorn distributed block storage on Talos Linux for lightweight, replicated persistent volumes in your Kubernetes cluster.
 

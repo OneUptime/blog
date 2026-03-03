@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Operators, Custom Resources, Automation, Cloud Native
+Tags: Talos Linux, Kubernetes, Operator, Custom Resource, Automation, Cloud Native
 
 Description: Learn how to deploy and manage Kubernetes Operators on Talos Linux to automate complex application lifecycle management tasks.
 

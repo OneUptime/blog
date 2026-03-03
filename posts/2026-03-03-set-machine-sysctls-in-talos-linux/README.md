@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Sysctls, Kernel Tuning, Machine Configuration, Kubernetes
+Tags: Talos Linux, Sysctl, Kernel Tuning, Machine Configuration, Kubernetes
 
 Description: Learn how to configure kernel sysctl parameters in Talos Linux to tune networking, memory, and system behavior for your workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Docker Hub, Registry Mirror, Container Images, Rate Limiting
+Tags: Talos Linux, Docker Hub, Registry Mirror, Container Image, Rate Limiting
 
 Description: Learn how to configure a Docker Hub mirror in Talos Linux to avoid rate limits, speed up pulls, and improve cluster reliability.
 

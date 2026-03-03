@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Environment Variables, Configuration, Kubernetes, Proxy
+Tags: Talos Linux, Environment Variable, Configuration, Kubernetes, Proxy
 
 Description: A practical guide to setting machine-level environment variables in Talos Linux for proxies, runtime settings, and more.
 

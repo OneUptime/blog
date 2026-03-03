@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Webhook Authentication, Kubernetes, API Server, Security, Tokens
+Tags: Talos Linux, Webhook Authentication, Kubernetes, API Server, Security, Token
 
 Description: A practical guide to setting up webhook token authentication on Talos Linux for custom authentication logic with external identity systems.
 

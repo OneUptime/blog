@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, ServiceAccount, Kubernetes, Tokens, Security, Authentication
+Tags: Talos Linux, ServiceAccount, Kubernetes, Token, Security, Authentication
 
 Description: Learn how to create, manage, and secure Kubernetes ServiceAccount tokens on Talos Linux for pod authentication and external service integration.
 

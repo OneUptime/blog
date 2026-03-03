@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Configuration Management, ConfigMaps, DevOps
+Tags: Talos Linux, Kubernetes, Configuration Management, ConfigMap, DevOps
 
 Description: Practical strategies for managing large configuration files in Kubernetes on Talos Linux, including splitting configs, using persistent volumes, and working around size limits.
 

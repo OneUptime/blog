@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, RBAC, Multi-Tenancy, Kubernetes, Security, Namespaces
+Tags: Talos Linux, RBAC, Multi-Tenancy, Kubernetes, Security, Namespace
 
 Description: Learn how to configure multi-tenant RBAC on Talos Linux clusters to isolate teams and workloads while sharing the same underlying infrastructure securely.
 

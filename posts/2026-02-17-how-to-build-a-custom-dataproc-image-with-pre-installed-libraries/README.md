@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Dataproc, Custom Image, Hadoop, Spark
+Tags: GCP, Google Cloud Dataproc, Custom Images, Hadoop, Spark
 
 Description: Build custom Dataproc images with pre-installed libraries and configurations to speed up cluster creation and ensure consistent environments across deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Automated Backups, Kubernetes, Velero, Disaster Recovery
+Tags: Talos Linux, Automated Backup, Kubernetes, Velero, Disaster Recovery
 
 Description: Learn how to set up automated backup schedules on Talos Linux for Kubernetes resources, persistent volumes, and etcd data.
 

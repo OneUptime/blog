@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Certificates, PKI, Security
+Tags: Talos Linux, Kubernetes, Certificate, PKI, Security
 
 Description: Learn how to safely rotate the Kubernetes API CA certificates in a Talos Linux cluster with a rolling update strategy and zero downtime.
 

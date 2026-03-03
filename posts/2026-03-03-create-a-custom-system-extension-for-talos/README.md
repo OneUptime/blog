@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, System Extensions, Custom Extensions, Kubernetes, OCI Images, Infrastructure
+Tags: Talos Linux, System Extensions, Custom Extension, Kubernetes, OCI Images, Infrastructure
 
 Description: A step-by-step guide to creating custom system extensions for Talos Linux, from understanding the extension format to building, testing, and deploying your own extensions.
 

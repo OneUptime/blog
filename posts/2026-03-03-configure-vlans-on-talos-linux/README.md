@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, VLANs, Networking, Kubernetes, Network Segmentation
+Tags: Talos Linux, VLAN, Networking, Kubernetes, Network Segmentation
 
 Description: Step-by-step instructions for configuring VLANs on Talos Linux to segment network traffic across your Kubernetes infrastructure.
 

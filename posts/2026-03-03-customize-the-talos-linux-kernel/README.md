@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kernel Customization, Linux Kernel, Kubernetes, Operating Systems
+Tags: Talos Linux, Kernel Customization, Linux Kernel, Kubernetes, Operating System
 
 Description: A practical guide to customizing the Talos Linux kernel, covering kernel configuration, patching, building, and deploying custom kernels to your cluster.
 

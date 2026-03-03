@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, CAPI, vSphere, Kubernetes, On-Premises
+Tags: Talos Linux, CAPI, vSphere, Kubernetes, On-Premise
 
 Description: Learn how to provision Talos Linux Kubernetes clusters on VMware vSphere using Cluster API for on-premises declarative cluster management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Home Lab, Networking, VLANs, DNS
+Tags: Talos Linux, Kubernetes, Home Lab, Networking, VLAN, DNS
 
 Description: A practical guide to configuring networking for a Talos Linux home lab including VLANs, DNS, static IPs, and network segmentation for security.
 

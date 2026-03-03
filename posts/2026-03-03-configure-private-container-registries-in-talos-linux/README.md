@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Private Registry, Container Images, Authentication, Kubernetes Security
+Tags: Talos Linux, Private Registry, Container Image, Authentication, Kubernetes Security
 
 Description: Step-by-step guide to configuring private container registries in Talos Linux with authentication, TLS, and troubleshooting tips.
 

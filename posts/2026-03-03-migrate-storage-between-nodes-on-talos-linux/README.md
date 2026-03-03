@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Storage Migration, Persistent Volumes, DevOps
+Tags: Talos Linux, Kubernetes, Storage Migration, Persistent Volume, DevOps
 
 Description: A practical guide to migrating persistent storage between nodes in a Talos Linux Kubernetes cluster without data loss.
 

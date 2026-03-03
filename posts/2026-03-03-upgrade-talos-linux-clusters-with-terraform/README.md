@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Terraform, Kubernetes, Cluster Upgrades, Infrastructure as Code
+Tags: Talos Linux, Terraform, Kubernetes, Cluster Upgrade, Infrastructure as Code
 
 Description: A practical guide to upgrading Talos Linux clusters using Terraform with rolling updates and minimal downtime strategies.
 

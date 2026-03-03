@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Container Images, Kubernetes, Troubleshooting, Container Registry
+Tags: Talos Linux, Container Image, Kubernetes, Troubleshooting, Container Registry
 
 Description: Step-by-step guide to fixing container image pull failures on Talos Linux, including registry authentication, network issues, and containerd configuration.
 

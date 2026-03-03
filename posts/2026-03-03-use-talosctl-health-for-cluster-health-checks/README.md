@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Health Checks, talosctl, Cluster Validation
+Tags: Talos Linux, Kubernetes, Health Check, talosctl, Cluster Validation
 
 Description: A detailed guide to using talosctl health for comprehensive cluster health checks in Talos Linux, including automation and CI integration.
 

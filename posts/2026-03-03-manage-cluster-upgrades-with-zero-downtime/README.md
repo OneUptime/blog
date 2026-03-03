@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Zero Downtime, Cluster Upgrades, High Availability
+Tags: Talos Linux, Kubernetes, Zero Downtime, Cluster Upgrade, High Availability
 
 Description: A practical guide to upgrading Talos Linux clusters with zero downtime using rolling updates, pod disruption budgets, and proper sequencing strategies.
 

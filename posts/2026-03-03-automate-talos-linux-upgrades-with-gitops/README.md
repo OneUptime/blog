@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, GitOps, Upgrades, Kubernetes, Automation, Flux CD, ArgoCD
+Tags: Talos Linux, GitOps, Upgrade, Kubernetes, Automation, Flux CD, ArgoCD
 
 Description: Automate Talos Linux and Kubernetes version upgrades using GitOps workflows with proper rollback and health validation.
 

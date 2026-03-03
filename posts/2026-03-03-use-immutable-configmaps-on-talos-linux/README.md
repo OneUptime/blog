@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, ConfigMaps, Immutable Configuration, Performance
+Tags: Talos Linux, Kubernetes, ConfigMap, Immutable Configuration, Performance
 
 Description: Learn how to use immutable ConfigMaps on Talos Linux to improve cluster performance and protect configuration data from accidental changes.
 

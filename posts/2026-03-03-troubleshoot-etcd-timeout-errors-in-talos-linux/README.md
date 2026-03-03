@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, etcd, Timeouts, Kubernetes, Performance, Troubleshooting
+Tags: Talos Linux, etcd, Timeout, Kubernetes, Performance, Troubleshooting
 
 Description: Fix etcd timeout errors in Talos Linux clusters by identifying slow disks, network latency, oversized databases, and resource contention issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Installer Image, Custom Image, System Extensions, Container Registry
+Tags: Talos Linux, Installer Images, Custom Images, System Extensions, Container Registry
 
 Description: Learn how to upgrade the Talos Linux installer image, build custom images with system extensions, and manage installer images across your cluster lifecycle.
 

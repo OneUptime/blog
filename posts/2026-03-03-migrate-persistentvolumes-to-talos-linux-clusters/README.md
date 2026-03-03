@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, PersistentVolumes, Storage Migration, Data Migration, CSI
+Tags: Talos Linux, Kubernetes, PersistentVolume, Storage Migration, Data Migration, CSI
 
 Description: A detailed guide on migrating PersistentVolume data to Talos Linux Kubernetes clusters using multiple strategies for different storage backends.
 

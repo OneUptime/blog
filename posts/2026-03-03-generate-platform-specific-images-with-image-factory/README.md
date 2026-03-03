@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Image Factory, Cloud Platforms, AWS, Azure, VMware
+Tags: Talos Linux, Image Factory, Cloud Platform, AWS, Azure, VMware
 
 Description: Learn how to generate Talos Linux images optimized for specific platforms like AWS, Azure, VMware, and other cloud and virtualization environments using Image Factory.
 

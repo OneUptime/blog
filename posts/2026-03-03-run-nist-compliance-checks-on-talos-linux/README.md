@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, NIST, Compliance, Security, CIS Benchmarks
+Tags: Talos Linux, Kubernetes, NIST, Compliance, Security, CIS Benchmark
 
 Description: A practical guide to running NIST compliance checks on Talos Linux clusters covering the NIST Cybersecurity Framework, SP 800-53 controls, and automated scanning tools.
 

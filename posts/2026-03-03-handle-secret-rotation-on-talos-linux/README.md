@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Secrets, Security, Secret Rotation, DevOps
+Tags: Talos Linux, Kubernetes, Secret, Security, Secret Rotation, DevOps
 
 Description: A comprehensive guide to implementing secret rotation strategies on Talos Linux to keep your Kubernetes cluster secure and credentials fresh.
 

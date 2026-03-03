@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, TLS, Certificates, Load Balancer, Security, Kubernetes
+Tags: Talos Linux, TLS, Certificate, Load Balancer, Security, Kubernetes
 
 Description: Learn how to configure certificate Subject Alternative Names in Talos Linux to support load balancers, DNS names, and virtual IPs for production access.
 

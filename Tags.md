@@ -172,7 +172,6 @@
 - Administration
 - Admission Control
 - Admission Controller
-- Admission Controllers
 - Admission Webhooks
 - AdonisJS
 - Adoption
@@ -810,7 +809,6 @@
 - Autoinstall
 - AutoMapper
 - Automated Backup
-- Automated Backups
 - Automated Builds
 - Automated Cleanup
 - Automated Evaluation
@@ -1140,7 +1138,6 @@
 - Backup Strategy
 - Backup Testing
 - Backup Vault
-- Backups
 - Backward Compatibility
 - backwards-compatibility
 - Bacula
@@ -1567,7 +1564,6 @@
 - Canary
 - Canary Analysis
 - Canary Deployment
-- Canary Deployments
 - Canary Monitoring
 - Canary Promotion
 - Canary Release
@@ -1673,7 +1669,6 @@
 - Certificate Signing Request
 - Certificate Verification
 - Certificate-Based Access
-- Certificates
 - Certification
 - CfCT
 - Cgroup Metrics
@@ -1785,7 +1780,6 @@
 - Circular References
 - CIS
 - CIS Benchmark
-- CIS Benchmarks
 - CIS-CAT
 - Cisco
 - Cisco IOS
@@ -1891,7 +1885,6 @@
 - Cloud Cost
 - Cloud Cost Management
 - Cloud Cost Optimization
-- Cloud Costs
 - Cloud Data
 - Cloud Data Fusion
 - Cloud Database
@@ -1953,7 +1946,6 @@
 - Cloud Patterns
 - Cloud Planning
 - Cloud Platform
-- Cloud Platforms
 - Cloud Pricing
 - Cloud Profiler
 - Cloud Provider
@@ -2058,7 +2050,6 @@
 - Cluster Templates
 - Cluster Topology
 - Cluster Upgrade
-- Cluster Upgrades
 - Cluster Validation
 - Cluster-Admin
 - cluster-networking
@@ -2282,7 +2273,6 @@
 - Config Sync
 - config-rs
 - ConfigMap
-- ConfigMaps
 - Configuration
 - Configuration as Code
 - Configuration Drift
@@ -2404,7 +2394,6 @@
 - Container Hardening
 - Container Host
 - Container Image
-- Container Images
 - Container Insights
 - Container Instances
 - Container Isolation
@@ -2442,7 +2431,6 @@
 - ContainerCreating
 - containerd
 - Containerization
-- Containers
 - ContainerStorage
 - Content Analysis
 - Content Block
@@ -2773,7 +2761,6 @@
 - Custom Exchange
 - Custom Exporter
 - Custom Extension
-- Custom Extensions
 - Custom Extractor
 - Custom Facts
 - Custom Filters
@@ -2783,7 +2770,6 @@
 - Custom Headers
 - Custom Hooks
 - Custom ID Generator
-- Custom Image
 - Custom Images
 - Custom InfoTypes
 - Custom Instrumentation
@@ -2801,9 +2787,7 @@
 - Custom Mode
 - Custom Models
 - Custom Module
-- Custom Modules
 - Custom Operator
-- Custom Operators
 - Custom Origin
 - Custom Packages
 - Custom Partitioner
@@ -2818,7 +2802,6 @@
 - Custom Ranking
 - Custom Receiver
 - Custom Resource
-- Custom Resources
 - Custom Response
 - Custom Roles
 - Custom Routing
@@ -2890,7 +2873,6 @@
 - Dashboard Management
 - Dashboard Templates
 - Dashboard Variables
-- Dashboards
 - Dashboards as Code
 - Dask
 - DAST
@@ -3212,7 +3194,6 @@
 - Dedicated Instances
 - Dedicated Interconnect
 - Dedicated Server
-- Dedicated Servers
 - Dedicated SQL Pool
 - Deduplication
 - Deep Learning
@@ -4016,7 +3997,6 @@
 - Environment Routing
 - Environment Tracking
 - Environment Variable
-- Environment Variables
 - Envoy
 - Envoy Gateway
 - Envoy Listeners
@@ -4420,7 +4400,6 @@
 - File Synchronization
 - File System
 - File System Analysis
-- File Systems
 - File Transfer
 - File Upload
 - File Watcher
@@ -4437,7 +4416,6 @@
 - filemd5 Function
 - Filenames
 - FileResponse
-- Files
 - fileset Function
 - filesha1 Function
 - filesha256 Function
@@ -5112,13 +5090,11 @@
 - Headless CMS
 - Headless Commerce
 - Headless Service
-- Headless Services
 - Health
 - Health Apps
 - Health Check
 - Health Check Rewriting
 - Health Checking
-- Health Checks
 - Health Dashboard
 - Health Data
 - Health Diagnostics
@@ -5171,7 +5147,6 @@
 - Hierarchical Data
 - Hierarchical Firewall
 - Hierarchical Namespace
-- Hierarchical Namespaces
 - High Availability
 - High Cardinality
 - High Concurrency
@@ -5690,7 +5665,6 @@
 - Installation
 - Installation Media
 - Installation Profiles
-- Installer Image
 - Installer Images
 - Instana
 - Instance Connect
@@ -6178,10 +6152,8 @@
 - Kubernetes Scheduler
 - Kubernetes Security
 - Kubernetes Service
-- Kubernetes Services
 - Kubernetes Setup
 - Kubernetes Storage
-- Kubernetes Upgrade
 - Kubernetes Upgrades
 - Kubernetes Webhook
 - Kubescape
@@ -6692,7 +6664,6 @@
 - Maintenance
 - Maintenance Mode
 - Maintenance Window
-- Maintenance Windows
 - Make
 - Makefile
 - Malicious Domains
@@ -7335,7 +7306,6 @@
 - Namespace Provisioning
 - Namespace Security
 - Namespace Selectors
-- Namespaces
 - Naming
 - Naming Convention
 - Naming Standards
@@ -7441,7 +7411,6 @@
 - Network Intelligence Center
 - Network Interception
 - Network Interface
-- Network Interfaces
 - Network Isolation
 - Network Issues
 - Network Latency
@@ -7758,7 +7727,6 @@
 - On-Call
 - On-Demand
 - On-Premise
-- On-Premises
 - On-Premises Backup
 - On-Premises Data Gateway
 - Onboarding
@@ -7847,7 +7815,6 @@
 - Operating System
 - Operating System Comparison
 - Operating System Design
-- Operating Systems
 - Operational Backup
 - Operational Excellence
 - OperationNotAllowed
@@ -7856,7 +7823,6 @@
 - Operator Lifecycle Manager
 - Operator SDK
 - OperatorHub
-- Operators
 - Ops Agent
 - OpsCenter
 - OpsGenie
@@ -7964,7 +7930,6 @@
 - Overlay
 - Overlay Network
 - Overlay2
-- Overlays
 - Overprivileged
 - Overprovisioning
 - Override
@@ -8220,10 +8185,8 @@
 - Persistent Queue
 - Persistent Storage
 - Persistent Volume
-- Persistent Volumes
 - PersistentVolume
 - PersistentVolumeClaim
-- PersistentVolumes
 - Personal Access Tokens
 - Personalization
 - Personalize
@@ -8323,7 +8286,6 @@
 - Pipeline Troubleshooting
 - Pipeline Validation
 - PipelineRuns
-- Pipelines
 - Pipelining
 - Pipenv
 - Pipes
@@ -8398,7 +8360,6 @@
 - Pod Debugging
 - Pod Disruption
 - Pod Disruption Budget
-- Pod Disruption Budgets
 - Pod Distribution
 - Pod Eviction
 - Pod Identity
@@ -9423,7 +9384,6 @@
 - Resource Protection
 - Resource Providers
 - Resource Quota
-- Resource Quotas
 - Resource Replacement
 - Resource Requests
 - Resource Reservation
@@ -9439,7 +9399,6 @@
 - Resource Utilization
 - Resource-Management
 - ResourceQuota
-- Resources
 - ResourceVersion
 - Response
 - Response Aggregation
@@ -9564,7 +9523,6 @@
 - Rolling Reboots
 - Rolling Release
 - Rolling Update
-- Rolling Updates
 - Rolling Upgrade
 - Rolling Window
 - Rollout
@@ -9653,7 +9611,6 @@
 - runas
 - Runbook
 - Runbook Automation
-- Runbooks
 - runc
 - Rundeck
 - Runners
@@ -9876,7 +9833,6 @@
 - Secret Synchronization
 - Secret Versioning
 - SecretDelivery
-- Secrets
 - Secrets Detection
 - Secrets Encryption
 - Secrets Management
@@ -9906,7 +9862,6 @@
 - Security Command Center
 - Security Context
 - Security Context Constraints
-- Security Contexts
 - Security Correlation
 - Security Dashboards
 - Security Events
@@ -10048,7 +10003,6 @@
 - Service Account Impersonation
 - Service Account Keys
 - Service Account Tokens
-- Service Accounts
 - Service Authentication
 - Service Binding
 - Service Bus
@@ -10122,7 +10076,6 @@
 - ServiceMonitor
 - ServiceNow
 - ServiceNow Cloud Observability
-- Services
 - SES
 - Session Affinity
 - Session Analysis
@@ -10354,7 +10307,6 @@
 - Snapshot
 - Snapshot Debugger
 - Snapshot Testing
-- Snapshots
 - SnapStart
 - SNAT
 - SNI
@@ -10683,7 +10635,6 @@
 - Stateful Apps
 - Stateful Processing
 - StatefulSet
-- StatefulSets
 - Stateless Architecture
 - Static
 - Static Analysis
@@ -10746,7 +10697,6 @@
 - Storage Configuration
 - Storage Costs
 - Storage Driver
-- Storage Drivers
 - Storage Efficiency
 - Storage Encryption
 - Storage Engines
@@ -10857,7 +10807,6 @@
 - Subnet Groups
 - Subnet Mask
 - Subnet Routing
-- Subnets
 - Subnetting
 - SubPath
 - subprocess
@@ -10958,7 +10907,6 @@
 - sysbench
 - Syscall Filtering
 - Sysctl
-- Sysctls
 - Sysdig
 - sysfs
 - Syslog
@@ -11381,7 +11329,6 @@
 - Timeout Pattern
 - Timeout Settings
 - TimeoutError
-- Timeouts
 - Timer
 - Timer Trigger
 - TimescaleDB
@@ -11442,7 +11389,6 @@
 - tokenbf_v1
 - Tokenization
 - Tokenizers
-- Tokens
 - tokio
 - tokio-retry
 - Tolerations
@@ -11798,7 +11744,6 @@
 - Upgrade Safety
 - Upgrade Strategy
 - Upgrade Testing
-- Upgrades
 - Upload
 - Upload Optimization
 - Upload Performance
@@ -12062,7 +12007,6 @@
 - Vitest
 - VLAN
 - VLAN Attachment
-- VLANs
 - vLLM
 - VM
 - VM Access
@@ -12123,7 +12067,6 @@
 - VolumeCloning
 - VolumeExpansion
 - VolumePopulator
-- Volumes
 - VolumeSnapshot
 - VPA
 - VPC
@@ -12310,7 +12253,6 @@
 - wikijs
 - Wildcard
 - Wildcard Certificate
-- Wildcard Certificates
 - Wildcard DNS
 - Wildcard Tables
 - WildFly
@@ -12359,7 +12301,6 @@
 - Worker
 - Worker Configuration
 - Worker Crashes
-- Worker Node
 - Worker Nodes
 - Worker Pool
 - Worker Roles

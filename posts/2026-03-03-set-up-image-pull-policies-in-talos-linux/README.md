@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Container Images, Image Pull Policy, Deployment
+Tags: Talos Linux, Kubernetes, Container Image, Image Pull Policy, Deployment
 
 Description: A hands-on guide to configuring image pull policies in Talos Linux Kubernetes clusters for efficient and reliable container deployments.
 

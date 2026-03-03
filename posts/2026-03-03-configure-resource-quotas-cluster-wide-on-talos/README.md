@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Resource Quotas, Kubernetes, Cluster Management, Capacity Planning
+Tags: Talos Linux, Resource Quota, Kubernetes, Cluster Management, Capacity Planning
 
 Description: A practical guide to implementing and managing Kubernetes resource quotas across all namespaces on a Talos Linux cluster.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Volumes, Kubernetes, Storage, Disk Management
+Tags: Talos Linux, VOLUME, Kubernetes, Storage, Disk Management
 
 Description: A practical guide to discovering and inspecting volumes on Talos Linux nodes using talosctl and the Talos resource API.
 

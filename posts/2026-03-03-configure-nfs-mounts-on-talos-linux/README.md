@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, NFS, Network Storage, Kubernetes, Persistent Volumes
+Tags: Talos Linux, NFS, Network Storage, Kubernetes, Persistent Volume
 
 Description: Configure NFS mounts on Talos Linux for shared network storage access from your Kubernetes cluster nodes and workloads.
 

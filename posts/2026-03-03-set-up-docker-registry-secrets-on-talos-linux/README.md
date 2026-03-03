@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Docker, Container Registry, Secrets, Image Pull
+Tags: Talos Linux, Kubernetes, Docker, Container Registry, Secret, Image Pull
 
 Description: Complete guide to configuring Docker registry Secrets on Talos Linux so your pods can pull images from private container registries.
 

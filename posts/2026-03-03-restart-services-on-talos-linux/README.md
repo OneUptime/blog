@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Services, Restart, Troubleshooting, Kubernetes, Operations
+Tags: Talos Linux, Service, Restart, Troubleshooting, Kubernetes, Operations
 
 Description: Learn how to safely restart system services on Talos Linux including when restarts are needed, what happens during a restart, and how to verify service recovery.
 

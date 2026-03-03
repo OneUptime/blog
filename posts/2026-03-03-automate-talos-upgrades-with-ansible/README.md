@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Ansible, Upgrades, Kubernetes, Automation
+Tags: Talos Linux, Ansible, Upgrade, Kubernetes, Automation
 
 Description: Learn how to automate Talos Linux cluster upgrades with Ansible playbooks including rolling updates and health verification.
 

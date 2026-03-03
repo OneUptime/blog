@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, ConfigMaps, Configuration Management, Cloud Native
+Tags: Talos Linux, Kubernetes, ConfigMap, Configuration Management, Cloud Native
 
 Description: A practical guide to creating and managing ConfigMaps on Talos Linux for storing non-confidential configuration data in your Kubernetes clusters.
 

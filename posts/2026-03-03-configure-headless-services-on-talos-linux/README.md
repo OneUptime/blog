@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Headless Services, DNS, Kubernetes, StatefulSets, Service Discovery
+Tags: Talos Linux, Headless Service, DNS, Kubernetes, StatefulSet, Service Discovery
 
 Description: Learn how to configure and use headless services on Talos Linux for direct pod-to-pod communication and stateful workload discovery.
 

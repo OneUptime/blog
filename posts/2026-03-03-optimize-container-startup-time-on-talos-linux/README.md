@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Containers, Startup Time, Kubernetes, Performance
+Tags: Talos Linux, Container, Startup Time, Kubernetes, Performance
 
 Description: Practical techniques to reduce container startup time on Talos Linux for faster scaling and deployment in Kubernetes clusters
 

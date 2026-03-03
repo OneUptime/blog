@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Upgrades, Node Management, Kubernetes, Infrastructure
+Tags: Talos Linux, talosctl, Upgrade, Node Management, Kubernetes, Infrastructure
 
 Description: Learn how to use talosctl upgrade to safely upgrade Talos Linux on your cluster nodes with a rolling upgrade strategy
 

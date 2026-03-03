@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Load Balancer, Kubernetes Services, MetalLB, Troubleshooting
+Tags: Talos Linux, Load Balancer, Kubernetes Service, MetalLB, Troubleshooting
 
 Description: Resolve Kubernetes service load balancer issues on Talos Linux clusters, covering MetalLB configuration, pending external IPs, and traffic routing problems.
 

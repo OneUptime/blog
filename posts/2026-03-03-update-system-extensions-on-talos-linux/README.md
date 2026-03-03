@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, System Extensions, Updates, Upgrades, Kubernetes, Infrastructure
+Tags: Talos Linux, System Extensions, Updates, Upgrade, Kubernetes, Infrastructure
 
 Description: A practical guide to updating system extensions on Talos Linux, covering version management, rolling updates, compatibility checks, and rollback procedures.
 

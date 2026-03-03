@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Hetzner, Dedicated Servers, Bare Metal, Kubernetes
+Tags: Talos Linux, Hetzner, Dedicated Server, Bare Metal, Kubernetes
 
 Description: Complete guide to installing and running Talos Linux on Hetzner dedicated (bare metal) servers for high-performance Kubernetes clusters.
 

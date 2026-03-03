@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kustomize, Kubernetes, Overlays, Configuration Management
+Tags: Talos Linux, Kustomize, Kubernetes, Overlay, Configuration Management
 
 Description: Learn how to use Kustomize overlays to manage environment-specific configurations for staging and production on Talos Linux.
 

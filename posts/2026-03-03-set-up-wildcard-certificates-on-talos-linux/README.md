@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Wildcard Certificates, TLS, DNS, Kubernetes, cert-manager
+Tags: Talos Linux, Wildcard Certificate, TLS, DNS, Kubernetes, cert-manager
 
 Description: Learn how to configure wildcard TLS certificates on Talos Linux using cert-manager and DNS-01 challenges for domain-wide HTTPS coverage.
 

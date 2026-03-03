@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Ceph, Distributed Storage, Kubernetes, Persistent Volumes
+Tags: Talos Linux, Ceph, Distributed Storage, Kubernetes, Persistent Volume
 
 Description: Set up Ceph distributed storage on Talos Linux for resilient, scalable persistent volumes in your Kubernetes cluster.
 

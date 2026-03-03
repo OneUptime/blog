@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, VIP, Subnets, Networking, High Availability, Kubernetes
+Tags: Talos Linux, VIP, Subnet, Networking, High Availability, Kubernetes
 
 Description: Understanding the limitations and workarounds for using Talos Linux VIP when control plane nodes are spread across different network subnets.
 

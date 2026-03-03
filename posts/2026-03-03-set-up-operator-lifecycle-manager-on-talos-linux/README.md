@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, OLM, Operator Lifecycle Manager, Operators, Automation
+Tags: Talos Linux, Kubernetes, OLM, Operator Lifecycle Manager, Operator, Automation
 
 Description: A step-by-step guide to installing and using the Operator Lifecycle Manager on Talos Linux for discovering, installing, and managing Kubernetes Operators.
 

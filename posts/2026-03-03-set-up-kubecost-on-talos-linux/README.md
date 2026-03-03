@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubecost, Cost Monitoring, Kubernetes, FinOps, Cloud Costs
+Tags: Talos Linux, Kubecost, Cost Monitoring, Kubernetes, FinOps, Cloud Cost
 
 Description: Complete walkthrough of deploying and configuring Kubecost on Talos Linux for real-time Kubernetes cost monitoring and optimization recommendations.
 

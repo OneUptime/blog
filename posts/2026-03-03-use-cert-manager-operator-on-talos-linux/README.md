@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Cert-Manager, TLS, Certificates, Security, Let's Encrypt
+Tags: Talos Linux, Kubernetes, Cert-Manager, TLS, Certificate, Security, Let's Encrypt
 
 Description: Learn how to deploy and configure cert-manager on Talos Linux for automatic TLS certificate issuance and renewal in your Kubernetes cluster.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Runbooks, Operations, Documentation, SRE, DevOps
+Tags: Talos Linux, Runbook, Operations, Documentation, SRE, DevOps
 
 Description: Learn how to create effective maintenance runbooks for Talos Linux clusters that enable consistent, reliable operations and reduce human error during critical tasks.
 

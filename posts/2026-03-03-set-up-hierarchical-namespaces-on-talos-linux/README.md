@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Hierarchical Namespaces, Multi-Tenancy, HNC
+Tags: Talos Linux, Kubernetes, Hierarchical Namespace, Multi-Tenancy, HNC
 
 Description: Learn how to implement hierarchical namespaces on Talos Linux using the Hierarchical Namespace Controller for organized multi-team cluster management.
 

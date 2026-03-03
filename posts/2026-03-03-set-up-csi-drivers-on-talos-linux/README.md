@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, CSI, Kubernetes, Storage Drivers, Container Storage Interface
+Tags: Talos Linux, CSI, Kubernetes, Storage Driver, Container Storage Interface
 
 Description: Learn how to install and configure Container Storage Interface drivers on Talos Linux for different storage backends.
 

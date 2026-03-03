@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Resource Quotas, Namespace Management, Capacity Planning
+Tags: Talos Linux, Kubernetes, Resource Quota, Namespace Management, Capacity Planning
 
 Description: Learn how to configure and manage Kubernetes resource quotas per namespace on Talos Linux to prevent resource contention and ensure fair sharing.
 

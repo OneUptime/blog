@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Certificates, PKI, Security, API
+Tags: Talos Linux, Certificate, PKI, Security, API
 
 Description: Step-by-step guide to rotating Talos API CA certificates including preparation, rolling updates, and verification of the new certificate chain.
 

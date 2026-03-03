@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, PersistentVolumes, Storage, PVC
+Tags: Talos Linux, Kubernetes, PersistentVolume, Storage, PVC
 
 Description: A complete guide to understanding and using PersistentVolumes and PersistentVolumeClaims on Talos Linux Kubernetes clusters.
 

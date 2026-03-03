@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Air-Gapped, Container Images, Offline Installation, Security
+Tags: Talos Linux, Air-Gapped, Container Image, Offline Installation, Security
 
 Description: A comprehensive guide to deploying Talos Linux in air-gapped environments where nodes have no internet access for pulling container images.
 

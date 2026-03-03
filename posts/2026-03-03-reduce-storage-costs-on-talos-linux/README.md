@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Storage Costs, Kubernetes, Persistent Volumes, Cost Optimization, Storage Management
+Tags: Talos Linux, Storage Costs, Kubernetes, Persistent Volume, Cost Optimization, Storage Management
 
 Description: Practical strategies for reducing persistent storage costs on Talos Linux clusters without compromising data availability or performance.
 

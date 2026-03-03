@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Service Discovery, Namespaces, DNS, Kubernetes, Networking
+Tags: Talos Linux, Service Discovery, Namespace, DNS, Kubernetes, Networking
 
 Description: Configure cross-namespace service discovery on Talos Linux so workloads in different namespaces can find and communicate with each other reliably.
 

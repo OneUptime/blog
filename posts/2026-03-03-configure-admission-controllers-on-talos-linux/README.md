@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Admission Controllers, Kubernetes, Security, Policy Enforcement
+Tags: Talos Linux, Admission Controller, Kubernetes, Security, Policy Enforcement
 
 Description: Learn how to configure and manage Kubernetes admission controllers on Talos Linux for security and policy enforcement.
 

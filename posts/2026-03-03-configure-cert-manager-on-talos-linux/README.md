@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, cert-manager, TLS, Certificates, Kubernetes, PKI
+Tags: Talos Linux, cert-manager, TLS, Certificate, Kubernetes, PKI
 
 Description: A detailed guide to installing, configuring, and managing cert-manager on Talos Linux for automated certificate lifecycle management.
 

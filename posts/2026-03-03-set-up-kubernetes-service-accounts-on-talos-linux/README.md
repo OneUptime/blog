@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Service Accounts, RBAC, Security
+Tags: Talos Linux, Kubernetes, Service Account, RBAC, Security
 
 Description: A comprehensive guide to creating and managing Kubernetes service accounts on Talos Linux with proper RBAC configuration.
 

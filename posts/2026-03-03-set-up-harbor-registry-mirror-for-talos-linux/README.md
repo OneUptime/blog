@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Harbor, Registry Mirror, Container Images, DevOps
+Tags: Talos Linux, Harbor, Registry Mirror, Container Image, DevOps
 
 Description: A complete walkthrough for deploying Harbor as a registry mirror and configuring Talos Linux nodes to use it for image caching.
 
