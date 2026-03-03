@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, CRI, Containerd, Custom Configuration, Kubernetes
+Tags: Talos Linux, CRI, containerd, Custom Configuration, Kubernetes
 
 Description: A hands-on guide to creating custom Container Runtime Interface configurations in Talos Linux for specialized workload requirements.
 

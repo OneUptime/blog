@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, KVM, Terraform, Libvirt, Virtualization
+Tags: Ubuntu, KVM, Terraform, libvirt, Virtualization
 
 Description: Step-by-step guide to using the Terraform libvirt provider to automate provisioning of Ubuntu KVM virtual machines with cloud-init on a local or remote KVM host.
 

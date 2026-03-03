@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Nginx, Ingress Controller, Kubernetes, Networking
+Tags: Talos Linux, NGINX, Ingress Controller, Kubernetes, Networking
 
 Description: A complete guide to deploying and configuring Nginx Ingress Controller on Talos Linux for routing external traffic to your Kubernetes services.
 

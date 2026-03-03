@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubelet, Machine Configuration, Kubernetes, Node Management
+Tags: Talos Linux, kubelet, Machine Configuration, Kubernetes, Node Management
 
 Description: A comprehensive guide to configuring kubelet settings in Talos Linux through machine configuration patches for optimal node performance and behavior.
 

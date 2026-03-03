@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Memory Limits, Cgroups, Kubernetes, OOM Killer, Resource Management
+Tags: Talos Linux, Memory Limits, cgroups, Kubernetes, OOM Killer, Resource Management
 
 Description: Learn how memory limits are enforced through cgroups on Talos Linux and how to configure them to prevent OOM kills while maximizing memory utilization.
 

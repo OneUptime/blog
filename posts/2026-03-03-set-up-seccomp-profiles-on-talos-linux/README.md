@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Seccomp, Kubernetes, Security, Syscall Filtering
+Tags: Talos Linux, seccomp, Kubernetes, Security, Syscall Filtering
 
 Description: A detailed guide to setting up and managing seccomp profiles on Talos Linux for filtering dangerous system calls in your Kubernetes containers.
 

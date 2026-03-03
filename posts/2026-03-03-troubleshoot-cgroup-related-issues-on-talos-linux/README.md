@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Cgroups, Troubleshooting, Kubernetes, Performance, Debugging
+Tags: Talos Linux, cgroups, Troubleshooting, Kubernetes, Performance, Debugging
 
 Description: A troubleshooting guide for diagnosing and resolving common cgroup-related issues on Talos Linux including OOM kills, CPU throttling, and resource contention.
 

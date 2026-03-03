@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubelet, Kubernetes, Node Configuration, Cluster Management
+Tags: Talos Linux, kubelet, Kubernetes, Node Configuration, Cluster Management
 
 Description: Learn how to configure kubelet extra arguments in Talos Linux to fine-tune node behavior, resource management, and pod scheduling.
 

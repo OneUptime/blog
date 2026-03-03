@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, CRI, Containerd, Container Runtime, Kubernetes
+Tags: Talos Linux, CRI, containerd, Container Runtime, Kubernetes
 
 Description: A practical guide to configuring Container Runtime Interface settings in Talos Linux for better performance and control.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, IPSec, VPN, Security, Networking, Encryption, Kubernetes
+Tags: Talos Linux, IPsec, VPN, Security, Networking, Encryption, Kubernetes
 
 Description: Complete guide to setting up IPSec VPN connections on Talos Linux for secure site-to-site and remote access connectivity.
 

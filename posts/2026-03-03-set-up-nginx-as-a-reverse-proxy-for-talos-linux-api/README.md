@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Nginx, Reverse Proxy, Kubernetes, API, Load Balancing
+Tags: Talos Linux, NGINX, Reverse Proxy, Kubernetes, API, Load Balancing
 
 Description: Learn how to configure Nginx as a reverse proxy for the Talos Linux API to improve security, reliability, and load distribution across control plane nodes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, k3OS, k3s, Kubernetes, Operating System Comparison
+Tags: Talos Linux, k3OS, K3s, Kubernetes, Operating System Comparison
 
 Description: Compare Talos Linux and k3OS to understand which lightweight Kubernetes OS fits your edge and production use cases.
 

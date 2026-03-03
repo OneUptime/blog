@@ -5459,7 +5459,7 @@
 - Image Pull Secrets
 - Image Recognition
 - Image Redaction
-- image scanning
+- Image Scanning
 - Image Signing
 - Image Size
 - image specification
@@ -6317,7 +6317,7 @@
 - LibreNMS
 - LibreOffice
 - LibreSpeed
-- Libvirt
+- libvirt
 - License
 - License Management
 - License Manager
@@ -6374,7 +6374,7 @@
 - Linux Mint
 - Linux Monitoring
 - Linux Namespaces
-- linux networking
+- Linux Networking
 - Linux Optimization
 - Linux Security
 - Linux tc
@@ -7166,7 +7166,7 @@
 - Multi-Factor Authentication
 - Multi-Gateway
 - Multi-GPU
-- Multi-homed
+- Multi-Homed
 - Multi-Host
 - Multi-Index Search
 - Multi-IP
@@ -8809,7 +8809,7 @@
 - Pull Request Testing
 - Pull Requests
 - Pull-Based
-- pull-through cache
+- Pull-Through Cache
 - Pull-to-Refresh
 - Pulp
 - Pulsar

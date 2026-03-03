@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Chrony, NTP, Time Synchronization, Kubernetes, System Extensions
+Tags: Talos Linux, chrony, NTP, Time Synchronization, Kubernetes, System Extensions
 
 Description: Learn how to configure Chrony for time synchronization on Talos Linux, including installation via system extensions, configuration options, and best practices.
 

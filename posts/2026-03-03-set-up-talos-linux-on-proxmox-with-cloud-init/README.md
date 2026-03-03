@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Proxmox, Cloud-Init, Virtualization, Kubernetes, Homelab
+Tags: Talos Linux, Proxmox, cloud-init, Virtualization, Kubernetes, Homelab
 
 Description: Learn how to deploy Talos Linux virtual machines on Proxmox VE using cloud-init for automated configuration and quick cluster provisioning.
 

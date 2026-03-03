@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Nginx, Kubernetes, Web Server, Reverse Proxy, DevOps
+Tags: Talos Linux, NGINX, Kubernetes, Web Server, Reverse Proxy, DevOps
 
 Description: Deploy Nginx web server on Talos Linux as a reverse proxy, load balancer, and static file server with production-ready configurations.
 

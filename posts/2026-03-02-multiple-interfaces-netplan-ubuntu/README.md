@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, Netplan, Multi-homed, Configuration
+Tags: Ubuntu, Networking, Netplan, Multi-Homed, Configuration
 
 Description: Configure multiple network interfaces with Netplan on Ubuntu, including separate management and data networks, asymmetric routing, and traffic routing per interface.
 
