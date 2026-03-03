@@ -75,7 +75,7 @@ interface AuthorsJson {
 }
 
 interface FormatIssue {
-  type: 'error' | 'warning';
+  type: 'error';
   message: string;
   fix: string;
 }
@@ -114,7 +114,6 @@ function logHeader(msg: string): void {
 
 // Validation state
 let hasErrors = false;
-let hasWarnings = false;
 
 /**
  * Check if required files exist
@@ -571,8 +570,8 @@ function validateReadme(dir: string, blogEntry: BlogEntry | undefined): FormatIs
     });
   } else if (!authorLine.includes('github.com')) {
     issues.push({
-      type: 'warning',
-      message: 'Author line may not have proper GitHub link format',
+      type: 'error',
+      message: 'Author line does not have proper GitHub link format',
       fix: 'Use format: Author: [githubusername](https://www.github.com/githubusername)',
     });
   } else if (blogEntry) {
@@ -805,14 +804,9 @@ function displayFormatIssues(formatIssues: BlogIssue[]): void {
 
     formatIssues.forEach(({ dir, issues }) => {
       console.log(`${colors.bold}${dir}${colors.reset}`);
-      issues.forEach(({ type, message, fix }) => {
-        if (type === 'error') {
-          hasErrors = true;
-          console.log(`  ${colors.red}[ERROR]${colors.reset} ${message}`);
-        } else {
-          hasWarnings = true;
-          console.log(`  ${colors.yellow}[WARNING]${colors.reset} ${message}`);
-        }
+      issues.forEach(({ message, fix }) => {
+        hasErrors = true;
+        console.log(`  ${colors.red}[ERROR]${colors.reset} ${message}`);
         console.log(`    ${colors.blue}Fix:${colors.reset} ${fix}`);
       });
       console.log('');
@@ -858,10 +852,6 @@ function displaySummary(
     console.log(`\n${colors.red}${colors.bold}VALIDATION FAILED${colors.reset}`);
     console.log('Please fix the errors above before committing.\n');
     process.exit(1);
-  } else if (hasWarnings) {
-    console.log(`\n${colors.yellow}${colors.bold}VALIDATION PASSED WITH WARNINGS${colors.reset}`);
-    console.log('Consider addressing the warnings above.\n');
-    process.exit(0);
   } else {
     console.log(`\n${colors.green}${colors.bold}VALIDATION PASSED${colors.reset}`);
     console.log('All blog posts are correctly formatted.\n');
@@ -1383,13 +1373,13 @@ function checkDuplicateTitles(blogsJson: BlogEntry[]): void {
   const duplicates = Array.from(titleGroups.entries()).filter(([_, entries]) => entries.length > 1);
 
   if (duplicates.length > 0) {
-    hasWarnings = true;
+    hasErrors = true;
     console.log(
-      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${duplicates.length} group${duplicates.length === 1 ? '' : 's'} of duplicate/near-identical titles:\n`
+      `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${duplicates.length} group${duplicates.length === 1 ? '' : 's'} of duplicate/near-identical titles:\n`
     );
     for (const [_, entries] of duplicates) {
       for (const entry of entries) {
-        console.log(`  - ${colors.yellow}${entry.post}${colors.reset}: "${entry.title}"`);
+        console.log(`  - ${colors.red}${entry.post}${colors.reset}: "${entry.title}"`);
       }
       console.log('');
     }
@@ -1543,12 +1533,12 @@ function checkOrphanedImages(postsDir: string[]): void {
   }
 
   if (issues.length > 0) {
-    hasWarnings = true;
+    hasErrors = true;
     console.log(
-      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} orphaned image${issues.length === 1 ? '' : 's'} (not referenced in README.md):\n`
+      `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${issues.length} orphaned image${issues.length === 1 ? '' : 's'} (not referenced in README.md):\n`
     );
     for (const issue of issues) {
-      console.log(`  - ${colors.yellow}${issue.dir}${colors.reset}: ${issue.file}`);
+      console.log(`  - ${colors.red}${issue.dir}${colors.reset}: ${issue.file}`);
     }
     console.log(
       `\n${colors.bold}How to fix:${colors.reset}\n  Either reference the image in README.md or remove it from the post directory.\n  Note: social-media.png is excluded from this check.\n`
@@ -1594,12 +1584,12 @@ function checkMissingImageAltText(postsDir: string[]): void {
   }
 
   if (issues.length > 0) {
-    hasWarnings = true;
+    hasErrors = true;
     console.log(
-      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} image${issues.length === 1 ? '' : 's'} with missing alt text:\n`
+      `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${issues.length} image${issues.length === 1 ? '' : 's'} with missing alt text:\n`
     );
     for (const issue of issues) {
-      console.log(`  - ${colors.yellow}${issue.dir}${colors.reset} (line ${issue.line}): ${issue.ref}`);
+      console.log(`  - ${colors.red}${issue.dir}${colors.reset} (line ${issue.line}): ${issue.ref}`);
     }
     console.log(
       `\n${colors.bold}How to fix:${colors.reset}\n  Add descriptive alt text: ![description of image](path/to/image.png)\n  Alt text improves accessibility for screen readers.\n`
@@ -1695,9 +1685,9 @@ function checkCodeBlockLanguageTags(postsDir: string[]): void {
   }
 
   if (issues.length > 0) {
-    hasWarnings = true;
+    hasErrors = true;
     console.log(
-      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} code block${issues.length === 1 ? '' : 's'} without a language tag:\n`
+      `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${issues.length} code block${issues.length === 1 ? '' : 's'} without a language tag:\n`
     );
     // Group by directory
     const byDir = new Map<string, number[]>();
@@ -1708,7 +1698,7 @@ function checkCodeBlockLanguageTags(postsDir: string[]): void {
     }
     for (const [dir, lineNums] of byDir) {
       console.log(
-        `  - ${colors.yellow}${dir}${colors.reset}: line${lineNums.length > 1 ? 's' : ''} ${lineNums.join(', ')}`
+        `  - ${colors.red}${dir}${colors.reset}: line${lineNums.length > 1 ? 's' : ''} ${lineNums.join(', ')}`
       );
     }
     console.log(
@@ -1780,9 +1770,9 @@ function checkHeadingHierarchy(postsDir: string[]): void {
   }
 
   if (issues.length > 0) {
-    hasWarnings = true;
+    hasErrors = true;
     console.log(
-      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} heading hierarchy issue${issues.length === 1 ? '' : 's'}:\n`
+      `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${issues.length} heading hierarchy issue${issues.length === 1 ? '' : 's'}:\n`
     );
     // Group by directory
     const byDir = new Map<string, HeadingIssue[]>();
@@ -1794,7 +1784,7 @@ function checkHeadingHierarchy(postsDir: string[]): void {
     for (const [dir, dirIssues] of byDir) {
       console.log(`  ${colors.bold}${dir}${colors.reset}`);
       for (const issue of dirIssues) {
-        console.log(`    - Line ${issue.line}: ${colors.yellow}${issue.issue}${colors.reset}`);
+        console.log(`    - Line ${issue.line}: ${colors.red}${issue.issue}${colors.reset}`);
       }
     }
     console.log(
@@ -1860,9 +1850,9 @@ function checkEmptySections(postsDir: string[]): void {
   }
 
   if (issues.length > 0) {
-    hasWarnings = true;
+    hasErrors = true;
     console.log(
-      `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} empty section${issues.length === 1 ? '' : 's'} (headings with no content):\n`
+      `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${issues.length} empty section${issues.length === 1 ? '' : 's'} (headings with no content):\n`
     );
     const byDir = new Map<string, Array<{ line: number; heading: string }>>();
     for (const issue of issues) {
@@ -1873,7 +1863,7 @@ function checkEmptySections(postsDir: string[]): void {
     for (const [dir, dirIssues] of byDir) {
       console.log(`  ${colors.bold}${dir}${colors.reset}`);
       for (const issue of dirIssues) {
-        console.log(`    - Line ${issue.line}: ${colors.yellow}${issue.heading}${colors.reset}`);
+        console.log(`    - Line ${issue.line}: ${colors.red}${issue.heading}${colors.reset}`);
       }
     }
     console.log(
@@ -2078,15 +2068,15 @@ function checkSocialMediaDimensions(postsDir: string[]): void {
   }
 
   if (issues.length > 0 || unreadable.length > 0) {
-    hasWarnings = true;
+    hasErrors = true;
 
     if (issues.length > 0) {
       console.log(
-        `${colors.yellow}${colors.bold}WARNING:${colors.reset} Found ${issues.length} social-media.png with unexpected dimensions:\n`
+        `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${issues.length} social-media.png with unexpected dimensions:\n`
       );
       for (const issue of issues) {
         console.log(
-          `  - ${colors.yellow}${issue.dir}${colors.reset}: ${issue.width}x${issue.height} (expected ${SOCIAL_MEDIA_EXPECTED_WIDTH}x${SOCIAL_MEDIA_EXPECTED_HEIGHT})`
+          `  - ${colors.red}${issue.dir}${colors.reset}: ${issue.width}x${issue.height} (expected ${SOCIAL_MEDIA_EXPECTED_WIDTH}x${SOCIAL_MEDIA_EXPECTED_HEIGHT})`
         );
       }
       console.log('');
@@ -2094,10 +2084,10 @@ function checkSocialMediaDimensions(postsDir: string[]): void {
 
     if (unreadable.length > 0) {
       console.log(
-        `${colors.yellow}${colors.bold}WARNING:${colors.reset} Could not read dimensions for ${unreadable.length} social-media.png file${unreadable.length === 1 ? '' : 's'}:\n`
+        `${colors.red}${colors.bold}ERROR:${colors.reset} Could not read dimensions for ${unreadable.length} social-media.png file${unreadable.length === 1 ? '' : 's'}:\n`
       );
       for (const dir of unreadable) {
-        console.log(`  - ${colors.yellow}${dir}${colors.reset}`);
+        console.log(`  - ${colors.red}${dir}${colors.reset}`);
       }
       console.log('');
     }
