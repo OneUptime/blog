@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Filesystem, Hardening, fstab
+Tags: Ubuntu, Security, Filesystems, Hardening, fstab
 
 Description: Guide to configuring secure mount options in /etc/fstab on Ubuntu, covering noexec, nosuid, nodev, and separate partition strategies for defense in depth.
 

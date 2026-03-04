@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, TCP, UDP, Load Balancing, Linux
+Tags: RHEL, NGINX, TCP, UDP, Load Balancing, Linux
 
 Description: Configure Nginx stream module on RHEL to load balance TCP and UDP traffic for databases, DNS, mail servers, and other non-HTTP services.
 

@@ -33,7 +33,7 @@ sudo vi /etc/security/limits.conf
 
 Add these lines:
 
-```
+```bash
 # Increase file descriptor limits
 # <domain>  <type>  <item>  <value>
 *           soft    nofile  65536

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container, Learning Resource, DevOps
+Tags: Docker, Containers, Learning Resource, DevOps
 
 Description: A friendly walkthrough of Docker fundamentals, core terms, and one end-to-end example - from writing a Dockerfile to running a containerized web API locally.
 

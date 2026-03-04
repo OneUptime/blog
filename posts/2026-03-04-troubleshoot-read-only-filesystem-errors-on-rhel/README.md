@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Filesystem, Troubleshooting, Storage, Linux
+Tags: RHEL, Filesystems, Troubleshooting, Storage, Linux
 
 Description: Diagnose and fix read-only filesystem errors on RHEL caused by disk errors, mount options, or kernel-triggered remounts due to corruption.
 

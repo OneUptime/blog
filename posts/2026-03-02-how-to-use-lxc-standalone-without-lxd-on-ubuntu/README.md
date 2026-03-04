@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LXC, Container, Virtualization, Linux
+Tags: Ubuntu, LXC, Containers, Virtualization, Linux
 
 Description: Learn how to use LXC directly without LXD on Ubuntu, including creating containers, configuring networking, managing storage, and writing LXC configuration files manually.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, cgroups, Resource Management
+Tags: Kubernetes, Cgroups, Resource Management
 
 Description: Discover how to leverage cgroups v2 features in Kubernetes for improved resource isolation, better memory management, and enhanced container security with unified hierarchy and advanced controls.
 

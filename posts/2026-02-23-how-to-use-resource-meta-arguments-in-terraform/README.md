@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Meta-Arguments, Resource, Infrastructure as Code
+Tags: Terraform, HCL, Meta-Arguments, Resources, Infrastructure as Code
 
 Description: Learn about all Terraform resource meta-arguments including count, for_each, depends_on, provider, and lifecycle, with practical examples showing when and how to use each one.
 

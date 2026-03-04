@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Bash, Shell Scripting, Subshells, Linux, Process Management, Pipeline, Command Substitution
+Tags: Bash, Shell Scripting, Subshells, Linux, Process Management, Pipelines, Command Substitution
 
 Description: Learn how subshells work in Bash, when they are created automatically, and techniques to control variable scope and process isolation.
 

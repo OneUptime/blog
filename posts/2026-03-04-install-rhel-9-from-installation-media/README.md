@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Installation, Red Hat, System Administration
 
-Description: A complete walkthrough for installing RHEL from ISO media, covering everything from downloading the image and creating a bootable USB to completing the Anaconda installer and performing first boot tasks.
+Description: A complete walkthrough for installing RHEL from ISO media, covering everything from downloading the image and creating a bootable USB to completing the Anaconda installer and performing first boot...
 
 ---
 
@@ -74,7 +74,7 @@ You have two choices:
 
 For a custom layout using LVM, a reasonable starting point for a 100 GB disk looks like this:
 
-```
+```bash
 /boot     - 1 GiB   (ext4, standard partition)
 /boot/efi - 600 MiB (EFI System Partition, only on UEFI systems)
 swap      - 4 GiB   (or match your RAM for hibernation)

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Jenkins, CI/CD, Pipeline, DevOps, Automation
+Tags: Jenkins, CI/CD, Pipelines, DevOps, Automation
 
 Description: Learn how to build, test, and deploy applications using Jenkins Declarative Pipelines with practical examples and best practices for CI/CD automation.
 

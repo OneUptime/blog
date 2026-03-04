@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Docker, DinD, Container, CI/CD, DevOps
+Tags: GitLab CI, Docker, DinD, Containers, CI/CD, DevOps
 
 Description: Learn how to set up Docker-in-Docker in GitLab CI to build Docker images in your pipelines. This guide covers DinD configuration, socket binding, security considerations, and alternatives like Kaniko.
 

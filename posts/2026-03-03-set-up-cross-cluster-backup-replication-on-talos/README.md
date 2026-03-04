@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Backup, Replication, Disaster Recovery, Kubernetes
+Tags: Talos Linux, Backups, Replication, Disaster Recovery, Kubernetes
 
 Description: Set up cross-cluster backup replication on Talos Linux to protect your workloads against complete cluster failures and regional outages.
 

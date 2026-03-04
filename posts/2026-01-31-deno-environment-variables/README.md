@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Deno, Environment Variable, Configuration, Security
+Tags: Deno, Environment Variables, Configuration, Security
 
 Description: A comprehensive guide to managing environment variables in Deno applications, covering the Deno.env API, dotenv files, permissions, type safety, and production best practices.
 

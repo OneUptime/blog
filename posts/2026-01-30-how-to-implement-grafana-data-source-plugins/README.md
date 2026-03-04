@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Plugin, Monitoring, TypeScript
+Tags: Grafana, Plugins, Monitoring, TypeScript
 
 Description: Learn how to build custom Grafana data source plugins to connect to any backend service using the Grafana plugin SDK.
 

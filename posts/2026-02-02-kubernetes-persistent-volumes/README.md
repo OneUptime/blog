@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Persistent Volume, Storage, PVC
+Tags: Kubernetes, Persistent Volumes, Storage, PVC
 
 Description: A comprehensive guide to using Kubernetes Persistent Volumes for stateful workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, ChromeOS, Chromebook, Linux, Installation, Container, Crostini, Development
+Tags: Docker, ChromeOS, Chromebook, Linux, Installation, Containers, Crostini, Development
 
 Description: How to install and run Docker on a Chromebook using the ChromeOS Linux development environment (Crostini), with resource optimization tips for limited hardware.
 

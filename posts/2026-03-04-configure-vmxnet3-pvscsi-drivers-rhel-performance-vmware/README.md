@@ -1,4 +1,4 @@
-# How to Configure VMXNET3 and PVSCSI Drivers for Optimal RHEL Performance in VMware
+# How to Configure VMXNET3 and PVSCSI Drivers for RHEL in VMware
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

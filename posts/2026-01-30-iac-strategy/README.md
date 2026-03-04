@@ -697,7 +697,7 @@ Create runbooks for common operations.
 1. Create environment directory:
    ```bash
    cp -r environments/template environments/new-env
-   ```
+   ```bash
 
 2. Update backend configuration in `backend.tf`
 
@@ -708,7 +708,7 @@ Create runbooks for common operations.
    terraform init
    terraform plan
    terraform apply
-   ```
+   ```bash
 
 ## Validation
 - Verify resources in AWS Console

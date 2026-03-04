@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Monitoring, Dashboard, MQL, Observability
+Tags: GCP, Cloud Monitoring, Dashboards, MQL, Observability
 
 Description: Learn how to configure dashboard variables in Google Cloud Monitoring to create interactive dashboards with dynamic filtering by service, environment, region, and more.
 

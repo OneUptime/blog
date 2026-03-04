@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collection
+Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collections
 
 Description: Learn how to use the slice function in Terraform to extract portions of lists for targeted infrastructure deployments and configurations.
 

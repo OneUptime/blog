@@ -1,4 +1,4 @@
-# How to Create Custom fapolicyd Trust Rules to Allow Specific Applications on RHEL
+# How to Create Custom fapolicyd Trust Rules on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

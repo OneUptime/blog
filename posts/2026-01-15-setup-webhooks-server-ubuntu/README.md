@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Webhook, Automation, API, Tutorial
+Tags: Ubuntu, Webhooks, Automation, API, Tutorial
 
 Description: Complete guide to setting up a webhooks server for automation on Ubuntu.
 

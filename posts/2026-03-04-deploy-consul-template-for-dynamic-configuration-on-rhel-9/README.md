@@ -240,7 +240,7 @@ EOF
 
 Consul Template provides many useful functions:
 
-```
+```bash
 # Get a service and filter by tag
 {{range service "webapp|production"}}
 server {{.Address}}:{{.Port}}

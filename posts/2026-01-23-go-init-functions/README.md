@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Init, Initialization, Package, Startup
+Tags: Go, Golang, Init, Initialization, Packages, Startup
 
 Description: Learn how Go init functions work, their execution order, best practices, and when to use or avoid them for package initialization.
 

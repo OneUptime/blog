@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Hugepages, Performance
+Tags: Kubernetes, HugePages, Performance
 
 Description: Configure and use hugepages in Kubernetes to reduce TLB misses and improve memory performance for DPDK, databases, and memory-intensive applications.
 

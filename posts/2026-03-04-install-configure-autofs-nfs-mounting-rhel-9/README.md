@@ -94,7 +94,7 @@ mount | grep /nfs/data
 
 ## Common Mount Options
 
-```
+```bash
 -rw              Read-write
 -ro              Read-only
 -soft            Return error if server is unreachable (instead of hanging)

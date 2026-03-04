@@ -330,7 +330,7 @@ jobs:
             ### Docker
             ```bash
             docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            ```
+            ```bash
 
             ### Binary Downloads
             Download the appropriate binary for your platform from the assets below.
@@ -338,7 +338,7 @@ jobs:
             Verify checksums with:
             ```bash
             sha256sum -c checksums.txt
-            ```
+            ```bash
 ```text
 
 ## 4. Changelog Generation Workflow

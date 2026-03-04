@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, Kubernetes, Pod Security, Container
+Tags: Istio, Security, Kubernetes, Pod Security, Containers
 
 Description: How to properly configure Kubernetes security contexts for Istio sidecar proxies and application pods in the service mesh.
 

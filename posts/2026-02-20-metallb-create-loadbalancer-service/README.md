@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, LoadBalancer, Service, Tutorial
+Tags: Kubernetes, MetalLB, LoadBalancer, Services, Tutorial
 
 Description: Step-by-step guide to creating a Kubernetes LoadBalancer service with MetalLB, from deployment to external access verification.
 

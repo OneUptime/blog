@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ansible Galaxy, Collection, Publishing
+Tags: Ansible, Ansible Galaxy, Collections, Publishing
 
 Description: Step-by-step guide to building and publishing Ansible collections to Galaxy including namespace setup, metadata, building, and automated releases.
 

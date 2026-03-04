@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab, CI/CD, Multi-Project, Cross-Project, Pipeline, Microservices
+Tags: GitLab, CI/CD, Multi-Project, Cross-Project, Pipelines, Microservices
 
 Description: Learn how to set up multi-project pipelines in GitLab CI to coordinate builds across multiple repositories. This guide covers triggers, dependencies, and orchestration patterns.
 

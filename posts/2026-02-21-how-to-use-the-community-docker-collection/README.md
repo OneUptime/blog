@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Container, DevOps, Automation
+Tags: Ansible, Docker, Containers, DevOps, Automation
 
 Description: Complete guide to managing Docker containers, images, networks, and volumes with the community.docker Ansible collection and practical examples.
 

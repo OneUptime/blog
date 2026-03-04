@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Upgrade, Zero Downtime, Rolling Update, High Availability, DevOps
+Tags: Kubernetes, Upgrade, Zero Downtime, Rolling Updates, High Availability, DevOps
 
 Description: Learn how to perform Kubernetes cluster upgrades with zero downtime using proper planning, rolling updates, and rollback strategies.
 

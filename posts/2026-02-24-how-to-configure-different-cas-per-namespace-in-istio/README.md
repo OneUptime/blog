@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificate, Namespace Isolation, Multi-Tenancy, Security
+Tags: Istio, Certificates, Namespace Isolation, Multi-Tenancy, Security
 
 Description: How to configure different certificate authorities for different namespaces in Istio, enabling multi-tenant certificate isolation and per-namespace trust boundaries.
 

@@ -171,7 +171,7 @@ module "networking" {
   environment       = "production"
   name_prefix       = "myapp"
 }
-```
+```bash
 
 ### With Custom Subnet Sizing
 ```hcl
@@ -184,7 +184,7 @@ module "networking" {
   environment           = "production"
   name_prefix           = "myapp"
 }
-```
+```bash
 
 ## Requirements
 | Name | Version |

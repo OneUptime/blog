@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Platform Engineering, Template, Developer Experience
+Tags: OpenTelemetry, Platform Engineering, Templates, Developer Experience
 
 Description: Create reusable paved-path observability templates that give developer teams instant, consistent OpenTelemetry instrumentation out of the box.
 

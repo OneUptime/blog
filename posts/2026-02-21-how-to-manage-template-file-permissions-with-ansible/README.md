@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Template, File Permissions, Security, Configuration Management
+Tags: Ansible, Templates, File Permissions, Security, Configuration Management
 
 Description: Learn how to set correct file ownership and permissions when deploying templates with Ansible for secure configuration management.
 

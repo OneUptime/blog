@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd, Unit Files, Custom Service, Linux
+Tags: RHEL, systemd, Unit Files, Custom Services, Linux
 
 Description: Step-by-step guide to writing custom systemd service unit files on RHEL, covering all the essential sections, directives, and best practices.
 

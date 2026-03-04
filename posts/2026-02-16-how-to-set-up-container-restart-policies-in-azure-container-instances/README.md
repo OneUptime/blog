@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Instances, Restart Policies, Container, Reliability, DevOps, Cloud Computing
+Tags: Azure, Container Instances, Restart Policies, Containers, Reliability, DevOps, Cloud Computing
 
 Description: How to configure restart policies in Azure Container Instances to control container behavior on exit, including Always, OnFailure, and Never options.
 

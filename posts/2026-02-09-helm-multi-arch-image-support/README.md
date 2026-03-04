@@ -398,7 +398,7 @@ image:
       arm64:
         repository: mycompany/myapp
         tag: "1.2.3-arm64"
-```
+```bash
 
 ### Constraining to Specific Architecture
 
@@ -410,7 +410,7 @@ image:
 
 nodeSelector:
   kubernetes.io/arch: arm64
-```
+```bash
 ```text
 
 ## Handling Init Containers

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, SSH, Security, fail2ban
+Tags: Ubuntu, Linux, SSH, Security, Fail2Ban
 
 Description: Harden SSH on Ubuntu with key-only authentication, fail2ban intrusion prevention, port knocking, and additional security measures.
 

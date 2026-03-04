@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboard, Gauge
+Tags: Grafana, Observability, Dashboards, Gauge
 
 Description: A comprehensive guide to configuring Grafana gauge panels for effective metric visualization with thresholds, colors, and real-time data binding.
 

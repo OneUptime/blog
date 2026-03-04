@@ -217,7 +217,7 @@ If you have embedded the Kickstart file in the ISO or placed it on a USB drive:
 2. At the GRUB boot menu, press `Tab` (BIOS) or `e` (UEFI) to edit the boot options
 3. Append the Kickstart location to the kernel line:
 
-```
+```bash
 inst.ks=hd:LABEL=RHEL-9-BaseOS:/kickstart.cfg
 ```
 
@@ -225,19 +225,19 @@ inst.ks=hd:LABEL=RHEL-9-BaseOS:/kickstart.cfg
 
 This is the most common approach for network installations:
 
-```
+```bash
 inst.ks=http://192.168.1.50/kickstart.cfg
 ```
 
 ### From an NFS Share
 
-```
+```bash
 inst.ks=nfs:192.168.1.50:/exports/kickstart.cfg
 ```
 
 ### From an FTP Server
 
-```
+```bash
 inst.ks=ftp://192.168.1.50/kickstart.cfg
 ```
 

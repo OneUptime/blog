@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Backup, Restore, Disaster Recovery, Database, DevOps, clickhouse-backup, S3
+Tags: ClickHouse, Backups, Restore, Disaster Recovery, Database, DevOps, clickhouse-backup, S3
 
 Description: A comprehensive guide to backing up and restoring ClickHouse databases using clickhouse-backup, native snapshots, and S3 storage for reliable disaster recovery.
 

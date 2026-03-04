@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Fluent Bit, Logging, Output, Observability, Elasticsearch, Loki, Kafka, S3, Cloud Native
+Tags: Fluent Bit, Logging, Outputs, Observability, Elasticsearch, Loki, Kafka, S3, Cloud Native
 
 Description: A practical guide to configuring Fluent Bit output plugins for various destinations including Elasticsearch, Loki, Kafka, S3, and HTTP endpoints.
 

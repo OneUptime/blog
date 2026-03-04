@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Configuration Management, DevOps, Kubernetes, ConfigMap, Environment Variable, Best Practices
+Tags: Configuration Management, DevOps, Kubernetes, ConfigMap, Environment Variables, Best Practices
 
 Description: A practical guide to diagnosing and fixing common configuration management issues in cloud-native applications, including environment variables, ConfigMaps, and configuration drift.
 

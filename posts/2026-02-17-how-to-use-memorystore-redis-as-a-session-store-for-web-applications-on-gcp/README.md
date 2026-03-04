@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Memorystore, Redis, Session Management, Web Application
+Tags: GCP, Memorystore, Redis, Session Management, Web Applications
 
 Description: Implement Redis-based session management for web applications on GCP using Memorystore, covering session storage patterns, security, and scaling across multiple instances.
 

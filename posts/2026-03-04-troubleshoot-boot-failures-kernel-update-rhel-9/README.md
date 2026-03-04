@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Boot Failure, Kernel, Troubleshooting, Linux
+Tags: RHEL, Boot Failures, Kernel, Troubleshooting, Linux
 
 Description: A systematic guide to diagnosing and fixing boot failures that occur after a kernel update on RHEL, covering GRUB fallback, initramfs issues, driver problems, and recovery procedures.
 

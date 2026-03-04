@@ -39,21 +39,21 @@ graph LR
 
 Podman ships in the default RHEL repositories, so installation is straightforward.
 
-# Install the container-tools module which includes podman, buildah, and skopeo
+## Install the container-tools module which includes podman, buildah, and skopeo
 ```bash
 sudo dnf install -y container-tools
 ```
 
 If you only want Podman without the full suite:
 
-# Install just podman
+## Install just podman
 ```bash
 sudo dnf install -y podman
 ```
 
 Verify the installation:
 
-# Check podman version and build info
+## Check podman version and build info
 ```bash
 podman --version
 podman info
@@ -67,7 +67,7 @@ Podman uses `/etc/containers/registries.conf` to know where to pull images from.
 
 If you want to add Docker Hub or other registries, edit the config:
 
-# Add unqualified search registries
+## Add unqualified search registries
 ```bash
 sudo vi /etc/containers/registries.conf
 ```
@@ -84,7 +84,7 @@ This tells Podman to search these registries in order when you pull an image wit
 
 Podman stores container data and images locally. The storage configuration lives at `/etc/containers/storage.conf` for system-wide settings or `~/.config/containers/storage.conf` for per-user settings.
 
-# Check current storage configuration
+## Check current storage configuration
 ```bash
 podman info --format '{{.Store.GraphRoot}}'
 podman info --format '{{.Store.RunRoot}}'
@@ -110,7 +110,7 @@ graphroot = "/var/lib/containers/storage"
 
 If you need to pull from `registry.redhat.io`, you will need to authenticate:
 
-# Log in to the Red Hat registry
+## Log in to the Red Hat registry
 ```bash
 podman login registry.redhat.io
 ```
@@ -127,12 +127,12 @@ Credentials are stored in `${XDG_RUNTIME_DIR}/containers/auth.json` for rootless
 
 Pull and run a test container to make sure everything works:
 
-# Pull the UBI 9 minimal image from Red Hat
+## Pull the UBI 9 minimal image from Red Hat
 ```bash
 podman pull registry.access.redhat.com/ubi9/ubi-minimal
 ```
 
-# Run a quick test container
+## Run a quick test container
 ```bash
 podman run --rm registry.access.redhat.com/ubi9/ubi-minimal cat /etc/redhat-release
 ```
@@ -143,7 +143,7 @@ You should see the Red Hat release information printed to your terminal.
 
 One of Podman's strongest features is rootless container support. To set up a regular user for rootless containers:
 
-# Verify subuid and subgid mappings exist for your user
+## Verify subuid and subgid mappings exist for your user
 ```bash
 grep $USER /etc/subuid
 grep $USER /etc/subgid
@@ -151,7 +151,7 @@ grep $USER /etc/subgid
 
 If your user is missing from these files, add the mappings:
 
-# Add subordinate UID and GID ranges for the user
+## Add subordinate UID and GID ranges for the user
 ```bash
 sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
 ```
@@ -166,12 +166,12 @@ podman system migrate
 
 Some tools expect a Docker-compatible socket. Podman can emulate this:
 
-# Enable the podman socket for the current user
+## Enable the podman socket for the current user
 ```bash
 systemctl --user enable --now podman.socket
 ```
 
-# Verify the socket is active
+## Verify the socket is active
 ```bash
 systemctl --user status podman.socket
 ```
@@ -194,7 +194,7 @@ log_size_max = 1048576
 
 Or apply limits per-container at runtime:
 
-# Run a container with memory and CPU limits
+## Run a container with memory and CPU limits
 ```bash
 podman run --rm --memory 512m --cpus 1.0 registry.access.redhat.com/ubi9/ubi-minimal sleep 10
 ```
@@ -230,7 +230,7 @@ podman inspect <container-id>
 
 If your containers need to expose ports, make sure the firewall allows traffic:
 
-# Allow a specific port through the firewall
+## Allow a specific port through the firewall
 ```bash
 sudo firewall-cmd --add-port=8080/tcp --permanent
 sudo firewall-cmd --reload

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Filesystem, Troubleshooting, Storage, Linux
+Tags: RHEL, Filesystems, Troubleshooting, Storage, Linux
 
 Description: Resolve 'device or resource busy' errors when trying to unmount filesystems on RHEL by identifying and stopping processes that hold open file handles.
 

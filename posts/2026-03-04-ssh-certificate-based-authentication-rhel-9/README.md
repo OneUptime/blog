@@ -91,7 +91,7 @@ Configure sshd to trust it:
 sudo vi /etc/ssh/sshd_config.d/30-certificates.conf
 ```
 
-```
+```bash
 # Trust user certificates signed by this CA
 TrustedUserCAKeys /etc/ssh/user_ca.pub
 ```
@@ -128,7 +128,7 @@ sudo vi /etc/ssh/sshd_config.d/30-certificates.conf
 
 Add:
 
-```
+```bash
 # Present this host certificate to clients
 HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub
 ```
@@ -164,14 +164,14 @@ Create an authorized principals file:
 sudo vi /etc/ssh/auth_principals/jsmith
 ```
 
-```
+```bash
 jsmith
 developers
 ```
 
 Configure sshd:
 
-```
+```bash
 AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u
 ```
 
@@ -201,7 +201,7 @@ ssh-keygen -k -f /etc/ssh/revoked_keys -s /etc/ssh/ca/user_ca /path/to/compromis
 
 Configure sshd to check the revocation list:
 
-```
+```bash
 RevokedKeys /etc/ssh/revoked_keys
 ```
 

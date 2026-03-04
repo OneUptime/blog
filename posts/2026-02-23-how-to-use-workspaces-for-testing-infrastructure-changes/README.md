@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Testing, Infrastructure as Code, DevOps, CI/CD
+Tags: Terraform, Workspaces, Testing, Infrastructure as Code, DevOps, CI/CD
 
 Description: Learn how to use Terraform workspaces to safely test infrastructure changes before applying them to production environments.
 

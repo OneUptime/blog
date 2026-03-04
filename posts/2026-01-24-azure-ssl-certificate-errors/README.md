@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, SSL, TLS, Certificate, Security, App Service, HTTPS, Troubleshooting
+Tags: Azure, SSL, TLS, Certificates, Security, App Service, HTTPS, Troubleshooting
 
 Description: A comprehensive guide to diagnosing and fixing SSL/TLS certificate errors in Azure including expired certs, chain issues, and configuration problems.
 

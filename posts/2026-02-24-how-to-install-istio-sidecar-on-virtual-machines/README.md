@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Sidecar, Virtual Machine, Installation, Service Mesh
+Tags: Istio, Sidecar, Virtual Machines, Installation, Service Mesh
 
 Description: Detailed instructions for installing and configuring the Istio sidecar proxy on Linux virtual machines to join them to your Istio service mesh.
 

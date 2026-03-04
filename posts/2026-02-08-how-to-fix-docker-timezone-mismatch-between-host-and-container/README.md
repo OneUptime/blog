@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Timezone, Configuration, Troubleshooting, Container, Linux, Environment
+Tags: Docker, Timezone, Configuration, Troubleshooting, Containers, Linux, Environment
 
 Description: Fix timezone mismatches between Docker containers and the host system by mounting timezone files, setting environment variables, and configuring images.
 

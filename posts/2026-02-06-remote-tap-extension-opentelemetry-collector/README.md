@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extension, Debugging, Observability, Real-Time Monitoring
+Tags: OpenTelemetry, Collector, Extensions, Debugging, Observability, Real-Time Monitoring
 
 Description: Learn how to configure the Remote Tap Extension in OpenTelemetry Collector to inspect telemetry data in real-time, debug pipeline issues.
 

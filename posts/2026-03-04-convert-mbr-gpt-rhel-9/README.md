@@ -66,7 +66,7 @@ sudo gdisk /dev/sdb
 
 gdisk will detect the MBR and offer to convert it. At the gdisk prompt:
 
-```
+```bash
 # At the gdisk prompt:
 w     # Write the GPT partition table
 y     # Confirm

@@ -32,7 +32,7 @@ graph TD
 
 Every sudo rule follows this format:
 
-```
+```bash
 WHO  WHERE=(AS_WHOM)  WHAT
 ```
 
@@ -51,7 +51,7 @@ sudo visudo -f /etc/sudoers.d/webadmins
 
 ### Example: Allow web team to manage httpd
 
-```
+```bash
 # Web admins can start, stop, restart, and check status of httpd
 %webadmins ALL=(root) /usr/bin/systemctl start httpd, \
                        /usr/bin/systemctl stop httpd, \
@@ -66,7 +66,7 @@ sudo visudo -f /etc/sudoers.d/webadmins
 sudo visudo -f /etc/sudoers.d/dbadmins
 ```
 
-```
+```bash
 # DB admins can manage PostgreSQL and view its logs
 %dbadmins ALL=(root) /usr/bin/systemctl start postgresql, \
                       /usr/bin/systemctl stop postgresql, \
@@ -81,7 +81,7 @@ sudo visudo -f /etc/sudoers.d/dbadmins
 sudo visudo -f /etc/sudoers.d/deploy
 ```
 
-```
+```bash
 # Deploy user can run the deployment script as root without a password
 deploy ALL=(root) NOPASSWD: /opt/deploy/run-deploy.sh
 ```
@@ -92,7 +92,7 @@ deploy ALL=(root) NOPASSWD: /opt/deploy/run-deploy.sh
 sudo visudo -f /etc/sudoers.d/monitoring
 ```
 
-```
+```bash
 # Monitoring agent can run specific read-only commands
 nagios ALL=(root) NOPASSWD: /usr/sbin/dmidecode, \
                              /usr/bin/lsblk, \
@@ -108,7 +108,7 @@ For complex configurations, define command aliases to keep things readable:
 sudo visudo -f /etc/sudoers.d/aliases
 ```
 
-```
+```bash
 # Define command groups
 Cmnd_Alias NETWORKING = /usr/sbin/ip, /usr/bin/ss, /usr/sbin/iptables, /usr/sbin/nft
 Cmnd_Alias SERVICES = /usr/bin/systemctl start *, /usr/bin/systemctl stop *, /usr/bin/systemctl restart *, /usr/bin/systemctl status *
@@ -130,7 +130,7 @@ You can explicitly deny commands, which is useful when granting broad access wit
 sudo visudo -f /etc/sudoers.d/restricted
 ```
 
-```
+```bash
 # Allow developers to run most commands but not modify users or access shells
 %developers ALL=(root) ALL, \
                         !/usr/sbin/useradd, \
@@ -193,7 +193,7 @@ A well-organized sudoers.d directory looks like this:
 ls -la /etc/sudoers.d/
 ```
 
-```
+```bash
 -r--r-----. 1 root root  200 Mar  4  2026 00-aliases
 -r--r-----. 1 root root  150 Mar  4  2026 10-webadmins
 -r--r-----. 1 root root  180 Mar  4  2026 10-dbadmins

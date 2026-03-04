@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, cgroups, Resource Analysis, Kubernetes, Container Runtime, Performance
+Tags: Talos Linux, Cgroups, Resource Analysis, Kubernetes, Container Runtime, Performance
 
 Description: Understand and analyze cgroups resource controls on Talos Linux for debugging container performance and resource allocation issues.
 

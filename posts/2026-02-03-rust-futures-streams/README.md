@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Async, Futures, Streams, tokio, Concurrency, Performance
+Tags: Rust, Async, FUTURE, Streams, tokio, Concurrency, Performance
 
 Description: A hands-on guide to mastering Rust's async programming model with Futures, Streams, and the Tokio runtime for building high-performance concurrent applications.
 

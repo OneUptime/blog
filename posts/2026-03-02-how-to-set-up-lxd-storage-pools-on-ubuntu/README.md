@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LXD, Storage, ZFS, Container
+Tags: Ubuntu, LXD, Storage, ZFS, Containers
 
 Description: Configure LXD storage pools on Ubuntu using ZFS, btrfs, LVM, and directory backends. Covers creating pools, setting quotas, and managing container disk usage.
 

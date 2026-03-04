@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, DevOps, Container
+Tags: Docker, Docker Compose, DevOps, Containers
 
 Description: Learn how to properly configure service dependencies in Docker Compose with health checks and startup ordering.
 

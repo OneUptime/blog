@@ -158,7 +158,7 @@ The output shows you:
 
 Here is what a healthy service looks like:
 
-```
+```bash
 httpd.service - The Apache HTTP Server
      Loaded: loaded (/usr/lib/systemd/system/httpd.service; enabled; preset: disabled)
      Active: active (running) since Tue 2026-03-04 10:15:30 UTC; 2h ago

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, Container
+Tags: Kubernetes, Windows, Containers
 
 Description: Learn how to use HostProcess containers to perform privileged administrative tasks on Windows nodes directly from Kubernetes pods.
 

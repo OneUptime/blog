@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Health Check, Gateway, Load Balancer, Kubernetes
+Tags: Istio, Health Checks, Gateway, Load Balancer, Kubernetes
 
 Description: How to configure health check endpoints at the Istio ingress gateway for external load balancers, uptime monitoring, and automated failover systems.
 

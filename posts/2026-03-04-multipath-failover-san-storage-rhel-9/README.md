@@ -25,7 +25,7 @@ sudo vi /etc/multipath.conf
 
 Set the failover policy in the defaults section:
 
-```
+```bash
 defaults {
     user_friendly_names yes
     find_multipaths yes
@@ -51,7 +51,7 @@ sudo multipathd reconfigure
 
 The `failback` setting controls what happens when a failed path recovers:
 
-```
+```bash
 # Switch back to the preferred path immediately
 failback immediate
 
@@ -68,7 +68,7 @@ For storage arrays that have preferred ports, `immediate` failback ensures I/O r
 
 For active/passive arrays, set path priorities so the preferred path is always used first:
 
-```
+```bash
 multipaths {
     multipath {
         wwid 3600508b4000c4a37
@@ -81,7 +81,7 @@ multipaths {
 
 Some arrays report path priorities through ALUA (Asymmetric Logical Unit Access). To use ALUA:
 
-```
+```bash
 devices {
     device {
         vendor "DGC"
@@ -160,7 +160,7 @@ sudo dmesg | grep -i multipath
 
 When all paths fail, the `no_path_retry` setting determines behavior:
 
-```
+```bash
 # Queue I/O for N retries, then fail
 no_path_retry 5
 

@@ -210,7 +210,7 @@ getent group developers
 
 Each line in `/etc/passwd` has seven colon-separated fields:
 
-```
+```bash
 jsmith:x:1001:1001:John Smith:/home/jsmith:/bin/bash
 ```
 
@@ -228,7 +228,7 @@ jsmith:x:1001:1001:John Smith:/home/jsmith:/bin/bash
 
 The shadow file stores password hashes and aging info. Only root can read it.
 
-```
+```bash
 jsmith:$6$rounds=...:19500:0:99999:7:::
 ```
 
@@ -247,7 +247,7 @@ jsmith:$6$rounds=...:19500:0:99999:7:::
 
 Each line in `/etc/group` has four fields:
 
-```
+```bash
 developers:x:2000:jsmith,ajones,bwilson
 ```
 

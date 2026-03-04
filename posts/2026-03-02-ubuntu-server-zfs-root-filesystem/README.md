@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, ZFS, Filesystem, Storage
+Tags: Ubuntu, ZFS, Filesystems, Storage
 
 Description: Complete guide to installing Ubuntu Server with ZFS as the root filesystem using zsys, covering pool configuration, snapshots, and boot environment management.
 

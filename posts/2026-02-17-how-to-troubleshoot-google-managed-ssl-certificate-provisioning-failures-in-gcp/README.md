@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, SSL, Certificate, Troubleshooting, Load Balancer
+Tags: GCP, SSL, Certificates, Troubleshooting, Load Balancer
 
 Description: Practical troubleshooting guide for resolving Google-managed SSL certificate provisioning failures in GCP, covering DNS issues, domain verification, and common error states.
 

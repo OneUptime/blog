@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Minikube, Docker, Development, Container
+Tags: Kubernetes, Minikube, Docker, Development, Containers
 
 Description: Learn how to use locally built Docker images in Minikube without pushing to a registry. This guide covers multiple approaches including docker-env, image loading, and caching strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Docker, Container, Task Definition
+Tags: AWS, ECS, Docker, Containers, Task Definition
 
 Description: A detailed guide to creating ECS task definitions, covering container configuration, resource allocation, logging, environment variables, and multi-container setups.
 

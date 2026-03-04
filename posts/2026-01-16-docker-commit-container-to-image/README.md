@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, Images, DevOps, Development
+Tags: Docker, Containers, Images, DevOps, Development
 
 Description: Learn how to use docker commit to create new images from running containers, capture manual changes, and understand when this approach is appropriate versus using Dockerfiles.
 

@@ -1,4 +1,4 @@
-# How to Configure Receive Packet Steering (RPS) and Receive Flow Steering (RFS) on RHEL
+# How to Configure Receive Packet Steering (RPS) and RFS on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Jenkins, CI/CD, Pipeline
+Tags: Helm, Kubernetes, DevOps, Jenkins, CI/CD, Pipelines
 
 Description: Learn how to build comprehensive Helm chart CI/CD pipelines using Jenkins declarative and scripted pipelines.
 

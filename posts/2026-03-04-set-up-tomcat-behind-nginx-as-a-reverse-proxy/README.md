@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Reverse Proxy, Tomcat, Java, Nginx, Linux
+Tags: RHEL, Reverse Proxy, Tomcat, Java, NGINX, Linux
 
 Description: Learn how to set Up Tomcat Behind Nginx as a Reverse Proxy on RHEL with step-by-step instructions, configuration examples, and best practices.
 

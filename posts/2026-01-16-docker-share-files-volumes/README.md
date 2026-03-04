@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, VOLUME, Container, DevOps, Data Management
+Tags: Docker, Volumes, Containers, DevOps, Data Management
 
 Description: Learn how to share files and data between Docker containers using named volumes, shared volumes in Docker Compose, and the volumes-from flag for container-to-container data sharing.
 

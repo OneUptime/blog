@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Security, Privilege Escalation, Python
+Tags: Ansible, Plugins, Security, Privilege Escalation, Python
 
 Description: Build Ansible become plugins that integrate with enterprise privilege access management tools like CyberArk, BeyondTrust, and custom PAM wrappers.
 

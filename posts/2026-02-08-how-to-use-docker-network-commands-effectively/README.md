@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Networking, Container, Bridge Network, Overlay Network, DevOps
+Tags: Docker, Docker Networking, Containers, Bridge Network, Overlay Networks, DevOps
 
 Description: Master Docker network commands to create, inspect, connect, and troubleshoot container networks for reliable service communication.
 

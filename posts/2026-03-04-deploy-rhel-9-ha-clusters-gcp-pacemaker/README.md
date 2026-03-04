@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GCP, High Availability, Pacemaker
 
-Description: Deploy RHEL 9 HA clusters on GCP using Pacemaker.
+Description: Learn how to deploy and configure highly available RHEL clusters on GCP using Pacemaker for automated failover.
 
 ---
 

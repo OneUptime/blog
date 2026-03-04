@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, Availability Sets, High Availability, Fault Domains, Update Domains, Cloud Infrastructure
+Tags: Azure, Virtual Machines, Availability Sets, High Availability, Fault Domains, Update Domains, Cloud Infrastructure
 
 Description: Learn how to use Azure VM availability sets to protect your workloads from hardware failures and planned maintenance events.
 

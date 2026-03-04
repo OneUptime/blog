@@ -41,7 +41,7 @@ cat /etc/named/transfer-key.conf
 
 It will look something like this:
 
-```
+```bash
 key "transfer-key" {
     algorithm hmac-sha256;
     secret "YWJjZGVmMTIzNDU2Nzg5MGFiY2RlZjEyMzQ1Njc4OTA=";
@@ -232,7 +232,7 @@ tsig-keygen -a hmac-sha256 secondary2-key > /etc/named/secondary2-key.conf
 
 Then allow both keys in the zone configuration:
 
-```
+```bash
 zone "example.com" IN {
     type primary;
     file "example.com.zone";

@@ -27,7 +27,7 @@ lsblk
 
 Sample output:
 
-```
+```bash
 NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
 sda               8:0    0   50G  0 disk
 |-sda1            8:1    0    1G  0 part /boot
@@ -121,7 +121,7 @@ sudo blkid
 
 Sample output:
 
-```
+```bash
 /dev/sda1: UUID="abc12345-de67-89fg-hijk-lmnopqrstuv" BLOCK_SIZE="512" TYPE="xfs" PARTUUID="12345678-01"
 /dev/sda2: UUID="xyz98765-ab43-21cd-efgh-ijklmnopqrs" TYPE="LVM2_member" PARTUUID="12345678-02"
 /dev/mapper/rhel-root: UUID="root1234-5678-90ab-cdef-ghijklmnopqr" BLOCK_SIZE="512" TYPE="xfs"
@@ -162,7 +162,7 @@ sudo blkid -o export /dev/sda1
 
 Output:
 
-```
+```bash
 DEVNAME=/dev/sda1
 UUID=abc12345-de67-89fg-hijk-lmnopqrstuv
 BLOCK_SIZE=512
@@ -202,7 +202,7 @@ df -h
 
 Sample output:
 
-```
+```bash
 Filesystem              Size  Used Avail Use% Mounted on
 devtmpfs                4.0M     0  4.0M   0% /dev
 tmpfs                   3.9G     0  3.9G   0% /dev/shm

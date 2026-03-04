@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Health Check, Load Balancer, Content Matching, Google Cloud Networking
+Tags: GCP, Health Checks, Load Balancer, Content Matching, Google Cloud Networking
 
 Description: Learn how to configure custom health checks with content matching on GCP Load Balancer to detect application-level failures beyond simple HTTP status codes.
 

@@ -43,7 +43,7 @@ sudo semanage login -l
 
 Default output:
 
-```
+```bash
 Login Name           SELinux User         MLS/MCS Range        Service
 
 __default__          unconfined_u         s0-s0:c0.c1023       *
@@ -112,7 +112,7 @@ sudo semanage login -l | grep johndoe
 
 When the user logs in, their context looks like:
 
-```
+```bash
 user_u:user_r:user_t:s0
 ```
 

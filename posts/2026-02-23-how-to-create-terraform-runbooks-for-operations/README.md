@@ -89,67 +89,67 @@ Scale the desired count of an ECS service up or down.
 
 ### Step 1: Review Current State
 ```bash
-# Check current service configuration
+## Check current service configuration
 cd environments/production
 terraform state show aws_ecs_service.api
 
-# Note the current desired_count value
+## Note the current desired_count value
 terraform output ecs_service_desired_count
-```
+```bash
 
 ### Step 2: Update the Variable
 ```bash
-# Edit the variable file
-# Change desired_count from current value to target value
+## Edit the variable file
+## Change desired_count from current value to target value
 vim production.tfvars
-# Or use sed for automation:
-# sed -i 's/ecs_desired_count = 4/ecs_desired_count = 8/' production.tfvars
-```
+## Or use sed for automation:
+## sed -i 's/ecs_desired_count = 4/ecs_desired_count = 8/' production.tfvars
+```bash
 
 ### Step 3: Plan and Review
 ```bash
-# Generate plan
+## Generate plan
 terraform plan -var-file=production.tfvars -out=scale.tfplan
 
-# Verify the plan shows ONLY the expected changes:
-# - aws_ecs_service.api will be updated in-place
-# - desired_count: 4 -> 8
-# NO other resources should be affected
-```
+## Verify the plan shows ONLY the expected changes:
+## - aws_ecs_service.api will be updated in-place
+## - desired_count: 4 -> 8
+## NO other resources should be affected
+```bash
 
 ### Step 4: Apply
 ```bash
-# Apply the plan
+## Apply the plan
 terraform apply scale.tfplan
 
-# Wait for service to stabilize (2-5 minutes)
+## Wait for service to stabilize (2-5 minutes)
 aws ecs wait services-stable \
   --cluster production \
   --services api-service
-```
+```bash
 
 ### Step 5: Verify
 ```bash
-# Check service status
+## Check service status
 aws ecs describe-services \
   --cluster production \
   --services api-service \
   --query 'services[0].{desired: desiredCount, running: runningCount}'
 
-# Verify all tasks are healthy
+## Verify all tasks are healthy
 aws ecs describe-services \
   --cluster production \
   --services api-service \
   --query 'services[0].deployments'
-```
+```bash
 
 ## Rollback Procedure
 ```bash
-# Revert the variable to the previous value
-# Then plan and apply
+## Revert the variable to the previous value
+## Then plan and apply
 terraform plan -var-file=production.tfvars -out=rollback.tfplan
 terraform apply rollback.tfplan
-```
+```bash
 ```text
 
 ### Runbook: Database Failover
@@ -182,7 +182,7 @@ instance, typically during disaster recovery or maintenance.
 
 ### Step 1: Verify Replica Health
 ```bash
-# Check replication status
+## Check replication status
 aws rds describe-db-instances \
   --db-instance-identifier production-replica \
   --query 'DBInstances[0].{
@@ -190,55 +190,55 @@ aws rds describe-db-instances \
     ReplicaLag: StatusInfos[0].Normal
   }'
 
-# Replication lag should be less than 5 seconds
-# Status should be "available"
-```
+## Replication lag should be less than 5 seconds
+## Status should be "available"
+```bash
 
 ### Step 2: Notify Stakeholders
 ```bash
-# Post to incident channel
+## Post to incident channel
 echo "DATABASE FAILOVER: Initiating failover from primary to replica.
 Expected downtime: 5-15 minutes.
 Reason: [STATE REASON]
 Time: $(date -u)" | slack-notify #incidents
-```
+```bash
 
 ### Step 3: Terraform Plan
 ```bash
 cd environments/production/database
 
-# Update the configuration to promote the replica
-# Set promote_replica = true in the tfvars
+## Update the configuration to promote the replica
+## Set promote_replica = true in the tfvars
 terraform plan -var-file=production.tfvars \
   -target=aws_db_instance.primary \
   -out=failover.tfplan
 
-# Review the plan CAREFULLY
-# Ensure only the expected database resources are modified
-```
+## Review the plan CAREFULLY
+## Ensure only the expected database resources are modified
+```bash
 
 ### Step 4: Apply Failover
 ```bash
 terraform apply failover.tfplan
-```
+```bash
 
 ### Step 5: Update DNS
 ```bash
 cd ../dns
 
-# Point the database CNAME to the new primary
+## Point the database CNAME to the new primary
 terraform plan -var-file=production.tfvars -out=dns.tfplan
 terraform apply dns.tfplan
-```
+```bash
 
 ### Step 6: Verify Application Connectivity
 ```bash
-# Test database connectivity
+## Test database connectivity
 psql -h db.production.internal -U app_user -d production -c "SELECT 1"
 
-# Check application health endpoints
+## Check application health endpoints
 curl -s https://api.production.example.com/health | jq .database
-```
+```bash
 
 ## Rollback Procedure
 If the failover causes issues:
@@ -270,61 +270,61 @@ accidental deletion.
 
 ### Step 1: Lock State Operations
 ```bash
-# Ensure no one else is running Terraform
-# Check for existing locks
+## Ensure no one else is running Terraform
+## Check for existing locks
 aws dynamodb scan \
   --table-name terraform-locks \
   --filter-expression "contains(Info, :path)" \
   --expression-attribute-values '{":path": {"S": "production"}}'
-```
+```bash
 
 ### Step 2: List Available State Versions
 ```bash
-# List recent versions of the state file
+## List recent versions of the state file
 aws s3api list-object-versions \
   --bucket company-terraform-state \
   --prefix production/terraform.tfstate \
   --max-items 10 \
   --query 'Versions[].{VersionId: VersionId, Modified: LastModified, Size: Size}'
-```
+```bash
 
 ### Step 3: Download and Inspect Previous Version
 ```bash
-# Download a known-good version
+## Download a known-good version
 aws s3api get-object \
   --bucket company-terraform-state \
   --key production/terraform.tfstate \
   --version-id "VERSION_ID_HERE" \
   restored-state.tfstate
 
-# Inspect it
+## Inspect it
 terraform show restored-state.tfstate | head -50
-```
+```bash
 
 ### Step 4: Restore the State
 ```bash
-# Back up the current (corrupted) state first
+## Back up the current (corrupted) state first
 aws s3 cp \
   s3://company-terraform-state/production/terraform.tfstate \
   s3://company-terraform-state/production/terraform.tfstate.corrupted
 
-# Upload the restored state
+## Upload the restored state
 aws s3 cp \
   restored-state.tfstate \
   s3://company-terraform-state/production/terraform.tfstate
-```
+```bash
 
 ### Step 5: Verify
 ```bash
-# Initialize Terraform
+## Initialize Terraform
 terraform init
 
-# Run plan - should show minimal or no changes
+## Run plan - should show minimal or no changes
 terraform plan
 
-# If plan shows unexpected changes, you may have the wrong version
-# Go back to Step 3 and try an earlier version
-```
+## If plan shows unexpected changes, you may have the wrong version
+## Go back to Step 3 and try an earlier version
+```bash
 ```text
 
 ## Keeping Runbooks Current

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Network Monitoring, Infrastructure, Metrics, Observability, Network Interface
+Tags: OpenTelemetry, Collector, Network Monitoring, Infrastructure, Metrics, Observability, Network Interfaces
 
 Description: Learn how to monitor network interface metrics like bandwidth usage, packet rates, and errors using the OpenTelemetry Collector's network scraper.
 

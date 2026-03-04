@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Check, Microservices
+Tags: Kubernetes, Health Checks, Microservices
 
 Description: Implement readiness probes that verify downstream service availability, preventing traffic routing to pods that cannot fulfill requests due to dependency failures.
 

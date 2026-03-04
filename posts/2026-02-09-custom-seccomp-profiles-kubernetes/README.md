@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Container
+Tags: Kubernetes, Security, Containers
 
 Description: Learn how to create and apply custom seccomp profiles in Kubernetes to restrict system calls and enhance container security beyond default policies.
 

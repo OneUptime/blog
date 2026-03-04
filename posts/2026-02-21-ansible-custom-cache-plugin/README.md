@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Caching, Performance, Python
+Tags: Ansible, Plugins, Caching, Performance, Python
 
 Description: Build a custom Ansible cache plugin to store facts and data in your preferred backend for better performance and persistence.
 

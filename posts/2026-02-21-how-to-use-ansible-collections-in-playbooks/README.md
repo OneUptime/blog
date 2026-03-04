@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Playbook, Automation, DevOps
+Tags: Ansible, Collections, Playbook, Automation, DevOps
 
 Description: Learn how to reference and use Ansible collections inside your playbooks with practical examples and best practices for collection-based automation.
 

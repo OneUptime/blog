@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dracut, Initramfs, Kernel Modules, Boot, Linux
+Tags: RHEL, dracut, initramfs, Kernel Modules, Boot, Linux
 
 Description: Learn when and how to rebuild the initramfs on RHEL after installing, removing, or updating kernel modules to ensure bootability.
 

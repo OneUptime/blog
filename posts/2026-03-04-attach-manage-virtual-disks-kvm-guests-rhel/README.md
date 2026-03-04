@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, KVM, Virtual Disks, Storage, qcow2, Virtualization, Linux
+Tags: RHEL, KVM, Virtual Disks, Storage, QCOW2, Virtualization, Linux
 
 Description: Learn how to create, attach, detach, and resize virtual disks for KVM guests on RHEL, including different disk formats and bus types.
 

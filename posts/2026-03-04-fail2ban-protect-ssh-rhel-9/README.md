@@ -98,7 +98,7 @@ sudo fail2ban-client status sshd
 
 Output:
 
-```
+```bash
 Status for the jail: sshd
 |- Filter
 |  |- Currently failed: 2
@@ -237,7 +237,7 @@ sudo firewall-cmd --list-rich-rules
 
 You should see rules like:
 
-```
+```bash
 rule family="ipv4" source address="203.0.113.50" reject type="icmp-port-unreachable"
 ```
 

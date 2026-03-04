@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Tuned, Performance, Linux Optimization
+Tags: Ansible, TuneD, Performance, Linux Optimization
 
 Description: Optimize Linux server performance using Ansible to deploy and manage tuned profiles tailored for specific workloads.
 

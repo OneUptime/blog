@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, VOLUME, Permissions, Linux, Troubleshooting
+Tags: Docker, Volumes, Permissions, Linux, Troubleshooting
 
 Description: Resolve Docker volume permission errors by understanding UID/GID mapping, using proper ownership settings, and implementing portable solutions that work across development and production environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Reverse Proxy, Node.js, JavaScript, Nginx, Linux
+Tags: RHEL, Reverse Proxy, Node.js, JavaScript, NGINX, Linux
 
 Description: Learn how to configure Nginx as a Reverse Proxy for a Node.js API on RHEL with step-by-step instructions, configuration examples, and best practices.
 

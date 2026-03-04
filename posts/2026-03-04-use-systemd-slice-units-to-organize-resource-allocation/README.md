@@ -19,7 +19,7 @@ systemd slice units organize services into a hierarchy for resource allocation. 
 
 systemd creates a default slice hierarchy:
 
-```
+```bash
 -.slice (root slice)
   |-- system.slice    (system services)
   |-- user.slice      (user sessions)

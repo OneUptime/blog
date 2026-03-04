@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, Docker PS, Listing, DevOps, Docker Commands
+Tags: Docker, Containers, Docker PS, Listing, DevOps, Docker Commands
 
 Description: Master the docker ps command to list all containers including running, stopped, and exited ones with filters and custom formatting.
 

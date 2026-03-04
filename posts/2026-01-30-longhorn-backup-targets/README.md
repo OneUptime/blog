@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Longhorn, Kubernetes, Storage, Backup
+Tags: Longhorn, Kubernetes, Storage, Backups
 
 Description: Learn how to configure Longhorn backup targets for robust disaster recovery, including S3 and NFS backends, scheduled backups, and cross-cluster restore procedures.
 

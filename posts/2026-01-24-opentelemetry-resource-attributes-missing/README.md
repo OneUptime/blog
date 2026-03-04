@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Resource, Troubleshooting, Observability, Configuration
+Tags: OpenTelemetry, Resources, Troubleshooting, Observability, Configuration
 
 Description: Learn how to diagnose and fix missing resource attributes in OpenTelemetry to ensure proper service identification and telemetry correlation.
 

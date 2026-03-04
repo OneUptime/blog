@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, cron, Environment Variables, Linux, Automation
+Tags: RHEL, Cron, Environment Variables, Linux, Automation
 
 Description: A practical guide to managing environment variables in cron jobs on RHEL, covering PATH, SHELL, HOME, profile sourcing, and wrapper script patterns.
 
@@ -35,7 +35,7 @@ cat /tmp/cron-env.txt
 
 You will see something like this:
 
-```
+```bash
 HOME=/home/youruser
 LOGNAME=youruser
 PATH=/usr/bin:/bin

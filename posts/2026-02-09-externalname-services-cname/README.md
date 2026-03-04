@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DNS, Service, Networking
+Tags: Kubernetes, DNS, Services, Networking
 
 Description: Learn how to use Kubernetes ExternalName services to create DNS aliases that map cluster service names to external CNAME records.
 

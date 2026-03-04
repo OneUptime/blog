@@ -190,7 +190,7 @@ sudo journalctl -u multipathd --since "1 hour ago" | grep -c "failed\|reinstated
 
 Adjust the `marginal_path_*` settings to handle flapping:
 
-```
+```bash
 defaults {
     marginal_path_double_failed_time 10
     marginal_path_err_sample_time 30

@@ -16,7 +16,7 @@ The `path_grouping_policy` determines how paths are organized into groups:
 
 ### failover
 
-```
+```bash
 path_grouping_policy failover
 ```
 
@@ -24,7 +24,7 @@ Each path in its own group. Only one group active at a time. Simplest and safest
 
 ### multibus
 
-```
+```bash
 path_grouping_policy multibus
 ```
 
@@ -32,7 +32,7 @@ All paths in a single group. I/O is spread across all paths. Use when all paths 
 
 ### group_by_prio
 
-```
+```bash
 path_grouping_policy group_by_prio
 ```
 
@@ -40,7 +40,7 @@ Paths are grouped by their priority value. The highest priority group is active.
 
 ### group_by_node_name
 
-```
+```bash
 path_grouping_policy group_by_node_name
 ```
 
@@ -52,7 +52,7 @@ Within a path group, the `path_selector` determines which path gets the next I/O
 
 ### round-robin
 
-```
+```bash
 path_selector "round-robin 0"
 ```
 
@@ -60,7 +60,7 @@ Alternates between paths. Simple and effective for uniform paths. The `0` means 
 
 ### queue-length
 
-```
+```bash
 path_selector "queue-length 0"
 ```
 
@@ -68,7 +68,7 @@ Sends I/O to the path with the fewest outstanding requests. Good when paths have
 
 ### service-time
 
-```
+```bash
 path_selector "service-time 0"
 ```
 
@@ -78,7 +78,7 @@ Sends I/O to the path with the shortest estimated service time. Takes into accou
 
 For storage arrays that support active/active access on all ports:
 
-```
+```bash
 defaults {
     path_grouping_policy multibus
     path_selector "service-time 0"
@@ -89,7 +89,7 @@ defaults {
 
 The `rr_min_io_rq` parameter controls how many I/O requests are sent down one path before switching to the next:
 
-```
+```bash
 # Send 1 request per path (finest-grained balancing)
 rr_min_io_rq 1
 
@@ -106,7 +106,7 @@ Lower values distribute I/O more evenly but add overhead from path switching. Hi
 
 For arrays using ALUA (Asymmetric Logical Unit Access):
 
-```
+```bash
 defaults {
     path_grouping_policy group_by_prio
     prio alua
@@ -121,7 +121,7 @@ This groups paths by their ALUA state (active/optimized vs active/non-optimized)
 
 Different LUNs can use different policies:
 
-```
+```bash
 multipaths {
     multipath {
         wwid 3600508b4000c4a37
@@ -147,7 +147,7 @@ sudo multipath -ll
 
 Look for the `policy=` field in the output:
 
-```
+```bash
 db_data (3600508b4000c4a37) dm-0 ...
 size=100G features='0' hwhandler='0' wp=rw
 `-+- policy='service-time 0' prio=50 status=active

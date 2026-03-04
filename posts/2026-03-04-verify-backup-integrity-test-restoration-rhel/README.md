@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Backup, Verification, Integrity, Restoration, Linux
+Tags: RHEL, Backups, Verification, Integrity, Restoration, Linux
 
 Description: Verify backup integrity and test restoration procedures on RHEL to ensure your backups are usable when you actually need them.
 

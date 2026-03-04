@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CircleCI, CI/CD, Environment Variable, DevOps, Automation, Secrets Management
+Tags: CircleCI, CI/CD, Environment Variables, DevOps, Automation, Secrets Management
 
 Description: A practical guide to managing environment variables in CircleCI pipelines, covering project-level variables, contexts, dynamic values, and security best practices.
 

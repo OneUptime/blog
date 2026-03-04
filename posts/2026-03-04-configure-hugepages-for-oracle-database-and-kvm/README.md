@@ -22,7 +22,7 @@ Static HugePages provide dedicated large memory pages (typically 2 MB or 1 GB) t
 grep -i huge /proc/meminfo
 ```
 
-```
+```bash
 HugePages_Total:       0
 HugePages_Free:        0
 HugePages_Rsvd:        0
@@ -34,14 +34,14 @@ Hugepagesize:       2048 kB
 
 For Oracle Database with a 4 GB SGA:
 
-```
+```bash
 Required pages = SGA size / HugePage size
 Required pages = 4096 MB / 2 MB = 2048 pages
 ```
 
 Add 10% overhead:
 
-```
+```bash
 Total = 2048 + 205 = 2253 pages
 ```
 
@@ -94,7 +94,7 @@ Set memlock limits:
 sudo vi /etc/security/limits.d/99-oracle.conf
 ```
 
-```
+```bash
 oracle  soft  memlock  unlimited
 oracle  hard  memlock  unlimited
 ```

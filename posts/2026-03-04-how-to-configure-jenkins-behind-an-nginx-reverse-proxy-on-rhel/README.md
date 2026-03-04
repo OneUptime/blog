@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Jenkins, Nginx, Reverse Proxy, CI/CD
+Tags: RHEL, Jenkins, NGINX, Reverse Proxy, CI/CD
 
 Description: Learn how to configure Jenkins behind an Nginx reverse proxy on RHEL with TLS termination and proper WebSocket support.
 

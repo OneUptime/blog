@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Desktop, Application Groups, RBAC, User Management, Workspace, Access Control
+Tags: Azure, Virtual Desktop, Application Groups, RBAC, User Management, Workspaces, Access Control
 
 Description: Learn how to assign users and groups to application groups in Azure Virtual Desktop workspaces to control who can access desktops and published applications.
 

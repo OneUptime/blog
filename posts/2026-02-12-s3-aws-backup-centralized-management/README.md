@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, S3, Backup, Disaster Recovery
+Tags: AWS, S3, Backups, Disaster Recovery
 
 Description: Learn how to integrate Amazon S3 with AWS Backup for centralized backup management, including backup plans, vault configuration, cross-region copies, and compliance reporting.
 

@@ -57,7 +57,7 @@ If you selected "Automatic" partitioning:
 
 The automatic layout typically creates:
 
-```
+```bash
 /dev/sda1 - /boot/efi (EFI System Partition, unencrypted)
 /dev/sda2 - /boot (unencrypted, needed for bootloader)
 /dev/sda3 - LUKS2 encrypted physical volume
@@ -105,7 +105,7 @@ After installation completes, reboot the system.
 
 On the first boot, you will see a passphrase prompt:
 
-```
+```bash
 Please enter passphrase for disk /dev/sda3 (luks-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx):
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Organization, Tagging, Governance, Cost Management
+Tags: AWS, Organizations, Tagging, Governance, Cost Management
 
 Description: A practical guide to implementing tag policies in AWS Organizations to enforce consistent tagging across all accounts for cost allocation, compliance, and automation.
 

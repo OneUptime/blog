@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Modules, Workspace, Project Structure, Go Modules
+Tags: Go, Modules, Workspaces, Project Structure, Go Modules
 
 Description: Learn how to use Go workspaces to manage multiple modules in a single repository, enabling seamless local development without constant version bumps or replace directives.
 

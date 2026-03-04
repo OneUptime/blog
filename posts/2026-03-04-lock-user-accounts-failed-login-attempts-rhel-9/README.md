@@ -28,7 +28,7 @@ Then configure the lockout parameters:
 sudo vi /etc/security/faillock.conf
 ```
 
-```
+```bash
 # Lock after 5 failed attempts
 deny = 5
 
@@ -92,7 +92,7 @@ sudo faillock --user jsmith
 
 Output shows each failure with timestamp and source:
 
-```
+```bash
 jsmith:
 When                Type  Source                                           Valid
 2026-03-04 14:22:01 RHOST 10.0.1.50                                       V
@@ -124,7 +124,7 @@ By default, root is exempt from locking. To include root:
 sudo vi /etc/security/faillock.conf
 ```
 
-```
+```bash
 even_deny_root
 root_unlock_time = 60
 ```
@@ -135,7 +135,7 @@ Use a shorter unlock time for root since locking root permanently could leave yo
 
 For high-security environments:
 
-```
+```bash
 deny = 3
 unlock_time = 0
 ```
@@ -146,7 +146,7 @@ Setting `unlock_time = 0` means the account stays locked until an admin runs `fa
 
 The `fail_interval` determines how long failures count. If someone fails once today and once next week, that is not a brute-force attack:
 
-```
+```bash
 # Only count failures within a 15-minute window
 fail_interval = 900
 ```
@@ -164,7 +164,7 @@ Each user who has had a failure gets a binary file here. These files are cleared
 
 If you need failures to persist across reboots:
 
-```
+```bash
 # In /etc/security/faillock.conf
 dir = /var/lib/faillock
 ```
@@ -274,7 +274,7 @@ If the source is an IP that is not the user's workstation, it could be someone e
 
 Increase the `deny` value or decrease `fail_interval`:
 
-```
+```bash
 deny = 10
 fail_interval = 300
 ```

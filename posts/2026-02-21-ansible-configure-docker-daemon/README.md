@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Configuration, Daemon, DevOps
+Tags: Ansible, Docker, Configuration, Daemons, DevOps
 
 Description: Configure the Docker daemon with Ansible by managing daemon.json settings for logging, storage, networking, and security.
 

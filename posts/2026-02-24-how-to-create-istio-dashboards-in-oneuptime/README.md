@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, OneUptime, Dashboard, Visualization, Monitoring
+Tags: Istio, OneUptime, Dashboards, Visualization, Monitoring
 
 Description: Build effective dashboards in OneUptime to visualize Istio service mesh metrics including traffic flow, latency, and error rates.
 

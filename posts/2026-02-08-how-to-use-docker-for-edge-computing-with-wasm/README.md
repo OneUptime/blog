@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, WebAssembly, WASM, Edge Computing, IoT, Container, Cloud Native
+Tags: Docker, WebAssembly, WASM, Edge Computing, IoT, Containers, Cloud Native
 
 Description: A practical guide to deploying Docker containers with WebAssembly runtimes at the edge for low-latency applications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Power BI, Azure Stream Analytics, Real-Time, Dashboard, Streaming, IoT, Azure
+Tags: Power BI, Azure Stream Analytics, Real-Time, Dashboards, Streaming, IoT, Azure
 
 Description: Build real-time Power BI dashboards powered by Azure Stream Analytics to visualize streaming data from IoT devices, applications, and event sources.
 

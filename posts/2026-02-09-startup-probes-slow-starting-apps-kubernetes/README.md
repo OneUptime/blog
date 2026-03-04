@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Container, Monitoring
+Tags: Kubernetes, Containers, Monitoring
 
 Description: Learn how to configure Kubernetes startup probes to handle slow-starting applications, prevent premature container restarts.
 

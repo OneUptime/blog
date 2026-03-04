@@ -151,7 +151,7 @@ terraform apply -auto-approve
 
 When the VM boots from the ISO, interrupt GRUB and add the Kickstart parameter:
 
-```
+```bash
 inst.ks=http://webserver.example.com/ks/rhel9-base.cfg
 ```
 

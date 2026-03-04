@@ -154,7 +154,7 @@ sudo blkid /dev/stratis/mypool/myfs
 
 Add to `/etc/fstab`:
 
-```
+```bash
 UUID=your-uuid-here /data xfs defaults,x-systemd.requires=stratisd.service 0 0
 ```
 
@@ -188,7 +188,7 @@ The output shows total physical size and allocated space.
 
 ## Understanding Stratis Architecture
 
-```
+```bash
 +----------------------------------+
 |         Filesystem (XFS)          |
 +----------------------------------+

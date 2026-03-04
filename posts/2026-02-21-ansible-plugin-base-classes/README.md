@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Python, Development, Architecture
+Tags: Ansible, Plugins, Python, Development, Architecture
 
 Description: Understand Ansible plugin base classes and how to properly extend them when building custom plugins of any type.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, System Roles, Control Node, Managed Node, Linux
 
-Description: Step-by-step guide to preparing your Ansible control node and managed nodes on RHEL for using RHEL System Roles, including SSH key setup, Python requirements, inventory configuration, and connectivity testing.
+Description: Step-by-step guide to preparing your Ansible control node and managed nodes on RHEL for using RHEL System Roles, including SSH key setup, Python requirements, inventory configuration, and...
 
 ---
 
@@ -255,7 +255,7 @@ ansible all -m ping
 
 Expected output for each host:
 
-```
+```bash
 web1 | SUCCESS => {
     "changed": false,
     "ping": "pong"
@@ -343,7 +343,7 @@ ls -la /home/ansible/.ssh/
 
 The correct permissions should be:
 
-```
+```bash
 drwx------  .ssh/
 -rw-------  .ssh/authorized_keys
 ```

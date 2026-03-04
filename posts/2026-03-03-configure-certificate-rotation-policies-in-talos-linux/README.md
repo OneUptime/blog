@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Certificate, TLS, Security, Kubernetes
+Tags: Talos Linux, Certificates, TLS, Security, Kubernetes
 
 Description: A detailed guide to configuring and managing certificate rotation policies in Talos Linux for secure Kubernetes cluster operations.
 

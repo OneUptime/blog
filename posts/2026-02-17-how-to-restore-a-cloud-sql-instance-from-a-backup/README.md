@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, Backup, Restore, Disaster Recovery
+Tags: GCP, Cloud SQL, Backups, Restore, Disaster Recovery
 
 Description: Learn how to restore a Cloud SQL instance from automated or on-demand backups, including restoring to the same instance, a different instance, and point-in-time recovery.
 

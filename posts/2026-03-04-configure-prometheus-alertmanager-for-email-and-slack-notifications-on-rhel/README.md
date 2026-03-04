@@ -1,4 +1,4 @@
-# How to Configure Prometheus Alertmanager for Email and Slack Notifications on RHEL
+# How to Set Up Prometheus Alertmanager for Notifications on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

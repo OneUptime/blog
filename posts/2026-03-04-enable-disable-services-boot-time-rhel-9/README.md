@@ -25,7 +25,7 @@ sudo systemctl enable httpd
 
 The output tells you exactly what it did:
 
-```
+```bash
 Created symlink /etc/systemd/system/multi-user.target.wants/httpd.service -> /usr/lib/systemd/system/httpd.service.
 ```
 
@@ -53,7 +53,7 @@ sudo systemctl disable httpd
 
 Output:
 
-```
+```bash
 Removed /etc/systemd/system/multi-user.target.wants/httpd.service.
 ```
 
@@ -217,7 +217,7 @@ I would not run `preset-all` on a production system without understanding what i
 
 Sometimes you try to enable a service and get this error:
 
-```
+```bash
 The unit files have no installation config (WantedBy=, RequiredBy=, etc.)
 ```
 

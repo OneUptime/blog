@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Migration, DevOps, Container, Deployment
+Tags: Docker, Migration, DevOps, Containers, Deployment
 
 Description: Learn how to migrate Docker containers between hosts including image transfer, volume migration, and network configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, Cloud Monitoring, Alerting, Virtual Machine
+Tags: GCP, Compute Engine, Cloud Monitoring, Alerting, Virtual Machines
 
 Description: Learn how to create Cloud Monitoring alerting policies for Compute Engine VM CPU and memory usage to catch performance issues before they impact users.
 

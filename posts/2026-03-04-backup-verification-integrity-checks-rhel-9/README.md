@@ -230,7 +230,7 @@ echo "Differences found: $DIFF_COUNT"
 sudo crontab -e
 ```
 
-```
+```bash
 # Run backup at 2 AM
 0 2 * * * /usr/local/bin/backup.sh
 

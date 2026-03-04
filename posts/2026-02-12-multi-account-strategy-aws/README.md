@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Organization, Multi-Account, Cloud Architecture, Security
+Tags: AWS, Organizations, Multi-Account, Cloud Architecture, Security
 
 Description: A practical guide to implementing a multi-account strategy on AWS using AWS Organizations, SCPs, and cross-account access for security isolation and governance.
 

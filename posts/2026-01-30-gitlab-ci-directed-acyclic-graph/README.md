@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GitLab CI, Pipeline, DAG, CI/CD
+Tags: GitLab CI, Pipelines, DAG, CI/CD
 
 Description: Learn how to use the needs keyword to build Directed Acyclic Graph pipelines in GitLab CI for faster parallel execution and smarter dependency management.
 

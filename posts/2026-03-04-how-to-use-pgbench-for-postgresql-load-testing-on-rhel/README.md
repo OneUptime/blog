@@ -82,7 +82,7 @@ sudo -u postgres pgbench -c 10 -j 4 -T 60 \
 
 ## Interpreting Results
 
-```
+```bash
 # Key metrics from pgbench output:
 # tps = 1500.234 (without initial connection establishing)
 #   -- Transactions per second (main throughput metric)

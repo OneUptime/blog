@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, SELinux, Troubleshooting, Linux
+Tags: RHEL, NGINX, SELinux, Troubleshooting, Linux
 
 Description: A focused guide to diagnosing and fixing SELinux network connection denials for Nginx on RHEL.
 
@@ -12,7 +12,7 @@ Description: A focused guide to diagnosing and fixing SELinux network connection
 
 You set up Nginx as a reverse proxy on RHEL. Everything looks correct in the config. But when you browse to the site, you get a 502 Bad Gateway error. The Nginx error log shows something like:
 
-```
+```bash
 connect() to 127.0.0.1:3000 failed (13: Permission denied) while connecting to upstream
 ```
 
@@ -33,7 +33,7 @@ sudo ausearch -m avc -ts recent | grep nginx
 
 You will see something like:
 
-```
+```bash
 type=AVC msg=audit(...): avc:  denied  { name_connect } for  pid=12345
 comm="nginx" dest=3000 scontext=system_u:system_r:httpd_t:s0
 tcontext=system_u:object_r:unreserved_port_t:s0 tclass=tcp_socket permissive=0

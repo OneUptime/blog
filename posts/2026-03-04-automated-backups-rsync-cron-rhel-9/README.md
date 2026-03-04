@@ -78,7 +78,7 @@ sudo crontab -e
 
 Add:
 
-```
+```bash
 # Run daily backup at 2:00 AM
 0 2 * * * /usr/local/bin/backup.sh
 

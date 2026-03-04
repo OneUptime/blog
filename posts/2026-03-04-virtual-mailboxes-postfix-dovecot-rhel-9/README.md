@@ -53,7 +53,7 @@ sudo chown -R vmail:vmail /var/mail/vhosts
 
 Edit `/etc/postfix/main.cf`:
 
-```
+```bash
 # Virtual mailbox domain settings
 virtual_mailbox_domains = hash:/etc/postfix/virtual_domains
 virtual_mailbox_base = /var/mail/vhosts
@@ -68,7 +68,7 @@ virtual_gid_maps = static:5000
 
 Edit `/etc/postfix/virtual_domains`:
 
-```
+```bash
 example.com     OK
 example.org     OK
 ```
@@ -81,7 +81,7 @@ sudo postmap /etc/postfix/virtual_domains
 
 Edit `/etc/postfix/vmailbox`:
 
-```
+```bash
 # Format: email_address    relative/path/to/maildir/
 john@example.com        example.com/john/
 jane@example.com        example.com/jane/
@@ -100,7 +100,7 @@ sudo postmap /etc/postfix/vmailbox
 
 Edit `/etc/postfix/virtual_aliases`:
 
-```
+```bash
 # Aliases for virtual domains
 postmaster@example.com   admin@example.com
 abuse@example.com        admin@example.com
@@ -117,7 +117,7 @@ sudo postmap /etc/postfix/virtual_aliases
 
 Edit `/etc/dovecot/conf.d/10-auth.conf`:
 
-```
+```bash
 # Disable plaintext auth without TLS
 disable_plaintext_auth = yes
 auth_mechanisms = plain login
@@ -132,7 +132,7 @@ auth_mechanisms = plain login
 
 Create `/etc/dovecot/conf.d/auth-passwdfile.conf.ext`:
 
-```
+```bash
 passdb {
   driver = passwd-file
   args = scheme=BLF-CRYPT username_format=%u /etc/dovecot/users
@@ -155,7 +155,7 @@ sudo doveadm pw -s BLF-CRYPT
 
 Enter the password when prompted. Then add the entry to `/etc/dovecot/users`:
 
-```
+```bash
 john@example.com:{BLF-CRYPT}$2y$05$abc123hashedpasswordhere
 jane@example.com:{BLF-CRYPT}$2y$05$def456hashedpasswordhere
 admin@example.com:{BLF-CRYPT}$2y$05$ghi789hashedpasswordhere
@@ -174,7 +174,7 @@ sudo chmod 640 /etc/dovecot/users
 
 Edit `/etc/dovecot/conf.d/10-mail.conf`:
 
-```
+```bash
 # Virtual mailbox location
 mail_location = maildir:/var/mail/vhosts/%d/%n
 mail_privileged_group = vmail
@@ -190,7 +190,7 @@ namespace inbox {
 
 Edit `/etc/dovecot/conf.d/10-ssl.conf`:
 
-```
+```bash
 ssl = required
 ssl_cert = </etc/letsencrypt/live/mail.example.com/fullchain.pem
 ssl_key = </etc/letsencrypt/live/mail.example.com/privkey.pem
@@ -201,7 +201,7 @@ ssl_min_protocol = TLSv1.2
 
 Edit `/etc/dovecot/conf.d/10-master.conf`:
 
-```
+```bash
 service auth {
   unix_listener /var/spool/postfix/private/auth {
     mode = 0660
@@ -250,7 +250,7 @@ sudo doveadm auth test john@example.com
 openssl s_client -connect mail.example.com:993
 ```
 
-```
+```bash
 a1 LOGIN john@example.com password
 a2 LIST "" "*"
 a3 SELECT INBOX
@@ -291,7 +291,7 @@ sudo doveadm pw -s BLF-CRYPT
 
 Add quota support in `/etc/dovecot/conf.d/90-quota.conf`:
 
-```
+```bash
 plugin {
   quota = maildir:User quota
   quota_rule = *:storage=1G

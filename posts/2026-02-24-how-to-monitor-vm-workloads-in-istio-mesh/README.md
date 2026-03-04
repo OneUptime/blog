@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Monitoring, Virtual Machine, Prometheus, Observability
+Tags: Istio, Monitoring, Virtual Machines, Prometheus, Observability
 
 Description: How to collect metrics, traces, and logs from VM workloads in an Istio service mesh and integrate them with your existing observability stack.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Automation, Python
+Tags: Ansible, Plugins, Automation, Python
 
 Description: Create custom Ansible filter plugins for data transformation in templates and playbooks with Python filter functions.
 

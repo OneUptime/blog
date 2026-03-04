@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Hardening, Filesystem, System Administration
+Tags: Ubuntu, Security, Hardening, Filesystems, System Administration
 
 Description: Guide to using chattr to set immutable and append-only attributes on files and directories in Ubuntu, protecting critical system files from modification even by root.
 

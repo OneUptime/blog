@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Admission Control, Policy Ordering, Webhook, Architecture
+Tags: Kubernetes, Admission Control, Policy Ordering, Webhooks, Architecture
 
 Description: Learn how to configure admission policy priority and execution ordering, manage dependencies between mutating and validating webhooks, optimize policy performance.
 

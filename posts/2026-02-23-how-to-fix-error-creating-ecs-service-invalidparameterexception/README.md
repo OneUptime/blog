@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, Container, Troubleshooting
+Tags: Terraform, AWS, ECS, Containers, Troubleshooting
 
 Description: Troubleshoot and resolve InvalidParameterException errors when creating ECS services with Terraform, including task definitions, networking, and load balancer issues.
 

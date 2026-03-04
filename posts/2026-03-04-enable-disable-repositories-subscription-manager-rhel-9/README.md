@@ -1,4 +1,4 @@
-# How to Enable and Disable Software Repositories with subscription-manager on RHEL
+# How to Enable/Disable Repositories with subscription-manager on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

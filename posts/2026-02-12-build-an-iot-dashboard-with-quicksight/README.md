@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, IoT, QuickSight, Dashboard, Data Visualization, Analytics
+Tags: AWS, IoT, QuickSight, Dashboards, Data Visualization, Analytics
 
 Description: Build interactive IoT dashboards with Amazon QuickSight to visualize device telemetry, fleet health, and operational metrics from your connected devices.
 

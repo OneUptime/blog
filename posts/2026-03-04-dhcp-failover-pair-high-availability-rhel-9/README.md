@@ -190,7 +190,7 @@ journalctl -u dhcpd --no-pager -n 30
 You should see messages about the failover peer establishing communication and synchronizing.
 
 Look for messages like:
-```
+```bash
 peer dhcp-failover: I move from recover to startup
 peer dhcp-failover: I move from startup to normal
 ```

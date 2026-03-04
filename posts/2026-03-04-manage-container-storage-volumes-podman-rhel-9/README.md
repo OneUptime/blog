@@ -16,17 +16,17 @@ Having dealt with data loss from forgetting to set up volumes on test environmen
 
 Named volumes are the preferred way to persist data. Podman manages the storage location and lifecycle:
 
-# Create a named volume
+## Create a named volume
 ```bash
 podman volume create mydata
 ```
 
-# List all volumes
+## List all volumes
 ```bash
 podman volume ls
 ```
 
-# Inspect a volume to see where it stores data
+## Inspect a volume to see where it stores data
 ```bash
 podman volume inspect mydata
 ```
@@ -35,7 +35,9 @@ For rootful containers, volumes are stored under `/var/lib/containers/storage/vo
 
 ## Using Named Volumes with Containers
 
-# Run a MariaDB container with a named volume for data persistence
+This section covers using named volumes with containers.
+
+## Run a MariaDB container with a named volume for data persistence
 ```bash
 podman run -d --name mydb \
   -e MYSQL_ROOT_PASSWORD=secret \
@@ -62,13 +64,13 @@ Your database data is still there.
 
 Bind mounts map a specific host directory into the container:
 
-# Create a directory on the host
+## Create a directory on the host
 ```bash
 mkdir -p /srv/webdata
 echo "<h1>Hello from RHEL</h1>" > /srv/webdata/index.html
 ```
 
-# Mount the host directory into the container
+## Mount the host directory into the container
 ```bash
 podman run -d --name web \
   -v /srv/webdata:/usr/share/nginx/html:ro \
@@ -93,12 +95,12 @@ graph LR
 
 On RHEL with SELinux enabled, you need to tell Podman how to label mounted directories:
 
-# Use :Z for private unshared label (most common)
+## Use :Z for private unshared label (most common)
 ```bash
 podman run -v /srv/data:/data:Z my-image
 ```
 
-# Use :z for shared label (multiple containers access the same directory)
+## Use :z for shared label (multiple containers access the same directory)
 ```bash
 podman run -v /srv/shared:/data:z my-image
 ```
@@ -109,7 +111,7 @@ The difference matters:
 
 If you skip the label, SELinux will likely block access and you will see "Permission denied" errors inside the container.
 
-# Check SELinux context on a directory
+## Check SELinux context on a directory
 ```bash
 ls -laZ /srv/webdata/
 ```
@@ -118,14 +120,14 @@ ls -laZ /srv/webdata/
 
 For temporary data that should not persist and should stay in memory:
 
-# Mount a tmpfs volume (stored in RAM)
+## Mount a tmpfs volume (stored in RAM)
 ```bash
 podman run -d --name tempapp \
   --tmpfs /tmp:size=100m \
   docker.io/library/nginx:latest
 ```
 
-# Using the --mount flag for tmpfs
+## Using the --mount flag for tmpfs
 ```bash
 podman run -d --name tempapp \
   --mount type=tmpfs,destination=/tmp,tmpfs-size=104857600 \
@@ -138,12 +140,12 @@ tmpfs mounts are useful for sensitive data that should not be written to disk, o
 
 Podman supports volume options for specific use cases:
 
-# Create a volume with specific options
+## Create a volume with specific options
 ```bash
 podman volume create --opt device=tmpfs --opt type=tmpfs --opt o=size=100m tmpvol
 ```
 
-# Create a volume backed by an NFS mount
+## Create a volume backed by an NFS mount
 ```bash
 podman volume create --opt type=nfs \
   --opt o=addr=192.168.1.10,rw \
@@ -155,12 +157,12 @@ podman volume create --opt type=nfs \
 
 Multiple containers can share the same volume:
 
-# Create a shared volume
+## Create a shared volume
 ```bash
 podman volume create shared-logs
 ```
 
-# Writer container generates logs
+## Writer container generates logs
 ```bash
 podman run -d --name log-writer \
   -v shared-logs:/var/log/app \
@@ -168,7 +170,7 @@ podman run -d --name log-writer \
   /bin/bash -c 'while true; do echo "$(date) - log entry" >> /var/log/app/app.log; sleep 5; done'
 ```
 
-# Reader container can access the same logs
+## Reader container can access the same logs
 ```bash
 podman run --rm -v shared-logs:/logs:ro \
   registry.access.redhat.com/ubi9/ubi-minimal \
@@ -179,14 +181,14 @@ podman run --rm -v shared-logs:/logs:ro \
 
 Back up your volume data before major changes:
 
-# Back up a volume to a tar archive
+## Back up a volume to a tar archive
 ```bash
 podman run --rm -v dbdata:/source:ro -v /backup:/backup \
   registry.access.redhat.com/ubi9/ubi-minimal \
   tar czf /backup/dbdata-backup.tar.gz -C /source .
 ```
 
-# Restore a volume from a backup
+## Restore a volume from a backup
 ```bash
 podman volume create dbdata-restored
 
@@ -199,17 +201,17 @@ podman run --rm -v dbdata-restored:/target -v /backup:/backup:ro \
 
 Rootless containers run with user namespace mapping, which can cause permission issues:
 
-# Check how your user maps inside the namespace
+## Check how your user maps inside the namespace
 ```bash
 podman unshare id
 ```
 
-# Fix ownership for a volume directory used by rootless containers
+## Fix ownership for a volume directory used by rootless containers
 ```bash
 podman unshare chown -R 1000:1000 ~/.local/share/containers/storage/volumes/mydata/_data/
 ```
 
-# Alternative: use --userns=keep-id to map your host UID into the container
+## Alternative: use --userns=keep-id to map your host UID into the container
 ```bash
 podman run --userns=keep-id -v ~/mydata:/data my-image
 ```
@@ -218,29 +220,33 @@ With `--userns=keep-id`, your host user's UID is used inside the container, whic
 
 ## Cleaning Up Volumes
 
-# Remove a specific volume
+This section covers cleaning up volumes.
+
+## Remove a specific volume
 ```bash
 podman volume rm mydata
 ```
 
-# Remove all unused volumes (not attached to any container)
+## Remove all unused volumes (not attached to any container)
 ```bash
 podman volume prune
 ```
 
-# Remove a container and its anonymous volumes
+## Remove a container and its anonymous volumes
 ```bash
 podman rm -v mycontainer
 ```
 
 ## Listing Volume Usage
 
-# See which containers use which volumes
+This section covers listing volume usage.
+
+## See which containers use which volumes
 ```bash
 podman ps -a --format '{{.Names}} {{.Mounts}}'
 ```
 
-# Check disk usage for volumes
+## Check disk usage for volumes
 ```bash
 podman system df -v
 ```

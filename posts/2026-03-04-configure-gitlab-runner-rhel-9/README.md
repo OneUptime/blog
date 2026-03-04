@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, GitLab, Runner, CI/CD, Automation, Linux
+Tags: RHEL, GitLab, Runners, CI/CD, Automation, Linux
 
 Description: Install and configure GitLab Runner on RHEL to execute CI/CD pipeline jobs for your GitLab instance.
 

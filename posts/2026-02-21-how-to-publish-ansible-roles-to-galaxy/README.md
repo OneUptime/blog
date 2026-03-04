@@ -129,7 +129,7 @@ nginx_worker_processes: auto      # Number of worker processes
 nginx_worker_connections: 1024    # Max connections per worker
 nginx_server_name: localhost      # Default server name
 nginx_enable_tls: false           # Enable HTTPS
-```
+```bash
 
 ## Dependencies
 
@@ -144,7 +144,7 @@ None.
       vars:
         nginx_port: 8080
         nginx_server_name: app.example.com
-```
+```bash
 
 ## License
 

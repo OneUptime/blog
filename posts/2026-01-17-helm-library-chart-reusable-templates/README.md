@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Template, DRY, Reusable, Best Practices
+Tags: Helm, Kubernetes, DevOps, Templates, DRY, Reusable, Best Practices
 
 Description: Complete guide to creating Helm library charts for sharing reusable templates and functions across multiple charts for consistent Kubernetes deployments.
 

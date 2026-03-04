@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS, DynamoDB, Backup, NoSQL, Disaster Recovery, Cloud
+Tags: AWS, DynamoDB, Backups, NoSQL, Disaster Recovery, Cloud
 
 Description: Learn multiple approaches to backing up DynamoDB tables from built-in AWS features to custom export solutions.
 

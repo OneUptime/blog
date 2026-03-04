@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure SQL, Backup, Restore, Disaster Recovery, Point-in-Time, Azure, Database
+Tags: Azure SQL, Backups, Restore, Disaster Recovery, Point-in-Time, Azure, Database
 
 Description: Learn how to restore an Azure SQL Database to a specific point in time using automatic backups to recover from accidental data loss or corruption.
 

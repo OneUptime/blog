@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, cgroups, Resource Control, Container, Linux, Tutorial
+Tags: Ubuntu, Cgroups, Resource Control, Containers, Linux, Tutorial
 
 Description: Complete guide to using cgroups v2 for process resource management on Ubuntu.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, GNOME, Desktop, Extension, Customization
+Tags: Ubuntu, GNOME, Desktop, Extensions, Customization
 
 Description: A complete guide to installing, managing, and configuring GNOME Shell extensions on Ubuntu to customize and enhance your desktop environment.
 

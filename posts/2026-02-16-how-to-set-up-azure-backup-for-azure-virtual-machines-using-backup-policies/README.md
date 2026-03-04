@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Backup, Virtual Machine, Backup Policy, Recovery Services Vault, Azure, Data Protection, Snapshot
+Tags: Azure Backup, Virtual Machines, Backup Policy, Recovery Services Vault, Azure, Data Protection, Snapshots
 
 Description: Complete guide to setting up Azure Backup for Azure VMs including creating backup policies, configuring schedules, retention settings, and monitoring backup jobs.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, Rate Limiting, Security, Linux
+Tags: RHEL, NGINX, Rate Limiting, Security, Linux
 
 Description: Learn how to protect your Nginx web server from abuse by implementing rate limiting on RHEL, including per-IP limits, burst handling, and zone configuration.
 

@@ -24,7 +24,7 @@ graph TD
 
 A well-organized Terraform project with modules looks like this:
 
-```
+```bash
 terraform-rhel/
   main.tf              # Root module - calls child modules
   variables.tf         # Root-level variables

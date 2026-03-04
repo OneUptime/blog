@@ -32,25 +32,27 @@ spec:
 EOF
 ```
 
-# Run the pod from the YAML
+## Run the pod from the YAML
 ```bash
 podman kube play simple-pod.yaml
 ```
 
-# Verify the pod is running
+## Verify the pod is running
 ```bash
 podman pod ps
 podman ps
 ```
 
-# Test the web server
+## Test the web server
 ```bash
 curl http://localhost:8080
 ```
 
 ## Tearing Down a Pod
 
-# Remove the pod and its containers
+This section covers tearing down a pod.
+
+## Remove the pod and its containers
 ```bash
 podman kube down simple-pod.yaml
 ```
@@ -196,7 +198,7 @@ EOF
 podman kube play configmap-pod.yaml
 ```
 
-# Verify the environment variables
+## Verify the environment variables
 ```bash
 podman exec configured-app-app env | grep -E "APP_ENV|LOG_LEVEL|MAX_CONNECTIONS"
 ```
@@ -281,7 +283,7 @@ Note that Podman creates pods, not a Deployment controller. The replicas are cre
 
 Update a running pod without tearing it down first:
 
-# Apply changes, replacing existing pods
+## Apply changes, replacing existing pods
 ```bash
 podman kube play --replace simple-pod.yaml
 ```

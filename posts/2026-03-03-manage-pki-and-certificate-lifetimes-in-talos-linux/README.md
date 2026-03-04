@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, PKI, Certificate, Lifecycle Management, Security
+Tags: Talos Linux, PKI, Certificates, Lifecycle Management, Security
 
 Description: Complete guide to managing public key infrastructure and certificate lifetimes in Talos Linux including monitoring, renewal strategies, and best practices.
 

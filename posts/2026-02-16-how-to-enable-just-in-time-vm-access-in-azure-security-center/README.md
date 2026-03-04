@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Just-In-Time Access, Security Center, Virtual Machine, NSG, Zero Trust, Microsoft Defender
+Tags: Azure, Just-In-Time Access, Security Center, Virtual Machines, NSG, Zero Trust, Microsoft Defender
 
 Description: How to configure Just-In-Time VM access in Microsoft Defender for Cloud to lock down management ports and grant access only when needed.
 

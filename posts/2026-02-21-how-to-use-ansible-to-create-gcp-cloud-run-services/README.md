@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, GCP, Cloud Run, Container, Serverless
+Tags: Ansible, GCP, Cloud Run, Containers, Serverless
 
 Description: Deploy and manage GCP Cloud Run services with Ansible including container configuration, traffic splitting, custom domains, and VPC connectivity.
 

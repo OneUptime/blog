@@ -75,7 +75,7 @@ cat /proc/mdstat
 
 You should see something like:
 
-```
+```bash
 md0 : active raid0 sdc[1] sdb[0]
       2093056 blocks super 1.2 512k chunks
 ```

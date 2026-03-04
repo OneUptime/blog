@@ -46,7 +46,7 @@ python3.12 -m pip --version
 
 If you try to run `pip install` directly on RHEL, you will see this error:
 
-```
+```bash
 error: externally-managed-environment
 This environment is externally managed
 ```

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Docker, Container, CI/CD, ECS, Kubernetes
+Tags: Terraform, Docker, Containers, CI/CD, ECS, Kubernetes
 
 Description: Learn strategies for handling container image updates in Terraform, including tag management, digest pinning, and lifecycle policies for reliable deployments.
 

@@ -32,7 +32,7 @@ sudo semanage port -l | grep ssh
 
 Default output:
 
-```
+```bash
 ssh_port_t                     tcp      22
 ```
 
@@ -48,7 +48,7 @@ sudo semanage port -l | grep ssh
 
 Expected output:
 
-```
+```bash
 ssh_port_t                     tcp      2222, 22
 ```
 
@@ -79,14 +79,14 @@ sudo firewall-cmd --list-ports
 sudo vi /etc/ssh/sshd_config.d/10-port.conf
 ```
 
-```
+```bash
 # Listen on the custom port
 Port 2222
 ```
 
 Or if you want to listen on both ports during a transition period:
 
-```
+```bash
 Port 22
 Port 2222
 ```
@@ -125,7 +125,7 @@ Once you have confirmed the new port works:
 sudo vi /etc/ssh/sshd_config.d/10-port.conf
 ```
 
-```
+```bash
 Port 2222
 ```
 
@@ -150,7 +150,7 @@ Users need to know about the new port. Update SSH client configs:
 vi ~/.ssh/config
 ```
 
-```
+```bash
 Host myserver
     HostName server.example.com
     Port 2222

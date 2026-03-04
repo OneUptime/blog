@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Pub/Sub, Message Filtering, Subscription, Event Routing
+Tags: GCP, Pub/Sub, Message Filtering, Subscriptions, Event Routing
 
 Description: Learn how to use Pub/Sub subscription filters to route specific messages to specific subscribers based on message attributes, reducing processing overhead and simplifying your architecture.
 

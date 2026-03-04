@@ -29,7 +29,7 @@ cat /sys/kernel/mm/transparent_hugepage/enabled
 
 Output shows three options with the current one in brackets:
 
-```
+```bash
 [always] madvise never
 ```
 
@@ -92,7 +92,7 @@ Or create a systemd tmpfiles rule:
 sudo vi /etc/tmpfiles.d/thp.conf
 ```
 
-```
+```bash
 w /sys/kernel/mm/transparent_hugepage/enabled - - - - madvise
 w /sys/kernel/mm/transparent_hugepage/defrag - - - - defer+madvise
 ```

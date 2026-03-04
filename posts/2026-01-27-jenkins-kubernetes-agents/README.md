@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Jenkins, Kubernetes, CI/CD, DevOps, Automation, Container, Cloud Native
+Tags: Jenkins, Kubernetes, CI/CD, DevOps, Automation, Containers, Cloud Native
 
 Description: A practical guide to configuring Jenkins agents on Kubernetes for scalable, ephemeral build environments with dynamic provisioning and resource management.
 

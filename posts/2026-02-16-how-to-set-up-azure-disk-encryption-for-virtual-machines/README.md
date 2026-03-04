@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Disk Encryption, Virtual Machine, Security, Key Vault, BitLocker, dm-crypt
+Tags: Azure, Disk Encryption, Virtual Machines, Security, Key Vault, BitLocker, dm-crypt
 
 Description: A complete guide to enabling Azure Disk Encryption on virtual machines using BitLocker for Windows and dm-crypt for Linux with Azure Key Vault.
 

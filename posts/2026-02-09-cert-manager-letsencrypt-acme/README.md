@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, TLS, Certificate
+Tags: Kubernetes, TLS, Certificates
 
 Description: Learn how to deploy cert-manager with Let's Encrypt ACME protocol to automate TLS certificate issuance and renewal in Kubernetes clusters with practical examples.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, BIND, chroot, DNS Security, Linux
+Tags: RHEL, BIND, Chroot, DNS Security, Linux
 
 Description: Secure your BIND DNS server on RHEL by running it in a chroot jail, limiting the damage if the service is ever compromised.
 

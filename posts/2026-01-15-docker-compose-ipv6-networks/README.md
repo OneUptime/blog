@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: IPv6, Docker, Docker Compose, Container, Networking, DevOps
+Tags: IPv6, Docker, Docker Compose, Containers, Networking, DevOps
 
 Description: A comprehensive guide to configuring IPv6 networking in Docker Compose, covering daemon configuration, network modes, subnet allocation, and production-ready deployment patterns.
 

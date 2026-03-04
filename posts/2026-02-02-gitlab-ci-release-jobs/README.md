@@ -117,7 +117,7 @@ create-release:
 
       ```bash
       npm install @myorg/package@${CI_COMMIT_TAG}
-      ```
+      ```bash
 
       ## Documentation
 

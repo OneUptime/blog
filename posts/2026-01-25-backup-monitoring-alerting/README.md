@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Monitoring, Alerting, Backup, Observability, DevOps
+Tags: Monitoring, Alerting, Backups, Observability, DevOps
 
 Description: Learn how to implement comprehensive monitoring and alerting for backup systems, ensuring backup jobs complete successfully and failures are detected immediately.
 

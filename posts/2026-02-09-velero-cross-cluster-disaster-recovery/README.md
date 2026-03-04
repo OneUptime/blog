@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Disaster Recovery, Multi-Cluster, Backup
+Tags: Velero, Kubernetes, Disaster Recovery, Multi-Cluster, Backups
 
 Description: Master cross-cluster disaster recovery with Velero for Kubernetes. Learn how to configure multi-cluster backup strategies, automate failover, and test recovery procedures.
 
@@ -480,22 +480,22 @@ Maintain clear DR runbooks:
 1. Switch context to DR cluster:
    ```bash
    kubectl config use-context dr-cluster
-   ```
+   ```bash
 
 2. Identify latest backup:
    ```bash
    velero backup get --sort-by=.status.completionTimestamp
-   ```
+   ```bash
 
 3. Execute DR failover script:
    ```bash
    ./automated-dr-failover.sh <backup-name>
-   ```
+   ```bash
 
 4. Verify services:
    ```bash
    kubectl get pods --all-namespaces
-   ```
+   ```bash
 
 5. Update DNS to point to DR cluster
 
@@ -511,4 +511,5 @@ Maintain clear DR runbooks:
 
 Cross-cluster disaster recovery with Velero provides robust protection against catastrophic failures. Configure shared backup storage locations accessible from multiple clusters, implement automated failover procedures, and test recovery operations regularly to ensure your DR strategy works when needed. Combine volume snapshots with file-level backups for maximum portability, map storage classes to handle infrastructure differences, and monitor backup freshness to maintain continuous DR readiness. Regular testing validates your procedures and builds team confidence in executing disaster recovery when every minute counts.
 
+```bash
 ```

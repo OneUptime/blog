@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Molecule, Environment Variable, Testing, Configuration
+Tags: Ansible, Molecule, Environment Variables, Testing, Configuration
 
 Description: Master environment variable configuration in Molecule for dynamic testing, CI integration, and secure secrets handling.
 

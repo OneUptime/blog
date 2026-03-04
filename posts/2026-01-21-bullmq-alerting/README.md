@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: BullMQ, Node.js, Redis, Alerting, Monitoring, PagerDuty, Slack, Webhook, Observability
+Tags: BullMQ, Node.js, Redis, Alerting, Monitoring, PagerDuty, Slack, Webhooks, Observability
 
 Description: A comprehensive guide to setting up alerting for BullMQ queues, including threshold-based alerts, anomaly detection, integration with PagerDuty, Slack, and other notification systems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, fail2ban, Security, Linux, Intrusion Prevention
+Tags: Ansible, Fail2Ban, Security, Linux, Intrusion Prevention
 
 Description: Deploy and configure fail2ban across your Linux servers using Ansible with custom jails for SSH, nginx, and application-specific brute force protection.
 

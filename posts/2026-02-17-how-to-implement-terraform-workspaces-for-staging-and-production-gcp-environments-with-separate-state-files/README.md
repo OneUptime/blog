@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Terraform, Workspace, State Management, Infrastructure as Code
+Tags: GCP, Terraform, Workspaces, State Management, Infrastructure as Code
 
 Description: Implement Terraform workspaces to manage staging and production GCP environments with separate state files, variable overrides, and environment-specific configurations.
 

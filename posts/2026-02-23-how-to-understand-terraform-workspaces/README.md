@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Infrastructure as Code, State Management, DevOps
+Tags: Terraform, Workspaces, Infrastructure as Code, State Management, DevOps
 
 Description: A clear explanation of what Terraform workspaces are, how they work under the hood, when to use them, and when to pick a different approach for managing multiple environments.
 

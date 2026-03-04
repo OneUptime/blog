@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, AKS, Kubernetes, CrashLoopBackOff, Troubleshooting, Container, DevOps
+Tags: Azure, AKS, Kubernetes, CrashLoopBackOff, Troubleshooting, Containers, DevOps
 
 Description: A systematic guide to diagnosing and fixing CrashLoopBackOff errors in Azure Kubernetes Service pods, from container logs to resource limits.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Pub/Sub, Google Cloud, Messaging, Event-Driven Architecture, Subscription, Cloud Infrastructure, Distributed Systems
+Tags: Pub/Sub, Google Cloud, Messaging, Event-Driven Architecture, Subscriptions, Cloud Infrastructure, Distributed Systems
 
 Description: A comprehensive guide to configuring Pub/Sub subscriptions including pull vs push delivery, acknowledgment deadlines, message retention, and filtering for building reliable event-driven systems.
 

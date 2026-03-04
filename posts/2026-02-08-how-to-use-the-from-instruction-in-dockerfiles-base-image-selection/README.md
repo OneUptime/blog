@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, FROM, Base Image, Container, DevOps
+Tags: Docker, Dockerfile, FROM, Base Image, Containers, DevOps
 
 Description: Master the FROM instruction in Dockerfiles including base image selection, multi-stage builds, and platform targeting.
 

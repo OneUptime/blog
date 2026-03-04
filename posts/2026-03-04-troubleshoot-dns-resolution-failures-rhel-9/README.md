@@ -150,7 +150,7 @@ grep hosts /etc/nsswitch.conf
 
 A typical line looks like:
 
-```
+```bash
 hosts:      files dns myhostname
 ```
 

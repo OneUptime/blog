@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Resource, Performance, DevOps
+Tags: Ansible, Docker, Resources, Performance, DevOps
 
 Description: Control Docker container CPU and memory usage with Ansible to prevent resource contention and ensure application performance.
 

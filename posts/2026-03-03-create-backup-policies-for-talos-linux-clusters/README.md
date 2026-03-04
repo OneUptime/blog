@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Backup, Policy, Kubernetes, Disaster Recovery, Compliance
+Tags: Talos Linux, Backups, Policy, Kubernetes, Disaster Recovery, Compliance
 
 Description: Design and implement comprehensive backup policies for Talos Linux clusters covering retention, scheduling, and compliance requirements.
 

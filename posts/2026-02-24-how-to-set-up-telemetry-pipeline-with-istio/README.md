@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Telemetry, Pipeline, Observability, OpenTelemetry
+Tags: Istio, Telemetry, Pipelines, Observability, OpenTelemetry
 
 Description: How to build a complete telemetry pipeline with Istio that collects, processes, and routes metrics, traces, and logs to your backends.
 

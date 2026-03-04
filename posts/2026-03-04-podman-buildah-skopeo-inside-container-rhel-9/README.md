@@ -35,7 +35,7 @@ graph TB
 
 The key is using the right privileges and volume mounts:
 
-# Run a container with fuse-overlayfs support for nested containers
+## Run a container with fuse-overlayfs support for nested containers
 ```bash
 podman run --rm -it \
   --privileged \
@@ -55,7 +55,7 @@ podman run --rm docker.io/library/alpine echo "Hello from nested container"
 
 Using `--privileged` is convenient but grants too many capabilities. Here is a more restrictive approach:
 
-# Run with specific capabilities and security options
+## Run with specific capabilities and security options
 ```bash
 podman run --rm -it \
   --cap-add=SYS_ADMIN \
@@ -77,12 +77,12 @@ The important flags:
 
 A safer alternative to nested containers is using the Podman remote client that talks to the host's Podman:
 
-# On the host, enable the Podman socket
+## On the host, enable the Podman socket
 ```bash
 systemctl --user enable --now podman.socket
 ```
 
-# Run a container with access to the Podman socket
+## Run a container with access to the Podman socket
 ```bash
 podman run --rm -it \
   -v $XDG_RUNTIME_DIR/podman/podman.sock:/var/run/podman/podman.sock:Z \
@@ -102,7 +102,7 @@ podman-remote --url unix:///var/run/podman/podman.sock ps
 
 Buildah inside a container works similarly to Podman:
 
-# Run a container for image building
+## Run a container for image building
 ```bash
 podman run --rm -it \
   --device /dev/fuse \
@@ -129,7 +129,7 @@ buildah images
 
 Skopeo is the easiest of the three to run inside a container because it does not need special privileges for most operations:
 
-# Run a container with Skopeo (no special privileges needed for inspect/copy)
+## Run a container with Skopeo (no special privileges needed for inspect/copy)
 ```bash
 podman run --rm -it \
   registry.access.redhat.com/ubi9/ubi \
@@ -175,12 +175,12 @@ CMD ["/bin/bash"]
 EOF
 ```
 
-# Build the CI image
+## Build the CI image
 ```bash
 podman build -f Containerfile.ci -t ci-builder:latest .
 ```
 
-# Use the CI image
+## Use the CI image
 ```bash
 podman run --rm -it \
   --device /dev/fuse \
@@ -193,12 +193,12 @@ podman run --rm -it \
 
 Nested container storage adds up fast. Use volumes to persist the inner container storage across runs:
 
-# Create a persistent storage volume for the inner Podman
+## Create a persistent storage volume for the inner Podman
 ```bash
 podman volume create ci-storage
 ```
 
-# Mount it when running the CI container
+## Mount it when running the CI container
 ```bash
 podman run --rm -it \
   --device /dev/fuse \
@@ -214,7 +214,7 @@ This way, pulled images and cached layers persist between CI runs, speeding up b
 
 Running Podman rootless inside a rootless container is possible but requires more setup:
 
-# The outer container needs proper user namespace configuration
+## The outer container needs proper user namespace configuration
 ```bash
 podman run --rm -it \
   --user podman \

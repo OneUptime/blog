@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, Stop, Cleanup, DevOps, Docker Commands
+Tags: Docker, Containers, Stop, Cleanup, DevOps, Docker Commands
 
 Description: Learn multiple methods to stop all running Docker containers at once, including graceful shutdowns, force kills, and selective stopping.
 

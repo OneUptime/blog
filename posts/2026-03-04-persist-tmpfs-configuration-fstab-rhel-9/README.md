@@ -14,13 +14,13 @@ tmpfs mounts created with the `mount` command disappear on reboot. For productio
 
 The format is the same as any other fstab entry:
 
-```
+```bash
 <device>  <mountpoint>  <type>  <options>  <dump>  <pass>
 ```
 
 For tmpfs:
 
-```
+```bash
 tmpfs  /mnt/ramdisk  tmpfs  defaults,size=2G  0 0
 ```
 
@@ -63,31 +63,31 @@ mount | grep ramdisk
 
 ### Temporary Build Directory
 
-```
+```bash
 tmpfs  /tmp/build  tmpfs  defaults,size=8G,mode=1777,nosuid,nodev  0 0
 ```
 
 ### Application Cache
 
-```
+```bash
 tmpfs  /var/cache/myapp  tmpfs  defaults,size=1G,mode=0750,uid=myapp,gid=myapp,noexec,nosuid,nodev  0 0
 ```
 
 ### Web Session Storage
 
-```
+```bash
 tmpfs  /var/lib/php/sessions  tmpfs  defaults,size=512M,mode=0770,uid=apache,gid=apache,noexec,nosuid,nodev  0 0
 ```
 
 ### Shared Memory (Custom Size)
 
-```
+```bash
 tmpfs  /dev/shm  tmpfs  defaults,size=8G,noexec,nosuid,nodev  0 0
 ```
 
 ### Database Temp Directory
 
-```
+```bash
 tmpfs  /var/lib/mysql/tmp  tmpfs  defaults,size=2G,mode=0750,uid=mysql,gid=mysql,noexec,nosuid,nodev  0 0
 ```
 
@@ -134,7 +134,7 @@ If an application needs the tmpfs mount to be available before starting:
 
 ### In fstab with x-systemd Options
 
-```
+```bash
 tmpfs  /var/cache/myapp  tmpfs  defaults,size=1G,x-systemd.before=myapp.service  0 0
 ```
 
@@ -147,7 +147,7 @@ systemctl edit myapp.service
 
 Add:
 
-```
+```bash
 [Unit]
 RequiresMountsFor=/var/cache/myapp
 ```

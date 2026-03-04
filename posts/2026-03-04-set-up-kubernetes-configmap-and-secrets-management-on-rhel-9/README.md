@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, Kubernetes, ConfigMap, Secrets, Configuration, Linux
 
-Description: Learn how to create, manage, and use Kubernetes ConfigMaps and Secrets on RHEL for application configuration, including volume mounts, environment variables, encryption at rest, and external secret stores.
+Description: Learn how to create, manage, and use Kubernetes ConfigMaps and Secrets on RHEL for application configuration, including volume mounts, environment variables, encryption at rest, and external...
 
 ---
 
@@ -272,7 +272,7 @@ head -c 32 /dev/urandom | base64
 
 Configure the API server to use the encryption config by adding the flag:
 
-```
+```bash
 --encryption-provider-config=/etc/kubernetes/encryption-config.yaml
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CLI, Output, Scripting, DevOps
+Tags: Terraform, CLI, Outputs, Scripting, DevOps
 
 Description: Learn how to use the terraform output command to query, display, and extract output values from your Terraform state for use in scripts, pipelines, and debugging.
 

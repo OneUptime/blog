@@ -44,7 +44,7 @@ The tool will prompt you with some questions:
 
 After answering, it collects data, which takes a few minutes depending on your system. The output is saved as a compressed tarball.
 
-```
+```bash
 Your sosreport has been generated and saved in:
     /var/tmp/sosreport-hostname-2026-03-04-abc1234.tar.xz
 

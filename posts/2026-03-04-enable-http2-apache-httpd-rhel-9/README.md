@@ -184,7 +184,7 @@ Notice how multiple requests are sent without waiting for responses. That is mul
 
 If you see this error in the log:
 
-```
+```bash
 AH10034: The mpm module (prefork.c) is not supported by mod_http2
 ```
 

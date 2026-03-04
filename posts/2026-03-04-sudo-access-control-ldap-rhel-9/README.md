@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Sudo, LDAP, Access Control, Linux
+Tags: RHEL, sudo, LDAP, Access Control, Linux
 
 Description: A guide to managing sudo privileges centrally through LDAP on RHEL, enabling consistent access control across multiple servers.
 

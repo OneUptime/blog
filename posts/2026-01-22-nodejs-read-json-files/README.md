@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, JSON, Filesystem, JavaScript, Configuration
+Tags: NodeJS, JSON, Filesystems, JavaScript, Configuration
 
 Description: Learn multiple methods to read JSON files in Node.js including require, fs module, fs promises, streams for large files, and error handling best practices.
 

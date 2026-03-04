@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Template, Configuration Management, Jinja2
+Tags: Ansible, Templates, Configuration Management, Jinja2
 
 Description: Learn how to use the Ansible template module with Jinja2 to generate dynamic configuration files for services like Nginx, PostgreSQL, and systemd.
 

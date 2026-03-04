@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, NFS, Troubleshooting, File System, Network Storage
+Tags: RHEL, NFS, Troubleshooting, File Systems, Network Storage
 
 Description: Fix 'Stale NFS file handle' errors on RHEL caused by server-side export changes, inode reuse, or NFS service restarts.
 

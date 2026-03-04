@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Swarm, Kubernetes, Migration, Orchestration, K8s, Container
+Tags: Docker, Docker Swarm, Kubernetes, Migration, Orchestration, K8s, Containers
 
 Description: Migrate your workloads from Docker Swarm to Kubernetes with a practical step-by-step approach covering services, networks, volumes, and secrets.
 

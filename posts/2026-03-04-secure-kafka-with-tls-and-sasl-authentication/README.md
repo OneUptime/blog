@@ -74,7 +74,7 @@ Create JAAS configuration:
 vi /opt/kafka/config/kafka_server_jaas.conf
 ```
 
-```
+```bash
 KafkaServer {
     org.apache.kafka.common.security.plain.PlainLoginModule required
     username="admin"

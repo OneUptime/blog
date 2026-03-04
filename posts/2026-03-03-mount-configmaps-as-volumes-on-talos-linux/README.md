@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, ConfigMap, VOLUME, Container Configuration
+Tags: Talos Linux, Kubernetes, ConfigMap, Volumes, Container Configuration
 
 Description: Learn how to mount Kubernetes ConfigMaps as volumes in your pods on Talos Linux to provide configuration files to your applications.
 

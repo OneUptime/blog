@@ -472,7 +472,7 @@ Brief description of what this alert means and why it fires.
 2. **Verify the symptoms:**
    ```bash
    kubectl logs -l app=service-name --tail=100
-   ```
+   ```bash
 3. **Identify the root cause:**
    - Common cause 1: [Description and verification]
    - Common cause 2: [Description and verification]
@@ -484,7 +484,7 @@ Brief description of what this alert means and why it fires.
 1. Step one with command
    ```bash
    # Command to run
-   ```
+   ```bash
 2. Step two
 3. Verify resolution
 

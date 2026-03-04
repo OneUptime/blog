@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Linux, Opsgenie
+Tags: RHEL, Linux, OpsGenie
 
 Description: Step-by-step guide on configure opsgenie alerting from rhel 9 servers with practical examples and commands.
 

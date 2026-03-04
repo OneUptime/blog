@@ -16,7 +16,7 @@ Manual mount commands do not survive reboots. For NFS shares that should always 
 
 The general format for an NFS fstab entry:
 
-```
+```bash
 server:/export  /mount-point  nfs  options  0 0
 ```
 

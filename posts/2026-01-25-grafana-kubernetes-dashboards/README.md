@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Kubernetes, Dashboard, Monitoring, Prometheus, Observability
+Tags: Grafana, Kubernetes, Dashboards, Monitoring, Prometheus, Observability
 
 Description: A hands-on guide to deploying Grafana on Kubernetes and configuring dashboards that give you visibility into cluster health, pod performance, and resource utilization.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Callback Plugins, Output, Configuration
+Tags: Ansible, Callback Plugins, Outputs, Configuration
 
 Description: Understand and configure the Ansible default callback plugin that controls standard playbook output formatting and verbosity levels.
 

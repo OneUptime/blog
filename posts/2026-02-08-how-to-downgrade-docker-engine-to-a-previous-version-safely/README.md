@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Downgrade, Version Management, Linux, DevOps, Container, Troubleshooting, Rollback
+Tags: Docker, Downgrade, Version Management, Linux, DevOps, Containers, Troubleshooting, Rollback
 
 Description: How to safely downgrade Docker Engine to a previous version on Linux when an update introduces breaking changes, bugs, or compatibility issues.
 

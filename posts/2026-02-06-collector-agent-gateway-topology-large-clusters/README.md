@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Kubernetes, Gateway, Agent, Scalability, Architecture
+Tags: OpenTelemetry, Collector, Kubernetes, Gateway, Agents, Scalability, Architecture
 
 Description: A practical guide to designing and configuring OpenTelemetry Collector agent and gateway topologies that scale to large Kubernetes clusters with thousands of nodes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Loki, Backup, Restore, Disaster Recovery, Data Protection, Operations
+Tags: Grafana Loki, Backups, Restore, Disaster Recovery, Data Protection, Operations
 
 Description: A comprehensive guide to backing up and restoring Grafana Loki data, covering chunk and index backup strategies, object storage snapshots, configuration backup, and disaster recovery procedures.
 

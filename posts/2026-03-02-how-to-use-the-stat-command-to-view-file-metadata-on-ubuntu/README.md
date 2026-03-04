@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, File System, Command Line, System Administration
+Tags: Ubuntu, Linux, File Systems, Command Line, System Administration
 
 Description: Learn how to use the stat command on Ubuntu to view detailed file metadata including all timestamps, inode numbers, block allocation, and permission details beyond what ls provides.
 

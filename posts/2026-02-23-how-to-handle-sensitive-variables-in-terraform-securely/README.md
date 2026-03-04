@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Security, Secret, Variables, IaC, DevOps
+Tags: Terraform, Security, Secrets, Variables, IaC, DevOps
 
 Description: Learn how to handle sensitive variables in Terraform securely, covering the sensitive flag, environment variables, tfvars files, secret management integrations, and common pitfalls to avoid.
 

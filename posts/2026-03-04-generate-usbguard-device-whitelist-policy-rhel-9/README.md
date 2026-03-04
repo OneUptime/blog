@@ -30,7 +30,7 @@ sudo usbguard generate-policy > /etc/usbguard/rules.conf
 
 Each rule in the generated policy describes one USB device. Here is an example:
 
-```
+```bash
 allow id 1d6b:0002 serial "0000:00:14.0" name "xHCI Host Controller" hash "jEP/6WzviqdJ5VSeTUY8PatCNBKeaREvo2OqdplND/o=" parent-hash "G1ehGQdrl3dJ9HvW9w2HdC//pk9BwTEXKEAoahGRthI=" with-interface 09:00:00 with-connect-type ""
 ```
 

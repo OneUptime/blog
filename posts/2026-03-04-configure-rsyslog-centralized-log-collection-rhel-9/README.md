@@ -229,7 +229,7 @@ sudo vi /etc/logrotate.d/remote-logs
 
 Add the following:
 
-```
+```bash
 /var/log/remote/*/*.log {
     daily
     rotate 30

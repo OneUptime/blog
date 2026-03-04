@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Contrib, Package, Instrumentation, Libraries
+Tags: OpenTelemetry, Contrib, Packages, Instrumentation, Libraries
 
 Description: A practical guide to understanding OpenTelemetry contrib packages, their purpose, and when to integrate them into your observability stack.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, State Management, Workspace, Environment, DevOps
+Tags: Terraform, State Management, Workspaces, Environment, DevOps
 
 Description: Understand the differences between Terraform workspaces and environment-based state separation, and when to use each approach for managing multiple environments.
 

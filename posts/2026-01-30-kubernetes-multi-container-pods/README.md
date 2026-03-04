@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, POD, Container Patterns, Architecture
+Tags: Kubernetes, Pods, Container Patterns, Architecture
 
 Description: Learn how to design multi-container pods with sidecar, ambassador, and adapter patterns.
 

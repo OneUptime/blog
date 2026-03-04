@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Service, Networking, DevOps
+Tags: Kubernetes, Services, Networking, DevOps
 
 Description: Learn about Kubernetes Service types - ClusterIP, NodePort, LoadBalancer, and ExternalName - and when to use each.
 

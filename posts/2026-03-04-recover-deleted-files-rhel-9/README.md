@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, File Recovery, Troubleshooting, Linux, Data Recovery
 
-Description: Practical methods for recovering deleted files on RHEL, including the /proc/PID/fd technique for open files, extundelete for ext4, testdisk/photorec for various filesystems, and XFS recovery limitations.
+Description: Practical methods for recovering deleted files on RHEL, including the /proc/PID/fd technique for open files, extundelete for ext4, testdisk/photorec for various filesystems, and XFS recovery...
 
 ---
 
@@ -47,7 +47,7 @@ sudo lsof +L1
 
 The output will look something like this:
 
-```
+```bash
 httpd     1234  apache  4w   REG  253,0  5242880  0  /var/log/httpd/access_log (deleted)
 ```
 

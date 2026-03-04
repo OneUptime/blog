@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, MySQL, MariaDB, Database, Container
+Tags: Docker, MySQL, MariaDB, Database, Containers
 
 Description: Learn how to run MySQL and MariaDB in Docker with persistent storage, custom configuration, initialization scripts, and production-ready settings.
 

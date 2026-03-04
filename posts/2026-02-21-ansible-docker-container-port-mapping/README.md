@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Networking, Container
+Tags: Ansible, Docker, Networking, Containers
 
 Description: Configure Docker container port mappings using the Ansible docker_container module with practical examples for various scenarios.
 

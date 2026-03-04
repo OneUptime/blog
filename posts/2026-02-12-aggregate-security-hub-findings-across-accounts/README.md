@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Security Hub, Multi-Account, Organization, Security
+Tags: AWS, Security Hub, Multi-Account, Organizations, Security
 
 Description: Learn how to set up cross-account and cross-region aggregation in AWS Security Hub to view all security findings from your entire organization in a single account.
 

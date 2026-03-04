@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure CLI, Automation, Management Groups, Subscription, Governance, Shell Scripting
+Tags: Azure, Azure CLI, Automation, Management Groups, Subscriptions, Governance, Shell Scripting
 
 Description: Build robust Azure CLI scripts to automate subscription creation and management group hierarchy setup for enterprise Azure environments.
 

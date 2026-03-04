@@ -247,19 +247,19 @@ Include operational procedures specific to multi-cluster:
 1. Install Istio with the shared root CA:
    ```bash
    istioctl install --context=new-cluster -f istio-config.yaml
-   ```
+   ```bash
 
 2. Create remote secrets in all existing clusters:
    ```bash
    istioctl create-remote-secret --context=new-cluster --name=new-cluster | \
      kubectl apply --context=prod-us-east -f -
-   ```
+   ```bash
 
 3. Create remote secrets for existing clusters in the new cluster:
    ```bash
    istioctl create-remote-secret --context=prod-us-east --name=prod-us-east | \
      kubectl apply --context=new-cluster -f -
-   ```
+   ```bash
 
 4. Deploy the east-west gateway in the new cluster
 
@@ -267,7 +267,7 @@ Include operational procedures specific to multi-cluster:
    ```bash
    istioctl --context=new-cluster proxy-config endpoints deploy/sleep -n default | \
      grep prod-us-east
-   ```
+   ```bash
 
 ### Removing a Cluster
 

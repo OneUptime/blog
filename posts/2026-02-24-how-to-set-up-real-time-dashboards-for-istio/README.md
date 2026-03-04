@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Dashboard, Grafana, Real-Time Monitoring, Observability
+Tags: Istio, Dashboards, Grafana, Real-Time Monitoring, Observability
 
 Description: A practical guide to building real-time dashboards for your Istio service mesh using Grafana, Kiali, and Prometheus, with dashboard templates for mesh overview and service detail views.
 

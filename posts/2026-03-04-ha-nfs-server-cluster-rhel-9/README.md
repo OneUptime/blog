@@ -152,7 +152,7 @@ sudo mount -o soft,timeo=50,retrans=3 192.168.1.100:/export/data /mnt
 
 Or in /etc/fstab:
 
-```
+```bash
 192.168.1.100:/export/data /mnt nfs soft,timeo=50,retrans=3 0 0
 ```
 

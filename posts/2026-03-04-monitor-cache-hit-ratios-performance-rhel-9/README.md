@@ -49,7 +49,7 @@ dmsetup status vg_data-lv_data
 ```
 
 The output format for dm-cache is:
-```
+```bash
 0 <length> cache <metadata_block_size> <used_metadata>/<total_metadata> <cache_block_size> <used_cache>/<total_cache> <read_hits> <read_misses> <write_hits> <write_misses> <demotions> <promotions> <dirty> <features> ...
 ```
 

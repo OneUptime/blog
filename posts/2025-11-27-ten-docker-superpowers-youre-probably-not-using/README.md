@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container, DevOps, Performance, Security
+Tags: Docker, Containers, DevOps, Performance, Security
 
 Description: Ten field-tested Docker techniques - from BuildKit secrets to Compose profiles - that quietly reduce image size, harden workloads, and save developer hours.
 

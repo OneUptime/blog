@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, AWS, ECS, Container
+Tags: Terraform, Modules, AWS, ECS, Containers
 
 Description: Build a reusable Terraform module for ECS Fargate services with task definitions, auto-scaling, load balancer integration, and CloudWatch logging.
 

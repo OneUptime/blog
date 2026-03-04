@@ -69,7 +69,7 @@ xpack.security.enabled: true
 sudo vi /etc/elasticsearch/jvm.options.d/heap.options
 ```
 
-```
+```bash
 -Xms2g
 -Xmx2g
 ```

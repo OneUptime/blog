@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backup, Storage, Archive, Compliance
+Tags: Backups, Storage, Archive, Compliance
 
 Description: Learn how to use archive storage for long-term compliance and legal retention.
 

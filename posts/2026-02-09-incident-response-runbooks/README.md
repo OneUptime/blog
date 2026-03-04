@@ -45,30 +45,30 @@ Next, provide clear diagnosis steps that help responders understand the root cau
 
 ### 1. Verify pod status and reason
 ```bash
-# List pending pods
+## List pending pods
 kubectl get pods --all-namespaces --field-selector=status.phase=Pending
 
-# Check specific pod details
+## Check specific pod details
 kubectl describe pod <pod-name> -n <namespace>
-# Look for "Warning FailedScheduling" events
-```
+## Look for "Warning FailedScheduling" events
+```bash
 
 ### 2. Check cluster resource capacity
 ```bash
-# View node resource allocations
+## View node resource allocations
 kubectl top nodes
 
-# See detailed resource requests/limits per node
+## See detailed resource requests/limits per node
 kubectl describe nodes | grep -A 5 "Allocated resources"
-```
+```bash
 
 ### 3. Identify resource-hungry pods
 ```bash
-# List pods by CPU request
+## List pods by CPU request
 kubectl get pods --all-namespaces -o json | \
   jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name) CPU: \(.spec.containers[].resources.requests.cpu)"' | \
   sort -k3 -rn | head -20
-```
+```bash
 ```text
 
 Diagnosis steps build understanding through observation. Each command includes comments explaining what to look for in the output. This helps responders learn while resolving incidents.
@@ -85,12 +85,12 @@ One of the most common Kubernetes production issues is pod scheduling failures. 
 ### Step 1: Determine if this is an emergency
 Check if critical services are affected:
 ```bash
-# Check if production services have pending pods
+## Check if production services have pending pods
 kubectl get pods -n production --field-selector=status.phase=Pending
 
-# Verify service availability
+## Verify service availability
 curl -I https://api.example.com/health
-```
+```bash
 
 If critical services are down, escalate immediately and consider temporary mitigation.
 
@@ -99,25 +99,25 @@ If immediate capacity is needed:
 
 **Option A: Scale down non-critical workloads**
 ```bash
-# Identify non-critical deployments
+## Identify non-critical deployments
 kubectl get deployments --all-namespaces -l priority=low
 
-# Temporarily scale down
+## Temporarily scale down
 kubectl scale deployment/non-critical-job -n batch --replicas=0
-```
+```bash
 
 **Option B: Add node capacity (cloud environments)**
 ```bash
-# GKE: Scale up node pool
+## GKE: Scale up node pool
 gcloud container clusters resize production-cluster \
   --node-pool=default-pool \
   --num-nodes=5
 
-# EKS: Update desired capacity
+## EKS: Update desired capacity
 aws autoscaling set-desired-capacity \
   --auto-scaling-group-name=eks-node-group \
   --desired-capacity=5
-```
+```bash
 
 ### Step 3: Identify root cause
 Check for common causes in order:
@@ -125,29 +125,29 @@ Check for common causes in order:
 **A. Insufficient CPU resources**
 ```bash
 kubectl describe nodes | grep -E "Allocated resources|cpu.*requests"
-```
+```bash
 
 **B. Insufficient memory resources**
 ```bash
 kubectl describe nodes | grep -E "Allocated resources|memory.*requests"
-```
+```bash
 
 **C. Node selector or affinity constraints**
 ```bash
 kubectl get pod <pending-pod> -o yaml | grep -A 10 "nodeSelector\|affinity"
-```
+```bash
 
 **D. Taints and tolerations**
 ```bash
 kubectl describe node <node-name> | grep Taints
 kubectl get pod <pending-pod> -o yaml | grep -A 5 tolerations
-```
+```bash
 
 **E. Pod Disruption Budget blocking operations**
 ```bash
 kubectl get pdb --all-namespaces
 kubectl describe pdb <pdb-name> -n <namespace>
-```
+```bash
 
 ## Resolution Steps
 
@@ -169,15 +169,15 @@ kubectl describe pdb <pdb-name> -n <namespace>
 ## Verification
 After resolution, verify:
 ```bash
-# All pods should be Running
+## All pods should be Running
 kubectl get pods --all-namespaces --field-selector=status.phase=Pending
 
-# Check resource utilization
+## Check resource utilization
 kubectl top nodes
 
-# Verify application health
+## Verify application health
 curl https://api.example.com/health
-```
+```bash
 
 ## Prevention
 - Set up alerts for node resource utilization above 75%
@@ -205,98 +205,98 @@ Another common production issue is pods stuck in CrashLoopBackOff state. This ru
 
 ### Step 1: Check pod status
 ```bash
-# Identify crashing pods
+## Identify crashing pods
 kubectl get pods --all-namespaces | grep CrashLoopBackOff
 
-# View restart count and age
+## View restart count and age
 kubectl get pod <pod-name> -n <namespace>
-```
+```bash
 
 ### Step 2: Examine container logs
 ```bash
-# View current logs
+## View current logs
 kubectl logs <pod-name> -n <namespace>
 
-# View logs from previous crash
+## View logs from previous crash
 kubectl logs <pod-name> -n <namespace> --previous
 
-# Follow logs in real time
+## Follow logs in real time
 kubectl logs <pod-name> -n <namespace> -f
-```
+```bash
 
 ### Step 3: Check container exit reason
 ```bash
-# Get detailed pod status
+## Get detailed pod status
 kubectl describe pod <pod-name> -n <namespace>
 
-# Look for:
-# - Last State: Terminated
-# - Reason: Error/OOMKilled/ContainerCannotRun
-# - Exit Code: (0=success, non-zero=error)
-```
+## Look for:
+## - Last State: Terminated
+## - Reason: Error/OOMKilled/ContainerCannotRun
+## - Exit Code: (0=success, non-zero=error)
+```bash
 
 ### Step 4: Review recent changes
 ```bash
-# Check deployment history
+## Check deployment history
 kubectl rollout history deployment/<deployment-name> -n <namespace>
 
-# Compare current with previous version
+## Compare current with previous version
 kubectl rollout history deployment/<deployment-name> --revision=<current>
 kubectl rollout history deployment/<deployment-name> --revision=<previous>
-```
+```bash
 
 ## Resolution
 
 ### For configuration errors:
 ```bash
-# Check ConfigMap and Secret references
+## Check ConfigMap and Secret references
 kubectl get configmap -n <namespace>
 kubectl get secret -n <namespace>
 
-# Verify environment variables
+## Verify environment variables
 kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.containers[0].env}'
-```
+```bash
 
 ### For out-of-memory kills (OOMKilled):
 ```bash
-# Check memory limits
+## Check memory limits
 kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.containers[0].resources.limits.memory}'
 
-# Increase memory limit
+## Increase memory limit
 kubectl patch deployment <deployment-name> -n <namespace> -p \
   '{"spec":{"template":{"spec":{"containers":[{"name":"<container>","resources":{"limits":{"memory":"2Gi"}}}]}}}}'
-```
+```bash
 
 ### For application errors:
 ```bash
-# Rollback to previous working version
+## Rollback to previous working version
 kubectl rollout undo deployment/<deployment-name> -n <namespace>
 
-# Verify rollback
+## Verify rollback
 kubectl rollout status deployment/<deployment-name> -n <namespace>
-```
+```bash
 
 ### For dependency issues:
 ```bash
-# Check if dependencies are healthy
+## Check if dependencies are healthy
 kubectl get pods -n <namespace> -l app=database
 kubectl logs <database-pod> -n <namespace>
 
-# Test connectivity to dependencies
+## Test connectivity to dependencies
 kubectl run -it --rm debug --image=busybox --restart=Never -- wget -O- http://database:5432
-```
+```bash
 
 ## Verification
 ```bash
-# Pod should be in Running state
+## Pod should be in Running state
 kubectl get pod <pod-name> -n <namespace>
 
-# No recent restarts
+## No recent restarts
 kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.status.containerStatuses[0].restartCount}'
 
-# Application responding
+## Application responding
 kubectl exec <pod-name> -n <namespace> -- wget -O- localhost:8080/health
-```
+```bash
 ```text
 
 This runbook methodically addresses the most common causes of crash loops, providing specific commands for each scenario.
@@ -318,46 +318,46 @@ Networking problems in Kubernetes can be particularly challenging to diagnose. T
 
 ### Step 1: Verify service exists and has endpoints
 ```bash
-# Check service
+## Check service
 kubectl get service <service-name> -n <namespace>
 
-# Verify endpoints are populated
+## Verify endpoints are populated
 kubectl get endpoints <service-name> -n <namespace>
 
-# Check if pods match service selector
+## Check if pods match service selector
 kubectl get pods -n <namespace> -l <selector-from-service>
-```
+```bash
 
 ### Step 2: Test DNS resolution
 ```bash
-# Run DNS lookup from debug pod
+## Run DNS lookup from debug pod
 kubectl run -it --rm debug --image=busybox --restart=Never -- nslookup <service-name>.<namespace>.svc.cluster.local
 
-# Check CoreDNS pods are healthy
+## Check CoreDNS pods are healthy
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 
-# View CoreDNS logs for errors
+## View CoreDNS logs for errors
 kubectl logs -n kube-system -l k8s-app=kube-dns
-```
+```bash
 
 ### Step 3: Test network connectivity
 ```bash
-# Test TCP connection to service
+## Test TCP connection to service
 kubectl run -it --rm debug --image=busybox --restart=Never -- telnet <service-name> <port>
 
-# Test HTTP connectivity
+## Test HTTP connectivity
 kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
   curl -v http://<service-name>:<port>/health
-```
+```bash
 
 ### Step 4: Check network policies
 ```bash
-# List network policies affecting namespace
+## List network policies affecting namespace
 kubectl get networkpolicy -n <namespace>
 
-# Describe specific policy
+## Describe specific policy
 kubectl describe networkpolicy <policy-name> -n <namespace>
-```
+```bash
 
 ## Resolution
 
@@ -368,19 +368,19 @@ kubectl describe networkpolicy <policy-name> -n <namespace>
 
 ### For DNS issues:
 ```bash
-# Restart CoreDNS pods
+## Restart CoreDNS pods
 kubectl rollout restart deployment/coredns -n kube-system
 
-# Verify CoreDNS config
+## Verify CoreDNS config
 kubectl get configmap coredns -n kube-system -o yaml
-```
+```bash
 
 ### For network policy blocks:
 ```bash
-# Temporarily allow all traffic for testing
+## Temporarily allow all traffic for testing
 kubectl label namespace <namespace> network-policy-test=true
 
-# Create temporary allow-all policy
+## Create temporary allow-all policy
 kubectl apply -f - <<EOF
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -397,17 +397,17 @@ spec:
   egress:
   - {}
 EOF
-```
+```bash
 
 ## Verification
 ```bash
-# Test service connectivity
+## Test service connectivity
 kubectl run -it --rm test --image=curlimages/curl --restart=Never -- \
   curl http://<service-name>:<port>/health
 
-# Check ingress status
+## Check ingress status
 kubectl describe ingress <ingress-name> -n <namespace>
-```
+```bash
 ```text
 
 ## Maintaining and Improving Runbooks
@@ -420,4 +420,5 @@ Store runbooks in version control alongside your infrastructure code. This provi
 
 Effective incident response runbooks transform your team's ability to handle production issues. By documenting common failure modes and proven resolution steps, you reduce stress, minimize downtime, and build organizational resilience. The time invested in creating comprehensive runbooks pays dividends during every incident they help resolve quickly.
 
+```bash
 ```

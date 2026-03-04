@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Jinja2, Template, DevOps
+Tags: Ansible, Kubernetes, Jinja2, Templates, DevOps
 
 Description: Use Ansible Jinja2 templates to generate dynamic Kubernetes manifests with environment-specific values, conditionals, and loops.
 

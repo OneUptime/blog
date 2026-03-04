@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Entrypoint, Shell Script, Error Handling, Bash, Container, Best Practices
+Tags: Docker, Entrypoint, Shell Script, Error Handling, Bash, Containers, Best Practices
 
 Description: Write robust Docker entrypoint scripts with proper error handling, exit codes, signal trapping, and failure recovery.
 

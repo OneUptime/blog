@@ -14,20 +14,20 @@ The "GRUB rescue" prompt appears when GRUB cannot find its configuration or modu
 
 List available partitions:
 
-```
+```bash
 grub rescue> ls
 grub rescue> ls (hd0,gpt2)/
 ```
 
 Find the partition with GRUB files:
 
-```
+```bash
 grub rescue> ls (hd0,gpt2)/grub2/
 ```
 
 Set the root and prefix:
 
-```
+```bash
 grub rescue> set root=(hd0,gpt2)
 grub rescue> set prefix=(hd0,gpt2)/grub2
 grub rescue> insmod normal

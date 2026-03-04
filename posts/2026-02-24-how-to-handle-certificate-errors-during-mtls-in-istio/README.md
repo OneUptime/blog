@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Certificate, Troubleshooting, Security
+Tags: Istio, mTLS, Certificates, Troubleshooting, Security
 
 Description: A troubleshooting guide for common certificate errors during mTLS communication in Istio, with practical debugging steps and solutions for each error type.
 

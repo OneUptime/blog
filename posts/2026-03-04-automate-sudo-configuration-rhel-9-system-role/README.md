@@ -173,7 +173,7 @@ sudo_sudoers:
 
 Create a directory structure:
 
-```
+```bash
 inventory/
   group_vars/
     webservers.yml

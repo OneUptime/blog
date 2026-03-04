@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Output, Performance, CLI, Optimization
+Tags: Terraform, Outputs, Performance, CLI, Optimization
 
 Description: Reduce time spent on Terraform output rendering by controlling plan display, managing large outputs, and optimizing CLI performance.
 

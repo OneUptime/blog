@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, PHP, Extension, Web Server
+Tags: Ubuntu, PHP, Extensions, Web Server
 
 Description: Install PHP extensions and modules on Ubuntu using apt, PECL, and manual compilation, including common extensions for databases, caching, and image processing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, .NET, C#, Container, DevOps, ASP.NET Core, Microservices
+Tags: Docker, .NET, C#, Containers, DevOps, ASP.NET Core, Microservices
 
 Description: A comprehensive guide to containerizing .NET applications with Docker, covering Dockerfiles, multi-stage builds, optimization techniques, and production best practices.
 

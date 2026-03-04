@@ -125,7 +125,7 @@ cat /etc/rsyslog.conf
 
 The default configuration routes messages to different files based on facility and severity. The key rules look like this:
 
-```
+```bash
 # Log all kernel messages to /var/log/messages
 *.info;mail.none;authpriv.none;cron.none    /var/log/messages
 

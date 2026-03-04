@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Database, Monitoring, CloudWatch, Dashboard, Infrastructure as Code
+Tags: Terraform, AWS, Database, Monitoring, CloudWatch, Dashboards, Infrastructure as Code
 
 Description: Learn how to create comprehensive database monitoring dashboards using Terraform with CloudWatch to track performance, availability, and health metrics.
 

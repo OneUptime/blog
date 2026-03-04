@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Jenkins, CI/CD, Testing, DevOps, Automation, Pipeline
+Tags: Jenkins, CI/CD, Testing, DevOps, Automation, Pipelines
 
 Description: A practical guide to implementing comprehensive testing strategies in Jenkins pipelines, covering unit tests, integration tests, parallel execution, test reporting.
 

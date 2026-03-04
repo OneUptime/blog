@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Docker, ECR, ACR, Container, Registry
+Tags: Terraform, Docker, ECR, ACR, Containers, Registry
 
 Description: Learn how to create container registries with lifecycle policies using Terraform to automatically clean up old images and manage storage costs effectively.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Grafana, Power BI, Monitoring, Dashboard, Observability, Hybrid
+Tags: Azure, Grafana, Power BI, Monitoring, Dashboards, Observability, Hybrid
 
 Description: Implement Azure Managed Grafana dashboards integrated with Power BI datasets to create a hybrid monitoring solution combining operational and business metrics.
 

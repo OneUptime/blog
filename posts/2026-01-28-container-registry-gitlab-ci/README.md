@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Container Registry, Docker, CI/CD, Container
+Tags: GitLab CI, Container Registry, Docker, CI/CD, Containers
 
 Description: Learn how to use GitLab's built-in Container Registry to store, manage, and deploy Docker images directly from your CI/CD pipelines.
 

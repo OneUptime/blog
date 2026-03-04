@@ -33,7 +33,7 @@ sudo authselect current
 
 Typical output:
 
-```
+```bash
 Profile ID: sssd
 Enabled features:
 - with-faillock
@@ -149,7 +149,7 @@ sudo vi /etc/authselect/custom/myorg/system-auth
 
 The template files use conditional markers for features. For example:
 
-```
+```bash
 {if "with-faillock":auth    required    pam_faillock.so preauth silent deny=5 unlock_time=900}
 auth        required      pam_unix.so {if not "without-nullok":nullok} try_first_pass
 {if "with-faillock":auth    required    pam_faillock.so authfail deny=5 unlock_time=900}

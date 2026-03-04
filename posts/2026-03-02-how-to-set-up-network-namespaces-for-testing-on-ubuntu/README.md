@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, Linux, Container, Testing
+Tags: Ubuntu, Networking, Linux, Containers, Testing
 
 Description: A comprehensive guide to using Linux network namespaces on Ubuntu for isolated network testing, including virtual ethernet pairs, routing, and practical testing scenarios.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container, DevOps, Security, Performance
+Tags: Docker, Containers, DevOps, Security, Performance
 
 Description: A deep-yet-friendly walkthrough of Docker internals- OCI images, overlayfs layers, namespaces, cgroups, networking, and the low-level runtimes that translate `docker run` into real Linux syscalls.
 

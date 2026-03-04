@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microservices, Configuration Management, Kubernetes, Spring Cloud Config, Consul, Environment Variable, DevOps
+Tags: Microservices, Configuration Management, Kubernetes, Spring Cloud Config, Consul, Environment Variables, DevOps
 
 Description: A comprehensive guide to managing configuration across microservices, including centralized config servers, environment-specific overrides, and dynamic configuration updates.
 

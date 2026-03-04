@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, WordPress, Backup, Blob Storage, Azure Functions, WP-CLI, Automation
+Tags: Azure, WordPress, Backups, Blob Storage, Azure Functions, WP-CLI, Automation
 
 Description: Automate WordPress database and file backups to Azure Blob Storage using Azure Functions with WP-CLI for reliable, scheduled backup management.
 

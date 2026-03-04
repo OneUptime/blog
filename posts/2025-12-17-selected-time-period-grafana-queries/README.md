@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, PromQL, Queries, Time Range, Variables, Dashboard, Monitoring, Visualization
+Tags: Grafana, PromQL, Queries, Time Range, Variables, Dashboards, Monitoring, Visualization
 
 Description: Learn how to use Grafana's selected time period in your queries with $__range, $__interval, and other built-in variables.
 

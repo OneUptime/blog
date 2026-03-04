@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Laravel, PHP, Nginx, Web Development, Framework
+Tags: RHEL, Laravel, PHP, NGINX, Web Development, Framework
 
 Description: Deploy a Laravel PHP application on RHEL with Nginx and PHP-FPM, including proper file permissions, Nginx configuration, and SELinux settings.
 

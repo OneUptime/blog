@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Persistent Volume, Storage, Kubernetes, Troubleshooting
+Tags: Talos Linux, Persistent Volumes, Storage, Kubernetes, Troubleshooting
 
 Description: Fix persistent volume mounting failures on Talos Linux including CSI driver issues, permission errors, and storage class misconfigurations.
 

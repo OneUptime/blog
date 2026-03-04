@@ -45,7 +45,7 @@ sudo aide --check > /tmp/aide-report.txt 2>&1
 
 The report starts with a summary:
 
-```
+```bash
 AIDE found differences between database and filesystem!!
 Start timestamp: 2026-03-04 03:00:01 -0500 (AIDE 0.16)
 
@@ -62,7 +62,7 @@ After the summary comes the detailed section listing each affected file.
 
 Added files appear under a section like this:
 
-```
+```bash
 Added entries:
 ---------------------------------------------------
 f++++++++++++++++: /etc/new-config-file.conf
@@ -75,7 +75,7 @@ The `f` at the beginning indicates it is a regular file. The plus signs mean all
 
 Removed files look similar:
 
-```
+```bash
 Removed entries:
 ---------------------------------------------------
 f-----------------: /etc/old-config.conf
@@ -87,7 +87,7 @@ Files do not just disappear on their own. If you did not remove them intentional
 
 Changed file entries are the most detailed. They show exactly which attributes changed:
 
-```
+```bash
 Changed entries:
 ---------------------------------------------------
 f   ...    .C... : /etc/ssh/sshd_config

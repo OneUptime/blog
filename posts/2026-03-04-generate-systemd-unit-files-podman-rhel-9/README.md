@@ -16,7 +16,7 @@ Note that `podman generate systemd` has been deprecated in favor of Quadlet, but
 
 First, set up a container the way you want it to run as a service:
 
-# Run a web server container
+## Run a web server container
 ```bash
 podman run -d --name webserver \
   -p 8080:80 \
@@ -24,7 +24,7 @@ podman run -d --name webserver \
   docker.io/library/nginx:latest
 ```
 
-# Verify it is running and working
+## Verify it is running and working
 ```bash
 podman ps
 curl http://localhost:8080
@@ -32,14 +32,16 @@ curl http://localhost:8080
 
 ## Generating the systemd Unit File
 
-# Generate a unit file from the running container
+This section covers generating the systemd unit file.
+
+## Generate a unit file from the running container
 ```bash
 podman generate systemd --name webserver
 ```
 
 This prints the unit file to stdout. To save it:
 
-# Generate and save the unit file
+## Generate and save the unit file
 ```bash
 podman generate systemd --name webserver --files
 ```
@@ -115,28 +117,28 @@ graph TD
 
 For rootless containers (running as your regular user):
 
-# Create the user systemd directory
+## Create the user systemd directory
 ```bash
 mkdir -p ~/.config/systemd/user/
 ```
 
-# Copy the generated unit file
+## Copy the generated unit file
 ```bash
 cp container-webserver.service ~/.config/systemd/user/
 ```
 
-# Reload the user systemd daemon
+## Reload the user systemd daemon
 ```bash
 systemctl --user daemon-reload
 ```
 
-# Start and enable the service
+## Start and enable the service
 ```bash
 systemctl --user start container-webserver.service
 systemctl --user enable container-webserver.service
 ```
 
-# Check the status
+## Check the status
 ```bash
 systemctl --user status container-webserver.service
 ```
@@ -145,17 +147,17 @@ systemctl --user status container-webserver.service
 
 For system-level services:
 
-# Generate the unit file as root
+## Generate the unit file as root
 ```bash
 sudo podman generate systemd --name webserver --new --files
 ```
 
-# Copy to the systemd system directory
+## Copy to the systemd system directory
 ```bash
 sudo cp container-webserver.service /etc/systemd/system/
 ```
 
-# Reload and enable
+## Reload and enable
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now container-webserver.service
@@ -165,12 +167,12 @@ sudo systemctl enable --now container-webserver.service
 
 Rootless services stop when the user logs out unless lingering is enabled:
 
-# Enable lingering for your user
+## Enable lingering for your user
 ```bash
 sudo loginctl enable-linger $USER
 ```
 
-# Verify
+## Verify
 ```bash
 loginctl show-user $USER --property=Linger
 ```
@@ -181,14 +183,14 @@ Without this, your container services will stop as soon as you log out of the sy
 
 You can also generate unit files for entire pods:
 
-# Create a pod with containers
+## Create a pod with containers
 ```bash
 podman pod create --name app-pod -p 8080:80
 podman run -d --pod app-pod --name web docker.io/library/nginx:latest
 podman run -d --pod app-pod --name sidecar registry.access.redhat.com/ubi9/ubi-minimal sleep infinity
 ```
 
-# Generate unit files for the entire pod
+## Generate unit files for the entire pod
 ```bash
 podman generate systemd --name app-pod --new --files
 ```

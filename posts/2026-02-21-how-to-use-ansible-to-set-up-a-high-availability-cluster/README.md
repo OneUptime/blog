@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, High Availability, Clustering, keepalived, HAProxy
+Tags: Ansible, High Availability, Clustering, Keepalived, HAProxy
 
 Description: Deploy a high availability cluster using Ansible with Keepalived for VIP failover and HAProxy for load balancing with automatic failover capabilities.
 

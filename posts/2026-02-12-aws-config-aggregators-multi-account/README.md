@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Config, Multi-Account, Organization, Compliance
+Tags: AWS, Config, Multi-Account, Organizations, Compliance
 
 Description: Learn how to set up AWS Config aggregators to get a unified view of resource compliance across multiple AWS accounts and regions from a single dashboard.
 

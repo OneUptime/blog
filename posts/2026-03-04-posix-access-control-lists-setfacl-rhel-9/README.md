@@ -35,7 +35,7 @@ getfacl /opt/shared
 
 A file with no ACLs shows only the standard permissions:
 
-```
+```bash
 # file: etc/passwd
 # owner: root
 # group: root
@@ -113,7 +113,7 @@ getfacl /opt/project
 
 The output shows the full ACL:
 
-```
+```bash
 # file: opt/project
 # owner: root
 # group: root
@@ -140,7 +140,7 @@ getfacl /opt/project
 
 The output shows effective permissions:
 
-```
+```bash
 user:alice:rwx    #effective:r--
 ```
 

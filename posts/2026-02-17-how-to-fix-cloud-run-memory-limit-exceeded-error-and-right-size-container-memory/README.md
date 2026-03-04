@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Memory Management, Container, Troubleshooting
+Tags: GCP, Cloud Run, Memory Management, Containers, Troubleshooting
 
 Description: A practical guide to diagnosing Cloud Run memory limit exceeded errors and right-sizing your container memory allocation for optimal performance and cost.
 

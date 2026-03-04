@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Java, Environment Variable, JVM, Configuration
+Tags: Ubuntu, Java, Environment Variables, JVM, Configuration
 
 Description: Set the JAVA_HOME environment variable on Ubuntu for all users or specific users, understand why it matters, and handle multiple Java installations.
 

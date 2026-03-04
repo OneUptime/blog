@@ -1,4 +1,4 @@
-# How to Configure Receive Packet Steering (RPS) and Transmit Packet Steering (XPS) on RHEL
+# How to Configure Receive Packet Steering (RPS) and XPS on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

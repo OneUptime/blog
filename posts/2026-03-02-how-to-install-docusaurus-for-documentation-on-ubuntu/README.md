@@ -234,14 +234,14 @@ import TabItem from '@theme/TabItem';
 
 ```bash
 sudo apt install my-project
-```
+```bash
 
   </TabItem>
   <TabItem value="macos" label="macOS">
 
 ```bash
 brew install my-project
-```
+```bash
 
   </TabItem>
 </Tabs>

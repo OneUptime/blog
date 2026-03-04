@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Organization, Backup, Disaster Recovery, Compliance, AWS Backup
+Tags: AWS, Organizations, Backups, Disaster Recovery, Compliance, AWS Backup
 
 Description: Learn how to implement centralized backup policies across your AWS organization to ensure consistent data protection and compliance across all accounts.
 

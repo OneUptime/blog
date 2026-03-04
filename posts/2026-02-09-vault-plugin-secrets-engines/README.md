@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vault, Plugin, Kubernetes, Custom Secrets, Extension
+Tags: Vault, Plugins, Kubernetes, Custom Secrets, Extensions
 
 Description: Learn how to develop, deploy, and manage custom HashiCorp Vault plugin secrets engines in Kubernetes environments for specialized secret generation and management workflows.
 

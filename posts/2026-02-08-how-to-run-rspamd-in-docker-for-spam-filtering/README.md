@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Rspamd, Spam Filter, Email, Security, Redis, Container, Mail Server, DevOps
+Tags: Docker, Rspamd, Spam Filter, Email, Security, Redis, Containers, Mail Server, DevOps
 
 Description: Deploy Rspamd in Docker as a high-performance spam filtering system with Bayesian learning, DKIM signing, greylisting, and Redis-backed statistics.
 

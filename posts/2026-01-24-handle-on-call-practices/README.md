@@ -366,26 +366,26 @@ Every on-call engineer needs a quick reference:
 
 ### High API Latency
 ```bash
-# Check if it is database
+## Check if it is database
 kubectl logs -l app=api --tail=100 | grep -i "slow query"
 
-# Restart if needed
+## Restart if needed
 kubectl rollout restart deployment/api
-```
+```bash
 
 ### Database Connection Pool Exhausted
 ```bash
-# Kill idle connections
+## Kill idle connections
 psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity
          WHERE state = 'idle' AND query_start < now() - interval '10 minutes';"
-```
+```bash
 
 ### Out of Memory Pods
 ```bash
-# Find and restart OOMKilled pods
+## Find and restart OOMKilled pods
 kubectl get pods | grep OOMKilled
 kubectl delete pod [POD_NAME]
-```
+```bash
 
 ## When to Escalate
 

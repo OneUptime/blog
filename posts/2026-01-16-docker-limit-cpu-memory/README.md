@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, DevOps, Performance, Resource Management
+Tags: Docker, Containers, DevOps, Performance, Resource Management
 
 Description: Set Docker container CPU and memory limits to prevent crashes. Learn --memory, --cpus flags, soft limits, and production best practices.
 

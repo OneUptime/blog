@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Storage, Backup
+Tags: Kubernetes, Storage, Backups
 
 Description: Implement CSI volume snapshots for backing up and restoring StatefulSet data on Kubernetes, enabling point-in-time recovery and data protection for stateful applications.
 

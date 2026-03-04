@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, SSL, TLS, Let's Encrypt, Certbot, Linux
+Tags: RHEL, NGINX, SSL, TLS, Let's Encrypt, Certbot, Linux
 
 Description: Step-by-step instructions for securing Nginx with free TLS certificates from Let's Encrypt using Certbot on RHEL, including automatic renewal.
 

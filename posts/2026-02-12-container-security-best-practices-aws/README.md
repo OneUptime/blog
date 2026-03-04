@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Container, ECS, EKS, Security
+Tags: AWS, Containers, ECS, EKS, Security
 
 Description: A hands-on guide to securing containers on AWS covering image scanning, runtime security, network policies, and secrets management for ECS and EKS.
 

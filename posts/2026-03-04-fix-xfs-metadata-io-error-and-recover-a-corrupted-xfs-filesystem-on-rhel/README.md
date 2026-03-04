@@ -1,8 +1,8 @@
-# How to Fix 'XFS Metadata I/O Error' and Recover a Corrupted XFS Filesystem on RHEL
+# How to Fix 'XFS Metadata I/O Error' and Recover XFS on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, XFS, Filesystem, Recovery, Troubleshooting, Storage
+Tags: RHEL, XFS, Filesystems, Recovery, Troubleshooting, Storage
 
 Description: Recover from XFS metadata I/O errors on RHEL by running xfs_repair, checking disk health, and restoring the filesystem to a consistent state.
 

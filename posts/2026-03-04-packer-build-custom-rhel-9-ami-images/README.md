@@ -209,7 +209,7 @@ packer build rhel9-ami.pkr.hcl
 
 The build output will show the AMI ID when complete:
 
-```
+```bash
 ==> amazon-ebs.rhel9: AMIs were created:
 us-east-1: ami-0123456789abcdef0
 ```

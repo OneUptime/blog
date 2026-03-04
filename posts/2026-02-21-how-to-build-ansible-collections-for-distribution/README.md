@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Packaging, Distribution, DevOps
+Tags: Ansible, Collections, Packaging, Distribution, DevOps
 
 Description: How to build Ansible collections into distributable tarballs with proper versioning, metadata, build exclusions, and release automation.
 

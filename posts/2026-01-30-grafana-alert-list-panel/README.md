@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Alerting, Dashboard
+Tags: Grafana, Observability, Alerting, Dashboards
 
 Description: Learn how to configure and customize Grafana Alert List panels to display, filter, and manage alerts directly from your dashboards.
 

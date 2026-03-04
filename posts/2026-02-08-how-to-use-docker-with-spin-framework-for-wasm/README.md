@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, WebAssembly, WASM, Spin Framework, Fermyon, Container, Cloud Native
+Tags: Docker, WebAssembly, WASM, Spin Framework, Fermyon, Containers, Cloud Native
 
 Description: Learn how to build and run WebAssembly applications using the Spin framework inside Docker containers with practical examples.
 

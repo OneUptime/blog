@@ -64,7 +64,7 @@ iptables-translate -A INPUT -p tcp --dport 22 -j ACCEPT
 
 Output will look something like:
 
-```
+```bash
 nft add rule ip filter INPUT tcp dport 22 counter accept
 ```
 

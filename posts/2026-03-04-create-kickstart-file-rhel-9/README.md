@@ -250,17 +250,17 @@ This lists directives that were added, removed, or changed between versions.
 There are several ways to provide the Kickstart file to the installer:
 
 **Via HTTP server (most common for PXE installs):**
-```
+```bash
 inst.ks=http://192.168.1.10/ks.cfg
 ```
 
 **Via local file on USB:**
-```
+```bash
 inst.ks=hd:sdb1:/ks.cfg
 ```
 
 **Via NFS:**
-```
+```bash
 inst.ks=nfs:192.168.1.10:/exports/ks.cfg
 ```
 

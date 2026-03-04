@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Startup Probe, Kubernetes, Sidecar, Health Check
+Tags: Istio, Startup Probe, Kubernetes, Sidecar, Health Checks
 
 Description: Configure Kubernetes startup probes to work correctly with Istio sidecars for applications with slow initialization sequences.
 

@@ -38,7 +38,7 @@ sudo semanage user -l
 
 Output:
 
-```
+```bash
                 Labeling   MLS/       MLS/
 SELinux User    Prefix     MLS Level  MLS Range                      SELinux Roles
 

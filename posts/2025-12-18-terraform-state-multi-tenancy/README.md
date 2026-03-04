@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Multi-Tenancy, State Management, SaaS, Workspace, Best Practices
+Tags: Terraform, Multi-Tenancy, State Management, SaaS, Workspaces, Best Practices
 
 Description: Learn strategies for managing Terraform state in multi-tenant environments, including state isolation patterns, workspace strategies, and secure tenant data handling for SaaS platforms.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Tableau, Business Intelligence, Data Visualization, Enterprise Analytics, Dashboard
+Tags: ClickHouse, Tableau, Business Intelligence, Data Visualization, Enterprise Analytics, Dashboards
 
 Description: A comprehensive guide to connecting Tableau to ClickHouse for enterprise-grade analytics, covering JDBC/ODBC setup, performance optimization, and dashboard best practices.
 

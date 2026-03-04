@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, CI/CD, Kubernetes, DevOps, Pipeline
+Tags: Tekton, CI/CD, Kubernetes, DevOps, Pipelines
 
 Description: Learn how to build a full CI/CD workflow with Tekton, including build, test, and deployment stages for Kubernetes apps.
 

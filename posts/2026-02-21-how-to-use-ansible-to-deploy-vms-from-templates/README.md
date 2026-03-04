@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Template, Deployment, vSphere
+Tags: Ansible, VMware, Templates, Deployment, vSphere
 
 Description: Learn how to deploy VMware virtual machines from templates using Ansible with guest customization, bulk deployments, and post-deploy configuration.
 

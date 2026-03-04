@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, GRUB, Bootloader, Backup, System Administration, Linux
+Tags: RHEL, GRUB, Bootloader, Backups, System Administration, Linux
 
 Description: Back up and restore the GRUB2 bootloader configuration on RHEL to protect against boot failures caused by misconfiguration or corruption.
 

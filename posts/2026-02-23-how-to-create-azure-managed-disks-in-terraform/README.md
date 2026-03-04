@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Managed Disks, Storage, Infrastructure as Code, Virtual Machine
+Tags: Terraform, Azure, Managed Disks, Storage, Infrastructure as Code, Virtual Machines
 
 Description: Learn how to create and manage Azure Managed Disks with Terraform, including disk types, encryption, snapshots, and attaching disks to virtual machines.
 

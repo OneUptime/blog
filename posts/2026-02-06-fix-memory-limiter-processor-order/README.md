@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Memory Management, Pipeline
+Tags: OpenTelemetry, Collector, Memory Management, Pipelines
 
 Description: Prevent Collector OOM crashes by correctly positioning the memory_limiter processor as the first processor in your pipeline.
 

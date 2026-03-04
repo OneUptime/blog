@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Let's Encrypt, TLS, Certificate, Kubernetes, Security
+Tags: Talos Linux, Let's Encrypt, TLS, Certificates, Kubernetes, Security
 
 Description: A complete guide to automating free TLS certificates from Let's Encrypt on Talos Linux using cert-manager and ACME challenges.
 

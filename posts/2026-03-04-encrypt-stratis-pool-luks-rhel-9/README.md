@@ -101,7 +101,7 @@ sudo blkid /dev/stratis/encrypted_pool/secure_data
 
 Add to `/etc/fstab`:
 
-```
+```bash
 UUID=your-uuid /secure xfs defaults,x-systemd.requires=stratisd.service 0 0
 ```
 

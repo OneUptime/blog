@@ -38,7 +38,7 @@ CMD ["nginx", "-g", "daemon off;"]
 EOF
 ```
 
-# Build the image
+## Build the image
 ```bash
 podman build -t my-nginx:latest .
 ```
@@ -122,7 +122,7 @@ ENTRYPOINT ["/usr/local/bin/server"]
 EOF
 ```
 
-# Build the multi-stage image
+## Build the multi-stage image
 ```bash
 podman build -t my-go-app:latest .
 ```
@@ -149,7 +149,7 @@ CMD ["/usr/sbin/httpd", "-D", "FOREGROUND"]
 EOF
 ```
 
-# Pass arguments at build time
+## Pass arguments at build time
 ```bash
 podman build \
   --build-arg APP_VERSION=2.1.0 \
@@ -215,7 +215,7 @@ CMD ["nginx", "-g", "daemon off;"]
 EOF
 ```
 
-# Check health status after running
+## Check health status after running
 ```bash
 podman run -d --name healthy-web my-nginx:latest
 podman inspect --format '{{.State.Health.Status}}' healthy-web
@@ -247,17 +247,17 @@ podman build --memory 2g --cpus 2 -t my-app:latest .
 
 When a build fails, Podman leaves intermediate layers you can inspect:
 
-# List intermediate images from failed builds
+## List intermediate images from failed builds
 ```bash
 podman images --filter dangling=true
 ```
 
-# Run a shell in the last successful layer to debug
+## Run a shell in the last successful layer to debug
 ```bash
 podman run -it <last-successful-layer-id> /bin/bash
 ```
 
-# View build output with more verbosity
+## View build output with more verbosity
 ```bash
 podman build --log-level debug -t my-app:latest .
 ```
@@ -265,7 +265,7 @@ podman build --log-level debug -t my-app:latest .
 ## Security Best Practices
 
 1. **Run as non-root inside the container:**
-```
+```bash
 RUN useradd -r -u 1001 appuser
 USER 1001
 ```
@@ -276,7 +276,7 @@ podman build --secret id=mykey,src=./secret.key -t my-app:latest .
 ```
 
 3. **Pin your base image versions** instead of using `latest`:
-```
+```bash
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.3
 ```
 

@@ -99,7 +99,7 @@ sudo systemctl restart nginx
 
 ### DEFAULT Policy Highlights
 
-```
+```bash
 - TLS versions: 1.2, 1.3
 - Minimum RSA key: 2048 bits
 - Minimum DH parameter: 2048 bits
@@ -110,7 +110,7 @@ sudo systemctl restart nginx
 
 ### FUTURE Policy Highlights
 
-```
+```bash
 - TLS versions: 1.2 (only with strong ciphers), 1.3
 - Minimum RSA key: 3072 bits
 - Minimum DH parameter: 3072 bits
@@ -121,7 +121,7 @@ sudo systemctl restart nginx
 
 ### LEGACY Policy Highlights
 
-```
+```bash
 - TLS versions: 1.0, 1.1, 1.2, 1.3
 - Minimum RSA key: 1024 bits
 - Minimum DH parameter: 1024 bits

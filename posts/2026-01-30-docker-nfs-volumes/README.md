@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, NFS, VOLUME, Shared Storage
+Tags: Docker, NFS, Volumes, Shared Storage
 
 Description: Learn to configure Docker volumes with NFS backends for shared storage across containers and hosts with proper mount options and permissions.
 

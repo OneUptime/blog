@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Security, Pipeline
+Tags: ArgoCD, GitOps, Kubernetes, Security, Pipelines
 
 Description: Learn how to secure every stage of the GitOps pipeline with ArgoCD from Git repository protection to cluster deployment, covering authentication, authorization, and secrets management.
 

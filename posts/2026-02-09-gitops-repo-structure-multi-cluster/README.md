@@ -469,7 +469,7 @@ Include a README at the repository root:
 ```bash
 git revert <commit-hash>
 git push origin main
-```
+```bash
 ```text
 
 ## Testing Your Structure

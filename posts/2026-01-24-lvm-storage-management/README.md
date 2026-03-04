@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, LVM, Storage, System Administration, Disk Management, Partitioning, VOLUME
+Tags: Linux, LVM, Storage, System Administration, Disk Management, Partitioning, Volumes
 
 Description: A comprehensive guide to configuring and managing Logical Volume Manager (LVM) for flexible storage management in Linux systems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Parallelstore, HPC, High Performance Computing, File System, Storage, Google Cloud
+Tags: GCP, Parallelstore, HPC, High Performance Computing, File Systems, Storage, Google Cloud
 
 Description: Create and configure a Google Cloud Parallelstore instance for high-performance computing workloads that require low-latency parallel file system access.
 

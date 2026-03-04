@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GraphQL, WebSocket, Subscription, Real-Time, Node.js, Debugging
+Tags: GraphQL, WebSocket, Subscriptions, Real-Time, Node.js, Debugging
 
 Description: Learn how to diagnose and fix common GraphQL subscription connection errors including WebSocket failures, authentication issues, and connection lifecycle problems.
 

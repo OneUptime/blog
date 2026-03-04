@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Backup, State Management
+Tags: ArgoCD, GitOps, Kubernetes, Backups, State Management
 
 Description: Learn how to export and import ArgoCD application definitions, projects, repository configs, and cluster registrations for backup, migration, and disaster recovery scenarios.
 

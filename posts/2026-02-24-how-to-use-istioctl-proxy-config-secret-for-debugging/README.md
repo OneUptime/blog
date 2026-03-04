@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Debugging, istioctl, mTLS, Certificate, Kubernetes
+Tags: Istio, Debugging, istioctl, mTLS, Certificates, Kubernetes
 
 Description: How to inspect proxy TLS certificates using istioctl proxy-config secret to debug mTLS connectivity and certificate rotation issues in Istio.
 

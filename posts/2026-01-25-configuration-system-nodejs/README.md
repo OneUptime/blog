@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NodeJS, TypeScript, Configuration, Environment Variable, DevOps, Best Practices
+Tags: NodeJS, TypeScript, Configuration, Environment Variables, DevOps, Best Practices
 
 Description: Learn how to build a robust configuration system in Node.js with environment-specific settings, validation, secrets management, and hot reloading for production applications.
 

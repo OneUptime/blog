@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, MTU, Container, DevOps, Troubleshooting
+Tags: Docker, Networking, MTU, Containers, DevOps, Troubleshooting
 
 Description: Learn how to configure custom MTU settings for Docker networks and containers to fix packet fragmentation and connectivity issues.
 

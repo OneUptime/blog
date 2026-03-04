@@ -87,7 +87,7 @@ rm -rf /tmp/recovery-test
 
 Document your RPO/RTO targets for each system:
 
-```
+```bash
 System: web-server-01
 RPO Target: 1 hour
 RTO Target: 2 hours

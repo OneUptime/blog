@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Sidecar, Debugging, Kubernetes, Troubleshooting, Container
+Tags: Istio, Sidecar, Debugging, Kubernetes, Troubleshooting, Containers
 
 Description: A comprehensive guide to diagnosing and fixing container-level issues caused by or related to the Istio sidecar proxy in Kubernetes pods.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backup, Disaster Recovery, K8s
+Tags: Velero, Kubernetes, Backups, Disaster Recovery, K8s
 
 Description: Learn how to configure Velero backup schedules for Kubernetes cluster protection, including namespace selection, retention policies, and storage backends.
 

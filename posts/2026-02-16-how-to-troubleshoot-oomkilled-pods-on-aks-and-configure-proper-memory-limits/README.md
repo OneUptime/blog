@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, OOMKilled, Memory Limits, Kubernetes, Troubleshooting, Resource Management, Container
+Tags: AKS, OOMKilled, Memory Limits, Kubernetes, Troubleshooting, Resource Management, Containers
 
 Description: Practical guide to diagnosing OOMKilled pod errors on AKS, finding the root cause of memory issues, and setting correct memory limits.
 

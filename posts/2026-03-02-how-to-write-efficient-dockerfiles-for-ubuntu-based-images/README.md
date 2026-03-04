@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Docker, Container, DevOps, CI/CD
+Tags: Ubuntu, Docker, Containers, DevOps, CI/CD
 
 Description: A practical guide to writing efficient Dockerfiles for Ubuntu-based images, covering layer optimization, multi-stage builds, security hardening, and build performance techniques.
 

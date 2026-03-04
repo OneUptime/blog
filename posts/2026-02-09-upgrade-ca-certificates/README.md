@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Certificate, Security
+Tags: Kubernetes, Certificates, Security
 
 Description: Learn how to safely upgrade Kubernetes CA certificates during cluster upgrades including certificate rotation, trust chain updates, and zero-downtime certificate replacement strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, filebase64 Function, File System, HCL, Infrastructure as Code, Encoding, Base64
+Tags: Terraform, filebase64 Function, File Systems, HCL, Infrastructure as Code, Encoding, Base64
 
 Description: Learn how to use the filebase64 function in Terraform to read local files and encode their contents as base64 strings for use with cloud resources and APIs.
 

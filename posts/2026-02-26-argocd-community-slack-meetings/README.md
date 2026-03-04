@@ -59,7 +59,7 @@ status:
   health:
     status: Progressing
     message: "Waiting for rollout to finish: 0 of 3 updated replicas are available"
-```
+```bash
 ```text
 
 **Search before asking.** The channel has years of history. Many common questions have been answered multiple times. Use Slack's search functionality first.
@@ -85,7 +85,7 @@ The main ArgoCD community meeting happens every other week. Here is how to parti
 
 A typical community meeting follows this structure:
 
-```
+```bash
 1. Welcome and introductions (5 minutes)
 2. Project updates from maintainers (10 minutes)
    - Recent releases

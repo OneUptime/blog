@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, LLM Observability, Metrics, Dashboard, Monitoring, GenAI
+Tags: OpenTelemetry, LLM Observability, Metrics, Dashboards, Monitoring, GenAI
 
 Description: Step-by-step guide to building a production LLM observability dashboard using OpenTelemetry metrics for tracking latency, tokens, costs, and error rates.
 

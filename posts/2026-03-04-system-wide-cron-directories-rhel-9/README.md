@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, cron, System-Wide, Scheduling, Linux
+Tags: RHEL, Cron, System-Wide, Scheduling, Linux
 
 Description: A practical guide to using system-wide cron directories on RHEL, including /etc/cron.d/, /etc/cron.daily/, hourly, weekly, and monthly directories, and how run-parts ties it all together.
 
@@ -43,7 +43,7 @@ ls -la /etc/cron.d/
 
 The format for files in `/etc/cron.d/` is:
 
-```
+```bash
 # minute hour day-of-month month day-of-week user command
 ```
 
@@ -89,7 +89,7 @@ cat /etc/cron.d/0hourly
 
 You will see something like:
 
-```
+```bash
 SHELL=/bin/bash
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 MAILTO=root
@@ -206,7 +206,7 @@ cat /etc/anacrontab
 
 You will typically see:
 
-```
+```bash
 SHELL=/bin/sh
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 MAILTO=root

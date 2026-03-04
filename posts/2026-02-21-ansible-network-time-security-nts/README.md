@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, NTS, Security, chrony, Time Synchronization
+Tags: Ansible, NTS, Security, Chrony, Time Synchronization
 
 Description: Automate the deployment and configuration of Network Time Security (NTS) across your infrastructure using Ansible and Chrony for authenticated time synchronization.
 

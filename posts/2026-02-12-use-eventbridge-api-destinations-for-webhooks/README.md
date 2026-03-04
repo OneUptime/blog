@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EventBridge, Webhook, API Destinations, Serverless, Integration
+Tags: AWS, EventBridge, Webhooks, API Destinations, Serverless, Integration
 
 Description: Learn how to use Amazon EventBridge API Destinations to send events to external webhook endpoints reliably
 

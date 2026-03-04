@@ -48,7 +48,7 @@ sestatus
 
 Example output:
 
-```
+```bash
 SELinux status:                 enabled
 SELinuxfs mount:                /sys/fs/selinux
 SELinux root directory:         /etc/selinux
@@ -112,19 +112,19 @@ sudo vi /etc/selinux/config
 
 Set:
 
-```
+```bash
 SELINUX=enforcing
 ```
 
 ### Set Permissive Mode Permanently
 
-```
+```bash
 SELINUX=permissive
 ```
 
 ### Disable SELinux (Not Recommended)
 
-```
+```bash
 SELINUX=disabled
 ```
 
@@ -185,7 +185,7 @@ cat /proc/cmdline
 
 At the GRUB menu, edit the kernel line and add:
 
-```
+```bash
 enforcing=0     # Boot in permissive mode
 enforcing=1     # Boot in enforcing mode
 selinux=0       # Disable SELinux entirely

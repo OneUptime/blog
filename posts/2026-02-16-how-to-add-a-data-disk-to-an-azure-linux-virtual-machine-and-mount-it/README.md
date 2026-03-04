@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Linux, Virtual Machine, Data Disk, Storage, Disk Management, Azure CLI
+Tags: Azure, Linux, Virtual Machines, Data Disk, Storage, Disk Management, Azure CLI
 
 Description: A complete guide to adding a data disk to an Azure Linux VM, partitioning it, creating a filesystem, and mounting it persistently.
 

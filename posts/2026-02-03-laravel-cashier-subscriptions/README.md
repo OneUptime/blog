@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PHP, Laravel, Cashier, Stripe, Subscription, Payment
+Tags: PHP, Laravel, Cashier, Stripe, Subscriptions, Payment
 
 Description: Learn how to implement subscription billing in Laravel with Cashier. This guide covers Stripe integration, subscription management, and webhook handling.
 

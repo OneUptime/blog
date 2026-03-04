@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backup, Storage, Cost Optimization, Disaster Recovery
+Tags: Backups, Storage, Cost Optimization, Disaster Recovery
 
 Description: Learn how to implement backup tiering for cost-effective long-term storage.
 

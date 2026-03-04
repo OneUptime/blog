@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Docker, Container, Multi-Stage Build, DevOps
+Tags: Ubuntu, Docker, Containers, Multi-Stage Build, DevOps
 
 Description: Learn how to use Docker multi-stage builds with Ubuntu base images to create small, secure production container images by separating build dependencies from runtime requirements.
 

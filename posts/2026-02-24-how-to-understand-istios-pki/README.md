@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, PKI, Certificate, mTLS, Security
+Tags: Istio, PKI, Certificates, mTLS, Security
 
 Description: A detailed look at Istio's PKI system including the certificate authority, certificate lifecycle, key management, and trust domains.
 

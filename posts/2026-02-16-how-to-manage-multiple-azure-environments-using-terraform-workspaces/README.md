@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Workspace, Environment, Infrastructure as Code, DevOps, State Management
+Tags: Terraform, Azure, Workspaces, Environment, Infrastructure as Code, DevOps, State Management
 
 Description: A practical guide to using Terraform workspaces for managing multiple Azure environments like dev, staging, and production from a single codebase.
 

@@ -44,7 +44,7 @@ sudo vi /etc/ssh/sshd_config
 
 Enable these settings:
 
-```
+```bash
 # Enable GSSAPI authentication
 GSSAPIAuthentication yes
 
@@ -112,7 +112,7 @@ On the client side, enable GSSAPI authentication.
 sudo vi /etc/ssh/ssh_config.d/gssapi.conf
 ```
 
-```
+```bash
 Host *.example.com
   GSSAPIAuthentication yes
   GSSAPIDelegateCredentials yes
@@ -160,7 +160,7 @@ ssh another-server.example.com
 
 If you work with multiple Kerberos realms:
 
-```
+```bash
 # ~/.ssh/config
 Host *.example.com
   GSSAPIAuthentication yes

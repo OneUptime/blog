@@ -112,7 +112,7 @@ sudo nvme discover -t tcp -a 192.168.1.10 -s 4420
 
 Output shows available subsystems:
 
-```
+```bash
 Discovery Log Number of Records 1, Generation counter 1
 =====Discovery Log Entry 0======
 trtype:  tcp

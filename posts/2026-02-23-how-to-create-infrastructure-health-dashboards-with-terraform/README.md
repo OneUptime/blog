@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Dashboard, CloudWatch, Monitoring, Observability, Infrastructure as Code
+Tags: Terraform, Dashboards, CloudWatch, Monitoring, Observability, Infrastructure as Code
 
 Description: Learn how to create comprehensive infrastructure health dashboards with Terraform using CloudWatch dashboards, custom widgets, and automated metric visualization.
 

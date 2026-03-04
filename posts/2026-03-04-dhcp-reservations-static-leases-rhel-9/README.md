@@ -101,7 +101,7 @@ You have two choices for where to place reserved IPs:
 
 A typical layout:
 
-```
+```bash
 192.168.1.1-49     = Reserved IPs (via DHCP reservations)
 192.168.1.50-99    = Statically configured devices (no DHCP)
 192.168.1.100-200  = Dynamic DHCP pool

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Buildpacks, Python, Flask, Cloud Run, Container, DevOps
+Tags: GCP, Buildpacks, Python, Flask, Cloud Run, Containers, DevOps
 
 Description: Learn how to use Google Cloud Buildpacks to containerize a Python Flask application with custom build environment variables, no Dockerfile required.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, Migration, Azure Site Recovery, Region Migration, Azure CLI, Cloud Infrastructure
+Tags: Azure, Virtual Machines, Migration, Azure Site Recovery, Region Migration, Azure CLI, Cloud Infrastructure
 
 Description: A comprehensive guide to migrating Azure VMs between regions using Azure Site Recovery, snapshots, and managed disk copies.
 

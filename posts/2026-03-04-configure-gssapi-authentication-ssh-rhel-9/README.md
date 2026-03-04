@@ -146,7 +146,7 @@ sudo vi /etc/ssh/sshd_config
 
 Add or modify these settings:
 
-```
+```bash
 # Enable GSSAPI authentication
 GSSAPIAuthentication yes
 
@@ -190,7 +190,7 @@ Or edit the system-wide client configuration:
 sudo vi /etc/ssh/ssh_config.d/gssapi.conf
 ```
 
-```
+```bash
 Host *.example.com
     GSSAPIAuthentication yes
     GSSAPIDelegateCredentials yes
@@ -214,7 +214,7 @@ ssh -vvv server.example.com
 
 In the verbose output, look for:
 
-```
+```bash
 debug1: Authentications that can continue: publickey,gssapi-with-mic,password
 debug1: Next authentication method: gssapi-with-mic
 debug1: Authentication succeeded (gssapi-with-mic).

@@ -1,4 +1,4 @@
-# How to Register a RHEL System to the Red Hat Customer Portal Using subscription-manager
+# How to Register RHEL to the Customer Portal with subscription-manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

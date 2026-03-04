@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Webhook, CI/CD
+Tags: ArgoCD, GitOps, Kubernetes, Webhooks, CI/CD
 
 Description: Learn how to diagnose and fix ArgoCD webhook issues where Git pushes do not trigger automatic sync, including configuration, networking, and secret validation problems.
 

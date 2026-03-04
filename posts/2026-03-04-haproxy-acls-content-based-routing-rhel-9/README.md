@@ -20,7 +20,7 @@ ACLs (Access Control Lists) in HAProxy are rules that match request properties. 
 
 ## Step 1 - Route by Hostname
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -47,7 +47,7 @@ The `-i` flag makes the match case-insensitive.
 
 ## Step 2 - Route by URL Path
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -73,7 +73,7 @@ backend web_servers
 
 ## Step 3 - Route by File Extension
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -86,7 +86,7 @@ frontend http_front
 
 ## Step 4 - Route by HTTP Method
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -102,7 +102,7 @@ frontend http_front
 
 ## Step 5 - Route by Header Value
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -119,7 +119,7 @@ frontend http_front
 
 ## Step 6 - Route by Cookie
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -134,7 +134,7 @@ frontend http_front
 
 ### AND Logic (Both Conditions Must Match)
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -149,7 +149,7 @@ When ACLs are listed together on one line, they are combined with AND logic.
 
 ### OR Logic (Either Condition)
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -162,7 +162,7 @@ frontend http_front
 
 ### NOT Logic
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -191,7 +191,7 @@ flowchart TD
 
 You can also use ACLs to block traffic:
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -208,7 +208,7 @@ frontend http_front
 
 ## Step 9 - ACL with Regular Expressions
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -233,7 +233,7 @@ EOF
 
 Reference it in the config:
 
-```
+```bash
 frontend http_front
     bind *:80
 

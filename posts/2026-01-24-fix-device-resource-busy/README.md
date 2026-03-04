@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, System Administration, Troubleshooting, File System, Process Management, Error Handling
+Tags: Linux, System Administration, Troubleshooting, File Systems, Process Management, Error Handling
 
 Description: Learn how to diagnose and fix 'Device or Resource Busy' errors in Linux, including identifying blocking processes, safely unmounting filesystems, and handling locked files.
 

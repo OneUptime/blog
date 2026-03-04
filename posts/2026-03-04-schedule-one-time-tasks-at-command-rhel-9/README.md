@@ -44,7 +44,7 @@ at 3:00 AM
 
 Once you hit Enter, you get an `at>` prompt where you type your commands:
 
-```
+```bash
 at> /usr/local/bin/cleanup-logs.sh
 at> echo "Log cleanup completed" | mail -s "Cleanup Done" admin@example.com
 at> <EOT>   # Press Ctrl+D here
@@ -101,7 +101,7 @@ atq
 
 Output looks something like this:
 
-```
+```bash
 3    Wed Mar  4 14:30:00 2026 a nawazdhandala
 5    Thu Mar  5 02:00:00 2026 a nawazdhandala
 7    Thu Mar  5 09:00:00 2026 a nawazdhandala

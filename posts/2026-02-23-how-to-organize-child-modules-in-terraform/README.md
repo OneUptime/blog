@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Organization, Infrastructure as Code, Best Practices
+Tags: Terraform, Modules, Organizations, Infrastructure as Code, Best Practices
 
 Description: Learn effective strategies for organizing Terraform child modules with clear directory structures, naming conventions, and dependency management patterns.
 

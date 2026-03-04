@@ -58,7 +58,7 @@ sftp admin@server
 
 Common SFTP commands:
 
-```
+```bash
 ls                    # List remote files
 lls                   # List local files
 cd /var/log           # Change remote directory
@@ -80,7 +80,7 @@ Create a batch file with commands:
 vi sftp-batch.txt
 ```
 
-```
+```bash
 cd /var/log
 get messages
 get secure
@@ -136,7 +136,7 @@ sudo chmod 755 /data/sftp/sftpuser/uploads
 sudo vi /etc/ssh/sshd_config.d/40-sftp.conf
 ```
 
-```
+```bash
 # SFTP-only configuration for the sftponly group
 Match Group sftponly
     ForceCommand internal-sftp
@@ -244,7 +244,7 @@ sudo vi /etc/ssh/sshd_config.d/40-sftp.conf
 
 Change the subsystem line:
 
-```
+```bash
 Subsystem sftp internal-sftp -l INFO
 ```
 

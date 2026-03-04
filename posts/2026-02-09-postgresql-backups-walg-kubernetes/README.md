@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Kubernetes, Backup
+Tags: PostgreSQL, Kubernetes, Backups
 
 Description: Learn how to implement automated PostgreSQL backups on Kubernetes using WAL-G for continuous archival, point-in-time recovery, and efficient incremental backups to cloud storage.
 

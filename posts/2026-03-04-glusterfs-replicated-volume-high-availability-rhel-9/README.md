@@ -12,7 +12,7 @@ A replicated volume in GlusterFS maintains identical copies of every file on mul
 
 ## How Replication Works
 
-```
+```bash
 Client writes file-A
 
 Brick 1 (Node 1): file-A (copy 1)
@@ -69,7 +69,7 @@ sudo gluster volume info repvol
 
 You should see:
 
-```
+```bash
 Type: Replicate
 ...
 Number of Bricks: 1 x 3 = 3

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Docker Compose, ECS CLI, Container, DevOps
+Tags: AWS, ECS, Docker Compose, ECS CLI, Containers, DevOps
 
 Description: Convert and deploy Docker Compose files to Amazon ECS using the ECS CLI to bridge local development and cloud deployment workflows
 

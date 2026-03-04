@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Debugging, Container, Capabilities
+Tags: Kubernetes, Security, Debugging, Containers, Capabilities
 
 Description: Learn how to configure pod security contexts with appropriate capabilities for effective debugging while maintaining security.
 

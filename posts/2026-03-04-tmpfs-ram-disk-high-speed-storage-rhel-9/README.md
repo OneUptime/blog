@@ -65,7 +65,7 @@ mount | grep ramdisk
 
 Add to `/etc/fstab`:
 
-```
+```bash
 tmpfs  /mnt/ramdisk  tmpfs  defaults,size=2G,mode=1777  0 0
 ```
 

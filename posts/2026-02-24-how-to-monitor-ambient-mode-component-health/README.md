@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, Monitoring, Health Check, Observability
+Tags: Istio, Ambient Mode, Monitoring, Health Checks, Observability
 
 Description: How to set up comprehensive monitoring for Istio ambient mode components including ztunnel, waypoint proxies, and the CNI agent.
 

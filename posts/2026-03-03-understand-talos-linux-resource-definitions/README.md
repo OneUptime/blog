@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Resource, System State, Kubernetes, API
+Tags: Talos Linux, Resources, System State, Kubernetes, API
 
 Description: A guide to understanding resource definitions in Talos Linux and how they represent the complete state of your nodes.
 

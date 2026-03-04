@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collection
+Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collections
 
 Description: Learn how to use the setunion function in Terraform to combine multiple sets into one, removing duplicates and simplifying your infrastructure configurations.
 

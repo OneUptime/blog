@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Kubernetes, CI/CD, Pipeline, Deployment
+Tags: GitLab CI, Kubernetes, CI/CD, Pipelines, Deployment
 
 Description: Learn how to configure GitLab CI/CD pipelines for automated building, testing, and deploying to Kubernetes clusters.
 

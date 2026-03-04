@@ -106,7 +106,7 @@ Bare repositories are what Git servers use. They have no working directory:
           ```bash
           git clone <repository-url>
           cd {{ project_name }}
-          ```
+          ```bash
         dest: "{{ repo_path }}/README.md"
 
     - name: Create .gitignore

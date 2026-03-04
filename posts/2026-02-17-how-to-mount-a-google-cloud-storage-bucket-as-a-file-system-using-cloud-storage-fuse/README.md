@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Storage, Cloud Storage FUSE, File System, Linux
+Tags: GCP, Google Cloud Storage, Cloud Storage FUSE, File Systems, Linux
 
 Description: Learn how to mount Google Cloud Storage buckets as local file systems using Cloud Storage FUSE for seamless file access from applications and scripts.
 

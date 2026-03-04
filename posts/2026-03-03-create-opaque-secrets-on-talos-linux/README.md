@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Secret, Security, Configuration Management
+Tags: Talos Linux, Kubernetes, Secrets, Security, Configuration Management
 
 Description: Learn how to create and manage Opaque Secrets on Talos Linux for storing sensitive configuration data like passwords, API keys, and tokens.
 

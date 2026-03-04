@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Docker, Docker Compose, Container, DevOps, Caching, Persistence
+Tags: Redis, Docker, Docker Compose, Containers, DevOps, Caching, Persistence
 
 Description: A comprehensive guide to running Redis in Docker containers, covering single-node setups, Docker Compose configurations, data persistence, networking, and production-ready deployments.
 

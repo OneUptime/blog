@@ -43,7 +43,7 @@ sudo vi /etc/chrony.conf
 
 Add the AD domain controller as an NTP source:
 
-```
+```bash
 # Use the domain controller as NTP server
 server dc1.ad.example.com iburst
 server dc2.ad.example.com iburst

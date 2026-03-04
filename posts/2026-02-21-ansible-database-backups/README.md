@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Database, Backup, PostgreSQL, MySQL
+Tags: Ansible, Database, Backups, PostgreSQL, MySQL
 
 Description: Automate database backup workflows with Ansible including scheduled dumps, compression, encryption, retention policies, and offsite storage.
 

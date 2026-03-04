@@ -14,7 +14,7 @@ DM-Multipath (Device Mapper Multipath) combines multiple I/O paths between a ser
 
 Without multipath, a server with two HBAs (Host Bus Adapters) connected to the same SAN LUN sees two separate block devices (e.g., `/dev/sdb` and `/dev/sdc`) that are actually the same physical storage. Multipath recognizes they are the same device and presents them as a single multipath device (`/dev/mapper/mpathX`).
 
-```
+```bash
 Server                              SAN Storage
 +--------+                          +---------+
 | HBA 0  |----[ FC Switch A ]------>| Port 0  |
@@ -71,7 +71,7 @@ cat /etc/multipath.conf
 
 Key default settings:
 
-```
+```bash
 defaults {
     user_friendly_names yes
     find_multipaths yes
@@ -87,7 +87,7 @@ defaults {
 sudo multipath -ll
 ```
 
-```
+```bash
 mpatha (3600508b4000c4a37) dm-0 DGC,RAID 5
 size=100G features='1 queue_if_no_path' hwhandler='1 emc' wp=rw
 |-+- policy='round-robin 0' prio=1 status=active

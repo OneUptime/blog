@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, TLS, Certificate, Kubernetes, Security, Troubleshooting
+Tags: Talos Linux, TLS, Certificates, Kubernetes, Security, Troubleshooting
 
 Description: Practical walkthrough for diagnosing and fixing TLS certificate errors on Talos Linux clusters, covering expired certs, CA mismatches, and SAN issues.
 

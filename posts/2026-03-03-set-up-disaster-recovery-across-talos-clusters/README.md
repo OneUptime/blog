@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Disaster Recovery, Backup, Velero, Multi-Cluster
+Tags: Talos Linux, Kubernetes, Disaster Recovery, Backups, Velero, Multi-Cluster
 
 Description: Step-by-step instructions for setting up disaster recovery across Talos Linux clusters including backup strategies, failover procedures, and recovery testing.
 

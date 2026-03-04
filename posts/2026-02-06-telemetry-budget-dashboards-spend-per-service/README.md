@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Dashboard, Budget Tracking, Observability Cost
+Tags: OpenTelemetry, Dashboards, Budget Tracking, Observability Cost
 
 Description: Build Grafana dashboards that visualize telemetry spend per service and team using OpenTelemetry Collector metrics.
 

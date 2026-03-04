@@ -154,7 +154,7 @@ grep -E "^(passwd|group|shadow)" /etc/nsswitch.conf
 
 Expected output:
 
-```
+```bash
 passwd:     sss files
 group:      sss files
 shadow:     sss files

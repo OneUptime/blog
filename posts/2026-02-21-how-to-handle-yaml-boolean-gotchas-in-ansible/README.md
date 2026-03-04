@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, YAML, Boolean, Gotchas, DevOps
+Tags: Ansible, YAML, Booleans, Gotchas, DevOps
 
 Description: Avoid common YAML boolean pitfalls in Ansible where values like yes, no, on, off, and true are automatically converted to booleans.
 

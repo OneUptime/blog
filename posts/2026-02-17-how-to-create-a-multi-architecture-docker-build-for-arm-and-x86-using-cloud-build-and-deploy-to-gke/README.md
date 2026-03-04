@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Docker, Multi-Architecture, Cloud Build, GKE, ARM, Container
+Tags: GCP, Docker, Multi-Architecture, Cloud Build, GKE, ARM, Containers
 
 Description: Learn how to build multi-architecture Docker images supporting ARM and x86 using Google Cloud Build and deploy them to GKE clusters with mixed node pools.
 

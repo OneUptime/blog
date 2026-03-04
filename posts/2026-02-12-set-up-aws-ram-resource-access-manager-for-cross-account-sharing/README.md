@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, RAM, Resource Sharing, Multi-Account, Organization, Networking
+Tags: AWS, RAM, Resource Sharing, Multi-Account, Organizations, Networking
 
 Description: Set up AWS Resource Access Manager to securely share resources like VPC subnets, Transit Gateways, and Route 53 zones across multiple AWS accounts.
 

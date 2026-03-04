@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extension, Authentication, AWS, SigV4, Cloud, Security
+Tags: OpenTelemetry, Collector, Extensions, Authentication, AWS, SigV4, Cloud, Security
 
 Description: Learn how to configure AWS Signature Version 4 authentication in the OpenTelemetry Collector to securely send telemetry data to AWS services like CloudWatch and X-Ray.
 

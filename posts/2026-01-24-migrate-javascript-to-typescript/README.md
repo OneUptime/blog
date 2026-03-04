@@ -563,13 +563,13 @@ This project uses TypeScript. To build:
 
 ```bash
 npm run build
-```
+```bash
 
 To run type checking without building:
 
 ```bash
 npx tsc --noEmit
-```
+```bash
 ```text
 
 ## Common Pitfalls and Solutions

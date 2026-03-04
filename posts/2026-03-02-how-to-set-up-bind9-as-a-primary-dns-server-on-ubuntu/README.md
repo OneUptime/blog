@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, DNS, BIND9, Networking, Sysadmin
+Tags: Ubuntu, DNS, BIND9, Networking, SysAdmin
 
 Description: Step-by-step guide to installing and configuring BIND9 as an authoritative primary DNS server on Ubuntu, including zone files and forward/reverse lookup zones.
 

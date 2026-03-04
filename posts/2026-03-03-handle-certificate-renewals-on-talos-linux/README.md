@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Certificate, TLS, Security, Kubernetes, PKI
+Tags: Talos Linux, Certificates, TLS, Security, Kubernetes, PKI
 
 Description: Learn how to monitor, renew, and manage TLS certificates on Talos Linux clusters to prevent expiration-related outages and maintain secure communications.
 

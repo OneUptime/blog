@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Dashboard, Alerts, Platform Engineering
+Tags: OpenTelemetry, Dashboards, Alerts, Platform Engineering
 
 Description: Build an internal marketplace where teams can browse, install, and customize pre-built observability dashboards and alert rules based on OpenTelemetry data.
 

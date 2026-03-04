@@ -1,4 +1,4 @@
-# How to Implement systemd Template Units for Dynamic Multi-Instance Services on RHEL
+# How to Implement systemd Template Units for Multi-Instance Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

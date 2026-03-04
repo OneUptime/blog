@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SAP HANA, Kernel Tuning, Performance, sysctl, Linux
+Tags: RHEL, SAP HANA, Kernel Tuning, Performance, Sysctl, Linux
 
 Description: Configure RHEL kernel parameters for optimal SAP HANA performance, covering memory management, networking, and CPU settings required by SAP.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud, Parallelstore, GKE, Kubernetes, CSI Driver, Persistent Volume
+Tags: GCP, Google Cloud, Parallelstore, GKE, Kubernetes, CSI Driver, Persistent Volumes
 
 Description: Learn how to mount Google Cloud Parallelstore as a persistent volume in GKE using the Parallelstore CSI driver for high-performance parallel file storage.
 

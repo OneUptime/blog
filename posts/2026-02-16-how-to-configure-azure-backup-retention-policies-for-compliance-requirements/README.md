@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Backup, Retention Policies, Compliance, Disaster Recovery, Data Protection, Azure Recovery Services
+Tags: Azure, Backups, Retention Policies, Compliance, Disaster Recovery, Data Protection, Azure Recovery Services
 
 Description: Configure Azure Backup retention policies to meet regulatory compliance requirements including HIPAA, SOC 2, GDPR, and industry-specific data retention mandates.
 

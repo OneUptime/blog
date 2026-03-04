@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, OS Disk, Disk Expansion, Storage, Azure CLI, Cloud Infrastructure
+Tags: Azure, Virtual Machines, OS Disk, Disk Expansion, Storage, Azure CLI, Cloud Infrastructure
 
 Description: How to safely expand the OS disk on an Azure virtual machine, including resizing the partition and filesystem on both Linux and Windows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Loki, Multi-Tenancy, Tenant Isolation, Security, Organization, Enterprise
+Tags: Grafana Loki, Multi-Tenancy, Tenant Isolation, Security, Organizations, Enterprise
 
 Description: A comprehensive guide to implementing multi-tenancy in Grafana Loki, covering tenant configuration, isolation strategies, per-tenant limits, and production deployment patterns.
 

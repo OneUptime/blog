@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: IPv6, keepalived, High Availability, Networking, Linux, DevOps
+Tags: IPv6, Keepalived, High Availability, Networking, Linux, DevOps
 
 Description: A comprehensive guide to configuring Keepalived with IPv6 virtual IPs for high availability, covering VRRP configuration, failover testing, and production best practices.
 

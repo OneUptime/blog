@@ -130,7 +130,7 @@ If the system will not boot normally, you can select rescue mode from the GRUB m
 4. Append `systemd.unit=rescue.target` to the end of that line
 5. Press `Ctrl+X` to boot with the modified entry
 
-```
+```bash
 linux ($root)/vmlinuz-5.14.0-... root=/dev/mapper/rhel-root ... systemd.unit=rescue.target
 ```
 

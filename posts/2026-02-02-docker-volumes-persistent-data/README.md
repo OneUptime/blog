@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, VOLUME, Storage, Container, DevOps, Persistence
+Tags: Docker, Volumes, Storage, Containers, DevOps, Persistence
 
 Description: A comprehensive guide to Docker volumes covering creation, management, and best practices for persisting data across container lifecycles, with practical examples for databases, file storage.
 

@@ -1,8 +1,8 @@
-# How to Automate Kernel Dump (kdump) Configuration Using the kdump RHEL System Role
+# How to Automate kdump Configuration Using the kdump System Role
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, System Roles, kdump, Crash Dump
+Tags: RHEL, System Roles, kdump, Crash Dumps
 
 Description: Use the kdump RHEL System Role to configure kernel crash dump settings.
 

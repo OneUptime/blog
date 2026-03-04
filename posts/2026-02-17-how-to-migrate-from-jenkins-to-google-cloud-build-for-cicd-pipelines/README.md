@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Build, Jenkins, CI/CD, Migration, DevOps, Pipeline
+Tags: GCP, Cloud Build, Jenkins, CI/CD, Migration, DevOps, Pipelines
 
 Description: A practical guide to migrating your CI/CD pipelines from Jenkins to Google Cloud Build, covering concept mapping, configuration translation, and common pitfalls.
 

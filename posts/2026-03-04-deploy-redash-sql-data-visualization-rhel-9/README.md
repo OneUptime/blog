@@ -165,7 +165,7 @@ Open `http://your-server:5000` in a browser. You will be prompted to:
 
 Navigate to Settings > Data Sources > New Data Source. Common configurations:
 
-```
+```bash
 # PostgreSQL
 Type: PostgreSQL
 Host: your-db-host.example.com

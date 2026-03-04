@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backup, Disaster Recovery, SRE, Data Protection
+Tags: Backups, Disaster Recovery, SRE, Data Protection
 
 Description: Learn how to schedule full backups effectively for comprehensive data protection.
 

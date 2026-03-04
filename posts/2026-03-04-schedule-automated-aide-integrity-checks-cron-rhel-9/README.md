@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, AIDE, cron, Automation, Linux
+Tags: RHEL, AIDE, Cron, Automation, Linux
 
 Description: Set up automated AIDE file integrity checks using cron on RHEL to continuously monitor your system for unauthorized changes without manual intervention.
 
@@ -30,7 +30,7 @@ sudo crontab -e
 
 Add this line:
 
-```
+```bash
 # Run AIDE integrity check daily at 3:00 AM and log results
 0 3 * * * /usr/sbin/aide --check > /var/log/aide/aide-check-$(date +\%Y\%m\%d).log 2>&1
 ```
@@ -105,7 +105,7 @@ Or use crontab directly:
 sudo crontab -e
 ```
 
-```
+```bash
 # Daily AIDE integrity check at 3 AM
 0 3 * * * /usr/local/sbin/aide-check.sh
 ```

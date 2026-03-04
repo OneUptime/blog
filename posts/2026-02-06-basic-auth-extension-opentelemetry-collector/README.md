@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extension, Authentication, Basic Auth, Security, HTTP
+Tags: OpenTelemetry, Collector, Extensions, Authentication, Basic Auth, Security, HTTP
 
 Description: Learn how to configure HTTP Basic Authentication in the OpenTelemetry Collector to secure communications with username and password credentials for exporters and receivers.
 

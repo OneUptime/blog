@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Desktop, WebAssembly, WASM, WASI, Container, WasmEdge
+Tags: Docker, Docker Desktop, WebAssembly, WASM, WASI, Containers, WasmEdge
 
 Description: Run WebAssembly workloads alongside traditional containers using Docker Desktop's built-in Wasm runtime support.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, SquashFS, Filesystem, Immutable Infrastructure, Security
+Tags: Talos Linux, SquashFS, Filesystems, Immutable Infrastructure, Security
 
 Description: Deep dive into how Talos Linux uses SquashFS for its root filesystem and what this means for security and operations.
 

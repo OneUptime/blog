@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, ISO, Booting, Installation, Bare Metal, Virtual Machine
+Tags: Talos Linux, ISO, Booting, Installation, Bare Metal, Virtual Machines
 
 Description: Learn how to download and boot Talos Linux from an ISO image on both physical servers and virtual machines.
 

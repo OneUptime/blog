@@ -21,7 +21,7 @@ sudo grep "sudo:" /var/log/secure | tail -20
 
 A typical entry looks like:
 
-```
+```bash
 Mar  4 14:22:01 server01 sudo: jsmith : TTY=pts/0 ; PWD=/home/jsmith ; USER=root ; COMMAND=/usr/bin/systemctl restart httpd
 ```
 
@@ -35,7 +35,7 @@ Separate sudo logs from the rest of `/var/log/secure` for easier analysis:
 sudo visudo -f /etc/sudoers.d/00-logging
 ```
 
-```
+```bash
 # Send sudo logs to a dedicated file
 Defaults logfile="/var/log/sudo.log"
 Defaults log_year
@@ -55,7 +55,7 @@ sudo chmod 600 /var/log/sudo.log
 sudo vi /etc/logrotate.d/sudo
 ```
 
-```
+```bash
 /var/log/sudo.log {
     weekly
     rotate 52
@@ -75,7 +75,7 @@ I/O logging records everything that happens during a sudo session, including all
 sudo visudo -f /etc/sudoers.d/00-iolog
 ```
 
-```
+```bash
 # Enable I/O logging for all sudo sessions
 Defaults log_output
 Defaults log_input
@@ -122,7 +122,7 @@ auditd provides another layer of sudo monitoring with more structured event data
 sudo vi /etc/audit/rules.d/sudo.rules
 ```
 
-```
+```bash
 # Watch the sudoers file for changes
 -w /etc/sudoers -p wa -k sudoers_change
 -w /etc/sudoers.d/ -p wa -k sudoers_change
@@ -254,7 +254,7 @@ For centralized monitoring, forward sudo logs via rsyslog:
 sudo vi /etc/rsyslog.d/sudo-forward.conf
 ```
 
-```
+```bash
 # Forward sudo-related auth messages
 if $programname == 'sudo' then {
     action(

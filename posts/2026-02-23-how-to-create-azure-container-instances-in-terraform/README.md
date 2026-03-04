@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Container Instances, ACI, Docker, Container, Infrastructure as Code
+Tags: Terraform, Azure, Container Instances, ACI, Docker, Containers, Infrastructure as Code
 
 Description: Learn how to deploy Azure Container Instances with Terraform for running Docker containers without managing servers, including multi-container groups and volume mounts.
 

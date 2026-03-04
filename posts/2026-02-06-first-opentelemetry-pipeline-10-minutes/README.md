@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Getting Started, Pipeline, OTLP, Tutorial
+Tags: OpenTelemetry, Getting Started, Pipelines, OTLP, Tutorial
 
 Description: A step-by-step guide to instrumenting a Node.js application with OpenTelemetry and seeing traces flow to a backend in under 10 minutes.
 

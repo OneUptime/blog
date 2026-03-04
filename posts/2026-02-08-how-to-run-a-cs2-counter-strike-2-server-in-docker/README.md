@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, CS2, Counter-Strike, Game Server, Steam, Container, Self-Hosted, Gaming, GSLT
+Tags: Docker, CS2, Counter-Strike, Game Server, Steam, Containers, Self-Hosted, Gaming, GSLT
 
 Description: Deploy a Counter-Strike 2 dedicated server in Docker with game mode configuration, GSLT authentication, and custom server settings for competitive play.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Embed, Static Files, Binary, Assets, Template
+Tags: Go, Golang, Embed, Static Files, Binary, Assets, Templates
 
 Description: Learn how to embed static files like HTML templates, CSS, JavaScript, images, and configuration files directly into your Go binary using the embed package.
 

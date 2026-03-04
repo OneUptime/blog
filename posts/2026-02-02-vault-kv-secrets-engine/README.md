@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vault, Secret, KV, Security
+Tags: Vault, Secrets, KV, Security
 
 Description: A comprehensive guide to using the HashiCorp Vault KV (Key-Value) Secrets Engine for storing, managing, and retrieving secrets.
 

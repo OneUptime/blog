@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, New Relic, Dashboard, Monitoring, Infrastructure as Code
+Tags: Terraform, New Relic, Dashboards, Monitoring, Infrastructure as Code
 
 Description: Learn how to create New Relic dashboards using Terraform to build reproducible, version-controlled observability visualizations with NRQL queries.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Go, Docker, Microservices, Container
+Tags: GCP, Cloud Run, Go, Docker, Microservices, Containers
 
 Description: Build a Go HTTP service and deploy it to Cloud Run using a minimal Docker image with multi-stage builds, scratch base images, and optimized binary compilation.
 

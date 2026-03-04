@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Spot VMs, Virtual Machine, Cost Optimization, Cloud Computing, Azure CLI, Budget
+Tags: Azure, Spot VMs, Virtual Machines, Cost Optimization, Cloud Computing, Azure CLI, Budget
 
 Description: Learn how to deploy Azure Spot Virtual Machines to save up to 90% on compute costs, with strategies for handling evictions gracefully.
 

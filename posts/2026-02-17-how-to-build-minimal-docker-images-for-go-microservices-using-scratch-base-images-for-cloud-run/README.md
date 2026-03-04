@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Go, Docker, Cloud Run, Scratch Image, Microservices, Container
+Tags: GCP, Go, Docker, Cloud Run, Scratch Image, Microservices, Containers
 
 Description: Learn how to build extremely small Docker images for Go microservices using scratch base images and deploy them to Google Cloud Run.
 

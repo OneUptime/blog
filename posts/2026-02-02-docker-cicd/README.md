@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, CI/CD, DevOps, Container, GitHub Actions, GitLab CI, Jenkins, Automation
+Tags: Docker, CI/CD, DevOps, Containers, GitHub Actions, GitLab CI, Jenkins, Automation
 
 Description: Learn how to configure Docker for CI/CD pipelines across multiple platforms. Covers image building, caching strategies, registry management, security scanning, and production deployment patterns.
 

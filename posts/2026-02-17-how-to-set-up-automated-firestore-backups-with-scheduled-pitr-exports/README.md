@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Firestore, Backup, Cloud Scheduler, Disaster Recovery
+Tags: GCP, Firestore, Backups, Cloud Scheduler, Disaster Recovery
 
 Description: Learn how to set up automated Firestore backups using scheduled exports and point-in-time recovery to protect your data against accidental deletions and corruption.
 

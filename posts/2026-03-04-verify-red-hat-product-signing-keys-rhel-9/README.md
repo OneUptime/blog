@@ -100,13 +100,13 @@ rpm -K --verbose kernel-5.14.0-362.el9.x86_64.rpm
 
 Good output looks like:
 
-```
+```bash
 kernel-5.14.0-362.el9.x86_64.rpm: digests signatures OK
 ```
 
 Bad output (unsigned or bad signature):
 
-```
+```bash
 kernel-5.14.0-362.el9.x86_64.rpm: DIGESTS SIGNATURES NOT OK
 ```
 

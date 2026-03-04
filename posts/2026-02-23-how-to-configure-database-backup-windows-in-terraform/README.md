@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Database, Backup, RDS, Aurora, Infrastructure as Code
+Tags: Terraform, AWS, Database, Backups, RDS, Aurora, Infrastructure as Code
 
 Description: Learn how to configure and manage database backup windows in Terraform for RDS, Aurora, ElastiCache, and other AWS database services.
 

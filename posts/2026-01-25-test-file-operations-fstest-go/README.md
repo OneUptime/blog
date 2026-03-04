@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Testing, fstest, File System, Unit Testing
+Tags: Go, Testing, fstest, File Systems, Unit Testing
 
 Description: Learn how to use Go's testing/fstest package to create in-memory file systems for testing file operations without touching the disk.
 

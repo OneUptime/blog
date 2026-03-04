@@ -30,7 +30,7 @@ If you see `cgroup2` in the output, the unified hierarchy is active.
 
 systemd organizes cgroups into slices, scopes, and services:
 
-```
+```bash
 -.slice (root)
   |-- system.slice (system services)
   |     |-- httpd.service

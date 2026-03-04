@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Execution Environment, Gen2, Performance, Google Cloud
+Tags: GCP, Cloud Run, Execution Environments, Gen2, Performance, Google Cloud
 
 Description: Learn how to switch to Cloud Run execution environment Gen2 for improved CPU performance, full Linux compatibility, and faster network throughput.
 

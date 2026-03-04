@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, chrony, NTP, Time Synchronization, System Administration
+Tags: Ubuntu, Chrony, NTP, Time Synchronization, System Administration
 
 Description: Install and configure chrony on Ubuntu for accurate time synchronization with NTP servers, replacing systemd-timesyncd for better accuracy and flexibility in production environments.
 

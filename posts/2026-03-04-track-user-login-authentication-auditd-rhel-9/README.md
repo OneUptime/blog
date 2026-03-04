@@ -48,7 +48,7 @@ sudo vi /etc/audit/rules.d/auth-tracking.rules
 
 Add these rules:
 
-```
+```bash
 # Monitor changes to user account files
 -w /etc/passwd -p wa -k user_accounts
 -w /etc/shadow -p wa -k user_accounts
@@ -91,7 +91,7 @@ Beyond file watches, you can track specific syscalls related to authentication.
 sudo vi /etc/audit/rules.d/login-syscalls.rules
 ```
 
-```
+```bash
 # Track all user login and logout events
 -a always,exit -F arch=b64 -S execve -F path=/usr/bin/login -k user_login
 -a always,exit -F arch=b64 -S execve -F path=/usr/sbin/sshd -k ssh_login

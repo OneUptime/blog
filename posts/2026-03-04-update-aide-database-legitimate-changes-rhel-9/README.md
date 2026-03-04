@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, AIDE, Database Update, Linux
+Tags: RHEL, AIDE, Database Updates, Linux
 
 Description: Learn the correct process for updating the AIDE database on RHEL after legitimate system changes like patches, configuration updates, and software installations.
 

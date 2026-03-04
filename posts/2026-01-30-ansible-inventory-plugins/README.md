@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Inventory, Plugin, Dynamic
+Tags: Ansible, Inventory, Plugins, Dynamic
 
 Description: Learn to build custom Ansible inventory plugins that dynamically discover hosts from any data source.
 

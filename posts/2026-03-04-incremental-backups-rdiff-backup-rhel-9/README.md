@@ -124,7 +124,7 @@ Schedule it:
 sudo crontab -e
 ```
 
-```
+```bash
 # Run rdiff-backup daily at 1 AM
 0 1 * * * /usr/local/bin/rdiff-backup.sh
 ```

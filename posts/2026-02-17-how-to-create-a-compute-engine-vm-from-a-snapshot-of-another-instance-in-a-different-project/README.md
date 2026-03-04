@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, Snapshot, Cross-Project, Cloud Migration
+Tags: GCP, Compute Engine, Snapshots, Cross-Project, Cloud Migration
 
 Description: Step-by-step guide to creating a Compute Engine VM from a snapshot taken in a different GCP project, including IAM permissions and automation approaches.
 

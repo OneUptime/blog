@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Workspace, Remote Work, Security
+Tags: AWS, Workspaces, Remote Work, Security
 
 Description: Learn how to configure Amazon WorkSpaces specifically for remote and distributed teams, covering performance optimization, security policies, multi-region setup, and collaboration tools.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, VOLUME, Container, DevOps, Storage, Linux, Data Persistence
+Tags: Podman, Volumes, Containers, DevOps, Storage, Linux, Data Persistence
 
 Description: A practical guide to using Podman volumes for persistent container storage. Learn how to create, manage, mount, and share volumes across containers while keeping your data safe and portable.
 

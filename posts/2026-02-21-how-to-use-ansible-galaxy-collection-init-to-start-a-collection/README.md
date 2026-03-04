@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ansible Galaxy, Collection, Development
+Tags: Ansible, Ansible Galaxy, Collections, Development
 
 Description: How to scaffold a new Ansible collection using ansible-galaxy collection init with proper structure, metadata, and development workflow.
 

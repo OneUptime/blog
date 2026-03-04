@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Plugin, Provider, Offline, Air-Gapped, CI/CD
+Tags: Terraform, Plugins, Provider, Offline, Air-Gapped, CI/CD
 
 Description: Learn how to configure Terraform to use pre-installed plugins and providers without running terraform init, essential for air-gapped environments, CI/CD optimization, and custom provider management.
 

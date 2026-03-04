@@ -26,7 +26,7 @@ cat /boot/loader/entries/*.conf | head -20
 
 A BLS entry file looks like this:
 
-```
+```bash
 title Red Hat Enterprise Linux (5.14.0-362.el9.x86_64) 9.3
 version 5.14.0-362.el9.x86_64
 linux /vmlinuz-5.14.0-362.el9.x86_64
@@ -117,7 +117,7 @@ sudo vi /boot/loader/entries/custom-debug.conf
 
 Modify it to include your custom parameters:
 
-```
+```bash
 title RHEL Debug Mode (5.14.0-362.el9.x86_64)
 version 5.14.0-362.el9.x86_64
 linux /vmlinuz-5.14.0-362.el9.x86_64

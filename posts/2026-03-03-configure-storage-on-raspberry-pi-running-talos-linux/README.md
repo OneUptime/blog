@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Raspberry Pi, Storage, Kubernetes, Persistent Volume
+Tags: Talos Linux, Raspberry Pi, Storage, Kubernetes, Persistent Volumes
 
 Description: A comprehensive guide to configuring storage options on Raspberry Pi devices running Talos Linux, covering SD cards, USB drives, NFS, and distributed storage solutions.
 

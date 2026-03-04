@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Deployment, CI/CD, Pipeline, DevOps
+Tags: Ansible, Deployment, CI/CD, Pipelines, DevOps
 
 Description: Design and build multi-stage Ansible deployment pipelines with validation, testing, staged rollouts, and rollback capabilities.
 

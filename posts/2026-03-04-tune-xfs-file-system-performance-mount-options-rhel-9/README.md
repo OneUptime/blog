@@ -31,7 +31,7 @@ XFS performance is influenced by several layers:
 
 By default, Linux updates the access time (atime) of files every time they are read. This generates unnecessary writes.
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs noatime 0 0
 ```
 
@@ -46,7 +46,7 @@ For most workloads, `noatime` provides the best performance improvement.
 
 The XFS log buffer settings affect write performance:
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs defaults,noatime,logbufs=8,logbsize=256k 0 0
 ```
 
@@ -59,19 +59,19 @@ Increasing these values improves write performance at the cost of using more mem
 
 Controls the size of buffered I/O preallocation:
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs defaults,noatime,allocsize=64k 0 0
 ```
 
 For workloads that write many large files, increasing `allocsize` reduces fragmentation:
 
-```
+```bash
 allocsize=1m
 ```
 
 For workloads with many small files, a smaller value is better:
 
-```
+```bash
 allocsize=4k
 ```
 
@@ -79,7 +79,7 @@ allocsize=4k
 
 Allows inode allocation across the entire filesystem rather than restricting it to the first terabyte:
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs defaults,inode64 0 0
 ```
 
@@ -89,7 +89,7 @@ This is the default on 64-bit RHEL systems, but worth verifying on large filesys
 
 For SSD and thin-provisioned storage:
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs defaults,discard 0 0
 ```
 
@@ -103,7 +103,7 @@ sudo systemctl enable --now fstrim.timer
 
 Write barriers ensure data integrity by flushing the disk cache at critical points:
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs defaults,nobarrier 0 0
 ```
 
@@ -113,7 +113,7 @@ Write barriers ensure data integrity by flushing the disk cache at critical poin
 
 Optimizes for large sequential I/O patterns:
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs defaults,largeio 0 0
 ```
 
@@ -149,7 +149,7 @@ sudo mkfs.xfs -l logdev=/dev/ssd_log,size=512m /dev/sdb1
 
 Mount with the external log:
 
-```
+```bash
 /dev/sdb1 /data xfs defaults,logdev=/dev/ssd_log 0 0
 ```
 
@@ -212,7 +212,7 @@ The value is in 512-byte sectors, so 4096 equals 2 MB of read-ahead.
 
 ### Database Workload
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs noatime,logbufs=8,logbsize=256k 0 0
 ```
 
@@ -220,19 +220,19 @@ Also consider using an external log device on fast storage.
 
 ### File Server / NAS
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs noatime,allocsize=64k 0 0
 ```
 
 ### Virtual Machine Storage
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs noatime,discard 0 0
 ```
 
 ### Backup Storage
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs noatime,largeio,allocsize=1m 0 0
 ```
 

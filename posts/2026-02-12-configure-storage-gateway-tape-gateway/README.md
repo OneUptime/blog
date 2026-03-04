@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Storage Gateway, Tape Gateway, Backup, VTL
+Tags: AWS, Storage Gateway, Tape Gateway, Backups, VTL
 
 Description: Set up AWS Storage Gateway Tape Gateway as a virtual tape library for your existing backup software, replacing physical tapes with cloud storage in S3 and Glacier.
 

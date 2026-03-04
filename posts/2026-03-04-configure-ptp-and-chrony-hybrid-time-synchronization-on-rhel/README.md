@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PTP, chrony, Time Synchronization, NTP
+Tags: RHEL, PTP, Chrony, Time Synchronization, NTP
 
 Description: Combine PTP and chrony on RHEL to use PTP as the primary high-precision time source with NTP as a fallback, providing both accuracy and resilience.
 

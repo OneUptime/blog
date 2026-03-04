@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Key Vault, Backup, Disaster Recovery, Paired Regions, Business Continuity, Key Management, Azure
+Tags: Azure Key Vault, Backups, Disaster Recovery, Paired Regions, Business Continuity, Key Management, Azure
 
 Description: A comprehensive guide to backing up Azure Key Vault secrets, keys, and certificates and restoring them across Azure paired regions for disaster recovery.
 

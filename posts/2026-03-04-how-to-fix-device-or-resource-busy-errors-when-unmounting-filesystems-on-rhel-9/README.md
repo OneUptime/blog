@@ -1,4 +1,4 @@
-# How to Fix 'Device or Resource Busy' Errors When Unmounting Filesystems on RHEL 9
+# How to Fix 'Device or Resource Busy' When Unmounting on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

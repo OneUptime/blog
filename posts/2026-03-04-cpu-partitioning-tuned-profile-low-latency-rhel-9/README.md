@@ -77,7 +77,7 @@ cat /proc/cmdline
 
 You should see parameters like:
 
-```
+```bash
 isolcpus=2-7 nohz_full=2-7 rcu_nocbs=2-7
 ```
 

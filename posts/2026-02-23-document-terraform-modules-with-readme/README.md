@@ -143,7 +143,7 @@ module "api_service" {
 
   target_group_arn = module.alb.target_group_arns[0]
 }
-```
+```bash
 ```text
 
 Notice how the example uses a version-pinned source, not a relative path. This shows users how they would actually consume the module.

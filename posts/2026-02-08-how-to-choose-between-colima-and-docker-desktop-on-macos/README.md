@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Colima, Docker Desktop, macOS, Development Environment, Container
+Tags: Docker, Colima, Docker Desktop, macOS, Development Environment, Containers
 
 Description: A hands-on comparison of Colima and Docker Desktop for macOS container development workflows
 

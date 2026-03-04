@@ -14,14 +14,14 @@ By default, DM-Multipath uses names like `mpatha`, `mpathb`, or long WWID string
 
 With `user_friendly_names yes` in multipath.conf:
 
-```
+```bash
 mpatha (3600508b4000c4a37) dm-0 ...
 mpathb (3600508b4000c4a38) dm-1 ...
 ```
 
 Without it, devices use the full WWID:
 
-```
+```bash
 3600508b4000c4a37 dm-0 ...
 ```
 
@@ -31,7 +31,7 @@ Neither is particularly descriptive.
 
 Edit `/etc/multipath.conf` and add a `multipaths` section:
 
-```
+```bash
 multipaths {
     multipath {
         wwid 3600508b4000c4a37
@@ -60,7 +60,7 @@ Now the devices appear as:
 sudo multipath -ll
 ```
 
-```
+```bash
 db_data (3600508b4000c4a37) dm-0 ...
 db_logs (3600508b4000c4a38) dm-1 ...
 web_content (3600508b4000c4a39) dm-2 ...
@@ -101,7 +101,7 @@ When using `user_friendly_names yes`, multipath maintains a bindings file that m
 cat /etc/multipath/bindings
 ```
 
-```
+```bash
 mpatha 3600508b4000c4a37
 mpathb 3600508b4000c4a38
 ```
@@ -112,7 +112,7 @@ This file ensures names persist across reboots. If you delete it, names may chan
 
 You can set aliases for some devices and let others use automatic naming:
 
-```
+```bash
 defaults {
     user_friendly_names yes
 }

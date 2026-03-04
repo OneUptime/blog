@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Syslog-ng, Logging, rsyslog, Linux
+Tags: RHEL, syslog-ng, Logging, rsyslog, Linux
 
 Description: Learn how to install and configure syslog-ng on RHEL as an alternative to rsyslog, with structured logging, flexible filtering, and advanced message routing.
 

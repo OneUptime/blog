@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Workspace, Monorepo, Modules, Project Structure
+Tags: Go, Golang, Workspaces, Monorepo, Modules, Project Structure
 
 Description: A practical guide to using Go workspaces for managing multiple modules in a monorepo setup.
 

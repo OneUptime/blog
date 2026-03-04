@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, .NET, systemd, Service, ASP.NET
+Tags: Ubuntu, .NET, systemd, Services, ASP.NET
 
 Description: Run .NET applications as systemd services on Ubuntu with proper user isolation, environment configuration, reverse proxy setup, and log management.
 

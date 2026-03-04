@@ -28,19 +28,19 @@ graph LR
 
 You need a GPG key pair. If you do not have one:
 
-# Generate a GPG key pair
+## Generate a GPG key pair
 ```bash
 gpg --full-generate-key
 ```
 
 Choose RSA, 4096 bits, and set an expiration. Once generated:
 
-# List your GPG keys
+## List your GPG keys
 ```bash
 gpg --list-keys
 ```
 
-# Export the public key (you will distribute this to your servers)
+## Export the public key (you will distribute this to your servers)
 ```bash
 gpg --armor --export your-email@example.com > my-signing-key.pub
 ```
@@ -49,12 +49,12 @@ gpg --armor --export your-email@example.com > my-signing-key.pub
 
 When you push an image to a registry, you can sign it at the same time:
 
-# First, configure where signatures should be stored
+## First, configure where signatures should be stored
 ```bash
 sudo mkdir -p /var/lib/containers/sigstore
 ```
 
-# Create a signature storage configuration
+## Create a signature storage configuration
 ```bash
 sudo cat > /etc/containers/registries.d/default.yaml << 'EOF'
 default-docker:
@@ -63,7 +63,7 @@ default-docker:
 EOF
 ```
 
-# Sign and push an image
+## Sign and push an image
 ```bash
 podman push --sign-by your-email@example.com localhost/my-app:latest docker://registry.example.com/my-app:latest
 ```
@@ -74,7 +74,7 @@ Podman creates a detached GPG signature and stores it in the sigstore directory.
 
 The trust policy file at `/etc/containers/policy.json` controls what images are allowed:
 
-# View the current policy
+## View the current policy
 ```bash
 cat /etc/containers/policy.json
 ```
@@ -147,7 +147,7 @@ This policy:
 
 Copy your public key to the servers that need to verify signatures:
 
-# Install the public key on the verification server
+## Install the public key on the verification server
 ```bash
 sudo mkdir -p /etc/pki/containers/
 sudo cp my-signing-key.pub /etc/pki/containers/
@@ -157,7 +157,7 @@ sudo cp my-signing-key.pub /etc/pki/containers/
 
 Once the policy is configured, Podman automatically verifies signatures on pull:
 
-# This will check the signature before pulling
+## This will check the signature before pulling
 ```bash
 podman pull registry.example.com/my-app:latest
 ```
@@ -168,22 +168,22 @@ If the signature is invalid or missing, Podman will refuse to pull the image.
 
 Modern container signing often uses Sigstore/Cosign instead of GPG:
 
-# Install cosign
+## Install cosign
 ```bash
 sudo dnf install -y cosign
 ```
 
-# Generate a cosign key pair
+## Generate a cosign key pair
 ```bash
 cosign generate-key-pair
 ```
 
-# Sign an image with cosign
+## Sign an image with cosign
 ```bash
 cosign sign --key cosign.key registry.example.com/my-app:latest
 ```
 
-# Verify a cosign signature
+## Verify a cosign signature
 ```bash
 cosign verify --key cosign.pub registry.example.com/my-app:latest
 ```
@@ -211,12 +211,12 @@ For cosign/sigstore signatures, update the policy:
 
 Use `podman image trust` to manage trust policies:
 
-# View the current trust settings
+## View the current trust settings
 ```bash
 podman image trust show
 ```
 
-# Set trust for a specific registry
+## Set trust for a specific registry
 ```bash
 sudo podman image trust set --type signedBy --pubkeysfile /etc/pki/containers/my-signing-key.pub registry.example.com
 ```
@@ -241,17 +241,19 @@ echo "Image ${IMAGE}:${TAG} built, signed, and pushed"
 
 ## Troubleshooting Signature Issues
 
-# Check if an image has a signature
+This section covers troubleshooting signature issues.
+
+## Check if an image has a signature
 ```bash
 skopeo inspect --raw docker://registry.example.com/my-app:latest | jq .
 ```
 
-# Debug signature verification failures
+## Debug signature verification failures
 ```bash
 podman --log-level debug pull registry.example.com/my-app:latest 2>&1 | grep -i sign
 ```
 
-# List signatures in the local sigstore
+## List signatures in the local sigstore
 ```bash
 ls -la /var/lib/containers/sigstore/
 ```

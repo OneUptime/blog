@@ -25,7 +25,7 @@ ls -Z /mnt/nfs-shared/
 
 You will typically see:
 
-```
+```bash
 system_u:object_r:nfs_t:s0 somefile.txt
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform Cloud, Azure, Workspace, Multi-Subscription, Infrastructure as Code, DevOps, Enterprise
+Tags: Terraform Cloud, Azure, Workspaces, Multi-Subscription, Infrastructure as Code, DevOps, Enterprise
 
 Description: Configure Terraform Cloud workspaces to manage Azure infrastructure across multiple subscriptions with proper isolation, variable management, and run triggers.
 

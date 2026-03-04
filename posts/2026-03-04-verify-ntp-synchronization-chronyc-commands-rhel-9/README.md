@@ -42,7 +42,7 @@ chronyc tracking
 
 Sample output:
 
-```
+```bash
 Reference ID    : C0A80001 (ntp1.internal.example.com)
 Stratum         : 3
 Ref time (UTC)  : Tue Mar 04 15:30:00 2026
@@ -136,7 +136,7 @@ chronyc activity
 
 Output example:
 
-```
+```bash
 200 OK
 4 sources online
 0 sources offline

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, GitHub, GitOps, Webhook, CI/CD
+Tags: ArgoCD, GitHub, GitOps, Webhooks, CI/CD
 
 Description: Learn how to configure ArgoCD webhook notifications to automatically update GitHub commit statuses.
 

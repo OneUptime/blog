@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, reCAPTCHA Enterprise, Action Tokens, Security, Web Application
+Tags: GCP, reCAPTCHA Enterprise, Action Tokens, Security, Web Applications
 
 Description: Learn how to implement reCAPTCHA Enterprise action tokens to protect specific user workflows like login, signup, checkout, and password reset with targeted bot detection.
 

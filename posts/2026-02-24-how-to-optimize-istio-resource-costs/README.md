@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Cost Optimization, Service Mesh, Kubernetes, Resource
+Tags: Istio, Cost Optimization, Service Mesh, Kubernetes, Resources
 
 Description: Practical strategies to reduce the CPU, memory, and infrastructure costs of running Istio service mesh in production Kubernetes clusters.
 

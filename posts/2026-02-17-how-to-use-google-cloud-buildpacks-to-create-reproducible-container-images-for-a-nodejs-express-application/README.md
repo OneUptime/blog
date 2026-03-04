@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Buildpacks, Node.js, Express, Container, Cloud Run, Reproducible Builds
+Tags: GCP, Buildpacks, Node.js, Express, Containers, Cloud Run, Reproducible Builds
 
 Description: Learn how to use Google Cloud Buildpacks to create reproducible container images for Node.js Express applications without writing a Dockerfile.
 

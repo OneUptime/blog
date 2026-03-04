@@ -24,7 +24,7 @@ vi /etc/lvm/lvm.conf
 
 Find the `activation` section and set these values:
 
-```
+```bash
 activation {
     thin_pool_autoextend_threshold = 80
     thin_pool_autoextend_percent = 20
@@ -201,7 +201,7 @@ Do not forget metadata. Configure metadata auto-extension too:
 
 In `/etc/lvm/lvm.conf`:
 
-```
+```bash
 activation {
     thin_pool_autoextend_threshold = 80
     thin_pool_autoextend_percent = 20

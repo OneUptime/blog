@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Resource, Performance
+Tags: Kubernetes, Resources, Performance
 
 Description: Master Kubernetes Quality of Service classes to control pod priority during resource contention. Learn how to configure Guaranteed, Burstable, and BestEffort QoS for optimal resource management.
 

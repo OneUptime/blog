@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ACM, SSL, Certificate, Security
+Tags: AWS, ACM, SSL, Certificates, Security
 
 Description: Learn how to import third-party SSL/TLS certificates into AWS Certificate Manager, handle certificate chains, manage renewals, and automate the import process.
 

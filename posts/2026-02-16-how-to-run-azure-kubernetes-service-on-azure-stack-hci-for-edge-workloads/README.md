@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Kubernetes, Azure Stack HCI, Edge Computing, AKS, Container, Hybrid Cloud
+Tags: Azure, Kubernetes, Azure Stack HCI, Edge Computing, AKS, Containers, Hybrid Cloud
 
 Description: Learn how to deploy and manage Azure Kubernetes Service on Azure Stack HCI to run containerized edge workloads on your own infrastructure.
 

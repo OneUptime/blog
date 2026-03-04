@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LVM, Snapshots, Backup, Storage, Linux
+Tags: RHEL, LVM, Snapshots, Backups, Storage, Linux
 
 Description: Use LVM snapshots on RHEL to create point-in-time copies of logical volumes for consistent backups and quick rollback capabilities.
 

@@ -85,7 +85,7 @@ sudo gluster volume heal repvol info summary
 
 Example output during healing:
 
-```
+```bash
 Brick node1:/data/glusterfs/replica/brick1/data
 Status: Connected
 Total Number of entries: 0

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, Pause, Unpause, Freeze, DevOps, Resource Management
+Tags: Docker, Containers, Pause, Unpause, Freeze, DevOps, Resource Management
 
 Description: Learn how to pause and unpause Docker containers to temporarily freeze processes without stopping them, preserving state and connections.
 

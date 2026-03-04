@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, seccomp, System Calls, Container Security
+Tags: Kubernetes, Security, Seccomp, System Calls, Container Security
 
 Description: Learn how to create and implement fine-grained seccomp profiles in Kubernetes that precisely control which system calls containers can execute, blocking dangerous operations at the kernel level.
 

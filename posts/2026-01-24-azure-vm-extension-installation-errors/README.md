@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, VM Extension, DevOps, Troubleshooting, Automation, Cloud
+Tags: Azure, Virtual Machines, VM Extension, DevOps, Troubleshooting, Automation, Cloud
 
 Description: Learn how to diagnose and fix common Azure VM extension installation errors including timeout issues, dependency failures, and permission problems.
 

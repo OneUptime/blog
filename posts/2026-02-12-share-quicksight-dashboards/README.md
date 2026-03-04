@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, QuickSight, Dashboard, Collaboration
+Tags: AWS, QuickSight, Dashboards, Collaboration
 
 Description: Complete guide to sharing Amazon QuickSight dashboards with users, groups, and external stakeholders using publishing, embedding, email reports, and namespace isolation.
 

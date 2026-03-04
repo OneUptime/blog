@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificate, Intermediate CA, PKI, Security, Kubernetes
+Tags: Istio, Certificates, Intermediate CA, PKI, Security, Kubernetes
 
 Description: How to configure Istio with intermediate CA certificates for a proper PKI hierarchy, including generation, installation, and chain management.
 

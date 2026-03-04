@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Dashboard, Transformation, Monitoring, Observability, Metrics, Data Visualization
+Tags: Grafana, Dashboards, Transformation, Monitoring, Observability, Metrics, Data Visualization
 
 Description: A hands-on guide to building powerful Grafana stat panels using transformations. Learn how to aggregate, filter, calculate, and display metrics effectively for real-time monitoring dashboards.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Multi-Platform, ARM64, AMD64, Container, DevOps, CI/CD, Buildx
+Tags: Docker, Multi-Platform, ARM64, AMD64, Containers, DevOps, CI/CD, Buildx
 
 Description: Learn how to build Docker images for multiple architectures using Docker Buildx. Covers setup, configuration, CI/CD integration, and best practices for cross-platform container deployments.
 

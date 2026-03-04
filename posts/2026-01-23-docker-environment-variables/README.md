@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Environment Variable, Configuration, DevOps, Best Practices
+Tags: Docker, Environment Variables, Configuration, DevOps, Best Practices
 
 Description: Master Docker environment variable management including build-time vs runtime variables, file-based configuration, variable precedence, and secure handling of sensitive values.
 

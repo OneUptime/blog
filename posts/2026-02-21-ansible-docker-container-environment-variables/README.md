@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Container, Configuration
+Tags: Ansible, Docker, Containers, Configuration
 
 Description: Master passing environment variables to Docker containers using Ansible with the docker_container module and Vault integration.
 

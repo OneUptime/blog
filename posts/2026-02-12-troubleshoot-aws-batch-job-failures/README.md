@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Batch, Troubleshooting, Debugging, CloudWatch, Container, DevOps
+Tags: AWS, Batch, Troubleshooting, Debugging, CloudWatch, Containers, DevOps
 
 Description: A systematic guide to diagnosing and fixing common AWS Batch job failures including stuck jobs, container errors, resource issues, and permission problems.
 

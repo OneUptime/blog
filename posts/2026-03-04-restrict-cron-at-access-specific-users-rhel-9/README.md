@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, cron, at, Access Control, Security, Linux
+Tags: RHEL, Cron, at, Access Control, Security, Linux
 
 Description: Learn how to control which users can schedule cron and at jobs on RHEL using cron.allow, cron.deny, at.allow, and at.deny files, with clear precedence rules and practical examples.
 
@@ -86,7 +86,7 @@ sudo chmod 644 /etc/cron.allow
 
 Once this file exists, nobody else can use `crontab`. They will get an error like:
 
-```
+```bash
 You (someuser) are not allowed to use this program (crontab)
 ```
 
@@ -151,7 +151,7 @@ sudo -u testuser crontab -l
 
 If the user is denied, you will see:
 
-```
+```bash
 You (testuser) are not allowed to use this program (crontab)
 See crontab(1) for more information
 ```
@@ -165,7 +165,7 @@ sudo -u testuser bash -c 'echo "test" | at now + 1 minute'
 
 A denied user will see:
 
-```
+```bash
 You do not have permission to use at.
 ```
 

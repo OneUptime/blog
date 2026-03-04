@@ -596,7 +596,7 @@ def monitor_cross_dc_replication(dc1_master, dc2_replica, dc1_name, dc2_name):
 
    # Verify new master
    redis-cli -a password INFO replication
-   ```
+   ```bash
 
 4. **Update application configuration**
    - Point applications to DC2 Redis
@@ -618,7 +618,7 @@ def monitor_cross_dc_replication(dc1_master, dc2_replica, dc1_name, dc2_name):
    ```bash
    # On DC1 (former master, now needs data from DC2)
    redis-cli -a password REPLICAOF dc2-master 6379
-   ```
+   ```bash
 
 3. **Wait for full sync**
    - Monitor replication progress
@@ -627,12 +627,12 @@ def monitor_cross_dc_replication(dc1_master, dc2_replica, dc1_name, dc2_name):
 4. **Promote DC1 back to master**
    ```bash
    redis-cli -a password REPLICAOF NO ONE
-   ```
+   ```bash
 
 5. **Reconfigure DC2 as replica**
    ```bash
    redis-cli -h dc2-redis -a password REPLICAOF dc1-master 6379
-   ```
+   ```bash
 ```text
 
 ---

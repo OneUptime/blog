@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Managed Lustre, HPC, High Performance Computing, File System, Parallel Storage, Cloud HPC
+Tags: Azure, Managed Lustre, HPC, High Performance Computing, File Systems, Parallel Storage, Cloud HPC
 
 Description: Step-by-step instructions for deploying Azure Managed Lustre to provide high-throughput parallel file storage for HPC and AI workloads.
 

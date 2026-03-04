@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Backup, Disaster Recovery, Velero, Storage, DevOps
+Tags: Kubernetes, Backups, Disaster Recovery, Velero, Storage, DevOps
 
 Description: A complete guide to backing up and restoring Kubernetes clusters with Velero, including installation, backup strategies, scheduled backups, and disaster recovery procedures.
 

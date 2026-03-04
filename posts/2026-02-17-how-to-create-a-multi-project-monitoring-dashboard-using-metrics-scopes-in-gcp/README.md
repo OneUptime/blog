@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Monitoring, Metrics Scopes, Multi-Project, Dashboard
+Tags: GCP, Cloud Monitoring, Metrics Scopes, Multi-Project, Dashboards
 
 Description: Learn how to use metrics scopes in Google Cloud Monitoring to build dashboards that aggregate and visualize metrics across multiple GCP projects.
 

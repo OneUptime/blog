@@ -62,7 +62,7 @@ sudo dnf install -y postfix cyrus-sasl cyrus-sasl-plain
 
 Edit `/etc/postfix/main.cf`:
 
-```
+```bash
 # Server identity
 myhostname = server.example.com
 mydomain = example.com
@@ -102,7 +102,7 @@ sudo vi /etc/postfix/sasl_passwd
 
 Add the Office 365 credentials:
 
-```
+```bash
 [smtp.office365.com]:587 user@example.com:your_password
 ```
 
@@ -124,7 +124,7 @@ Office 365 requires the sender address to match the authenticated account (or an
 sudo vi /etc/postfix/sender_canonical
 ```
 
-```
+```bash
 # Rewrite all local senders to the Office 365 account
 root            user@example.com
 www-data        user@example.com
@@ -138,13 +138,13 @@ If you want to rewrite ALL senders regardless:
 sudo vi /etc/postfix/sender_canonical_regexp
 ```
 
-```
+```bash
 /.+/ user@example.com
 ```
 
 And use this in `main.cf` instead:
 
-```
+```bash
 sender_canonical_maps = regexp:/etc/postfix/sender_canonical_regexp
 ```
 
@@ -180,7 +180,7 @@ sudo tail -f /var/log/maillog
 
 A successful delivery looks like:
 
-```
+```bash
 postfix/smtp: ABC123: to=<recipient@gmail.com>, relay=smtp.office365.com[52.x.x.x]:587, delay=1.5, status=sent (250 2.0.0 OK)
 ```
 
@@ -188,7 +188,7 @@ postfix/smtp: ABC123: to=<recipient@gmail.com>, relay=smtp.office365.com[52.x.x.
 
 If you need different applications to send as different addresses, those addresses must be configured as aliases on the Office 365 account. Then use a more specific sender canonical map:
 
-```
+```bash
 # Map specific local users to specific Office 365 aliases
 nagios    alerts@example.com
 www-data  noreply@example.com
@@ -199,7 +199,7 @@ root      admin@example.com
 
 ### Authentication Failed (535 5.7.3)
 
-```
+```bash
 SASL authentication failed: UGFzc3dvcmQ6
 ```
 
@@ -213,7 +213,7 @@ SASL authentication failed: UGFzc3dvcmQ6
 
 ### Sender Address Rejected (550 5.7.60)
 
-```
+```bash
 550 5.7.60 SMTP; Client does not have permissions to send as this sender
 ```
 
@@ -223,7 +223,7 @@ SASL authentication failed: UGFzc3dvcmQ6
 
 ### TLS Handshake Failed
 
-```
+```bash
 TLS handshake failed
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, Performance, Optimization, Linux
+Tags: RHEL, NGINX, Performance, Optimization, Linux
 
 Description: Performance tuning techniques for Nginx on RHEL to handle high traffic loads efficiently, covering worker tuning, kernel parameters, and caching.
 

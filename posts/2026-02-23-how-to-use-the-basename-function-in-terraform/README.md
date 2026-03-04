@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, basename Function, File System, HCL, Infrastructure as Code, Path Manipulation
+Tags: Terraform, basename Function, File Systems, HCL, Infrastructure as Code, Path Manipulation
 
 Description: Learn how to use the basename function in Terraform to extract the filename from a path for naming resources, processing file lists, and building clean infrastructure configurations.
 

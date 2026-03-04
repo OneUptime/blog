@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, Security, Hardening, Linux
+Tags: RHEL, NGINX, Security, Hardening, Linux
 
 Description: Practical security hardening steps for Nginx on RHEL, covering server information hiding, security headers, TLS configuration, and access restrictions.
 

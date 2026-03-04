@@ -162,7 +162,7 @@ rpm -V openssh-server
 
 If everything is fine, there is no output. If files have been modified, you get output like:
 
-```
+```bash
 S.5....T.  c /etc/ssh/sshd_config
 ```
 
@@ -204,7 +204,7 @@ rpm -K /tmp/custom-agent-2.1.0-1.el9.x86_64.rpm
 
 A good signature looks like:
 
-```
+```bash
 /tmp/custom-agent-2.1.0-1.el9.x86_64.rpm: digests signatures OK
 ```
 

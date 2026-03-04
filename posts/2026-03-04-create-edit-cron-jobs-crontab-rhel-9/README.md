@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, cron, crontab, Scheduling, Linux, Automation
+Tags: RHEL, Cron, crontab, Scheduling, Linux, Automation
 
 Description: A hands-on guide to creating, editing, and managing cron jobs on RHEL, covering crontab syntax, special scheduling strings, user vs root crontabs, and common pitfalls.
 
@@ -73,7 +73,7 @@ sudo crontab -u jsmith -l
 
 Each line in a crontab has six fields:
 
-```
+```bash
 # ┌───────────── minute (0-59)
 # │ ┌───────────── hour (0-23)
 # │ │ ┌───────────── day of month (1-31)
@@ -189,7 +189,7 @@ The system-wide crontab has an extra field for the username:
 cat /etc/crontab
 ```
 
-```
+```bash
 # System crontab - note the extra 'user' field
 SHELL=/bin/bash
 PATH=/sbin:/bin:/usr/sbin:/usr/bin

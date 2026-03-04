@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, VOLUME, Permissions, User Namespaces, Security, Linux, DevOps
+Tags: Docker, Volumes, Permissions, User Namespaces, Security, Linux, DevOps
 
 Description: How to solve file permission issues when using Docker volumes with user namespace remapping for enhanced security.
 

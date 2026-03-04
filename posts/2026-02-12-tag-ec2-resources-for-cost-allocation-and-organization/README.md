@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, Tagging, Cost Allocation, Cost Management, Organization
+Tags: AWS, EC2, Tagging, Cost Allocation, Cost Management, Organizations
 
 Description: Implement a comprehensive EC2 tagging strategy for cost allocation, resource organization, automation, and compliance across your AWS environment.
 

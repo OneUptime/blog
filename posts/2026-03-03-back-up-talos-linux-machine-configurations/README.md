@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Backup, Machine Configuration, Kubernetes, Infrastructure as Code
+Tags: Talos Linux, Backups, Machine Configuration, Kubernetes, Infrastructure as Code
 
 Description: A practical guide to backing up Talos Linux machine configurations to ensure you can rebuild or recover your cluster nodes.
 

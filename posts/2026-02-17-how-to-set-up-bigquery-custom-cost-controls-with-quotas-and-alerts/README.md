@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, Cost Control, Quota, Alerts, Budget Management
+Tags: GCP, BigQuery, Cost Control, Quotas, Alerts, Budget Management
 
 Description: Learn how to implement custom cost controls in BigQuery using project quotas, per-user limits, budget alerts, and automated safeguards.
 

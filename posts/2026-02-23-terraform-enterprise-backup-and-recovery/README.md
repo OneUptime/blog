@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Terraform Enterprise, Backup, Recovery, Disaster Recovery, DevOps
+Tags: Terraform, Terraform Enterprise, Backups, Recovery, Disaster Recovery, DevOps
 
 Description: Learn how to implement a backup and recovery strategy for Terraform Enterprise, covering database backups, object storage, configuration backup, and tested recovery procedures.
 

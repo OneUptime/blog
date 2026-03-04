@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Google Cloud, Cloud Run, Serverless, Container
+Tags: Ansible, Google Cloud, Cloud Run, Serverless, Containers
 
 Description: Deploy containerized applications to Google Cloud Run using Ansible for serverless container management with auto-scaling and traffic splitting.
 

@@ -16,19 +16,19 @@ Let me walk you through running your first container and the essential commands 
 
 Before running anything, you need an image. Let us grab the Red Hat Universal Base Image:
 
-# Pull UBI 9 from the Red Hat registry
+## Pull UBI 9 from the Red Hat registry
 ```bash
 podman pull registry.access.redhat.com/ubi9/ubi
 ```
 
 If you have configured `docker.io` in your registries, you can also pull from Docker Hub:
 
-# Pull nginx from Docker Hub
+## Pull nginx from Docker Hub
 ```bash
 podman pull docker.io/library/nginx:latest
 ```
 
-# List all downloaded images
+## List all downloaded images
 ```bash
 podman images
 ```
@@ -37,7 +37,7 @@ podman images
 
 The simplest way to run a container is the `podman run` command:
 
-# Run a container interactively with a shell
+## Run a container interactively with a shell
 ```bash
 podman run -it --name myubi registry.access.redhat.com/ubi9/ubi /bin/bash
 ```
@@ -60,17 +60,17 @@ exit
 
 Most production containers run detached in the background:
 
-# Run nginx in the background, mapping port 8080 on the host to port 80 in the container
+## Run nginx in the background, mapping port 8080 on the host to port 80 in the container
 ```bash
 podman run -d --name webserver -p 8080:80 docker.io/library/nginx:latest
 ```
 
-# Verify it is running
+## Verify it is running
 ```bash
 podman ps
 ```
 
-# Test the web server
+## Test the web server
 ```bash
 curl http://localhost:8080
 ```
@@ -93,34 +93,34 @@ stateDiagram-v2
     Running --> Removed: podman rm -f
 ```
 
-# Stop a running container gracefully (sends SIGTERM, then SIGKILL after timeout)
+## Stop a running container gracefully (sends SIGTERM, then SIGKILL after timeout)
 ```bash
 podman stop webserver
 ```
 
-# Start a stopped container
+## Start a stopped container
 ```bash
 podman start webserver
 ```
 
-# Restart a container
+## Restart a container
 ```bash
 podman restart webserver
 ```
 
-# Pause and unpause a container (freezes processes using cgroups)
+## Pause and unpause a container (freezes processes using cgroups)
 ```bash
 podman pause webserver
 podman unpause webserver
 ```
 
-# Remove a stopped container
+## Remove a stopped container
 ```bash
 podman stop webserver
 podman rm webserver
 ```
 
-# Force remove a running container
+## Force remove a running container
 ```bash
 podman rm -f webserver
 ```
@@ -129,22 +129,22 @@ podman rm -f webserver
 
 When something goes wrong - and it will - logs are your first stop:
 
-# View all logs for a container
+## View all logs for a container
 ```bash
 podman logs webserver
 ```
 
-# Follow logs in real-time (like tail -f)
+## Follow logs in real-time (like tail -f)
 ```bash
 podman logs -f webserver
 ```
 
-# Show only the last 50 lines
+## Show only the last 50 lines
 ```bash
 podman logs --tail 50 webserver
 ```
 
-# Show logs with timestamps
+## Show logs with timestamps
 ```bash
 podman logs -t webserver
 ```
@@ -153,17 +153,17 @@ podman logs -t webserver
 
 Need to poke around inside a running container? Use `exec`:
 
-# Open a shell inside the running container
+## Open a shell inside the running container
 ```bash
 podman exec -it webserver /bin/bash
 ```
 
-# Run a single command without entering the container
+## Run a single command without entering the container
 ```bash
 podman exec webserver cat /etc/nginx/nginx.conf
 ```
 
-# Run a command as a specific user
+## Run a command as a specific user
 ```bash
 podman exec --user nginx webserver whoami
 ```
@@ -172,7 +172,7 @@ podman exec --user nginx webserver whoami
 
 Many containers need configuration through environment variables:
 
-# Pass environment variables at runtime
+## Pass environment variables at runtime
 ```bash
 podman run -d --name mydb \
   -e MYSQL_ROOT_PASSWORD=secretpass \
@@ -181,7 +181,7 @@ podman run -d --name mydb \
   docker.io/library/mariadb:latest
 ```
 
-# Verify the variables are set inside the container
+## Verify the variables are set inside the container
 ```bash
 podman exec mydb env | grep MYSQL
 ```
@@ -190,17 +190,17 @@ podman exec mydb env | grep MYSQL
 
 The `inspect` command gives you the full JSON detail of a container:
 
-# Get all details about a container
+## Get all details about a container
 ```bash
 podman inspect webserver
 ```
 
-# Get just the IP address
+## Get just the IP address
 ```bash
 podman inspect --format '{{.NetworkSettings.IPAddress}}' webserver
 ```
 
-# Get the container's state
+## Get the container's state
 ```bash
 podman inspect --format '{{.State.Status}}' webserver
 ```
@@ -209,12 +209,12 @@ podman inspect --format '{{.State.Status}}' webserver
 
 Keep an eye on what your containers are consuming:
 
-# Show real-time resource usage for all running containers
+## Show real-time resource usage for all running containers
 ```bash
 podman stats
 ```
 
-# Show stats for a specific container without streaming
+## Show stats for a specific container without streaming
 ```bash
 podman stats --no-stream webserver
 ```
@@ -225,12 +225,12 @@ This shows CPU, memory, network I/O, and block I/O, similar to `docker stats`.
 
 Sometimes you need to move files in or out:
 
-# Copy a file from host to container
+## Copy a file from host to container
 ```bash
 podman cp /tmp/myconfig.conf webserver:/etc/nginx/conf.d/
 ```
 
-# Copy a file from container to host
+## Copy a file from container to host
 ```bash
 podman cp webserver:/var/log/nginx/access.log /tmp/
 ```
@@ -239,17 +239,17 @@ podman cp webserver:/var/log/nginx/access.log /tmp/
 
 Containers and images accumulate over time. Clean up regularly:
 
-# Remove all stopped containers
+## Remove all stopped containers
 ```bash
 podman container prune
 ```
 
-# Remove all unused images
+## Remove all unused images
 ```bash
 podman image prune
 ```
 
-# Nuclear option - remove everything (containers, images, volumes)
+## Nuclear option - remove everything (containers, images, volumes)
 ```bash
 podman system prune -a
 ```
@@ -258,7 +258,7 @@ podman system prune -a
 
 If you want a container to restart on failure or reboot, combine with systemd (covered in a later post) or use the `--restart` flag:
 
-# Restart the container unless it was explicitly stopped
+## Restart the container unless it was explicitly stopped
 ```bash
 podman run -d --name webserver --restart unless-stopped -p 8080:80 docker.io/library/nginx:latest
 ```

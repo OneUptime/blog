@@ -206,7 +206,7 @@ vi /etc/lvm/lvm.conf
 
 Find and modify these settings:
 
-```
+```bash
 thin_pool_autoextend_threshold = 80
 thin_pool_autoextend_percent = 20
 ```

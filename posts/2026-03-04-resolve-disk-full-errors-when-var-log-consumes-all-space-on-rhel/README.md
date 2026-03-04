@@ -67,7 +67,7 @@ sudo vi /etc/logrotate.d/syslog
 
 Example configuration:
 
-```
+```bash
 /var/log/messages /var/log/secure /var/log/maillog /var/log/cron {
     daily
     rotate 7

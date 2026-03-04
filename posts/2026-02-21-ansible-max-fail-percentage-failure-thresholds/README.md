@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Error Handling, Deployment Safety, Rolling Update
+Tags: Ansible, Error Handling, Deployment Safety, Rolling Updates
 
 Description: Configure Ansible max_fail_percentage to automatically stop playbook execution when failures exceed a threshold, preventing widespread deployment issues.
 

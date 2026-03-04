@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Template, Jinja2, Configuration Management
+Tags: Ansible, Templates, Jinja2, Configuration Management
 
 Description: Learn how to combine Ansible loop with the template module to generate multiple configuration files from a single Jinja2 template.
 

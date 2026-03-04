@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Health Check, Monitoring, Microservices, Observability
+Tags: Go, Golang, Health Checks, Monitoring, Microservices, Observability
 
 Description: A practical guide to building a service health aggregation system in Go that monitors multiple services and dependencies.
 

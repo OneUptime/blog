@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ImagePullBackOff, Container Registry, Debugging, POD
+Tags: Kubernetes, ImagePullBackOff, Container Registry, Debugging, Pods
 
 Description: Learn how to troubleshoot and fix ImagePullBackOff and ErrImagePull errors caused by registry authentication, image names, and network issues.
 

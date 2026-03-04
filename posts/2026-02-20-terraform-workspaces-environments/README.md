@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Environment, Infrastructure as Code, DevOps
+Tags: Terraform, Workspaces, Environment, Infrastructure as Code, DevOps
 
 Description: Learn how to use Terraform workspaces to manage multiple environments like dev, staging, and production from the same codebase.
 

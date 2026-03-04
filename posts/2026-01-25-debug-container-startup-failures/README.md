@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Debugging, Container, DevOps, Troubleshooting
+Tags: Kubernetes, Debugging, Containers, DevOps, Troubleshooting
 
 Description: Learn systematic approaches to debug container startup failures in Kubernetes, including analyzing exit codes, inspecting logs, checking image pull issues, and resolving common configuration problems.
 

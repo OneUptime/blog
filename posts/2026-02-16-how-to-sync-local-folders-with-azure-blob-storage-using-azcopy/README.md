@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, AzCopy, Blob Storage, Data Sync, File Synchronization, Azure Storage, Backup
+Tags: Azure, AzCopy, Blob Storage, Data Sync, File Synchronization, Azure Storage, Backups
 
 Description: Learn how to use AzCopy sync to keep local directories and Azure Blob Storage containers in sync, including one-way and bidirectional sync strategies.
 

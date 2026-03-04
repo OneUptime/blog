@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Check, Configuration
+Tags: Kubernetes, Health Checks, Configuration
 
 Description: Configure probe initialDelaySeconds correctly to prevent Kubernetes from killing pods before they finish starting up, balancing fast failure detection with adequate startup time.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, TLS, SSLyze, Certificate
+Tags: Ubuntu, Security, TLS, SSLyze, Certificates
 
 Description: Learn how to install and use SSLyze on Ubuntu to test TLS/SSL configurations, identify weak ciphers, check certificate validity, and ensure secure HTTPS deployments.
 

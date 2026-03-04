@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Synthetic Monitoring, Multi-Region, Health Check
+Tags: OpenTelemetry, Synthetic Monitoring, Multi-Region, Health Checks
 
 Description: Deploy OpenTelemetry Collectors across multiple regions to run synthetic health checks and detect regional availability issues.
 

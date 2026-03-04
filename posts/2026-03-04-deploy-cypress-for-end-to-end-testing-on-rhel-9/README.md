@@ -78,7 +78,7 @@ npx cypress run
 
 After initialization, Cypress creates:
 
-```
+```bash
 cypress/
   e2e/           # Test files
   fixtures/      # Test data

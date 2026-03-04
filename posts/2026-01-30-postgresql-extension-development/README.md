@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: PostgreSQL, Database, C, Extension
+Tags: PostgreSQL, Database, C, Extensions
 
 Description: Create custom PostgreSQL extensions from scratch with SQL functions, C functions, custom types, and proper packaging for distribution.
 

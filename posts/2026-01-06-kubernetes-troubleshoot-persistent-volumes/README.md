@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Storage, Persistent Volume, Troubleshooting, DevOps
+Tags: Kubernetes, Storage, Persistent Volumes, Troubleshooting, DevOps
 
 Description: A comprehensive guide to diagnosing and fixing Persistent Volume and Persistent Volume Claim issues in Kubernetes, from binding failures to mount errors.
 

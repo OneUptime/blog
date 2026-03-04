@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Design Pattern, Microservices, Container
+Tags: Kubernetes, Design Pattern, Microservices, Containers
 
 Description: Implement the ambassador pattern in Kubernetes with sidecar containers that proxy connections to external services for simplified application networking.
 

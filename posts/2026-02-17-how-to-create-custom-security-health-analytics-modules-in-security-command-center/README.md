@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Security Command Center, Security Health Analytics, Cloud Security, Custom Module
+Tags: GCP, Security Command Center, Security Health Analytics, Cloud Security, Custom Modules
 
 Description: Learn how to build custom Security Health Analytics modules in Google Cloud Security Command Center to detect organization-specific misconfigurations and compliance violations.
 

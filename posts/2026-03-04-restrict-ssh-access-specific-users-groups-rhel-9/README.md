@@ -20,25 +20,25 @@ sudo vi /etc/ssh/sshd_config.d/20-access.conf
 
 ### Allow by group (recommended)
 
-```
+```bash
 AllowGroups sshusers wheel
 ```
 
 ### Allow by username
 
-```
+```bash
 AllowUsers admin jsmith jdoe
 ```
 
 ### Allow by username with source restriction
 
-```
+```bash
 AllowUsers admin jsmith@10.0.0.0/24 deploy@10.0.100.50
 ```
 
 ### Deny specific users
 
-```
+```bash
 DenyUsers nobody apache nginx postgres
 DenyGroups nologin
 ```
@@ -63,7 +63,7 @@ sudo authselect enable-feature with-pamaccess
 sudo vi /etc/security/access.conf
 ```
 
-```
+```bash
 # Allow admin group from anywhere
 + : @admins : ALL
 
@@ -128,7 +128,7 @@ Use Match blocks for conditional restrictions:
 sudo vi /etc/ssh/sshd_config.d/20-access.conf
 ```
 
-```
+```bash
 # Default: deny all
 AllowGroups sshusers
 
@@ -185,7 +185,7 @@ sudo chown fileuser:sftponly /data/sftp/fileuser/uploads
 
 Configure SSH:
 
-```
+```bash
 Match Group sftponly
     ForceCommand internal-sftp
     ChrootDirectory /data/sftp/%u

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Reserved Instances, Virtual Machine, Cost Optimization, Cloud Computing, Budget, FinOps
+Tags: Azure, Reserved Instances, Virtual Machines, Cost Optimization, Cloud Computing, Budget, FinOps
 
 Description: A practical guide to purchasing Azure Reserved VM Instances to save up to 72% on compute costs with commitment-based pricing.
 

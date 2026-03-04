@@ -137,14 +137,14 @@ There are two forwarding modes to choose from:
 
 **forward only** - BIND only asks the configured forwarders. If they don't respond, the query fails:
 
-```
+```bash
 forwarders { 8.8.8.8; 8.8.4.4; };
 forward only;
 ```
 
 **forward first** - BIND asks the forwarders first, but if they don't respond, it falls back to doing full recursive resolution from the root servers:
 
-```
+```bash
 forwarders { 8.8.8.8; 8.8.4.4; };
 forward first;
 ```
@@ -255,7 +255,7 @@ You can add response policy zones (RPZ) or local zone entries to override DNS fo
 
 Add a local zone for internal names by appending to named.conf:
 
-```
+```bash
 zone "internal.corp" IN {
     type primary;
     file "internal.corp.zone";
@@ -285,7 +285,7 @@ rndc reload
 
 For busy networks, increase the number of worker threads and cache size:
 
-```
+```bash
 options {
     // ... existing options ...
     max-cache-size 512m;

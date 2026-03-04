@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: etcd, Kubernetes, Backup, Restore, Disaster Recovery
+Tags: etcd, Kubernetes, Backups, Restore, Disaster Recovery
 
 Description: Learn how to backup and restore etcd snapshots for Kubernetes cluster disaster recovery with automated backup strategies.
 

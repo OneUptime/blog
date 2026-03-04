@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, GCS, Object Storage, Backup, Cloud Storage
+Tags: Google Cloud, GCS, Object Storage, Backups, Cloud Storage
 
 Description: A practical guide to using Google Cloud Storage for backups and application data, covering bucket configuration, storage classes, lifecycle rules, and integration with backup tools.
 

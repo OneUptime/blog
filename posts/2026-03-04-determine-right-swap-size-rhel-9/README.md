@@ -88,7 +88,7 @@ For hibernation, swap should be at least equal to RAM, plus some headroom for sw
 
 Databases have their own buffer pools and cache management. Large swap is counterproductive because swapping database pages means terrible query performance.
 
-```
+```bash
 RAM: 64 GB
 Recommended swap: 4-8 GB
 vm.swappiness: 10
@@ -100,7 +100,7 @@ The swap here is a safety net, not a regular resource.
 
 Web servers benefit from swap as a buffer during traffic spikes:
 
-```
+```bash
 RAM: 16 GB
 Recommended swap: 8-16 GB
 vm.swappiness: 30
@@ -110,7 +110,7 @@ vm.swappiness: 30
 
 Java applications can have large heaps. If the JVM heap is set to 12 GB on a 16 GB system, swap provides room for everything else:
 
-```
+```bash
 RAM: 16 GB
 JVM Heap: 12 GB
 Recommended swap: 8 GB
@@ -121,7 +121,7 @@ vm.swappiness: 10
 
 Build processes can be bursty. They might use 2 GB most of the time but spike to 12 GB during large compilations:
 
-```
+```bash
 RAM: 16 GB
 Recommended swap: 8-16 GB
 vm.swappiness: 60 (default is fine)
@@ -131,7 +131,7 @@ vm.swappiness: 60 (default is fine)
 
 Kubernetes historically required swap to be disabled. Newer versions support swap, but most clusters still run with swap off:
 
-```
+```bash
 RAM: 32 GB
 Recommended swap: 0 (disabled)
 ```
@@ -140,7 +140,7 @@ Recommended swap: 0 (disabled)
 
 For interactive use, you want enough swap to handle memory-heavy applications without killing your browser session:
 
-```
+```bash
 RAM: 32 GB
 Recommended swap: 8 GB
 vm.swappiness: 30-40

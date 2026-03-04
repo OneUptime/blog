@@ -59,7 +59,7 @@ mount -t tmpfs -o size=2G,nr_inodes=0 tmpfs /mnt/ramdisk
 
 The shared memory tmpfs is used by POSIX shared memory and semaphores. Configure it in fstab:
 
-```
+```bash
 tmpfs  /dev/shm  tmpfs  defaults,size=4G,noexec,nosuid,nodev  0 0
 ```
 
@@ -107,7 +107,7 @@ vi /etc/systemd/logind.conf
 
 Set:
 
-```
+```bash
 RuntimeDirectorySize=512M
 ```
 
@@ -132,19 +132,19 @@ mount -t tmpfs -o size=2G,mode=1777,noexec,nosuid,nodev tmpfs /mnt/ramdisk
 
 For `/tmp`:
 
-```
+```bash
 tmpfs  /tmp  tmpfs  defaults,size=4G,mode=1777,noexec,nosuid,nodev  0 0
 ```
 
 For `/dev/shm`:
 
-```
+```bash
 tmpfs  /dev/shm  tmpfs  defaults,size=4G,noexec,nosuid,nodev  0 0
 ```
 
 For application-specific tmpfs:
 
-```
+```bash
 tmpfs  /var/lib/app/cache  tmpfs  defaults,size=1G,mode=0750,uid=appuser,gid=appgroup,noexec,nosuid,nodev  0 0
 ```
 
@@ -216,7 +216,7 @@ df -h /mnt/ramdisk
 
 A complete fstab example for multiple tmpfs mounts:
 
-```
+```bash
 # System temp directory
 tmpfs  /tmp        tmpfs  defaults,size=4G,mode=1777,noexec,nosuid,nodev  0 0
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Concourse CI, CI/CD, Kubernetes, Pipeline
+Tags: Talos Linux, Concourse CI, CI/CD, Kubernetes, Pipelines
 
 Description: A complete walkthrough for deploying Concourse CI on Talos Linux with Kubernetes workers for scalable, reproducible CI/CD pipelines.
 

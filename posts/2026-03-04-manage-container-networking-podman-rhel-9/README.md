@@ -14,12 +14,12 @@ Container networking can be confusing, especially when you are juggling rootful 
 
 When you run a container without specifying a network, Podman connects it to the default `podman` bridge network:
 
-# Run a container on the default network
+## Run a container on the default network
 ```bash
 podman run -d --name web1 docker.io/library/nginx:latest
 ```
 
-# Check which network the container is using
+## Check which network the container is using
 ```bash
 podman inspect web1 --format '{{.NetworkSettings.Networks}}'
 ```
@@ -28,7 +28,7 @@ podman inspect web1 --format '{{.NetworkSettings.Networks}}'
 
 RHEL uses Netavark (not CNI) as the default:
 
-# Verify the network backend
+## Verify the network backend
 ```bash
 podman info --format '{{.Host.NetworkBackend}}'
 ```
@@ -39,22 +39,22 @@ You should see `netavark` for rootful containers. Rootless containers use `pasta
 
 Expose container ports to the host:
 
-# Map host port 8080 to container port 80
+## Map host port 8080 to container port 80
 ```bash
 podman run -d --name web -p 8080:80 docker.io/library/nginx:latest
 ```
 
-# Map to a specific host IP
+## Map to a specific host IP
 ```bash
 podman run -d --name web -p 192.168.1.100:8080:80 docker.io/library/nginx:latest
 ```
 
-# Map a range of ports
+## Map a range of ports
 ```bash
 podman run -d --name web -p 8080-8090:80-90 docker.io/library/nginx:latest
 ```
 
-# Map to a random host port
+## Map to a random host port
 ```bash
 podman run -d --name web -p 80 docker.io/library/nginx:latest
 podman port web
@@ -64,27 +64,27 @@ podman port web
 
 Custom networks let you isolate groups of containers and enable DNS-based service discovery:
 
-# Create a custom bridge network
+## Create a custom bridge network
 ```bash
 podman network create mynet
 ```
 
-# Create a network with a specific subnet
+## Create a network with a specific subnet
 ```bash
 podman network create --subnet 10.89.0.0/24 --gateway 10.89.0.1 backend-net
 ```
 
-# Create a network with IPv6
+## Create a network with IPv6
 ```bash
 podman network create --subnet fd00:dead:beef::/64 --ipv6 ipv6net
 ```
 
-# List all networks
+## List all networks
 ```bash
 podman network ls
 ```
 
-# Inspect a network
+## Inspect a network
 ```bash
 podman network inspect mynet
 ```
@@ -101,7 +101,7 @@ graph TB
     D[Host] -->|port 8080| A
 ```
 
-# Run containers on a custom network
+## Run containers on a custom network
 ```bash
 podman run -d --name db --network mynet docker.io/library/mariadb:latest -e MYSQL_ROOT_PASSWORD=secret
 podman run -d --name api --network mynet docker.io/library/nginx:latest
@@ -110,7 +110,7 @@ podman run -d --name web --network mynet -p 8080:80 docker.io/library/nginx:late
 
 Containers on the same custom network can reach each other by name:
 
-# Test DNS resolution between containers
+## Test DNS resolution between containers
 ```bash
 podman exec web ping -c 2 api
 podman exec web ping -c 2 db
@@ -120,23 +120,23 @@ podman exec web ping -c 2 db
 
 A container can be on multiple networks:
 
-# Create two networks
+## Create two networks
 ```bash
 podman network create frontend
 podman network create backend
 ```
 
-# Run a container on the frontend network
+## Run a container on the frontend network
 ```bash
 podman run -d --name gateway --network frontend -p 8080:80 docker.io/library/nginx:latest
 ```
 
-# Connect it to the backend network as well
+## Connect it to the backend network as well
 ```bash
 podman network connect backend gateway
 ```
 
-# Disconnect from a network
+## Disconnect from a network
 ```bash
 podman network disconnect frontend gateway
 ```
@@ -145,12 +145,12 @@ podman network disconnect frontend gateway
 
 Assign specific IPs to containers:
 
-# Run with a specific IP address
+## Run with a specific IP address
 ```bash
 podman run -d --name fixedip --network mynet --ip 10.89.0.100 docker.io/library/nginx:latest
 ```
 
-# Verify the assigned IP
+## Verify the assigned IP
 ```bash
 podman inspect fixedip --format '{{.NetworkSettings.Networks.mynet.IPAddress}}'
 ```
@@ -159,12 +159,12 @@ podman inspect fixedip --format '{{.NetworkSettings.Networks.mynet.IPAddress}}'
 
 For containers that need to appear as physical devices on your network:
 
-# Create a macvlan network attached to eth0
+## Create a macvlan network attached to eth0
 ```bash
 podman network create --driver macvlan --subnet 192.168.1.0/24 --gateway 192.168.1.1 -o parent=eth0 macnet
 ```
 
-# Run a container on the macvlan network
+## Run a container on the macvlan network
 ```bash
 podman run -d --name maccontainer --network macnet --ip 192.168.1.200 docker.io/library/nginx:latest
 ```
@@ -175,7 +175,7 @@ Macvlan containers get IPs on your physical network and can be reached directly 
 
 Skip network isolation entirely and use the host's network stack:
 
-# Run with host networking (no isolation)
+## Run with host networking (no isolation)
 ```bash
 podman run -d --name hostnet --network host docker.io/library/nginx:latest
 ```
@@ -186,40 +186,42 @@ The container shares the host's network interfaces, IP addresses, and ports. Thi
 
 When containers cannot communicate, check these:
 
-# Verify container network settings
+## Verify container network settings
 ```bash
 podman inspect <container> --format '{{json .NetworkSettings}}' | jq .
 ```
 
-# Check if containers are on the same network
+## Check if containers are on the same network
 ```bash
 podman network inspect mynet | jq '.[0].Containers'
 ```
 
-# Test connectivity from inside a container
+## Test connectivity from inside a container
 ```bash
 podman exec web curl -s http://api:80
 ```
 
-# Check DNS resolution inside a container
+## Check DNS resolution inside a container
 ```bash
 podman exec web cat /etc/resolv.conf
 podman exec web nslookup api
 ```
 
-# Check iptables/nftables rules for port forwarding
+## Check iptables/nftables rules for port forwarding
 ```bash
 sudo nft list ruleset | grep 8080
 ```
 
 ## Cleaning Up Networks
 
-# Remove a specific network (must not have containers attached)
+This section covers cleaning up networks.
+
+## Remove a specific network (must not have containers attached)
 ```bash
 podman network rm mynet
 ```
 
-# Remove all unused networks
+## Remove all unused networks
 ```bash
 podman network prune
 ```

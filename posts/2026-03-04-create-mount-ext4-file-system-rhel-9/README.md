@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ext4, Filesystem, Storage, Linux
+Tags: RHEL, ext4, Filesystems, Storage, Linux
 
 Description: Learn how to create, mount, and configure ext4 file systems on RHEL, covering partition preparation, formatting options, and persistent mount configuration.
 
@@ -122,7 +122,7 @@ sudo blkid /dev/sdb1
 
 Add to `/etc/fstab`:
 
-```
+```bash
 UUID=your-uuid-here /data ext4 defaults 0 2
 ```
 
@@ -167,7 +167,7 @@ sudo chmod 755 /data
 
 Example with performance options:
 
-```
+```bash
 UUID=your-uuid /data ext4 defaults,noatime,commit=60 0 2
 ```
 

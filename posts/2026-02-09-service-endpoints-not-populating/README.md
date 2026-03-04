@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Networking, Service
+Tags: Kubernetes, Networking, Services
 
 Description: Learn how to diagnose and fix Kubernetes Service endpoints that fail to populate despite having matching pods, including label mismatches, readiness probe failures, and network policy issues.
 

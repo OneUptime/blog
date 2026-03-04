@@ -117,7 +117,7 @@ project/
 ```bash
 mkdir -p modules/networking
 mkdir -p environments/production/networking
-```
+```bash
 
 **Step 1.2: Create module files**
 Copy the following files (see Appendix A for full content):
@@ -137,16 +137,16 @@ terraform state mv aws_vpc.main \
 terraform state mv 'aws_subnet.public[0]' \
   'module.networking.aws_subnet.public["us-east-1a"]'
 
-# ... (list all state moves)
-```
+## ... (list all state moves)
+```bash
 
 **Step 1.5: Verify**
 ```bash
 cd environments/production/networking
 terraform init
 terraform plan
-# Expected output: No changes.
-```
+## Expected output: No changes.
+```bash
 
 #### Verification Checklist
 - [ ] `terraform plan` shows no changes

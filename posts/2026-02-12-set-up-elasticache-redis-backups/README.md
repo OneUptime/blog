@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ElastiCache, Redis, Backup, Disaster Recovery
+Tags: AWS, ElastiCache, Redis, Backups, Disaster Recovery
 
 Description: Learn how to configure automatic and manual backups for ElastiCache Redis, manage snapshot retention, export snapshots to S3, and restore from backups.
 

@@ -29,7 +29,7 @@ sudo pvs
 
 You might see output like this:
 
-```
+```bash
   PV         VG     Fmt  Attr PSize   PFree
   /dev/sda1  vg_data lvm2 a--  50.00g  10.00g
   /dev/sdb1  vg_data lvm2 a--  50.00g  50.00g

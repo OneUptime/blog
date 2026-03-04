@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Batch, AMI, EC2, Container, ECS, Custom AMI, Compute Environment
+Tags: AWS, Batch, AMI, EC2, Containers, ECS, Custom AMI, Compute Environment
 
 Description: Learn how to configure and customize AMIs for AWS Batch compute environments including GPU drivers, custom software, and security hardening.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Plugin, Visualization, Monitoring
+Tags: Grafana, Plugins, Visualization, Monitoring
 
 Description: Build custom Grafana panel plugins with React for specialized visualizations, data transformations, and interactive dashboards.
 

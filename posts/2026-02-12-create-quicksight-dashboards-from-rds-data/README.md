@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, QuickSight, RDS, Dashboard, Business Intelligence
+Tags: AWS, QuickSight, RDS, Dashboards, Business Intelligence
 
 Description: Step-by-step instructions for connecting Amazon QuickSight to RDS databases and building interactive dashboards with SPICE caching, calculated fields, and scheduled refreshes.
 

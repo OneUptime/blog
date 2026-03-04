@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Connection, Container, Automation
+Tags: Ansible, Docker, Connection, Containers, Automation
 
 Description: Use Ansible's docker connection plugin to run tasks directly inside Docker containers for management and configuration.
 

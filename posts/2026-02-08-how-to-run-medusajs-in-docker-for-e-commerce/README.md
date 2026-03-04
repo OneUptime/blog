@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Medusa.js, E-Commerce, Node.js, PostgreSQL, Redis, JavaScript, Container, Headless Commerce
+Tags: Docker, Medusa.js, E-Commerce, Node.js, PostgreSQL, Redis, JavaScript, Containers, Headless Commerce
 
 Description: Learn how to deploy Medusa.js, the open-source headless commerce engine, in Docker containers with PostgreSQL and Redis for a modern e-commerce backend.
 

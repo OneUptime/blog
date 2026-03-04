@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, IdM, Disaster Recovery, Backup, Linux
+Tags: RHEL, IdM, Disaster Recovery, Backups, Linux
 
 Description: A comprehensive guide to backing up and restoring Red Hat Identity Management on RHEL, including disaster recovery planning, backup types, and recovery procedures.
 

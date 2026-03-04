@@ -146,7 +146,7 @@ The `OnInfected Reject` setting rejects infected messages outright. Alternatives
 
 Add the milter to Postfix. Edit `/etc/postfix/main.cf`:
 
-```
+```bash
 # ClamAV milter for virus scanning
 smtpd_milters = unix:/run/clamav-milter/clamav-milter.sock
 non_smtpd_milters = unix:/run/clamav-milter/clamav-milter.sock
@@ -155,7 +155,7 @@ milter_default_action = accept
 
 If you already have other milters (like OpenDKIM), add ClamAV to the list:
 
-```
+```bash
 smtpd_milters = inet:localhost:8891, unix:/run/clamav-milter/clamav-milter.sock
 non_smtpd_milters = inet:localhost:8891, unix:/run/clamav-milter/clamav-milter.sock
 ```
@@ -213,7 +213,7 @@ sudo tail -20 /var/log/maillog
 
 You should see something like:
 
-```
+```bash
 clamav-milter: Message from test@example.com infected by Eicar-Signature FOUND
 ```
 
@@ -234,7 +234,7 @@ sudo grep "status=sent" /var/log/maillog | tail -5
 
 ClamAV adds a header to scanned messages. Check delivered mail for:
 
-```
+```bash
 X-Virus-Scanned: ClamAV
 X-Virus-Status: Clean
 ```
@@ -243,7 +243,7 @@ X-Virus-Status: Clean
 
 For high-volume mail servers, tune the ClamAV daemon:
 
-```
+```bash
 # In /etc/clamd.d/scan.conf
 
 # Increase threads for more concurrent scans

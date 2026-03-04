@@ -36,7 +36,9 @@ graph TB
 
 ## Setting Up the Quadlet Directory
 
-# Create the Quadlet directory for rootless containers
+This section covers setting up the quadlet directory.
+
+## Create the Quadlet directory for rootless containers
 ```bash
 mkdir -p ~/.config/containers/systemd/
 ```
@@ -183,24 +185,26 @@ Only the proxy publishes a port to the host. Everything else communicates over t
 
 ## Starting the Stack
 
-# Reload systemd to pick up all new unit files
+This section covers starting the stack.
+
+## Reload systemd to pick up all new unit files
 ```bash
 systemctl --user daemon-reload
 ```
 
-# Start the proxy (which pulls in all dependencies)
+## Start the proxy (which pulls in all dependencies)
 ```bash
 systemctl --user start proxy
 ```
 
 Because of the dependency chain, systemd starts them in order: database and cache first, then appserver, then proxy.
 
-# Check the status of all services
+## Check the status of all services
 ```bash
 systemctl --user status database cache appserver proxy
 ```
 
-# Verify all containers are running
+## Verify all containers are running
 ```bash
 podman ps
 ```
@@ -219,12 +223,14 @@ sudo loginctl enable-linger $USER
 
 ## Viewing Logs
 
-# View logs for a specific service
+This section covers viewing logs.
+
+## View logs for a specific service
 ```bash
 journalctl --user -u database -f
 ```
 
-# View logs for all app-related services
+## View logs for all app-related services
 ```bash
 journalctl --user -u database -u cache -u appserver -u proxy --no-pager -n 100
 ```
@@ -233,12 +239,12 @@ journalctl --user -u database -u cache -u appserver -u proxy --no-pager -n 100
 
 One advantage of Quadlet over Docker Compose is that you can update individual services independently:
 
-# Pull a new database image
+## Pull a new database image
 ```bash
 podman pull docker.io/library/mariadb:latest
 ```
 
-# Restart just the database service
+## Restart just the database service
 ```bash
 systemctl --user restart database
 ```
@@ -278,7 +284,9 @@ EOF
 
 ## Stopping the Entire Stack
 
-# Stop everything in reverse order
+This section covers stopping the entire stack.
+
+## Stop everything in reverse order
 ```bash
 systemctl --user stop proxy appserver cache database
 ```
@@ -291,12 +299,14 @@ systemctl --user stop proxy
 
 ## Debugging Quadlet Files
 
-# Dry-run the Quadlet generator to check for errors
+This section covers debugging quadlet files.
+
+## Dry-run the Quadlet generator to check for errors
 ```bash
 /usr/libexec/podman/quadlet --dryrun --user 2>&1
 ```
 
-# View the generated systemd unit
+## View the generated systemd unit
 ```bash
 systemctl --user cat database.service
 ```

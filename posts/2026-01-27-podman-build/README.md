@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Container, Buildah, OCI, DevOps, Docker Alternative
+Tags: Podman, Containers, Buildah, OCI, DevOps, Docker Alternative
 
 Description: A comprehensive guide to building container images with Podman, covering Buildah integration, multi-stage builds, build arguments, OCI image format.
 

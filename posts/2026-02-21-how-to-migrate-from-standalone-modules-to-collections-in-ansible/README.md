@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Migration, Automation
+Tags: Ansible, Collections, Migration, Automation
 
 Description: Step-by-step guide to migrating Ansible playbooks from legacy standalone modules to the modern collections format with minimal disruption.
 

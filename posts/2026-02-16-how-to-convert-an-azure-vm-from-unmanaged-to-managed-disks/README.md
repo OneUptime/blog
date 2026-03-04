@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Managed Disks, Unmanaged Disks, Virtual Machine, Storage Migration, Azure CLI, Cloud Infrastructure
+Tags: Azure, Managed Disks, Unmanaged Disks, Virtual Machines, Storage Migration, Azure CLI, Cloud Infrastructure
 
 Description: Step-by-step guide to migrating Azure VMs from unmanaged disks (VHDs in storage accounts) to managed disks for better reliability and management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Btrfs, Storage, Linux, File System
+Tags: Ubuntu, Btrfs, Storage, Linux, File Systems
 
 Description: Set up Btrfs on Ubuntu for built-in data integrity checking, RAID support, snapshots, and compression, covering installation, formatting, and initial configuration.
 

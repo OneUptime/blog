@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Bacula, Backup, Disaster Recovery, Enterprise, Tutorial
+Tags: Ubuntu, Bacula, Backups, Disaster Recovery, Enterprise, Tutorial
 
 Description: Complete guide to setting up Bacula enterprise backup system on Ubuntu.
 

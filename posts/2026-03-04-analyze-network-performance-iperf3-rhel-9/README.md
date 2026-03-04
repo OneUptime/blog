@@ -35,7 +35,7 @@ The default test runs for 10 seconds using TCP and reports throughput in Mbits/s
 
 ## Understanding the Output
 
-```
+```bash
 [ ID] Interval           Transfer     Bitrate         Retr
 [  5]   0.00-1.00   sec   112 MBytes   939 Mbits/sec    0
 [  5]   1.00-2.00   sec   112 MBytes   940 Mbits/sec    0
@@ -84,7 +84,7 @@ iperf3 -c 192.168.1.100 -u -b 1G
 
 UDP output includes:
 
-```
+```bash
 [  5]   0.00-10.00  sec  1.16 GBytes   997 Mbits/sec  0.015 ms  2/149529 (0.0013%)  sender
 ```
 

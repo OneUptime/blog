@@ -65,7 +65,7 @@ This creates the standard Ansible role directory structure with a `molecule/defa
 
 ## Understanding the Scenario Structure
 
-```
+```bash
 molecule/
   default/
     converge.yml      # Playbook that applies the role

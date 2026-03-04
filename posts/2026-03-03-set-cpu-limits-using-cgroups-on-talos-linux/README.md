@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, CPU Limits, cgroups, Kubernetes, Resource Management, Performance
+Tags: Talos Linux, CPU Limits, Cgroups, Kubernetes, Resource Management, Performance
 
 Description: Understand how CPU limits work through cgroups on Talos Linux and learn to configure them properly to avoid throttling and performance issues.
 

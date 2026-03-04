@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Grafana, Dashboard, Monitoring, Kubernetes, Observability
+Tags: Istio, Grafana, Dashboards, Monitoring, Kubernetes, Observability
 
 Description: A step-by-step guide to setting up Grafana dashboards for Istio service mesh monitoring with pre-built and custom dashboard configurations.
 

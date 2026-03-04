@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kustomize, Plugin
+Tags: Kubernetes, Kustomize, Plugins
 
 Description: Master the Kustomize plugin system to create custom generators and transformers that extend Kustomize capabilities for organization-specific configuration requirements.
 
@@ -478,7 +478,7 @@ spec:
   - name: app-name
     replicas: 3
   image: container:tag
-```
+```bash
 
 ## Fields
 - `apps`: List of applications to generate
@@ -510,4 +510,5 @@ The Kustomize plugin system extends configuration management capabilities beyond
 
 By following plugin development best practices and maintaining clear documentation, you can build a library of reusable components that enhance Kustomize for your entire organization. The plugin system's extensibility ensures Kustomize can adapt to virtually any configuration management need while maintaining its declarative, version-controlled approach.
 
+```bash
 ```

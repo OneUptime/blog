@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PagerDuty, Webhook, Integration, Automation, API
+Tags: PagerDuty, Webhooks, Integration, Automation, API
 
 Description: Learn how to configure PagerDuty webhooks to integrate incident data with external systems and automate your response workflows.
 

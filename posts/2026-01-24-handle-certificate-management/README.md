@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Security, TLS, SSL, Certificate, DevOps, Kubernetes, Infrastructure, Automation
+Tags: Security, TLS, SSL, Certificates, DevOps, Kubernetes, Infrastructure, Automation
 
 Description: A practical guide to managing TLS certificates across your infrastructure, from automated issuance to monitoring and rotation.
 

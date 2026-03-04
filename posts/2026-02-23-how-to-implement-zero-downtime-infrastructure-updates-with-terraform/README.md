@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Zero Downtime, Blue-Green, Rolling Update, DevOps
+Tags: Terraform, Zero Downtime, Blue-Green, Rolling Updates, DevOps
 
 Description: Learn how to implement zero-downtime infrastructure updates using Terraform, including blue-green deployments, rolling updates, canary releases, and safe resource replacement strategies.
 

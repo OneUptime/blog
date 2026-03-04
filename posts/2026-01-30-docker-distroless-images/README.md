@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Distroless, Security, Container, DevOps
+Tags: Docker, Distroless, Security, Containers, DevOps
 
 Description: Build minimal and secure Docker images using Google's distroless base images for reduced attack surface and smaller image sizes.
 

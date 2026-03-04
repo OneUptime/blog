@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, IPv6, Networking, Container, Linux, Configuration
+Tags: Docker, IPv6, Networking, Containers, Linux, Configuration
 
 Description: Set up Docker containers to operate in an IPv6-only environment with proper addressing, routing, and DNS configuration.
 

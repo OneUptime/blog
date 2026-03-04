@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Rate Limiting, API Gateway, Algorithm, Backend
+Tags: Rate Limiting, API Gateway, Algorithms, Backend
 
 Description: Learn how to implement sliding window rate limiting for smooth request distribution.
 

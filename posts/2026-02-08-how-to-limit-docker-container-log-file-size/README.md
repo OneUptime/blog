@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, Logs, Logging, Storage, DevOps, Log Rotation
+Tags: Docker, Containers, Logs, Logging, Storage, DevOps, Log Rotation
 
 Description: Configure Docker container log size limits to prevent log files from filling up your disk using logging drivers, daemon settings, and Compose options.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OTel Arrow, Gateway, Pipeline
+Tags: OpenTelemetry, OTel Arrow, Gateway, Pipelines
 
 Description: Set up an agent-to-gateway pipeline using OTel Arrow for high-efficiency telemetry transport across your infrastructure.
 

@@ -1,4 +1,4 @@
-# How to Configure a Highly Available MariaDB/PostgreSQL Database with Pacemaker on RHEL
+# How to Set Up HA MariaDB/PostgreSQL with Pacemaker on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

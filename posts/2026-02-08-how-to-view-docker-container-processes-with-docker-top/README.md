@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, Monitoring, Processes, DevOps, Docker CLI
+Tags: Docker, Containers, Monitoring, Processes, DevOps, Docker CLI
 
 Description: Learn how to inspect running processes inside Docker containers using docker top and related diagnostic commands.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Backup, Restore, Disaster Recovery, DevOps, Database
+Tags: Redis, Backups, Restore, Disaster Recovery, DevOps, Database
 
 Description: A comprehensive guide to backing up and restoring Redis data, including BGSAVE strategies, automated backup scripts, cloud storage integration, and disaster recovery procedures.
 

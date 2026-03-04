@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, FQCN, Collection
+Tags: Ansible, ansible-lint, FQCN, Collections
 
 Description: Learn how to fix FQCN warnings in ansible-lint by converting short module names to fully qualified collection names with practical examples.
 

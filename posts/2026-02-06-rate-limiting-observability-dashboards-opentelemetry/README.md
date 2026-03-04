@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Rate Limiting, Dashboard, Counters and Histograms
+Tags: OpenTelemetry, Rate Limiting, Dashboards, Counters and Histograms
 
 Description: Build rate limiting observability dashboards using OpenTelemetry counters and histograms to visualize throttling behavior and tune limits.
 

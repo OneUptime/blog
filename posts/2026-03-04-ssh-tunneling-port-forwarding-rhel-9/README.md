@@ -81,7 +81,7 @@ By default, remote forwarded ports only listen on localhost on the remote side. 
 sudo vi /etc/ssh/sshd_config.d/25-forwarding.conf
 ```
 
-```
+```bash
 GatewayPorts yes
 ```
 
@@ -146,7 +146,7 @@ ssh -J admin@bastion.example.com -L 5432:db.internal:5432 admin@internal-server
 sudo vi /etc/ssh/sshd_config.d/25-forwarding.conf
 ```
 
-```
+```bash
 # Allow TCP forwarding (default is yes)
 AllowTcpForwarding yes
 
@@ -165,7 +165,7 @@ AllowStreamLocalForwarding yes
 
 ### Restrict forwarding for specific users
 
-```
+```bash
 # Disable tunneling for most users
 AllowTcpForwarding no
 

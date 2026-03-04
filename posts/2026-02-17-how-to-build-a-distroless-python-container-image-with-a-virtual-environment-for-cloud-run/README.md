@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Python, Distroless, Docker, Cloud Run, Container, Security
+Tags: GCP, Python, Distroless, Docker, Cloud Run, Containers, Security
 
 Description: Learn how to build a distroless Python container image using virtual environments and multi-stage builds for secure Cloud Run deployments.
 

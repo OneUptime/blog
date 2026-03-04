@@ -215,7 +215,7 @@ systemctl list-timers
 
 The output shows when each timer will fire next, when it last fired, and what service it triggers:
 
-```
+```bash
 NEXT                         LEFT       LAST                         PASSED   UNIT                   ACTIVATES
 Wed 2026-03-04 02:00:00 UTC  8h left    Tue 2026-03-03 02:00:12 UTC  15h ago  mybackup.timer         mybackup.service
 Wed 2026-03-04 00:00:00 UTC  6h left    Tue 2026-03-03 00:00:00 UTC  17h ago  logrotate.timer        logrotate.service

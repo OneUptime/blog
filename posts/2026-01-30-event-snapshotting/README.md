@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Event Sourcing, Snapshot, Performance, State Management
+Tags: Event Sourcing, Snapshots, Performance, State Management
 
 Description: Learn to implement event snapshotting for faster state reconstruction and improved event sourcing performance.
 

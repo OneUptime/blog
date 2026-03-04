@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, etcd, Backup, Disaster Recovery, High Availability, DevOps
+Tags: Kubernetes, etcd, Backups, Disaster Recovery, High Availability, DevOps
 
 Description: A comprehensive guide to backing up and recovering etcd in Kubernetes, including automated snapshots, disaster recovery procedures, and cluster restoration.
 

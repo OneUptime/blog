@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, File System, Troubleshooting, Mount, Storage
+Tags: RHEL, File Systems, Troubleshooting, Mount, Storage
 
 Description: Diagnose and fix 'Read-only file system' errors on RHEL caused by filesystem corruption, mount options, or hardware issues.
 

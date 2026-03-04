@@ -14,7 +14,7 @@ When RHEL displays "A start job is running for..." during boot and hangs, a syst
 
 The boot message tells you which unit is stalling:
 
-```
+```bash
 A start job is running for /dev/disk/by-uuid/xxxx-xxxx (30s / 1min 30s)
 ```
 

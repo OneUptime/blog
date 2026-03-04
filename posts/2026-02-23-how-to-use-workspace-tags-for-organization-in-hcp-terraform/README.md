@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Terraform Cloud, Workspace Tags, Organization, Best Practices
+Tags: Terraform, HCP Terraform, Terraform Cloud, Workspace Tags, Organizations, Best Practices
 
 Description: Learn how to use workspace tags in HCP Terraform to categorize, filter, and manage workspaces at scale across your organization.
 

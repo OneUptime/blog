@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Docker, Container
+Tags: AWS, ECS, Docker, Containers
 
 Description: Learn how to run one-off ECS tasks manually for testing, batch jobs, migrations, and debugging, with examples using both Fargate and EC2 launch types.
 

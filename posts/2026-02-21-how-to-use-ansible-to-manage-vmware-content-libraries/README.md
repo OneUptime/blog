@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Content Libraries, vSphere, Template
+Tags: Ansible, VMware, Content Libraries, vSphere, Templates
 
 Description: Learn how to create and manage VMware content libraries with Ansible for centralized template and ISO management across multiple vCenter instances.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Service, Topology, Traffic Policy, Networking
+Tags: Kubernetes, Services, Topology, Traffic Policy, Networking
 
 Description: Configure Kubernetes service internal traffic policy and topology-aware routing to optimize traffic flow based on node location, reducing latency and cross-zone network costs.
 

@@ -39,7 +39,7 @@ sudo firewall-cmd --list-services
 
 Open a browser and navigate to:
 
-```
+```bash
 https://your-server-ip:9090
 ```
 

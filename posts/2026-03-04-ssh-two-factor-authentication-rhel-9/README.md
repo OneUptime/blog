@@ -59,7 +59,7 @@ sudo vi /etc/pam.d/sshd
 
 Add after the existing auth lines:
 
-```
+```bash
 auth       required     pam_google_authenticator.so nullok
 ```
 
@@ -69,7 +69,7 @@ auth       required     pam_google_authenticator.so nullok
 sudo vi /etc/ssh/sshd_config.d/30-2fa.conf
 ```
 
-```
+```bash
 # Enable challenge-response for TOTP prompt
 KbdInteractiveAuthentication yes
 
@@ -95,7 +95,7 @@ sudo vi /etc/pam.d/sshd
 
 Comment out the password auth substack and add the TOTP module:
 
-```
+```bash
 # auth       substack     password-auth
 auth       required     pam_google_authenticator.so nullok
 ```
@@ -106,7 +106,7 @@ auth       required     pam_google_authenticator.so nullok
 sudo vi /etc/ssh/sshd_config.d/30-2fa.conf
 ```
 
-```
+```bash
 # Require public key first, then TOTP via keyboard-interactive
 AuthenticationMethods publickey,keyboard-interactive:pam
 KbdInteractiveAuthentication yes
@@ -127,7 +127,7 @@ If you prefer password as the second factor instead of TOTP:
 sudo vi /etc/ssh/sshd_config.d/30-2fa.conf
 ```
 
-```
+```bash
 AuthenticationMethods publickey,keyboard-interactive:pam
 KbdInteractiveAuthentication yes
 PubkeyAuthentication yes
@@ -138,13 +138,13 @@ PasswordAuthentication yes
 
 Use `nullok` in the PAM configuration during rollout. This allows users who have not set up TOTP yet to log in with just their existing authentication:
 
-```
+```bash
 auth    required    pam_google_authenticator.so nullok
 ```
 
 Once all users have enrolled, remove `nullok` to enforce 2FA for everyone:
 
-```
+```bash
 auth    required    pam_google_authenticator.so
 ```
 
@@ -156,7 +156,7 @@ Service accounts and automation should not need TOTP. Use PAM to skip the check:
 sudo vi /etc/pam.d/sshd
 ```
 
-```
+```bash
 # Skip TOTP for service accounts group
 auth    [success=1 default=ignore]    pam_succeed_if.so user ingroup service-accounts
 auth    required                       pam_google_authenticator.so

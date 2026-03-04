@@ -21,7 +21,7 @@ free -h
 
 Sample output:
 
-```
+```bash
               total        used        free      shared  buff/cache   available
 Mem:           16Gi       12Gi       512Mi       256Mi       3.2Gi       3.0Gi
 Swap:          4.0Gi      1.2Gi      2.8Gi
@@ -144,7 +144,7 @@ cat /proc/pressure/memory
 
 Output looks like:
 
-```
+```bash
 some avg10=0.00 avg60=0.00 avg300=0.00 total=0
 full avg10=0.00 avg60=0.00 avg300=0.00 total=0
 ```

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LVM, Extend, Filesystem, Linux
+Tags: RHEL, LVM, Extend, Filesystems, Linux
 
 Description: Extend logical volumes and grow XFS or ext4 filesystems on RHEL online without unmounting or rebooting, using lvextend and filesystem resize tools.
 

@@ -220,20 +220,20 @@ Use MkDocs Material's extended Markdown features:
     ```python
     import my_project
     my_project.run()
-    ```
+    ```bash
 
 === "Command Line"
     ```bash
     my-project run
-    ```
+    ```bash
 
 ## Code with Annotations
 
 ```python
-# (1)!
+## (1)!
 def important_function():
     return True  # (2)!
-```
+```bash
 
 1. This annotation explains the function
 2. This annotation explains the return value

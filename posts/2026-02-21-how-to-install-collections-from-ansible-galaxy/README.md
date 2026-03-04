@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ansible Galaxy, Collection, Automation
+Tags: Ansible, Ansible Galaxy, Collections, Automation
 
 Description: Step-by-step guide to installing Ansible collections from Galaxy including version pinning, offline installs, and namespace management.
 

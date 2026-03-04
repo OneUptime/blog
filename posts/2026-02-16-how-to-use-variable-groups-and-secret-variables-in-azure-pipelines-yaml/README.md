@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Pipelines, Variables, Secret, YAML, Azure DevOps, CI/CD, Security
+Tags: Azure Pipelines, Variables, Secrets, YAML, Azure DevOps, CI/CD, Security
 
 Description: Learn how to manage pipeline variables and secrets securely using variable groups and secret variables in Azure Pipelines YAML.
 

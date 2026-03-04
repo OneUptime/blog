@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Readiness Probe, Health Check, Kubernetes, Sidecar Proxy
+Tags: Istio, Readiness Probe, Health Checks, Kubernetes, Sidecar Proxy
 
 Description: How to configure and customize readiness probes for the Istio sidecar proxy to ensure traffic only reaches pods that are fully ready to serve.
 

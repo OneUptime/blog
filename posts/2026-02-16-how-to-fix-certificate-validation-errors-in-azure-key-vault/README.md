@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Key Vault, Certificate, SSL, TLS, Troubleshooting, Security
+Tags: Azure, Key Vault, Certificates, SSL, TLS, Troubleshooting, Security
 
 Description: A practical guide to diagnosing and resolving certificate validation errors in Azure Key Vault including import failures and renewal issues.
 

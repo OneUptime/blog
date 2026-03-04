@@ -151,14 +151,14 @@ Brief description of what this runbook accomplishes and when to use it.
 **Estimated Time**: X minutes
 
 ```bash
-# Command to execute
+## Command to execute
 command --with-flags
-```
+```bash
 
 **Expected Output**:
 ```text
 Success message or expected response
-```
+```bash
 
 **If Error Occurs**:
 - Error A: [Resolution steps]
@@ -217,54 +217,54 @@ to primary when the primary database server is unavailable.
 **Estimated Time**: 2 minutes
 
 ```bash
-# Check primary database connectivity
+## Check primary database connectivity
 pg_isready -h db-primary.internal -p 5432
 
-# Check replication lag on replica
+## Check replication lag on replica
 psql -h db-replica-01.internal -U admin -c \
   "SELECT NOW() - pg_last_xact_replay_timestamp() AS replication_lag;"
-```
+```bash
 
 **Expected Output** (confirming primary is down):
 ```text
 db-primary.internal:5432 - no response
-```
+```bash
 
 ### Step 2: Stop Replication on Target Replica
 **Estimated Time**: 1 minute
 
 ```bash
-# Connect to the replica to be promoted
+## Connect to the replica to be promoted
 ssh db-replica-01.internal
 
-# Stop the replication process
+## Stop the replication process
 sudo -u postgres pg_ctl stop -D /var/lib/postgresql/data -m fast
-```
+```bash
 
 ### Step 3: Promote Replica to Primary
 **Estimated Time**: 2 minutes
 
 ```bash
-# Promote the replica
+## Promote the replica
 sudo -u postgres pg_ctl promote -D /var/lib/postgresql/data
 
-# Verify promotion was successful
+## Verify promotion was successful
 psql -U admin -c "SELECT pg_is_in_recovery();"
-```
+```bash
 
 **Expected Output**:
 ```text
  pg_is_in_recovery
 -------------------
  f
-```
+```bash
 
 ### Step 4: Update DNS Records
 **Estimated Time**: 2 minutes
 
 ```bash
-# Update internal DNS to point to new primary
-# Using AWS Route53 as example
+## Update internal DNS to point to new primary
+## Using AWS Route53 as example
 aws route53 change-resource-record-sets \
   --hosted-zone-id Z1234567890 \
   --change-batch '{
@@ -278,18 +278,18 @@ aws route53 change-resource-record-sets \
       }
     }]
   }'
-```
+```bash
 
 ### Step 5: Verify Application Connectivity
 **Estimated Time**: 2 minutes
 
 ```bash
-# Test connection from application servers
+## Test connection from application servers
 for server in app-01 app-02 app-03; do
   echo "Testing from $server:"
   ssh $server "psql -h db-primary.internal -U app_user -c 'SELECT 1;'"
 done
-```
+```bash
 
 ## Verification
 - [ ] `pg_is_in_recovery()` returns `false` on new primary

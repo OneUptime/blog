@@ -45,7 +45,7 @@ sestatus
 
 The `sestatus` output shows both the mode from the config file and the current runtime mode:
 
-```
+```bash
 SELinux status:                 enabled
 SELinuxfs mount:                /sys/fs/selinux
 SELinux root directory:         /etc/selinux

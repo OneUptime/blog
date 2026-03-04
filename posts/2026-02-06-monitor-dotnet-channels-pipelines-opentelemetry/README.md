@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, .NET, Channels, Pipeline, System.IO.Pipelines, C#
+Tags: OpenTelemetry, .NET, Channels, Pipelines, System.IO.Pipelines, C#
 
 Description: Learn to instrument System.Threading.Channels and System.IO.Pipelines with OpenTelemetry for visibility into high-performance async data flows.
 

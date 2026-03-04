@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Disk Space, Troubleshooting, File System, Storage
+Tags: RHEL, Disk Space, Troubleshooting, File Systems, Storage
 
 Description: Fix 'No space left on device' errors on RHEL by identifying what is consuming disk space and reclaiming it, including inode exhaustion scenarios.
 

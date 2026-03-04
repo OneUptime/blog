@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Testing, Environment Variable, Configuration, CI/CD, DevOps, Test Automation, Node.js, Docker
+Tags: Testing, Environment Variables, Configuration, CI/CD, DevOps, Test Automation, Node.js, Docker
 
 Description: Learn how to solve common environment configuration problems in test suites including variable management, secrets handling, and environment isolation.
 

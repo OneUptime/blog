@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificate, Multi-Cluster, CA, Security, Service Mesh
+Tags: Istio, Certificates, Multi-Cluster, CA, Security, Service Mesh
 
 Description: A hands-on guide to managing CA certificate hierarchies across multiple Kubernetes clusters running Istio for secure cross-cluster communication.
 

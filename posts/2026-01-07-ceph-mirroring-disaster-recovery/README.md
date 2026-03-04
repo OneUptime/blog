@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ceph, Storage, Disaster Recovery, High Availability, Backup, Cloud Native
+Tags: Ceph, Storage, Disaster Recovery, High Availability, Backups, Cloud Native
 
 Description: Learn how to set up Ceph RBD mirroring for disaster recovery and cross-site data protection.
 

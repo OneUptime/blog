@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CDKTF, Infrastructure as Code, TypeScript, Resource
+Tags: Terraform, CDKTF, Infrastructure as Code, TypeScript, Resources
 
 Description: A practical guide to defining and configuring infrastructure resources in CDKTF using TypeScript, including resource references, dependencies, and outputs.
 

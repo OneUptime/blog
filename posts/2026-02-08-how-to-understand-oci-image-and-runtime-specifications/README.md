@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, OCI, open container initiative, runtime specification, image specification, Container, Standard
+Tags: Docker, OCI, open container initiative, runtime specification, image specification, Containers, Standard
 
 Description: Understand the OCI image and runtime specifications that standardize how container images are built, distributed, and executed across different platforms.
 

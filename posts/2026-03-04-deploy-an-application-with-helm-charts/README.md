@@ -23,7 +23,7 @@ helm create myapp
 
 This creates a directory structure:
 
-```
+```bash
 myapp/
   Chart.yaml          # Chart metadata
   values.yaml         # Default configuration

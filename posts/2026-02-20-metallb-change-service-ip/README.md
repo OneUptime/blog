@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, IP Address, Service, Configuration
+Tags: Kubernetes, MetalLB, IP Address, Services, Configuration
 
 Description: Learn how to change the external IP address of an existing LoadBalancer service managed by MetalLB without recreating the service.
 

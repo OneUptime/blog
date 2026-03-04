@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Backup, Testing, Data Integrity, Kubernetes
+Tags: Talos Linux, Backups, Testing, Data Integrity, Kubernetes
 
 Description: Learn how to systematically test backup integrity on Talos Linux to ensure your disaster recovery plan actually works when you need it.
 

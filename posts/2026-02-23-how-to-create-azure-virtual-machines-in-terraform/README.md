@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Virtual Machine, Compute, Infrastructure as Code
+Tags: Terraform, Azure, Virtual Machines, Compute, Infrastructure as Code
 
 Description: Step-by-step guide to creating Azure Virtual Machines with Terraform, covering Linux and Windows VMs, managed disks, networking, and custom configurations.
 

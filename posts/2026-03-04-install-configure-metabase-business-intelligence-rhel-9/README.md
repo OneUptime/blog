@@ -189,7 +189,7 @@ Open your browser and go to `http://your-server-ip`. The setup wizard will guide
 
 After initial setup, add databases through the Admin panel. Here are common connection examples:
 
-```
+```bash
 # PostgreSQL connection
 Host: db-server.example.com
 Port: 5432

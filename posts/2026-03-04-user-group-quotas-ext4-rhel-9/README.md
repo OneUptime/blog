@@ -45,7 +45,7 @@ vi /etc/fstab
 
 Add `usrquota` and `grpquota` to the options field:
 
-```
+```bash
 /dev/vg_data/lv_home  /home  ext4  defaults,usrquota,grpquota  0 2
 ```
 
@@ -111,7 +111,7 @@ edquota -u jsmith
 
 The editor shows something like:
 
-```
+```bash
 Disk quotas for user jsmith (uid 1001):
   Filesystem   blocks   soft     hard   inodes   soft   hard
   /dev/vg_data/lv_home  0   5242880  6291456  0   0   0
@@ -262,7 +262,7 @@ EOF
 
 For better crash recovery, use journaled quotas instead of the older format. Change your fstab options:
 
-```
+```bash
 /dev/vg_data/lv_home  /home  ext4  defaults,usrjquota=aquota.user,grpjquota=aquota.group,jqfmt=vfsv1  0 2
 ```
 

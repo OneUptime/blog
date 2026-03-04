@@ -107,7 +107,7 @@ This tells systemd-resolved to forward queries for `example.com` and `internal.c
 
 Make sure BIND listens on a different interface or port to avoid conflict. Configure BIND to listen only on 127.0.0.1:
 
-```
+```bash
 options {
     listen-on port 53 { 127.0.0.1; };
     // ... other options
@@ -135,7 +135,7 @@ In this setup, BIND handles DNS for the network (listens on the server's real IP
 
 Configure BIND to listen only on the network interface:
 
-```
+```bash
 options {
     listen-on port 53 { 192.168.1.10; };
     listen-on-v6 port 53 { none; };

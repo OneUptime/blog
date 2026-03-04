@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, ConfigMap, Environment Variable, Container Configuration
+Tags: Talos Linux, Kubernetes, ConfigMap, Environment Variables, Container Configuration
 
 Description: Step-by-step guide on injecting ConfigMap data as environment variables into your Kubernetes pods running on Talos Linux.
 

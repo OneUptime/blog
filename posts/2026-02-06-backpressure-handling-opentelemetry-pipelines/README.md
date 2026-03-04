@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Backpressure, Pipeline, Flow Control, Reliability
+Tags: OpenTelemetry, Backpressure, Pipelines, Flow Control, Reliability
 
 Description: Learn how to implement backpressure handling in OpenTelemetry pipelines to prevent data loss and resource exhaustion during traffic spikes and backend slowdowns.
 

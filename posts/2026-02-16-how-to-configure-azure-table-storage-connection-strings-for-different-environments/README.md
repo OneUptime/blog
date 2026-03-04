@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Table Storage, Connection Strings, Configuration Management, Environment Variable, Key Vault
+Tags: Azure, Table Storage, Connection Strings, Configuration Management, Environment Variables, Key Vault
 
 Description: Learn how to properly manage Azure Table Storage connection strings across development, staging, and production environments with security best practices.
 

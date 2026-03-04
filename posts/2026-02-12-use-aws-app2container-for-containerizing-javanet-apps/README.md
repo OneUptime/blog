@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, App2Container, Docker, Java, .NET, ECS, Container, Modernization
+Tags: AWS, App2Container, Docker, Java, .NET, ECS, Containers, Modernization
 
 Description: Learn how to use AWS App2Container to automatically containerize Java and .NET applications and deploy them to ECS or EKS without rewriting code.
 

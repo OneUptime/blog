@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, Container, Debugging, Kubernetes
+Tags: Talos Linux, talosctl, Containers, Debugging, Kubernetes
 
 Description: Learn how to use talosctl containers to list and inspect running containers on Talos Linux nodes for debugging and monitoring
 

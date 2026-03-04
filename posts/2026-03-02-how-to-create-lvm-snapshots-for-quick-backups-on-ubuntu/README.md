@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LVM, Snapshot, Backup, Storage
+Tags: Ubuntu, LVM, Snapshots, Backups, Storage
 
 Description: Create LVM snapshots on Ubuntu for instant point-in-time backups, understand how copy-on-write works, and use snapshots for consistent data backup workflows.
 

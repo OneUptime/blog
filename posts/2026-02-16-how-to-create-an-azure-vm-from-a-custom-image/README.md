@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, Custom Images, Azure CLI, VM Deployment, Image Gallery, Cloud Computing
+Tags: Azure, Virtual Machines, Custom Images, Azure CLI, VM Deployment, Image Gallery, Cloud Computing
 
 Description: Learn how to create custom VM images in Azure and use them to deploy consistent, pre-configured virtual machines at scale.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, VOLUME, Storage, Container, Persistent Data
+Tags: Docker, Dockerfile, Volumes, Storage, Containers, Persistent Data
 
 Description: Learn how the VOLUME instruction works in Dockerfiles, when to use it, and how it interacts with Docker's volume system.
 

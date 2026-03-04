@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, cgroups, Resource Analysis, Kubernetes, Linux Kernel, Container Resources
+Tags: Talos Linux, Cgroups, Resource Analysis, Kubernetes, Linux Kernel, Container Resources
 
 Description: Learn how to inspect and analyze cgroup resource allocation and usage on Talos Linux for better understanding of container resource management.
 

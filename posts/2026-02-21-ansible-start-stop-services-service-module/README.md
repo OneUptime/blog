@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Service, Linux, System Administration
+Tags: Ansible, Services, Linux, System Administration
 
 Description: Learn how to start, stop, and manage Linux services using the Ansible service module, with practical examples for common service management scenarios.
 

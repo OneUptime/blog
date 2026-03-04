@@ -65,25 +65,25 @@ sudo targetcli
 
 For a block device:
 
-```
+```bash
 /backstores/block create disk0 /dev/sdb
 ```
 
 For a file:
 
-```
+```bash
 /backstores/fileio create disk0 /var/iscsi-storage/lun0.img 10G
 ```
 
 ### Create the iSCSI Target
 
-```
+```bash
 /iscsi create iqn.2024.com.example:target1
 ```
 
 ### Create a LUN
 
-```
+```bash
 /iscsi/iqn.2024.com.example:target1/tpg1/luns create /backstores/block/disk0
 ```
 
@@ -91,7 +91,7 @@ For a file:
 
 Create an ACL for the initiator. The IQN must match the initiator's configured name:
 
-```
+```bash
 /iscsi/iqn.2024.com.example:target1/tpg1/acls create iqn.2024.com.example:client1
 ```
 
@@ -99,14 +99,14 @@ Create an ACL for the initiator. The IQN must match the initiator's configured n
 
 By default, the target listens on 0.0.0.0:3260. To bind to a specific IP:
 
-```
+```bash
 /iscsi/iqn.2024.com.example:target1/tpg1/portals delete 0.0.0.0 3260
 /iscsi/iqn.2024.com.example:target1/tpg1/portals create 192.168.1.10 3260
 ```
 
 ### Save and Exit
 
-```
+```bash
 saveconfig
 exit
 ```
@@ -126,7 +126,7 @@ sudo targetcli ls
 
 This shows the full configuration tree:
 
-```
+```bash
 o- / .............................................................. [...]
   o- backstores .................................................... [...]
   | o- block ............................................ [Storage Objects: 1]

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Multicast, Networking, Container, Linux, UDP, IGMP
+Tags: Docker, Multicast, Networking, Containers, Linux, UDP, IGMP
 
 Description: Enable and configure multicast networking in Docker containers for applications that need one-to-many communication patterns.
 

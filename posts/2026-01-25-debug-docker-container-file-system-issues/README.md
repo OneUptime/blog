@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Troubleshooting, File System, Storage, DevOps
+Tags: Docker, Troubleshooting, File Systems, Storage, DevOps
 
 Description: Diagnose container file system problems including disk space errors, read-only issues, overlay filesystem corruption, and permission mismatches that cause applications to fail.
 

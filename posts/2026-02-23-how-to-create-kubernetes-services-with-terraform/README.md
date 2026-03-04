@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Service, Networking, Infrastructure as Code, DevOps
+Tags: Terraform, Kubernetes, Services, Networking, Infrastructure as Code, DevOps
 
 Description: Complete guide to creating Kubernetes Services with Terraform covering ClusterIP, NodePort, LoadBalancer, and ExternalName types.
 

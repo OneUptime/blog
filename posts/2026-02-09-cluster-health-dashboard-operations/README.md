@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Monitoring, Dashboard, Operations
+Tags: Kubernetes, Monitoring, Dashboards, Operations
 
 Description: Build comprehensive cluster health dashboards that provide operations teams with real-time visibility into Kubernetes cluster status, resource utilization.
 

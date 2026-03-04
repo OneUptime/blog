@@ -44,7 +44,7 @@ sudo dnf install -y postfix
 
 Edit `/etc/postfix/main.cf`:
 
-```
+```bash
 # Server identity
 myhostname = relay.example.com
 mydomain = example.com
@@ -89,7 +89,7 @@ The critical setting is `mynetworks`. Only IP ranges listed here can relay mail 
 
 Configure TLS so mail sent to external servers is encrypted:
 
-```
+```bash
 # Outbound TLS (opportunistic)
 smtp_tls_security_level = may
 smtp_tls_CAfile = /etc/pki/tls/certs/ca-bundle.crt
@@ -99,7 +99,7 @@ smtp_tls_loglevel = 1
 
 If you also want to accept TLS-encrypted connections from internal hosts:
 
-```
+```bash
 # Inbound TLS (optional, for internal connections)
 smtpd_tls_security_level = may
 smtpd_tls_cert_file = /etc/letsencrypt/live/relay.example.com/fullchain.pem
@@ -117,7 +117,7 @@ sudo dnf install -y cyrus-sasl cyrus-sasl-plain
 
 Add to `main.cf`:
 
-```
+```bash
 # Enable SASL for external clients
 smtpd_sasl_auth_enable = yes
 smtpd_sasl_type = cyrus
@@ -141,7 +141,7 @@ sudo systemctl enable --now saslauthd
 
 Protect the relay from internal hosts that might go haywire:
 
-```
+```bash
 # Limit connections per client
 smtpd_client_connection_rate_limit = 100
 smtpd_client_connection_count_limit = 20
@@ -175,7 +175,7 @@ sudo ss -tlnp | grep :25
 
 On each internal server, configure it as a null client pointing to the relay:
 
-```
+```bash
 # On internal servers, in /etc/postfix/main.cf
 relayhost = [relay.example.com]
 inet_interfaces = loopback-only
@@ -237,7 +237,7 @@ echo "Current queue: $QUEUE_COUNT messages"
 
 ## Security Hardening
 
-```
+```bash
 # Disable VRFY command (prevents address harvesting)
 disable_vrfy_command = yes
 

@@ -37,7 +37,7 @@ sudo vdostats --human-readable
 
 Sample output:
 
-```
+```bash
 Device                    Size      Used Available Use% Space saving%
 /dev/mapper/vg_vdo-vpool  200.0G    45.2G   154.8G  22%           68%
 ```

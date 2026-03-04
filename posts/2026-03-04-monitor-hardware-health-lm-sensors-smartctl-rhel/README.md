@@ -37,7 +37,7 @@ sensors
 
 Example output:
 
-```
+```bash
 coretemp-isa-0000
 Adapter: ISA adapter
 Package id 0:  +45.0 C  (high = +80.0 C, crit = +100.0 C)

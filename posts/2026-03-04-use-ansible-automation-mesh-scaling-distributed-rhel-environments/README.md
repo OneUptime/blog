@@ -1,4 +1,4 @@
-# How to Use Ansible Automation Mesh for Scaling Across Distributed RHEL Environments
+# How to Use Ansible Automation Mesh for Distributed RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filter, Data Processing, Template
+Tags: Ansible, Jinja2, Filter, Data Processing, Templates
 
 Description: Learn how to use the selectattr and rejectattr filters in Ansible to filter lists of objects based on attribute values.
 

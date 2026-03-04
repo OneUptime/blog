@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vault, HashiCorp, Backup, Disaster Recovery, Secrets Management, DevOps, Security
+Tags: Vault, HashiCorp, Backups, Disaster Recovery, Secrets Management, DevOps, Security
 
 Description: A comprehensive guide to backing up and restoring HashiCorp Vault, covering snapshot operations, automated backups, disaster recovery procedures.
 

@@ -28,7 +28,7 @@ sudo vi /etc/iscsi/iscsid.conf
 
 Change the startup value:
 
-```
+```bash
 node.startup = automatic
 ```
 
@@ -91,7 +91,7 @@ sudo vi /etc/iscsi/iscsid.conf
 
 Key timeout settings:
 
-```
+```bash
 # Time to wait for a response before declaring the connection dead (seconds)
 node.session.timeo.replacement_timeout = 120
 

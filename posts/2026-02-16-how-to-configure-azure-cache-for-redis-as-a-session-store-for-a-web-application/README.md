@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Redis, Session Store, Web Application, ASP.NET, Node.js, Azure Cache for Redis
+Tags: Azure, Redis, Session Store, Web Applications, ASP.NET, Node.js, Azure Cache for Redis
 
 Description: Step-by-step guide to using Azure Cache for Redis as a session store for web applications with examples in ASP.NET and Node.js.
 

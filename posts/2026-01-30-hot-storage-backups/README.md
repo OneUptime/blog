@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backup, Storage, Disaster Recovery, Performance
+Tags: Backups, Storage, Disaster Recovery, Performance
 
 Description: Learn when and how to use hot storage for backups requiring fast access.
 

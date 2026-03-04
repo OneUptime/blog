@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Terraform, Control Tower, Organization, Governance
+Tags: AWS, Terraform, Control Tower, Organizations, Governance
 
 Description: Guide to setting up AWS Control Tower with Terraform for multi-account governance, including landing zones, organizational units, guardrails, and account factory.
 

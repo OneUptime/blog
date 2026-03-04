@@ -32,7 +32,7 @@ sudo vi /etc/ssh/sshd_config
 
 Find the `PermitRootLogin` directive and set it:
 
-```
+```bash
 # Disable direct root login via SSH
 PermitRootLogin no
 ```
@@ -56,7 +56,7 @@ sudo vi /etc/ssh/sshd_config
 
 Set these directives:
 
-```
+```bash
 # Disable password-based authentication
 PasswordAuthentication no
 
@@ -104,7 +104,7 @@ RHEL supports drop-in SSH configuration files in `/etc/ssh/sshd_config.d/`:
 sudo vi /etc/ssh/sshd_config.d/10-hardening.conf
 ```
 
-```
+```bash
 # Disable root login
 PermitRootLogin no
 
@@ -131,7 +131,7 @@ While you have the config open, apply these additional hardening measures:
 sudo vi /etc/ssh/sshd_config.d/10-hardening.conf
 ```
 
-```
+```bash
 # Disable root login
 PermitRootLogin no
 
@@ -175,7 +175,7 @@ PermitUserEnvironment no
 sudo vi /etc/issue.net
 ```
 
-```
+```bash
 Authorized access only. All activity is monitored and logged.
 ```
 
@@ -197,7 +197,7 @@ sudo vi /etc/ssh/sshd_config.d/10-hardening.conf
 
 At the end of the file:
 
-```
+```bash
 # Allow password auth from the management network only
 Match Address 10.0.100.0/24
     PasswordAuthentication yes
@@ -207,7 +207,7 @@ Match Address 10.0.100.0/24
 
 For tools like Ansible that need root access:
 
-```
+```bash
 # Allow root with keys only from the Ansible server
 Match Address 10.0.100.50
     PermitRootLogin prohibit-password

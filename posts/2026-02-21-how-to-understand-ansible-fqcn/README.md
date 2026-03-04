@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, FQCN, Collection, DevOps, Configuration Management
+Tags: Ansible, FQCN, Collections, DevOps, Configuration Management
 
 Description: A practical guide to understanding Ansible Fully Qualified Collection Names, how they work, why they matter, and how to migrate your playbooks.
 

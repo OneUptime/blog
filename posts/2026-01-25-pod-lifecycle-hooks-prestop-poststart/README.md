@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Pod Lifecycle, DevOps, Container, Graceful Shutdown
+Tags: Kubernetes, Pod Lifecycle, DevOps, Containers, Graceful Shutdown
 
 Description: Learn how to use Kubernetes lifecycle hooks including preStop and postStart to handle container startup and shutdown gracefully, ensuring zero-downtime deployments and proper resource cleanup.
 

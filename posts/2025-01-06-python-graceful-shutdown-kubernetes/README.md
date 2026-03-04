@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Kubernetes, SIGTERM, Graceful Shutdown, DevOps, Reliability, Container
+Tags: Python, Kubernetes, SIGTERM, Graceful Shutdown, DevOps, Reliability, Containers
 
 Description: Learn how to implement graceful shutdown handlers in Python applications for Kubernetes deployments. This guide covers SIGTERM handling, connection draining, and ensuring zero-downtime deployments.
 

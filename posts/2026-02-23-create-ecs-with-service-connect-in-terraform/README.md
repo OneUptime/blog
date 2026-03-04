@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, Service Connect, Service Mesh, Container, Microservices
+Tags: Terraform, AWS, ECS, Service Connect, Service Mesh, Containers, Microservices
 
 Description: Learn how to set up ECS Service Connect in Terraform for service-to-service communication with built-in load balancing, observability, and traffic management.
 

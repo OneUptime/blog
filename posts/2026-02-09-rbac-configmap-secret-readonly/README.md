@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, ConfigMap, Secret, Security
+Tags: Kubernetes, RBAC, ConfigMap, Secrets, Security
 
 Description: Learn how to create RBAC roles that grant read-only access to ConfigMaps and Secrets, enabling visibility for debugging without allowing modification or deletion.
 

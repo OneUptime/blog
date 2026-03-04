@@ -175,13 +175,13 @@ Add the Helm repository:
 ```bash
 helm repo add myrepo https://charts.example.com
 helm repo update
-```
+```bash
 
 Install the chart:
 
 ```bash
 helm install my-release myrepo/{{ .Project.Name }}
-```
+```bash
 
 ## Configuration
 
@@ -195,7 +195,7 @@ The following table lists the configurable parameters and their default values.
 
 ```bash
 helm install my-app myrepo/{{ .Project.Name }}
-```
+```bash
 
 ### Custom Configuration
 
@@ -204,7 +204,7 @@ helm install my-app myrepo/{{ .Project.Name }} \
   --set replicaCount=3 \
   --set image.tag=v1.2.3 \
   --set ingress.enabled=true
-```
+```bash
 
 ### Using a Values File
 
@@ -229,25 +229,25 @@ ingress:
     - secretName: myapp-tls
       hosts:
         - myapp.example.com
-```
+```bash
 
 Install with custom values:
 
 ```bash
 helm install my-app myrepo/{{ .Project.Name }} -f custom-values.yaml
-```
+```bash
 
 ## Upgrading
 
 ```bash
 helm upgrade my-app myrepo/{{ .Project.Name }} --version {{ .Project.Version }}
-```
+```bash
 
 ## Uninstalling
 
 ```bash
 helm uninstall my-app
-```
+```bash
 
 {{ template "chart.maintainersSection" . }}
 
@@ -374,7 +374,7 @@ metrics:
   enabled: true
   port: 9090
   path: /metrics
-```
+```bash
 
 ## Troubleshooting
 
@@ -384,13 +384,13 @@ Check pod events:
 
 ```bash
 kubectl describe pod -l app.kubernetes.io/name={{ .Project.Name }}
-```
+```bash
 
 View logs:
 
 ```bash
 kubectl logs -l app.kubernetes.io/name={{ .Project.Name }}
-```
+```bash
 
 ### Database Connection Issues
 
@@ -398,7 +398,7 @@ Verify database credentials:
 
 ```bash
 kubectl get secret {{ .Project.Name }}-db-secret -o yaml
-```
+```bash
 ```text
 
 ## Automating Documentation in CI/CD

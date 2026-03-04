@@ -991,7 +991,7 @@ spec:
       name: example-memcached
     spec:
       size: 3
-    ```
+    ```bash
   maturity: alpha
   version: 0.0.1
   replaces: ""

@@ -12,7 +12,9 @@ Running containers without resource limits is a recipe for trouble. One runaway 
 
 ## Setting Memory Limits
 
-# Run a container with a hard memory limit
+This section covers setting memory limits.
+
+## Run a container with a hard memory limit
 ```bash
 podman run -d --name limited-app \
   --memory 512m \
@@ -24,7 +26,7 @@ podman run -d --name limited-app \
 - `--memory 512m` sets the hard memory limit to 512 MB
 - `--memory-swap 1g` sets total memory + swap to 1 GB (so 512 MB swap)
 
-# Verify the limits are applied
+## Verify the limits are applied
 ```bash
 podman inspect limited-app --format '{{.HostConfig.Memory}}'
 ```
@@ -33,7 +35,9 @@ When a container hits its memory limit, the OOM killer terminates it.
 
 ## Setting CPU Limits
 
-# Limit a container to 1.5 CPU cores
+This section covers setting cpu limits.
+
+## Limit a container to 1.5 CPU cores
 ```bash
 podman run -d --name cpu-limited \
   --cpus 1.5 \
@@ -41,7 +45,7 @@ podman run -d --name cpu-limited \
   sleep infinity
 ```
 
-# Limit using CPU shares (relative weight)
+## Limit using CPU shares (relative weight)
 ```bash
 podman run -d --name low-priority \
   --cpu-shares 256 \
@@ -58,7 +62,9 @@ CPU shares only matter when there is contention. The high-priority container get
 
 ## Setting I/O Limits
 
-# Limit block I/O (reads and writes)
+This section covers setting i/o limits.
+
+## Limit block I/O (reads and writes)
 ```bash
 podman run -d --name io-limited \
   --device-read-bps /dev/sda:10mb \
@@ -71,7 +77,7 @@ podman run -d --name io-limited \
 
 Prevent fork bombs inside containers:
 
-# Limit the number of processes a container can create
+## Limit the number of processes a container can create
 ```bash
 podman run -d --name pid-limited \
   --pids-limit 100 \
@@ -83,7 +89,7 @@ podman run -d --name pid-limited \
 
 When using pods, you can set limits at the pod level:
 
-# Create a pod with resource limits on individual containers
+## Create a pod with resource limits on individual containers
 ```bash
 podman pod create --name limited-pod -p 8080:80
 
@@ -109,7 +115,7 @@ graph TB
 
 By default, containers get a set of Linux capabilities. Drop the ones you do not need:
 
-# Run with minimal capabilities
+## Run with minimal capabilities
 ```bash
 podman run -d --name secure-app \
   --cap-drop ALL \
@@ -117,7 +123,7 @@ podman run -d --name secure-app \
   docker.io/library/nginx:latest
 ```
 
-# Check what capabilities a container has
+## Check what capabilities a container has
 ```bash
 podman inspect secure-app --format '{{.HostConfig.CapAdd}} {{.HostConfig.CapDrop}}'
 ```
@@ -133,7 +139,7 @@ Everything else should be dropped for most workloads.
 
 Prevent containers from writing to their root filesystem:
 
-# Run with a read-only filesystem
+## Run with a read-only filesystem
 ```bash
 podman run -d --name readonly-app \
   --read-only \
@@ -146,7 +152,9 @@ The `--tmpfs` flags provide writable temporary directories in memory. The actual
 
 ## Security Options
 
-# Disable privilege escalation inside the container
+This section covers security options.
+
+## Disable privilege escalation inside the container
 ```bash
 podman run -d --name no-escalation \
   --security-opt no-new-privileges \
@@ -154,7 +162,7 @@ podman run -d --name no-escalation \
   sleep infinity
 ```
 
-# Run with a specific seccomp profile
+## Run with a specific seccomp profile
 ```bash
 podman run -d --name seccomp-app \
   --security-opt seccomp=/path/to/custom-seccomp.json \
@@ -162,7 +170,7 @@ podman run -d --name seccomp-app \
   sleep infinity
 ```
 
-# Run with SELinux labels
+## Run with SELinux labels
 ```bash
 podman run -d --name selinux-app \
   --security-opt label=type:container_t \
@@ -191,17 +199,19 @@ CMD ["sleep", "infinity"]
 
 ## Monitoring Resource Usage
 
-# Watch real-time resource consumption
+This section covers monitoring resource usage.
+
+## Watch real-time resource consumption
 ```bash
 podman stats
 ```
 
-# One-shot stats for a specific container
+## One-shot stats for a specific container
 ```bash
 podman stats --no-stream limited-app
 ```
 
-# Check cgroup limits applied to a container
+## Check cgroup limits applied to a container
 ```bash
 podman inspect limited-app --format '{{.HostConfig.Memory}} {{.HostConfig.NanoCpus}}'
 ```

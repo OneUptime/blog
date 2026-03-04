@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Service, Networking, Troubleshooting, Load Balancing
+Tags: Kubernetes, Services, Networking, Troubleshooting, Load Balancing
 
 Description: Diagnose and fix Kubernetes service routing failures including misconfigured selectors, endpoint issues, network policy blocks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Podman, POD, Container, Linux
+Tags: Ansible, Podman, Pods, Containers, Linux
 
 Description: Create and manage Podman pods with Ansible to group related containers that share network namespaces and resources.
 

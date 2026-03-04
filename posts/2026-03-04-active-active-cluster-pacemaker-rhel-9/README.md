@@ -57,7 +57,7 @@ sudo pcs status
 
 Output:
 
-```
+```bash
 Clone Set: WebServer-clone [WebServer]:
   * Started: [ node1 node2 node3 ]
 ```

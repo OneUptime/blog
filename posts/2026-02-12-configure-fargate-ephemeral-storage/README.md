@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Fargate, Storage, Container
+Tags: AWS, ECS, Fargate, Storage, Containers
 
 Description: Learn how to configure and manage ephemeral storage for AWS Fargate tasks, including sizing, monitoring, and best practices for storage-intensive workloads.
 

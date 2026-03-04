@@ -242,7 +242,7 @@ RHEL uses GnuTLS priority strings to control TLS behavior in applications that u
 
 Common priority strings:
 
-```
+```bash
 NORMAL          - Sensible defaults
 SECURE128       - 128-bit security level minimum
 SECURE256       - 256-bit security level minimum

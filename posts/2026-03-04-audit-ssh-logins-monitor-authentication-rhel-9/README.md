@@ -259,7 +259,7 @@ sudo vi /etc/ssh/sshd_config
 
 Recommended logging settings:
 
-```
+```bash
 # Set log level to VERBOSE for detailed authentication logging
 LogLevel VERBOSE
 

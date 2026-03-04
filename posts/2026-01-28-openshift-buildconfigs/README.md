@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenShift, BuildConfigs, CI/CD, Container, DevOps
+Tags: OpenShift, BuildConfigs, CI/CD, Containers, DevOps
 
 Description: Learn how OpenShift BuildConfigs work, how to configure source-to-image and Docker builds, trigger pipelines, and manage build history reliably.
 

@@ -59,7 +59,7 @@ ltrace -c ls /tmp
 
 This produces a summary of how many times each library function was called:
 
-```
+```bash
 % time     seconds  usecs/call     calls      function
 ------ ----------- ----------- --------- --------------------
  35.00    0.000210          21        10 strlen

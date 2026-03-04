@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, pam_pwquality, Password, Security, Linux
+Tags: RHEL, pam_pwquality, Passwords, Security, Linux
 
 Description: Configure pam_pwquality on RHEL to enforce strong password complexity requirements including length, character classes, and dictionary checks.
 
@@ -39,7 +39,7 @@ There are two ways to configure it: in the PAM stack directly, or in the central
 sudo vi /etc/security/pwquality.conf
 ```
 
-```
+```bash
 # Minimum password length
 minlen = 14
 
@@ -92,7 +92,7 @@ grep pam_pwquality /etc/pam.d/system-auth
 
 The line typically looks like:
 
-```
+```bash
 password    requisite     pam_pwquality.so retry=3
 ```
 
@@ -109,7 +109,7 @@ For straightforward enforcement, use negative values to require specific charact
 
 ### Example: Require all four character classes
 
-```
+```bash
 dcredit = -1
 ucredit = -1
 lcredit = -1
@@ -120,7 +120,7 @@ This means every password must contain at least one digit, one uppercase letter,
 
 ### Example: Require any 3 of 4 character classes
 
-```
+```bash
 minclass = 3
 dcredit = 0
 ucredit = 0
@@ -159,7 +159,7 @@ The number is the desired entropy in bits. `pwmake 128` generates a password wit
 
 ### CIS Benchmark Level 1
 
-```
+```bash
 minlen = 14
 dcredit = -1
 ucredit = -1
@@ -172,7 +172,7 @@ dictcheck = 1
 
 ### PCI DSS
 
-```
+```bash
 minlen = 7
 dcredit = -1
 ucredit = -1
@@ -184,7 +184,7 @@ ocredit = 0
 
 NIST guidelines have shifted toward longer passwords with less complexity:
 
-```
+```bash
 minlen = 15
 minclass = 0
 dcredit = 0
@@ -218,7 +218,7 @@ sudo create-cracklib-dict /usr/share/cracklib/pw_dict.custom /usr/share/dict/*
 
 By default, root can set any password. To enforce the same rules for root:
 
-```
+```bash
 # In /etc/security/pwquality.conf
 enforce_for_root
 ```
@@ -240,7 +240,7 @@ Make sure `pam_pwquality.so` comes before `pam_unix.so` in the password stack.
 
 The `difok` setting controls how many characters must differ from the old password:
 
-```
+```bash
 # Require at least 5 different characters
 difok = 5
 ```

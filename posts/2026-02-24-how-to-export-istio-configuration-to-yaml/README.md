@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, YAML, Kubernetes, Configuration Management, Backup
+Tags: Istio, YAML, Kubernetes, Configuration Management, Backups
 
 Description: How to export Istio configuration resources to clean YAML files for backup, migration, version control, and documentation purposes.
 

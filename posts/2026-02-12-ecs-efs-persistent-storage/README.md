@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, EFS, Persistent Storage, Container
+Tags: AWS, ECS, EFS, Persistent Storage, Containers
 
 Description: A complete guide to mounting Amazon EFS file systems in ECS tasks for persistent, shared storage that survives container restarts and scales across tasks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container, DevOps, Development, NodeJS, Python, Go
+Tags: Docker, Containers, DevOps, Development, NodeJS, Python, Go
 
 Description: Configure bind mounts with nodemon, watchdog, air, and other file watchers to keep development loops fast inside containers.
 

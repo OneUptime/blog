@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Container, Docker Alternative, Linux, DevOps
+Tags: Podman, Containers, Docker Alternative, Linux, DevOps
 
 Description: Learn how to get started with Podman, a daemonless container engine that offers a secure, Docker-compatible alternative for running containers without root privileges.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Secret, GitOps, Security, Kubernetes
+Tags: Istio, Secrets, GitOps, Security, Kubernetes
 
 Description: Securely manage Istio TLS certificates and sensitive configuration in GitOps workflows using Sealed Secrets, SOPS, and external secret stores.
 

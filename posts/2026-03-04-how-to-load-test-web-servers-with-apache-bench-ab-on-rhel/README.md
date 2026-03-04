@@ -67,7 +67,7 @@ ab -n 1000 -c 10 \
 
 Key metrics to focus on:
 
-```
+```bash
 # Example output interpretation:
 # Requests per second:    2500.00 [#/sec]  -- throughput
 # Time per request:       4.000 [ms]       -- avg latency per request

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Transformation, Data Processing, Dashboard, Visualization, Analytics
+Tags: Grafana, Transformation, Data Processing, Dashboards, Visualization, Analytics
 
 Description: Master Grafana transformations to reshape, filter, combine, and calculate data directly in your dashboards without modifying queries or data sources.
 

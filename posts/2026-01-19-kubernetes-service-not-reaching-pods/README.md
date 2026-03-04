@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Troubleshooting, Service, Networking, DNS, Debugging, DevOps
+Tags: Kubernetes, Troubleshooting, Services, Networking, DNS, Debugging, DevOps
 
 Description: Learn systematic debugging techniques when Kubernetes services fail to route traffic to pods, including DNS issues, selector mismatches, endpoint problems, and network policies.
 

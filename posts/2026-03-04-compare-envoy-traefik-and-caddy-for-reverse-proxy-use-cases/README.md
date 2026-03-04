@@ -73,7 +73,7 @@ Caddy is the best choice when you need:
 - Quick setup for small to medium deployments
 - Human-readable configuration
 
-```
+```bash
 # Caddy: Minimal and elegant
 myapp.example.com {
     reverse_proxy localhost:3000

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, ip command, ifconfig, Linux
+Tags: Ubuntu, Networking, ip Command, ifconfig, Linux
 
 Description: A complete reference for replacing deprecated ifconfig commands with their modern ip command equivalents on Ubuntu systems.
 

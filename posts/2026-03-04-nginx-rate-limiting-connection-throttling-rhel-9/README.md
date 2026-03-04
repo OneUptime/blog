@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, Rate Limiting, Security, Linux
+Tags: RHEL, NGINX, Rate Limiting, Security, Linux
 
 Description: How to protect your Nginx server on RHEL with rate limiting and connection throttling to prevent abuse and DDoS attacks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Container Image, Performance, Stargz, Lazy Loading
+Tags: Kubernetes, Container Images, Performance, Stargz, Lazy Loading
 
 Description: Learn how to implement lazy pulling with stargz-snapshotter to start containers without downloading entire images, dramatically reducing pod startup time in Kubernetes clusters.
 

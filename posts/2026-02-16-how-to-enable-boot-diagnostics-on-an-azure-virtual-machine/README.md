@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, Boot Diagnostics, Troubleshooting, Azure CLI, Monitoring, Cloud Infrastructure
+Tags: Azure, Virtual Machines, Boot Diagnostics, Troubleshooting, Azure CLI, Monitoring, Cloud Infrastructure
 
 Description: How to enable and use boot diagnostics on Azure VMs to troubleshoot boot failures, capture serial console output, and view screenshots.
 

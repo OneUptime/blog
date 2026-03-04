@@ -293,7 +293,7 @@ Maintain comprehensive documentation in shared repositories:
 ```yaml
 resources:
 - https://github.com/example/configs//bases/webapp?ref=v1.2.0
-```
+```bash
 
 ## Customization Points
 
@@ -322,7 +322,7 @@ Good documentation reduces support burden and helps teams adopt your shared conf
 
 When making breaking changes, increment the major version and maintain backward compatibility:
 
-```
+```bash
 k8s-configs/
 ├── bases/
 │   ├── webapp-v1/  # Legacy version

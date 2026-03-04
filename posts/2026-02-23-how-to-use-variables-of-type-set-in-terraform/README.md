@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Variables, set, HCL, Infrastructure as Code
+Tags: Terraform, Variables, Sets, HCL, Infrastructure as Code
 
 Description: Learn how to declare and use set-type variables in Terraform for collections of unique values, including set operations, for_each integration, and practical examples.
 

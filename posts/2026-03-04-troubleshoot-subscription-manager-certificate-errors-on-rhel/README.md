@@ -12,7 +12,7 @@ Subscription Manager uses SSL certificates to authenticate with the Red Hat CDN.
 
 ## Common Error: Expired Certificate
 
-```
+```bash
 Unable to verify server's identity: [SSL: CERTIFICATE_VERIFY_FAILED]
 ```
 
@@ -40,7 +40,7 @@ sudo subscription-manager attach --auto
 
 ## Common Error: Missing Entitlement Certificates
 
-```
+```bash
 This system is not receiving updates. You can use subscription-manager to assign subscriptions.
 ```
 
@@ -57,7 +57,7 @@ sudo subscription-manager repos --list-enabled
 
 ## Common Error: Identity Certificate Missing
 
-```
+```bash
 Error: consumer certificate not found
 ```
 

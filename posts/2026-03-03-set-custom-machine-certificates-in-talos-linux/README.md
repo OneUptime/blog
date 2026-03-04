@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Certificate, TLS, Security, Machine Configuration, Kubernetes
+Tags: Talos Linux, Certificates, TLS, Security, Machine Configuration, Kubernetes
 
 Description: A comprehensive guide to configuring custom machine certificates in Talos Linux for secure API access, custom CAs, and mutual TLS authentication.
 

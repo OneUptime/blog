@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Troubleshooting, DevOps, Debugging, Container
+Tags: Docker, Troubleshooting, DevOps, Debugging, Containers
 
 Description: Diagnose and fix Docker containers that start and immediately exit, covering common causes from missing foreground processes to entrypoint errors.
 

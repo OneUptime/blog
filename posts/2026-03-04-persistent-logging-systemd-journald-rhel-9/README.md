@@ -200,7 +200,7 @@ journalctl --list-boots
 
 You should see multiple entries if the system has been rebooted since enabling persistent storage:
 
-```
+```bash
 -2 abc123... Wed 2026-03-02 08:00:00 UTC-Wed 2026-03-02 23:59:00 UTC
 -1 def456... Thu 2026-03-03 08:00:00 UTC-Thu 2026-03-03 23:59:00 UTC
  0 ghi789... Fri 2026-03-04 08:00:00 UTC-Fri 2026-03-04 10:30:00 UTC

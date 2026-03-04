@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Gaming, Achievements, Badges, Progress Tracking, Gamification, Bitmap, set
+Tags: Redis, Gaming, Achievements, Badges, Progress Tracking, Gamification, Bitmap, Sets
 
 Description: A comprehensive guide to building achievement and badge systems with Redis, covering progress tracking, unlock conditions, real-time notifications, and scalable storage patterns.
 

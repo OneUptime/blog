@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Template, Kubernetes, Helm, Kustomize
+Tags: Istio, Templates, Kubernetes, Helm, Kustomize
 
 Description: How to create reusable Istio configuration templates that teams can customize for their services using Helm charts and Kustomize overlays.
 

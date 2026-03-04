@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Encryption, SWAP, LUKS
+Tags: Ubuntu, Security, Encryption, Swap, LUKS
 
 Description: Learn how to configure an encrypted swap partition on Ubuntu to prevent sensitive data from being written to unencrypted disk space, covering both random-key and LUKS-based approaches.
 

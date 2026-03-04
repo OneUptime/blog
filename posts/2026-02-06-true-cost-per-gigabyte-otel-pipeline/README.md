@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Cost Analysis, Pipeline, FinOps
+Tags: OpenTelemetry, Cost Analysis, Pipelines, FinOps
 
 Description: Break down the real cost of OpenTelemetry data by accounting for collection, processing, transport, storage, and query.
 

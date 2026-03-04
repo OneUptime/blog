@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DynamoDB, Backup, Disaster Recovery
+Tags: AWS, DynamoDB, Backups, Disaster Recovery
 
 Description: Learn how to create on-demand backups for DynamoDB tables, restore them to new tables, and automate backup strategies for production environments.
 

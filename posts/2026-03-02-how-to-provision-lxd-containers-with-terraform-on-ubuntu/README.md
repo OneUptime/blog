@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LXD, Terraform, Container, Infrastructure as Code
+Tags: Ubuntu, LXD, Terraform, Containers, Infrastructure as Code
 
 Description: Learn how to use Terraform with the LXD provider to automate the creation and configuration of LXD containers and virtual machines on Ubuntu.
 

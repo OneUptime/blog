@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, File Sync, Linux, Backup, rsync
+Tags: Ubuntu, File Sync, Linux, Backups, rsync
 
 Description: Learn how to configure Unison for bidirectional file synchronization on Ubuntu, enabling reliable two-way sync between local directories and remote servers over SSH.
 

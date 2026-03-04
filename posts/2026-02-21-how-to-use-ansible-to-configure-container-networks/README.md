@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Networking, Container, Infrastructure
+Tags: Ansible, Docker, Networking, Containers, Infrastructure
 
 Description: Create and manage Docker container networks with Ansible for service isolation, cross-host communication, and DNS-based service discovery.
 

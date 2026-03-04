@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, VOLUME, CIFS, SMB, Storage, Networking, DevOps
+Tags: Docker, Volumes, CIFS, SMB, Storage, Networking, DevOps
 
 Description: A practical guide to mounting Windows CIFS/SMB network shares as Docker volumes for cross-platform file sharing.
 

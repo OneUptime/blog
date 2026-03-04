@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, NetApp Files, Snapshot, Data Protection, Backup Policy, Storage Management
+Tags: Azure, NetApp Files, Snapshots, Data Protection, Backup Policy, Storage Management
 
 Description: Learn how to create and manage automated snapshot policies for Azure NetApp Files volumes to protect data with scheduled point-in-time copies.
 

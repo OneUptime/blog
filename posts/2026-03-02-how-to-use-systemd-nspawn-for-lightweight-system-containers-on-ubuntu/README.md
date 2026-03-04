@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd-nspawn, Container, systemd, Virtualization
+Tags: Ubuntu, systemd-nspawn, Containers, systemd, Virtualization
 
 Description: Run lightweight system containers on Ubuntu using systemd-nspawn for process isolation without the overhead of Docker or full VMs, with networking and service management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, Pub/Sub, Push Subscriptions, Cloud Run, Serverless, Webhook, Event-Driven Architecture, Messaging
+Tags: Google Cloud, Pub/Sub, Push Subscriptions, Cloud Run, Serverless, Webhooks, Event-Driven Architecture, Messaging
 
 Description: A comprehensive guide to configuring Google Cloud Pub/Sub push subscriptions, covering endpoint setup, authentication, retry policies, dead-letter queues, and integration with Cloud Run services.
 

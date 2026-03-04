@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, Backup, Point-in-Time Recovery, Disaster Recovery
+Tags: GCP, Cloud SQL, Backups, Point-in-Time Recovery, Disaster Recovery
 
 Description: Learn how to configure automated backups and point-in-time recovery for Cloud SQL instances to protect your data and enable granular restore capabilities.
 

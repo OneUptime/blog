@@ -138,7 +138,7 @@ flowchart LR
 
 You cannot switch directly from one enabled stream to another without resetting first. DNF will refuse to do it:
 
-```
+```bash
 The operation would result in switching of module 'nodejs' stream '18' to stream '20'
 Error: It is not possible to switch enabled streams of a module unless explicitly enabled via configuration option module_stream_switch.
 ```

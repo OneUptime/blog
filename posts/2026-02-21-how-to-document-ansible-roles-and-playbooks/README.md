@@ -51,7 +51,7 @@ Installs and configures Nginx as a reverse proxy with SSL termination.
       nginx_vhosts:
         - server_name: app.example.com
           proxy_pass: http://127.0.0.1:8080
-```
+```bash
 
 ## Handlers
 

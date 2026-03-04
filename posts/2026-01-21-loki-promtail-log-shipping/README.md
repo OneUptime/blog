@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Loki, Promtail, Log Collection, Log Shipping, Pipeline, Observability
+Tags: Grafana Loki, Promtail, Log Collection, Log Shipping, Pipelines, Observability
 
 Description: A comprehensive guide to shipping logs to Grafana Loki using Promtail, covering agent configuration, pipeline stages, label extraction, and production deployment patterns.
 

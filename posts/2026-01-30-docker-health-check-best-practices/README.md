@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Reliability, DevOps, Container
+Tags: Docker, Reliability, DevOps, Containers
 
 Description: Configure effective Docker health checks with proper intervals, timeout, and startup grace periods for reliable container orchestration.
 

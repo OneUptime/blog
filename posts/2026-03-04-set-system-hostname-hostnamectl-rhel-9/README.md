@@ -51,7 +51,7 @@ hostname -f
 
 The `hostnamectl status` output shows you all three hostnames plus additional system information:
 
-```
+```bash
  Static hostname: server01.example.com
        Icon name: computer-server
          Chassis: server

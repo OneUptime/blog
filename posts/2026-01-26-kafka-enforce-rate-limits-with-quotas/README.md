@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kafka, Quota, Rate Limiting, Multi-Tenancy, Resource Management
+Tags: Kafka, Quotas, Rate Limiting, Multi-Tenancy, Resource Management
 
 Description: Configure Kafka quotas to prevent noisy neighbors, protect cluster resources, and ensure fair bandwidth allocation across clients and users.
 

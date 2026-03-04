@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backup, Testing, Data Protection, SRE
+Tags: Backups, Testing, Data Protection, SRE
 
 Description: Learn how to verify backup integrity and test restore procedures regularly.
 

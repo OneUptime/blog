@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, EndpointSlice, Service, Scalability, Networking
+Tags: Kubernetes, EndpointSlice, Services, Scalability, Networking
 
 Description: Learn how EndpointSlices replace Endpoints objects to improve service scalability and reduce control plane overhead in large clusters.
 

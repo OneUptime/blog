@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Dynamic Configuration, Infrastructure as Code, DevOps
+Tags: Terraform, Workspaces, Dynamic Configuration, Infrastructure as Code, DevOps
 
 Description: Learn how to pair Terraform workspaces with dynamic configuration to manage multiple environments from a single codebase using workspace-aware variables and logic.
 

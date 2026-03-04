@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ceph, CephFS, Filesystem, Storage
+Tags: RHEL, Ceph, CephFS, Filesystems, Storage
 
 Description: Create a CephFS filesystem on your Ceph cluster and mount it on RHEL client machines using either the kernel driver or ceph-fuse.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure DevOps, CI/CD, Infrastructure as Code, DevOps, Azure, Extension
+Tags: Terraform, Azure DevOps, CI/CD, Infrastructure as Code, DevOps, Azure, Extensions
 
 Description: Install and configure the Terraform extension for Azure DevOps to use native Terraform tasks in your pipelines with built-in state management and provider authentication.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Trivy, Security, Container, Vulnerability Scanning, DevSecOps
+Tags: Trivy, Security, Containers, Vulnerability Scanning, DevSecOps
 
 Description: Learn how to scan container images for vulnerabilities using Trivy, covering installation, basic scanning, CI/CD integration, and interpreting results.
 

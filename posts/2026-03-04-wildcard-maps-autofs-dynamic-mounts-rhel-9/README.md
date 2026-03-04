@@ -14,7 +14,7 @@ Wildcard maps in autofs let you handle an unlimited number of mount points with 
 
 In an autofs map file, the asterisk (`*`) matches any key (subdirectory name), and the ampersand (`&`) in the source is replaced with the matched key.
 
-```
+```bash
 *  -rw,soft  nfsserver:/export/&
 ```
 
@@ -145,7 +145,7 @@ sudo journalctl -u autofs | tail -30
 
 You will see entries like:
 
-```
+```bash
 attempting to mount entry /data/testdir
 lookup_mount: lookup(file): looking up testdir
 lookup_mount: lookup(file): testdir -> -rw,soft nfsserver:/export/data/testdir

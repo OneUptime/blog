@@ -28,7 +28,7 @@ flowchart TD
 
 File watch rules are the simplest way to monitor file access:
 
-```
+```bash
 -w <path> -p <permissions> -k <key_name>
 ```
 
@@ -118,7 +118,7 @@ For more granular control, use system call rules. These let you filter by user, 
 
 ### Syntax
 
-```
+```bash
 -a <action>,<list> -F arch=<architecture> -S <syscall> -F <field>=<value> -k <key>
 ```
 
@@ -206,7 +206,7 @@ sudo aureport --file --summary
 
 A typical file access audit log entry looks like this:
 
-```
+```bash
 type=SYSCALL msg=audit(1709568000.123:456): arch=c000003e syscall=257
 success=yes exit=3 a0=ffffff9c a1=7f8a3c002000 a2=241 a3=1b6
 items=2 ppid=1234 pid=5678 auid=1000 uid=0 gid=0 euid=0

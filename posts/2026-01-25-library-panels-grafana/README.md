@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Library Panels, Dashboard, Monitoring, Observability, Reusability
+Tags: Grafana, Library Panels, Dashboards, Monitoring, Observability, Reusability
 
 Description: Learn how to create, manage, and share reusable library panels in Grafana to maintain consistency across dashboards and reduce duplication in your monitoring setup.
 

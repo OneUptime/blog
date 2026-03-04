@@ -42,7 +42,7 @@ getfacl /opt/shared/file.txt
 
 Output with mask:
 
-```
+```bash
 # file: opt/shared/file.txt
 # owner: root
 # group: root

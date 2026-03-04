@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Debugging, Container, DevOps
+Tags: AWS, ECS, Debugging, Containers, DevOps
 
 Description: A step-by-step guide to setting up ECS Exec so you can open interactive shell sessions inside running Fargate and EC2-backed containers for debugging.
 

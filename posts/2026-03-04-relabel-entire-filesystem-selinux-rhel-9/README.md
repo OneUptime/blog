@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SELinux, Filesystem, Security, Linux
+Tags: RHEL, SELinux, Filesystems, Security, Linux
 
 Description: Learn how to trigger a full SELinux filesystem relabel on RHEL to fix incorrect security contexts and resolve access denials.
 

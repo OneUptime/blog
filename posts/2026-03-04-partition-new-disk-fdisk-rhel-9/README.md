@@ -42,21 +42,21 @@ You will see the fdisk prompt: `Command (m for help):`
 
 If the disk is brand new, create an MBR (DOS) partition table:
 
-```
+```bash
 # At the fdisk prompt, type:
 o     # Create a new empty DOS partition table
 ```
 
 For GPT (recommended for disks over 2 TB):
 
-```
+```bash
 # At the fdisk prompt, type:
 g     # Create a new empty GPT partition table
 ```
 
 ## Step 4 - Create a Partition
 
-```
+```bash
 # At the fdisk prompt:
 n     # New partition
 p     # Primary partition (for MBR)
@@ -69,7 +69,7 @@ If fdisk asks about removing a signature, type `y`.
 
 ## Step 5 - Create Additional Partitions
 
-```
+```bash
 # Create a second partition
 n     # New partition
 p     # Primary
@@ -84,7 +84,7 @@ For MBR partition tables, you can have up to four primary partitions. If you nee
 
 By default, new partitions get type 83 (Linux). To change it:
 
-```
+```bash
 # Change partition type
 t     # Change type
 2     # Select partition 2
@@ -99,7 +99,7 @@ Common type codes:
 
 ## Step 7 - Review and Write
 
-```
+```bash
 # Print the current partition table
 p
 

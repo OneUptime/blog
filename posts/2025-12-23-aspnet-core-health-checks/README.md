@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: .NET, C#, ASP.NET Core, Health Check, Kubernetes, Monitoring, DevOps
+Tags: .NET, C#, ASP.NET Core, Health Checks, Kubernetes, Monitoring, DevOps
 
 Description: Learn how to configure health checks in ASP.NET Core to monitor application health, database connectivity, and external service dependencies for production-ready deployments.
 

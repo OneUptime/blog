@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PAM, Authentication, Password, Troubleshooting
+Tags: RHEL, PAM, Authentication, Passwords, Troubleshooting
 
 Description: Fix the PAM 'Authentication token manipulation error' on RHEL that prevents users from changing their password or logging in.
 

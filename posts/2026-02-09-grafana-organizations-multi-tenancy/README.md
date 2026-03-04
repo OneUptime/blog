@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Multi-Tenancy, Organization
+Tags: Grafana, Multi-Tenancy, Organizations
 
 Description: Learn how to configure Grafana organizations to implement multi-tenancy with isolated dashboards, data sources, and user access controls.
 

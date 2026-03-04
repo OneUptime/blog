@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, cgroups, System Administration, Performance
+Tags: Ubuntu, Linux, Cgroups, System Administration, Performance
 
 Description: Learn how to use Linux control groups (cgroups) on Ubuntu to limit CPU, memory, I/O, and network resources for processes and services.
 

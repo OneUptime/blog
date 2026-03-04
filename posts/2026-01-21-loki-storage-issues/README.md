@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Loki, Storage, Troubleshooting, Index, Chunk, S3, Filesystem
+Tags: Grafana Loki, Storage, Troubleshooting, Index, Chunk, S3, Filesystems
 
 Description: A comprehensive guide to diagnosing and resolving Loki storage issues including chunk corruption, index problems, disk space issues, and object storage configuration for reliable log storage.
 

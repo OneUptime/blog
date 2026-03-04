@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backup, Restore, Disaster Recovery
+Tags: Velero, Kubernetes, Backups, Restore, Disaster Recovery
 
 Description: Learn how to use Velero for Kubernetes cluster backup and restore including namespaces, resources, and persistent volumes.
 

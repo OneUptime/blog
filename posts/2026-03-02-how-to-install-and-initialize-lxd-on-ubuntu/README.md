@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LXD, Container, Virtualization
+Tags: Ubuntu, LXD, Containers, Virtualization
 
 Description: A complete guide to installing LXD on Ubuntu and running through the interactive initialization process to configure storage, networking, and cluster settings.
 

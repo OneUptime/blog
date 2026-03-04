@@ -26,7 +26,7 @@ sudo vi /etc/postfix/main.cf
 
 Set the following parameters:
 
-```
+```bash
 # Basic settings
 myhostname = mail.example.com
 mydomain = example.com
@@ -53,7 +53,7 @@ sudo vi /etc/postfix/sasl_passwd
 
 Add:
 
-```
+```bash
 [smtp.example.com]:587 username:password
 ```
 
@@ -66,7 +66,7 @@ sudo chmod 600 /etc/postfix/sasl_passwd /etc/postfix/sasl_passwd.db
 
 Add to main.cf:
 
-```
+```bash
 smtp_sasl_auth_enable = yes
 smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
 smtp_sasl_security_options = noanonymous

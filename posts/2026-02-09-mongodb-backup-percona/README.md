@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Backup, Percona, Kubernetes, Database
+Tags: MongoDB, Backups, Percona, Kubernetes, Database
 
 Description: Learn how to implement comprehensive MongoDB backup and restore workflows using Percona Backup for MongoDB on Kubernetes with point-in-time recovery and cloud storage integration.
 

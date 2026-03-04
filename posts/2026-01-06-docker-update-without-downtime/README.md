@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container, DevOps, Reliability, Release, Reverse Proxy
+Tags: Docker, Containers, DevOps, Reliability, Release, Reverse Proxy
 
 Description: Implement rolling updates with Compose, blue-green deployments with Traefik, and handle graceful shutdown signals to update containers without dropping requests.
 

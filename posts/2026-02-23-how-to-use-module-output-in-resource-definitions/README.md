@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Output, Resource, Infrastructure as Code, DevOps
+Tags: Terraform, Modules, Outputs, Resources, Infrastructure as Code, DevOps
 
 Description: Learn how to reference Terraform module outputs in resource definitions to connect infrastructure components created by different modules and configurations.
 

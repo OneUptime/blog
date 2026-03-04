@@ -33,7 +33,7 @@ gcc -fsanitize=address -g -o my_program my_program.c
 
 Example output for a buffer overflow:
 
-```
+```bash
 ==12345==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x...
 READ of size 4 at 0x... thread T0
     #0 0x... in main /path/to/file.c:10

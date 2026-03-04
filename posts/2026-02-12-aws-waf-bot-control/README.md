@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, WAF, Bot Control, Security, Web Application
+Tags: AWS, WAF, Bot Control, Security, Web Applications
 
 Description: Configure AWS WAF Bot Control to detect and manage bot traffic on your web applications, distinguishing between good bots and malicious scrapers.
 

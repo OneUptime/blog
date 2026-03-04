@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, Restart Policy, systemd, DevOps, Uptime, Reliability
+Tags: Docker, Containers, Restart Policy, systemd, DevOps, Uptime, Reliability
 
 Description: Configure Docker containers to start automatically after a system reboot using restart policies, systemd, and Docker Compose settings.
 

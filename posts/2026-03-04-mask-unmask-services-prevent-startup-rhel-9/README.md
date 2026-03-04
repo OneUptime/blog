@@ -25,7 +25,7 @@ sudo systemctl mask bluetooth
 
 Output:
 
-```
+```bash
 Created symlink /etc/systemd/system/bluetooth.service -> /dev/null.
 ```
 
@@ -38,7 +38,7 @@ sudo systemctl start bluetooth
 
 You will get:
 
-```
+```bash
 Failed to start bluetooth.service: Unit bluetooth.service is masked.
 ```
 
@@ -85,7 +85,7 @@ sudo systemctl unmask bluetooth
 
 Output:
 
-```
+```bash
 Removed /etc/systemd/system/bluetooth.service.
 ```
 
@@ -116,7 +116,7 @@ sudo systemctl status bluetooth
 
 The "Loaded" line will show the link to `/dev/null`:
 
-```
+```bash
 bluetooth.service
      Loaded: masked (Reason: Unit bluetooth.service is masked.)
      Active: inactive (dead)

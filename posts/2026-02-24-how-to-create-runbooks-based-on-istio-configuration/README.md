@@ -204,18 +204,18 @@ def generate_service_runbook(vs, dr):
 ## Health Check Commands
 
 ```bash
-# Check pod status
+## Check pod status
 kubectl get pods -n {ns} -l app={name}
 
-# Check proxy status
+## Check proxy status
 istioctl proxy-status | grep {name}
 
-# Check endpoints
+## Check endpoints
 istioctl proxy-config endpoints deploy/{name} -n {ns}
 
-# Check recent errors
+## Check recent errors
 kubectl logs -n {ns} deploy/{name} -c istio-proxy --tail=50 | grep -i error
-```
+```bash
 
 ## Route Information
 
@@ -249,10 +249,10 @@ kubectl logs -n {ns} deploy/{name} -c istio-proxy --tail=50 | grep -i error
 ## Circuit Breaker Troubleshooting
 
 ```bash
-# Check if circuit breaker is active
+## Check if circuit breaker is active
 kubectl exec deploy/{name} -n {ns} -c istio-proxy -- \\
   pilot-agent request GET /stats | grep ejections
-```
+```bash
 
 """
 

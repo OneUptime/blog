@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, chrony, Isolated Network, NTP, Linux
+Tags: RHEL, Chrony, Isolated Network, NTP, Linux
 
 Description: How to configure chrony for time synchronization on air-gapped or isolated RHEL networks that have no internet access.
 
@@ -39,7 +39,7 @@ If accurate time matters, invest in a GPS receiver or a dedicated time appliance
 
 chrony supports several hardware reference clocks through shared memory (SHM) or the SOCK driver. If you have a GPS device with PPS (pulse per second) output:
 
-```
+```bash
 # In /etc/chrony.conf on the primary NTP server
 # SHM reference clock from gpsd
 refclock SHM 0 offset 0.0 delay 0.2 refid GPS
@@ -85,7 +85,7 @@ On the server that will be the time reference:
 sudo vi /etc/chrony.conf
 ```
 
-```
+```bash
 # No external NTP sources - we are the reference
 # Use the local clock as the time source, stratum 8
 local stratum 8
@@ -119,7 +119,7 @@ sudo systemctl restart chronyd
 
 For redundancy, set up a second server that syncs to the primary and can take over if the primary goes down:
 
-```
+```bash
 # Sync to the primary NTP server
 server 10.0.0.1 iburst
 
@@ -145,7 +145,7 @@ The `orphan` option on the `local` directive means this server only activates it
 
 On all other systems:
 
-```
+```bash
 # Point to both internal NTP servers
 server 10.0.0.1 iburst
 server 10.0.0.2 iburst

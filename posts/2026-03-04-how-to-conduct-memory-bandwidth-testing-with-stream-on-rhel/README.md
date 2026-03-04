@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, STREAM, Memory Bandwidth, Benchmarking, Performance
+Tags: RHEL, Streams, Memory Bandwidth, Benchmarking, Performance
 
 Description: Learn how to compile and run the STREAM memory bandwidth benchmark on RHEL to measure memory subsystem performance.
 
@@ -39,7 +39,7 @@ export OMP_NUM_THREADS=$(lscpu | grep "^Core(s)" | awk '{print $NF}')
 
 ## Understanding the Output
 
-```
+```bash
 # STREAM outputs four measurements:
 # Copy:  a(i) = b(i)           -- simple memory copy
 # Scale: a(i) = q * b(i)       -- multiply and store

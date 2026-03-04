@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Ephemeral Storage, Kubernetes, VOLUME, Container Runtime
+Tags: Talos Linux, Ephemeral Storage, Kubernetes, Volumes, Container Runtime
 
 Description: Learn how to configure the EPHEMERAL volume in Talos Linux for optimal Kubernetes workload performance and storage management.
 

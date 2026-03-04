@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Pod Disruption Budget, Kubernetes, High Availability, Maintenance, Rolling Update
+Tags: Talos Linux, Pod Disruption Budget, Kubernetes, High Availability, Maintenance, Rolling Updates
 
 Description: Learn how to configure Pod Disruption Budgets on Talos Linux to protect application availability during node maintenance, upgrades, and scaling events.
 

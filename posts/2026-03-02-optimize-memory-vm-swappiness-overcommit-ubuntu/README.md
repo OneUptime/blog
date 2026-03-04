@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Performance, Memory, Kernel, Sysadmin
+Tags: Ubuntu, Performance, Memory, Kernel, SysAdmin
 
 Description: Learn how to tune Linux kernel memory parameters like vm.swappiness and overcommit settings on Ubuntu to improve system performance and stability.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Plugin, Packaging, Best Practices
+Tags: Ansible, Collections, Plugins, Packaging, Best Practices
 
 Description: Learn the correct directory structure and organization for packaging Ansible plugins inside collections for distribution and reuse.
 

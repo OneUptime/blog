@@ -55,7 +55,7 @@ dnf module list php
 
 Example output:
 
-```
+```bash
 Name   Stream   Profiles               Summary
 php    8.1      common [d], devel, minimal   PHP scripting language
 php    8.2      common [d], devel, minimal   PHP scripting language

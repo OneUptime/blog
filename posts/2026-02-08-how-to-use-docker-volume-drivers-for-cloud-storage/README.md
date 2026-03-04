@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, VOLUME, Cloud Storage, AWS, DevOps, Storage Driver
+Tags: Docker, Volumes, Cloud Storage, AWS, DevOps, Storage Driver
 
 Description: Learn how to use Docker volume drivers to connect containers to cloud storage services like AWS EBS, S3, and NFS for persistent data.
 

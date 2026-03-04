@@ -26,7 +26,7 @@ graph TD
 
 Custom modules go in a `library/` directory next to your playbook or in a role's `library/` directory:
 
-```
+```bash
 project/
   playbook.yml
   library/

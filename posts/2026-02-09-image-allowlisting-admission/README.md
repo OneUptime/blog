@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Admission Controller, Container Image, Supply Chain
+Tags: Kubernetes, Security, Admission Controller, Container Images, Supply Chain
 
 Description: Implement container image allowlisting policies using Kubernetes admission controllers to restrict deployments to approved registries and verified images.
 

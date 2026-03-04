@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Loki, Upgrade, Zero Downtime, Rolling Update, Migration, Operations
+Tags: Grafana Loki, Upgrade, Zero Downtime, Rolling Updates, Migration, Operations
 
 Description: A comprehensive guide to upgrading Grafana Loki without downtime, covering rolling upgrade strategies, version compatibility, configuration migration, and best practices for production deployments.
 

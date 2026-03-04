@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LVM, Storage, Filesystem, Linux
+Tags: RHEL, LVM, Storage, Filesystems, Linux
 
 Description: A comprehensive guide to setting up and managing LVM on RHEL, covering physical volumes, volume groups, and logical volumes.
 

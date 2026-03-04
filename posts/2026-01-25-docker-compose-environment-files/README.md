@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, Environment Variable, DevOps, Configuration
+Tags: Docker, Docker Compose, Environment Variables, DevOps, Configuration
 
 Description: Master Docker Compose environment files to manage configuration across development, staging, and production environments with proper secret handling and variable precedence.
 

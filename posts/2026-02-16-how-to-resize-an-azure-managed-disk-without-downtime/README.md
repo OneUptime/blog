@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Managed Disks, Disk Resize, Online Resize, Cloud Infrastructure, Virtual Machine
+Tags: Azure, Managed Disks, Disk Resize, Online Resize, Cloud Infrastructure, Virtual Machines
 
 Description: Learn how to expand Azure Managed Disks without stopping your virtual machine, including OS-level partition extension for both Linux and Windows.
 

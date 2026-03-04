@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ansible Galaxy, Requirements, Collection, Roles
+Tags: Ansible, Ansible Galaxy, Requirements, Collections, Roles
 
 Description: How to structure a unified requirements.yml that manages both Ansible collections and roles with version pinning and multiple sources.
 

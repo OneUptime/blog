@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, XFS, Filesystem, Storage, Linux
+Tags: RHEL, XFS, Filesystems, Storage, Linux
 
 Description: Learn how to create, mount, and configure XFS file systems on RHEL, including partition preparation, formatting options, and persistent mount configuration.
 
@@ -65,7 +65,7 @@ sudo mkfs.xfs /dev/sdb1
 
 You will see output similar to:
 
-```
+```bash
 meta-data=/dev/sdb1              isize=512    agcount=4, agsize=6553600 blks
          =                       sectsz=512   attr=2, projid32bit=1
          =                       crc=1        finobt=1, sparse=1, rmapbt=0

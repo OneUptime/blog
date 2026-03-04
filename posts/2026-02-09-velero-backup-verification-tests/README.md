@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backup, Testing, Automation
+Tags: Velero, Kubernetes, Backups, Testing, Automation
 
 Description: Learn how to implement automated backup verification with Velero restore jobs. Complete guide covering test strategies, validation scripts, and continuous verification workflows.
 

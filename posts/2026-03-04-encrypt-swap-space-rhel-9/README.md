@@ -56,7 +56,7 @@ vi /etc/crypttab
 
 Add an entry for encrypted swap:
 
-```
+```bash
 swap    /dev/rhel/swap    /dev/urandom    swap,cipher=aes-xts-plain64,size=512
 ```
 
@@ -76,7 +76,7 @@ vi /etc/fstab
 
 Replace the existing swap line with:
 
-```
+```bash
 /dev/mapper/swap    none    swap    defaults    0 0
 ```
 
@@ -133,13 +133,13 @@ swapon /dev/mapper/swap_crypt
 
 Add to `/etc/crypttab`:
 
-```
+```bash
 swap_crypt    /dev/rhel/swap    none    luks
 ```
 
 Update `/etc/fstab`:
 
-```
+```bash
 /dev/mapper/swap_crypt    none    swap    defaults    0 0
 ```
 
@@ -160,7 +160,7 @@ cryptsetup luksAddKey /dev/rhel/swap /root/.swap-keyfile
 
 Update crypttab to use the keyfile:
 
-```
+```bash
 swap_crypt    /dev/rhel/swap    /root/.swap-keyfile    luks
 ```
 

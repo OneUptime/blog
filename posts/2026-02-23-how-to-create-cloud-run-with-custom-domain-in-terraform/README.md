@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Cloud Run, Serverless, Container, DNS
+Tags: Terraform, GCP, Cloud Run, Serverless, Containers, DNS
 
 Description: Learn how to deploy Google Cloud Run services with custom domain mapping using Terraform for production-ready containerized applications with your own domain.
 

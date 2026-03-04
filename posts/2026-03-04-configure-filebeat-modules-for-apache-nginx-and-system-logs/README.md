@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Filebeat, Log Aggregation, Nginx, Linux
+Tags: RHEL, Filebeat, Log Aggregation, NGINX, Linux
 
 Description: Learn how to configure Filebeat Modules for Apache, Nginx, and System Logs on RHEL with step-by-step instructions, configuration examples, and best practices.
 

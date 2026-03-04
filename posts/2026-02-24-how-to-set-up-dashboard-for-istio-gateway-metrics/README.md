@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway, Grafana, Metrics, Dashboard, Monitoring
+Tags: Istio, Gateway, Grafana, Metrics, Dashboards, Monitoring
 
 Description: Step-by-step instructions for building a Grafana dashboard to monitor Istio ingress and egress gateway performance and health.
 

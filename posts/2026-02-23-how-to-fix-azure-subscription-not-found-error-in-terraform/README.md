@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Subscription, Troubleshooting, Infrastructure as Code
+Tags: Terraform, Azure, Subscriptions, Troubleshooting, Infrastructure as Code
 
 Description: Resolve the subscription not found error in Terraform Azure provider caused by incorrect subscription IDs, permission issues, or multi-tenant configurations.
 

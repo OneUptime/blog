@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditional, Boolean, YAML
+Tags: Ansible, Conditional, Booleans, YAML
 
 Description: Learn how to correctly handle boolean values in Ansible conditionals, including YAML boolean types, string booleans, and the bool filter.
 

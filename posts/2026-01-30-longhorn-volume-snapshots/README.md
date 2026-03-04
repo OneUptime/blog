@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Longhorn, Kubernetes, Storage, Snapshot
+Tags: Longhorn, Kubernetes, Storage, Snapshots
 
 Description: A practical guide to creating, managing, and restoring Longhorn volume snapshots in Kubernetes using kubectl, the Longhorn UI, and VolumeSnapshot CRDs.
 

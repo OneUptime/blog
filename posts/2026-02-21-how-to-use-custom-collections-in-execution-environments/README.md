@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Execution Environment, ansible-builder
+Tags: Ansible, Collections, Execution Environments, ansible-builder
 
 Description: Include custom and private Ansible collections in your Execution Environments from Galaxy, Automation Hub, Git repos, and local sources.
 

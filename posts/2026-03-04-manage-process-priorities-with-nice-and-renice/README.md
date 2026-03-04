@@ -19,7 +19,7 @@ nice and renice let you adjust process scheduling priorities on RHEL. A process 
 
 Nice values range from -20 (highest priority) to 19 (lowest priority). The default is 0.
 
-```
+```bash
 -20 ---- 0 ---- 19
 High    Default   Low
 Priority         Priority
@@ -104,7 +104,7 @@ Allow specific users to set lower nice values:
 sudo vi /etc/security/limits.conf
 ```
 
-```
+```bash
 appuser  hard  nice  -10
 appuser  soft  nice  0
 ```

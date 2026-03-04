@@ -14,7 +14,7 @@ HAProxy uses several timeout values that control how long it waits at different 
 
 ## The Three Core Timeouts
 
-```
+```bash
 defaults
     timeout connect 5s
     timeout client 30s
@@ -112,7 +112,7 @@ Common causes:
 
 Fix by increasing the timeout or fixing the backend:
 
-```
+```bash
 backend web_servers
     timeout server 60s
     server web1 192.168.1.11:8080 check
@@ -129,7 +129,7 @@ Common causes:
 
 Fix:
 
-```
+```bash
 defaults
     timeout client 60s
 ```
@@ -138,7 +138,7 @@ defaults
 
 Beyond the three core timeouts, there are others you might need:
 
-```
+```bash
 defaults
     # Time to wait for a complete HTTP request from the client
     timeout http-request 10s
@@ -157,7 +157,7 @@ defaults
 
 This is important for preventing slowloris attacks. If the client does not send a complete HTTP request within this time, HAProxy closes the connection:
 
-```
+```bash
 defaults
     timeout http-request 10s
 ```
@@ -166,7 +166,7 @@ defaults
 
 When all backend servers are at their connection limit, requests queue up. This timeout controls how long they wait:
 
-```
+```bash
 defaults
     timeout queue 30s
 ```
@@ -223,7 +223,7 @@ sudo sysctl -p /etc/sysctl.d/99-conntrack.conf
 
 Check if you are hitting connection limits:
 
-```
+```bash
 global
     maxconn 4096
 
@@ -257,7 +257,7 @@ flowchart TD
 
 ## A Reasonable Production Configuration
 
-```
+```bash
 defaults
     timeout connect 5s
     timeout client 30s

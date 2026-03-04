@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, XFS, File System, Corruption, Storage, Troubleshooting
+Tags: RHEL, XFS, File Systems, Corruption, Storage, Troubleshooting
 
 Description: Diagnose and repair XFS metadata corruption on RHEL using xfs_repair, including handling the default root filesystem format.
 

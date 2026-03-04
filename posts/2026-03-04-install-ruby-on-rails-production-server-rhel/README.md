@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ruby, Rails, Puma, Nginx, Production, Web Development
+Tags: RHEL, Ruby, Rails, Puma, NGINX, Production, Web Development
 
 Description: Set up a production-ready Ruby on Rails server on RHEL with Puma as the application server and Nginx as a reverse proxy.
 

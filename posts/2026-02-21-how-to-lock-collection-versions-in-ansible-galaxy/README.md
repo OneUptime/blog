@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ansible Galaxy, Collection, Version Pinning, Reproducibility
+Tags: Ansible, Ansible Galaxy, Collections, Version Pinning, Reproducibility
 
 Description: Techniques for locking Ansible Galaxy collection versions to ensure reproducible builds including pinning strategies and custom lock files.
 

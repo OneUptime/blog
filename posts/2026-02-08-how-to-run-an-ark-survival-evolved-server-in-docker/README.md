@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, ARK, Survival Evolved, Game Server, Steam, Container, Self-Hosted, Gaming, Multiplayer
+Tags: Docker, ARK, Survival Evolved, Game Server, Steam, Containers, Self-Hosted, Gaming, Multiplayer
 
 Description: Deploy a dedicated ARK Survival Evolved server in Docker with map configuration, mod support, cluster setup, and taming rate customization.
 

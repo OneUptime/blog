@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Security, Hardening, Immutable, Container
+Tags: Docker, Security, Hardening, Immutable, Containers
 
 Description: Learn how to run Docker containers with read-only root filesystems for improved security, handle writable directories with tmpfs, and troubleshoot common issues.
 

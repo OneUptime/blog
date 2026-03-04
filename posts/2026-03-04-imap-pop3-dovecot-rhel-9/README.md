@@ -50,7 +50,7 @@ sudo dnf install -y dovecot
 
 Edit `/etc/dovecot/dovecot.conf`:
 
-```
+```bash
 # Enable both IMAP and POP3
 protocols = imap pop3
 ```
@@ -59,7 +59,7 @@ protocols = imap pop3
 
 Edit `/etc/dovecot/conf.d/10-ssl.conf`:
 
-```
+```bash
 # Require TLS for all connections
 ssl = required
 
@@ -78,7 +78,7 @@ ssl_prefer_server_ciphers = yes
 
 Edit `/etc/dovecot/conf.d/10-auth.conf`:
 
-```
+```bash
 # Do not allow plaintext auth without TLS
 disable_plaintext_auth = yes
 
@@ -90,7 +90,7 @@ auth_mechanisms = plain login
 
 Edit `/etc/dovecot/conf.d/10-mail.conf`:
 
-```
+```bash
 # Maildir format in home directories
 mail_location = maildir:~/Maildir
 
@@ -102,7 +102,7 @@ mail_privileged_group = mail
 
 Edit `/etc/dovecot/conf.d/10-master.conf` to configure the listening ports:
 
-```
+```bash
 service imap-login {
   inet_listener imap {
     # Disable plain IMAP (port 143)
@@ -134,7 +134,7 @@ Setting the plain-text ports to 0 disables them entirely, forcing all connection
 
 Edit `/etc/dovecot/conf.d/20-pop3.conf`:
 
-```
+```bash
 protocol pop3 {
   # Show deleted messages as expunged (required by some clients)
   pop3_uidl_format = %08Xu%08Xv
@@ -148,7 +148,7 @@ protocol pop3 {
 
 Edit `/etc/dovecot/conf.d/15-mailboxes.conf`:
 
-```
+```bash
 namespace inbox {
   inbox = yes
 
@@ -221,7 +221,7 @@ openssl s_client -connect mail.example.com:993
 
 After connecting, authenticate and list mailboxes:
 
-```
+```bash
 a1 LOGIN testuser password
 a2 LIST "" "*"
 a3 SELECT INBOX
@@ -238,7 +238,7 @@ openssl s_client -connect mail.example.com:995
 
 After connecting:
 
-```
+```bash
 USER testuser
 PASS password
 STAT
@@ -268,7 +268,7 @@ sudo doveadm search -u testuser mailbox INBOX ALL
 
 Edit `/etc/dovecot/conf.d/10-logging.conf`:
 
-```
+```bash
 # Normal logging
 log_path = syslog
 syslog_facility = mail
@@ -306,7 +306,7 @@ sudo tail -f /var/log/maillog
 
 Most mobile mail apps auto-detect settings if you have proper DNS SRV records:
 
-```
+```bash
 _imaps._tcp.example.com.  IN  SRV  0 1 993 mail.example.com.
 _pop3s._tcp.example.com.  IN  SRV  0 1 995 mail.example.com.
 ```

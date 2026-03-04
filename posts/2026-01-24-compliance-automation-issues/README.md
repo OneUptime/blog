@@ -111,7 +111,7 @@ how_to_fix: |
       team: platform       # Your team name
       environment: prod    # dev, staging, or prod
       app: api-server     # Application name
-  ```
+  ```bash
 
 exceptions: |
   System namespaces (kube-system, monitoring) are exempt.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, CI/CD, Container Image
+Tags: ArgoCD, GitOps, Kubernetes, CI/CD, Container Images
 
 Description: Learn how to implement a complete image tag update workflow with ArgoCD that automatically updates Kubernetes deployments when new container images are built in your CI pipeline.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, DevOps, Container, Port Mapping
+Tags: Docker, Networking, DevOps, Containers, Port Mapping
 
 Description: Learn how to correctly map ports in Docker using host, bridge, and container network modes, including port publishing, range mapping, and troubleshooting common networking issues.
 

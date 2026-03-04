@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ceph, Storage, Dashboard, Monitoring, Management, Cloud Native
+Tags: Ceph, Storage, Dashboards, Monitoring, Management, Cloud Native
 
 Description: A guide to deploying and configuring the Ceph Dashboard for visual cluster management and monitoring.
 

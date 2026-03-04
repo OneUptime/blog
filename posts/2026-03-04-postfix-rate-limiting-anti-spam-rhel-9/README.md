@@ -20,7 +20,7 @@ Many spam bots do not send proper HELO greetings. Require valid ones:
 
 Add to `/etc/postfix/main.cf`:
 
-```
+```bash
 # Require clients to send HELO/EHLO
 smtpd_helo_required = yes
 
@@ -36,7 +36,7 @@ smtpd_helo_restrictions =
 
 Block mail from senders with invalid or non-existent domains:
 
-```
+```bash
 smtpd_sender_restrictions =
     permit_mynetworks,
     reject_non_fqdn_sender,
@@ -47,7 +47,7 @@ smtpd_sender_restrictions =
 
 This is the most important restriction chain:
 
-```
+```bash
 smtpd_recipient_restrictions =
     permit_mynetworks,
     permit_sasl_authenticated,
@@ -64,7 +64,7 @@ smtpd_recipient_restrictions =
 
 Block clients based on their connecting behavior:
 
-```
+```bash
 smtpd_client_restrictions =
     permit_mynetworks,
     reject_unknown_client_hostname
@@ -74,7 +74,7 @@ smtpd_client_restrictions =
 
 Postfix includes the `anvil` service that tracks client connection rates. Configure it in `/etc/postfix/main.cf`:
 
-```
+```bash
 # Maximum number of connections per time unit from one client
 smtpd_client_connection_rate_limit = 30
 
@@ -116,7 +116,7 @@ graph TD
 
 RBLs maintain lists of known spam-sending IP addresses. Postfix can check these during the SMTP conversation:
 
-```
+```bash
 smtpd_recipient_restrictions =
     permit_mynetworks,
     permit_sasl_authenticated,
@@ -155,7 +155,7 @@ sudo systemctl enable --now postgrey
 
 Add to `/etc/postfix/main.cf`:
 
-```
+```bash
 smtpd_recipient_restrictions =
     permit_mynetworks,
     permit_sasl_authenticated,
@@ -169,7 +169,7 @@ Postgrey delays the first delivery from an unknown sender by about 5 minutes. Su
 
 Prevent large messages from clogging your server:
 
-```
+```bash
 # Maximum message size (25 MB)
 message_size_limit = 26214400
 
@@ -185,7 +185,7 @@ Create custom access rules using access maps.
 
 Create `/etc/postfix/sender_access`:
 
-```
+```bash
 # Block known spam domains
 spammer.com         REJECT
 bad-sender.net      REJECT
@@ -201,7 +201,7 @@ sudo postmap /etc/postfix/sender_access
 
 Add to `main.cf`:
 
-```
+```bash
 smtpd_sender_restrictions =
     check_sender_access hash:/etc/postfix/sender_access,
     reject_non_fqdn_sender,
@@ -212,7 +212,7 @@ smtpd_sender_restrictions =
 
 Create `/etc/postfix/client_access`:
 
-```
+```bash
 # Block abusive IPs
 1.2.3.4         REJECT Too many spam attempts
 5.6.7.0/24      REJECT Known spam network
@@ -224,7 +224,7 @@ sudo postmap /etc/postfix/client_access
 
 Add to `main.cf`:
 
-```
+```bash
 smtpd_client_restrictions =
     check_client_access hash:/etc/postfix/client_access,
     permit_mynetworks,
@@ -235,7 +235,7 @@ smtpd_client_restrictions =
 
 Filter messages based on content patterns:
 
-```
+```bash
 # Enable header and body checks
 header_checks = regexp:/etc/postfix/header_checks
 body_checks = regexp:/etc/postfix/body_checks
@@ -243,7 +243,7 @@ body_checks = regexp:/etc/postfix/body_checks
 
 Create `/etc/postfix/header_checks`:
 
-```
+```bash
 # Reject messages with suspicious subjects
 /^Subject:.*viagra/i           REJECT Spam content detected
 /^Subject:.*lottery winner/i   REJECT Spam content detected
@@ -254,7 +254,7 @@ Create `/etc/postfix/header_checks`:
 
 Create `/etc/postfix/body_checks`:
 
-```
+```bash
 # Block messages with suspicious content
 /click here to claim your prize/i    REJECT Spam body content
 ```

@@ -235,7 +235,7 @@ sudo blkid /dev/new_vg/lv_new
 
 Then use the UUID in fstab:
 
-```
+```bash
 UUID=abcd1234-ef56-7890-abcd-1234567890ab /data xfs defaults 0 0
 ```
 

@@ -23,7 +23,7 @@ sudo dnf install -y caddy
 
 Simply specify a domain name in your Caddyfile:
 
-```
+```bash
 # /etc/caddy/Caddyfile
 myapp.example.com {
     reverse_proxy localhost:3000
@@ -44,7 +44,7 @@ For wildcard certificates, use the DNS challenge:
 sudo caddy add-package github.com/caddy-dns/cloudflare
 ```
 
-```
+```bash
 # /etc/caddy/Caddyfile
 *.example.com {
     tls {
@@ -69,7 +69,7 @@ sudo systemctl restart caddy
 
 ## Using a Staging CA for Testing
 
-```
+```bash
 # /etc/caddy/Caddyfile
 myapp.example.com {
     tls {
@@ -83,7 +83,7 @@ myapp.example.com {
 
 For internal services that do not need public certificates:
 
-```
+```bash
 # /etc/caddy/Caddyfile
 internal.local {
     tls internal

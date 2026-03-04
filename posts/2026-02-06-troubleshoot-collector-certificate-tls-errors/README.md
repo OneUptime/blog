@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Troubleshooting, TLS, SSL, Certificate, Security
+Tags: OpenTelemetry, Collector, Troubleshooting, TLS, SSL, Certificates, Security
 
 Description: A comprehensive guide to diagnosing and resolving TLS certificate errors in OpenTelemetry Collector, covering common issues, certificate validation, mutual TLS, and secure production configurations.
 

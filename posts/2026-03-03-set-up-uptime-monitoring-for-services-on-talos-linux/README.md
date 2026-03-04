@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Uptime Monitoring, Kubernetes, Health Check, Blackbox Exporter, Prometheus
+Tags: Talos Linux, Uptime Monitoring, Kubernetes, Health Checks, Blackbox Exporter, Prometheus
 
 Description: Configure uptime monitoring for your services running on Talos Linux using Blackbox Exporter, Prometheus, and alerting rules.
 

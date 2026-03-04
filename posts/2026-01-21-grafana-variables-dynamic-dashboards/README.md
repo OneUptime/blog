@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Variables, Dashboard, PromQL, Dynamic Filtering, Templating
+Tags: Grafana, Variables, Dashboards, PromQL, Dynamic Filtering, Templating
 
 Description: Master Grafana dashboard variables to create flexible, reusable dashboards that let users filter by namespace, service, environment, or any dimension without duplicating dashboards.
 

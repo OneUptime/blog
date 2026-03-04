@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, System Administration, File System, fsck, Disk Maintenance, Data Recovery, ext4, XFS
+Tags: Linux, System Administration, File Systems, fsck, Disk Maintenance, Data Recovery, ext4, XFS
 
 Description: A comprehensive guide to using fsck for filesystem checks and repairs in Linux, covering different filesystem types, safe practices, and recovery procedures.
 

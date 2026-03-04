@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, WebAssembly, WASM, Microservices, Portability, Container, Cloud Native
+Tags: Docker, WebAssembly, WASM, Microservices, Portability, Containers, Cloud Native
 
 Description: Build truly portable microservices that run anywhere using Docker and WebAssembly with step-by-step examples.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenID Connect, Microsoft Entra ID, Authentication, Azure AD, Web Application, OAuth, Identity
+Tags: OpenID Connect, Microsoft Entra ID, Authentication, Azure AD, Web Applications, OAuth, Identity
 
 Description: Step-by-step guide to configuring OpenID Connect authentication for your web application using Microsoft Entra ID as the identity provider.
 

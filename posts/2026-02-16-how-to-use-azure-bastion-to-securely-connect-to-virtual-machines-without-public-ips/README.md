@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Bastion, Virtual Machine, Security, SSH, RDP, Zero Trust, Networking
+Tags: Azure, Bastion, Virtual Machines, Security, SSH, RDP, Zero Trust, Networking
 
 Description: Learn how to deploy Azure Bastion to securely connect to Azure VMs over SSH and RDP without exposing public IP addresses.
 

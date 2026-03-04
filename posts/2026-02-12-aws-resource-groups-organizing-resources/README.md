@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Resource Groups, Organization, Tagging
+Tags: AWS, Resource Groups, Organizations, Tagging
 
 Description: Learn how to use AWS Resource Groups to organize, view, and manage your AWS resources by application, environment, team, or any other logical grouping.
 

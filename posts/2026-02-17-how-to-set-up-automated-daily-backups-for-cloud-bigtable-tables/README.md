@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Bigtable, Backup, Automation, Cloud Scheduler
+Tags: GCP, Cloud Bigtable, Backups, Automation, Cloud Scheduler
 
 Description: Learn how to configure automated daily backups for your Cloud Bigtable tables using Cloud Functions, Cloud Scheduler, and the Bigtable Admin API to protect your data.
 

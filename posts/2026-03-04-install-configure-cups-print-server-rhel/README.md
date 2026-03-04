@@ -44,7 +44,7 @@ sudo vi /etc/cups/cupsd.conf
 
 Make the following changes:
 
-```
+```bash
 # Listen on all interfaces instead of just localhost
 Listen *:631
 

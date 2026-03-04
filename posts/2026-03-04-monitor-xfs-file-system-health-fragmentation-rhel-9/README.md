@@ -48,7 +48,7 @@ sudo xfs_db -r /dev/vg_data/lv_data
 
 Inside `xfs_db`:
 
-```
+```bash
 xfs_db> freesp -s
 ```
 
@@ -70,7 +70,7 @@ sudo filefrag /data/important_file
 
 Output example:
 
-```
+```bash
 /data/important_file: 3 extents found
 ```
 
@@ -98,7 +98,7 @@ sudo xfs_db -r -c 'freesp -s' /dev/vg_data/lv_data
 
 The output shows:
 
-```
+```bash
    from      to extents  blocks    pct
       1       1      15      15   0.01%
       2       3      10      25   0.02%

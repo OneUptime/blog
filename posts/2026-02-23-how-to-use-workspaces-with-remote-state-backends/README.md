@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Remote State, Backend, S3, Azure, GCS
+Tags: Terraform, Workspaces, Remote State, Backend, S3, Azure, GCS
 
 Description: Learn how Terraform workspaces integrate with remote state backends like S3, Azure Blob Storage, GCS, and Consul, including state path conventions and locking behavior.
 

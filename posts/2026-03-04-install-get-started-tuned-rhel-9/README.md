@@ -47,7 +47,7 @@ tuned-adm active
 
 Output example:
 
-```
+```bash
 Current active profile: virtual-guest
 ```
 

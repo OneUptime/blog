@@ -58,7 +58,7 @@ ps -u $(whoami) | wc -l
 sudo vi /etc/security/limits.d/99-nproc.conf
 ```
 
-```
+```bash
 *    soft    nproc    65536
 *    hard    nproc    65536
 ```

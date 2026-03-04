@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, KVM, Clone, virt-clone, Virtual Machine, Virtualization, Linux
+Tags: RHEL, KVM, Clone, virt-clone, Virtual Machines, Virtualization, Linux
 
 Description: Learn how to clone KVM virtual machines on RHEL using virt-clone and virt-sysprep, creating independent copies for testing, development, or deployment.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, OpenSearch, Dashboard, Visualization, Monitoring
+Tags: AWS, OpenSearch, Dashboards, Visualization, Monitoring
 
 Description: Learn how to build dashboards and visualizations in OpenSearch Dashboards for log analytics, application monitoring, and business intelligence use cases.
 

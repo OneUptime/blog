@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Vault, TLS, Certificate, Security
+Tags: Ansible, Vault, TLS, Certificates, Security
 
 Description: Learn how to securely store and deploy TLS certificates and private keys using Ansible Vault for web servers and internal services.
 

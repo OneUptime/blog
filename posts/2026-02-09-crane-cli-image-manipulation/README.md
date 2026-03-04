@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Crane, Container Image, CLI, Manipulation, Analysis
+Tags: Crane, Container Images, CLI, Manipulation, Analysis
 
 Description: Learn how to use Crane CLI for fast container image operations including copying, analyzing, and manipulating images.
 

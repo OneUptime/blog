@@ -292,7 +292,7 @@ sudo firewall-cmd --reload
 
 After all the setup, your file layout should look like this:
 
-```
+```bash
 /var/lib/tftpboot/
     pxelinux.0
     ldlinux.c32
@@ -357,7 +357,7 @@ sudo firewall-cmd --reload
 
 Then update your PXE menu to use FTP URLs:
 
-```
+```bash
 inst.repo=ftp://192.168.1.50/pub/rhel9/ inst.ks=ftp://192.168.1.50/pub/kickstart/kickstart.cfg
 ```
 

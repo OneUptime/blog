@@ -53,7 +53,7 @@ sudo systemctl enable --now stratisd
 
 Open a web browser and navigate to:
 
-```
+```bash
 https://your-server-ip:9090
 ```
 

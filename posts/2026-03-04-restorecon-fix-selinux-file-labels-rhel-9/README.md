@@ -31,7 +31,7 @@ sudo restorecon -v /var/www/html/index.html
 
 The `-v` (verbose) flag shows what changed:
 
-```
+```bash
 Relabeled /var/www/html/index.html from unconfined_u:object_r:user_home_t:s0 to system_u:object_r:httpd_sys_content_t:s0
 ```
 
@@ -154,13 +154,13 @@ matchpathcon -V /var/www/html/index.html
 
 Output when correct:
 
-```
+```bash
 /var/www/html/index.html verified.
 ```
 
 Output when incorrect:
 
-```
+```bash
 /var/www/html/index.html has context unconfined_u:object_r:user_home_t:s0, should be system_u:object_r:httpd_sys_content_t:s0
 ```
 

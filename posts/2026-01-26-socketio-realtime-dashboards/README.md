@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NodeJS, Socket.IO, WebSocket, Real-Time, Dashboard, TypeScript
+Tags: NodeJS, Socket.IO, WebSocket, Real-Time, Dashboards, TypeScript
 
 Description: Learn how to build real-time dashboards using Socket.io in Node.js with room-based updates, efficient data broadcasting, authentication, and scaling patterns.
 

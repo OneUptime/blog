@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, kdump, System Roles, Ansible, Crash Dump
+Tags: RHEL, kdump, System Roles, Ansible, Crash Dumps
 
 Description: Use the RHEL System Role for kdump to configure automatic kernel crash dump collection across multiple RHEL systems using Ansible.
 

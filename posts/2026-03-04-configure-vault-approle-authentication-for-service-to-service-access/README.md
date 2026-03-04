@@ -1,4 +1,4 @@
-# How to Configure Vault AppRole Authentication for Service-to-Service Access on RHEL
+# How to Configure Vault AppRole Auth for Service-to-Service Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

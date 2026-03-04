@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure Patterns, Backup, Disaster Recovery, AWS, Cloud Infrastructure
+Tags: Terraform, Infrastructure Patterns, Backups, Disaster Recovery, AWS, Cloud Infrastructure
 
 Description: Learn how to build a production-grade backup and recovery infrastructure using Terraform with automated snapshots, cross-region replication, and recovery testing.
 

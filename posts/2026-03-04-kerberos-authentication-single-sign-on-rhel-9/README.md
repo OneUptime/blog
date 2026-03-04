@@ -104,7 +104,7 @@ sudo vi /etc/ssh/sshd_config
 
 Enable GSSAPI:
 
-```
+```bash
 GSSAPIAuthentication yes
 GSSAPICleanupCredentials yes
 ```
@@ -120,7 +120,7 @@ On the SSH client, configure GSSAPI in the client configuration:
 sudo vi /etc/ssh/ssh_config.d/gssapi.conf
 ```
 
-```
+```bash
 Host *.example.com
   GSSAPIAuthentication yes
   GSSAPIDelegateCredentials yes

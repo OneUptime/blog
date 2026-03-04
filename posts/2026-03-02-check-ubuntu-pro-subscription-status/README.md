@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Ubuntu Pro, Subscription, Security
+Tags: Ubuntu, Ubuntu Pro, Subscriptions, Security
 
 Description: How to check Ubuntu Pro subscription status, view entitled services, monitor contract expiration, and diagnose common status issues on Ubuntu Server.
 

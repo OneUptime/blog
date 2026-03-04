@@ -21,7 +21,7 @@ sudo grep wheel /etc/sudoers
 
 You will see:
 
-```
+```bash
 %wheel  ALL=(ALL)       ALL
 ```
 
@@ -84,7 +84,7 @@ The user's current sessions will still have the old group membership until they 
 
 The default configuration requires users to enter their own password when using sudo:
 
-```
+```bash
 %wheel  ALL=(ALL)       ALL
 ```
 
@@ -92,7 +92,7 @@ The default configuration requires users to enter their own password when using 
 
 There is a commented-out line in the default sudoers for passwordless access:
 
-```
+```bash
 # %wheel  ALL=(ALL)       NOPASSWD: ALL
 ```
 
@@ -102,7 +102,7 @@ To enable passwordless sudo, create a file in `/etc/sudoers.d/` rather than edit
 sudo visudo -f /etc/sudoers.d/wheel-nopasswd
 ```
 
-```
+```bash
 %wheel  ALL=(ALL)       NOPASSWD: ALL
 ```
 
@@ -116,7 +116,7 @@ Giving wheel members full root access is often more than needed. You can limit t
 sudo visudo -f /etc/sudoers.d/wheel-limited
 ```
 
-```
+```bash
 # Allow wheel members to only restart services and view logs
 %wheel  ALL=(ALL)       /usr/bin/systemctl restart *, /usr/bin/systemctl status *, /usr/bin/journalctl
 ```
@@ -127,7 +127,7 @@ However, once you start restricting wheel, it is usually better to create separa
 sudo visudo -f /etc/sudoers.d/custom-roles
 ```
 
-```
+```bash
 # Web admins can manage httpd
 %webadmins  ALL=(ALL)   /usr/bin/systemctl restart httpd, /usr/bin/systemctl reload httpd
 
@@ -146,7 +146,7 @@ grep pam_wheel /etc/pam.d/su
 
 You may see:
 
-```
+```bash
 #auth       required    pam_wheel.so use_uid
 ```
 
@@ -156,7 +156,7 @@ Uncomment this line to restrict `su` to wheel members only:
 sudo vi /etc/pam.d/su
 ```
 
-```
+```bash
 auth        required    pam_wheel.so use_uid
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, reCAPTCHA Enterprise, Migration, Security, Web Application
+Tags: GCP, reCAPTCHA Enterprise, Migration, Security, Web Applications
 
 Description: A practical migration guide for moving from reCAPTCHA v2 or v3 to reCAPTCHA Enterprise on Google Cloud, covering frontend changes, backend verification updates, and testing strategies.
 

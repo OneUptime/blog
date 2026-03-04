@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sysctl, Persistent, Kernel, Linux
+Tags: RHEL, Sysctl, Persistent, Kernel, Linux
 
 Description: Learn how to make kernel parameter changes survive reboots on RHEL using sysctl configuration files, drop-in directories, and systemd-sysctl integration.
 

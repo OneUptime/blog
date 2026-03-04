@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, User Management, Linux, File System
+Tags: Ansible, User Management, Linux, File Systems
 
 Description: Learn how to configure and manage user home directories with the Ansible user module including custom paths, skeleton files, and permissions.
 

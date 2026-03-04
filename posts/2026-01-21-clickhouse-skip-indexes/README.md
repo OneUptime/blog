@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Skip Indexes, Performance, Database, Indexing, bloom_filter, minmax, set, Analytics
+Tags: ClickHouse, Skip Indexes, Performance, Database, Indexing, bloom_filter, minmax, Sets, Analytics
 
 Description: A comprehensive guide to ClickHouse skip indexes including minmax, set, bloom_filter, and ngram indexes, with practical examples showing when and how to use each type for query acceleration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Template, Performance
+Tags: Ansible, Jinja2, Templates, Performance
 
 Description: Speed up Ansible template rendering with optimized Jinja2 patterns, pre-computation of variables, and reduced template complexity.
 

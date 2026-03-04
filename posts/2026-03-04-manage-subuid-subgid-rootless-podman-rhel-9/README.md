@@ -20,7 +20,7 @@ Rootless Podman on RHEL relies on subordinate UID (subuid) and GID (subgid) mapp
 
 The `/etc/subuid` and `/etc/subgid` files define ranges of UIDs and GIDs that each user can allocate to containers. Each line follows this format:
 
-```
+```bash
 username:start_id:count
 ```
 
@@ -33,7 +33,7 @@ cat /etc/subgid
 
 Example output:
 
-```
+```bash
 alice:100000:65536
 bob:165536:65536
 ```

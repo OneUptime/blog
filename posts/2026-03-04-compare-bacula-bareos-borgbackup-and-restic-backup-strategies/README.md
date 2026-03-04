@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Bacula, Backup, Bareos, BorgBackup, Restic, Comparison, Linux
+Tags: RHEL, Bacula, Backups, Bareos, BorgBackup, Restic, Comparison, Linux
 
 Description: Learn how to compare Bacula, Bareos, BorgBackup, and Restic Backup Strategies on RHEL with step-by-step instructions, configuration examples, and best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ReaR, Disaster Recovery, Backup, Linux
+Tags: RHEL, ReaR, Disaster Recovery, Backups, Linux
 
 Description: Configure Relax-and-Recover (ReaR) on RHEL to create bootable disaster recovery images for bare-metal system restoration.
 
@@ -148,7 +148,7 @@ sudo rear format /dev/sdc
 sudo crontab -e
 ```
 
-```
+```bash
 # Create ReaR backup every Sunday at 3 AM
 0 3 * * 0 /usr/sbin/rear mkbackup >> /var/log/rear/cron.log 2>&1
 ```

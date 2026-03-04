@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Grafana, CloudWatch, Dashboard, Visualization
+Tags: AWS, Grafana, CloudWatch, Dashboards, Visualization
 
 Description: Learn how to set up Amazon Managed Grafana and connect it to CloudWatch for creating rich, customizable monitoring dashboards for your AWS infrastructure.
 

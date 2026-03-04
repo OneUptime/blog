@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Azure Container Apps, Container, Observability, Azure, Tracing, Dapr, OTLP
+Tags: OpenTelemetry, Azure Container Apps, Containers, Observability, Azure, Tracing, Dapr, OTLP
 
 Description: A hands-on guide to configuring OpenTelemetry for Azure Container Apps, covering the built-in OTLP agent, sidecar Collectors, and Dapr integration.
 

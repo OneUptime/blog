@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Security, Troubleshooting, Certificate, PeerAuthentication
+Tags: Istio, mTLS, Security, Troubleshooting, Certificates, PeerAuthentication
 
 Description: A practical debugging guide for diagnosing and fixing mutual TLS problems in Istio service mesh deployments.
 

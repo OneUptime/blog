@@ -14,7 +14,7 @@ The Linux audit system on RHEL generates detailed logs of system events, but the
 
 Before diving into the tools, it helps to understand what a raw audit log entry looks like:
 
-```
+```bash
 type=SYSCALL msg=audit(1709568000.123:456): arch=c000003e syscall=257
 success=yes exit=3 a0=ffffff9c a1=7ffd3c002000 a2=241 a3=1b6
 items=2 ppid=1234 pid=5678 auid=1000 uid=0 gid=0 euid=0

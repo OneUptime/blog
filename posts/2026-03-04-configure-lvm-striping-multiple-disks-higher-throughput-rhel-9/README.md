@@ -1,4 +1,4 @@
-# How to Configure LVM Striping Across Multiple Disks for Higher Throughput on RHEL
+# How to Configure LVM Striping Across Multiple Disks on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

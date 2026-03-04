@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Snapshot, Backup, Timeshift, System Administration
+Tags: Ubuntu, Snapshots, Backups, Timeshift, System Administration
 
 Description: Learn how to configure automatic system snapshots on Ubuntu using Timeshift and cron to protect your system and enable quick recovery from failures.
 

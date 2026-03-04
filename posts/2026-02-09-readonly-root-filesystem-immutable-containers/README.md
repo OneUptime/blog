@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Container
+Tags: Kubernetes, Security, Containers
 
 Description: Learn how to implement read-only root filesystems in Kubernetes containers to prevent runtime modifications and enhance security through immutable infrastructure patterns.
 

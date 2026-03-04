@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Scheduler, Bin Packing, Resource Optimization, Node Efficiency
+Tags: Kubernetes, Schedulers, Bin Packing, Resource Optimization, Node Efficiency
 
 Description: Implement bin packing scheduler plugins to maximize node utilization by densely packing pods and reducing the number of required nodes.
 

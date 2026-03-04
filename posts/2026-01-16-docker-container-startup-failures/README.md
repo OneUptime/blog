@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Troubleshooting, Debugging, DevOps, Container
+Tags: Docker, Troubleshooting, Debugging, DevOps, Containers
 
 Description: Learn systematic approaches to diagnose and fix Docker container startup failures, including exit codes, log analysis, entrypoint issues, and common configuration problems.
 

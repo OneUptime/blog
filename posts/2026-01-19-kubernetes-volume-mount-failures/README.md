@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Troubleshooting, VOLUME, PVC, Storage, Debugging, DevOps
+Tags: Kubernetes, Troubleshooting, Volumes, PVC, Storage, Debugging, DevOps
 
 Description: Learn how to diagnose and fix Kubernetes volume mount failures including PVC binding issues, access mode problems, permission errors, and CSI driver problems.
 

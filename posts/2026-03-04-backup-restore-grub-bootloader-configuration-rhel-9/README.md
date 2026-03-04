@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, GRUB, Bootloader, Backup
+Tags: RHEL, GRUB, Bootloader, Backups
 
 Description: Back up and restore the GRUB bootloader configuration on RHEL 9.
 

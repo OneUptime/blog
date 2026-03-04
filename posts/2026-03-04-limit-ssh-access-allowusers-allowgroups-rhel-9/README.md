@@ -60,7 +60,7 @@ Configure SSH to only allow this group:
 sudo vi /etc/ssh/sshd_config.d/20-access-control.conf
 ```
 
-```
+```bash
 # Only allow members of the sshusers group
 AllowGroups sshusers
 ```
@@ -88,7 +88,7 @@ For small environments where you want explicit user control:
 sudo vi /etc/ssh/sshd_config.d/20-access-control.conf
 ```
 
-```
+```bash
 # Only allow these specific users
 AllowUsers admin jsmith deploy
 ```
@@ -97,7 +97,7 @@ AllowUsers admin jsmith deploy
 
 You can combine users with source addresses:
 
-```
+```bash
 # admin from anywhere, jsmith only from the office
 AllowUsers admin jsmith@10.0.0.0/24 deploy@10.0.100.50
 ```
@@ -110,14 +110,14 @@ If you want to keep the default (everyone allowed) but block specific users:
 sudo vi /etc/ssh/sshd_config.d/20-access-control.conf
 ```
 
-```
+```bash
 # Block service accounts from SSH
 DenyUsers nobody apache nginx postgres mysql
 ```
 
 Or block a group:
 
-```
+```bash
 DenyGroups nologin-users
 ```
 
@@ -125,7 +125,7 @@ DenyGroups nologin-users
 
 You can combine Allow and Deny directives. For example, allow the sshusers group but deny a specific user within it:
 
-```
+```bash
 AllowGroups sshusers
 DenyUsers compromised-account
 ```
@@ -162,13 +162,13 @@ sudo grep "not allowed" /var/log/secure | tail -10
 
 You will see entries like:
 
-```
+```bash
 User serviceaccount from 10.0.1.50 not allowed because not listed in AllowUsers
 ```
 
 ## Handling Multiple Groups
 
-```
+```bash
 # Allow both admin and developer groups
 AllowGroups sshusers wheel developers
 ```
@@ -177,7 +177,7 @@ AllowGroups sshusers wheel developers
 
 ### Production servers - tight access
 
-```
+```bash
 AllowGroups sshusers
 ```
 
@@ -185,7 +185,7 @@ Only users explicitly added to `sshusers` can connect.
 
 ### Development servers - broad access with exceptions
 
-```
+```bash
 DenyUsers nobody apache nginx postgres
 ```
 
@@ -193,7 +193,7 @@ Everyone can connect except service accounts.
 
 ### Bastion host - admin only
 
-```
+```bash
 AllowGroups wheel
 ```
 

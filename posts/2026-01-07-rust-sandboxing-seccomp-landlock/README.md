@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Security, Sandboxing, seccomp, Landlock, Linux, Capabilities, Privilege Dropping
+Tags: Rust, Security, Sandboxing, Seccomp, Landlock, Linux, Capabilities, Privilege Dropping
 
 Description: Learn how to sandbox Rust applications for defense-in-depth security. This guide covers seccomp filters, Landlock filesystem restrictions, capability dropping, and privilege separation patterns.
 

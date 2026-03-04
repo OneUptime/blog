@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, RDB, Persistence, Backup, Database, DevOps
+Tags: Redis, RDB, Persistence, Backups, Database, DevOps
 
 Description: A comprehensive guide to configuring Redis RDB snapshots for point-in-time backups, including configuration options, performance tuning, and disaster recovery strategies.
 

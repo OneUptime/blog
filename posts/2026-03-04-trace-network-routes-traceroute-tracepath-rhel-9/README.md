@@ -45,7 +45,7 @@ tracepath -n 8.8.8.8
 
 ## Understanding the Output
 
-```
+```bash
  1  192.168.1.1 (192.168.1.1)  0.512 ms  0.487 ms  0.463 ms
  2  10.0.0.1 (10.0.0.1)  1.234 ms  1.198 ms  1.176 ms
  3  * * *
@@ -86,7 +86,7 @@ tracepath -n 8.8.8.8
 
 The output includes MTU information:
 
-```
+```bash
  1?: [LOCALHOST]                      pmtu 1500
  1:  192.168.1.1                       0.512ms
  2:  10.0.0.1                          1.234ms asymm  3
@@ -135,14 +135,14 @@ traceroute -q 1 example.com
 ## Interpreting Common Patterns
 
 **All asterisks at one hop:**
-```
+```bash
  3  * * *
  4  * * *
 ```
 The device at hop 3 and 4 is either filtering ICMP/UDP responses or is configured not to respond. This doesn't necessarily mean traffic is blocked - it just means you can't see that hop.
 
 **Increasing latency at a specific hop:**
-```
+```bash
  4  10.0.0.1    5.2 ms
  5  172.16.0.1  150.3 ms
  6  203.0.113.1 151.1 ms
@@ -150,7 +150,7 @@ The device at hop 3 and 4 is either filtering ICMP/UDP responses or is configure
 The jump at hop 5 suggests congestion or a long physical distance (intercontinental link, for example).
 
 **Asymmetric routing:**
-```
+```bash
  2:  10.0.0.1    1.234ms asymm  4
 ```
 tracepath detected that the return path takes a different number of hops. This is normal on the internet but can indicate routing issues on internal networks.

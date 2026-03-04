@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, System Recovery, chroot, Boot, Troubleshooting
+Tags: Ubuntu, System Recovery, Chroot, Boot, Troubleshooting
 
 Description: A complete guide to using chroot from a live Ubuntu USB to repair an unbootable system, covering mounting, entering the chroot environment, and performing common repairs.
 

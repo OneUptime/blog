@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Backup, Disaster Recovery, Kubernetes, Production
+Tags: Istio, Backups, Disaster Recovery, Kubernetes, Production
 
 Description: Practical guide for validating Istio backup and recovery procedures for production including configuration export, secret management, and restoration testing.
 

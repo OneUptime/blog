@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Btrfs, Storage, Linux, File System
+Tags: Ubuntu, Btrfs, Storage, Linux, File Systems
 
 Description: Create and manage Btrfs subvolumes on Ubuntu to organize storage with flexible mount points, per-subvolume snapshot policies, and independent space management.
 

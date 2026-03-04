@@ -36,14 +36,14 @@ flowchart TD
 ### Common Error Messages
 
 **OpenSSL / TLS errors:**
-```
+```bash
 SSL: error:0A000086:SSL routines::certificate verify failed
 SSL: error:0A000410:SSL routines::sslv3 alert handshake failure
 SSL: error:0A0000C1:SSL routines::no shared cipher
 ```
 
 **SSH errors:**
-```
+```bash
 no matching key exchange method found
 no matching cipher found
 no matching host key type found
@@ -51,12 +51,12 @@ Unable to negotiate a key exchange method
 ```
 
 **Java/HTTPS errors:**
-```
+```bash
 javax.net.ssl.SSLHandshakeException: Received fatal alert: handshake_failure
 ```
 
 **curl/wget errors:**
-```
+```bash
 curl: (35) error:0A000152:SSL routines::unsafe legacy renegotiation disabled
 ```
 

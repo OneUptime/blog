@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Docker, Container, DevOps, Infrastructure as Code, CI/CD
+Tags: Terraform, Docker, Containers, DevOps, Infrastructure as Code, CI/CD
 
 Description: Learn how to run Terraform inside Docker containers for consistent environments, CI/CD pipelines, and isolated execution without installing Terraform locally.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provider, TLS, Certificate, Security, Infrastructure as Code
+Tags: Terraform, Provider, TLS, Certificates, Security, Infrastructure as Code
 
 Description: A hands-on guide to configuring the TLS provider in Terraform for generating private keys, self-signed certificates, and CSRs as code.
 

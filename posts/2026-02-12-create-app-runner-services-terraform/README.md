@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, App Runner, Terraform, Container
+Tags: AWS, App Runner, Terraform, Containers
 
 Description: Step-by-step guide to deploying AWS App Runner services with Terraform, covering ECR image sources, auto-scaling, custom domains, VPC connectors, and observability.
 

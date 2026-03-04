@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LXD, Container, Resource Management, Performance
+Tags: Ubuntu, LXD, Containers, Resource Management, Performance
 
 Description: Configure CPU, memory, and disk resource limits for LXD containers on Ubuntu using lxc config commands and profiles for consistent resource allocation.
 

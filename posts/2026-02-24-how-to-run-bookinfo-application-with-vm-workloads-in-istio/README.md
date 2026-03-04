@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Bookinfo, Virtual Machine, Service Mesh, Tutorial
+Tags: Istio, Bookinfo, Virtual Machines, Service Mesh, Tutorial
 
 Description: A hands-on tutorial for running the Istio Bookinfo sample application with some services deployed on VMs outside Kubernetes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Playbook, Organization, Include, DevOps
+Tags: Ansible, Playbook, Organizations, Include, DevOps
 
 Description: Break down large Ansible playbooks into manageable pieces using imports, includes, and roles for better maintainability and reusability.
 

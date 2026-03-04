@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PostgreSQL, pg_dump, Cron, Backup, Automation, Database
+Tags: RHEL, PostgreSQL, pg_dump, Cron, Backups, Automation, Database
 
 Description: Automate PostgreSQL database backups on RHEL using pg_dump and cron jobs with retention policies, compression, and email notifications.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, Azure CLI, Cloud Computing, IaaS, DevOps, Infrastructure
+Tags: Azure, Virtual Machines, Azure CLI, Cloud Computing, IaaS, DevOps, Infrastructure
 
 Description: Step-by-step guide to creating an Azure Virtual Machine using the Azure CLI with practical examples and best practices.
 

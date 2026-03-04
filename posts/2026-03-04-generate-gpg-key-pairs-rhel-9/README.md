@@ -153,7 +153,7 @@ gpg --list-keys --keyid-format long
 
 Sample output:
 
-```
+```bash
 pub   ed25519/0x1234567890ABCDEF 2026-03-04 [SC] [expires: 2028-03-04]
       Key fingerprint = ABCD 1234 5678 90AB CDEF  1234 5678 90AB CDEF 1234
 uid                   [ultimate] John Doe <john.doe@example.com>

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backup, Configuration Management, etckeeper
+Tags: Ubuntu, Backups, Configuration Management, etckeeper
 
 Description: Learn multiple strategies for backing up and restoring /etc configuration files on Ubuntu, including etckeeper, manual archives, and automated Git-based version control.
 

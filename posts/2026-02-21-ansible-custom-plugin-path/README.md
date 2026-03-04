@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Configuration, DevOps
+Tags: Ansible, Plugins, Configuration, DevOps
 
 Description: Configure custom plugin paths in Ansible for filter, lookup, callback, action, and other plugin types to extend Ansible's functionality.
 

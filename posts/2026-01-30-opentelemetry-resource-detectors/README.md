@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Resource, Observability, Cloud
+Tags: OpenTelemetry, Resources, Observability, Cloud
 
 Description: Learn how to build custom OpenTelemetry resource detectors to automatically capture environment metadata from AWS, GCP, Azure, and your own infrastructure.
 

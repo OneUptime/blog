@@ -150,7 +150,7 @@ sudo vi /etc/iscsi/iscsid.conf
 
 Increase timeouts:
 
-```
+```bash
 # Increase replacement timeout (default 120)
 node.session.timeo.replacement_timeout = 300
 

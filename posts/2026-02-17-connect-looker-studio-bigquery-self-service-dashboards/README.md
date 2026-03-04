@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Looker Studio, BigQuery, Dashboard, Data Visualization, Business Intelligence
+Tags: GCP, Looker Studio, BigQuery, Dashboards, Data Visualization, Business Intelligence
 
 Description: Step-by-step guide to connecting Looker Studio to BigQuery and building self-service dashboards that business users can create and manage themselves.
 

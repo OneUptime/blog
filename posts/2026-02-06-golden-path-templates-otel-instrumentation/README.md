@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Golden Path, Platform Engineering, Template
+Tags: OpenTelemetry, Golden Path, Platform Engineering, Templates
 
 Description: Design golden path templates that give developers a pre-configured, opinionated starting point for OpenTelemetry instrumentation in new services.
 

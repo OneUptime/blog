@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, EBS, Storage, VOLUME
+Tags: AWS, EC2, EBS, Storage, Volumes
 
 Description: Step-by-step guide to creating EBS volumes, attaching them to EC2 instances, formatting, mounting, and configuring persistent mounts across reboots.
 

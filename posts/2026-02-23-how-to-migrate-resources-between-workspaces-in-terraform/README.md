@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, State Migration, Infrastructure as Code, DevOps
+Tags: Terraform, Workspaces, State Migration, Infrastructure as Code, DevOps
 
 Description: Step-by-step guide to safely migrating Terraform-managed resources from one workspace to another without destroying and recreating them.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ARM, aarch64, Installation, Linux
+Tags: RHEL, ARM, AArch64, Installation, Linux
 
 Description: Install Red Hat Enterprise Linux on ARM-based (aarch64) hardware, including server platforms and development boards that support the UEFI boot standard.
 

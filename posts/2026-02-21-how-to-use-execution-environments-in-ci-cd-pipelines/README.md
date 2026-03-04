@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Execution Environment, CI/CD, DevOps, GitHub Actions
+Tags: Ansible, Execution Environments, CI/CD, DevOps, GitHub Actions
 
 Description: Integrate Ansible Execution Environments into CI/CD pipelines using GitHub Actions, GitLab CI, and Jenkins for consistent automation runs.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, PHP, Symfony, Twig, Template, Rendering, Tracing
+Tags: OpenTelemetry, PHP, Symfony, Twig, Templates, Rendering, Tracing
 
 Description: Learn how to instrument Twig template rendering in Symfony with OpenTelemetry to identify performance bottlenecks, track template hierarchy, and optimize view layer performance.
 

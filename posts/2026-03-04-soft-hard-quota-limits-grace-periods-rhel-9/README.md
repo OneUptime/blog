@@ -49,7 +49,7 @@ setquota -u jsmith 10485760 12582912 0 0 /home
 
 The command format is:
 
-```
+```bash
 setquota -u USERNAME BLOCK_SOFT BLOCK_HARD INODE_SOFT INODE_HARD FILESYSTEM
 ```
 
@@ -89,7 +89,7 @@ edquota -t
 
 This opens an editor showing:
 
-```
+```bash
 Grace period before enforcing soft limits for users:
 Time units may be: days, hours, minutes, or seconds
   Filesystem     Block grace period     Inode grace period

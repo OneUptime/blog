@@ -31,7 +31,7 @@ echo "<h1>Hello from Caddy</h1>" | sudo tee /var/www/mysite/index.html
 
 Edit the Caddyfile:
 
-```
+```bash
 # Save as /etc/caddy/Caddyfile
 
 # Serve static files
@@ -43,7 +43,7 @@ mysite.example.com {
 
 ## Configuring as a Reverse Proxy
 
-```
+```bash
 # /etc/caddy/Caddyfile
 
 # Reverse proxy to a backend application
@@ -59,7 +59,7 @@ api.example.com {
 
 ## Advanced Reverse Proxy Options
 
-```
+```bash
 # /etc/caddy/Caddyfile
 
 app.example.com {

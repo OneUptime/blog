@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Provider, Dynamic Configuration, Multi-Region, Multi-Account
+Tags: Terraform, Workspaces, Provider, Dynamic Configuration, Multi-Region, Multi-Account
 
 Description: Learn how to dynamically configure Terraform providers based on the active workspace to deploy to different regions, accounts, and cloud environments from a single configuration.
 

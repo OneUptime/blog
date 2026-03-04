@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Check, Reliability
+Tags: Kubernetes, Health Checks, Reliability
 
 Description: Learn how to configure liveness, readiness, and startup probes in Kubernetes using HTTP, TCP, gRPC, and exec probe types to ensure application reliability and availability.
 

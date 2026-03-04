@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Pipelines, Python, pytest, CI/CD, Virtual Environment, DevOps, Testing
+Tags: Azure Pipelines, Python, pytest, CI/CD, Virtual Environments, DevOps, Testing
 
 Description: A practical guide to configuring Azure Pipelines for Python projects using virtual environments, pytest, and code coverage reporting.
 

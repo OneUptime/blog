@@ -33,7 +33,7 @@ numactl --hardware
 
 Example output on a 2-socket system:
 
-```
+```bash
 available: 2 nodes (0-1)
 node 0 cpus: 0 1 2 3 4 5 6 7
 node 0 size: 32768 MB
@@ -53,7 +53,7 @@ numastat
 
 Output:
 
-```
+```bash
                            node0           node1
 numa_hit               123456789       123456789
 numa_miss                  12345           23456
@@ -90,7 +90,7 @@ numastat -p httpd
 
 Output shows per-node memory allocation for the process:
 
-```
+```bash
 Per-node process memory usage (in MBs) for PID 1234 (httpd)
                            Node 0          Node 1           Total
                   --------------- --------------- ---------------

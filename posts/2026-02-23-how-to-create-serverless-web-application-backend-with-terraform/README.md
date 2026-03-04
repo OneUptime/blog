@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Serverless, Web Application, CloudFront, Cognito
+Tags: Terraform, AWS, Serverless, Web Applications, CloudFront, Cognito
 
 Description: Learn how to build a complete serverless web application backend with Terraform including authentication, API, storage, and CDN for production-ready web apps.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Log Aggregation, Pipeline, Observability
+Tags: OpenTelemetry, Log Aggregation, Pipelines, Observability
 
 Description: Aggregate logs from files, syslog, OTLP, and Fluent Forward into a single unified OpenTelemetry Collector pipeline.
 

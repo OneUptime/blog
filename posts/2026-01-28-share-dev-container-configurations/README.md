@@ -549,7 +549,7 @@ Update your devcontainer.json:
 {
   "image": "ghcr.io/yourorg/devcontainer:2024-01"
 }
-```
+```bash
 ```text
 
 ## Access Control

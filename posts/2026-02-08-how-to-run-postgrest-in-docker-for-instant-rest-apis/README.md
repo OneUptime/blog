@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, PostgREST, REST API, PostgreSQL, API, Database, Container, Backend, DevOps
+Tags: Docker, PostgREST, REST API, PostgreSQL, API, Database, Containers, Backend, DevOps
 
 Description: Learn how to deploy PostgREST in Docker to instantly generate a full REST API from your PostgreSQL database schema without writing any backend code.
 

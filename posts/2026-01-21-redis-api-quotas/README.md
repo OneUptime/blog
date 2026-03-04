@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, API, Quota, Rate Limiting, Usage Tracking, SaaS
+Tags: Redis, API, Quotas, Rate Limiting, Usage Tracking, SaaS
 
 Description: A comprehensive guide to implementing API quotas with Redis for daily, monthly, and custom billing period limits, including usage tracking, overage handling, and quota management.
 

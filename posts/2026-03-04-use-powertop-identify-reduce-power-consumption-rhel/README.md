@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, powertop, Power Management, Energy Efficiency, Linux
+Tags: RHEL, PowerTOP, Power Management, Energy Efficiency, Linux
 
 Description: Use powertop on RHEL to analyze power consumption, identify power-hungry processes and devices, and apply tuning recommendations to reduce energy usage.
 

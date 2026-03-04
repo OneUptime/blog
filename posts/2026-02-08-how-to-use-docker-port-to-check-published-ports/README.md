@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, docker port, Networking, Port Mapping, Container, Debugging, Port Binding
+Tags: Docker, docker port, Networking, Port Mapping, Containers, Debugging, Port Binding
 
 Description: A complete guide to using docker port for inspecting container port mappings and troubleshooting connectivity.
 

@@ -635,7 +635,7 @@ jobs:
             ### Vulnerabilities Fixed
             ```json
             ${{ steps.audit.outputs.fixes }}
-            ```
+            ```bash
 
             ### Verification Steps
             - [ ] Review the dependency changes

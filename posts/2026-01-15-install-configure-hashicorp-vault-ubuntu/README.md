@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Vault, HashiCorp, Secret, Security, Tutorial
+Tags: Ubuntu, Vault, HashiCorp, Secrets, Security, Tutorial
 
 Description: Complete guide to installing HashiCorp Vault on Ubuntu for secure secrets management and encryption as a service.
 

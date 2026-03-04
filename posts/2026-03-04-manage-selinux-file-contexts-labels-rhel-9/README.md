@@ -14,7 +14,7 @@ Every file and directory on an SELinux-enabled RHEL system has a security label 
 
 A typical SELinux context looks like this:
 
-```
+```bash
 system_u:object_r:httpd_sys_content_t:s0
 ```
 
@@ -43,7 +43,7 @@ ls -Zd /var/www/html/
 
 Example output:
 
-```
+```bash
 system_u:object_r:httpd_sys_content_t:s0 /var/www/html/index.html
 ```
 

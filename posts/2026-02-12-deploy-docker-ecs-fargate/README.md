@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Fargate, Docker, Container
+Tags: AWS, ECS, Fargate, Docker, Containers
 
 Description: A complete walkthrough of deploying a Docker container on ECS with Fargate, from building the image to running it in production with networking and logging configured.
 

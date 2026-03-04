@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, AWS Lambda, Docker, Container Image, Serverless, Instrumentation, Python, Observability
+Tags: OpenTelemetry, AWS Lambda, Docker, Container Images, Serverless, Instrumentation, Python, Observability
 
 Description: Learn how to add OpenTelemetry instrumentation to AWS Lambda functions deployed as container images with Dockerfiles and manual SDK setup.
 

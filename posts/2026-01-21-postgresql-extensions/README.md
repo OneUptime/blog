@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Extension, PostGIS, pg_stat_statements, uuid-ossp, Modules
+Tags: PostgreSQL, Extensions, PostGIS, pg_stat_statements, uuid-ossp, Modules
 
 Description: A comprehensive guide to PostgreSQL extensions, covering installation, configuration, and practical usage of popular extensions like PostGIS, pg_stat_statements, and pgcrypto.
 

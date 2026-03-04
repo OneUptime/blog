@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CSI, Secret, Security
+Tags: Kubernetes, CSI, Secrets, Security
 
 Description: Learn how to use CSI inline volumes to inject secrets directly into pods without creating PersistentVolumeClaims, enabling dynamic secret management from external providers like HashiCorp Vault.
 

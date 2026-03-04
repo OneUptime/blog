@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Health Check
+Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Health Checks
 
 Description: Resolve ArgoCD applications showing Unknown health status by configuring custom health checks for CRDs, fixing health assessment scripts, and troubleshooting missing resource types.
 

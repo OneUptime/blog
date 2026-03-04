@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWX, Backup, Disaster Recovery, Kubernetes
+Tags: Ansible, AWX, Backups, Disaster Recovery, Kubernetes
 
 Description: Implement backup and restore procedures for AWX including database dumps, secrets, and configuration for reliable disaster recovery.
 

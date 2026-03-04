@@ -24,7 +24,7 @@ sudo targetcli
 
 Use physical disks, partitions, or LVM logical volumes:
 
-```
+```bash
 /backstores/block create lun0 /dev/sdb
 /backstores/block create lun1 /dev/sdc
 /backstores/block create lun2 /dev/vg01/lv_data
@@ -34,14 +34,14 @@ Use physical disks, partitions, or LVM logical volumes:
 
 Create file-based LUNs with a specified size:
 
-```
+```bash
 /backstores/fileio create lun0 /var/iscsi/lun0.img 50G
 /backstores/fileio create lun1 /var/iscsi/lun1.img 100G
 ```
 
 File backstores are created as sparse files by default (they grow as data is written). To pre-allocate the space:
 
-```
+```bash
 /backstores/fileio create lun0 /var/iscsi/lun0.img 50G write_back=false
 ```
 
@@ -49,13 +49,13 @@ File backstores are created as sparse files by default (they grow as data is wri
 
 For testing or high-performance temporary storage:
 
-```
+```bash
 /backstores/ramdisk create ramdisk0 1G
 ```
 
 ## Creating the Target and Mapping LUNs
 
-```
+```bash
 # Create the target
 /iscsi create iqn.2024.com.example:storage1
 
@@ -71,7 +71,7 @@ LUNs are numbered automatically starting from 0.
 
 Create ACLs for different initiators and control which LUNs each can see:
 
-```
+```bash
 # Create ACLs
 /iscsi/iqn.2024.com.example:storage1/tpg1/acls create iqn.2024.com.example:webserver1
 /iscsi/iqn.2024.com.example:storage1/tpg1/acls create iqn.2024.com.example:dbserver1
@@ -88,7 +88,7 @@ create mapped_lun2 /backstores/fileio/lun2
 
 By default, when you create an ACL, all LUNs in the TPG are automatically mapped. To disable auto-mapping:
 
-```
+```bash
 cd /iscsi/iqn.2024.com.example:storage1/tpg1
 set attribute default_cmdsn_depth=64
 set attribute generate_node_acls=0
@@ -100,7 +100,7 @@ Then manually map only the LUNs you want.
 
 You can make LUNs read-only:
 
-```
+```bash
 # In the ACL mapped_lun
 cd /iscsi/iqn.2024.com.example:storage1/tpg1/acls/iqn.2024.com.example:webserver1
 create mapped_lun0 /backstores/block/lun0 write_protect=1
@@ -110,7 +110,7 @@ create mapped_lun0 /backstores/block/lun0 write_protect=1
 
 You can create separate targets for different purposes:
 
-```
+```bash
 # Target for web servers
 /iscsi create iqn.2024.com.example:web-storage
 /iscsi/iqn.2024.com.example:web-storage/tpg1/luns create /backstores/block/lun0
@@ -136,7 +136,7 @@ sudo lvcreate -L 20G -n lun_logs vg_iscsi
 
 Then in targetcli:
 
-```
+```bash
 /backstores/block create web /dev/vg_iscsi/lun_web
 /backstores/block create db /dev/vg_iscsi/lun_db
 /backstores/block create logs /dev/vg_iscsi/lun_logs
@@ -144,7 +144,7 @@ Then in targetcli:
 
 ## Verifying the Configuration
 
-```
+```bash
 # Show the full configuration tree
 ls /
 
@@ -155,7 +155,7 @@ ls /iscsi/iqn.2024.com.example:storage1/tpg1/acls/
 
 Save the configuration:
 
-```
+```bash
 saveconfig
 exit
 ```
@@ -170,7 +170,7 @@ sudo iscsiadm -m session -P 3
 
 Each LUN appears as a separate SCSI device:
 
-```
+```bash
 Attached scsi disk sdb    State: running
 Attached scsi disk sdc    State: running
 ```

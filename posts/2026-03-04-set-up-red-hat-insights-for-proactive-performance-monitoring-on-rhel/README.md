@@ -43,7 +43,7 @@ sudo insights-client --display-name="webserver-prod-01"
 
 After the first collection, log in to the Red Hat Hybrid Cloud Console:
 
-```
+```bash
 https://console.redhat.com/insights/
 ```
 

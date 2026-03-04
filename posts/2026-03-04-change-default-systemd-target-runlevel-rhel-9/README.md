@@ -130,27 +130,27 @@ Sometimes you need to boot into a different target without permanently changing 
 
 2. Find the line starting with `linux`. It looks something like:
 
-```
+```bash
 linux ($root)/vmlinuz-5.14.0-... root=/dev/mapper/rhel-root ro ...
 ```
 
 3. Append the target you want to the end of that line:
 
-```
+```bash
 # Boot into multi-user mode (no GUI)
 systemd.unit=multi-user.target
 ```
 
 Or for rescue mode:
 
-```
+```bash
 # Boot into rescue (single-user) mode
 systemd.unit=rescue.target
 ```
 
 Or for emergency mode (minimal, no mounts):
 
-```
+```bash
 # Boot into emergency mode
 systemd.unit=emergency.target
 ```
@@ -170,7 +170,7 @@ sudo vi /etc/default/grub
 
 Add the parameter to `GRUB_CMDLINE_LINUX`:
 
-```
+```bash
 GRUB_CMDLINE_LINUX="crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M resume=/dev/mapper/rhel-swap rd.lvm.lv=rhel/root rd.lvm.lv=rhel/swap systemd.unit=multi-user.target"
 ```
 

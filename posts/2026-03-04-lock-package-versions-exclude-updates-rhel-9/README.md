@@ -57,7 +57,7 @@ dnf versionlock list
 
 Example output:
 
-```
+```bash
 httpd-0:2.4.57-5.el9.*
 openssl-1:3.0.7-20.el9.*
 ```

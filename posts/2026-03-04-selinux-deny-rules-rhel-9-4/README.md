@@ -53,7 +53,7 @@ Deny rules use the `neverallow` statement in the SELinux policy language. Howeve
 
 Create a CIL policy file called `deny_httpd_shadow.cil`:
 
-```
+```bash
 (deny httpd_t shadow_t (file (read open getattr)))
 ```
 
@@ -70,7 +70,7 @@ Now even if a custom module or boolean grants `httpd_t` access to `shadow_t`, th
 
 Create `deny_container_etc.cil`:
 
-```
+```bash
 (deny container_t etc_t (file (write append)))
 ```
 
@@ -84,19 +84,19 @@ Containers can never write to files labeled `etc_t`, regardless of any other rul
 
 The CIL format for deny rules is:
 
-```
+```bash
 (deny SOURCE_TYPE TARGET_TYPE (OBJECT_CLASS (PERMISSIONS)))
 ```
 
 ### Multiple Permissions
 
-```
+```bash
 (deny httpd_t shadow_t (file (read write open getattr)))
 ```
 
 ### Multiple Object Classes
 
-```
+```bash
 (deny httpd_t shadow_t (file (read open)))
 (deny httpd_t shadow_t (dir (search)))
 ```
@@ -105,7 +105,7 @@ The CIL format for deny rules is:
 
 You can apply deny rules to groups of types using attributes:
 
-```
+```bash
 (deny domain shadow_t (file (write append)))
 ```
 
@@ -115,19 +115,19 @@ This denies ALL process domains from writing to shadow files. Even the most priv
 
 ### Prevent Any Process from Disabling SELinux
 
-```
+```bash
 (deny domain security_t (security (setenforce)))
 ```
 
 ### Prevent Web Server from Executing Shell Commands
 
-```
+```bash
 (deny httpd_t shell_exec_t (file (execute execute_no_trans)))
 ```
 
 ### Prevent Database from Accessing User Home Directories
 
-```
+```bash
 (deny mysqld_t user_home_t (file (read write open)))
 (deny mysqld_t user_home_dir_t (dir (search read)))
 ```
@@ -195,7 +195,7 @@ This makes deny rules a powerful tool for security hardening, but also means you
 
 **Document your rules:** Each CIL file should have a comment explaining why the deny rule exists:
 
-```
+```bash
 ; Prevent web server from reading password hashes
 ; Required by security policy SEC-2024-001
 (deny httpd_t shadow_t (file (read open getattr)))

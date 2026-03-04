@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Sidecar, Resource, Kubernetes, Performance, Cost Optimization
+Tags: Istio, Sidecar, Resources, Kubernetes, Performance, Cost Optimization
 
 Description: How to properly size and configure CPU and memory resources for the Istio sidecar proxy to balance performance with cost efficiency.
 

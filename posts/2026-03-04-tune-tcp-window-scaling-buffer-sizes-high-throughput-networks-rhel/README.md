@@ -1,4 +1,4 @@
-# How to Tune TCP Window Scaling and Buffer Sizes for High-Throughput Networks on RHEL
+# How to Tune TCP Window Scaling and Buffers on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

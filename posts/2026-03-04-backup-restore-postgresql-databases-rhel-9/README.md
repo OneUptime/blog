@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PostgreSQL, Backup, Database
+Tags: RHEL, PostgreSQL, Backups, Database
 
 Description: Back up and restore PostgreSQL databases on RHEL using pg_dump and pg_restore.
 

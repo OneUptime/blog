@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PHP, Laravel, API, Resource, REST
+Tags: PHP, Laravel, API, Resources, REST
 
 Description: Learn how to build clean APIs with Laravel Resources. This guide covers resource classes, collections, conditional attributes, and response customization.
 

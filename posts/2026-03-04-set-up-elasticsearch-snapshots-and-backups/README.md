@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Elasticsearch, ELK Stack, Backup, Linux
+Tags: RHEL, Elasticsearch, ELK Stack, Backups, Linux
 
 Description: Learn how to set Up Elasticsearch Snapshots and Backups on RHEL with step-by-step instructions, configuration examples, and best practices.
 

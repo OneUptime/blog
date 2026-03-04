@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, Configuration, Environment Variable
+Tags: AWS, Amplify, Configuration, Environment Variables
 
 Description: Learn how to manage environment variables in AWS Amplify for builds, runtime, and Lambda functions across different deployment stages.
 

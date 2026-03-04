@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Multi-Architecture, Container, DevOps
+Tags: Ansible, Docker, Multi-Architecture, Containers, DevOps
 
 Description: Build Docker images for multiple CPU architectures like amd64 and arm64 using Ansible with Docker Buildx and QEMU emulation.
 

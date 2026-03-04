@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Linux, Environment Variable, User Management
+Tags: Ansible, Linux, Environment Variables, User Management
 
 Description: Learn how to set and manage user environment variables with Ansible using profile files, PAM, systemd, and per-session configuration.
 

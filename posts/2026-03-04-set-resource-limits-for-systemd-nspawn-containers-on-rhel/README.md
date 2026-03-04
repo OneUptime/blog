@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, systemd-nspawn, Resource Limits, cgroups, Containers
+Tags: RHEL, systemd-nspawn, Resource Limits, Cgroups, Containers
 
 Description: Limit CPU, memory, and I/O resources for systemd-nspawn containers on RHEL using systemd resource controls and cgroup settings.
 

@@ -1,4 +1,4 @@
-# How to Manage Software Subscriptions and Repositories with subscription-manager on RHEL
+# How to Manage Subscriptions and Repos with subscription-manager on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

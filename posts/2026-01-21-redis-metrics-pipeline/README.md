@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Metrics, Pipeline, Monitoring, Observability, Data Engineering
+Tags: Redis, Metrics, Pipelines, Monitoring, Observability, Data Engineering
 
 Description: A comprehensive guide to building a metrics collection, aggregation, and querying pipeline using Redis for real-time monitoring and observability systems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, MACVLAN, IPVLAN, Networking, Virtual Interfaces, Linux
+Tags: RHEL, Macvlan, IPvlan, Networking, Virtual Interfaces, Linux
 
 Description: Learn how to create MACVLAN and IPVLAN virtual network interfaces on RHEL for assigning multiple IP or MAC addresses to a single physical interface.
 

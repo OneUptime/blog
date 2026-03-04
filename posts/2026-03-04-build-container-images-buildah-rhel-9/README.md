@@ -16,12 +16,12 @@ I find Buildah especially useful when I need to create minimal images without al
 
 If you installed the `container-tools` module, Buildah is already there. Otherwise:
 
-# Install buildah
+## Install buildah
 ```bash
 sudo dnf install -y buildah
 ```
 
-# Verify installation
+## Verify installation
 ```bash
 buildah --version
 ```
@@ -30,43 +30,43 @@ buildah --version
 
 This is where Buildah really shines. You can script image builds step by step:
 
-# Create a new container from the UBI base image
+## Create a new container from the UBI base image
 ```bash
 container=$(buildah from registry.access.redhat.com/ubi9/ubi-minimal)
 ```
 
-# Run commands inside the container
+## Run commands inside the container
 ```bash
 buildah run $container -- microdnf install -y httpd
 buildah run $container -- microdnf clean all
 ```
 
-# Copy files into the container
+## Copy files into the container
 ```bash
 buildah copy $container ./index.html /var/www/html/index.html
 ```
 
-# Set the entrypoint
+## Set the entrypoint
 ```bash
 buildah config --entrypoint '["/usr/sbin/httpd", "-D", "FOREGROUND"]' $container
 ```
 
-# Set exposed port
+## Set exposed port
 ```bash
 buildah config --port 80 $container
 ```
 
-# Add labels
+## Add labels
 ```bash
 buildah config --label maintainer="admin@example.com" $container
 ```
 
-# Commit the container to an image
+## Commit the container to an image
 ```bash
 buildah commit $container my-httpd:latest
 ```
 
-# Clean up the working container
+## Clean up the working container
 ```bash
 buildah rm $container
 ```
@@ -86,7 +86,7 @@ graph TD
 
 If you prefer the Dockerfile approach, Buildah handles that too:
 
-# Create a simple Containerfile
+## Create a simple Containerfile
 ```bash
 cat > Containerfile << 'EOF'
 FROM registry.access.redhat.com/ubi9/ubi-minimal
@@ -97,12 +97,12 @@ ENTRYPOINT ["/usr/sbin/httpd", "-D", "FOREGROUND"]
 EOF
 ```
 
-# Build the image using the Containerfile
+## Build the image using the Containerfile
 ```bash
 buildah build -t my-httpd:v2 .
 ```
 
-# Build with a specific Containerfile name
+## Build with a specific Containerfile name
 ```bash
 buildah build -f MyContainerfile -t my-app:latest .
 ```
@@ -111,22 +111,22 @@ buildah build -f MyContainerfile -t my-app:latest .
 
 One of Buildah's best features is building from `scratch`, an empty image with nothing in it:
 
-# Start from an empty image
+## Start from an empty image
 ```bash
 container=$(buildah from scratch)
 ```
 
-# Mount the container filesystem
+## Mount the container filesystem
 ```bash
 mountpoint=$(buildah mount $container)
 ```
 
-# Install packages directly into the mount point using the host's dnf
+## Install packages directly into the mount point using the host's dnf
 ```bash
 sudo dnf install --installroot $mountpoint --releasever 9 --setopt install_weak_deps=false -y coreutils-single
 ```
 
-# Unmount and commit
+## Unmount and commit
 ```bash
 buildah unmount $container
 buildah commit $container minimal-tools:latest
@@ -138,17 +138,17 @@ This creates an incredibly small image with just the packages you need.
 
 Buildah gives you control over how layers are created:
 
-# Build with a single layer (squash all layers into one)
+## Build with a single layer (squash all layers into one)
 ```bash
 buildah build --layers=false -t my-app:squashed .
 ```
 
-# Build with layer caching enabled (default)
+## Build with layer caching enabled (default)
 ```bash
 buildah build --layers=true -t my-app:layered .
 ```
 
-# Remove intermediate images left over from builds
+## Remove intermediate images left over from builds
 ```bash
 buildah images --filter dangling=true
 buildah rmi --prune
@@ -167,7 +167,7 @@ RUN echo "Version: ${APP_VERSION}" > /version.txt
 EOF
 ```
 
-# Build with a custom argument
+## Build with a custom argument
 ```bash
 buildah build --build-arg APP_VERSION=2.5 -t my-app:2.5 .
 ```
@@ -191,7 +191,7 @@ ENTRYPOINT ["/usr/local/bin/app"]
 EOF
 ```
 
-# Build the multi-stage image
+## Build the multi-stage image
 ```bash
 buildah build -t my-app:compiled .
 ```
@@ -200,17 +200,17 @@ buildah build -t my-app:compiled .
 
 After building, inspect what you created:
 
-# List all local images
+## List all local images
 ```bash
 buildah images
 ```
 
-# Inspect image metadata
+## Inspect image metadata
 ```bash
 buildah inspect --type image my-httpd:latest
 ```
 
-# Check image size
+## Check image size
 ```bash
 podman image ls my-httpd
 ```
@@ -219,17 +219,17 @@ podman image ls my-httpd
 
 Once built, push your images to a registry:
 
-# Tag for your registry
+## Tag for your registry
 ```bash
 buildah tag my-httpd:latest registry.example.com/myteam/httpd:latest
 ```
 
-# Push to a private registry
+## Push to a private registry
 ```bash
 buildah push registry.example.com/myteam/httpd:latest
 ```
 
-# Push to Docker Hub
+## Push to Docker Hub
 ```bash
 buildah push my-httpd:latest docker://docker.io/myuser/httpd:latest
 ```
@@ -255,12 +255,12 @@ RUN microdnf install -y httpd && microdnf clean all
 
 Buildah works in rootless mode just like Podman:
 
-# Build images without root (as regular user)
+## Build images without root (as regular user)
 ```bash
 buildah build -t my-app:latest .
 ```
 
-# List images owned by your user
+## List images owned by your user
 ```bash
 buildah images
 ```

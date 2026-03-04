@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Monitoring, Uptime, Availability, Service
+Tags: Ubuntu, Monitoring, Uptime, Availability, Services
 
 Description: Learn how to set up uptime monitoring for services on Ubuntu using multiple approaches including Uptime Kuma, custom scripts, and integration with OneUptime for comprehensive availability tracking.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Firewalld, Rich Rules, Security, Linux
+Tags: RHEL, firewalld, Rich Rules, Security, Linux
 
 Description: How to use firewalld rich rules on RHEL for granular traffic control, including source-based filtering, rate limiting, logging, and complex allow/deny patterns.
 
@@ -14,7 +14,7 @@ Standard firewalld services and port rules apply to all traffic hitting a zone. 
 
 Rich rules use a structured language that reads almost like English:
 
-```
+```bash
 rule [family="ipv4|ipv6"]
   [source address="address[/mask]" [invert="true"]]
   [destination address="address[/mask]" [invert="true"]]

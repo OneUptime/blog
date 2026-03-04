@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, API Server, VOLUME, Configuration
+Tags: Talos Linux, Kubernetes, API Server, Volumes, Configuration
 
 Description: Learn how to mount extra volumes into the Kubernetes API server on Talos Linux for audit logs, custom policies, and certificates.
 

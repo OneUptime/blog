@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, fileexists Function, File System, HCL, Infrastructure as Code, Conditional Logic
+Tags: Terraform, fileexists Function, File Systems, HCL, Infrastructure as Code, Conditional Logic
 
 Description: Learn how to use the fileexists function in Terraform to check whether a local file exists before reading it, enabling conditional configuration based on file presence.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, AWS, EC2, Cloud-Init
+Tags: RHEL, AWS, EC2, cloud-init
 
 Description: Deploy RHEL 9 on AWS EC2 with cloud-init customization.
 

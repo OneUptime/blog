@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LVM, Snapshot, Recovery, Storage
+Tags: Ubuntu, LVM, Snapshots, Recovery, Storage
 
 Description: Restore data from an LVM snapshot on Ubuntu using full volume merge or selective file restoration, with steps for handling database recovery scenarios.
 

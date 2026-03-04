@@ -463,7 +463,7 @@ externalSecrets:
   enabled: true
   provider: aws-secrets-manager
   secretRef: my-secret
-```
+```bash
 
 ### Prometheus ServiceMonitor
 Enable metrics scraping:
@@ -472,7 +472,7 @@ metrics:
   serviceMonitor:
     enabled: true
     interval: 30s
-```
+```bash
 
 ## Upgrade Notes
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, HashiCorp Vault, Secret
+Tags: ArgoCD, GitOps, Kubernetes, HashiCorp Vault, Secrets
 
 Description: Learn how to implement automated secret rotation between HashiCorp Vault and ArgoCD-managed applications using External Secrets Operator and Vault dynamic secrets.
 

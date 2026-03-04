@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Package, Package Management, Cross-Platform, DevOps
+Tags: Ansible, Packages, Package Management, Cross-Platform, DevOps
 
 Description: Use the Ansible package module for OS-agnostic package management that works across Debian, RedHat, and other distributions.
 

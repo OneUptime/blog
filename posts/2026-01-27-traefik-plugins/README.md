@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Traefik, Plugin, Reverse Proxy, Middleware, Go, Kubernetes, Docker, DevOps
+Tags: Traefik, Plugins, Reverse Proxy, Middleware, Go, Kubernetes, Docker, DevOps
 
 Description: A comprehensive guide to using Traefik plugins for extending your reverse proxy with custom middleware, authentication, rate limiting, and more.
 

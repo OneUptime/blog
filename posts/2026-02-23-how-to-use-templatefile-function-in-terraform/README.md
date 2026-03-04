@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, String Functions, HCL, DevOps, Template
+Tags: Terraform, Infrastructure as Code, String Functions, HCL, DevOps, Templates
 
 Description: Learn how to use the templatefile function in Terraform to render external template files with variables, with practical examples for configuration generation and user data scripts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Migration, Directory Structure, Environment Management
+Tags: Terraform, Workspaces, Migration, Directory Structure, Environment Management
 
 Description: A step-by-step guide to migrating from Terraform workspace-based environment management to a directory-based structure, with state migration procedures and rollback strategies.
 

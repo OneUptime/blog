@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Power BI, Azure, Embedded Analytics, Dashboard, Data Visualization, Azure SQL, Business Intelligence
+Tags: Power BI, Azure, Embedded Analytics, Dashboards, Data Visualization, Azure SQL, Business Intelligence
 
 Description: Learn how to build and embed Power BI dashboards that connect to Azure data sources like Azure SQL Database and Azure Synapse Analytics.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Architecture, Gateway, Agent, Deployment, Observability
+Tags: OpenTelemetry, Collector, Architecture, Gateway, Agents, Deployment, Observability
 
 Description: Learn how to implement a scalable two-tier OpenTelemetry Collector architecture with agents collecting telemetry locally and gateways aggregating data centrally for better performance and reliability.
 

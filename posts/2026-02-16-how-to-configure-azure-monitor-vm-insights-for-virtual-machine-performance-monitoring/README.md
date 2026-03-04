@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Monitor, VM Insights, Virtual Machine, Performance Monitoring, Azure Cloud, Infrastructure Monitoring, Observability
+Tags: Azure Monitor, VM Insights, Virtual Machines, Performance Monitoring, Azure Cloud, Infrastructure Monitoring, Observability
 
 Description: Learn how to configure Azure Monitor VM Insights for comprehensive virtual machine performance monitoring, including dependency mapping and health diagnostics.
 

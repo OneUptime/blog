@@ -63,7 +63,7 @@ grep hosts /etc/nsswitch.conf
 
 It should include:
 
-```
+```bash
 hosts: files dns myhostname
 ```
 
@@ -75,7 +75,7 @@ cat /etc/hosts
 
 Ensure localhost entries are correct:
 
-```
+```bash
 127.0.0.1   localhost localhost.localdomain
 ::1         localhost localhost.localdomain
 ```

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, SSL, TLS, Security, Encryption, Certificate
+Tags: PostgreSQL, SSL, TLS, Security, Encryption, Certificates
 
 Description: A comprehensive guide to securing PostgreSQL connections with SSL/TLS encryption, covering certificate generation, server configuration, client setup, and security best practices.
 

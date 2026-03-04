@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, App Runner, ECR, Container, DevOps
+Tags: AWS, App Runner, ECR, Containers, DevOps
 
 Description: A detailed guide to configuring AWS App Runner with Amazon ECR for automated container deployments, including IAM setup, image management, and deployment workflows.
 

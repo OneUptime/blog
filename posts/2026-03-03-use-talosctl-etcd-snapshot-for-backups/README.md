@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, etcd, Backup, Disaster Recovery, Kubernetes
+Tags: Talos Linux, talosctl, etcd, Backups, Disaster Recovery, Kubernetes
 
 Description: Learn how to use talosctl etcd snapshot to create etcd backups for disaster recovery in your Talos Linux cluster
 

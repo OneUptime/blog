@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, CLI Commands, State Management, DevOps
+Tags: Terraform, Workspaces, CLI Commands, State Management, DevOps
 
 Description: Learn how to list all Terraform workspaces using terraform workspace list, understand the output format, and build automation that discovers and iterates over workspaces.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Strategy, Automation
+Tags: Ansible, Plugins, Strategy, Automation
 
 Description: A comprehensive guide to building custom Ansible strategy plugins that control task execution flow, including parallel execution, custom scheduling, and advanced host management patterns.
 

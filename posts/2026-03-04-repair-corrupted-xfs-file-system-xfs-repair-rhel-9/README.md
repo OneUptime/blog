@@ -75,7 +75,7 @@ The tool runs through several phases:
 
 If `xfs_repair` reports a dirty log that it cannot replay:
 
-```
+```bash
 ERROR: The filesystem has valuable metadata changes in a log which needs to
 be replayed. Mount the filesystem to replay the log, and unmount it before
 re-running xfs_repair.

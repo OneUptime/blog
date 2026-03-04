@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Managed Disks, Snapshot, Backup, Disaster Recovery, Cloud Infrastructure
+Tags: Azure, Managed Disks, Snapshots, Backups, Disaster Recovery, Cloud Infrastructure
 
 Description: Learn how to create point-in-time snapshots of Azure Managed Disks and restore them to recover data or create new disks from backup copies.
 

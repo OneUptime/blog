@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Podman, Container, Deployment, DevOps
+Tags: Ansible, Podman, Containers, Deployment, DevOps
 
 Description: Deploy and manage Podman Compose applications with Ansible for rootless container deployments, systemd integration, and pod management.
 

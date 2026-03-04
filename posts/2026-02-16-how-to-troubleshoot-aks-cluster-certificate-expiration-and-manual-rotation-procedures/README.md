@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Certificate, Kubernetes, Troubleshooting, Security, Azure, TLS
+Tags: AKS, Certificates, Kubernetes, Troubleshooting, Security, Azure, TLS
 
 Description: A practical guide to identifying expired AKS cluster certificates, understanding the rotation lifecycle, and performing manual certificate rotation.
 

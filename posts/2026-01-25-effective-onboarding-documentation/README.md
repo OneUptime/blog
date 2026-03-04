@@ -67,13 +67,13 @@ You should already have:
 ## Step 1: Clone the Repository
 
 ```bash
-# Clone the main repository
+## Clone the main repository
 git clone git@github.com:acme/platform.git
 cd platform
 
-# Install dependencies
+## Install dependencies
 make setup
-```
+```bash
 
 This takes about 10 minutes. While it runs, continue to Step 2.
 
@@ -92,18 +92,18 @@ Request database read access in #platform-requests Slack channel:
 
 ```text
 @platform-team Please grant read access to dev databases for [your-name]
-```
+```bash
 
 ## Step 3: Start the Development Server
 
 ```bash
-# Start all services
+## Start all services
 make dev
 
-# Verify it's working
+## Verify it's working
 curl http://localhost:3000/health
-# Should return: {"status": "ok"}
-```
+## Should return: {"status": "ok"}
+```bash
 
 ## Step 4: Verify Your Setup
 
@@ -111,7 +111,7 @@ Run the verification script:
 
 ```bash
 ./scripts/verify-setup.sh
-```
+```bash
 
 Expected output:
 ```text
@@ -121,7 +121,7 @@ Expected output:
 ✓ Redis connection successful
 ✓ AWS credentials valid
 ✓ All services healthy
-```
+```bash
 
 ## Troubleshooting
 
@@ -132,10 +132,10 @@ Start Docker Desktop and wait for it to fully initialize.
 ### Error: "Port 3000 already in use"
 
 ```bash
-# Find and kill the process
+## Find and kill the process
 lsof -i :3000
 kill -9 <PID>
-```
+```bash
 
 ### Error: "Database connection refused"
 
@@ -191,7 +191,7 @@ flowchart TD
     E --> L
     F --> M
     F --> N
-```
+```bash
 
 ## Service Responsibilities
 

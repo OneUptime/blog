@@ -14,7 +14,7 @@ Distributed volumes are a good fit when you need maximum storage capacity and ha
 
 ## How Distributed Volumes Work
 
-```
+```bash
 Client writes file-A, file-B, file-C
 
 Brick 1 (Node 1): file-A, file-C
@@ -81,7 +81,7 @@ sudo gluster volume info distvol
 
 Output should show:
 
-```
+```bash
 Volume Name: distvol
 Type: Distribute
 ...

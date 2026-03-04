@@ -40,7 +40,7 @@ SPF is purely a DNS record. No server-side configuration needed for outgoing mai
 
 Add a TXT record to your domain's DNS:
 
-```
+```bash
 example.com.  IN  TXT  "v=spf1 mx a ip4:203.0.113.10 -all"
 ```
 
@@ -63,7 +63,7 @@ sudo dnf install -y pypolicyd-spf
 
 Add to `/etc/postfix/main.cf`:
 
-```
+```bash
 # SPF checking for incoming mail
 policy-spf_time_limit = 3600s
 smtpd_recipient_restrictions =
@@ -75,7 +75,7 @@ smtpd_recipient_restrictions =
 
 Add to `/etc/postfix/master.cf`:
 
-```
+```bash
 policy-spf  unix  -       n       n       -       0       spawn
     user=nobody argv=/usr/libexec/postfix/policyd-spf
 ```
@@ -112,7 +112,7 @@ This creates two files:
 
 Edit `/etc/opendkim.conf`:
 
-```
+```bash
 # Logging
 Syslog          yes
 SyslogSuccess   yes
@@ -141,7 +141,7 @@ SigningTable     refile:/etc/opendkim/SigningTable
 
 Create `/etc/opendkim/TrustedHosts`:
 
-```
+```bash
 127.0.0.1
 localhost
 ::1
@@ -150,13 +150,13 @@ localhost
 
 Create `/etc/opendkim/KeyTable`:
 
-```
+```bash
 default._domainkey.example.com example.com:default:/etc/opendkim/keys/example.com/default.private
 ```
 
 Create `/etc/opendkim/SigningTable`:
 
-```
+```bash
 *@example.com default._domainkey.example.com
 ```
 
@@ -175,7 +175,7 @@ Add this as a TXT record in DNS for `default._domainkey.example.com`.
 
 Add to `/etc/postfix/main.cf`:
 
-```
+```bash
 # DKIM signing via OpenDKIM
 milter_default_action = accept
 milter_protocol = 6
@@ -196,7 +196,7 @@ sudo systemctl enable --now opendkim
 
 Add a TXT record for `_dmarc.example.com`:
 
-```
+```bash
 _dmarc.example.com.  IN  TXT  "v=DMARC1; p=none; rua=mailto:dmarc-reports@example.com; ruf=mailto:dmarc-forensic@example.com; pct=100"
 ```
 
@@ -225,7 +225,7 @@ sudo dnf install -y opendmarc
 
 Edit `/etc/opendmarc.conf`:
 
-```
+```bash
 AuthservID          mail.example.com
 FailureReports      false
 Socket              inet:8893@localhost
@@ -235,7 +235,7 @@ SPFIgnoreResults    true
 
 Add to `/etc/postfix/main.cf` (append to existing milters):
 
-```
+```bash
 smtpd_milters = inet:localhost:8891, inet:localhost:8893
 non_smtpd_milters = inet:localhost:8891, inet:localhost:8893
 ```
@@ -276,7 +276,7 @@ dig TXT _dmarc.example.com +short
 
 Send a test to a Gmail address and check the headers. Look for:
 
-```
+```bash
 Authentication-Results: mx.google.com;
     dkim=pass header.d=example.com;
     spf=pass (google.com: domain of test@example.com designates 203.0.113.10 as permitted sender);

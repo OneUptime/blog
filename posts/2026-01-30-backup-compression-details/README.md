@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backup, Compression, Performance, Storage
+Tags: Backups, Compression, Performance, Storage
 
 Description: Learn detailed backup compression techniques for storage and transfer optimization.
 

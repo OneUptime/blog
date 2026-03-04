@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, IAM, SCP, Organization, Security, Governance
+Tags: Terraform, AWS, IAM, SCP, Organizations, Security, Governance
 
 Description: Learn how to create AWS Service Control Policies (SCPs) in Terraform to enforce organization-wide guardrails across all accounts in your AWS Organization.
 

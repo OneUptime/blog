@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Galaxy, Collection, DevOps, Automation
+Tags: Ansible, Galaxy, Collections, DevOps, Automation
 
 Description: Step-by-step guide to installing Ansible collections from Ansible Galaxy with version pinning, requirements files, and offline installation.
 

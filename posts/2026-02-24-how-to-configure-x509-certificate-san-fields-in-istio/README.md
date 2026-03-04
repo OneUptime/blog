@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, X.509, Certificate, SAN, Security, mTLS
+Tags: Istio, X.509, Certificates, SAN, Security, mTLS
 
 Description: Learn how to configure and customize Subject Alternative Name fields in X.509 certificates used by Istio for workload identity and mTLS.
 

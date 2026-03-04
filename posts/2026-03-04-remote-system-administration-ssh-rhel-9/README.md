@@ -76,7 +76,7 @@ If you manage many servers, you can organize keys and configure shortcuts in `~/
 vi ~/.ssh/config
 ```
 
-```
+```bash
 # Production database server
 Host db-prod
     HostName 10.0.1.50

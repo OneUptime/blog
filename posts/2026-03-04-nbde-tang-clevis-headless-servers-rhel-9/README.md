@@ -202,7 +202,7 @@ sudo dracut -fv
 
 For deploying new headless servers at scale, include NBDE configuration in your Kickstart file:
 
-```
+```bash
 # Kickstart snippet for NBDE
 %packages
 clevis

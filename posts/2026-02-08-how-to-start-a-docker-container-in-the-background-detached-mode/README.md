@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, Detached Mode, Background, DevOps, Docker Run
+Tags: Docker, Containers, Detached Mode, Background, DevOps, Docker Run
 
 Description: Learn how to run Docker containers in detached mode, manage background containers, and work with their output effectively.
 

@@ -29,7 +29,7 @@ sudo firewall-cmd --reload
 
 Open your browser and navigate to:
 
-```
+```bash
 https://<your-rhel-ip>:9090
 ```
 

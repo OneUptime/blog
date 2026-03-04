@@ -1,4 +1,4 @@
-# How to Configure Resource Limits (CPU, Memory) for Services Using systemd Cgroups on RHEL
+# How to Configure Resource Limits for Services Using systemd Cgroups on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

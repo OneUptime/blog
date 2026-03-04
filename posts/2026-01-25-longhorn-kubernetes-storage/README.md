@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Longhorn, Storage, Persistent Volume, DevOps
+Tags: Kubernetes, Longhorn, Storage, Persistent Volumes, DevOps
 
 Description: Learn how to deploy and configure Longhorn for distributed block storage in Kubernetes, including installation, volume management, backup scheduling, and disaster recovery strategies.
 

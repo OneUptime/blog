@@ -39,7 +39,7 @@ When you save and close the editor, the file is encrypted. If you look at it dir
 cat secrets.yml
 ```
 
-```
+```bash
 $ANSIBLE_VAULT;1.1;AES256
 61326438396534323432323637653731616233346230393433326536326438353363333339616562
 ...
@@ -343,7 +343,7 @@ Use these in a playbook:
 
 Keep vault files in predictable locations:
 
-```
+```bash
 ansible-project/
   group_vars/
     all/

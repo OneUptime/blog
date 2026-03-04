@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NodeJS, SSL, TLS, Certificate, Troubleshooting
+Tags: NodeJS, SSL, TLS, Certificates, Troubleshooting
 
 Description: Resolve the CERT_HAS_EXPIRED error in Node.js by updating certificates, configuring proper certificate management, and implementing certificate monitoring.
 

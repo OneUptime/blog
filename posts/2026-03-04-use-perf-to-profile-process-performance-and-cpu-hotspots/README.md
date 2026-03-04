@@ -65,7 +65,7 @@ Output includes:
 - Branch mispredictions
 - Context switches
 
-```
+```bash
 Performance counter stats for './myapp':
      1,234,567,890  instructions
        456,789,012  cycles

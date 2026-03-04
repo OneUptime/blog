@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, Kubernetes, CI/CD, Dashboard, DevOps, Cloud Native, Monitoring
+Tags: Tekton, Kubernetes, CI/CD, Dashboards, DevOps, Cloud Native, Monitoring
 
 Description: A hands-on guide to installing and configuring Tekton Dashboard for visualizing and managing your CI/CD pipelines on Kubernetes.
 

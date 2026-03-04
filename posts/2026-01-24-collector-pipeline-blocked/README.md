@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Pipeline, Debugging, Performance, Observability
+Tags: OpenTelemetry, Collector, Pipelines, Debugging, Performance, Observability
 
 Description: Learn how to diagnose and fix OpenTelemetry Collector pipeline blocked errors that cause telemetry data loss.
 

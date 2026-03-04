@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Dashboard, Metrics, Visualization, Monitoring, Observability
+Tags: OpenTelemetry, Dashboards, Metrics, Visualization, Monitoring, Observability
 
 Description: Learn how to design and build effective custom dashboards from OpenTelemetry metrics, traces, and logs to give your team actionable observability views.
 

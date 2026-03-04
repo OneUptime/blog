@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Velero, Disaster Recovery, Kubernetes, Backup
+Tags: GCP, GKE, Velero, Disaster Recovery, Kubernetes, Backups
 
 Description: Implement a comprehensive disaster recovery plan for Google Kubernetes Engine clusters using Velero for backup and restore with multi-region Cloud Storage for resilient data protection.
 

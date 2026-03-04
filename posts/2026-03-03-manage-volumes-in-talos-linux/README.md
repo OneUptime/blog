@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, VOLUME, Storage, Kubernetes, Infrastructure
+Tags: Talos Linux, Volumes, Storage, Kubernetes, Infrastructure
 
 Description: A complete guide to managing volumes in Talos Linux, covering creation, configuration, resizing, and lifecycle management through machine config.
 

@@ -74,7 +74,7 @@ ssh -A admin@bastion.example.com
 vi ~/.ssh/config
 ```
 
-```
+```bash
 Host bastion
     HostName bastion.example.com
     User admin
@@ -107,14 +107,14 @@ The SSH server needs to allow agent forwarding:
 sudo vi /etc/ssh/sshd_config
 ```
 
-```
+```bash
 # Allow agent forwarding (this is the default)
 AllowAgentForwarding yes
 ```
 
 To restrict forwarding for specific users:
 
-```
+```bash
 # Disable for most users
 AllowAgentForwarding no
 
@@ -147,7 +147,7 @@ Agent forwarding has a real security risk: anyone with root access on the remote
 
 2. **Use ProxyJump instead when possible** - ProxyJump does not require agent forwarding:
 
-```
+```bash
 Host internal-server
     HostName 10.0.1.10
     ProxyJump bastion
@@ -181,7 +181,7 @@ ssh-add -X
 
 For many cases, ProxyJump is a better alternative:
 
-```
+```bash
 # This does NOT require agent forwarding
 Host internal
     HostName 10.0.1.10

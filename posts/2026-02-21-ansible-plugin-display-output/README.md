@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Display, Debugging, Python
+Tags: Ansible, Plugins, Display, Debugging, Python
 
 Description: Learn how to properly use the Ansible Display class to output messages, warnings, and debug info from your custom plugins.
 

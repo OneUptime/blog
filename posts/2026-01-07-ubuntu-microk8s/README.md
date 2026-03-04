@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, MicroK8s, Kubernetes, DevOps, Container
+Tags: Ubuntu, Linux, MicroK8s, Kubernetes, DevOps, Containers
 
 Description: Install and configure MicroK8s on Ubuntu for lightweight Kubernetes development and edge deployments with essential addons.
 

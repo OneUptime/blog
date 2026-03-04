@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Batch, Cloud Storage, GCS Fuse, File System, Batch Processing, Google Cloud
+Tags: GCP, Cloud Batch, Cloud Storage, GCS Fuse, File Systems, Batch Processing, Google Cloud
 
 Description: Mount Cloud Storage buckets as file systems in Google Cloud Batch jobs using GCS FUSE for seamless file-based data access in batch processing workloads.
 

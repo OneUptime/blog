@@ -72,7 +72,7 @@ module "vpc" {
   source = "./modules/vpc"
   cidr_block = "10.0.0.0/16"
 }
-```
+```bash
 
 <!-- BEGIN_TF_DOCS -->
 <!-- END_TF_DOCS -->
@@ -321,7 +321,7 @@ content: |-
     {{ .Name }} = {{ if .Default }}{{ .Default }}{{ else }}"<required>"{{ end }}
     {{ end }}
   }
-  ```
+  ```bash
 
   {{ .Inputs }}
 
@@ -338,4 +338,5 @@ Mark sensitive outputs with `sensitive = true` - terraform-docs will flag these 
 
 For more on the manual side of documentation, see [how to document Terraform modules with README](https://oneuptime.com/blog/post/2026-02-23-document-terraform-modules-with-readme/view).
 
+```bash
 ```

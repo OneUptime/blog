@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Custom Module, Python, Development
+Tags: Ansible, Custom Modules, Python, Development
 
 Description: Write your first custom Ansible module in Python with proper argument handling, return values, and idempotency for extending Ansible.
 

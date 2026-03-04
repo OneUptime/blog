@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, CPU Usage, Troubleshooting, Performance, Monitoring, Azure Monitor
+Tags: Azure, Virtual Machines, CPU Usage, Troubleshooting, Performance, Monitoring, Azure Monitor
 
 Description: A practical troubleshooting guide for diagnosing and resolving high CPU usage on Azure Virtual Machines with real-world examples.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, EC2, Container, Auto Scaling, Infrastructure as Code
+Tags: Terraform, AWS, ECS, EC2, Containers, Auto Scaling, Infrastructure as Code
 
 Description: Learn how to create an ECS cluster with EC2 launch type using Terraform including auto scaling groups, task definitions, services, and load balancer integration.
 

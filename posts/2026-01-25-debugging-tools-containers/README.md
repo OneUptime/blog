@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Debugging, Container, Developer Experience, DevOps
+Tags: Docker, Debugging, Containers, Developer Experience, DevOps
 
 Description: Learn how to effectively debug applications running in containers using Docker exec, remote debugging, logging strategies, and specialized debugging containers.
 

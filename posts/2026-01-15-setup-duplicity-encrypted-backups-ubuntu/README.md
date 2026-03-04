@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Duplicity, Encrypted Backup, GPG, Cloud Backup, Tutorial
+Tags: Ubuntu, Duplicity, Encrypted Backups, GPG, Cloud Backup, Tutorial
 
 Description: Complete guide to setting up Duplicity for encrypted incremental backups on Ubuntu.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, Timezone, DevOps, Container, Linux
+Tags: Docker, Dockerfile, Timezone, DevOps, Containers, Linux
 
 Description: Learn how to properly configure timezones in Docker containers to avoid log timestamp mismatches and scheduling issues.
 

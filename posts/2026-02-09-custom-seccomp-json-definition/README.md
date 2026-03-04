@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, seccomp, JSON, System Calls
+Tags: Kubernetes, Security, Seccomp, JSON, System Calls
 
 Description: Master the creation of custom seccomp profiles using JSON definitions to precisely control system call access in Kubernetes containers, implementing security policies at the kernel level.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Extension, Google Cloud, Authentication, GCP, Security
+Tags: OpenTelemetry, Collector, Extensions, Google Cloud, Authentication, GCP, Security
 
 Description: Learn how to configure the Google Client Auth extension in OpenTelemetry Collector to authenticate with Google Cloud services using OAuth2, service accounts, and application default credentials.
 

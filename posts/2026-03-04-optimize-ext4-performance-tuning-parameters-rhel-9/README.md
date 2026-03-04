@@ -22,7 +22,7 @@ ext4 offers numerous tuning parameters that can significantly impact performance
 
 Disabling access time updates eliminates unnecessary write operations:
 
-```
+```bash
 /dev/vg_data/lv_data /data ext4 defaults,noatime 0 2
 ```
 
@@ -34,19 +34,19 @@ ext4 supports three journaling modes:
 
 **data=ordered** (default): Metadata is journaled. Data is flushed before metadata is committed.
 
-```
+```bash
 /dev/vg_data/lv_data /data ext4 defaults,data=ordered 0 2
 ```
 
 **data=journal**: Both data and metadata are journaled. Safest but slowest for large writes. Can actually improve random write performance because everything goes through the sequential journal first.
 
-```
+```bash
 /dev/vg_data/lv_data /data ext4 defaults,data=journal 0 2
 ```
 
 **data=writeback**: Only metadata is journaled. Data may be written after metadata. Fastest but can expose stale data after a crash.
 
-```
+```bash
 /dev/vg_data/lv_data /data ext4 defaults,data=writeback 0 2
 ```
 
@@ -54,7 +54,7 @@ ext4 supports three journaling modes:
 
 The `commit` option controls how often the journal is flushed to disk (in seconds):
 
-```
+```bash
 /dev/vg_data/lv_data /data ext4 defaults,noatime,commit=30 0 2
 ```
 
@@ -64,7 +64,7 @@ Increasing from the default 5 seconds to 30 seconds reduces the frequency of dis
 
 Write barriers ensure data integrity but add overhead:
 
-```
+```bash
 # Disable barriers (only with battery-backed cache)
 /dev/vg_data/lv_data /data ext4 defaults,nobarrier 0 2
 ```
@@ -73,7 +73,7 @@ Write barriers ensure data integrity but add overhead:
 
 For SSD storage:
 
-```
+```bash
 /dev/vg_data/lv_data /data ext4 defaults,discard 0 2
 ```
 
@@ -166,7 +166,7 @@ sudo mkfs.ext4 -J device=/dev/ssd_journal /dev/sdb1
 
 Mount with the external journal:
 
-```
+```bash
 /dev/sdb1 /data ext4 defaults,journal_dev=0xMAJMIN 0 2
 ```
 
@@ -206,7 +206,7 @@ echo 256 | sudo tee /sys/block/sdb/queue/nr_requests
 
 ### Database Workload
 
-```
+```bash
 /dev/vg_data/lv_data /data ext4 noatime,data=ordered,barrier=1,commit=5 0 2
 ```
 
@@ -214,7 +214,7 @@ Focus on data integrity with acceptable performance.
 
 ### Web Server
 
-```
+```bash
 /dev/vg_data/lv_data /data ext4 noatime,data=writeback,commit=30 0 2
 ```
 
@@ -222,7 +222,7 @@ Optimize for read-heavy workloads with many small files.
 
 ### Log Storage
 
-```
+```bash
 /dev/vg_data/lv_data /data ext4 noatime,data=writeback,commit=60,nodelalloc 0 2
 ```
 
@@ -230,7 +230,7 @@ Optimize for sequential append-heavy writes.
 
 ### Mail Server
 
-```
+```bash
 /dev/vg_data/lv_data /data ext4 noatime,data=journal 0 2
 ```
 

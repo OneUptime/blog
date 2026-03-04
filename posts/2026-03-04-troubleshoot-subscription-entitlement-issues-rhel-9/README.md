@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Subscription, Troubleshooting, Red Hat, Linux
+Tags: RHEL, Subscriptions, Troubleshooting, Red Hat, Linux
 
 Description: A practical troubleshooting guide for common RHEL subscription and entitlement problems, covering registration failures, certificate errors, repo access issues, and more.
 

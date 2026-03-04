@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Jenkins, Blue Ocean, CI/CD, DevOps, Pipeline, Continuous Integration, Automation, Build
+Tags: Jenkins, Blue Ocean, CI/CD, DevOps, Pipelines, Continuous Integration, Automation, Build
 
 Description: A comprehensive guide to installing and configuring Jenkins Blue Ocean for modern pipeline visualization.
 

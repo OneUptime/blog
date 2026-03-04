@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, FQCN, Collection, Best Practices
+Tags: Ansible, FQCN, Collections, Best Practices
 
 Description: Learn how to use Fully Qualified Collection Names in Ansible to avoid module conflicts, improve clarity, and future-proof your playbooks.
 

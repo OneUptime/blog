@@ -12,7 +12,7 @@ Automounting home directories over NFS allows users to log in to any machine in 
 
 ## Architecture
 
-```
+```bash
 NFS Server: /export/home/alice, /export/home/bob, /export/home/carol
                     |
 Client machines mount /home/username on demand via autofs
@@ -34,7 +34,7 @@ sudo mkdir -p /export/home
 
 Add to `/etc/exports`:
 
-```
+```bash
 /export/home  192.168.1.0/24(rw,sync,no_subtree_check)
 ```
 

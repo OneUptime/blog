@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Feature Branches, CI/CD, Development Workflow
+Tags: Terraform, Workspaces, Feature Branches, CI/CD, Development Workflow
 
 Description: Learn how to use Terraform workspaces to create isolated infrastructure environments for feature branches, enabling parallel development with automatic cleanup on merge.
 

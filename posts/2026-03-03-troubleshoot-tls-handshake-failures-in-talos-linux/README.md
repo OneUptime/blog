@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, TLS, Security, Certificate, Debugging, Troubleshooting, Kubernetes
+Tags: Talos Linux, TLS, Security, Certificates, Debugging, Troubleshooting, Kubernetes
 
 Description: A detailed guide to diagnosing and fixing TLS handshake failures when connecting to Talos Linux nodes with talosctl.
 

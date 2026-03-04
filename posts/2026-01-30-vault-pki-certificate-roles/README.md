@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vault, Security, PKI, Certificate
+Tags: Vault, Security, PKI, Certificates
 
 Description: A comprehensive guide to configuring PKI certificate roles in HashiCorp Vault for secure and automated certificate issuance.
 

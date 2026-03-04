@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Connector, Traces, Metrics, Pipeline, Observability
+Tags: OpenTelemetry, Collector, Connector, Traces, Metrics, Pipelines, Observability
 
 Description: Learn how to use OpenTelemetry Collector connectors to derive metrics from traces, bridging signal pipelines for richer observability.
 

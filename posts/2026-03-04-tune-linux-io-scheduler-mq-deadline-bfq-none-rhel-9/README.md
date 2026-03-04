@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, I/O Scheduler, Performance, Storage, Tuning, Linux
+Tags: RHEL, I/O Schedulers, Performance, Storage, Tuning, Linux
 
 Description: Learn how to select and tune the Linux I/O scheduler on RHEL to optimize storage performance for different workloads and device types.
 

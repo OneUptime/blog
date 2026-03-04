@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Firewalld, Deny-All, Security, Linux
+Tags: RHEL, firewalld, Deny-All, Security, Linux
 
 Description: How to implement a deny-all (default deny) firewall policy on RHEL using firewalld, where all traffic is blocked unless explicitly allowed.
 

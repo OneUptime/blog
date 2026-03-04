@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, App Engine, Health Check, Flexible Environment, Monitoring
+Tags: GCP, App Engine, Health Checks, Flexible Environment, Monitoring
 
 Description: Configure liveness and readiness checks for App Engine Flexible Environment to ensure your application handles traffic only when healthy and ready.
 

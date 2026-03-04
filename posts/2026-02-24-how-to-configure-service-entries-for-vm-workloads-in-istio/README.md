@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, ServiceEntry, Virtual Machine, WorkloadEntry, Service Mesh
+Tags: Istio, ServiceEntry, Virtual Machines, WorkloadEntry, Service Mesh
 
 Description: How to use ServiceEntry and WorkloadEntry resources to register VM-based workloads in Istio for proper service discovery and traffic management.
 

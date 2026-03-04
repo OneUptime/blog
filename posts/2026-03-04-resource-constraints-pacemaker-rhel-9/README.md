@@ -1,4 +1,4 @@
-# How to Configure Resource Constraints (Location, Order, Colocation) in Pacemaker on RHEL
+# How to Configure Resource Constraints in Pacemaker on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -113,13 +113,13 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: default
-```
+```bash
 
 <!-- Avoid: incomplete snippets without context -->
 ```yaml
 source:
   repoURL: https://github.com/example/app.git
-```
+```bash
 ```text
 
 ### Admonitions
@@ -209,7 +209,7 @@ metadata:
   namespace: argocd
 data:
   application.instanceLabelKey: my-company.com/argocd-instance
-```
+```bash
 
 !!! warning
     Changing this value on an existing installation will cause ArgoCD
@@ -237,7 +237,7 @@ sequenceDiagram
     ArgoCD Server->>Kubernetes: Apply Resources
     Kubernetes-->>ArgoCD Server: Resource Status
     ArgoCD Server-->>User: Sync Complete
-```
+```bash
 ```text
 
 ## Submitting Documentation PRs

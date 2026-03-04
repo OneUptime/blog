@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Health Check, Monitoring, DevOps
+Tags: Ansible, Docker, Health Checks, Monitoring, DevOps
 
 Description: Configure Docker container health checks through Ansible to ensure services are running correctly with automated recovery.
 

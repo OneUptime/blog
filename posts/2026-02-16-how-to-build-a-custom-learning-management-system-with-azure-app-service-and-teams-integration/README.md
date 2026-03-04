@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure App Service, Microsoft Teams, Learning Management System, Education, LMS, Teams Integration, Web Application
+Tags: Azure App Service, Microsoft Teams, Learning Management System, Education, LMS, Teams Integration, Web Applications
 
 Description: Build a custom learning management system on Azure App Service with Microsoft Teams integration for course delivery and student engagement.
 

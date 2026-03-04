@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Linux, Virtual Machine, OSProvisioning, cloud-init, Troubleshooting, VM Deployment
+Tags: Azure, Linux, Virtual Machines, OSProvisioning, cloud-init, Troubleshooting, VM Deployment
 
 Description: Diagnose and fix OSProvisioningTimedOut errors when deploying Azure Linux VMs caused by cloud-init failures, network issues, and image configuration problems.
 

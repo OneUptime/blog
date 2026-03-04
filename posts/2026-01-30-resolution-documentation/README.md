@@ -756,13 +756,13 @@ Here's a comprehensive template you can use for your resolution documentation:
 
 // After
 [fixed code]
-```
+```bash
 
 ### Configuration Changes
 ```yaml
-# [config file name]
+## [config file name]
 [relevant configuration]
-```
+```bash
 
 ## Verification
 ### Immediate Checks
@@ -772,7 +772,7 @@ Here's a comprehensive template you can use for your resolution documentation:
 ### Monitoring Queries
 ```text
 [Query to verify fix]
-```
+```bash
 
 ## Prevention
 ### Action Items
@@ -809,4 +809,5 @@ The key principles to remember:
 
 Start with a simple template and evolve it as your team's needs grow. The best resolution documentation is the one your team actually uses.
 
+```bash
 ```

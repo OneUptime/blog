@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, containerd, Security, Encryption, Container Image
+Tags: Kubernetes, containerd, Security, Encryption, Container Images
 
 Description: Learn how to configure containerd to work with encrypted container images for enhanced security in Kubernetes, protecting sensitive application code and data at rest in registries.
 

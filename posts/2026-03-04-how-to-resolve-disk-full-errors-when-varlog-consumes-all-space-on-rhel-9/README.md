@@ -58,7 +58,7 @@ sudo vi /etc/logrotate.d/syslog
 
 Set appropriate rotation:
 
-```
+```bash
 /var/log/messages
 /var/log/secure
 /var/log/maillog

@@ -1,4 +1,4 @@
-# How to Set Up VirtualBox Guest Additions for Shared Folders and Clipboard on RHEL
+# How to Set Up VirtualBox Guest Additions on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

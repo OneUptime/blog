@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, VPN, Networking, Container, Security, DevOps
+Tags: Docker, VPN, Networking, Containers, Security, DevOps
 
 Description: Learn how to route all network traffic from Docker containers through a dedicated VPN container for privacy and security.
 

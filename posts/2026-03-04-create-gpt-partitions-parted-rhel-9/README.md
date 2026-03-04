@@ -82,7 +82,7 @@ lsblk /dev/sdb
 
 You should see output like:
 
-```
+```bash
 Number  Start   End     Size    File system  Name     Flags
  1      1049kB  53.7GB  53.7GB               data
  2      53.7GB  161GB   107GB                backups

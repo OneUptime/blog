@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Backup, Restore, Database, Disaster Recovery, SQL
+Tags: CockroachDB, Backups, Restore, Database, Disaster Recovery, SQL
 
 Description: A comprehensive guide to backing up and restoring CockroachDB databases, covering full and incremental backups, point-in-time recovery, cloud storage integration.
 

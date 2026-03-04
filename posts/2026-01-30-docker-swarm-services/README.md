@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Swarm, Orchestration, Service
+Tags: Docker, Swarm, Orchestration, Services
 
 Description: Learn to create Docker Swarm services with replicas, update policies, and networking for simple container orchestration without Kubernetes.
 

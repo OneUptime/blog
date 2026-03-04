@@ -52,7 +52,7 @@ ab -n 5000 -c 50 -k http://localhost/
 
 ## Interpret Results
 
-```
+```bash
 Requests per second:    5000.00 [#/sec] (mean)
 Time per request:       20.000 [ms] (mean)
 Time per request:       0.200 [ms] (mean, across all concurrent requests)

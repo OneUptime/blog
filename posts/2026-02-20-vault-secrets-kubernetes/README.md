@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vault, Secret, Kubernetes, HashiCorp, Security
+Tags: Vault, Secrets, Kubernetes, HashiCorp, Security
 
 Description: Learn how to use HashiCorp Vault with Kubernetes for secure secrets management using the Vault Agent Injector.
 

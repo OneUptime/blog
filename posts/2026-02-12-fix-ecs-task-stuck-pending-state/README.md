@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Container, Debugging, Fargate
+Tags: AWS, ECS, Containers, Debugging, Fargate
 
 Description: Diagnose and fix ECS tasks stuck in PENDING state due to resource constraints, networking issues, image pull problems, and capacity provider limitations.
 

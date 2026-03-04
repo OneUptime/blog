@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Barman, Backup, Recovery, PITR, Disaster Recovery
+Tags: PostgreSQL, Barman, Backups, Recovery, PITR, Disaster Recovery
 
 Description: A comprehensive guide to using Barman for PostgreSQL backup management, covering installation, configuration, backup strategies, catalog management, and disaster recovery procedures.
 

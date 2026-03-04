@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, DHCP, Monitoring, Networking, Sysadmin
+Tags: Ubuntu, DHCP, Monitoring, Networking, SysAdmin
 
 Description: Monitor DHCP lease activity on Ubuntu servers using log analysis, lease file parsing, and the Kea REST API to track address assignments and detect anomalies.
 

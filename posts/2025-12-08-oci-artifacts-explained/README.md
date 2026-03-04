@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Container, DevOps, Supply Chain, Security, OCI
+Tags: Containers, DevOps, Supply Chain, Security, OCI
 
 Description: OCI artifacts are just structured manifests in a registry, but they unlock consistent distribution for anything from Helm charts to SBOMs and AI models.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, Generalized Image, VM Image, Azure CLI, Azure Compute Gallery, Cloud Infrastructure
+Tags: Azure, Virtual Machines, Generalized Image, VM Image, Azure CLI, Azure Compute Gallery, Cloud Infrastructure
 
 Description: Step-by-step instructions for capturing a generalized image from an Azure VM to create reusable templates for deploying identical machines.
 

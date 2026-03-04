@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SAP HANA, Backup, Backint, Linux
+Tags: RHEL, SAP HANA, Backups, Backint, Linux
 
 Description: Configure SAP HANA backups using the Backint interface on RHEL for reliable database backup to third-party storage solutions.
 

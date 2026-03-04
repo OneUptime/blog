@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Firebase Hosting, Cloud CDN, Serverless, Web Application
+Tags: GCP, Cloud Run, Firebase Hosting, Cloud CDN, Serverless, Web Applications
 
 Description: Learn how to deploy a serverless web application on GCP using Cloud Run for the backend, Firebase Hosting for static assets, and Cloud CDN for global caching.
 

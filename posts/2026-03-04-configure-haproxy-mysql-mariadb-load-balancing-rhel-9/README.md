@@ -135,7 +135,7 @@ done
 
 Configure your application to use different ports for reads and writes:
 
-```
+```bash
 # Write connection (primary)
 DB_WRITE_HOST=haproxy-server
 DB_WRITE_PORT=3306

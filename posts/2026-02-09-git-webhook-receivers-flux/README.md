@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Webhook, GitHub, GitLab
+Tags: Flux, GitOps, Webhooks, GitHub, GitLab
 
 Description: Learn how to configure Git webhook receivers in Flux to trigger immediate reconciliation when you push commits instead of waiting for the polling interval.
 

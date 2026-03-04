@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Grafana, Dashboard, Monitoring, Prometheus
+Tags: Ansible, Grafana, Dashboards, Monitoring, Prometheus
 
 Description: Deploy and provision Grafana dashboards for infrastructure monitoring using Ansible with automated datasource and dashboard configuration.
 

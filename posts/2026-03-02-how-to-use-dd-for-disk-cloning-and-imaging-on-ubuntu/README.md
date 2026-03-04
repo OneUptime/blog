@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Disk Management, Storage, Backup, System Administration
+Tags: Ubuntu, Disk Management, Storage, Backups, System Administration
 
 Description: Use dd on Ubuntu to clone disks, create disk images, back up and restore partitions, and securely erase drives, with practical examples and performance optimization tips.
 

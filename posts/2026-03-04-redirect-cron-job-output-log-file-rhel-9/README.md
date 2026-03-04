@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, cron, Logging, Output Redirection, Linux
+Tags: RHEL, Cron, Logging, Output Redirection, Linux
 
 Description: Master the art of redirecting cron job output on RHEL, from basic stdout/stderr redirection to MAILTO configuration and log rotation strategies.
 

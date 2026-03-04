@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, tc htb, Traffic Shaping, Linux
 
-Description: A detailed guide to using Hierarchical Token Bucket (HTB) with tc on RHEL for sophisticated outbound traffic shaping, covering class hierarchies, bandwidth borrowing, burst handling, and real-world configurations.
+Description: A detailed guide to using Hierarchical Token Bucket (HTB) with tc on RHEL for sophisticated outbound traffic shaping, covering class hierarchies, bandwidth borrowing, burst handling, and...
 
 ---
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Database, Distributed Systems, Algorithm, DevOps
+Tags: Database, Distributed Systems, Algorithms, DevOps
 
 Description: Learn to implement consistent hashing from scratch with virtual nodes, replication, and rebalancing for building scalable distributed systems.
 

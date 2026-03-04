@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, CAPI, Cluster Upgrade, Kubernetes, Rolling Update
+Tags: Talos Linux, CAPI, Cluster Upgrade, Kubernetes, Rolling Updates
 
 Description: A complete guide to upgrading Talos Linux clusters through Cluster API with rolling updates for both the OS and Kubernetes versions.
 

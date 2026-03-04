@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, iSCSI, Storage, Kubernetes, Persistent Volume
+Tags: Talos Linux, iSCSI, Storage, Kubernetes, Persistent Volumes
 
 Description: A practical guide to installing the iscsi-tools extension on Talos Linux for connecting to iSCSI storage targets and provisioning persistent volumes in Kubernetes.
 

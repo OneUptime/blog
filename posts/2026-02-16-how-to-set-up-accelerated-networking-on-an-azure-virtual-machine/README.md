@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Accelerated Networking, Virtual Machine, Networking, Performance, SR-IOV, Azure CLI
+Tags: Azure, Accelerated Networking, Virtual Machines, Networking, Performance, SR-IOV, Azure CLI
 
 Description: How to enable accelerated networking on Azure VMs to achieve lower latency, higher throughput, and reduced CPU utilization for network traffic.
 

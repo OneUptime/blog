@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Labels, Selectors, Organization, Best Practices
+Tags: Kubernetes, Labels, Selectors, Organizations, Best Practices
 
 Description: Learn how to design and use Kubernetes labels and selectors effectively for organizing resources, enabling service discovery, and managing deployments across namespaces and environments.
 

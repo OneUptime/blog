@@ -170,7 +170,7 @@ BIND has many log categories. Here are the most useful ones:
 
 Query log entries look like this:
 
-```
+```bash
 04-Mar-2026 10:15:23.456 client @0x7f9a12345678 192.168.1.50#43210 (www.example.com): query: www.example.com IN A +E(0)K (192.168.1.10)
 ```
 
@@ -250,7 +250,7 @@ The `rndc reopen` command tells BIND to close and reopen its log files after rot
 
 BIND can serve statistics via HTTP. Add this to your options:
 
-```
+```bash
 statistics-channels {
     inet 127.0.0.1 port 8053 allow { 127.0.0.1; };
 };

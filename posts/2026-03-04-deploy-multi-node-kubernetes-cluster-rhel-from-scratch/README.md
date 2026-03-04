@@ -12,7 +12,7 @@ A production Kubernetes cluster needs multiple control plane nodes for high avai
 
 ## Cluster Architecture
 
-```
+```bash
 Control Plane Nodes: cp1 (192.168.1.10), cp2 (192.168.1.11), cp3 (192.168.1.12)
 Worker Nodes: w1 (192.168.1.20), w2 (192.168.1.21), w3 (192.168.1.22)
 Load Balancer: lb (192.168.1.5) - HAProxy for API server

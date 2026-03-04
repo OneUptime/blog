@@ -46,7 +46,7 @@ repquota -us /home
 
 Sample output:
 
-```
+```bash
 *** Report for user quotas on device /dev/mapper/vg_data-lv_home
 Block grace time: 7days; Inode grace time: 7days
                         Block limits                File limits
@@ -203,7 +203,7 @@ vi /etc/warnquota.conf
 
 Key settings to configure:
 
-```
+```bash
 # Email settings
 MAIL_CMD = "/usr/sbin/sendmail -t"
 FROM = "quota-admin@example.com"

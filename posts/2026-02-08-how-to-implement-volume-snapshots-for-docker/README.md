@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, VOLUME, Snapshot, Backup, Storage, DevOps, Data Protection
+Tags: Docker, Volumes, Snapshots, Backups, Storage, DevOps, Data Protection
 
 Description: Practical methods for creating point-in-time snapshots of Docker volumes using tar, LVM, Btrfs, and ZFS.
 

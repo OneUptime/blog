@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Container, Docker, Semantic Conventions, Observability, Resource Attributes, Container Runtime
+Tags: OpenTelemetry, Containers, Docker, Semantic Conventions, Observability, Resource Attributes, Container Runtime
 
 Description: Learn how to use OpenTelemetry container runtime semantic conventions to track container identity, image details, and runtime metadata in your telemetry.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, AWS, App Runner, ECR, Cloud Deployment, Container, Serverless
+Tags: Docker, AWS, App Runner, ECR, Cloud Deployment, Containers, Serverless
 
 Description: Learn how to deploy Docker container images to AWS App Runner from ECR for automatic scaling and zero-config hosting.
 

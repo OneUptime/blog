@@ -223,7 +223,7 @@ SSLCipherSuite ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384
 
 For OpenSSH, in `/etc/ssh/sshd_config`:
 
-```
+```bash
 # Override crypto policy for SSH only
 Ciphers aes256-gcm@openssh.com,aes128-gcm@openssh.com
 ```

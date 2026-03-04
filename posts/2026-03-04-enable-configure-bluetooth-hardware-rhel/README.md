@@ -58,7 +58,7 @@ bluetoothctl
 # Inside bluetoothctl, run these commands:
 ```
 
-```
+```bash
 # Turn on the Bluetooth adapter
 power on
 

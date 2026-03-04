@@ -78,7 +78,7 @@ Create a custom PAM configuration for a specific service:
 sudo vi /etc/pam.d/my-web-app
 ```
 
-```
+```bash
 # Only authenticate against the LDAP domain for this service
 auth    required    pam_sss.so domains=ldap.internal
 account required    pam_sss.so domains=ldap.internal
@@ -94,7 +94,7 @@ sudo vi /etc/pam.d/sshd
 
 Modify the relevant lines or create a custom include file:
 
-```
+```bash
 auth       required     pam_sss.so domains=ad.example.com
 auth       required     pam_env.so
 account    required     pam_sss.so domains=ad.example.com
@@ -188,7 +188,7 @@ sudo vi /etc/pam.d/sshd
 
 Make sure the auth lines reference only the AD domain:
 
-```
+```bash
 auth    substack    password-auth
 auth    required    pam_sss.so domains=ad.example.com
 ```
@@ -199,7 +199,7 @@ auth    required    pam_sss.so domains=ad.example.com
 sudo vi /etc/pam.d/login
 ```
 
-```
+```bash
 auth    substack    password-auth
 auth    required    pam_sss.so domains=ldap.internal
 ```

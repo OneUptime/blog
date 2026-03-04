@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, XFS, ext4, Filesystem, Storage, Linux
+Tags: RHEL, XFS, ext4, Filesystems, Storage, Linux
 
 Description: Learn how to choose between XFS and ext4 file systems on RHEL by comparing their features, performance characteristics, and suitability for different workloads.
 

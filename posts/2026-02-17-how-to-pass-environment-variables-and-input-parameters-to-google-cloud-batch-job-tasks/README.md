@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Batch, Environment Variable, Batch Processing, Configuration
+Tags: GCP, Cloud Batch, Environment Variables, Batch Processing, Configuration
 
 Description: Learn how to pass environment variables and input parameters to Google Cloud Batch job tasks for flexible and configurable batch processing.
 

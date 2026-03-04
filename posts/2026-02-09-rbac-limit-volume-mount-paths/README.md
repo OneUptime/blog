@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, Security, VOLUME, Storage
+Tags: Kubernetes, RBAC, Security, Volumes, Storage
 
 Description: Learn how to implement RBAC policies combined with admission controls to restrict volume mount paths and types, preventing users from mounting sensitive host paths or unauthorized storage.
 

@@ -91,7 +91,7 @@ cat /etc/anacrontab
 
 Default content:
 
-```
+```bash
 # /etc/anacrontab: configuration file for anacron
 
 # See anacron(8) and anacrontab(5) for details.
@@ -153,7 +153,7 @@ sudo vi /etc/anacrontab
 
 Add entries like these:
 
-```
+```bash
 # Run a security scan every 3 days
 3       10      security-scan           /usr/local/bin/security-scan.sh
 
@@ -198,7 +198,7 @@ sudo chmod 755 /usr/local/bin/anacron-backup.sh
 
 Add it to anacrontab:
 
-```
+```bash
 # Daily backup with 15-minute delay
 1       15      daily-backup            /usr/local/bin/anacron-backup.sh
 ```
@@ -273,7 +273,7 @@ On a server that runs 24/7, you might want tighter control over when anacron job
 sudo vi /etc/anacrontab
 ```
 
-```
+```bash
 SHELL=/bin/sh
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 MAILTO=ops-team@example.com

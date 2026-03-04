@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Azure, High Availability, Pacemaker
 
-Description: Deploy RHEL HA clusters on Azure using Pacemaker.
+Description: Learn how to deploy and configure highly available RHEL clusters on Azure using Pacemaker for automated failover.
 
 ---
 

@@ -24,7 +24,7 @@ On each node, add all cluster members to /etc/hosts:
 sudo vi /etc/hosts
 ```
 
-```
+```bash
 10.0.1.10 rabbit1
 10.0.1.11 rabbit2
 10.0.1.12 rabbit3
@@ -89,7 +89,7 @@ rabbitmqadmin declare queue name=ha-queue durable=true   arguments='{"x-queue-ty
 
 Point clients to a load balancer that distributes connections across all nodes:
 
-```
+```bash
 # HAProxy or Nginx configuration
 upstream rabbitmq {
     server rabbit1:5672;

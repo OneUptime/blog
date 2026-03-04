@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, DHCP, Networking, Relay, Sysadmin
+Tags: Ubuntu, DHCP, Networking, Relay, SysAdmin
 
 Description: Configure a DHCP relay agent on Ubuntu to forward DHCP requests from clients on remote subnets to a central DHCP server, enabling centralized IP management across VLANs.
 

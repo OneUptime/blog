@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, PostgreSQL, Database, Performance, Backup
+Tags: Ubuntu, PostgreSQL, Database, Performance, Backups
 
 Description: Learn how to configure PostgreSQL Write-Ahead Log (WAL) on Ubuntu for better durability, replication, and point-in-time recovery.
 

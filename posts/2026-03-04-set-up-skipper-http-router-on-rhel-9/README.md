@@ -93,7 +93,7 @@ curl -i http://localhost:9999/health
 
 Predicates let you match requests based on various criteria:
 
-```
+```bash
 // Match requests with a specific header
 headerRoute: Header("X-Environment", "staging") -> "http://staging-backend:8080";
 
@@ -111,7 +111,7 @@ offHours: Between("2024-01-01T22:00:00+00:00", "2024-01-02T06:00:00+00:00") && P
 
 Filters modify requests and responses as they pass through Skipper:
 
-```
+```bash
 // Add a request header
 addHeader: Path("/") -> setRequestHeader("X-Forwarded-By", "skipper") -> "http://backend:8080";
 
@@ -129,7 +129,7 @@ stripPrefix: PathSubtree("/v1/api") -> modPath("^/v1", "") -> "http://api:8080";
 
 Skipper makes it easy to split traffic between backends:
 
-```
+```bash
 // Send 80% of traffic to v1, 20% to v2
 mainRoute: Path("/app")
   -> trafficSegment(0.0, 0.8) -> "http://app-v1:8080";

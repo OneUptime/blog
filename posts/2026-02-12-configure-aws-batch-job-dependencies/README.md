@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Batch, Job Dependencies, Workflow Orchestration, Pipeline, Automation
+Tags: AWS, Batch, Job Dependencies, Workflow Orchestration, Pipelines, Automation
 
 Description: Learn how to configure AWS Batch job dependencies to build multi-step data processing pipelines with sequential and fan-out execution patterns.
 

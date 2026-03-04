@@ -333,39 +333,39 @@ Document clear rollback procedures for incidents:
 
 ### 2. Execute Rollback
 ```bash
-# Clone repository
+## Clone repository
 git clone git@github.com:company/gitops-repo.git
 cd gitops-repo
 
-# Checkout main branch
+## Checkout main branch
 git checkout main
 git pull origin main
 
-# Revert bad commit
+## Revert bad commit
 git revert <commit-hash>
 
-# Add incident reference
+## Add incident reference
 git commit --amend -m "Emergency rollback of <commit>
 
 Incident: <incident-id>
 Reason: <brief explanation>
 On-call: <your-name>"
 
-# Push immediately
+## Push immediately
 git push origin main
-```
+```bash
 
 ### 3. Verify Rollback
 ```bash
-# Watch Flux sync
+## Watch Flux sync
 flux get kustomizations --watch
 
-# Monitor application health
+## Monitor application health
 kubectl get pods -n production --watch
 
-# Check metrics dashboard
-# URL: https://grafana.company.com/rollback-dashboard
-```
+## Check metrics dashboard
+## URL: https://grafana.company.com/rollback-dashboard
+```bash
 
 ### 4. Post-Incident
 - Create post-mortem document

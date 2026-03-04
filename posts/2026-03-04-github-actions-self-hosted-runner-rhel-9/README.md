@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, GitHub Actions, Runner, CI/CD, Self-Hosted, Linux
+Tags: RHEL, GitHub Actions, Runners, CI/CD, Self-Hosted, Linux
 
 Description: Install and configure a GitHub Actions self-hosted runner on RHEL to run workflow jobs on your own infrastructure.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, IP Sharing, Service, Configuration
+Tags: Kubernetes, MetalLB, IP Sharing, Services, Configuration
 
 Description: Learn how to share a single external IP address between multiple Kubernetes services using MetalLB IP sharing annotations.
 

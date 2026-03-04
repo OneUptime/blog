@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Container
+Tags: Kubernetes, Security, Containers
 
 Description: Master the runAsNonRoot security context setting to enforce rootless container execution preventing privilege escalation and reducing attack surface in Kubernetes pods.
 

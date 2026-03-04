@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Dependency Management, DevOps
+Tags: Ansible, Collections, Dependency Management, DevOps
 
 Description: Learn how to declare, install, and manage Ansible collection dependencies using requirements files, galaxy.yml, and version constraints.
 

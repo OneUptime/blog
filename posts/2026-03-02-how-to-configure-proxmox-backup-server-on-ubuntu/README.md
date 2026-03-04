@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backup, Proxmox, Virtualization, Storage
+Tags: Ubuntu, Backups, Proxmox, Virtualization, Storage
 
 Description: A practical guide to installing and configuring Proxmox Backup Server on Ubuntu to create an efficient, deduplicating backup solution for VMs and containers.
 

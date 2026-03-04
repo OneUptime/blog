@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Velero, Volume Snapshots, Kubernetes, Backup, Persistent Volume
+Tags: Velero, Volume Snapshots, Kubernetes, Backups, Persistent Volumes
 
 Description: Learn how to configure Velero with CSI volume snapshots to back up and restore Kubernetes persistent volumes for disaster recovery and migration.
 

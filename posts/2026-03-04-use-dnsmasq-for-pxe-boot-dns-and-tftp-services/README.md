@@ -61,7 +61,7 @@ sudo cp /tftpboot/ldlinux.c32 /var/lib/tftpboot/
 sudo vi /var/lib/tftpboot/pxelinux.cfg/default
 ```
 
-```
+```bash
 DEFAULT menu.c32
 PROMPT 0
 TIMEOUT 300

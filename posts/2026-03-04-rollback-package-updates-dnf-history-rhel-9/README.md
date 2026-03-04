@@ -42,7 +42,7 @@ This displays a table with the transaction ID, date, user who ran it, the action
 
 Example output:
 
-```
+```bash
 ID     | Command line             | Date and time    | Action(s)      | Altered
 -----------------------------------------------------------------------------------
     12 | update -y                | 2026-03-01 14:30 | Upgrade         |   45
@@ -85,7 +85,7 @@ dnf history info 12
 
 Sample output:
 
-```
+```bash
 Transaction ID : 12
 Begin time     : Sat 01 Mar 2026 02:30:00 PM
 End time       : Sat 01 Mar 2026 02:32:15 PM

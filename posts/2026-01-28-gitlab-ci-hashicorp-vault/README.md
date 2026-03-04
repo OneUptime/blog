@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, HashiCorp Vault, Secret, Security, CI/CD
+Tags: GitLab CI, HashiCorp Vault, Secrets, Security, CI/CD
 
 Description: Learn how to fetch secrets from HashiCorp Vault in GitLab CI using JWT auth, short-lived tokens, and secure job templates.
 

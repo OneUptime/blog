@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, set, Data Structures, Deduplication, Backend, Performance
+Tags: Redis, Sets, Data Structures, Deduplication, Backend, Performance
 
 Description: Master Redis sets for unique collections, membership testing, and set operations. Learn practical patterns for tags, followers, permissions, and deduplication.
 

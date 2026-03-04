@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, Web Server, Linux
+Tags: RHEL, NGINX, Web Server, Linux
 
 Description: A complete guide to installing, configuring, and running Nginx as a web server on Red Hat Enterprise Linux 9.
 

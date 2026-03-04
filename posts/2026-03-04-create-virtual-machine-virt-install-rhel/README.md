@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, KVM, virt-install, Virtual Machine, Virtualization, Linux
+Tags: RHEL, KVM, virt-install, Virtual Machines, Virtualization, Linux
 
 Description: Learn how to create and configure virtual machines on RHEL using the virt-install command-line tool with various installation methods and options.
 

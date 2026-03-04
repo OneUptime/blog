@@ -67,7 +67,7 @@ vault write transit/encrypt/myapp-key \
 
 The response includes ciphertext prefixed with the key version:
 
-```
+```bash
 Key           Value
 ---           -----
 ciphertext    vault:v1:AbCdEfGhIjKlMnOpQrStUvWxYz123456789...

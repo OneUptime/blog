@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, DinD, CI/CD, DevOps, Container
+Tags: Docker, DinD, CI/CD, DevOps, Containers
 
 Description: Learn how to run Docker inside Docker containers safely, understand the security implications, and choose between DinD and Docker socket binding for CI/CD pipelines.
 

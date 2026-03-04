@@ -20,7 +20,7 @@ LVM is a robust storage management system, but like any complex tool, it can enc
 
 This error appears when a physical volume that was part of a volume group is no longer accessible.
 
-```
+```bash
 WARNING: Couldn't find device with uuid AbCdEf-1234-5678-GhIj-KlMn-OpQr-StUvWx.
 ```
 
@@ -50,7 +50,7 @@ sudo pvscan
 
 This error occurs when trying to create or extend a logical volume without enough free extents.
 
-```
+```bash
 Insufficient free space in volume group: 0 extents available but 256 required
 ```
 
@@ -100,7 +100,7 @@ sudo vi /etc/lvm/lvm.conf
 
 Change the filter to accept the device:
 
-```
+```bash
 filter = [ "a|/dev/sd.*|", "r|.*|" ]
 ```
 
@@ -114,7 +114,7 @@ sudo pvscan --cache
 
 When a logical volume refuses to activate:
 
-```
+```bash
 LV vg_data/lv_data is not available.
 ```
 
@@ -200,7 +200,7 @@ sudo systemctl restart multipathd
 
 When metadata copies on different physical volumes disagree:
 
-```
+```bash
 Inconsistent metadata found for VG vg_data
 ```
 
@@ -248,7 +248,7 @@ sudo systemctl restart multipathd
 
 Then update the LVM filter to use only multipath devices:
 
-```
+```bash
 filter = [ "a|/dev/mapper/mpath.*|", "a|/dev/sda|", "r|/dev/sd.*|" ]
 ```
 

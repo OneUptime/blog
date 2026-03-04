@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Storage, Persistent Volume
+Tags: Kubernetes, Storage, Persistent Volumes
 
 Description: Learn how to diagnose and fix PersistentVolumeClaims stuck in Pending status due to StorageClass issues, provisioner failures, and insufficient storage capacity.
 

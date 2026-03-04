@@ -48,7 +48,7 @@ composer-cli compose types
 
 You should see output listing available image formats:
 
-```
+```bash
 ami
 azure-image
 edge-commit

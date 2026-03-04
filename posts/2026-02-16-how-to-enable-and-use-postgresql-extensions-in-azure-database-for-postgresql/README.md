@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, PostgreSQL, Extension, PostGIS, pg_stat_statements, Flexible Server, Database Features
+Tags: Azure, PostgreSQL, Extensions, PostGIS, pg_stat_statements, Flexible Server, Database Features
 
 Description: A guide to enabling and using PostgreSQL extensions in Azure Database for PostgreSQL Flexible Server including PostGIS, pg_stat_statements, and more.
 

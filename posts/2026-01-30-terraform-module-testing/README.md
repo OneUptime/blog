@@ -727,7 +727,7 @@ Tests require AWS credentials with permissions to create:
 ## Running Tests
 ```bash
 go test -v -timeout 60m
-```
+```bash
 ```text
 
 ## Comparing Test Approaches
@@ -756,4 +756,5 @@ Start with unit tests that run in seconds, then add integration tests for critic
 - [Kubernetes and GitOps with ArgoCD](https://oneuptime.com/blog/post/2026-01-06-kubernetes-gitops-argocd/view)
 - [SRE Best Practices](https://oneuptime.com/blog/post/2025-11-28-sre-best-practices/view)
 
+```bash
 ```

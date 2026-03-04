@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, IoT Core, Certificate, Authentication, Security, TLS
+Tags: AWS, IoT Core, Certificates, Authentication, Security, TLS
 
 Description: Configure certificate-based authentication for AWS IoT Core devices using X.509 certificates for mutual TLS authentication and secure device identity
 

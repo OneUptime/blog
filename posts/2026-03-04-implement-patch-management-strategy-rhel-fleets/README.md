@@ -30,7 +30,7 @@ sudo dnf updateinfo list --security --severity Important
 
 Apply patches in stages to catch issues before they reach production:
 
-```
+```bash
 Stage 1: Development servers (Day 1)
 Stage 2: Staging/QA servers (Day 3)
 Stage 3: Production non-critical (Day 7)

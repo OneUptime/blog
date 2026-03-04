@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, Reverse Proxy, Linux
+Tags: RHEL, NGINX, Reverse Proxy, Linux
 
 Description: How to configure Nginx as a reverse proxy on RHEL to forward client requests to backend application servers.
 

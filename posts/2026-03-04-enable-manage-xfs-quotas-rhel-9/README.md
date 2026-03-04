@@ -39,7 +39,7 @@ sudo vi /etc/fstab
 
 Add quota mount options to the relevant filesystem entry:
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs defaults,uquota,gquota 0 0
 ```
 
@@ -138,7 +138,7 @@ sudo xfs_quota -x -c 'report -u -h' /data
 
 Sample output:
 
-```
+```bash
 User quota on /data (/dev/mapper/vg_data-lv_data)
                         Blocks
 User ID      Used   Soft   Hard Warn/Grace
@@ -201,7 +201,7 @@ sudo xfs_quota -x -c 'disable -u' /data
 
 To completely turn off quotas, change the mount options in `/etc/fstab` and remount:
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs defaults 0 0
 ```
 

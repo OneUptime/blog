@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Virtual Machine, Debugging, Service Mesh, Kubernetes
+Tags: Istio, Virtual Machines, Debugging, Service Mesh, Kubernetes
 
 Description: A hands-on guide to troubleshooting Istio service mesh integration with virtual machine workloads running outside Kubernetes clusters.
 

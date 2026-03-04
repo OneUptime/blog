@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Private DNS, DNS Zone, Virtual Network, Name Resolution, Azure Networking
+Tags: Azure, Private DNS, DNS Zones, Virtual Network, Name Resolution, Azure Networking
 
 Description: A hands-on guide to creating Azure Private DNS zones and linking them to virtual networks for internal name resolution without custom DNS servers.
 

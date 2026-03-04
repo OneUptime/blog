@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Linux, System Administration, Troubleshooting, Shell, PATH, Environment Variable
+Tags: Linux, System Administration, Troubleshooting, Shell, PATH, Environment Variables
 
 Description: Learn how to diagnose and fix 'command not found' errors in Linux by understanding PATH configuration, locating executables, and properly setting environment variables.
 

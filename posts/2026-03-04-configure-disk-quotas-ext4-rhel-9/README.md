@@ -24,7 +24,7 @@ sudo dnf install quota -y
 
 Edit `/etc/fstab` to add quota mount options:
 
-```
+```bash
 /dev/vg_data/lv_data /data ext4 defaults,usrquota,grpquota 0 2
 ```
 
@@ -85,7 +85,7 @@ sudo edquota -u user1
 
 This opens an editor showing:
 
-```
+```bash
 Disk quotas for user user1 (uid 1001):
   Filesystem    blocks    soft      hard    inodes    soft    hard
   /dev/mapper/vg_data-lv_data    0    5242880    6291456    0    10000    12000
@@ -135,7 +135,7 @@ sudo edquota -t
 
 This opens an editor:
 
-```
+```bash
 Grace period before enforcing soft limits for users:
 Time units may be: days, hours, minutes, or seconds
   Filesystem    Block grace period    Inode grace period
@@ -152,7 +152,7 @@ sudo repquota -u /data
 
 Sample output:
 
-```
+```bash
                         Block limits                File limits
 User            used    soft    hard  grace    used  soft  hard  grace
 ----------------------------------------------------------------------

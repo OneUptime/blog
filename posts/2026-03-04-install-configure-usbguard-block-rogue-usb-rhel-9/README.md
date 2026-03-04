@@ -46,7 +46,7 @@ Each rule describes an allowed device with attributes like vendor ID, product ID
 
 A typical rule looks like this:
 
-```
+```bash
 allow id 1d6b:0002 serial "0000:00:14.0" name "xHCI Host Controller" hash "..." with-interface 09:00:00 with-connect-type ""
 ```
 
@@ -114,7 +114,7 @@ sudo vi /etc/usbguard/usbguard-daemon.conf
 
 Key settings:
 
-```
+```bash
 # Block all new devices by default
 ImplicitPolicyTarget=block
 

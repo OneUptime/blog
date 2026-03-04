@@ -1,4 +1,4 @@
-# How to Configure TuneD Dynamic Tuning for Automatic Performance Optimization on RHEL
+# How to Configure TuneD Dynamic Tuning for Auto Optimization on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

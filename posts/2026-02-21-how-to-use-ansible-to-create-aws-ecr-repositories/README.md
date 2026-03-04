@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWS, ECR, Docker, Container
+Tags: Ansible, AWS, ECR, Docker, Containers
 
 Description: Practical guide to creating and managing AWS ECR container repositories with Ansible including lifecycle policies, scanning, and cross-account access.
 

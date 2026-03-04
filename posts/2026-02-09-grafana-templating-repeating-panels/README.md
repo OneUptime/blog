@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Dashboard, Kubernetes
+Tags: Grafana, Dashboards, Kubernetes
 
 Description: Master Grafana's repeating panels feature to automatically create visualizations for multiple namespaces, reducing dashboard maintenance and improving multi-tenant monitoring workflows.
 

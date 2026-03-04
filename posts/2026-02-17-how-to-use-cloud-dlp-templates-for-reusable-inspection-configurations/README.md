@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud DLP, Template, Data Security, Compliance
+Tags: GCP, Cloud DLP, Templates, Data Security, Compliance
 
 Description: A practical guide to creating and using Cloud DLP inspection and de-identification templates to standardize sensitive data handling across your organization.
 

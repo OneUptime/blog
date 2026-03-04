@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, SSL, TLS, Certificate, Security
+Tags: Ansible, SSL, TLS, Certificates, Security
 
 Description: Learn how to manage SSL/TLS certificates with Ansible including deployment, renewal monitoring, self-signed certs, and private CA management.
 

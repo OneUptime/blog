@@ -485,7 +485,7 @@ spec:
       params:
         - name: IMAGE
           value: registry.example.com/myapp:v1.0.0
-    ```
+    ```bash
 ```text
 
 ## Testing Catalog Tasks

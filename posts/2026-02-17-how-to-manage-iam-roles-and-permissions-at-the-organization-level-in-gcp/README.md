@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, IAM, Organization, Permissions, Security, Google Cloud
+Tags: GCP, IAM, Organizations, Permissions, Security, Google Cloud
 
 Description: A practical guide to managing IAM roles and permissions at the Google Cloud organization level for consistent access control across all projects and folders.
 

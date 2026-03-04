@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Init Container, POD, Infrastructure as Code, DevOps
+Tags: Terraform, Kubernetes, Init Container, Pods, Infrastructure as Code, DevOps
 
 Description: Learn how to configure Kubernetes init containers in Terraform for database migrations, dependency checks, configuration setup, and other pre-start tasks in your deployments.
 

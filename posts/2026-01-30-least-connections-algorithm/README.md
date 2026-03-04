@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Load Balancing, Algorithm, Infrastructure, SRE
+Tags: Load Balancing, Algorithms, Infrastructure, SRE
 
 Description: Learn how to implement the least connections load balancing algorithm for optimal distribution.
 

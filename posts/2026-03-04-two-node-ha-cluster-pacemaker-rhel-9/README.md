@@ -137,7 +137,7 @@ sudo pcs status
 
 Expected output shows both nodes online and resources running:
 
-```
+```bash
 Cluster name: two-node-cluster
 Status of pacemakerd: 'Pacemaker is running'
 

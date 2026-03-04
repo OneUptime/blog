@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Sidecar, Resource, Monitoring, Envoy, Kubernetes
+Tags: Istio, Sidecar, Resources, Monitoring, Envoy, Kubernetes
 
 Description: Practical techniques for monitoring CPU, memory, and network resource consumption of Istio sidecar proxies across your mesh.
 

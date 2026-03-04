@@ -14,7 +14,7 @@ The auto-generated USBGuard policy is a good start, but real-world deployments n
 
 Every USBGuard rule follows this structure:
 
-```
+```bash
 TARGET [DEVICE_SPEC] [CONDITIONS]
 ```
 
@@ -27,7 +27,7 @@ The difference between `block` and `reject`: `block` prevents authorization but 
 
 ## Matching by Vendor and Product ID
 
-```
+```bash
 # Allow a specific device model
 allow id 046d:c52b
 
@@ -42,7 +42,7 @@ block id dead:beef
 
 USB interface classes describe what type of device it is. This is powerful because it lets you control device categories:
 
-```
+```bash
 # Allow HID boot keyboards
 allow with-interface 03:01:01
 
@@ -61,7 +61,7 @@ block with-interface e0:*:*
 
 ## Matching by Device Name
 
-```
+```bash
 # Allow devices with a specific name
 allow name "Cruzer Blade"
 
@@ -71,7 +71,7 @@ allow name "Logitech*"
 
 ## Matching by Serial Number
 
-```
+```bash
 # Allow a device with a specific serial
 allow serial "ABC123456789"
 ```
@@ -80,7 +80,7 @@ allow serial "ABC123456789"
 
 Hash-based matching is the most precise. It matches the exact physical device:
 
-```
+```bash
 # Allow only this exact device
 allow hash "jEP/6WzviqdJ5VSeTUY8PatCNBKeaREvo2OqdplND/o="
 ```
@@ -89,7 +89,7 @@ allow hash "jEP/6WzviqdJ5VSeTUY8PatCNBKeaREvo2OqdplND/o="
 
 You can combine multiple attributes in a single rule for precision:
 
-```
+```bash
 # Allow a specific Logitech keyboard model with a known interface
 allow id 046d:c31c name "Logitech Keyboard K120" with-interface 03:01:01
 
@@ -104,7 +104,7 @@ block id ffff:* with-interface 03:*:*
 
 Some devices expose multiple interfaces. For example, a keyboard with a built-in hub:
 
-```
+```bash
 # Allow a device with multiple interfaces
 allow id 046d:c52b with-interface { 03:01:01 03:01:02 03:00:00 }
 
@@ -117,7 +117,7 @@ block with-interface one-of { 03:*:* 08:*:* }
 
 Rules are evaluated in order from top to bottom. The first matching rule wins. Place more specific rules before general ones:
 
-```
+```bash
 # Correct ordering - specific rules first
 allow id 046d:c52b name "Unifying Receiver"
 allow id 046d:c31c name "Logitech Keyboard K120"
@@ -131,7 +131,7 @@ block id 046d:*
 
 ### Server Policy - Minimal USB Access
 
-```
+```bash
 # Allow internal USB host controllers only
 allow id 1d6b:0002 with-interface 09:00:00 with-connect-type ""
 allow id 1d6b:0003 with-interface 09:00:00 with-connect-type ""
@@ -141,7 +141,7 @@ allow id 1d6b:0003 with-interface 09:00:00 with-connect-type ""
 
 ### Workstation Policy - Keyboards, Mice, and Approved Drives
 
-```
+```bash
 # Internal controllers and hubs
 allow id 1d6b:* with-interface 09:00:00
 
@@ -165,7 +165,7 @@ block with-interface 0a:*:*
 
 ### Kiosk Policy - Keyboard Only
 
-```
+```bash
 # Allow only keyboards, nothing else
 allow with-interface 03:01:01
 allow id 1d6b:* with-interface 09:00:00

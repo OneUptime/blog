@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Docker, Docker Compose, Networking, Container, DevOps
+Tags: PostgreSQL, Docker, Docker Compose, Networking, Containers, DevOps
 
 Description: Learn how to properly configure PostgreSQL connections in Docker Compose environments. This guide covers networking, environment variables, health checks, and troubleshooting common connection issues.
 

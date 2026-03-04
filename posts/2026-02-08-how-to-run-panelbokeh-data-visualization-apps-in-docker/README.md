@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Panel, Bokeh, Data Visualization, Python, Docker Compose, Dashboard
+Tags: Docker, Panel, Bokeh, Data Visualization, Python, Docker Compose, Dashboards
 
 Description: Learn how to deploy interactive Panel and Bokeh data visualization applications using Docker containers
 

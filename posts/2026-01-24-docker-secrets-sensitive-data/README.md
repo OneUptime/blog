@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Security, Secret, DevOps, Docker Swarm
+Tags: Docker, Security, Secrets, DevOps, Docker Swarm
 
 Description: Protect sensitive data in Docker deployments using Docker secrets, build-time secrets with BuildKit, and external secret managers.
 

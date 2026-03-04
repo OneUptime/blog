@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provider, Template, Configuration Management, Infrastructure as Code
+Tags: Terraform, Provider, Templates, Configuration Management, Infrastructure as Code
 
 Description: Learn how to use the Template provider in Terraform to render templates for configuration files, user data scripts, and dynamic content generation.
 

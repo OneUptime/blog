@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Endpoints, Rate Limiting, Quota, API Management
+Tags: GCP, Cloud Endpoints, Rate Limiting, Quotas, API Management
 
 Description: Learn how to configure rate limiting and quotas for Google Cloud Endpoints APIs to protect your backend from overuse and enforce fair usage policies.
 

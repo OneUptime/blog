@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, EBS, Snapshot, Automation
+Tags: AWS, EC2, EBS, Snapshots, Automation
 
 Description: Learn how to use AWS Data Lifecycle Manager to automate EBS snapshot creation, retention, and cross-region copying for consistent backup management.
 

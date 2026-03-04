@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Docker, Networking, Container
+Tags: Ubuntu, Docker, Networking, Containers
 
 Description: A comprehensive guide to Docker network modes on Ubuntu including bridge, host, overlay, macvlan, and none, with practical examples of when and how to use each.
 

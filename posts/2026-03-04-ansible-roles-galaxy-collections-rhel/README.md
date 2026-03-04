@@ -38,7 +38,7 @@ ansible-galaxy role init roles/rhel_base
 
 This creates:
 
-```
+```bash
 roles/rhel_base/
   defaults/
     main.yml      # Default variables (lowest priority)
@@ -251,7 +251,7 @@ ansible-galaxy install -r requirements.yml
 
 ## Project Structure
 
-```
+```bash
 ansible-project/
   ansible.cfg
   inventory/

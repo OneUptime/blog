@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Data Ingestion, Pipeline, High Throughput, Streaming
+Tags: Rust, Data Ingestion, Pipelines, High Throughput, Streaming
 
 Description: Learn how to build a data ingestion pipeline in Rust that handles millions of events per second.
 

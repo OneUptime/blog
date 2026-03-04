@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Observability, Pipeline, Routing, Architecture
+Tags: OpenTelemetry, Observability, Pipelines, Routing, Architecture
 
 Description: Configure OpenTelemetry Collector pipelines for intelligent telemetry routing including multi-pipeline architectures, conditional routing, fan-out patterns.
 

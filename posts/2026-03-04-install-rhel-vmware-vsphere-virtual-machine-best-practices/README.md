@@ -20,7 +20,7 @@ This selection ensures vSphere applies the correct default hardware settings.
 
 ## Recommended VM Hardware Settings
 
-```
+```bash
 # VM Configuration Best Practices:
 CPU:         Allocate based on workload (start with 2-4 vCPUs)
 Memory:      Minimum 2 GB, recommended 4 GB or more
@@ -32,7 +32,7 @@ SCSI Slots:  Place the OS disk on SCSI 0:0
 
 ## Attach the RHEL ISO
 
-```
+```bash
 # In the VM settings:
 1. Add a CD/DVD drive
 2. Select "Datastore ISO File"

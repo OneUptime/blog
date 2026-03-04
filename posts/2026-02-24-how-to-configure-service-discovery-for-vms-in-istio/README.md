@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Virtual Machine, Service Discovery, Kubernetes, Hybrid
+Tags: Istio, Virtual Machines, Service Discovery, Kubernetes, Hybrid
 
 Description: Integrate virtual machine workloads into Istio's service mesh so they participate in service discovery alongside Kubernetes pods.
 

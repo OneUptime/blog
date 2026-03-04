@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Prometheus, PromQL, Time Shift, Offset, Queries, Dashboard, Comparison, Monitoring
+Tags: Grafana, Prometheus, PromQL, Time Shift, Offset, Queries, Dashboards, Comparison, Monitoring
 
 Description: Learn how to time shift individual queries in Grafana to compare current metrics with historical data.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, File System, Linux, Security, System Administration
+Tags: Ubuntu, File Systems, Linux, Security, System Administration
 
 Description: Learn how to work with extended attributes (xattr) on Ubuntu to attach custom metadata to files, manage security labels, and understand how tools like SELinux and ACLs use xattrs under the hood.
 

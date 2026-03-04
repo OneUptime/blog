@@ -52,7 +52,7 @@ Configure cache sizes:
 sudo vi /etc/nscd.conf
 ```
 
-```
+```bash
 enable-cache            hosts           yes
 positive-time-to-live   hosts           3600
 negative-time-to-live   hosts           20

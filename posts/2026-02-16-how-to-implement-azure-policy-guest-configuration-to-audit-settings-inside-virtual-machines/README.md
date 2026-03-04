@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Policy, Guest Configuration, Virtual Machine, Compliance Auditing, Security Baselines, Configuration Management
+Tags: Azure, Azure Policy, Guest Configuration, Virtual Machines, Compliance Auditing, Security Baselines, Configuration Management
 
 Description: A practical guide to using Azure Policy Guest Configuration to audit and enforce operating system settings inside Azure virtual machines for compliance.
 

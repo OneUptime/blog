@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Lambda, Serverless, Extension, Monitoring
+Tags: Terraform, AWS, Lambda, Serverless, Extensions, Monitoring
 
 Description: Learn how to create and deploy AWS Lambda extensions using Terraform to add monitoring, security, and operational capabilities to your Lambda functions.
 

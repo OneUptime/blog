@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, chrony, NTP Server, Linux
+Tags: RHEL, Chrony, NTP Server, Linux
 
 Description: How to configure a RHEL system as an NTP server using chrony to provide time synchronization to your local network.
 
@@ -59,7 +59,7 @@ Edit `/etc/chrony.conf` to use reliable upstream NTP sources:
 sudo vi /etc/chrony.conf
 ```
 
-```
+```bash
 # Sync to multiple public NTP pools for redundancy
 pool 0.rhel.pool.ntp.org iburst maxsources 4
 pool 1.rhel.pool.ntp.org iburst maxsources 4
@@ -85,7 +85,7 @@ logdir /var/log/chrony
 
 This is the key step that turns chrony from a client into a server. Add an `allow` directive specifying which networks can query this server:
 
-```
+```bash
 # Allow NTP clients on the 10.0.0.0/8 network
 allow 10.0.0.0/8
 
@@ -100,7 +100,7 @@ You can add multiple `allow` lines for different subnets.
 
 To deny specific hosts within an allowed range:
 
-```
+```bash
 # Deny a specific host
 deny 10.0.1.50
 ```
@@ -109,7 +109,7 @@ deny 10.0.1.50
 
 If the server loses its upstream connection, you can configure it to serve time based on its own clock. This keeps clients synchronized to each other even if the time drifts slightly:
 
-```
+```bash
 # Serve time from local clock if all upstream sources are lost
 # Stratum 10 tells clients this is not highly accurate
 local stratum 10
@@ -183,7 +183,7 @@ The stratum should be one higher than your upstream source. If your upstream is 
 
 On each client system, edit `/etc/chrony.conf`:
 
-```
+```bash
 # Point to the internal NTP servers
 server ntp1.internal.example.com iburst
 server ntp2.internal.example.com iburst
@@ -211,14 +211,14 @@ For production environments, run at least two NTP servers. Configure them identi
 
 On NTP server 1 (10.0.0.1):
 
-```
+```bash
 # Peer with NTP server 2
 peer 10.0.0.2
 ```
 
 On NTP server 2 (10.0.0.2):
 
-```
+```bash
 # Peer with NTP server 1
 peer 10.0.0.1
 ```
@@ -247,20 +247,20 @@ sudo vi /etc/chrony.keys
 
 Add a key entry:
 
-```
+```bash
 10 SHA1 HEX:E09A7B3C55D1F0E09A7B3C55D1F0E09A7B3C55D1
 ```
 
 In `/etc/chrony.conf` on the server:
 
-```
+```bash
 # Specify the key file
 keyfile /etc/chrony.keys
 ```
 
 On each client, add the same key file and reference it:
 
-```
+```bash
 server ntp1.internal.example.com iburst key 10
 keyfile /etc/chrony.keys
 ```
@@ -269,7 +269,7 @@ keyfile /etc/chrony.keys
 
 If you serve many clients, consider rate limiting to prevent abuse:
 
-```
+```bash
 # Limit NTP responses to prevent amplification attacks
 ratelimit interval 1 burst 16
 ```

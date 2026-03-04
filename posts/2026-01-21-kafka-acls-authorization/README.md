@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Apache Kafka, ACL, Authorization, Security, Access Control, RBAC
+Tags: Apache Kafka, ACLs, Authorization, Security, Access Control, RBAC
 
 Description: Learn how to configure Kafka Access Control Lists (ACLs) for fine-grained authorization, including topic permissions, consumer group access, and cluster operations.
 

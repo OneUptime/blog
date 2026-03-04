@@ -181,7 +181,7 @@ This is the most important section. Write steps that anyone can follow to reprod
      destination:
        server: https://kubernetes.default.svc
        namespace: production
-   ```
+   ```bash
 2. Click "Sync" in the ArgoCD UI
 3. Observe the repo-server pod getting OOMKilled after approximately 45 seconds
 4. Check pod events: `kubectl describe pod -n argocd -l app.kubernetes.io/name=argocd-repo-server`

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Networking, Container, DevOps
+Tags: Ansible, Docker, Networking, Containers, DevOps
 
 Description: Configure Docker and container networking with Ansible including bridge networks, overlay networks, DNS settings, and network policies.
 

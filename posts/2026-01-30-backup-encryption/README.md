@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backup, Security, Encryption, Data Protection
+Tags: Backups, Security, Encryption, Data Protection
 
 Description: Learn how to implement backup encryption for protecting sensitive data at rest.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ServiceAccount, Secret
+Tags: Kubernetes, ServiceAccount, Secrets
 
 Description: Configure Kubernetes ServiceAccounts with multiple secrets including image pull secrets, token secrets, and custom credentials for comprehensive workload authentication.
 

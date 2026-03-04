@@ -177,7 +177,7 @@ Preserve all comments but translate them if needed.
 {source_lang} code:
 ```{source_lang}
 {code}
-```
+```bash
 
 Provide only the {target_lang} code, no explanations."""
 

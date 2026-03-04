@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: IPv6, Kubernetes, Networking, DevOps, Container, Infrastructure
+Tags: IPv6, Kubernetes, Networking, DevOps, Containers, Infrastructure
 
 Description: A comprehensive guide to deploying production-ready IPv6-only Kubernetes clusters using kubeadm, including CNI configuration, service networking, and troubleshooting strategies.
 

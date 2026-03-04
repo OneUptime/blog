@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Backup, Restore, Disaster Recovery, mongodump, mongorestore, Database Administration
+Tags: MongoDB, Backups, Restore, Disaster Recovery, mongodump, mongorestore, Database Administration
 
 Description: A comprehensive guide to MongoDB backup and restore strategies, covering mongodump/mongorestore, filesystem snapshots, continuous backup, and disaster recovery best practices.
 

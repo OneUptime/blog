@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Load Balancer, Virtual Machine, High Availability, Networking, Azure CLI, Cloud Infrastructure
+Tags: Azure, Load Balancer, Virtual Machines, High Availability, Networking, Azure CLI, Cloud Infrastructure
 
 Description: A complete walkthrough for setting up an Azure Public Load Balancer to distribute traffic across multiple virtual machines.
 

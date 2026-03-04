@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Organization, AI, Privacy, Compliance, Governance
+Tags: AWS, Organizations, AI, Privacy, Compliance, Governance
 
 Description: Learn how to implement AI services opt-out policies in AWS Organizations to control how AWS uses your data for AI and machine learning service improvement.
 

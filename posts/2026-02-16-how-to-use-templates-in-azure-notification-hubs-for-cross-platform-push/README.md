@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Notification Hub, Template, Cross-Platform, Push Notifications, Mobile, Backend
+Tags: Azure, Notification Hub, Templates, Cross-Platform, Push Notifications, Mobile, Backend
 
 Description: Use template registrations in Azure Notification Hubs to send a single notification that renders correctly across iOS, Android, and Windows.
 

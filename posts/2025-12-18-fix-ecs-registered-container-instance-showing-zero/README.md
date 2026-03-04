@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS, ECS, Terraform, Infrastructure as Code, Container, Troubleshooting
+Tags: AWS, ECS, Terraform, Infrastructure as Code, Containers, Troubleshooting
 
 Description: Learn how to diagnose and fix the common ECS issue where registered container instances show as 0.
 

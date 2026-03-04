@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kotlin, Collection, Lists, Maps, Functional Programming
+Tags: Kotlin, Collections, Lists, Maps, Functional Programming
 
 Description: A comprehensive guide to working with Kotlin collections, covering lists, sets, maps, and functional operations like filter, map, and reduce.
 

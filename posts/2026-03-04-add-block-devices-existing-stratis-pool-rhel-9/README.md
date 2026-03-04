@@ -27,7 +27,7 @@ sudo stratis pool list
 
 Output:
 
-```
+```bash
 Name       Total / Used / Free           Properties   UUID   Alerts
 datapool   50 GiB / 35 GiB / 15 GiB     ~Ca,~Cr      abc...
 ```

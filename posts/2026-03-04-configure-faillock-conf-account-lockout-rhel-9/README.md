@@ -18,7 +18,7 @@ sudo vi /etc/security/faillock.conf
 
 Here is a fully documented configuration:
 
-```
+```bash
 # Directory where failure records are stored
 # Default: /var/run/faillock (cleared on reboot)
 # Use /var/lib/faillock for persistent storage
@@ -64,7 +64,7 @@ unlock_time = 900
 
 The number of consecutive failed attempts before the account is locked.
 
-```
+```bash
 deny = 5
 ```
 
@@ -74,7 +74,7 @@ Setting this too low causes accidental lockouts (fat fingers on the keyboard). S
 
 The time window in seconds during which failures are counted:
 
-```
+```bash
 fail_interval = 900
 ```
 
@@ -84,7 +84,7 @@ With `fail_interval = 900` and `deny = 5`, a user must fail 5 times within 15 mi
 
 How long the account stays locked:
 
-```
+```bash
 # Auto-unlock after 15 minutes
 unlock_time = 900
 
@@ -107,7 +107,7 @@ graph TD
 
 By default, root is immune to lockout. Enable this for compliance:
 
-```
+```bash
 even_deny_root
 root_unlock_time = 60
 ```
@@ -118,7 +118,7 @@ Always set a shorter `root_unlock_time` if you enable this. Locking root for 15 
 
 Controls whether failure information is shown during authentication:
 
-```
+```bash
 # Suppress failure messages (recommended for security)
 silent
 ```
@@ -129,7 +129,7 @@ Without `silent`, a locked user sees something like "Account locked due to 5 fai
 
 Sends failure events to syslog:
 
-```
+```bash
 audit
 ```
 
@@ -139,7 +139,7 @@ Always enable this. Without it, you have no visibility into lockout events.
 
 Restrict faillock to local accounts only:
 
-```
+```bash
 local_users_only
 ```
 
@@ -149,7 +149,7 @@ Use this when LDAP or AD users have their own lockout policies managed by the di
 
 Exempt members of a specific group from lockout:
 
-```
+```bash
 admin_group = wheel
 ```
 
@@ -159,7 +159,7 @@ This is a safety net to prevent admins from getting locked out during legitimate
 
 ### CIS Benchmark
 
-```
+```bash
 deny = 5
 fail_interval = 900
 unlock_time = 900
@@ -171,7 +171,7 @@ silent
 
 ### PCI DSS
 
-```
+```bash
 deny = 6
 fail_interval = 900
 unlock_time = 1800
@@ -181,7 +181,7 @@ silent
 
 ### DISA STIG
 
-```
+```bash
 deny = 3
 fail_interval = 900
 unlock_time = 0
@@ -231,7 +231,7 @@ By default, failure records are stored in `/var/run/faillock/`, which is a tmpfs
 
 For environments where lockouts should survive reboots:
 
-```
+```bash
 dir = /var/lib/faillock
 ```
 
@@ -306,7 +306,7 @@ grep "^deny" /etc/security/faillock.conf
 
 Either disable `even_deny_root` or set `admin_group = wheel`:
 
-```
+```bash
 # admin_group exempts wheel members from lockout
 admin_group = wheel
 ```

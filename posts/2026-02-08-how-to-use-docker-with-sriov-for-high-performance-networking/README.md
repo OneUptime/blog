@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, SR-IOV, Networking, High Performance, NIC, Container, Linux
+Tags: Docker, SR-IOV, Networking, High Performance, NIC, Containers, Linux
 
 Description: Configure SR-IOV virtual functions with Docker containers to achieve near bare-metal network performance for demanding workloads.
 

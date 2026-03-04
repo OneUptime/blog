@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Registry Mirror, Pull-Through Cache, Docker, Container Image
+Tags: Talos Linux, Registry Mirror, Pull-Through Cache, Docker, Container Images
 
 Description: Learn how to set up a pull-through cache registry mirror for Talos Linux to speed up image pulls and avoid rate limits.
 

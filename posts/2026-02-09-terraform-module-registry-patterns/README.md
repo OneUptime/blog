@@ -658,7 +658,7 @@ module "api" {
   image     = "myapp/api:v1.0.0"
   replicas  = 3
 }
-```
+```bash
 
 ## Inputs
 

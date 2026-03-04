@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Message Queue, Delayed Messages, Scheduling, DevOps, Messaging, Plugin
+Tags: RabbitMQ, Message Queue, Delayed Messages, Scheduling, DevOps, Messaging, Plugins
 
 Description: Learn how to install, configure, and use the RabbitMQ Delayed Message Plugin to schedule messages for future delivery with practical examples and best practices.
 

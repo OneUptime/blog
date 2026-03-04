@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, IAM, Organization, Security, Governance
+Tags: AWS, IAM, Organizations, Security, Governance
 
 Description: A complete guide to implementing Service Control Policies in AWS Organizations for centralized guardrails across multiple accounts, with practical policy examples.
 

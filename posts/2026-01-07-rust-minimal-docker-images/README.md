@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Docker, Container, musl, Static Linking, Distroless, Security, Kubernetes
+Tags: Rust, Docker, Containers, musl, Static Linking, Distroless, Security, Kubernetes
 
 Description: Learn how to create minimal Docker images for Rust binaries using multi-stage builds, static linking with musl, and distroless base images.
 

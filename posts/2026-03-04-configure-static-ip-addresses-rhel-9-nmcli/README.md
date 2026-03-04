@@ -42,7 +42,7 @@ nmcli device status
 
 You will see output like:
 
-```
+```bash
 DEVICE  TYPE      STATE      CONNECTION
 ens192  ethernet  connected  ens192
 lo      loopback  connected  lo

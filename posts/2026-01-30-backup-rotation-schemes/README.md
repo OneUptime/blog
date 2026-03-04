@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backup, Rotation, Data Protection, Storage
+Tags: Backups, Rotation, Data Protection, Storage
 
 Description: Learn how to implement backup rotation schemes like GFS and Tower of Hanoi to balance storage costs, retention requirements, and recovery objectives.
 

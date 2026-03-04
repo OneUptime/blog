@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, Materialized Views, Performance, Dashboard, Cost Optimization
+Tags: GCP, BigQuery, Materialized Views, Performance, Dashboards, Cost Optimization
 
 Description: Learn how to create and manage BigQuery materialized views to speed up dashboard queries and reduce costs by precomputing common aggregations and filters.
 

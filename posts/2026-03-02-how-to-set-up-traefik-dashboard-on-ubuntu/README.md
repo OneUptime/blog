@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Traefik, Dashboard, Reverse Proxy, Monitoring
+Tags: Ubuntu, Traefik, Dashboards, Reverse Proxy, Monitoring
 
 Description: Configure the Traefik dashboard on Ubuntu with proper authentication, HTTPS access, and security hardening to safely expose routing and service status information.
 

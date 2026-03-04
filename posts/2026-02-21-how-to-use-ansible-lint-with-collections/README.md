@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ansible-lint, Collection, Code Quality
+Tags: Ansible, ansible-lint, Collections, Code Quality
 
 Description: Learn how to configure ansible-lint to work with Ansible collections including linting collection content, resolving dependencies, and handling FQCN.
 

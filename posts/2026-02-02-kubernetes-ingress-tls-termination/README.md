@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, TLS, SSL, HTTPS, Security, DevOps, Certificate
+Tags: Kubernetes, Ingress, TLS, SSL, HTTPS, Security, DevOps, Certificates
 
 Description: A practical guide to configuring TLS termination in Kubernetes Ingress controllers, covering certificate management, Let's Encrypt automation, and production best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Webhook, Kubernetes, Validation, Configuration Safety
+Tags: Istio, Webhooks, Kubernetes, Validation, Configuration Safety
 
 Description: How Istio validating webhooks work to prevent invalid configuration from being applied and how to inspect and troubleshoot validation errors.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Template, Validation, Configuration Management, DevOps
+Tags: Ansible, Templates, Validation, Configuration Management, DevOps
 
 Description: Learn how to use the validate parameter with the Ansible template module to check generated config files before deploying them to production.
 

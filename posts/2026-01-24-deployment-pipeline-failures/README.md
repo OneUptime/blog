@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CI/CD, DevOps, Deployment, Pipeline, Troubleshooting, GitHub Actions, GitLab CI
+Tags: CI/CD, DevOps, Deployment, Pipelines, Troubleshooting, GitHub Actions, GitLab CI
 
 Description: Learn how to diagnose and fix common deployment pipeline failures including authentication issues, resource constraints, and configuration errors.
 

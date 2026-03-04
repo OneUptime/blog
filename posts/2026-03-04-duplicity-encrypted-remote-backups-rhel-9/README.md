@@ -185,7 +185,7 @@ unset PASSPHRASE
 sudo crontab -e
 ```
 
-```
+```bash
 # Run Duplicity backup daily at 2 AM
 0 2 * * * /usr/local/bin/duplicity-backup.sh
 ```

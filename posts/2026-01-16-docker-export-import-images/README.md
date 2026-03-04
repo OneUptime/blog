@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Images, DevOps, Container, Transfer
+Tags: Docker, Images, DevOps, Containers, Transfer
 
 Description: Learn how to export, import, and transfer Docker images between systems using docker save, docker load, docker export, and docker import commands for offline environments and air-gapped deployments.
 

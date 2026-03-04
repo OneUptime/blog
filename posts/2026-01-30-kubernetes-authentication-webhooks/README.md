@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Authentication, Webhook, Security
+Tags: Kubernetes, Authentication, Webhooks, Security
 
 Description: Learn how to implement custom authentication webhooks for Kubernetes clusters.
 

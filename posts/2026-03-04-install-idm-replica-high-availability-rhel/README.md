@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, IdM, FreeIPA, High Availability, Replica, Identity Management, Linux
+Tags: RHEL, IdM, FreeIPA, High Availability, Replicas, Identity Management, Linux
 
 Description: Learn how to install an IdM replica on RHEL to provide high availability for your identity management infrastructure with multi-master replication.
 

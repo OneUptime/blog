@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Developer Portal, Self-Service, Template, Platform Engineering
+Tags: OpenTelemetry, Developer Portal, Self-Service, Templates, Platform Engineering
 
 Description: Build an internal developer portal that provides self-service OpenTelemetry instrumentation templates for consistent adoption across teams.
 

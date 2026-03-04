@@ -62,7 +62,7 @@ sudo ausearch -m avc -ts recent | audit2allow -m myapp_custom
 
 This outputs the policy in Type Enforcement (TE) format:
 
-```
+```bash
 module myapp_custom 1.0;
 
 require {
@@ -212,7 +212,7 @@ sudo semodule -e myapp_custom
 
 A generated rule like:
 
-```
+```bash
 allow httpd_t user_home_t:file { read open getattr };
 ```
 
@@ -245,7 +245,7 @@ If audit2allow generates a rule like `allow myapp_t file_type:file *;`, that is 
 
 Keep your `.te` files in version control. When you need to update a policy, increment the version number in the module declaration:
 
-```
+```bash
 module myapp_custom 1.1;
 ```
 

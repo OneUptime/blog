@@ -112,7 +112,7 @@ sudo mount /dev/vg_vdo/lv_vdo /vdo-data
 
 Add to `/etc/fstab`:
 
-```
+```bash
 /dev/vg_vdo/lv_vdo /vdo-data xfs defaults,x-systemd.requires=vdo.service,discard 0 0
 ```
 

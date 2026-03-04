@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Molecule, Vagrant, Testing, Virtual Machine
+Tags: Ansible, Molecule, Vagrant, Testing, Virtual Machines
 
 Description: Set up Molecule with the Vagrant driver for full VM-based Ansible testing with VirtualBox and libvirt providers for realistic test environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, DNF, Yum, Migration, Package Management, Linux
+Tags: RHEL, DNF, YUM, Migration, Package Management, Linux
 
 Description: A practical guide for sysadmins migrating from yum to dnf on RHEL, covering command differences, new features, configuration changes, and backward compatibility.
 
@@ -28,7 +28,7 @@ ls -la /usr/bin/yum
 
 You will see it is a symlink:
 
-```
+```bash
 /usr/bin/yum -> dnf-3
 ```
 

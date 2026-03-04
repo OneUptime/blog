@@ -108,13 +108,13 @@ Good step:
    Run on the standby server:
    ```bash
    sudo -u postgres pg_ctl promote -D /var/lib/postgresql/14/main
-   ```
+   ```bash
 
    Expected output:
    ```text
    waiting for server to promote.... done
    server promoted
-   ```
+   ```bash
 
    If you see "server is not in standby mode", the standby may have already been promoted.
    Check the current role with: `SELECT pg_is_in_recovery();`
@@ -136,19 +136,19 @@ After completing the failover, verify success:
 1. Check new primary is accepting writes:
    ```bash
    psql -h primary.db.internal -c "CREATE TABLE failover_test (id int); DROP TABLE failover_test;"
-   ```
+   ```bash
    Expected: Query completes without error
 
 2. Check application connectivity:
    ```bash
    curl -s http://api.internal/health | jq '.database'
-   ```
+   ```bash
    Expected: `"connected"`
 
 3. Check replication to new standby:
    ```bash
    psql -h primary.db.internal -c "SELECT client_addr, state FROM pg_stat_replication;"
-   ```
+   ```bash
    Expected: At least one row with `state = 'streaming'`
 ```text
 
@@ -194,12 +194,12 @@ Set these variables based on the affected environment:
 ```bash
 export ENV="prod"  # or "staging"
 export CLUSTER="us-east-1"
-```
+```bash
 
 Then run:
 ```bash
 kubectl --context=${CLUSTER}-${ENV} get pods
-```
+```bash
 ```text
 
 ### Show Expected Output
@@ -209,19 +209,19 @@ For every command, show what success looks like. This lets engineers quickly ver
 ```markdown
 ```bash
 systemctl status postgresql
-```
+```bash
 
 Expected output (healthy):
 ```text
 postgresql.service - PostgreSQL database server
    Active: active (running) since Mon 2026-01-15 10:30:00 UTC
-```
+```bash
 
 Expected output (problem):
 ```text
 postgresql.service - PostgreSQL database server
    Active: failed (Result: exit-code) since Mon 2026-01-15 10:30:00 UTC
-```
+```bash
 ```text
 
 ### Handle Edge Cases
@@ -234,7 +234,7 @@ Real incidents rarely follow the happy path. Document what to do when things go 
 Check the PostgreSQL logs:
 ```bash
 tail -100 /var/log/postgresql/postgresql-14-main.log
-```
+```bash
 
 Common errors:
 
@@ -243,7 +243,7 @@ Another process is using port 5432. Find and stop it:
 ```bash
 sudo lsof -i :5432
 sudo kill <PID>
-```
+```bash
 
 **"FATAL: could not open relation mapping file"**
 Data directory may be corrupted. Do not attempt repair - escalate immediately.

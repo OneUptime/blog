@@ -61,7 +61,7 @@ ps -eo pid,ppid,stat,time,comm | grep -w Z
 
 Output example:
 
-```
+```bash
   PID  PPID STAT     TIME COMMAND
  1234  5678 Z    00:00:00 defunct
 ```

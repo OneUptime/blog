@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Adoption, Organization, DevOps, Infrastructure as Code
+Tags: Terraform, Adoption, Organizations, DevOps, Infrastructure as Code
 
 Description: Plan and execute a successful Terraform adoption strategy for your organization, from initial pilot to full-scale rollout across all teams and environments.
 

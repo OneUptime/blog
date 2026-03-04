@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: IPv6, Docker, Container, Networking, DevOps, Infrastructure
+Tags: IPv6, Docker, Containers, Networking, DevOps, Infrastructure
 
 Description: A comprehensive guide to enabling and configuring IPv6 in Docker networks, covering daemon configuration, custom networks, Docker Compose, and production best practices.
 

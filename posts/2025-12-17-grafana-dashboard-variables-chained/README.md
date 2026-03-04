@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Dashboard, Variables, Prometheus, Monitoring, PromQL
+Tags: Grafana, Dashboards, Variables, Prometheus, Monitoring, PromQL
 
 Description: Learn how to create chained and dependent dashboard variables in Grafana where one variable's options are filtered based on another variable's selection.
 

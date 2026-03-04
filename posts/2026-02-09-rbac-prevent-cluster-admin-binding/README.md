@@ -401,7 +401,7 @@ Document approved alternative patterns:
 kubectl create clusterrolebinding dev-admin \
   --clusterrole=cluster-admin \
   --user=developer@company.com
-```
+```bash
 
 ## ✅ Use Namespace-Scoped Roles
 ```bash
@@ -409,7 +409,7 @@ kubectl create rolebinding dev-admin \
   --clusterrole=admin \
   --user=developer@company.com \
   --namespace=development
-```
+```bash
 
 ## ✅ Create Custom Roles with Minimal Permissions
 ```yaml
@@ -421,11 +421,12 @@ rules:
 - apiGroups: ["apps"]
   resources: ["deployments"]
   verbs: ["get", "list", "create", "update", "patch"]
-```
+```bash
 ```text
 
 Train teams during onboarding to avoid requesting cluster-admin.
 
 Preventing cluster-admin bindings requires multiple defensive layers. Built-in privilege escalation prevention provides baseline protection. Admission webhooks enforce policy at admission time. Audit logging and monitoring detect unauthorized attempts. Break-glass procedures handle emergencies without permanent excessive permissions. Together, these controls ensure cluster-admin remains restricted to legitimate platform administrators.
 
+```bash
 ```

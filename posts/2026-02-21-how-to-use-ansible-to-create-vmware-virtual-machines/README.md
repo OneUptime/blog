@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Virtual Machine, Automation, vSphere
+Tags: Ansible, VMware, Virtual Machines, Automation, vSphere
 
 Description: Step-by-step guide to creating VMware virtual machines with Ansible using the community.vmware.vmware_guest module with practical examples.
 

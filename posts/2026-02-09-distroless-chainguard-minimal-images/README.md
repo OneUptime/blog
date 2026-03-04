@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Container Image, Distroless, Chainguard
+Tags: Kubernetes, Security, Container Images, Distroless, Chainguard
 
 Description: Learn how to build minimal container images using Distroless and Chainguard base images to reduce attack surface, improve security, and decrease image sizes in Kubernetes deployments.
 

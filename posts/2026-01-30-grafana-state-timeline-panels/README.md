@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboard, Visualization
+Tags: Grafana, Observability, Dashboards, Visualization
 
 Description: A hands-on guide to building State Timeline panels in Grafana for visualizing service states, deployment statuses, and system health over time.
 

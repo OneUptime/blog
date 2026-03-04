@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Container, Resource Management, DevOps, Linux, cgroups, Memory Limits, CPU Limits
+Tags: Podman, Containers, Resource Management, DevOps, Linux, Cgroups, Memory Limits, CPU Limits
 
 Description: Learn how to configure and manage resource limits in Podman containers. Covers CPU, memory, I/O constraints, cgroups v2, and practical examples for production workloads.
 

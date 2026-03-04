@@ -102,7 +102,6 @@
 - ACID Transactions
 - ACK
 - Acknowledgments
-- ACL
 - ACL Mask
 - ACLs
 - ACM
@@ -211,7 +210,6 @@
 - Affinity
 - AFS
 - age
-- Agent
 - Agent Builder
 - Agent Debugging
 - Agent Engine
@@ -297,7 +295,6 @@
 - AlertmanagerConfig
 - Alerts
 - Algolia
-- Algorithm
 - Algorithms
 - Alias IP
 - Alias Records
@@ -1165,7 +1162,6 @@
 - Backstage
 - Backtesting
 - Backtrack
-- Backup
 - Backup Analysis
 - Backup and DR
 - Backup Appliance
@@ -1387,7 +1383,6 @@
 - BookStack
 - Bookworm
 - Bool Query
-- Boolean
 - Boolean Logic
 - Boolean Queries
 - Booleans
@@ -1395,7 +1390,6 @@
 - Boot
 - Boot Configuration
 - Boot Diagnostics
-- Boot Failure
 - Boot Failures
 - Boot Loader
 - Boot Loops
@@ -1728,7 +1722,6 @@
 - Cerner
 - cert-manager
 - Certbot
-- Certificate
 - Certificate Authentication
 - Certificate Authority
 - Certificate Authority Service
@@ -1749,7 +1742,7 @@
 - CfCT
 - Cgroup Metrics
 - Cgroup v2
-- cgroups
+- Cgroups
 - chage
 - Chain of Trust
 - Chain Validation
@@ -1838,9 +1831,9 @@
 - Chronicle SIEM
 - Chronicle SOAR
 - Chronosphere
-- chrony
+- Chrony
 - chronyc
-- chroot
+- Chroot
 - Chunk
 - Chunking
 - Churn Prediction
@@ -2211,7 +2204,6 @@
 - Collaborative Editing
 - Collation
 - Collectd
-- Collection
 - Collection Functions
 - Collection Group Queries
 - Collection Management
@@ -2352,6 +2344,7 @@
 - Conditional Resources
 - Conditional Writes
 - Conditions
+- Confd
 - Confidential Computing
 - Confidential GKE
 - Confidential Ledger
@@ -2456,6 +2449,7 @@
 - Constructs
 - Consul
 - Consul Connect
+- Consul Template
 - Consumer
 - Consumer Acknowledgments
 - Consumer Configuration
@@ -2473,7 +2467,6 @@
 - Contact Center
 - Contact Form
 - Contact Points
-- Container
 - container activity
 - Container Agent
 - Container Analysis
@@ -2488,7 +2481,6 @@
 - Container Events
 - Container Hardening
 - Container Host
-- Container Image
 - Container Images
 - Container Insights
 - Container Instances
@@ -2630,7 +2622,6 @@
 - Core
 - Core Banking
 - Core Data
-- Core Dump
 - Core Dumps
 - Core Web Vitals
 - CoreDNS
@@ -2714,7 +2705,6 @@
 - Crane
 - Crash
 - Crash Analysis
-- Crash Dump
 - Crash Dumps
 - Crash Loop
 - Crash Recovery
@@ -2904,7 +2894,6 @@
 - Custom Metrics
 - Custom Mode
 - Custom Models
-- Custom Module
 - Custom Modules
 - Custom Operator
 - Custom Origin
@@ -2937,7 +2926,6 @@
 - Custom Search
 - Custom Secrets
 - Custom Server
-- Custom Service
 - Custom Services
 - Custom Spans
 - Custom Tags
@@ -2977,7 +2965,6 @@
 - D-Bus
 - d.ts
 - D1
-- Daemon
 - daemon_reload
 - daemon.json
 - Daemons
@@ -2992,7 +2979,6 @@
 - Dark Launches
 - Dart
 - DASH
-- Dashboard
 - Dashboard Design
 - Dashboard Links
 - Dashboard Management
@@ -3218,7 +3204,6 @@
 - Database Tracing
 - Database Triggers
 - Database Tuning
-- Database Update
 - Database Updates
 - Database Versioning
 - database/sql
@@ -3632,7 +3617,6 @@
 - Distributed Counters
 - Distributed Database
 - Distributed Debugging
-- Distributed File System
 - Distributed File Systems
 - Distributed Filesystem
 - Distributed Ledger
@@ -3716,9 +3700,9 @@
 - DNS Security
 - DNS Troubleshooting
 - DNS Views
-- DNS Zone
 - DNS Zones
 - DNS-over-TLS
+- DNS-SD
 - DNS64
 - dnsmasq
 - DNSSEC
@@ -4098,10 +4082,10 @@
 - Encapsulation
 - Encoding
 - encoding/binary
-- Encrypted Backup
 - Encrypted Backups
 - Encryption
 - End User Computing
+- End-to-End
 - End-to-End Encryption
 - End-to-End Testing
 - End-to-End Tracing
@@ -4170,7 +4154,6 @@
 - Environment Provisioning
 - Environment Routing
 - Environment Tracking
-- Environment Variable
 - Environment Variables
 - Envoy
 - Envoy Gateway
@@ -4346,7 +4329,6 @@
 - Execute Command
 - Execution
 - Execution Control
-- Execution Environment
 - Execution Environments
 - Execution Mode
 - Execution Order
@@ -4394,7 +4376,6 @@
 - Extended Support
 - Extenders
 - Extensibility
-- Extension
 - Extension Functions
 - Extension Providers
 - Extensions
@@ -4453,7 +4434,7 @@
 - Factory Reset
 - Facts
 - Fail Module
-- fail2ban
+- Fail2Ban
 - Failback
 - Failed Jobs
 - Failed Logins
@@ -4583,7 +4564,6 @@
 - File Storage
 - File Sync
 - File Synchronization
-- File System
 - File System Analysis
 - File Systems
 - File Transfer
@@ -4607,7 +4587,6 @@
 - filesha256 Function
 - filesha512 Function
 - Filestore
-- Filesystem
 - Filesystem Mirror
 - Filesystem Recovery
 - Filesystem Scanning
@@ -4832,7 +4811,6 @@
 - Fusion Detection
 - FUTURE
 - FUTURE Policy
-- Futures
 - Fuzzing
 - Fuzzy Search
 - fwupd
@@ -5309,7 +5287,6 @@
 - Headless Service
 - Health
 - Health Apps
-- Health Check
 - Health Check Rewriting
 - Health Checking
 - Health Checks
@@ -5550,7 +5527,7 @@
 - Hubs
 - Huey
 - Huge Pages
-- Hugepages
+- HugePages
 - Hugging Face
 - Huginn
 - Human Review
@@ -5589,7 +5566,6 @@
 - Hystrix
 - I/O
 - I/O Optimization
-- I/O Scheduler
 - I/O Schedulers
 - I/O Wait
 - I/O-Optimized
@@ -5771,7 +5747,6 @@
 - increase()
 - Incremental
 - Incremental Apply
-- Incremental Backup
 - Incremental Backups
 - Incremental Deployment
 - Incremental Ingestion
@@ -6035,7 +6010,7 @@
 - IP Allocation
 - IP Allowlist
 - IP Allowlisting
-- ip command
+- ip Command
 - IP Configuration
 - IP Denylist
 - IP Enrichment
@@ -6284,7 +6259,7 @@
 - KEDA
 - Keep-Alive
 - keepalive
-- keepalived
+- Keepalived
 - Kendra
 - Kerberos
 - Kernel
@@ -6292,7 +6267,6 @@
 - Kernel Debugging
 - Kernel Live Patching
 - Kernel Logs
-- Kernel Module
 - Kernel Modules
 - Kernel Monitoring
 - Kernel Panic
@@ -6547,7 +6521,7 @@
 - Least Request
 - Ledger
 - Ledger Database
-- Legacy
+- LEGACY
 - Legacy Applications
 - Legacy Authentication
 - Legacy BIOS
@@ -7267,7 +7241,6 @@
 - Minimal Profile
 - MinIO
 - minmax
-- Minor Update
 - Mirantis
 - Mirror
 - Mirrord
@@ -7730,7 +7703,6 @@
 - Network Intelligence
 - Network Intelligence Center
 - Network Interception
-- Network Interface
 - Network Interfaces
 - Network Isolation
 - Network Issues
@@ -8199,7 +8171,6 @@
 - Ordered Processing
 - Ordering
 - Ordering Keys
-- Organization
 - Organization Management
 - Organization Policies
 - Organization Policy
@@ -8223,7 +8194,6 @@
 - osbuild
 - oscap
 - oscap-ssh
-- OSD
 - OSDs
 - OSPF
 - OSProvisioning
@@ -8266,7 +8236,6 @@
 - Outlook
 - OutOfOrderSequenceException
 - Outposts
-- Output
 - Output Control
 - Output Formatters
 - Output Formatting
@@ -8278,7 +8247,6 @@
 - Overflow
 - Overlap
 - Overlay
-- Overlay Network
 - Overlay Networks
 - Overlay2
 - Overprivileged
@@ -8303,7 +8271,6 @@
 - PaaS
 - PaaS Security
 - Pacemaker
-- Package
 - Package Building
 - Package Caching
 - Package Configuration
@@ -8406,7 +8373,6 @@
 - Partial Search
 - Partial Updates
 - PartiQL
-- Partition
 - Partition Alignment
 - Partition Assignment
 - PARTITION BY
@@ -8426,7 +8392,6 @@
 - Passkeys
 - Passport
 - Passthrough
-- Password
 - Password Aging
 - Password Auditing
 - Password Hash Sync
@@ -8563,7 +8528,6 @@
 - Persistent Queue
 - Persistent Sessions
 - Persistent Storage
-- Persistent Volume
 - Persistent Volumes
 - PersistentVolume
 - PersistentVolumeClaim
@@ -8574,7 +8538,6 @@
 - Pet Names
 - PF_RING
 - pfexec
-- pg_basebackup
 - pg_cron
 - pg_dump
 - pg_hba.conf
@@ -8643,7 +8606,6 @@
 - Pinpoint
 - pip
 - PIPE Mode
-- Pipeline
 - Pipeline Architecture
 - Pipeline as Code
 - Pipeline Authorization
@@ -8728,7 +8690,6 @@
 - Playwright
 - PLC
 - Plex
-- Plugin
 - Plugin Architecture
 - Plugin Development
 - Plugin Framework
@@ -8737,7 +8698,6 @@
 - Plugins
 - PM2
 - pnpm
-- POD
 - Pod Affinity
 - Pod Annotations
 - Pod Anti-Affinity
@@ -9347,7 +9307,6 @@
 - Quickwit
 - Quorum
 - Quorum Queues
-- Quota
 - Quota Management
 - Quotas
 - Quoting
@@ -9685,7 +9644,6 @@
 - ReplacingMergeTree
 - Replatform
 - Replay
-- Replica
 - Replica Placement
 - Replica Set
 - Replicas
@@ -9702,7 +9660,6 @@
 - Repositories
 - Repository
 - Repository Dispatch
-- Repository Errors
 - Repository Management
 - Repository Manager
 - Repository Pattern
@@ -9750,7 +9707,6 @@
 - Requirements
 - reqwest
 - Rescue
-- Rescue Image
 - Rescue Mode
 - Reservations
 - Reserved Capacity
@@ -9770,7 +9726,6 @@
 - resolv.conf
 - resolve
 - Resolvers
-- Resource
 - Resource Access Manager
 - Resource Actions
 - Resource Addressing
@@ -9859,7 +9814,7 @@
 - Restart Policy
 - RestartPolicy
 - Restaurant Reservations
-- restic
+- Restic
 - Restoration
 - Restore
 - restorecon
@@ -9970,7 +9925,6 @@
 - Rolling Deployment
 - Rolling Reboots
 - Rolling Release
-- Rolling Update
 - Rolling Updates
 - Rolling Upgrade
 - Rolling Window
@@ -10009,7 +9963,6 @@
 - Route Verification
 - Route53
 - Router
-- Router Advertisement
 - Router Advertisements
 - Router Operator
 - Routes
@@ -10071,7 +10024,6 @@
 - runc
 - Rundeck
 - Runlevels
-- Runner
 - Runners
 - Running Totals
 - Runtime
@@ -10194,7 +10146,6 @@
 - Scheduled Scaling
 - Scheduled Tasks
 - Scheduled Workflows
-- Scheduler
 - Schedulers
 - Scheduling
 - Scheduling Gates
@@ -10294,11 +10245,10 @@
 - Searchkick
 - SeaweedFS
 - SEC 17a-4
-- seccomp
+- Seccomp
 - Secondary Index
 - Secondary Indexes
 - Secondary Region
-- Secret
 - Secret Distribution
 - Secret Encryption
 - Secret Injection
@@ -10477,7 +10427,6 @@
 - Serverless SQL Pool
 - Serverless VPC Access
 - ServerSpec
-- Service
 - Service Account
 - Service Account Auth
 - Service Account Impersonation
@@ -10578,7 +10527,6 @@
 - Session Tracking
 - Session Windowing
 - Sessions
-- set
 - set -x
 - Set Functions
 - Set Operations
@@ -10734,6 +10682,7 @@
 - Skillsets
 - Skip
 - Skip Indexes
+- Skipper
 - Skopeo
 - SkuNotAvailable
 - SkyWalking
@@ -10796,7 +10745,6 @@
 - Snapcraft
 - snappy
 - Snappy Compression
-- Snapshot
 - Snapshot Debugger
 - Snapshot Testing
 - Snapshots
@@ -11040,7 +10988,6 @@
 - SSH Check
 - SSH Config
 - SSH Deploy Keys
-- SSH Key
 - SSH Keys
 - SSH Tunneling
 - sshd
@@ -11246,7 +11193,6 @@
 - Strategy Recommendations
 - Stratis
 - Strawberry
-- STREAM
 - Stream Analytics
 - Stream Joins
 - Stream Metrics
@@ -11324,7 +11270,6 @@
 - Subprotocols
 - Subqueries
 - SubResources
-- Subscription
 - Subscription Filters
 - Subscription Limits
 - Subscription Management
@@ -11382,7 +11327,7 @@
 - sVirt
 - SVN
 - Swagger
-- SWAP
+- Swap
 - Swap Deployment
 - Swap Encryption
 - Swap File
@@ -11426,7 +11371,7 @@
 - Synthetic Monitoring
 - Synthetic Probes
 - Synthetics
-- Sysadmin
+- SysAdmin
 - sysbench
 - Syscall Filtering
 - Sysctl
@@ -11473,7 +11418,6 @@
 - System Topics
 - System Troubleshooting
 - System Tuning
-- System Update
 - System Updates
 - System Upgrade Controller
 - System-Wide
@@ -11654,7 +11598,6 @@
 - Temp Files
 - Temperature
 - Temperature Monitoring
-- Template
 - Template Literals
 - Template Module
 - Template Specs
@@ -11782,7 +11725,7 @@
 - Thanos
 - thehive
 - Themes
-- thin pool
+- Thin Pool
 - Thin Provisioning
 - Thin Snapshots
 - Thing Shadows
@@ -11874,7 +11817,6 @@
 - Timeout Pattern
 - Timeout Settings
 - TimeoutError
-- Timer
 - Timer Trigger
 - Timers
 - TimescaleDB
@@ -11979,6 +11921,7 @@
 - Touch ID
 - Touchpad
 - Tower
+- Tox
 - Toxiproxy
 - TPL Dataflow
 - TPM
@@ -12149,7 +12092,7 @@
 - TTL Index
 - TUI
 - tuna
-- Tuned
+- TuneD
 - Tuning
 - Tunneling
 - Tunnels
@@ -12294,7 +12237,6 @@
 - Untyped Constants
 - Unused
 - Unused Resources
-- Update
 - Update API
 - Update By Query
 - Update Domains
@@ -12440,7 +12382,6 @@
 - Vault Lock
 - Vault Secrets Operator
 - Vaulted Backup
-- Vaults
 - Vaultwarden
 - vCenter
 - vCore
@@ -12502,9 +12443,8 @@
 - Vertical Scaling
 - veth
 - VEX
-- VF
 - VFIO
-- VFS
+- VFs
 - VG
 - vGPU
 - VHD
@@ -12555,13 +12495,11 @@
 - Virtual Disks
 - Virtual DOM
 - Virtual Entities
-- Virtual Environment
 - Virtual Environments
 - Virtual Hosts
 - Virtual Interfaces
 - Virtual IP
 - Virtual Kubelet
-- Virtual Machine
 - Virtual Machines
 - Virtual Mailboxes
 - Virtual Memory
@@ -12652,7 +12590,6 @@
 - VoIP
 - Volcano
 - VoLTE
-- VOLUME
 - Volume Expansion
 - Volume Gateway
 - Volume Management
@@ -12772,7 +12709,6 @@
 - Web Analysis
 - Web Analytics
 - Web API
-- Web Application
 - Web Application Firewall
 - Web Application Security
 - Web Applications
@@ -12798,7 +12734,6 @@
 - Web Security Scanner
 - Web Server
 - Web Server Configuration
-- Web Service
 - Web Services
 - Web Streams API
 - Web Testing
@@ -12818,7 +12753,6 @@
 - WebDriver
 - Webex
 - WebFlux
-- Webhook
 - Webhook Authentication
 - Webhook Development
 - Webhook Security
@@ -12945,7 +12879,6 @@
 - Workload Security
 - WorkloadEntry
 - Workloads
-- Workspace
 - Workspace Connections
 - Workspace Health
 - Workspace Management

@@ -36,7 +36,7 @@ podman run --rm registry.access.redhat.com/ubi9/ubi:latest cat /proc/self/attr/c
 
 Expected output:
 
-```
+```bash
 system_u:system_r:container_t:s0:c123,c456
 ```
 

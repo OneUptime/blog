@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Docker Build, Container Image, CI/CD
+Tags: Ansible, Docker, Docker Build, Container Images, CI/CD
 
 Description: Complete guide to building Docker images with Ansible using the docker_image module, covering Dockerfiles, build arguments, multi-stage builds, and tagging.
 

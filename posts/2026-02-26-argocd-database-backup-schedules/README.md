@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Database, Backup
+Tags: ArgoCD, GitOps, Kubernetes, Database, Backups
 
 Description: Learn how to manage database backup schedules through ArgoCD using operator-native backups, CronJobs, and Velero schedules for reliable, version-controlled backup policies.
 

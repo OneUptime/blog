@@ -36,7 +36,7 @@ graph TB
 
 Before you can run rootless containers, your user needs subordinate UID and GID ranges defined.
 
-# Check if your user has subuid/subgid mappings
+## Check if your user has subuid/subgid mappings
 ```bash
 grep $USER /etc/subuid
 grep $USER /etc/subgid
@@ -44,7 +44,7 @@ grep $USER /etc/subgid
 
 You should see something like `developer:100000:65536`. If not, add them:
 
-# Add subordinate UID/GID ranges for your user
+## Add subordinate UID/GID ranges for your user
 ```bash
 sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
 ```
@@ -59,7 +59,7 @@ podman system migrate
 
 Just run Podman as your regular user, no sudo needed:
 
-# Pull and run a container as a regular user
+## Pull and run a container as a regular user
 ```bash
 podman pull registry.access.redhat.com/ubi9/ubi-minimal
 podman run --rm -it registry.access.redhat.com/ubi9/ubi-minimal /bin/bash
@@ -74,7 +74,7 @@ id
 
 You will see `root` inside the container, but on the host, the process runs as your user. Verify this by opening another terminal:
 
-# On the host, check the actual process owner
+## On the host, check the actual process owner
 ```bash
 ps aux | grep -i "ubi-minimal"
 ```
@@ -85,14 +85,14 @@ The process owner will be your regular user, not root.
 
 The subuid range you configured determines how UIDs inside the container map to UIDs on the host:
 
-# View the current UID mapping inside the Podman namespace
+## View the current UID mapping inside the Podman namespace
 ```bash
 podman unshare cat /proc/self/uid_map
 ```
 
 This shows three columns: the UID inside the namespace, the UID on the host, and the range size.
 
-# See how a specific container UID maps to a host UID
+## See how a specific container UID maps to a host UID
 ```bash
 podman top <container-id> huser user
 ```
@@ -106,7 +106,7 @@ Rootless containers store data differently than rootful ones:
 - Rootful storage: `/var/lib/containers/storage/`
 - Rootless storage: `~/.local/share/containers/storage/`
 
-# Check where your rootless images and containers are stored
+## Check where your rootless images and containers are stored
 ```bash
 podman info --format '{{.Store.GraphRoot}}'
 ```
@@ -117,7 +117,7 @@ If your home directory is on a small partition, you can redirect storage by crea
 mkdir -p ~/.config/containers
 ```
 
-# Create a user-level storage config
+## Create a user-level storage config
 ```bash
 cat > ~/.config/containers/storage.conf << 'EOF'
 [storage]
@@ -143,12 +143,12 @@ podman run -d -p 80:80 docker.io/library/nginx:latest
 
 Fix this by lowering the unprivileged port start:
 
-# Allow unprivileged users to bind to port 80 and above
+## Allow unprivileged users to bind to port 80 and above
 ```bash
 sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
 ```
 
-# Make it persistent across reboots
+## Make it persistent across reboots
 ```bash
 echo "net.ipv4.ip_unprivileged_port_start=80" | sudo tee /etc/sysctl.d/99-unprivileged-ports.conf
 sudo sysctl --system
@@ -158,12 +158,12 @@ sudo sysctl --system
 
 By default, user services (including rootless containers managed by systemd) stop when the user logs out. Enable lingering to keep them running:
 
-# Enable lingering so containers survive logout
+## Enable lingering so containers survive logout
 ```bash
 sudo loginctl enable-linger $USER
 ```
 
-# Verify lingering is enabled
+## Verify lingering is enabled
 ```bash
 loginctl show-user $USER --property=Linger
 ```
@@ -174,14 +174,14 @@ This is critical for any rootless container you want running as a service.
 
 Rootless containers use `slirp4netns` or `pasta` for networking instead of the CNI/netavark bridge that rootful containers use.
 
-# Check which network mode rootless containers are using
+## Check which network mode rootless containers are using
 ```bash
 podman info --format '{{.Host.NetworkBackend}}'
 ```
 
 On RHEL, `pasta` is the default rootless network handler. It provides better performance than `slirp4netns`:
 
-# Run a container with the default pasta network
+## Run a container with the default pasta network
 ```bash
 podman run -d --name web -p 8080:80 docker.io/library/nginx:latest
 ```
@@ -190,7 +190,7 @@ podman run -d --name web -p 8080:80 docker.io/library/nginx:latest
 
 When you mount host directories into rootless containers, permissions can be tricky. The container's root user maps to your host UID, but other container UIDs map to your subordinate range.
 
-# Mount a directory with proper permissions
+## Mount a directory with proper permissions
 ```bash
 mkdir -p ~/container-data
 podman run -v ~/container-data:/data:Z registry.access.redhat.com/ubi9/ubi ls -la /data
@@ -200,7 +200,7 @@ The `:Z` suffix tells Podman to relabel the directory for SELinux compatibility.
 
 If the container process runs as a non-root user internally, you may need to adjust ownership:
 
-# Change ownership inside the user namespace
+## Change ownership inside the user namespace
 ```bash
 podman unshare chown 1000:1000 ~/container-data
 ```
@@ -209,12 +209,12 @@ podman unshare chown 1000:1000 ~/container-data
 
 With cgroups v2 on RHEL, rootless containers can set resource limits:
 
-# Run with memory and CPU limits as a regular user
+## Run with memory and CPU limits as a regular user
 ```bash
 podman run --rm --memory 256m --cpus 0.5 registry.access.redhat.com/ubi9/ubi-minimal stress-ng --vm 1 --vm-bytes 200M --timeout 10s
 ```
 
-# Verify cgroups v2 is active
+## Verify cgroups v2 is active
 ```bash
 stat -fc %T /sys/fs/cgroup/
 ```
@@ -225,18 +225,18 @@ If it returns `cgroup2fs`, you are on v2 and rootless resource limits will work.
 
 When things go wrong with rootless containers, check these:
 
-# Verify your user namespace setup
+## Verify your user namespace setup
 ```bash
 podman unshare cat /proc/self/uid_map
 podman unshare cat /proc/self/gid_map
 ```
 
-# Check for namespace-related errors
+## Check for namespace-related errors
 ```bash
 podman system info 2>&1 | grep -i error
 ```
 
-# Reset rootless storage if things get corrupted
+## Reset rootless storage if things get corrupted
 ```bash
 podman system reset
 ```

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Container Apps, Container, Infrastructure as Code, Serverless, Microservices
+Tags: Terraform, Azure, Container Apps, Containers, Infrastructure as Code, Serverless, Microservices
 
 Description: Learn how to create Azure Container Apps with Terraform for running containerized microservices with auto-scaling, traffic splitting, and Dapr integration.
 

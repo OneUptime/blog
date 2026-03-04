@@ -46,7 +46,7 @@ Messages pass through milters in the order they are listed. Each milter can:
 
 Add to `/etc/postfix/main.cf`:
 
-```
+```bash
 # Default action if a milter is unavailable
 milter_default_action = accept
 
@@ -76,7 +76,7 @@ Usually you want DKIM signing on both, but spam/virus scanning only on incoming 
 
 Milters connect to Postfix via Unix sockets or TCP:
 
-```
+```bash
 # Unix socket (faster, requires both on same host)
 unix:/run/clamav-milter/clamav-milter.sock
 
@@ -98,7 +98,7 @@ sudo dnf install -y opendkim opendkim-tools
 
 Configure `/etc/opendkim.conf`:
 
-```
+```bash
 Mode            sv
 Syslog          yes
 Socket          inet:8891@localhost
@@ -122,7 +122,7 @@ sudo dnf install -y opendmarc
 
 Configure `/etc/opendmarc.conf`:
 
-```
+```bash
 AuthservID      mail.example.com
 Socket          inet:8893@localhost
 SPFSelfValidate true
@@ -143,7 +143,7 @@ sudo dnf install -y clamav-milter clamd clamav-update
 
 Configure `/etc/mail/clamav-milter.conf`:
 
-```
+```bash
 MilterSocket    /run/clamav-milter/clamav-milter.sock
 MilterSocketMode 660
 MilterSocketGroup postfix
@@ -176,7 +176,7 @@ sudo systemctl enable --now spamass-milter
 
 The order matters. Here is a recommended sequence:
 
-```
+```bash
 smtpd_milters =
     inet:localhost:8891,
     inet:localhost:8893,
@@ -193,7 +193,7 @@ smtpd_milters =
 
 If a milter is slow, you do not want it to hold up mail delivery:
 
-```
+```bash
 # Timeout for milter connections (default: 10s)
 milter_connect_timeout = 30s
 
@@ -210,7 +210,7 @@ You can apply milters selectively based on context. For example, skip milters fo
 
 In `/etc/postfix/master.cf`:
 
-```
+```bash
 # Submission port with different milter settings
 submission inet n       -       n       -       -       smtpd
   -o smtpd_milters=inet:localhost:8891
@@ -223,7 +223,7 @@ This only applies DKIM signing on the submission port, skipping virus and spam s
 
 Postfix passes macros to milters that they can use for decision-making:
 
-```
+```bash
 # Define macros available to milters
 milter_connect_macros = j {daemon_name} v {if_name} _
 milter_helo_macros = {tls_version} {cipher} {cipher_bits} {cert_subject} {cert_issuer}
@@ -251,7 +251,7 @@ sudo grep -E "milter|opendkim|opendmarc|clamav-milter|spamass" /var/log/maillog 
 
 The `milter_default_action` setting controls what happens when a milter is unreachable:
 
-```
+```bash
 # Accept mail if milter is down (recommended for availability)
 milter_default_action = accept
 

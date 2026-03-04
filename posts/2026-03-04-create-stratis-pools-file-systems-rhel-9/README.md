@@ -49,7 +49,7 @@ sudo stratis pool list
 
 Output:
 
-```
+```bash
 Name       Total / Used / Free         Properties   UUID   Alerts
 datapool   50 GiB / 520 MiB / 49.49 GiB   ~Ca,~Cr   abc...
 bigpool    150 GiB / 520 MiB / 149.49 GiB  ~Ca,~Cr   def...
@@ -95,7 +95,7 @@ sudo stratis filesystem list
 
 Output:
 
-```
+```bash
 Pool       Filesystem   Total / Used / Free             Created              Device                        UUID
 datapool   documents    1 TiB / 512 MiB / 1023.5 GiB   Mar 04 2026 10:00    /dev/stratis/datapool/documents   abc...
 datapool   projects     1 TiB / 512 MiB / 1023.5 GiB   Mar 04 2026 10:01    /dev/stratis/datapool/projects    def...
@@ -145,7 +145,7 @@ sudo blkid /dev/stratis/datapool/logs
 
 Add entries to `/etc/fstab`:
 
-```
+```bash
 UUID=uuid1 /documents xfs defaults,x-systemd.requires=stratisd.service 0 0
 UUID=uuid2 /projects xfs defaults,x-systemd.requires=stratisd.service 0 0
 UUID=uuid3 /backups xfs defaults,x-systemd.requires=stratisd.service 0 0

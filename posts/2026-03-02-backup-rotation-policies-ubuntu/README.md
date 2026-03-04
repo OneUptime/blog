@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backup, Rotation, System Administration
+Tags: Ubuntu, Backups, Rotation, System Administration
 
 Description: Learn how to implement backup rotation policies on Ubuntu to manage disk space while preserving backup history using daily, weekly, and monthly retention strategies.
 

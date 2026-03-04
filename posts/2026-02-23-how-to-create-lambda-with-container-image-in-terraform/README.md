@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Lambda, Docker, Container Image, ECR, Serverless, Infrastructure as Code
+Tags: Terraform, AWS, Lambda, Docker, Container Images, ECR, Serverless, Infrastructure as Code
 
 Description: Learn how to deploy AWS Lambda functions using container images with Terraform, including ECR repository setup, Dockerfile configuration, and function deployment.
 

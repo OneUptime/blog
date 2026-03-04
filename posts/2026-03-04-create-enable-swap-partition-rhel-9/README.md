@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Swap, Partition, Memory, Linux
+Tags: RHEL, Swap, Partitions, Memory, Linux
 
 Description: Step-by-step guide to creating and enabling a dedicated swap partition on RHEL, including partitioning, formatting, and making it persistent across reboots.
 
@@ -154,7 +154,7 @@ swapon -p 10 /dev/vg_system/lv_swap
 
 In fstab, use the `pri` option:
 
-```
+```bash
 /dev/vg_system/lv_swap  none  swap  defaults,pri=10  0 0
 ```
 

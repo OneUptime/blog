@@ -83,13 +83,13 @@ sudo grep "ABC123DEF" /var/log/maillog
 
 A successful delivery looks like:
 
-```
+```bash
 postfix/smtp[12345]: ABC123DEF: to=<user@remote.com>, relay=mx.remote.com[1.2.3.4]:25, delay=1.2, status=sent (250 OK)
 ```
 
 A failed delivery shows the error:
 
-```
+```bash
 postfix/smtp[12345]: ABC123DEF: to=<user@remote.com>, relay=none, delay=300, status=deferred (connect to mx.remote.com[1.2.3.4]:25: Connection timed out)
 ```
 
@@ -97,7 +97,7 @@ postfix/smtp[12345]: ABC123DEF: to=<user@remote.com>, relay=none, delay=300, sta
 
 ### Problem: Connection Timed Out
 
-```
+```bash
 status=deferred (connect to mx.remote.com[1.2.3.4]:25: Connection timed out)
 ```
 
@@ -122,14 +122,14 @@ nmap -p 25 mx.remote.com
 
 If your provider blocks port 25, use a relay:
 
-```
+```bash
 # In main.cf, relay through an authorized server
 relayhost = [smtp-relay.example.com]:587
 ```
 
 ### Problem: DNS Resolution Failures
 
-```
+```bash
 status=deferred (Host or domain name not found)
 ```
 
@@ -155,7 +155,7 @@ dig @8.8.8.8 MX remote.com
 
 ### Problem: Relay Access Denied
 
-```
+```bash
 status=bounced (host mx.remote.com said: 554 Relay access denied)
 ```
 
@@ -171,7 +171,7 @@ If using a relay, make sure you have authentication configured.
 
 ### Problem: Rejected by Remote Server
 
-```
+```bash
 status=bounced (host mx.google.com said: 550-5.7.26 This mail has been blocked because the sender is unauthenticated)
 ```
 
@@ -199,7 +199,7 @@ dig -x 203.0.113.10
 
 ### Problem: Mailbox Full or User Unknown
 
-```
+```bash
 status=bounced (host mx.remote.com said: 552 Mailbox full)
 status=bounced (host mx.remote.com said: 550 User not found)
 ```
@@ -208,7 +208,7 @@ These are recipient-side issues. Not much you can do except notify the sender.
 
 ### Problem: TLS Handshake Failures
 
-```
+```bash
 status=deferred (TLS handshake failed)
 ```
 
@@ -281,7 +281,7 @@ telnet localhost 25
 
 Then type:
 
-```
+```bash
 EHLO test.example.com
 MAIL FROM:<sender@example.com>
 RCPT TO:<recipient@remote.com>

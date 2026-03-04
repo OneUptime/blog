@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Load Balancing, Algorithm, Weighted, Distribution
+Tags: Load Balancing, Algorithms, Weighted, Distribution
 
 Description: Distribute traffic across servers proportionally to their capacity using weighted round robin load balancing.
 

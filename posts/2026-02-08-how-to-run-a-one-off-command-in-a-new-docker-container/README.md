@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, Docker Run, One-Off Commands, DevOps, Scripting, Automation
+Tags: Docker, Containers, Docker Run, One-Off Commands, DevOps, Scripting, Automation
 
 Description: Learn how to run one-off commands in disposable Docker containers for tasks like database migrations, scripts, debugging, and testing.
 

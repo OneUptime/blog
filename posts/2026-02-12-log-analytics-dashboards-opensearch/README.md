@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, OpenSearch, Log Analytics, Dashboard, Observability
+Tags: AWS, OpenSearch, Log Analytics, Dashboards, Observability
 
 Description: A hands-on guide to building effective log analytics dashboards in Amazon OpenSearch using visualizations, saved queries, and aggregation techniques.
 

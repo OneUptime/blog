@@ -40,7 +40,7 @@ sudo insights-client --display-name="prod-web-01"
 
 After registration, visit the Insights dashboard:
 
-```
+```bash
 https://console.redhat.com/insights/
 ```
 

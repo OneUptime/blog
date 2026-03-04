@@ -255,7 +255,7 @@ sudo mount -o nosuid /dev/sdb1 /mnt/data
 
 Or in `/etc/fstab`:
 
-```
+```bash
 /dev/sdb1  /mnt/data  xfs  defaults,nosuid  0 0
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Entrypoint, Idempotent, Shell Script, Container, Best Practices, Initialization
+Tags: Docker, Entrypoint, Idempotent, Shell Script, Containers, Best Practices, Initialization
 
 Description: Write Docker entrypoint scripts that run safely on every container start without duplicating work or corrupting state.
 

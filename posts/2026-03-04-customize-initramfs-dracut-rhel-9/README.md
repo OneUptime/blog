@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dracut, Initramfs, Boot, Kernel, Linux
+Tags: RHEL, dracut, initramfs, Boot, Kernel, Linux
 
 Description: A practical guide to customizing the initial RAM filesystem (initramfs) using dracut on RHEL, including adding modules, scripts, and files.
 

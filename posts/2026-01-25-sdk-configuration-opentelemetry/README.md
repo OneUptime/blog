@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, SDK Configuration, Environment Variable, Resource Attributes, Sampling, Observability
+Tags: OpenTelemetry, SDK Configuration, Environment Variables, Resource Attributes, Sampling, Observability
 
 Description: Learn how to configure the OpenTelemetry SDK using environment variables and programmatic configuration.
 

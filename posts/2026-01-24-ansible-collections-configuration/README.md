@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Ansible Galaxy, Configuration Management, DevOps, Automation
+Tags: Ansible, Collections, Ansible Galaxy, Configuration Management, DevOps, Automation
 
 Description: Learn how to install, configure, and manage Ansible collections for modular automation including Galaxy, private repositories, and offline installation.
 

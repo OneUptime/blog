@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Firewalld, Rule Priorities, Security, Linux
+Tags: RHEL, firewalld, Rule Priorities, Security, Linux
 
 Description: Understanding and using firewalld rule priorities on RHEL to control the order in which rich rules are evaluated, enabling deny-before-allow and other complex patterns.
 

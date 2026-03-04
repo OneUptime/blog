@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring, ShedLock, Scheduler, Distributed Systems
+Tags: Java, Spring, ShedLock, Schedulers, Distributed Systems
 
 Description: Learn how to prevent duplicate scheduled task execution across multiple Spring application instances using ShedLock for distributed locking.
 

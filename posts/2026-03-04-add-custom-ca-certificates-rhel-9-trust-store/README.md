@@ -23,11 +23,11 @@ Common scenarios where you need to add a custom CA:
 
 Without adding these CAs to the trust store, you will see errors like:
 
-```
+```bash
 curl: (60) SSL certificate problem: unable to get local issuer certificate
 ```
 
-```
+```bash
 ssl.SSLCertificateError: [SSL: CERTIFICATE_VERIFY_FAILED]
 ```
 
@@ -35,7 +35,7 @@ ssl.SSLCertificateError: [SSL: CERTIFICATE_VERIFY_FAILED]
 
 First, get the CA certificate in PEM format. It should look like this:
 
-```
+```bash
 -----BEGIN CERTIFICATE-----
 MIIDxTCCAq2gAwIBAgIQAqxcJm...
 ...

@@ -23,7 +23,7 @@ systemd-analyze time
 
 You will see output like this:
 
-```
+```bash
 Startup finished in 1.512s (kernel) + 2.347s (initrd) + 8.921s (userspace) = 12.781s
 graphical.target reached after 8.103s in userspace.
 ```
@@ -44,7 +44,7 @@ systemd-analyze blame
 
 Output looks like:
 
-```
+```bash
 8.123s NetworkManager-wait-online.service
 3.456s firewalld.service
 2.891s dnf-makecache.service
@@ -69,7 +69,7 @@ systemd-analyze critical-chain
 
 Output:
 
-```
+```bash
 graphical.target @8.103s
 └─multi-user.target @8.102s
   └─NetworkManager-wait-online.service @3.245s +4.856s

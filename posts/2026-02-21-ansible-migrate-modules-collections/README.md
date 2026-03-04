@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Migration, Module Development
+Tags: Ansible, Collections, Migration, Module Development
 
 Description: Migrate standalone custom Ansible modules into the collection format for better organization and distribution.
 

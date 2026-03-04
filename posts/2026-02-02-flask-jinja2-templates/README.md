@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Flask, Jinja2, Template, Python
+Tags: Flask, Jinja2, Templates, Python
 
 Description: A comprehensive guide to using Flask templates with Jinja2 effectively. Learn template syntax, inheritance, macros, filters, and best practices for building maintainable and dynamic web applications.
 

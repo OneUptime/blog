@@ -23,27 +23,29 @@ Red Hat provides several UBI variants:
 
 ## Pulling UBI Images
 
-# Pull the standard UBI 9 image
+This section covers pulling ubi images.
+
+## Pull the standard UBI 9 image
 ```bash
 podman pull registry.access.redhat.com/ubi9/ubi
 ```
 
-# Pull the minimal variant
+## Pull the minimal variant
 ```bash
 podman pull registry.access.redhat.com/ubi9/ubi-minimal
 ```
 
-# Pull the micro variant
+## Pull the micro variant
 ```bash
 podman pull registry.access.redhat.com/ubi9/ubi-micro
 ```
 
-# Pull the init variant (systemd-enabled)
+## Pull the init variant (systemd-enabled)
 ```bash
 podman pull registry.access.redhat.com/ubi9/ubi-init
 ```
 
-# Check the sizes
+## Check the sizes
 ```bash
 podman images | grep ubi9
 ```
@@ -134,7 +136,7 @@ CMD ["/sbin/init"]
 EOF
 ```
 
-# Run the init container (needs special flags for systemd)
+## Run the init container (needs special flags for systemd)
 ```bash
 podman run -d --name multi-service \
   -p 8080:80 -p 2222:22 \
@@ -148,7 +150,7 @@ UBI images come with two repositories pre-configured:
 - `ubi-9-baseos` - Base OS packages
 - `ubi-9-appstream` - Application stream packages
 
-# Check available repositories inside a UBI container
+## Check available repositories inside a UBI container
 ```bash
 podman run --rm registry.access.redhat.com/ubi9/ubi dnf repolist
 ```
@@ -188,12 +190,12 @@ EOF
 
 Red Hat publishes CVE data for UBI images, making them easy to scan:
 
-# Check image health using skopeo
+## Check image health using skopeo
 ```bash
 skopeo inspect docker://registry.access.redhat.com/ubi9/ubi-minimal:latest | jq '.Labels["release"]'
 ```
 
-# View image advisories
+## View image advisories
 ```bash
 podman run --rm registry.access.redhat.com/ubi9/ubi-minimal microdnf updateinfo list
 ```
@@ -203,23 +205,23 @@ podman run --rm registry.access.redhat.com/ubi9/ubi-minimal microdnf updateinfo 
 1. **Choose the smallest variant** that meets your needs. Start with `ubi-micro` and move up only if needed.
 
 2. **Pin specific versions** for reproducible builds:
-```
+```bash
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.3-1612
 ```
 
 3. **Run as non-root** inside the container:
-```
+```bash
 RUN useradd -r -u 1001 appuser
 USER 1001
 ```
 
 4. **Clean package caches** in the same layer:
-```
+```bash
 RUN microdnf install -y httpd && microdnf clean all
 ```
 
 5. **Use labels** for image metadata:
-```
+```bash
 LABEL name="my-app" \
       version="1.0" \
       summary="My application on UBI"

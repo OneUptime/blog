@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Container, DevOps, Kubernetes, POD, Linux, Docker Alternative
+Tags: Podman, Containers, DevOps, Kubernetes, Pods, Linux, Docker Alternative
 
 Description: A comprehensive guide to using Podman pods for grouping containers, sharing namespaces, and achieving Kubernetes-compatible container orchestration on your local machine.
 

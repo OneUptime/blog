@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Service, DNS
+Tags: Kubernetes, Services, DNS
 
 Description: Learn how to use ExternalName services in Kubernetes to create DNS aliases for external services.
 

@@ -1337,7 +1337,7 @@ jobs:
             ### Changes
             ```diff
             ${{ steps.diff.outputs.diff }}
-            ```
+            ```bash
 
             ### Checklist
             - [ ] Reviewed configuration changes

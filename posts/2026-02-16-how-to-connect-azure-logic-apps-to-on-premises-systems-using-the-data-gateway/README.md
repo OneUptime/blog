@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Logic Apps, On-Premises Data Gateway, Hybrid Integration, SQL Server, File System, Enterprise
+Tags: Azure, Logic Apps, On-Premises Data Gateway, Hybrid Integration, SQL Server, File Systems, Enterprise
 
 Description: Step-by-step guide to installing and configuring the on-premises data gateway so Azure Logic Apps can connect to databases, file shares, and APIs in your data center.
 

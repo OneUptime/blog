@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Deno, Environment Variable, Built-In, Zero-Code, JavaScript
+Tags: OpenTelemetry, Deno, Environment Variables, Built-In, Zero-Code, JavaScript
 
 Description: Enable automatic OpenTelemetry instrumentation in Deno applications using the built-in OTEL_DENO environment variable for zero-code distributed tracing and observability.
 

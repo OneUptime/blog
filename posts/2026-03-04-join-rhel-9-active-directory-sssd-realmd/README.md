@@ -63,7 +63,7 @@ realm discover example.com
 
 The output shows the domain details, required packages, and join method. It should look something like:
 
-```
+```bash
 example.com
   type: kerberos
   realm-name: EXAMPLE.COM

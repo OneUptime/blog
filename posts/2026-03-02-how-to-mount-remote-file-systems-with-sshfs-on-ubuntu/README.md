@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, SSH, Filesystem, FUSE, Networking
+Tags: Ubuntu, SSH, Filesystems, FUSE, Networking
 
 Description: Mount remote directories over SSH with sshfs on Ubuntu, enabling seamless access to files on remote servers as if they were local, with persistent mounts and performance tuning.
 

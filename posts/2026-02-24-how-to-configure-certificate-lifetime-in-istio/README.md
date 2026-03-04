@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificate, Security, Configuration, Kubernetes
+Tags: Istio, Certificates, Security, Configuration, Kubernetes
 
 Description: How to configure and tune certificate lifetimes in Istio for workload certificates, the root CA, and the self-signed CA rotation period.
 

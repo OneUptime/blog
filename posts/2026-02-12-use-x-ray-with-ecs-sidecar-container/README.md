@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, X-Ray, ECS, Container, Distributed Tracing, Sidecar
+Tags: AWS, X-Ray, ECS, Containers, Distributed Tracing, Sidecar
 
 Description: Deploy the AWS X-Ray daemon as a sidecar container in your ECS tasks to enable distributed tracing for containerized applications.
 

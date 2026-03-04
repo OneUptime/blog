@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Inspector, ECR, Container, Security
+Tags: AWS, Inspector, ECR, Containers, Security
 
 Description: Learn how to configure Amazon Inspector for automated vulnerability scanning of container images in ECR, including continuous scanning, CI/CD integration, and finding remediation.
 

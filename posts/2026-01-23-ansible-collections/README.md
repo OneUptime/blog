@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Modules, Galaxy, DevOps, Automation
+Tags: Ansible, Collections, Modules, Galaxy, DevOps, Automation
 
 Description: Master Ansible Collections to organize, distribute, and consume reusable automation content including modules, roles, plugins, and playbooks.
 

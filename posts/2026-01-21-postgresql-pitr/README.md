@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, PITR, Point-in-Time Recovery, Disaster Recovery, WAL, Backup
+Tags: PostgreSQL, PITR, Point-in-Time Recovery, Disaster Recovery, WAL, Backups
 
 Description: A comprehensive guide to PostgreSQL point-in-time recovery (PITR), covering recovery prerequisites, configuration, target options, and step-by-step recovery procedures.
 

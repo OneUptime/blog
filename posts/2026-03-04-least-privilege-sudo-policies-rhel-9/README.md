@@ -61,7 +61,7 @@ sudo usermod -aG deployers charlie
 sudo visudo -f /etc/sudoers.d/00-aliases
 ```
 
-```
+```bash
 # Service management commands
 Cmnd_Alias SVC_WEB = /usr/bin/systemctl start httpd, \
                       /usr/bin/systemctl stop httpd, \
@@ -110,7 +110,7 @@ Cmnd_Alias DANGEROUS = /usr/bin/su, \
 sudo visudo -f /etc/sudoers.d/10-webadmins
 ```
 
-```
+```bash
 # Web admins: manage web services and edit web configs
 %webadmins ALL=(root) SVC_WEB, \
                        /usr/bin/vi /etc/httpd/conf/*, \
@@ -123,7 +123,7 @@ sudo visudo -f /etc/sudoers.d/10-webadmins
 sudo visudo -f /etc/sudoers.d/10-dbadmins
 ```
 
-```
+```bash
 # DB admins: manage database services and run backups
 %dbadmins ALL=(root) SVC_DB, \
                       /usr/bin/pg_dump, \
@@ -135,7 +135,7 @@ sudo visudo -f /etc/sudoers.d/10-dbadmins
 sudo visudo -f /etc/sudoers.d/10-monitoring
 ```
 
-```
+```bash
 # Monitoring: read-only system commands, no password required
 %monitoring ALL=(root) NOPASSWD: MONITORING
 ```
@@ -144,7 +144,7 @@ sudo visudo -f /etc/sudoers.d/10-monitoring
 sudo visudo -f /etc/sudoers.d/10-secops
 ```
 
-```
+```bash
 # Security ops: audit and firewall management
 %secops ALL=(root) SECURITY
 ```
@@ -155,7 +155,7 @@ sudo visudo -f /etc/sudoers.d/10-secops
 sudo visudo -f /etc/sudoers.d/90-restrictions
 ```
 
-```
+```bash
 # Prevent non-wheel users from running shells or dangerous commands
 # This rule must come AFTER the allow rules
 %webadmins ALL=(root) !DANGEROUS
@@ -169,7 +169,7 @@ sudo visudo -f /etc/sudoers.d/90-restrictions
 
 Instead of granting access to `vi` (which allows shell escapes), use `sudoedit`:
 
-```
+```bash
 %webadmins ALL=(root) sudoedit /etc/httpd/conf/httpd.conf, \
                                 sudoedit /etc/httpd/conf.d/*
 ```
@@ -198,7 +198,7 @@ sudo chmod 750 /usr/local/sbin/restart-webapp.sh
 
 Then grant access to just that script:
 
-```
+```bash
 %webadmins ALL=(root) NOPASSWD: /usr/local/sbin/restart-webapp.sh
 ```
 
@@ -206,7 +206,7 @@ Then grant access to just that script:
 
 Grant read access to specific log files:
 
-```
+```bash
 %webadmins ALL=(root) /usr/bin/tail -f /var/log/httpd/*, \
                        /usr/bin/less /var/log/httpd/*, \
                        /usr/bin/journalctl -u httpd
@@ -243,7 +243,7 @@ Enable sudo logging to track who runs what:
 sudo visudo -f /etc/sudoers.d/00-logging
 ```
 
-```
+```bash
 # Log all sudo commands to a dedicated file
 Defaults log_output
 Defaults!/usr/bin/sudoreplay !log_output

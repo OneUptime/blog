@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Networking, DevOps, Container, Infrastructure
+Tags: Docker, Networking, DevOps, Containers, Infrastructure
 
 Description: Learn the different Docker network modes including bridge, host, none, and container networking.
 

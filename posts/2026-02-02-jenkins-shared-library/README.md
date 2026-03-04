@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Jenkins, CI/CD, DevOps, Automation, Groovy, Pipeline
+Tags: Jenkins, CI/CD, DevOps, Automation, Groovy, Pipelines
 
 Description: Learn how to create reusable Jenkins Shared Libraries with custom functions, global variables, and resource files to standardize pipelines across your organization.
 

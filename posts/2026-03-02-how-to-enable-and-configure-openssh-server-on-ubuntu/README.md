@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, SSH, OpenSSH, Security, Sysadmin
+Tags: Ubuntu, SSH, OpenSSH, Security, SysAdmin
 
 Description: Install, enable, and securely configure OpenSSH server on Ubuntu with key-based authentication, hardened settings, and port customization for secure remote access.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CloudWatch, ECS, Alarms, Container, Monitoring
+Tags: AWS, CloudWatch, ECS, Alarms, Containers, Monitoring
 
 Description: Set up CloudWatch alarms to monitor ECS service health including task failures, CPU and memory utilization, and deployment stability.
 

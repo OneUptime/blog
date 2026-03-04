@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Valheim, Game Server, Container, Self-Hosted, Gaming, Multiplayer, Steam, Linux
+Tags: Docker, Valheim, Game Server, Containers, Self-Hosted, Gaming, Multiplayer, Steam, Linux
 
 Description: Deploy a dedicated Valheim server in Docker with world persistence, password protection, and mod support for your Viking adventures.
 

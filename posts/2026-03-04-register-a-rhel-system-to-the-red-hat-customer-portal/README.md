@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Subscription, Registration, Red Hat, Linux
+Tags: RHEL, Subscriptions, Registration, Red Hat, Linux
 
 Description: Register your RHEL system with the Red Hat Customer Portal using subscription-manager to access repositories, updates, and support.
 

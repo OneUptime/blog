@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Factorio, Game Server, Container, Self-Hosted, Gaming, Multiplayer, Automation
+Tags: Docker, Factorio, Game Server, Containers, Self-Hosted, Gaming, Multiplayer, Automation
 
 Description: Deploy a dedicated Factorio multiplayer server in Docker with save management, mod support, RCON access, and automated backups for your factory empire.
 

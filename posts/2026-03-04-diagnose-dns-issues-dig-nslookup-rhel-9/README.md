@@ -54,7 +54,7 @@ dig example.com +short
 
 A full dig response has these sections:
 
-```
+```bash
 ;; HEADER - Status codes, flags, counts
 ;; QUESTION SECTION - What you asked
 ;; ANSWER SECTION - The response records

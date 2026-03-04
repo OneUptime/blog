@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Registry, DevOps, Container, CI/CD, Infrastructure
+Tags: Docker, Registry, DevOps, Containers, CI/CD, Infrastructure
 
 Description: Learn how to configure a Docker Registry for storing and distributing container images, including storage backends, authentication, TLS setup, garbage collection, and production best practices.
 

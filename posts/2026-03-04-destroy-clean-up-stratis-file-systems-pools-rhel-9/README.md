@@ -87,7 +87,7 @@ sudo vi /etc/fstab
 
 Remove lines like:
 
-```
+```bash
 UUID=xxx /documents xfs defaults,x-systemd.requires=stratisd.service 0 0
 ```
 

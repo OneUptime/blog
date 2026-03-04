@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, PATH, Filesystem, JavaScript, CrossPlatform
+Tags: NodeJS, PATH, Filesystems, JavaScript, CrossPlatform
 
 Description: Learn how to use the Node.js path module for cross-platform file path manipulation including joining paths, resolving absolute paths, and extracting file information.
 

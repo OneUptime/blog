@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Container, Learning Resource, DevOps, Cloud
+Tags: Kubernetes, Containers, Learning Resource, DevOps, Cloud
 
 Description: A beginner-friendly path to Kubernetes - what the pieces are, how they talk to each other, and one practical Deployment + Service example you can run today.
 

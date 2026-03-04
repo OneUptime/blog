@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Terraform Enterprise, TLS, SSL, Certificate, Security
+Tags: Terraform, Terraform Enterprise, TLS, SSL, Certificates, Security
 
 Description: Step-by-step guide to setting up TLS certificates for Terraform Enterprise, including using Let's Encrypt, private CAs, and troubleshooting common certificate issues.
 

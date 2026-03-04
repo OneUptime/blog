@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Configuration Management, Template, DevOps
+Tags: Ansible, Configuration Management, Templates, DevOps
 
 Description: Manage application configuration files with Ansible using templates, environment-specific variables, and Ansible Vault for secrets.
 

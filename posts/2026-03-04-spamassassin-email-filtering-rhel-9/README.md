@@ -45,7 +45,7 @@ The main configuration file is `/etc/mail/spamassassin/local.cf`. Edit it:
 sudo vi /etc/mail/spamassassin/local.cf
 ```
 
-```
+```bash
 # Required score to be classified as spam (default is 5.0)
 required_score 5.0
 
@@ -88,7 +88,7 @@ sudo dnf install -y spamass-milter
 
 Configure the milter. Edit `/etc/sysconfig/spamass-milter`:
 
-```
+```bash
 # Pass messages to spamc for scanning
 EXTRA_FLAGS="-m -r 15"
 ```
@@ -97,7 +97,7 @@ The `-m` flag tells the milter to modify messages (add headers), and `-r 15` rej
 
 Add the milter to Postfix. Edit `/etc/postfix/main.cf`:
 
-```
+```bash
 # SpamAssassin milter
 smtpd_milters = unix:/run/spamass-milter/postfix/sock
 non_smtpd_milters = unix:/run/spamass-milter/postfix/sock
@@ -118,7 +118,7 @@ sudo systemctl enable --now spamass-milter
 
 Add to `/etc/postfix/master.cf`:
 
-```
+```bash
 # SpamAssassin content filter
 smtp      inet  n       -       n       -       -       smtpd
     -o content_filter=spamassassin
@@ -154,7 +154,7 @@ sudo systemctl enable --now spamassassin-update.timer
 
 Or add a cron job:
 
-```
+```bash
 # Update SpamAssassin rules daily at 3 AM
 0 3 * * * /usr/bin/sa-update && systemctl reload spamassassin
 ```
@@ -205,7 +205,7 @@ spamassassin -t < /tmp/test-message.eml
 
 Look for SpamAssassin headers in delivered messages:
 
-```
+```bash
 X-Spam-Status: No, score=-1.0 required=5.0 tests=ALL_TRUSTED,BAYES_00 autolearn=ham
 X-Spam-Score: -1.0
 ```
@@ -216,7 +216,7 @@ X-Spam-Score: -1.0
 
 Edit `/etc/sysconfig/spamassassin`:
 
-```
+```bash
 # Number of child processes
 SPAMDOPTIONS="-d -c -m5 -H --max-conn-per-child=200"
 ```
@@ -228,7 +228,7 @@ SPAMDOPTIONS="-d -c -m5 -H --max-conn-per-child=200"
 
 If SpamAssassin is too slow, disable some checks in `local.cf`:
 
-```
+```bash
 # Disable network-based checks for speed
 skip_rbl_checks 1
 dns_available no
@@ -238,7 +238,7 @@ dns_available no
 
 Add custom rules to `/etc/mail/spamassassin/local.cf`:
 
-```
+```bash
 # Custom rule: penalize mail with "lottery" in subject
 header LOCAL_LOTTERY Subject =~ /lottery/i
 score LOCAL_LOTTERY 3.0

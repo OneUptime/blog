@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Instances, Debugging, Log Streaming, Troubleshooting, Container, DevOps
+Tags: Azure, Container Instances, Debugging, Log Streaming, Troubleshooting, Containers, DevOps
 
 Description: A practical guide to debugging failed Azure Container Instances using container logs, event streams, exec commands, and diagnostic techniques.
 

@@ -270,7 +270,7 @@ tail -f /var/log/chrony/tracking.log
 
 The `makestep` directive controls when Chrony is allowed to step (jump) the clock versus slewing (gradually adjusting) it:
 
-```
+```bash
 makestep 1.0 3
 ```
 
@@ -280,13 +280,13 @@ Stepping the clock is necessary when the time is way off (like after a reboot), 
 
 For environments where the clock should never be stepped after initial sync:
 
-```
+```bash
 makestep 1.0 3
 ```
 
 For environments that need to handle large time corrections at any point (VMs that might be paused/resumed):
 
-```
+```bash
 makestep 1.0 -1
 ```
 

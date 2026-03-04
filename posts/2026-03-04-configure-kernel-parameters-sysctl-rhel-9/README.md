@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, sysctl, Kernel, Tuning, Linux
+Tags: RHEL, Sysctl, Kernel, Tuning, Linux
 
 Description: A hands-on guide to viewing, modifying, and managing kernel parameters using sysctl on RHEL, covering runtime changes, common tunable parameters, and practical use cases.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Cryptography, TLS, SSL, Certificate, DevOps
+Tags: Ansible, Cryptography, TLS, SSL, Certificates, DevOps
 
 Description: Manage TLS certificates, private keys, CSRs, and ACME certificates using the community.crypto Ansible collection with practical examples.
 

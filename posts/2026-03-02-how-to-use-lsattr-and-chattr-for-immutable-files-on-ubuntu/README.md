@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, File System, System Administration, Linux
+Tags: Ubuntu, Security, File Systems, System Administration, Linux
 
 Description: Learn how to use chattr and lsattr on Ubuntu to set and view extended filesystem attributes, including making files immutable to prevent modification even by root.
 

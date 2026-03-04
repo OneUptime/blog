@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Resource Management, cgroups
+Tags: Ubuntu, systemd, Resource Management, Cgroups
 
 Description: Learn how systemd slices and scopes work for organizing processes into resource-controlled groups on Ubuntu using the cgroup hierarchy.
 

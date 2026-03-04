@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, Filesystem, Performance
+Tags: Ubuntu, Linux, Filesystems, Performance
 
 Description: Use tmpfs on Ubuntu to create RAM-backed temporary filesystems for high-speed storage, reducing I/O latency for temporary files, build artifacts, and caches.
 

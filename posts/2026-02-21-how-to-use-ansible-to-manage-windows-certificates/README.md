@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Windows, Certificate, Security
+Tags: Ansible, Windows, Certificates, Security
 
 Description: Automate Windows certificate management with Ansible to import, export, and manage SSL/TLS certificates across your infrastructure.
 

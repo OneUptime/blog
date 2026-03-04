@@ -21,7 +21,7 @@ cat /proc/cmdline
 
 A typical output might look like:
 
-```
+```bash
 BOOT_IMAGE=(hd0,msdos1)/vmlinuz-5.14.0-362.el9.x86_64 root=/dev/mapper/rhel-root ro crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M resume=/dev/mapper/rhel-swap rd.lvm.lv=rhel/root rd.lvm.lv=rhel/swap
 ```
 

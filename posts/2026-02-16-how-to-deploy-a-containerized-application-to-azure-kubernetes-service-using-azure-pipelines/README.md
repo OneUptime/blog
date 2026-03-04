@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Kubernetes Service, Azure Pipelines, Docker, Kubernetes, CI/CD, Container, Azure DevOps
+Tags: Azure Kubernetes Service, Azure Pipelines, Docker, Kubernetes, CI/CD, Containers, Azure DevOps
 
 Description: Build a complete CI/CD pipeline that builds Docker images and deploys them to Azure Kubernetes Service using Azure Pipelines.
 

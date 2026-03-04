@@ -415,12 +415,12 @@ Brief description of what this feature does and why you would use it.
 Get up and running in 5 minutes:
 
 ```bash
-# Install the package
+## Install the package
 npm install @org/package
 
-# Run the setup wizard
+## Run the setup wizard
 npx @org/package init
-```
+```bash
 
 ## Configuration
 
@@ -429,11 +429,11 @@ npx @org/package init
 Explanation of basic options...
 
 ```yaml
-# config.yaml
+## config.yaml
 setting: value
 nested:
   option: true
-```
+```bash
 
 ### Advanced Configuration
 
@@ -444,13 +444,13 @@ For complex scenarios...
 ### Example 1: Common Use Case
 
 ```python
-# Complete, runnable example
+## Complete, runnable example
 from package import Client
 
 client = Client(api_key="your-key")
 result = client.operation()
 print(result)
-```
+```bash
 
 ### Example 2: Edge Case
 

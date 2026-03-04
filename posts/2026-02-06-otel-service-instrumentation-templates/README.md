@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Instrumentation, Template, Developer Productivity
+Tags: OpenTelemetry, Instrumentation, Templates, Developer Productivity
 
 Description: Build reusable OpenTelemetry instrumentation templates that let teams add production-grade observability to new services in minutes, not days.
 

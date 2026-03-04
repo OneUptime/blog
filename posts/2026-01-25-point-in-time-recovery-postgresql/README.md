@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Backup, Recovery, Disaster Recovery, Database Administration
+Tags: PostgreSQL, Backups, Recovery, Disaster Recovery, Database Administration
 
 Description: Learn how to configure and perform Point-in-Time Recovery (PITR) in PostgreSQL to recover your database to any specific moment, protecting against accidental data loss and corruption.
 

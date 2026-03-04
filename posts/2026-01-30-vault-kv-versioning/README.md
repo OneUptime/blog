@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Vault, Security, Secret, Versioning
+Tags: Vault, Security, Secrets, Versioning
 
 Description: Learn how to use HashiCorp Vault KV v2 secret versioning to maintain secret history, recover deleted secrets, and implement robust secret lifecycle management.
 

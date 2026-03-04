@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GraphQL, Subscription, Real-Time, WebSocket, Backend Development
+Tags: GraphQL, Subscriptions, Real-Time, WebSocket, Backend Development
 
 Description: Learn how to implement GraphQL subscriptions for real-time updates using WebSocket connections with Apollo Server and other frameworks.
 

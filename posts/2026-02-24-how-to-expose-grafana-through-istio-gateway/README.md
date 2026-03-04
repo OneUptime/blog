@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Grafana, Gateway, Monitoring, Dashboard
+Tags: Istio, Grafana, Gateway, Monitoring, Dashboards
 
 Description: How to expose Grafana dashboards through an Istio Gateway with TLS, authentication, and proper configuration for team-wide access.
 

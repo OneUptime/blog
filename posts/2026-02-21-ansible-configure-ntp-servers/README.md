@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, NTP, Time Synchronization, Linux, chrony
+Tags: Ansible, NTP, Time Synchronization, Linux, Chrony
 
 Description: Learn how to configure NTP time synchronization on Linux servers using Ansible with chrony and ntpd for accurate and consistent timekeeping.
 

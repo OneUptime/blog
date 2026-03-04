@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filter, Date Formatting, Template, Automation
+Tags: Ansible, Filter, Date Formatting, Templates, Automation
 
 Description: Learn how to use the strftime filter in Ansible to format dates and timestamps for log files, backup names, and configuration headers.
 

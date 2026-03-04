@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Reporting, Template, Automation
+Tags: Ansible, Reporting, Templates, Automation
 
 Description: Learn how to use Ansible to generate infrastructure reports from gathered facts, API data, and custom variables using Jinja2 templates and data aggregation.
 

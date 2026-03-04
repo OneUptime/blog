@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Pod Security, securityContext, RBAC, Container, DevSecOps
+Tags: Kubernetes, Security, Pod Security, securityContext, RBAC, Containers, DevSecOps
 
 Description: Learn how to properly implement Kubernetes Pod Security Contexts to enforce least privilege, prevent container escapes, and comply with security policies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container, DevOps, Development, VS Code
+Tags: Docker, Containers, DevOps, Development, VS Code
 
 Description: Configure .devcontainer.json, sync extensions and dotfiles, and create team-wide reproducible development environments in VS Code.
 

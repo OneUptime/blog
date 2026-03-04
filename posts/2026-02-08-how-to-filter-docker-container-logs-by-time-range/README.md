@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, Logs, Logging, Debugging, DevOps, Troubleshooting
+Tags: Docker, Containers, Logs, Logging, Debugging, DevOps, Troubleshooting
 
 Description: Learn how to filter Docker container logs by specific time ranges using --since and --until flags for faster debugging and log analysis.
 

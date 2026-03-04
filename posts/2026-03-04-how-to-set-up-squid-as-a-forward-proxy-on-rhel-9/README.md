@@ -26,7 +26,7 @@ sudo vi /etc/squid/squid.conf
 
 Key settings:
 
-```
+```bash
 # Listen port
 http_port 3128
 
@@ -49,7 +49,7 @@ http_access deny all
 
 ## Configure Caching
 
-```
+```bash
 # Cache settings
 cache_dir ufs /var/spool/squid 10000 16 256
 maximum_object_size 100 MB
@@ -82,7 +82,7 @@ export https_proxy=http://proxy.example.com:3128
 
 Block specific domains:
 
-```
+```bash
 acl blocked_sites dstdomain .facebook.com .twitter.com
 http_access deny blocked_sites
 ```

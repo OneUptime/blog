@@ -54,7 +54,7 @@ wrk -t4 -c200 -d30s --latency http://localhost/
 
 ## Key Metrics
 
-```
+```bash
 Running 30s test @ http://localhost/
   4 threads and 200 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev

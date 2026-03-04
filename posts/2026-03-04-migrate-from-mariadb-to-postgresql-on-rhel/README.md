@@ -127,7 +127,7 @@ sudo -u postgres psql -d myapp_pg -c "SELECT COUNT(*) FROM users;"
 
 ## Common Data Type Differences
 
-```
+```bash
 MariaDB              PostgreSQL
 ---------            ----------
 TINYINT              SMALLINT

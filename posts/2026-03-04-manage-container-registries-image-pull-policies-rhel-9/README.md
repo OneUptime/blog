@@ -14,7 +14,7 @@ When you type `podman pull nginx`, how does Podman know where to look? The answe
 
 The main configuration file is `/etc/containers/registries.conf`:
 
-# View the current registry configuration
+## View the current registry configuration
 ```bash
 cat /etc/containers/registries.conf
 ```
@@ -35,12 +35,12 @@ When you pull `nginx` instead of `docker.io/library/nginx`, Podman needs to reso
 - `permissive` - Prompts but allows pulling without confirmation
 - `disabled` - Searches registries in order without prompting
 
-# Pull with a short name (will prompt for registry selection)
+## Pull with a short name (will prompt for registry selection)
 ```bash
 podman pull nginx
 ```
 
-# Pull with a fully qualified name (no ambiguity)
+## Pull with a fully qualified name (no ambiguity)
 ```bash
 podman pull docker.io/library/nginx:latest
 ```
@@ -112,27 +112,27 @@ Only use this for development. Production registries should always use TLS.
 
 Podman stores registry credentials in `${XDG_RUNTIME_DIR}/containers/auth.json`:
 
-# Log in to Red Hat registry
+## Log in to Red Hat registry
 ```bash
 podman login registry.redhat.io
 ```
 
-# Log in to Docker Hub
+## Log in to Docker Hub
 ```bash
 podman login docker.io
 ```
 
-# Log in to a private registry
+## Log in to a private registry
 ```bash
 podman login registry.example.com
 ```
 
-# View stored credentials
+## View stored credentials
 ```bash
 cat ${XDG_RUNTIME_DIR}/containers/auth.json | jq .
 ```
 
-# Log out from a registry
+## Log out from a registry
 ```bash
 podman logout registry.example.com
 ```
@@ -141,12 +141,12 @@ podman logout registry.example.com
 
 For automation and CI/CD, you can specify auth files:
 
-# Create an auth file for CI/CD use
+## Create an auth file for CI/CD use
 ```bash
 podman login --authfile /tmp/ci-auth.json registry.example.com
 ```
 
-# Pull using a specific auth file
+## Pull using a specific auth file
 ```bash
 podman pull --authfile /tmp/ci-auth.json registry.example.com/my-app:latest
 ```
@@ -184,13 +184,13 @@ Options: `always`, `missing`, `never`, `newer`.
 
 For private registries with custom CA certificates:
 
-# Copy the registry CA certificate
+## Copy the registry CA certificate
 ```bash
 sudo mkdir -p /etc/containers/certs.d/registry.example.com/
 sudo cp ca.crt /etc/containers/certs.d/registry.example.com/
 ```
 
-# For client certificate authentication
+## For client certificate authentication
 ```bash
 sudo cp client.cert /etc/containers/certs.d/registry.example.com/
 sudo cp client.key /etc/containers/certs.d/registry.example.com/
@@ -243,22 +243,24 @@ Edit the user-level file to add personal registries or override settings.
 
 ## Troubleshooting Registry Issues
 
-# Test connectivity to a registry
+This section covers troubleshooting registry issues.
+
+## Test connectivity to a registry
 ```bash
 skopeo inspect docker://registry.example.com/my-app:latest
 ```
 
-# Check TLS certificate issues
+## Check TLS certificate issues
 ```bash
 openssl s_client -connect registry.example.com:443 -showcerts
 ```
 
-# Pull with debug logging
+## Pull with debug logging
 ```bash
 podman --log-level debug pull registry.example.com/my-app:latest
 ```
 
-# Verify auth credentials are stored
+## Verify auth credentials are stored
 ```bash
 podman login --get-login registry.example.com
 ```

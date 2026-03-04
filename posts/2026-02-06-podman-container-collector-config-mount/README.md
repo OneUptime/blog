@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Podman, Collector, Container
+Tags: OpenTelemetry, Podman, Collector, Containers
 
 Description: Run the OpenTelemetry Collector as a rootless Podman container with configuration file mounts and Podman API socket access for container monitoring.
 

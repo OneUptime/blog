@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lambda, Docker, Container, Serverless
+Tags: AWS, Lambda, Docker, Containers, Serverless
 
 Description: Learn how to package and deploy AWS Lambda functions as container images using Docker, including custom runtimes, large dependencies, and CI/CD integration.
 

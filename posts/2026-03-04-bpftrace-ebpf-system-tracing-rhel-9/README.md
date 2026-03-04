@@ -31,7 +31,7 @@ bpftrace --version
 
 bpftrace programs consist of probes and actions:
 
-```
+```bash
 probe /filter/ { action }
 ```
 

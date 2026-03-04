@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Immutable Infrastructure, Security, File System, Kubernetes
+Tags: Talos Linux, Immutable Infrastructure, Security, File Systems, Kubernetes
 
 Description: Understand how the immutable filesystem in Talos Linux works and why it makes your Kubernetes nodes more secure and reliable.
 

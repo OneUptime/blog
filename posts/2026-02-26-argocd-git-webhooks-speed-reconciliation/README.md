@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Webhook, Performance
+Tags: ArgoCD, GitOps, Kubernetes, Webhooks, Performance
 
 Description: Learn how to configure Git webhooks in ArgoCD to trigger immediate reconciliation on push events instead of waiting for the default polling interval.
 

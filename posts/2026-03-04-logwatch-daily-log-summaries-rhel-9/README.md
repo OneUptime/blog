@@ -245,7 +245,7 @@ Archive = /var/log/myapp/*.log.*.gz
 
 A typical Logwatch report looks like this:
 
-```
+```bash
 ################### Logwatch 7.7 (03/07/22) ####################
         Processing Initiated: Wed Mar 4 07:00:01 2026
         Date Range Processed: yesterday

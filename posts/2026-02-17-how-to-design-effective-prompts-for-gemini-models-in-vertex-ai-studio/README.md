@@ -121,7 +121,7 @@ resource "google_storage_bucket" "data_lake" {
   location      = "US"
   storage_class = "STANDARD"
 }
-```
+```bash
 
 Example 2:
 Description: A Cloud SQL PostgreSQL 14 instance named "app-db" with 4 vCPUs and 16 GB RAM in us-central1
@@ -136,7 +136,7 @@ resource "google_sql_database_instance" "app_db" {
     tier = "db-custom-4-16384"
   }
 }
-```
+```bash
 
 Now convert this:
 Description: A VPC network named "production-vpc" with auto-create subnetworks disabled, and a subnet named "app-subnet" in us-central1 with CIDR range 10.0.0.0/24
@@ -249,7 +249,7 @@ spec:
     env:
     - name: DB_PASSWORD
       value: "supersecret123"
-```
+```bash
 
 For each issue found:
 1. Describe the vulnerability

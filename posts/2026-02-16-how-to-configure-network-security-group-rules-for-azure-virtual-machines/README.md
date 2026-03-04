@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Network Security Group, NSG, Virtual Machine, Networking, Security, Firewall
+Tags: Azure, Network Security Group, NSG, Virtual Machines, Networking, Security, Firewall
 
 Description: Learn how to create and manage Azure Network Security Group rules to control inbound and outbound traffic for your virtual machines.
 

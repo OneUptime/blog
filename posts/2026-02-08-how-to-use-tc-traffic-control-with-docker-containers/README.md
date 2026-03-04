@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Traffic Control, tc, Networking, QoS, Linux, Container
+Tags: Docker, Traffic Control, tc, Networking, QoS, Linux, Containers
 
 Description: Shape, limit, and simulate network conditions for Docker containers using Linux tc (traffic control) with practical examples.
 

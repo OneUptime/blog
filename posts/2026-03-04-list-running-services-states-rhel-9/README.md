@@ -23,7 +23,7 @@ systemctl list-units --type=service
 
 The output includes columns for the unit name, load state, active state, sub-state, and a description:
 
-```
+```bash
 UNIT                     LOAD   ACTIVE SUB     DESCRIPTION
 auditd.service           loaded active running Security Auditing Service
 chronyd.service          loaded active running NTP client/server
@@ -128,7 +128,7 @@ systemctl list-unit-files --type=service
 
 The output shows the enablement state (enabled, disabled, static, masked) rather than the runtime state:
 
-```
+```bash
 UNIT FILE                    STATE    PRESET
 auditd.service               enabled  enabled
 bluetooth.service            disabled enabled

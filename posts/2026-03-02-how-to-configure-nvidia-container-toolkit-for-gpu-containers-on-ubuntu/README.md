@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, NVIDIA, Docker, GPU, Container
+Tags: Ubuntu, NVIDIA, Docker, GPU, Containers
 
 Description: Learn how to install the NVIDIA Container Toolkit on Ubuntu to enable GPU access in Docker containers for machine learning, video processing, and HPC workloads.
 

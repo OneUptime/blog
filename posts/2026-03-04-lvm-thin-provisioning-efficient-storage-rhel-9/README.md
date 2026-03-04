@@ -113,7 +113,7 @@ lvs -o lv_name,data_percent,metadata_percent vg_data/thinpool
 
 You should see something like:
 
-```
+```bash
   LV       Data%  Meta%
   thinpool 15.23  2.41
 ```
@@ -169,7 +169,7 @@ When files are deleted from thin volumes, the space should be returned to the po
 
 In fstab:
 
-```
+```bash
 /dev/vg_data/web_data  /data/web  xfs  defaults,discard  0 0
 ```
 

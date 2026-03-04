@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Testing, Sanity Tests, Collection, Quality
+Tags: Ansible, Testing, Sanity Tests, Collections, Quality
 
 Description: Learn how to run Ansible sanity tests to validate code quality, documentation, and compliance with Ansible standards for collections and modules.
 

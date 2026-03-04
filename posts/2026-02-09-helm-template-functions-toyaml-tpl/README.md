@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, Template
+Tags: Helm, Kubernetes, Templates
 
 Description: Master Helm's powerful template functions including toYaml, tpl, and include to create flexible, reusable charts that handle complex configuration scenarios.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, WAF, Managed Rules, Security, Web Application
+Tags: AWS, WAF, Managed Rules, Security, Web Applications
 
 Description: Learn how to use AWS WAF managed rule groups to get instant protection against common web threats without writing custom rules from scratch.
 

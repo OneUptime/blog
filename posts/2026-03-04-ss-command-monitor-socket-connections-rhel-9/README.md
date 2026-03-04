@@ -133,7 +133,7 @@ ss -s
 
 Example output:
 
-```
+```bash
 Total: 156
 TCP:   45 (estab 12, closed 8, orphaned 0, timewait 8)
 Transport   Total   IP    IPv6

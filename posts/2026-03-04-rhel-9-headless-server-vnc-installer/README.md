@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VNC, Headless Server, Installation, Linux
 
-Description: Learn how to install RHEL on a headless server by enabling the VNC-based graphical installer through boot parameters, connecting remotely with a VNC client, and completing the full installation without a monitor or keyboard attached.
+Description: Learn how to install RHEL on a headless server by enabling the VNC-based graphical installer through boot parameters, connecting remotely with a VNC client, and completing the full installation...
 
 ---
 
@@ -64,7 +64,7 @@ After editing, press `Ctrl+x` to boot with the modified parameters.
 
 As the installer boots, it will eventually output a message on the console that looks like this:
 
-```
+```bash
 Starting VNC...
 The VNC server is now running.
 Please connect to 192.168.1.50:1 to begin the installation...

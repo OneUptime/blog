@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, MariaDB, Backup, Restore, Disaster Recovery, Data Protection, Cloud Database
+Tags: Azure, MariaDB, Backups, Restore, Disaster Recovery, Data Protection, Cloud Database
 
 Description: Learn how to configure automated backups, point-in-time restore, and geo-redundant backups for Azure Database for MariaDB to protect your data.
 

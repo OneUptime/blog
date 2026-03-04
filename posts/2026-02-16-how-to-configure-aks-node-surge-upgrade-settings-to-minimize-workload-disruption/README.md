@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Node Surge, Upgrade, Kubernetes, Availability, Azure, Rolling Update
+Tags: AKS, Node Surge, Upgrade, Kubernetes, Availability, Azure, Rolling Updates
 
 Description: Learn how to configure AKS node surge upgrade settings to control the speed and safety of node pool upgrades while minimizing workload disruption.
 

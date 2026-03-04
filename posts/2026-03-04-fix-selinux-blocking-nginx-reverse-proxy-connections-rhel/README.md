@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SELinux, Nginx, Reverse Proxy, Troubleshooting
+Tags: RHEL, SELinux, NGINX, Reverse Proxy, Troubleshooting
 
 Description: Fix SELinux denials that prevent Nginx from making outbound network connections when configured as a reverse proxy on RHEL.
 

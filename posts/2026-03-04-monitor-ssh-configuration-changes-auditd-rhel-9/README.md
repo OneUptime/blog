@@ -126,7 +126,7 @@ sudo auditctl -l | grep ssh
 
 You should see output like:
 
-```
+```bash
 -w /etc/ssh/sshd_config -p wa -k sshd_config_change
 -w /etc/ssh/sshd_config.d -p wa -k sshd_config_change
 -w /etc/ssh/ssh_config -p wa -k ssh_client_config_change
@@ -177,7 +177,7 @@ sudo ausearch -k sshd_config_change --raw | awk -F'(' '{print $2}' | cut -d. -f1
 
 A typical audit entry for an SSH config change:
 
-```
+```bash
 type=SYSCALL msg=audit(1709568000.456:789): arch=c000003e syscall=257
 success=yes exit=3 a0=ffffff9c a1=55a5b2c04010 a2=241 a3=1b6
 items=2 ppid=2345 pid=6789 auid=1000 uid=0 gid=0 euid=0 suid=0

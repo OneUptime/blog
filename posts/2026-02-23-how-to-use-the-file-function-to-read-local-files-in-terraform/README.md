@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, file Function, File System, HCL, Infrastructure as Code, Configuration Management
+Tags: Terraform, file Function, File Systems, HCL, Infrastructure as Code, Configuration Management
 
 Description: Learn how to use the file function in Terraform to read the contents of local files and embed them directly into your infrastructure configuration.
 

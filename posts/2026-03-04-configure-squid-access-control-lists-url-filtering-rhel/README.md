@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Squid, ACL, URL Filtering, Proxy, Security, Linux
+Tags: RHEL, Squid, ACLs, URL Filtering, Proxy, Security, Linux
 
 Description: Use Squid ACLs on RHEL to filter URLs, block unwanted websites, restrict access by time, and enforce browsing policies for your network.
 

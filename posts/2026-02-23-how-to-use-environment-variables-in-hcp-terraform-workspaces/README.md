@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Environment Variable, Workspace, Secrets Management
+Tags: Terraform, HCP Terraform, Environment Variables, Workspaces, Secrets Management
 
 Description: Learn how to configure and manage environment variables in HCP Terraform workspaces for provider auth and runtime configuration.
 

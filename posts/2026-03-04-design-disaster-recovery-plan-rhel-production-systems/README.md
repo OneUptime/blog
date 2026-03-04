@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Disaster Recovery, Backup, Production, Linux
+Tags: RHEL, Disaster Recovery, Backups, Production, Linux
 
 Description: Build a disaster recovery plan for RHEL production servers covering backup strategies, recovery procedures, and testing practices.
 
@@ -14,7 +14,7 @@ A disaster recovery (DR) plan for RHEL systems ensures you can restore service a
 
 Before configuring anything, establish your RPO (Recovery Point Objective) and RTO (Recovery Time Objective):
 
-```
+```bash
 RPO: Maximum acceptable data loss (e.g., 1 hour = hourly backups)
 RTO: Maximum acceptable downtime (e.g., 4 hours = must restore in 4 hours)
 ```

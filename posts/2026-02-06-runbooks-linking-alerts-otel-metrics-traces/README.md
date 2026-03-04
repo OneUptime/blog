@@ -52,7 +52,7 @@ sum(rate(http_server_request_duration_seconds_count{
 sum(rate(http_server_request_duration_seconds_count{
   service_name="order-service"
 }[5m])) > 0.05
-```
+```bash
 
 **Threshold**: Error rate > 5% for 5 minutes
 **Severity**: P2
@@ -68,7 +68,7 @@ Customers may be unable to complete purchases.
    ```bash
    kubectl rollout history deployment/order-service -n commerce
    # If a rollout happened in the last 30 minutes, consider rolling back
-   ```
+   ```bash
 
 2. Check the error breakdown by endpoint:
    ```promql
@@ -78,7 +78,7 @@ Customers may be unable to complete purchases.
        http_response_status_code=~"5.."
      }[5m])
    )
-   ```
+   ```bash
 
 3. Find error traces in your observability backend:
    ```text
@@ -88,7 +88,7 @@ Customers may be unable to complete purchases.
      && status = error
      && span.http.response.status_code >= 500
    } | select(span.http.route, status)
-   ```
+   ```bash
 
 ### Diagnosis
 
@@ -106,7 +106,7 @@ Common patterns:
     && span.db.system = "postgresql"
     && duration > 5s
   }
-  ```
+  ```bash
 - **Downstream service failure**: Look for HTTP client spans with 5xx responses
   ```text
   {
@@ -114,11 +114,11 @@ Common patterns:
     && kind = client
     && span.http.response.status_code >= 500
   }
-  ```
+  ```bash
 - **Memory pressure**: Check the runtime metrics dashboard
   ```promql
   process_runtime_jvm_memory_usage_bytes{service_name="order-service"}
-  ```
+  ```bash
 
 ### Remediation
 
@@ -148,7 +148,7 @@ histogram_quantile(0.99,
     http_route="/api/v1/orders"
   }[5m])) by (le)
 ) > 2.0
-```
+```bash
 
 **Threshold**: P99 latency > 2 seconds for 5 minutes
 **Severity**: P3
@@ -169,7 +169,7 @@ This may indicate a performance regression or resource contention.
        }[5m])
      )
    )
-   ```
+   ```bash
 
 2. Find the slowest traces:
    ```text
@@ -178,7 +178,7 @@ This may indicate a performance regression or resource contention.
      && name = "HTTP POST /api/v1/orders"
      && duration > 2s
    }
-   ```
+   ```bash
 
 3. In the trace waterfall, identify the slowest child span.
    The bottleneck is usually the longest bar in the waterfall.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, VMware, Snapshot, vSphere, Backup
+Tags: Ansible, VMware, Snapshots, vSphere, Backups
 
 Description: Learn how to create, delete, revert, and manage VMware VM snapshots with Ansible for change management and disaster recovery workflows.
 

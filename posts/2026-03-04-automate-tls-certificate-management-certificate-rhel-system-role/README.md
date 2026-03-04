@@ -1,4 +1,4 @@
-# How to Automate TLS Certificate Management Using the certificate RHEL System Role
+# How to Automate TLS Certificates with the certificate System Role
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

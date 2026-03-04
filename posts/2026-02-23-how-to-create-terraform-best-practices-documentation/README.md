@@ -211,28 +211,28 @@ Before any state operation:
 
 ### Moving Resources Between States
 ```bash
-# Step 1: Remove from source state
+## Step 1: Remove from source state
 terraform state rm 'aws_instance.example'
 
-# Step 2: Import into destination state
+## Step 2: Import into destination state
 cd ../destination
 terraform import 'aws_instance.example' i-1234567890abcdef0
-```
+```bash
 
 ### Recovering from State Issues
 ```bash
-# List available state versions (S3 backend)
+## List available state versions (S3 backend)
 aws s3api list-object-versions \
   --bucket myorg-terraform-state \
   --prefix path/to/terraform.tfstate
 
-# Restore a previous version
+## Restore a previous version
 aws s3api get-object \
   --bucket myorg-terraform-state \
   --key path/to/terraform.tfstate \
   --version-id "versionId123" \
   restored-state.tfstate
-```
+```bash
 ```text
 
 ## Making Documentation Discoverable

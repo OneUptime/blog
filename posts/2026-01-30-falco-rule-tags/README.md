@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Falco, Security, Kubernetes, Organization
+Tags: Falco, Security, Kubernetes, Organizations
 
 Description: Learn how to use Falco rule tags to organize, filter, and manage security rules effectively in your Kubernetes environment.
 

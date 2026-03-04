@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Resilience, Pipeline, Reliability
+Tags: OpenTelemetry, Collector, Resilience, Pipelines, Reliability
 
 Description: Design OpenTelemetry Collector pipelines that handle failures gracefully with retry logic, buffering, backpressure, and redundant export paths.
 

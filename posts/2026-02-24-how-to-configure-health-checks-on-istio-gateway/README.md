@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Health Check, Gateway, Kubernetes, Monitoring
+Tags: Istio, Health Checks, Gateway, Kubernetes, Monitoring
 
 Description: How to configure health checks on an Istio Ingress Gateway for load balancer integration and backend service health monitoring.
 

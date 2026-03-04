@@ -33,7 +33,7 @@ cat /etc/corosync/corosync.conf
 
 A typical configuration:
 
-```
+```bash
 totem {
     version: 2
     cluster_name: my-cluster
@@ -71,7 +71,7 @@ logging {
 
 RHEL defaults to `knet` (Kronosnet) transport, which supports multiple links, encryption, and compression:
 
-```
+```bash
 totem {
     transport: knet
 }

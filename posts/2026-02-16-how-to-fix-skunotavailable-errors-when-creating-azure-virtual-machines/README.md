@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, SkuNotAvailable, Troubleshooting, Compute, Cloud, VM Sizing
+Tags: Azure, Virtual Machines, SkuNotAvailable, Troubleshooting, Compute, Cloud, VM Sizing
 
 Description: Learn how to resolve SkuNotAvailable errors when creating Azure VMs by finding available sizes and working around regional restrictions.
 

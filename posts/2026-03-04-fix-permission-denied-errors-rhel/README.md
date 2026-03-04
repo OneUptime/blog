@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Permissions, Troubleshooting, Linux, File System
+Tags: RHEL, Permissions, Troubleshooting, Linux, File Systems
 
 Description: A systematic approach to diagnosing and fixing 'Permission Denied' errors on RHEL, covering file permissions, ownership, ACLs, and SELinux.
 

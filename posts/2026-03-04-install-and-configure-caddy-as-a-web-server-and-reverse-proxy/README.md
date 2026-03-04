@@ -38,7 +38,7 @@ sudo vi /etc/caddy/Caddyfile
 
 ### Serve Static Files
 
-```
+```bash
 example.com {
     root * /var/www/html
     file_server
@@ -47,7 +47,7 @@ example.com {
 
 ### Reverse Proxy
 
-```
+```bash
 api.example.com {
     reverse_proxy localhost:3000
 }
@@ -55,7 +55,7 @@ api.example.com {
 
 ### Multiple Sites
 
-```
+```bash
 example.com {
     root * /var/www/html
     file_server

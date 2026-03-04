@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, fail2ban, UFW, Security, Brute Force Protection
+Tags: Ubuntu, Fail2Ban, UFW, Security, Brute Force Protection
 
 Description: Configure fail2ban to work with UFW on Ubuntu to automatically ban IP addresses showing malicious behavior, with custom jails for SSH, Nginx, and other services.
 

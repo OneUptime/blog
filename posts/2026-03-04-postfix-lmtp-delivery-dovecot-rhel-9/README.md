@@ -52,7 +52,7 @@ The `dovecot-pigeonhole` package includes Sieve filtering and the LMTP service.
 
 Edit `/etc/dovecot/dovecot.conf`:
 
-```
+```bash
 # Add lmtp to the protocols list
 protocols = imap lmtp
 ```
@@ -61,7 +61,7 @@ protocols = imap lmtp
 
 Edit `/etc/dovecot/conf.d/10-master.conf`:
 
-```
+```bash
 service lmtp {
   unix_listener /var/spool/postfix/private/dovecot-lmtp {
     mode = 0600
@@ -77,7 +77,7 @@ This creates a Unix socket inside Postfix's chroot directory so Postfix can comm
 
 Edit `/etc/dovecot/conf.d/20-lmtp.conf`:
 
-```
+```bash
 protocol lmtp {
   # Enable Sieve filtering on delivery
   mail_plugins = $mail_plugins sieve
@@ -93,14 +93,14 @@ protocol lmtp {
 
 Edit `/etc/postfix/main.cf`:
 
-```
+```bash
 # Deliver to Dovecot via LMTP instead of direct virtual delivery
 virtual_transport = lmtp:unix:private/dovecot-lmtp
 ```
 
 Remove or comment out the `virtual_mailbox_base` setting since Dovecot handles the mailbox layout now:
 
-```
+```bash
 # Comment these out - Dovecot manages delivery now
 # virtual_mailbox_base = /var/mail/vhosts
 # virtual_uid_maps = static:5000
@@ -109,7 +109,7 @@ Remove or comment out the `virtual_mailbox_base` setting since Dovecot handles t
 
 Keep these settings:
 
-```
+```bash
 virtual_mailbox_domains = hash:/etc/postfix/virtual_domains
 virtual_mailbox_maps = hash:/etc/postfix/vmailbox
 virtual_alias_maps = hash:/etc/postfix/virtual_aliases
@@ -119,7 +119,7 @@ virtual_alias_maps = hash:/etc/postfix/virtual_aliases
 
 If you are delivering to system users instead of virtual mailboxes:
 
-```
+```bash
 # Use LMTP for local delivery
 mailbox_transport = lmtp:unix:private/dovecot-lmtp
 ```
@@ -128,7 +128,7 @@ mailbox_transport = lmtp:unix:private/dovecot-lmtp
 
 Make sure Dovecot knows where to store mail. Edit `/etc/dovecot/conf.d/10-mail.conf`:
 
-```
+```bash
 # For virtual mailboxes
 mail_location = maildir:/var/mail/vhosts/%d/%n
 mail_home = /var/mail/vhosts/%d/%n
@@ -141,7 +141,7 @@ mail_home = /var/mail/vhosts/%d/%n
 
 Sieve lets users define server-side mail filtering rules. Configure it in `/etc/dovecot/conf.d/90-sieve.conf`:
 
-```
+```bash
 plugin {
   # Location of user-specific Sieve scripts
   sieve = file:~/sieve;active=~/.dovecot.sieve
@@ -163,7 +163,7 @@ sudo mkdir -p /etc/dovecot/sieve/before.d
 
 Create `/etc/dovecot/sieve/before.d/spam-to-junk.sieve`:
 
-```
+```bash
 require ["fileinto", "mailbox"];
 
 # Move spam-flagged messages to Junk
@@ -183,7 +183,7 @@ sudo sievec /etc/dovecot/sieve/before.d/spam-to-junk.sieve
 
 With LMTP delivery, quota enforcement happens at delivery time. Edit `/etc/dovecot/conf.d/90-quota.conf`:
 
-```
+```bash
 plugin {
   # Set default quota to 1 GB
   quota = maildir:User quota
@@ -208,7 +208,7 @@ protocol imap {
 
 Set up a quota warning script. Edit `/etc/dovecot/conf.d/10-master.conf`:
 
-```
+```bash
 service quota-warning {
   executable = script /usr/local/bin/quota-warning.sh
   user = dovecot
@@ -260,7 +260,7 @@ sudo grep "lmtp" /var/log/maillog | tail -5
 
 You should see log entries like:
 
-```
+```bash
 postfix/lmtp[12345]: ABC123: to=<john@example.com>, relay=relay.example.com, delay=0.2, status=sent (250 2.0.0 OK)
 ```
 

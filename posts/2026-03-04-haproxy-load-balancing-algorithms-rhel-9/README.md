@@ -21,7 +21,7 @@ HAProxy supports several load balancing algorithms. The right choice depends on 
 
 This is the default. Requests are distributed evenly across servers in order:
 
-```
+```bash
 backend web_servers
     balance roundrobin
     server web1 192.168.1.11:8080 check
@@ -33,7 +33,7 @@ backend web_servers
 
 You can assign weights to handle servers with different capacities:
 
-```
+```bash
 backend web_servers
     balance roundrobin
     server web1 192.168.1.11:8080 check weight 3
@@ -47,7 +47,7 @@ Server web1 gets three times the traffic of web3.
 
 Similar to round robin but the distribution is computed at startup and cannot change at runtime:
 
-```
+```bash
 backend web_servers
     balance static-rr
     server web1 192.168.1.11:8080 check weight 3
@@ -60,7 +60,7 @@ backend web_servers
 
 Sends new requests to the server with the fewest active connections:
 
-```
+```bash
 backend web_servers
     balance leastconn
     server web1 192.168.1.11:8080 check
@@ -74,7 +74,7 @@ backend web_servers
 
 Routes clients to servers based on a hash of the client's IP address:
 
-```
+```bash
 backend web_servers
     balance source
     server web1 192.168.1.11:8080 check
@@ -90,7 +90,7 @@ backend web_servers
 
 Routes requests based on the URI path:
 
-```
+```bash
 backend web_servers
     balance uri
     server web1 192.168.1.11:8080 check
@@ -104,7 +104,7 @@ backend web_servers
 
 Routes based on a specific URL parameter:
 
-```
+```bash
 backend web_servers
     balance url_param userid
     server web1 192.168.1.11:8080 check
@@ -119,7 +119,7 @@ A request to `/page?userid=42` always goes to the same server.
 
 Routes based on an HTTP header value:
 
-```
+```bash
 backend web_servers
     balance hdr(X-Session-ID)
     server web1 192.168.1.11:8080 check
@@ -132,7 +132,7 @@ backend web_servers
 
 Selects a random server (with optional sub-selection):
 
-```
+```bash
 backend web_servers
     balance random(2)
     server web1 192.168.1.11:8080 check
@@ -165,7 +165,7 @@ flowchart TD
 
 Any algorithm can be combined with server weights:
 
-```
+```bash
 backend web_servers
     balance leastconn
     server web1 192.168.1.11:8080 check weight 4

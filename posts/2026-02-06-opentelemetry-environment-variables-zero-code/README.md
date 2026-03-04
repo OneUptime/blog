@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Environment Variable, Zero-Code, Configuration, OTEL
+Tags: OpenTelemetry, Environment Variables, Zero-Code, Configuration, OTEL
 
 Description: Configure OpenTelemetry instrumentation without writing code using standardized environment variables for exporters, sampling, resources, and more.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWX, Ansible Tower, Execution Environment, Automation
+Tags: Ansible, AWX, Ansible Tower, Execution Environments, Automation
 
 Description: Configure AWX and Ansible Automation Platform to use custom Execution Environments for job templates, workflows, and project updates.
 

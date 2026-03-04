@@ -198,7 +198,7 @@ EOF
 
 If you have a /16 network (10.5.0.0/16), the zone covers a broader range:
 
-```
+```bash
 zone "5.10.in-addr.arpa" IN {
     type primary;
     file "10.5.rev";
@@ -207,7 +207,7 @@ zone "5.10.in-addr.arpa" IN {
 
 In this zone, PTR records use two octets:
 
-```
+```bash
 1.10    IN  PTR  server1.example.com.    ; 10.5.10.1
 2.10    IN  PTR  server2.example.com.    ; 10.5.10.2
 ```

@@ -1,4 +1,4 @@
-# How to Configure SELinux for Apache HTTPD with Non-Standard Configurations on RHEL
+# How to Configure SELinux for Apache HTTPD Non-Standard Configs on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

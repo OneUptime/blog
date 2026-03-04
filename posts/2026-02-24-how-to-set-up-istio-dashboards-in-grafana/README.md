@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Grafana, Dashboard, Monitoring, Observability
+Tags: Istio, Grafana, Dashboards, Monitoring, Observability
 
 Description: Install and configure Grafana dashboards for Istio to visualize service mesh metrics including traffic, latency, errors, and control plane health.
 

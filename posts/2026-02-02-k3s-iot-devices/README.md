@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, Kubernetes, IoT, Edge Computing, Raspberry Pi, ARM64, DevOps, Container
+Tags: K3s, Kubernetes, IoT, Edge Computing, Raspberry Pi, ARM64, DevOps, Containers
 
 Description: A practical guide to deploying and configuring K3s on IoT devices and edge hardware, covering installation, resource optimization, networking.
 

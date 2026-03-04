@@ -31,7 +31,7 @@ sudo corosync-quorumtool
 
 Output:
 
-```
+```bash
 Votequorum information
 Expected votes:   3
 Highest expected:  3

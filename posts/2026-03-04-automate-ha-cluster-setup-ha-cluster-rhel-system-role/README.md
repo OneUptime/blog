@@ -1,4 +1,4 @@
-# How to Automate High Availability Cluster Setup Using the ha_cluster RHEL System Role
+# How to Automate HA Cluster Setup Using the ha_cluster System Role
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

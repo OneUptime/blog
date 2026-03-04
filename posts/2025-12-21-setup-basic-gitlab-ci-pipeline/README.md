@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab, CI/CD, DevOps, Automation, Pipeline, Continuous Integration
+Tags: GitLab, CI/CD, DevOps, Automation, Pipelines, Continuous Integration
 
 Description: Learn how to set up a basic GitLab CI pipeline from scratch. This guide covers the essential configuration, stages, jobs, and best practices for getting started with GitLab CI/CD.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Nomad, Container, DevOps, Orchestration
+Tags: Ubuntu, Nomad, Containers, DevOps, Orchestration
 
 Description: Step-by-step guide to installing and configuring HashiCorp Nomad for container orchestration on Ubuntu, covering single-node and multi-node cluster setups.
 

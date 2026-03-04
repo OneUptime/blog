@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure DevOps, CI/CD, Azure Marketplace, ARM Templates, Automation, Pipeline, ISV
+Tags: Azure DevOps, CI/CD, Azure Marketplace, ARM Templates, Automation, Pipelines, ISV
 
 Description: Set up automated CI/CD pipelines in Azure DevOps to validate, test, and publish Azure Marketplace offer updates with minimal manual intervention.
 

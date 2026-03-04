@@ -27,7 +27,7 @@ You can mix both in the same HAProxy instance.
 
 This is the most common setup for web traffic:
 
-```
+```bash
 defaults
     mode http
     option httplog
@@ -58,7 +58,7 @@ In HTTP mode, you get access to:
 
 For non-HTTP protocols, use TCP mode:
 
-```
+```bash
 defaults
     mode tcp
     option tcplog
@@ -156,7 +156,7 @@ HAProxy understands several protocols for health checking in TCP mode:
 
 ### MySQL Check
 
-```
+```bash
 backend mysql_servers
     mode tcp
     option mysql-check user haproxy
@@ -172,7 +172,7 @@ CREATE USER 'haproxy'@'192.168.1.%';
 
 ### PostgreSQL Check
 
-```
+```bash
 backend postgres_servers
     mode tcp
     option pgsql-check user haproxy
@@ -181,7 +181,7 @@ backend postgres_servers
 
 ### Redis Check
 
-```
+```bash
 backend redis_servers
     mode tcp
     option tcp-check
@@ -192,7 +192,7 @@ backend redis_servers
 
 ### SMTP Check
 
-```
+```bash
 backend mail_servers
     mode tcp
     option smtpchk EHLO haproxy.local
@@ -222,7 +222,7 @@ For HTTPS traffic, you have two options:
 
 HAProxy forwards encrypted traffic without decrypting it. The backend handles TLS:
 
-```
+```bash
 frontend https_passthrough
     mode tcp
     bind *:443
@@ -237,7 +237,7 @@ backend tls_servers
 
 HAProxy decrypts the traffic and forwards plain HTTP to backends:
 
-```
+```bash
 frontend https_terminate
     mode http
     bind *:443 ssl crt /etc/haproxy/certs/site.pem

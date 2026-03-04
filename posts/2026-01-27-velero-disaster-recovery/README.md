@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Velero, Disaster Recovery, Backup, Cross-Cluster, Cross-Region, RTO, RPO, DevOps
+Tags: Kubernetes, Velero, Disaster Recovery, Backups, Cross-Cluster, Cross-Region, RTO, RPO, DevOps
 
 Description: A comprehensive guide to implementing Velero for Kubernetes disaster recovery, including cross-cluster restores, cross-region backups, restore ordering, and RTO/RPO strategies.
 
@@ -503,7 +503,7 @@ data:
     ```bash
     velero backup get --all-namespaces
     velero backup describe <backup-name> --details
-    ```
+    ```bash
 
     ## Step 3: Initiate Restore
     ```bash
@@ -511,13 +511,13 @@ data:
         --from-backup <backup-name> \
         --include-namespaces production,monitoring \
         --restore-pvs=true
-    ```
+    ```bash
 
     ## Step 4: Monitor Progress
     ```bash
     velero restore describe <restore-name> --details
     watch kubectl get pods -n production
-    ```
+    ```bash
 
     ## Step 5: Validate Services
     - Check all deployments are running

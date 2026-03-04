@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Desktop, VNC, Virtual Network Computing, GUI Applications, Container
+Tags: Docker, Docker Desktop, VNC, Virtual Network Computing, GUI Applications, Containers
 
 Description: Run GUI applications inside Docker containers and access them remotely using VNC with Docker Desktop.
 

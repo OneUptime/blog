@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, KVM, Snapshots, Virtualization, Backup, Linux
+Tags: RHEL, KVM, Snapshots, Virtualization, Backups, Linux
 
 Description: Learn how to create, manage, and restore KVM virtual machine snapshots on RHEL 9 for backup, testing, and rollback purposes.
 

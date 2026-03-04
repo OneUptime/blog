@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, BorgBackup, Backup, Linux
+Tags: RHEL, BorgBackup, Backups, Linux
 
 Description: Learn how to install and Configure BorgBackup for Deduplicated Backups on RHEL with step-by-step instructions, configuration examples, and best practices.
 

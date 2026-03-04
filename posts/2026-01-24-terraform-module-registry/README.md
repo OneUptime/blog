@@ -264,7 +264,7 @@ module "vpc" {
     Environment = "production"
   }
 }
-```
+```bash
 
 ## Examples
 

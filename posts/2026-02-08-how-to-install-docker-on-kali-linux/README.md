@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Kali Linux, Security, Linux, Installation, DevOps, Container, Penetration Testing
+Tags: Docker, Kali Linux, Security, Linux, Installation, DevOps, Containers, Penetration Testing
 
 Description: How to install Docker on Kali Linux for running security tools, isolated lab environments, and containerized penetration testing workflows.
 

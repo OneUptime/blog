@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, chrony, NTP, Time Synchronization
+Tags: Ansible, Chrony, NTP, Time Synchronization
 
 Description: Configure chrony for accurate time synchronization across your Linux servers using Ansible to prevent clock drift issues.
 

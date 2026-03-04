@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, VOLUME, Secret
+Tags: Kubernetes, Volumes, Secrets
 
 Description: Learn how to use Kubernetes projected volumes to combine multiple Secrets, ConfigMaps, and downward API data into a single mount point for simplified configuration management.
 

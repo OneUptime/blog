@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backup, Monitoring, Prometheus, Observability
+Tags: Velero, Kubernetes, Backups, Monitoring, Prometheus, Observability
 
 Description: Learn how to monitor Velero backup operations using Prometheus metrics, Grafana dashboards, and alerting to ensure backup reliability.
 

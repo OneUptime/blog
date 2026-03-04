@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, tuned, Storage, Performance, Tuning, Linux
+Tags: RHEL, TuneD, Storage, Performance, Tuning, Linux
 
 Description: Learn how to use the tuned daemon on RHEL to automatically apply storage performance profiles and create custom profiles for your workloads.
 

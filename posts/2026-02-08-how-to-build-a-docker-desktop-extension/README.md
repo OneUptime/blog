@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Desktop, Extension, Docker SDK, React, DevOps
+Tags: Docker, Docker Desktop, Extensions, Docker SDK, React, DevOps
 
 Description: Step-by-step guide to building a Docker Desktop extension with a React frontend and Go backend service.
 

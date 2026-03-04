@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, SSH, Certificate, Security
+Tags: Ansible, SSH, Certificates, Security
 
 Description: Implement SSH certificate-based authentication with Ansible for scalable, time-limited access control across your infrastructure.
 

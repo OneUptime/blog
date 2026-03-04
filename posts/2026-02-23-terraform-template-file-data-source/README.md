@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Data Source, Template, Infrastructure as Code, Configuration
+Tags: Terraform, Data Source, Templates, Infrastructure as Code, Configuration
 
 Description: Learn how to use the template_file data source and the templatefile function in Terraform to render dynamic configuration files with variable interpolation.
 

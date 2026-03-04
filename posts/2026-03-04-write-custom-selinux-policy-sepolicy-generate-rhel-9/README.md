@@ -95,7 +95,7 @@ After running `sepolicy generate`, you get several files in the current director
 
 ### The Type Enforcement File (myapp.te)
 
-```
+```bash
 policy_module(myapp, 1.0.0)
 
 ########################################
@@ -136,7 +136,7 @@ corenet_tcp_sendrecv_generic_if(myapp_t)
 
 ### The File Context File (myapp.fc)
 
-```
+```bash
 /usr/local/bin/myapp    --  gen_context(system_u:object_r:myapp_exec_t,s0)
 ```
 
@@ -146,7 +146,7 @@ Edit `myapp.te` to add rules your application needs.
 
 ### Allow Network Access
 
-```
+```bash
 # Allow binding to a specific port
 allow myapp_t myapp_port_t:tcp_socket name_bind;
 
@@ -157,7 +157,7 @@ corenet_tcp_connect_http_port(myapp_t)
 
 ### Allow File Access
 
-```
+```bash
 # Allow reading configuration files
 read_files_pattern(myapp_t, etc_t, etc_t)
 
@@ -167,7 +167,7 @@ manage_files_pattern(myapp_t, myapp_data_t, myapp_data_t)
 
 ### Allow Database Connections
 
-```
+```bash
 # Allow connecting to MySQL
 corenet_tcp_connect_mysqld_port(myapp_t)
 
@@ -179,7 +179,7 @@ corenet_tcp_connect_postgresql_port(myapp_t)
 
 Edit `myapp.fc` to label all files your application uses:
 
-```
+```bash
 /usr/local/bin/myapp            --  gen_context(system_u:object_r:myapp_exec_t,s0)
 /etc/myapp(/.*)?                    gen_context(system_u:object_r:myapp_etc_t,s0)
 /var/log/myapp(/.*)?                gen_context(system_u:object_r:myapp_log_t,s0)

@@ -96,7 +96,7 @@ watch cat /proc/mdstat
 
 You will see something like:
 
-```
+```bash
 md5 : active raid5 sdc[3] sdd[2] sdb[0]
       2093056 blocks super 1.2 level 5, 512k chunk, algorithm 2 [3/2] [U_U]
       [=>...................]  recovery = 8.2% (86016/1046528) finish=2.3min speed=86016K/sec

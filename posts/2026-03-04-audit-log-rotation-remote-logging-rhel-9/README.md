@@ -84,7 +84,7 @@ sudo aureport --event -ts yesterday -te today | tail -1
 
 A general formula: if your log grows by X MB per day and you want to keep N days of logs:
 
-```
+```bash
 Storage needed = X * N MB
 max_log_file = X (daily growth in MB)
 num_logs = N (days to retain)

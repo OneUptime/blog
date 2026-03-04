@@ -755,12 +755,12 @@ This runbook covers automated failover from us-east-1 to us-west-2 when primary 
 **Automated Command:**
 ```bash
 /opt/dr/failover.py --execute --region us-west-2
-```
+```bash
 
 **Manual Override:**
 ```bash
 /opt/dr/failover.py --execute --region us-west-2 --skip-health-check
-```
+```bash
 
 ### Step 2: DNS Update
 - Records updated: api.example.com, app.example.com
@@ -809,7 +809,7 @@ This runbook covers automated failover from us-east-1 to us-west-2 when primary 
 4. Execute failback during maintenance window:
    ```bash
    /opt/dr/failback.py --execute --target us-east-1 --maintenance-window
-   ```
+   ```bash
 
 ## Escalation Contacts
 - Primary: On-call SRE (PagerDuty)

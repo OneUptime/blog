@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Terraform Cloud, Agent Pools, Agent, Private Infrastructure, Networking
+Tags: Terraform, HCP Terraform, Terraform Cloud, Agent Pools, Agents, Private Infrastructure, Networking
 
 Description: Learn how to configure and manage agent pools in HCP Terraform to run Terraform operations inside your private network securely.
 

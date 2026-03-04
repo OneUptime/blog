@@ -350,7 +350,7 @@ data:
 
     # Verify replacement
     kubectl get certificate <cert-name> -n <namespace>
-    ```
+    ```bash
 ```text
 
 ## Testing Revocation Procedures

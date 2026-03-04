@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Collection, Data Structures, Standard Library, Performance
+Tags: Python, Collections, Data Structures, Standard Library, Performance
 
 Description: Learn how to use Python's collections module for specialized data structures including Counter, defaultdict, namedtuple, deque, and OrderedDict to write cleaner, more efficient code.
 

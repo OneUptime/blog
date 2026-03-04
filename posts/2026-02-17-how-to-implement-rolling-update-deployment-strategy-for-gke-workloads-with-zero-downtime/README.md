@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Kubernetes, Rolling Update, Zero Downtime, Deployment Strategy
+Tags: GCP, GKE, Kubernetes, Rolling Updates, Zero Downtime, Deployment Strategy
 
 Description: A hands-on guide to configuring rolling update deployments on GKE that achieve true zero downtime using readiness probes, PodDisruptionBudgets, and proper configuration.
 

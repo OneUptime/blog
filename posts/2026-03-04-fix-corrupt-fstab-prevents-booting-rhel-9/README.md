@@ -131,7 +131,7 @@ The `_netdev` option tells systemd to wait for the network before trying to moun
 
 A common syntax problem is missing fields or extra spaces. Each fstab line needs exactly six fields:
 
-```
+```bash
 <device>  <mount-point>  <fs-type>  <options>  <dump>  <pass>
 ```
 

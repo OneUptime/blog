@@ -192,7 +192,7 @@ If not, set `DocumentRoot` to `/var/www/roundcube` and add the directory deny ru
 
 Edit `/etc/php.ini` for Roundcube:
 
-```
+```bash
 # Increase upload size for attachments
 upload_max_filesize = 25M
 post_max_size = 26M
@@ -256,7 +256,7 @@ The ManageSieve plugin lets users manage Sieve filters through the Roundcube int
 
 Edit `/etc/dovecot/conf.d/20-managesieve.conf`:
 
-```
+```bash
 protocols = $protocols sieve
 
 service managesieve-login {

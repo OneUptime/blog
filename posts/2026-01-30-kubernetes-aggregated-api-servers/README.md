@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, API Aggregation, API Server, Extension
+Tags: Kubernetes, API Aggregation, API Server, Extensions
 
 Description: Learn to implement aggregated API servers for extending Kubernetes with custom API groups and advanced resource management.
 

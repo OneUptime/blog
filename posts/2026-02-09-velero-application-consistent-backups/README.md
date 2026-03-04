@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backup, Application Consistency, Hooks
+Tags: Velero, Kubernetes, Backups, Application Consistency, Hooks
 
 Description: Master application-consistent backups using Velero pre-backup hooks for databases and stateful applications. Complete guide covering consistency strategies and implementation patterns.
 

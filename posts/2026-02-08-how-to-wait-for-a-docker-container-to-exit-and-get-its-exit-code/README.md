@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, Exit Code, Docker Wait, Scripting, DevOps, CI/CD
+Tags: Docker, Containers, Exit Code, Docker Wait, Scripting, DevOps, CI/CD
 
 Description: Learn how to wait for Docker containers to finish executing and capture their exit codes for use in scripts, CI pipelines, and automation.
 

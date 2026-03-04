@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, cert-manager, TLS, Kubernetes, Certificate, Security
+Tags: Istio, cert-manager, TLS, Kubernetes, Certificates, Security
 
 Description: A practical guide to integrating Istio with cert-manager for automated TLS certificate management in your Kubernetes cluster.
 

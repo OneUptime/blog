@@ -33,7 +33,7 @@ sudo vi /etc/iscsi/initiatorname.iscsi
 
 Set the name to match the ACL you configured on the target:
 
-```
+```bash
 InitiatorName=iqn.2024.com.example:client1
 ```
 
@@ -53,7 +53,7 @@ sudo iscsiadm -m discovery -t sendtargets -p 192.168.1.10:3260
 
 Output shows discovered targets:
 
-```
+```bash
 192.168.1.10:3260,1 iqn.2024.com.example:target1
 ```
 
@@ -72,7 +72,7 @@ sudo iscsiadm -m node -T iqn.2024.com.example:target1 -p 192.168.1.10:3260 --log
 
 Successful output:
 
-```
+```bash
 Logging in to [iface: default, target: iqn.2024.com.example:target1, portal: 192.168.1.10,3260]
 Login to [iface: default, target: iqn.2024.com.example:target1, portal: 192.168.1.10,3260] successful.
 ```
@@ -93,7 +93,7 @@ sudo iscsiadm -m session -P 3
 
 This shows detailed session information including the device mapping:
 
-```
+```bash
 Attached scsi disk sdb    State: running
 ```
 

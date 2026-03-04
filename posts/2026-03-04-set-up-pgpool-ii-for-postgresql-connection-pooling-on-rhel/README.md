@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PostgreSQL, pgpool-II, Connection Pooling, Load Balancing, Database
+Tags: RHEL, PostgreSQL, Pgpool-II, Connection Pooling, Load Balancing, Database
 
 Description: Install and configure pgpool-II on RHEL to provide connection pooling, load balancing, and automatic failover for PostgreSQL database clusters.
 

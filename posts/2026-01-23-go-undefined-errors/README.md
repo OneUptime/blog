@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Undefined Errors, Import, Package, Common Errors
+Tags: Go, Golang, Undefined Errors, Import, Packages, Common Errors
 
 Description: Learn to diagnose and fix Go's 'undefined' errors caused by missing imports, wrong package names, unexported identifiers, and build configuration issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Template, Standardization, Best Practices
+Tags: Helm, Kubernetes, DevOps, Templates, Standardization, Best Practices
 
 Description: Guide to creating Helm starter templates for consistent chart scaffolding including directory structure, common patterns, and team standardization.
 

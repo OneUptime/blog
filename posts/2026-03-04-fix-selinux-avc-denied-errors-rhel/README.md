@@ -26,7 +26,7 @@ sudo sealert -a /var/log/audit/audit.log
 
 ## Understanding an AVC Message
 
-```
+```bash
 type=AVC msg=audit(1709312400.123:456): avc:  denied  { read } for
 pid=1234 comm="httpd" name="index.html" dev="sda1" ino=56789
 scontext=system_u:system_r:httpd_t:s0

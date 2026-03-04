@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Networking, VPC, Container
+Tags: AWS, ECS, Networking, VPC, Containers
 
 Description: Understand how awsvpc networking mode works in ECS and learn to configure ENIs, security groups, and subnets for your containerized tasks.
 

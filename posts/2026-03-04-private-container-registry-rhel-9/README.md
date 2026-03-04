@@ -33,13 +33,13 @@ graph TB
 
 Create self-signed certificates for the registry:
 
-# Create directories for certificates
+## Create directories for certificates
 ```bash
 sudo mkdir -p /etc/containers/certs.d/registry.example.com:5000/
 sudo mkdir -p /opt/registry/certs
 ```
 
-# Generate a self-signed certificate
+## Generate a self-signed certificate
 ```bash
 openssl req -newkey rsa:4096 -nodes -sha256 \
   -keyout /opt/registry/certs/registry.key \
@@ -49,7 +49,7 @@ openssl req -newkey rsa:4096 -nodes -sha256 \
   -addext "subjectAltName=DNS:registry.example.com,IP:192.168.1.100"
 ```
 
-# Copy the certificate for Podman trust on this host
+## Copy the certificate for Podman trust on this host
 ```bash
 sudo cp /opt/registry/certs/registry.crt /etc/containers/certs.d/registry.example.com:5000/ca.crt
 ```
@@ -58,12 +58,12 @@ sudo cp /opt/registry/certs/registry.crt /etc/containers/certs.d/registry.exampl
 
 Create a password file for basic HTTP authentication:
 
-# Install htpasswd utility
+## Install htpasswd utility
 ```bash
 sudo dnf install -y httpd-tools
 ```
 
-# Create the auth directory and password file
+## Create the auth directory and password file
 ```bash
 sudo mkdir -p /opt/registry/auth
 
@@ -76,7 +76,9 @@ sudo htpasswd -B /opt/registry/auth/htpasswd developer
 
 ## Creating the Storage Directory
 
-# Create persistent storage for the registry
+This section covers creating the storage directory.
+
+## Create persistent storage for the registry
 ```bash
 sudo mkdir -p /opt/registry/data
 ```
@@ -85,7 +87,9 @@ Make sure this directory is on a partition with enough space for your images.
 
 ## Running the Registry
 
-# Run the registry container with TLS and authentication
+This section covers running the registry.
+
+## Run the registry container with TLS and authentication
 ```bash
 sudo podman run -d --name registry \
   -p 5000:5000 \
@@ -100,41 +104,45 @@ sudo podman run -d --name registry \
   docker.io/library/registry:2
 ```
 
-# Verify the registry is running
+## Verify the registry is running
 ```bash
 sudo podman ps
 ```
 
 ## Testing the Registry
 
-# Log in to the registry
+This section covers testing the registry.
+
+## Log in to the registry
 ```bash
 podman login registry.example.com:5000
 ```
 
-# Tag a local image for the private registry
+## Tag a local image for the private registry
 ```bash
 podman tag docker.io/library/nginx:latest registry.example.com:5000/nginx:latest
 ```
 
-# Push to the private registry
+## Push to the private registry
 ```bash
 podman push registry.example.com:5000/nginx:latest
 ```
 
-# Pull from the private registry
+## Pull from the private registry
 ```bash
 podman pull registry.example.com:5000/nginx:latest
 ```
 
 ## Listing Images in the Registry
 
-# List all repositories in the registry
+This section covers listing images in the registry.
+
+## List all repositories in the registry
 ```bash
 curl -u admin:password https://registry.example.com:5000/v2/_catalog --cacert /opt/registry/certs/registry.crt
 ```
 
-# List tags for a specific image
+## List tags for a specific image
 ```bash
 curl -u admin:password https://registry.example.com:5000/v2/nginx/tags/list --cacert /opt/registry/certs/registry.crt
 ```
@@ -180,19 +188,19 @@ sudo systemctl enable --now registry
 
 On every machine that needs to pull from your registry:
 
-# Copy the CA certificate
+## Copy the CA certificate
 ```bash
 sudo mkdir -p /etc/containers/certs.d/registry.example.com:5000/
 sudo cp registry.crt /etc/containers/certs.d/registry.example.com:5000/ca.crt
 ```
 
-# Also add it to the system trust store
+## Also add it to the system trust store
 ```bash
 sudo cp registry.crt /etc/pki/ca-trust/source/anchors/
 sudo update-ca-trust
 ```
 
-# Log in
+## Log in
 ```bash
 podman login registry.example.com:5000
 ```
@@ -201,7 +209,7 @@ podman login registry.example.com:5000
 
 Over time, deleted tags leave orphaned layers. Clean them up:
 
-# Run garbage collection (registry must be in read-only mode or stopped)
+## Run garbage collection (registry must be in read-only mode or stopped)
 ```bash
 sudo podman exec registry /bin/registry garbage-collect /etc/docker/registry/config.yml
 ```
@@ -239,7 +247,9 @@ Mount this config when running the registry:
 
 ## Firewall Configuration
 
-# Allow registry port through the firewall
+This section covers firewall configuration.
+
+## Allow registry port through the firewall
 ```bash
 sudo firewall-cmd --add-port=5000/tcp --permanent
 sudo firewall-cmd --reload
@@ -247,12 +257,14 @@ sudo firewall-cmd --reload
 
 ## Backing Up the Registry
 
-# Back up registry data
+This section covers backing up the registry.
+
+## Back up registry data
 ```bash
 sudo tar czf /backup/registry-$(date +%Y%m%d).tar.gz -C /opt/registry data/
 ```
 
-# Back up credentials and certificates
+## Back up credentials and certificates
 ```bash
 sudo tar czf /backup/registry-config-$(date +%Y%m%d).tar.gz -C /opt/registry auth/ certs/
 ```

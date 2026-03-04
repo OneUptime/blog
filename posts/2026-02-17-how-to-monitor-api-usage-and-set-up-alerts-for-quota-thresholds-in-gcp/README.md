@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, API Monitoring, Quota, Cloud Monitoring, Google Cloud
+Tags: GCP, API Monitoring, Quotas, Cloud Monitoring, Google Cloud
 
 Description: Learn how to monitor GCP API usage, track quota consumption, and set up alerts that notify you before hitting quota limits to prevent service disruptions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Query Cache, Performance, Database, Legacy, Migration
+Tags: MySQL, Query Cache, Performance, Database, LEGACY, Migration
 
 Description: A comprehensive guide to understanding the deprecated MySQL Query Cache, why it was removed in MySQL 8.0, and modern alternatives for query optimization.
 

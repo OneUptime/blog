@@ -61,7 +61,7 @@ UPG behavior is controlled by two settings.
 grep USERGROUPS_ENAB /etc/login.defs
 ```
 
-```
+```bash
 USERGROUPS_ENAB yes
 ```
 
@@ -182,7 +182,7 @@ sudo vi /etc/login.defs
 
 Change:
 
-```
+```bash
 USERGROUPS_ENAB no
 ```
 
@@ -193,7 +193,7 @@ Then set a default group in `/etc/default/useradd`:
 sudo vi /etc/default/useradd
 ```
 
-```
+```bash
 GROUP=100
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, Kubernetes, Upgrade, High Availability, DevOps, Rolling Update, System Upgrade Controller
+Tags: K3s, Kubernetes, Upgrade, High Availability, DevOps, Rolling Updates, System Upgrade Controller
 
 Description: A comprehensive guide to safely upgrading K3s clusters, including the System Upgrade Controller, manual upgrade procedures, rolling upgrades for high availability, and rollback strategies.
 

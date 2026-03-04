@@ -309,7 +309,7 @@ After logging in to Superset at `http://your-server:80`, add a database connecti
 3. Choose your database type
 4. Enter the connection string, for example:
 
-```
+```bash
 # PostgreSQL
 postgresql://user:password@dbhost:5432/mydatabase
 

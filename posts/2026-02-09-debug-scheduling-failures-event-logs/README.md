@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Debugging, Scheduler
+Tags: Kubernetes, Debugging, Schedulers
 
 Description: Master the techniques for debugging Kubernetes scheduling failures using event logs, scheduler logs, and diagnostic tools to quickly identify and resolve why pods remain pending.
 

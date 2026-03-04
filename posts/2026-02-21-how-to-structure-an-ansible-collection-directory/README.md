@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Project Structure, DevOps
+Tags: Ansible, Collections, Project Structure, DevOps
 
 Description: Complete reference for the Ansible collection directory layout with explanations of every directory and file that makes up a well-organized collection.
 

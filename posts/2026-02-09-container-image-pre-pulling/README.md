@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Performance, Container Image, Optimization, Pre-Pulling
+Tags: Kubernetes, Performance, Container Images, Optimization, Pre-Pulling
 
 Description: Learn how to implement effective container image pre-pulling strategies to eliminate image pull latency and enable instant pod startup in Kubernetes clusters.
 

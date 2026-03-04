@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, OpenEBS, Kubernetes, Local Storage, Persistent Volume
+Tags: Talos Linux, OpenEBS, Kubernetes, Local Storage, Persistent Volumes
 
 Description: Learn how to deploy OpenEBS Local PV for high-performance local persistent storage on your Talos Linux Kubernetes cluster.
 

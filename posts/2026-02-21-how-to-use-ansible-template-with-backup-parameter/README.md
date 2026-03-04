@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Template, Backup, Configuration Management, Safety
+Tags: Ansible, Templates, Backups, Configuration Management, Safety
 
 Description: Learn how to use the backup parameter with the Ansible template module to automatically create timestamped backups before overwriting config files.
 

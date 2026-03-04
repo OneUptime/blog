@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NodeJS, SSL, TLS, Certificate, Security
+Tags: NodeJS, SSL, TLS, Certificates, Security
 
 Description: Resolve the DEPTH_ZERO_SELF_SIGNED_CERT error in Node.js when connecting to servers with self-signed certificates by properly configuring TLS options.
 

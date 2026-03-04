@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Backup, Kubernetes, Database, Recovery
+Tags: CockroachDB, Backups, Kubernetes, Database, Recovery
 
 Description: Learn how to implement comprehensive CockroachDB backup strategies on Kubernetes with scheduled full and incremental backups, point-in-time recovery, and cloud storage integration.
 

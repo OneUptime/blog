@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Testing, CI/CD, End-to-End Testing, DevOps, Pipeline
+Tags: Terraform, Testing, CI/CD, End-to-End Testing, DevOps, Pipelines
 
 Description: Learn how to build a complete end-to-end testing pipeline for Terraform that covers formatting, validation, unit tests, integration tests, and security scanning.
 

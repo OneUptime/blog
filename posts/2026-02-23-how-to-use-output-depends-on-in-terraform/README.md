@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Output, Dependencies, Modules, Infrastructure as Code
+Tags: Terraform, Outputs, Dependencies, Modules, Infrastructure as Code
 
 Description: Learn how to use the depends_on argument in Terraform outputs to create explicit dependencies that ensure resources are fully provisioned before output values are consumed.
 

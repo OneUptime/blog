@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, HTTP Check, Synthetic Monitoring, Uptime Monitoring, Health Check
+Tags: OpenTelemetry, Collector, HTTP Check, Synthetic Monitoring, Uptime Monitoring, Health Checks
 
 Description: Complete guide to configuring the HTTP Check receiver in OpenTelemetry Collector for synthetic monitoring and endpoint health checks with metrics generation.
 

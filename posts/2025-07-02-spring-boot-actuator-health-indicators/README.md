@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, Actuator, Health Check, Monitoring, Kubernetes
+Tags: Java, Spring Boot, Actuator, Health Checks, Monitoring, Kubernetes
 
 Description: Learn how to create custom health indicators in Spring Boot Actuator for monitoring external dependencies. This guide covers health aggregation, reactive indicators, and Kubernetes integration.
 

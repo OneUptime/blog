@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Proximity Placement Groups, Virtual Machine, Low Latency, Networking, Performance, High Performance Computing
+Tags: Azure, Proximity Placement Groups, Virtual Machines, Low Latency, Networking, Performance, High Performance Computing
 
 Description: How to use Azure Proximity Placement Groups to colocate VMs in the same datacenter for minimal network latency between instances.
 

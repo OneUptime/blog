@@ -99,7 +99,7 @@ The `cockpit` service definition in firewalld already maps to port 9090, so you 
 
 Open a browser and navigate to:
 
-```
+```bash
 https://your-server-ip:9090
 ```
 

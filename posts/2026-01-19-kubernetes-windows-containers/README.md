@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, Container, Hybrid, Multi-OS, DevOps
+Tags: Kubernetes, Windows, Containers, Hybrid, Multi-OS, DevOps
 
 Description: Learn how to run Windows containers alongside Linux containers in Kubernetes by configuring Windows node pools and deploying Windows workloads.
 

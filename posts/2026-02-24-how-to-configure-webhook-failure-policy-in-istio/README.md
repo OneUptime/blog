@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Webhook, Service Mesh, Configuration
+Tags: Istio, Kubernetes, Webhooks, Service Mesh, Configuration
 
 Description: Learn how to configure the webhook failure policy in Istio to control what happens when the sidecar injection webhook is unreachable or returns errors.
 

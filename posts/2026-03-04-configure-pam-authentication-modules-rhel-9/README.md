@@ -55,7 +55,7 @@ cat /etc/pam.d/sshd
 
 You will typically see lines like:
 
-```
+```bash
 auth       substack     password-auth
 auth       include      postlogin
 account    required     pam_sepermit.so
@@ -86,7 +86,7 @@ Here are the modules you will work with most often:
 
 This is the workhorse module that checks `/etc/shadow` for passwords.
 
-```
+```bash
 auth    required    pam_unix.so nullok try_first_pass
 ```
 
@@ -94,7 +94,7 @@ The `nullok` option allows empty passwords (remove it to require passwords). The
 
 ### pam_faillock.so - Account lockout after failed attempts
 
-```
+```bash
 auth    required    pam_faillock.so preauth silent deny=5 unlock_time=900
 auth    required    pam_faillock.so authfail deny=5 unlock_time=900
 ```
@@ -103,7 +103,7 @@ This locks an account for 15 minutes after 5 failed login attempts.
 
 ### pam_pwquality.so - Password complexity
 
-```
+```bash
 password    requisite    pam_pwquality.so retry=3 minlen=12 dcredit=-1 ucredit=-1 lcredit=-1 ocredit=-1
 ```
 
@@ -111,7 +111,7 @@ This enforces a minimum 12-character password with at least one digit, one upper
 
 ### pam_pwhistory.so - Password history
 
-```
+```bash
 password    required    pam_pwhistory.so remember=12 use_authtok
 ```
 
@@ -119,7 +119,7 @@ This prevents reuse of the last 12 passwords.
 
 ### pam_access.so - Access control by user, group, or host
 
-```
+```bash
 account    required    pam_access.so
 ```
 
@@ -127,7 +127,7 @@ This module uses `/etc/security/access.conf` to control who can log in from wher
 
 ### pam_limits.so - Resource limits
 
-```
+```bash
 session    required    pam_limits.so
 ```
 
@@ -145,7 +145,7 @@ sudo vi /etc/security/access.conf
 
 Add rules like these:
 
-```
+```bash
 # Allow the admin group from anywhere
 + : @admins : ALL
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Stack Hub, Virtual Machine, User Portal, Hybrid Cloud, Infrastructure, IaaS
+Tags: Azure, Azure Stack Hub, Virtual Machines, User Portal, Hybrid Cloud, Infrastructure, IaaS
 
 Description: A practical guide to deploying and managing virtual machines on Azure Stack Hub using the user portal for on-premises cloud workloads.
 

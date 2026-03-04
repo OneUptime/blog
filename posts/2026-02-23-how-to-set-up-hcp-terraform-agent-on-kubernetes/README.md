@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Terraform Cloud, Kubernetes, Agent, Helm, DevOps
+Tags: Terraform, HCP Terraform, Terraform Cloud, Kubernetes, Agents, Helm, DevOps
 
 Description: Step-by-step guide to deploying HCP Terraform agents on Kubernetes for scalable, resilient Terraform execution in private environments.
 

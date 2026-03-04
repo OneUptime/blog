@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Flannel, Kubernetes, Networking, Container
+Tags: Ubuntu, Flannel, Kubernetes, Networking, Containers
 
 Description: Learn how to set up Flannel as a CNI network overlay for Kubernetes clusters on Ubuntu, covering installation, configuration, and the different backend options.
 

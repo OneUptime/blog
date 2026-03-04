@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filter, Template, Data Processing
+Tags: Ansible, Jinja2, Filter, Templates, Data Processing
 
 Description: Learn how to deduplicate lists in Ansible using the unique filter to eliminate redundant entries in configuration files and task loops.
 

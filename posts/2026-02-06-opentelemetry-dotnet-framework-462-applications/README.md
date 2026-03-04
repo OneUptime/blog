@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, .NET Framework, Legacy, Configuration, Tracing
+Tags: OpenTelemetry, .NET Framework, LEGACY, Configuration, Tracing
 
 Description: Complete guide to implementing OpenTelemetry in .NET Framework 4.6.2+ applications with practical examples and production-ready configurations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Backup, Network Automation, Disaster Recovery
+Tags: Ansible, Backups, Network Automation, Disaster Recovery
 
 Description: Build automated network configuration backup workflows with Ansible that capture, store, and version-control device configs across your infrastructure.
 

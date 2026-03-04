@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Static Pods, Machine Configuration, Kubernetes, Container
+Tags: Talos Linux, Static Pods, Machine Configuration, Kubernetes, Containers
 
 Description: Learn how to configure static machine pods in Talos Linux for running system-level workloads that start before the Kubernetes API server.
 

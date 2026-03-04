@@ -12,7 +12,7 @@ iSCSI multipathing uses multiple network paths between the initiator and target 
 
 ## Architecture
 
-```
+```bash
 Initiator                          Target
 +-----------+                      +-----------+
 | eth0      |----(Network A)------>| eth0      |
@@ -37,7 +37,7 @@ In targetcli, add portals for both network interfaces:
 sudo targetcli
 ```
 
-```
+```bash
 cd /iscsi/iqn.2024.com.example:target1/tpg1/portals
 delete 0.0.0.0 3260
 create 10.0.1.20 3260
@@ -131,7 +131,7 @@ sudo multipath -ll
 
 Expected output:
 
-```
+```bash
 mpatha (360000000000000001) dm-0 LIO-ORG,disk0
 size=10G features='0' hwhandler='1 alua' wp=rw
 |-+- policy='round-robin 0' prio=50 status=active

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Backup, Disaster Recovery, Data Persistence, VOLUME, DevOps
+Tags: Docker, Backups, Disaster Recovery, Data Persistence, Volumes, DevOps
 
 Description: Build a comprehensive Docker backup strategy covering volumes, images, container configs, Compose files, and automated restoration testing.
 

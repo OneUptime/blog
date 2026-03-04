@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Jenkins, Pipeline, CI/CD, DevOps, Jenkinsfile
+Tags: Jenkins, Pipelines, CI/CD, DevOps, Jenkinsfile
 
 Description: Learn how to configure Jenkins Pipeline as Code using Jenkinsfile, including declarative and scripted pipelines, stages, and best practices.
 

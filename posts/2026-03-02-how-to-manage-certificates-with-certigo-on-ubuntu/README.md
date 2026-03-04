@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, TLS, Certificate, Security, PKI
+Tags: Ubuntu, TLS, Certificates, Security, PKI
 
 Description: Learn how to use certigo, a command-line certificate utility for Ubuntu, to inspect, verify, and troubleshoot TLS certificates across hosts and files.
 

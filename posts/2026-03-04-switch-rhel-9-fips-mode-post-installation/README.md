@@ -38,7 +38,7 @@ fips-mode-setup --enable
 
 The command will output something like:
 
-```
+```bash
 Setting system policy to FIPS
 FIPS mode will be enabled.
 Please reboot the system for the setting to take effect.

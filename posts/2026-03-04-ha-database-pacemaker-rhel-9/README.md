@@ -1,4 +1,4 @@
-# How to Configure a Highly Available MariaDB/PostgreSQL Database with Pacemaker on RHEL 9
+# How to Set Up HA MariaDB/PostgreSQL with Pacemaker on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -171,7 +171,7 @@ Applications should handle brief disconnections during failover. Configure conne
 
 ### For MariaDB/MySQL Clients
 
-```
+```bash
 connect_timeout=10
 reconnect=true
 ```
@@ -180,7 +180,7 @@ reconnect=true
 
 Use a connection string with multiple hosts:
 
-```
+```bash
 postgresql://192.168.1.100:5432/mydb?connect_timeout=10&target_session_attrs=read-write
 ```
 

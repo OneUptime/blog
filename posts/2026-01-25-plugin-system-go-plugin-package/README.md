@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Plugin, Extensibility, Architecture, Dynamic Loading
+Tags: Go, Plugins, Extensibility, Architecture, Dynamic Loading
 
 Description: Learn how to build extensible Go applications using the native plugin package for dynamic loading, including practical patterns, interface design, and production considerations.
 

@@ -147,7 +147,7 @@ lsblk -f
 
 Example output from `lsblk -f` on a properly configured system:
 
-```
+```bash
 NAME            FSTYPE      MOUNTPOINTS
 sda
 ├─sda1          vfat        /boot/efi

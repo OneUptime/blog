@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Secret Manager, Environment Variable, Security
+Tags: GCP, Cloud Run, Secret Manager, Environment Variables, Security
 
 Description: Learn how to securely inject Secret Manager secrets into Cloud Run services as environment variables or mounted volumes, eliminating hardcoded credentials from container images.
 

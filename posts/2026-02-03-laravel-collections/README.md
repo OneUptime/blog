@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PHP, Laravel, Collection, Data Processing, Functional
+Tags: PHP, Laravel, Collections, Data Processing, Functional
 
 Description: Master Laravel Collections for elegant data manipulation. This guide covers essential methods, chaining, lazy collections, and real-world patterns.
 

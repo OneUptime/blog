@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, seccomp
+Tags: Kubernetes, Security, Seccomp
 
 Description: Learn how to implement seccomp profiles to filter system calls and restrict container behavior reducing attack surface and preventing exploitation techniques.
 

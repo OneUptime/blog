@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, keepalived, VRRP, High Availability, Networking
+Tags: Ubuntu, Keepalived, VRRP, High Availability, Networking
 
 Description: Configure Keepalived on Ubuntu for VRRP-based virtual IP failover, including master/backup setup, health checks, and tracking scripts for service-aware failover.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CloudTrail, Organization, Multi-Account, Security, Compliance
+Tags: AWS, CloudTrail, Organizations, Multi-Account, Security, Compliance
 
 Description: Create an AWS CloudTrail organization trail to centralize API activity logging across all accounts in your AWS Organization.
 

@@ -75,7 +75,7 @@ grep dentry /proc/slabinfo
 grep Slab /proc/meminfo
 ```
 
-```
+```bash
 Slab:            512000 kB
 SReclaimable:    400000 kB
 SUnreclaim:      112000 kB

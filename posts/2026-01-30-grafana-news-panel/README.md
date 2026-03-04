@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboard, News
+Tags: Grafana, Observability, Dashboards, News
 
 Description: A complete guide to implementing and configuring Grafana's News Panel to display RSS feeds, team announcements, and incident updates directly in your observability dashboards.
 

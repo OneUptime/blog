@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Disk Management, File System, System Administration, Storage
+Tags: Ubuntu, Disk Management, File Systems, System Administration, Storage
 
 Description: Use fsck to check and repair ext4, XFS, and other filesystems on Ubuntu, including how to force checks, handle unclean shutdowns, and recover from filesystem corruption.
 

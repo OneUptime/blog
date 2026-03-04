@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Custom Propagator, Trace Context, Legacy, Context Propagation
+Tags: OpenTelemetry, Custom Propagator, Trace Context, LEGACY, Context Propagation
 
 Description: Build a custom OpenTelemetry propagator that bridges legacy trace context formats used in your organization with the standard W3C Trace Context format.
 

@@ -30,7 +30,7 @@ nmcli device status
 
 The device status output tells you a lot at a glance:
 
-```
+```bash
 DEVICE  TYPE      STATE         CONNECTION
 ens192  ethernet  connected     office-static
 ens224  ethernet  disconnected  --

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: API, Quota, Rate Limiting, Management
+Tags: API, Quotas, Rate Limiting, Management
 
 Description: Build robust API quota management systems with usage tiers, quota tracking, reset mechanisms, and overage handling.
 

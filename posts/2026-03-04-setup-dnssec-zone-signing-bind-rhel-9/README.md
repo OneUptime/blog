@@ -81,7 +81,7 @@ cat /var/named/keys/Kexample.com.*.key >> /var/named/example.com.zone
 
 Or use the `$INCLUDE` directive in your zone file:
 
-```
+```bash
 $INCLUDE "/var/named/keys/Kexample.com.+013+12345.key"
 $INCLUDE "/var/named/keys/Kexample.com.+013+67890.key"
 ```
@@ -178,7 +178,7 @@ Submit this DS record to your domain registrar. Each registrar has a different i
 
 BIND 9.16 supports automated key management. Add this to your zone configuration:
 
-```
+```bash
 zone "example.com" IN {
     type primary;
     file "example.com.zone";

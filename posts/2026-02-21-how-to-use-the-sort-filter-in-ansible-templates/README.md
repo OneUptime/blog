@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Template, Filter, Sorting
+Tags: Ansible, Jinja2, Templates, Filter, Sorting
 
 Description: Master the sort filter in Ansible templates to order lists of strings, numbers, and dictionaries for predictable configuration file generation.
 

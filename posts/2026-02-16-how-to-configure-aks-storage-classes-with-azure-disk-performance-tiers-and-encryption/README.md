@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Storage Classes, Azure Disk, Encryption, Kubernetes, Persistent Volume, Performance
+Tags: AKS, Storage Classes, Azure Disk, Encryption, Kubernetes, Persistent Volumes, Performance
 
 Description: Learn how to create custom AKS storage classes with Azure Disk performance tiers, encryption at rest, and customer-managed keys.
 

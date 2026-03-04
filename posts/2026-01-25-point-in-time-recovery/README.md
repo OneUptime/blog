@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Database, Backup, Recovery, PostgreSQL, MySQL, DevOps
+Tags: Database, Backups, Recovery, PostgreSQL, MySQL, DevOps
 
 Description: Learn how to implement point-in-time recovery (PITR) for databases, enabling restoration to any specific moment in time using continuous archiving and transaction logs.
 

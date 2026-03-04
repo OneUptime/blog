@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, Cloud Scheduler, Backup, Database Management
+Tags: GCP, Cloud SQL, Cloud Scheduler, Backups, Database Management
 
 Description: Set up automated backup and restore procedures for Google Cloud SQL databases using Cloud Scheduler for reliable disaster recovery.
 

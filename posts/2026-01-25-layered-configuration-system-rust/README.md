@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Configuration, config-rs, Environment Variable, Best Practices
+Tags: Rust, Configuration, config-rs, Environment Variables, Best Practices
 
 Description: Learn how to build a flexible, production-ready configuration system in Rust using layered sources like defaults, config files, and environment variables with the config-rs crate.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Encryption, Backup, Security, DevOps, Data Protection
+Tags: Encryption, Backups, Security, DevOps, Data Protection
 
 Description: Learn how to implement encryption for backup data at rest and in transit, including key management strategies, tool configurations, and compliance considerations.
 

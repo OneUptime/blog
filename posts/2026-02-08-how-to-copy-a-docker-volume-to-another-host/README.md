@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, VOLUME, Migration, Storage, DevOps, Backup
+Tags: Docker, Volumes, Migration, Storage, DevOps, Backups
 
 Description: Learn how to copy Docker volumes between hosts using tar archives, rsync, SSH, and other methods for data migration and backup.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Scheduler, Custom Scheduling
+Tags: Kubernetes, Schedulers, Custom Scheduling
 
 Description: Learn how to use the schedulerName field to route pods to custom schedulers in Kubernetes, enabling specialized scheduling logic for different workload types.
 

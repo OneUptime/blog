@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Linux, Debugging, Filesystem, inotify
+Tags: NodeJS, Linux, Debugging, Filesystems, inotify
 
 Description: Learn how to diagnose and fix the ENOSPC error in Node.js including file watcher limits, disk space issues, and inotify configuration on Linux systems.
 

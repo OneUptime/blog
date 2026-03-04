@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, CI/CD, Repository Dispatch, Webhook, Automation, DevOps
+Tags: GitHub Actions, CI/CD, Repository Dispatch, Webhooks, Automation, DevOps
 
 Description: Learn how to use repository dispatch events in GitHub Actions to trigger workflows from external systems, other repositories, or custom automation scripts.
 

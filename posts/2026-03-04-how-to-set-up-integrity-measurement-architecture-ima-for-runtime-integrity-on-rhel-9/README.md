@@ -1,4 +1,4 @@
-# How to Set Up Integrity Measurement Architecture (IMA) for Runtime Integrity on RHEL 9
+# How to Set Up IMA for Runtime Integrity on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

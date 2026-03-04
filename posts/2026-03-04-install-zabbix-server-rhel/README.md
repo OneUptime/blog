@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Zabbix, Monitoring, MySQL, Nginx, Linux
+Tags: RHEL, Zabbix, Monitoring, MySQL, NGINX, Linux
 
 Description: Install Zabbix Server on RHEL with MySQL and Nginx to set up a centralized monitoring platform for your infrastructure.
 

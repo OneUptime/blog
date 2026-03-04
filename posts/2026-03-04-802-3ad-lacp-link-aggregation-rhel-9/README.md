@@ -106,7 +106,7 @@ The exact switch commands vary by vendor, but here is what you need on the switc
 
 For reference, on a Cisco-style switch it looks something like:
 
-```
+```bash
 interface Port-channel1
   switchport mode trunk
 

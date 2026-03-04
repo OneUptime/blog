@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, KVM, Snapshot, Virtualization
+Tags: Ubuntu, KVM, Snapshots, Virtualization
 
 Description: Learn how to create, manage, and restore snapshots of KVM virtual machines on Ubuntu using virsh and qemu-img for both internal and external snapshots.
 

@@ -34,7 +34,7 @@ sudo systemctl enable --now cockpit.socket
 
 Open a browser and navigate to:
 
-```
+```bash
 https://your-server-ip:9090
 ```
 

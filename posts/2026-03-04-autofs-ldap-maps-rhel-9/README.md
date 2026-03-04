@@ -12,7 +12,7 @@ Storing autofs maps in LDAP centralizes mount configuration. Instead of editing 
 
 ## How LDAP-Based autofs Works
 
-```
+```bash
 LDAP Server
 +---------------------------+
 | ou=autofs,dc=example,dc=com
@@ -165,7 +165,7 @@ sudo vi /etc/autofs.conf
 
 Set the map source:
 
-```
+```bash
 map_object_class = automountMap
 entry_object_class = automount
 map_attribute = automountMapName
@@ -181,7 +181,7 @@ sudo vi /etc/auto.master
 
 Add:
 
-```
+```bash
 +auto.master
 ```
 
@@ -195,7 +195,7 @@ Ensure automount lookups use SSSD:
 sudo vi /etc/nsswitch.conf
 ```
 
-```
+```bash
 automount: sss files
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, llama.cpp, LLM, Machine Learning, AI, Inference, GGUF, Container
+Tags: Docker, llama.cpp, LLM, Machine Learning, AI, Inference, GGUF, Containers
 
 Description: Step-by-step guide to running llama.cpp in Docker for efficient CPU and GPU-based LLM inference
 

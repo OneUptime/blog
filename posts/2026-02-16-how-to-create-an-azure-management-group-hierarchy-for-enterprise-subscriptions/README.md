@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Management Groups, Governance, Enterprise, Subscription, Cloud Architecture, Organization
+Tags: Azure, Management Groups, Governance, Enterprise, Subscriptions, Cloud Architecture, Organizations
 
 Description: Learn how to design and implement an Azure management group hierarchy that organizes your subscriptions for governance, policy, and access control at scale.
 

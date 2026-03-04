@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, HashMap, Entry API, Performance, Collection
+Tags: Rust, HashMap, Entry API, Performance, Collections
 
 Description: Learn how to use Rust's Entry API to efficiently check and modify HashMap entries in a single operation, avoiding the performance cost of double lookups.
 

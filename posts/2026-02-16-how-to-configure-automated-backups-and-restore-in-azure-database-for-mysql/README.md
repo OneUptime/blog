@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, MySQL, Backup, Restore, Disaster Recovery, Flexible Server, Data Protection
+Tags: Azure, MySQL, Backups, Restore, Disaster Recovery, Flexible Server, Data Protection
 
 Description: Learn how to configure automated backups, point-in-time restore, and geo-redundant backups for Azure Database for MySQL Flexible Server.
 

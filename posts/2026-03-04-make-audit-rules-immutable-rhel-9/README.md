@@ -82,7 +82,7 @@ sudo auditctl -s
 
 The status output should show:
 
-```
+```bash
 enabled 2
 ```
 

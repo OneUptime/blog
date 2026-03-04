@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Docker, Container, CI/CD, DevOps, Container Registry
+Tags: GitLab CI, Docker, Containers, CI/CD, DevOps, Container Registry
 
 Description: Learn how to build, tag, and push Docker images with GitLab CI using Docker-in-Docker, Kaniko, and BuildKit for fast, secure container builds.
 

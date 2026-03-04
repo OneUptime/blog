@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Firewalld, Logging, Security, Linux
+Tags: RHEL, firewalld, Logging, Security, Linux
 
 Description: How to configure firewalld on RHEL to log dropped and rejected packets for security auditing, troubleshooting, and intrusion detection.
 
@@ -58,7 +58,7 @@ dmesg | grep "FINAL_REJECT\|FINAL_DROP"
 
 Log entries look something like this:
 
-```
+```bash
 kernel: filter_IN_public_REJECT: IN=eth0 OUT= MAC=... SRC=203.0.113.50 DST=10.0.1.100 LEN=60 TOS=0x00 PREC=0x00 TTL=64 ID=12345 DF PROTO=TCP SPT=54321 DPT=3306 WINDOW=64240 RES=0x00 SYN URGP=0
 ```
 

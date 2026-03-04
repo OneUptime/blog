@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Platform Engineering, Team Directory, Organization, Developer Portal
+Tags: Platform Engineering, Team Directory, Organizations, Developer Portal
 
 Description: Learn to implement team directories for developer portals with ownership mapping, contact information, and org chart integration for service ownership clarity.
 

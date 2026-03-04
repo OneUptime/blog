@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Docker, Portainer, Container, DevOps
+Tags: Ubuntu, Docker, Portainer, Containers, DevOps
 
 Description: Configure Portainer Business or Community Edition to manage Docker containers across multiple Ubuntu hosts from a single web interface, with agent-based remote management.
 

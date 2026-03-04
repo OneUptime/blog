@@ -22,7 +22,7 @@ cat /var/lib/dhcpd/dhcpd.leases
 
 A typical lease entry looks like:
 
-```
+```bash
 lease 192.168.1.150 {
   starts 4 2026/03/04 10:15:30;
   ends 4 2026/03/04 11:15:30;

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Load Balancer, SSL, TLS, Certificate, HTTPS, Troubleshooting
+Tags: GCP, Load Balancer, SSL, TLS, Certificates, HTTPS, Troubleshooting
 
 Description: How to diagnose and fix SSL/TLS handshake failures on the Google Cloud Global External Application Load Balancer, covering certificate issues, protocol mismatches, and configuration errors.
 

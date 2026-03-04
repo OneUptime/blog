@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Jenkins, CI/CD, Plugin, Infrastructure as Code, DevOps
+Tags: Terraform, Jenkins, CI/CD, Plugins, Infrastructure as Code, DevOps
 
 Description: Install and configure the Terraform plugin for Jenkins to manage Terraform installations, integrate with the Jenkins tool ecosystem, and simplify pipeline configuration.
 

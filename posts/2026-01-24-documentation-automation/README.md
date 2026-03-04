@@ -305,7 +305,7 @@ class PaymentClient:
             customer_id="cust_123"
         )
         print(f"Transaction: {result.transaction_id}")
-        ```
+        ```bash
 
     Attributes:
         base_url: Base URL for the payment API.

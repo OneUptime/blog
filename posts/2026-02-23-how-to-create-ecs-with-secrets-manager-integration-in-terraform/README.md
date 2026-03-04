@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, Secrets Manager, Security, Container, Infrastructure as Code
+Tags: Terraform, AWS, ECS, Secrets Manager, Security, Containers, Infrastructure as Code
 
 Description: Learn how to securely inject secrets from AWS Secrets Manager into ECS tasks using Terraform, avoiding hardcoded credentials in your container definitions.
 

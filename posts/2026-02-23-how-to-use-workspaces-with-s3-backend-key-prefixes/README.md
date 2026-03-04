@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, S3, AWS, State Management, Backend Configuration
+Tags: Terraform, Workspaces, S3, AWS, State Management, Backend Configuration
 
 Description: Learn how Terraform workspaces interact with S3 backend key prefixes, how to customize state paths, set up proper IAM policies, and organize multi-project state in a single S3 bucket.
 

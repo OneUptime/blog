@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Dockerfile, ONBUILD, Template, Base Image, DevOps
+Tags: Docker, Dockerfile, ONBUILD, Templates, Base Image, DevOps
 
 Description: Learn how to use the ONBUILD instruction to create reusable template Dockerfiles that trigger actions in child images.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Timeshift, Snapshot, Backup, System Restore, Tutorial
+Tags: Ubuntu, Timeshift, Snapshots, Backups, System Restore, Tutorial
 
 Description: Complete guide to using Timeshift for creating and restoring system snapshots on Ubuntu.
 

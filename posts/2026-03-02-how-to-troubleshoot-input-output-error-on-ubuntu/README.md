@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Troubleshooting, Disk Health, Filesystem, System Administration
+Tags: Ubuntu, Troubleshooting, Disk Health, Filesystems, System Administration
 
 Description: Diagnose and resolve Input/Output errors on Ubuntu, covering disk failure detection, filesystem corruption repair, SMART monitoring, and data recovery procedures.
 

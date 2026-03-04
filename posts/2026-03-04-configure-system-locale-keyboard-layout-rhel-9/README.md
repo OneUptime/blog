@@ -25,7 +25,7 @@ localectl status
 
 You will get output similar to:
 
-```
+```bash
    System Locale: LANG=en_US.UTF-8
        VC Keymap: us
       X11 Layout: us
@@ -51,13 +51,13 @@ cat /etc/locale.conf
 
 A typical file looks like this:
 
-```
+```bash
 LANG=en_US.UTF-8
 ```
 
 You can override individual categories if needed. For example, you might want English messages but German date formats:
 
-```
+```bash
 LANG=en_US.UTF-8
 LC_TIME=de_DE.UTF-8
 ```
@@ -151,7 +151,7 @@ cat /etc/vconsole.conf
 
 You should see something like:
 
-```
+```bash
 KEYMAP=de
 ```
 
@@ -216,7 +216,7 @@ sudo dnf install glibc-langpack-en
 
 Or, prevent your SSH client from forwarding locale settings by editing your local `~/.ssh/config`:
 
-```
+```bash
 Host myserver
     SendEnv -LC_* -LANG
 ```

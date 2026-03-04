@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, JavaScript, Filesystem, Async, Streams, IO
+Tags: NodeJS, JavaScript, Filesystems, Async, Streams, IO
 
 Description: Learn different methods to write files asynchronously in Node.js including fs.promises, callbacks, streams, and best practices for handling large files and concurrent writes.
 

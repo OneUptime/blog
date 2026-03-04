@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Azure Key Vault, TLS, Ingress, Certificate, Kubernetes, Security
+Tags: AKS, Azure Key Vault, TLS, Ingress, Certificates, Kubernetes, Security
 
 Description: Step-by-step guide to integrating Azure Key Vault with AKS for automated TLS certificate provisioning and rotation on ingress controllers.
 

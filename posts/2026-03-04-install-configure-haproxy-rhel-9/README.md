@@ -142,7 +142,7 @@ The stats page gives you a real-time view of backend health and traffic:
 
 Add this to your `haproxy.cfg`:
 
-```
+```bash
 listen stats
     bind *:8404
     stats enable

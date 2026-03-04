@@ -140,7 +140,7 @@ sudo vi /var/lib/pgsql/data/postgresql.conf
 
 Set the following parameters:
 
-```
+```bash
 # Enable huge pages in PostgreSQL
 huge_pages = on
 shared_buffers = 16GB

@@ -42,7 +42,7 @@ These settings control how Postfix handles TLS when other servers connect to it.
 
 Add to `/etc/postfix/main.cf`:
 
-```
+```bash
 # Enable TLS for incoming connections
 smtpd_tls_security_level = may
 
@@ -74,7 +74,7 @@ The `security_level = may` means Postfix will offer TLS but not require it. This
 
 These settings control how Postfix handles TLS when sending mail to other servers:
 
-```
+```bash
 # Enable TLS for outgoing connections
 smtp_tls_security_level = may
 
@@ -98,7 +98,7 @@ For the submission port (587), you should require TLS since this is where your u
 
 Edit `/etc/postfix/master.cf`:
 
-```
+```bash
 submission inet n       -       n       -       -       smtpd
   -o syslog_name=postfix/submission
   -o smtpd_tls_security_level=encrypt
@@ -137,7 +137,7 @@ sequenceDiagram
 
 Some older clients use implicit TLS on port 465 instead of STARTTLS. Enable it in `/etc/postfix/master.cf`:
 
-```
+```bash
 smtps     inet  n       -       n       -       -       smtpd
   -o syslog_name=postfix/smtps
   -o smtpd_tls_wrappermode=yes
@@ -185,7 +185,7 @@ sudo grep "TLS connection established" /var/log/maillog | tail -5
 
 You should see entries like:
 
-```
+```bash
 postfix/smtpd: Anonymous TLS connection established from remote[1.2.3.4]: TLSv1.3 with cipher TLS_AES_256_GCM_SHA384
 ```
 
@@ -220,7 +220,7 @@ sudo certbot renew --dry-run
 
 For stricter security, you can limit which ciphers and protocols are accepted:
 
-```
+```bash
 # Only allow strong ciphers
 smtpd_tls_exclude_ciphers = aNULL, eNULL, EXPORT, DES, RC4, MD5, PSK, aECDH, EDH-DSS-DES-CBC3-SHA, EDH-RSA-DES-CBC3-SHA
 
@@ -234,7 +234,7 @@ tls_preempt_cipherlist = yes
 
 Increase the TLS log level temporarily:
 
-```
+```bash
 smtpd_tls_loglevel = 3
 ```
 

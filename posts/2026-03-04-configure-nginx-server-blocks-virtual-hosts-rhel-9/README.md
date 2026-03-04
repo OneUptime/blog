@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, Server Blocks, Virtual Hosts, Linux
+Tags: RHEL, NGINX, Server Blocks, Virtual Hosts, Linux
 
 Description: Learn how to host multiple websites on a single Nginx server using server blocks on RHEL.
 

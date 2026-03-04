@@ -20,7 +20,7 @@ sudo dnf install -y caddy
 
 ## Basic Round-Robin Load Balancing
 
-```
+```bash
 # /etc/caddy/Caddyfile
 app.example.com {
     reverse_proxy localhost:3001 localhost:3002 localhost:3003
@@ -31,7 +31,7 @@ By default, Caddy uses a random selection policy. To specify round-robin or othe
 
 ## Load Balancing Policies
 
-```
+```bash
 # /etc/caddy/Caddyfile
 app.example.com {
     reverse_proxy {
@@ -46,7 +46,7 @@ app.example.com {
 
 ## Health Checks
 
-```
+```bash
 # /etc/caddy/Caddyfile
 app.example.com {
     reverse_proxy {
@@ -70,7 +70,7 @@ app.example.com {
 
 ## Sticky Sessions
 
-```
+```bash
 # /etc/caddy/Caddyfile
 app.example.com {
     reverse_proxy {
@@ -84,7 +84,7 @@ app.example.com {
 
 ## Weighted Load Balancing
 
-```
+```bash
 # /etc/caddy/Caddyfile
 app.example.com {
     # Use handle blocks for weighted routing
@@ -99,7 +99,7 @@ app.example.com {
 
 ## Adding Request Headers
 
-```
+```bash
 # /etc/caddy/Caddyfile
 app.example.com {
     reverse_proxy {

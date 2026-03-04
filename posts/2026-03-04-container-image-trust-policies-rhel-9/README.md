@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Container, Trust Policies, Security, Linux
+Tags: RHEL, Containers, Trust Policies, Security, Linux
 
 Description: Learn how to configure container image trust policies on RHEL to control which registries and images are trusted, rejected, or require signature verification.
 
@@ -14,7 +14,7 @@ Container image trust policies are your first line of defense against running un
 
 The trust policy lives at `/etc/containers/policy.json`. It tells Podman and other container tools what to do when pulling an image.
 
-# View the current policy
+## View the current policy
 ```bash
 cat /etc/containers/policy.json
 ```
@@ -122,22 +122,22 @@ This policy:
 
 The `podman image trust` command provides a friendlier interface:
 
-# View current trust settings
+## View current trust settings
 ```bash
 podman image trust show
 ```
 
-# Set trust for a registry to require signatures
+## Set trust for a registry to require signatures
 ```bash
 sudo podman image trust set --type signedBy --pubkeysfile /etc/pki/containers/mykey.pub registry.example.com
 ```
 
-# Set a registry as trusted (accept anything)
+## Set a registry as trusted (accept anything)
 ```bash
 sudo podman image trust set --type accept docker.io
 ```
 
-# Block a registry entirely
+## Block a registry entirely
 ```bash
 sudo podman image trust set --type reject untrusted-registry.com
 ```
@@ -164,13 +164,15 @@ The `sigstore` URL is where Podman looks for signatures when pulling images. The
 
 ## Setting Up GPG Keys for Trust
 
-# Import a GPG public key for signature verification
+This section covers setting up gpg keys for trust.
+
+## Import a GPG public key for signature verification
 ```bash
 sudo mkdir -p /etc/pki/containers/
 sudo gpg --armor --export signing@example.com | sudo tee /etc/pki/containers/company-signing-key.pub
 ```
 
-# Verify the key was installed correctly
+## Verify the key was installed correctly
 ```bash
 sudo gpg --show-keys /etc/pki/containers/company-signing-key.pub
 ```
@@ -179,18 +181,18 @@ sudo gpg --show-keys /etc/pki/containers/company-signing-key.pub
 
 After configuring policies, test them:
 
-# This should succeed (Red Hat signed images)
+## This should succeed (Red Hat signed images)
 ```bash
 podman pull registry.access.redhat.com/ubi9/ubi-minimal
 ```
 
-# This should be rejected (blocked registry)
+## This should be rejected (blocked registry)
 ```bash
 podman pull untrusted-registry.com/some-image:latest
 # Error: Source image rejected: Running image ...rejected by policy
 ```
 
-# This should be rejected (unsigned image from signed-required registry)
+## This should be rejected (unsigned image from signed-required registry)
 ```bash
 podman pull registry.example.com/unsigned-image:latest
 # Error: Source image rejected: A]signature was required but no signature exists
@@ -235,12 +237,12 @@ For modern sigstore-based verification:
 
 Track what images are being pulled on your system:
 
-# Check podman events for pull operations
+## Check podman events for pull operations
 ```bash
 podman events --filter event=pull --since 24h
 ```
 
-# Log all container operations through auditd
+## Log all container operations through auditd
 ```bash
 sudo auditctl -w /usr/bin/podman -p x -k container-ops
 ```

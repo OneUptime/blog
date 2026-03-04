@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: .NET, C#, SSL, TLS, Security, HttpClient, Certificate
+Tags: .NET, C#, SSL, TLS, Security, HttpClient, Certificates
 
 Description: Learn how to diagnose and fix SSL certificate errors in .NET applications. Covers certificate validation, trust issues, and proper configuration for secure HTTPS communication.
 

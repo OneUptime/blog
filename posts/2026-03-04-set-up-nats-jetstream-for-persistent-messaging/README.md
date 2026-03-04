@@ -23,7 +23,7 @@ Add to the NATS configuration:
 sudo vi /etc/nats/nats-server.conf
 ```
 
-```
+```bash
 port: 4222
 
 jetstream {

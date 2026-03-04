@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure DevOps, Organization Settings, Pipeline, Cross-Project Access, Security, DevOps, Administration
+Tags: Azure DevOps, Organization Settings, Pipelines, Cross-Project Access, Security, DevOps, Administration
 
 Description: Learn how to configure Azure DevOps organization-level settings to enable and control cross-project pipeline access for repositories, feeds, and resources.
 

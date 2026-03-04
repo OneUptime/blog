@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Microsoft Defender for Cloud, Virtual Machine, Workload Protection, Endpoint Detection, Security Alerts, Cloud Security
+Tags: Azure, Microsoft Defender for Cloud, Virtual Machines, Workload Protection, Endpoint Detection, Security Alerts, Cloud Security
 
 Description: Step-by-step guide to enabling Microsoft Defender for Servers to protect Azure virtual machines with advanced threat detection, vulnerability assessment, and endpoint protection.
 

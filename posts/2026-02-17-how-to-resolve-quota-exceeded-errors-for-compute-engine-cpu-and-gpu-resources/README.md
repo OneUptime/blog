@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, Quota, GPU, Troubleshooting
+Tags: GCP, Compute Engine, Quotas, GPU, Troubleshooting
 
 Description: Learn how to diagnose and resolve quota exceeded errors for CPU and GPU resources in Google Compute Engine, including how to request quota increases and optimize resource usage.
 

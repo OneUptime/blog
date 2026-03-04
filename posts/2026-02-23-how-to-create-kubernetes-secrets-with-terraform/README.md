@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Secret, Security, Infrastructure as Code, DevOps
+Tags: Terraform, Kubernetes, Secrets, Security, Infrastructure as Code, DevOps
 
 Description: How to create and manage Kubernetes Secrets using Terraform with practical examples for different secret types and security best practices.
 

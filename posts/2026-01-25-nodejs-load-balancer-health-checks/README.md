@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NodeJS, Load Balancing, Health Check, DevOps, Reliability, Backend
+Tags: NodeJS, Load Balancing, Health Checks, DevOps, Reliability, Backend
 
 Description: Learn how to build a production-ready load balancer in Node.js with active health checking, multiple load balancing algorithms, and graceful failover.
 

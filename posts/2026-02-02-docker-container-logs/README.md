@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Logging, Container, DevOps, Monitoring, Observability
+Tags: Docker, Logging, Containers, DevOps, Monitoring, Observability
 
 Description: Learn how to configure and manage Docker container logs using various logging drivers and best practices.
 

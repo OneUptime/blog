@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Raspberry Pi, ARM, Linux, Installation, IoT, Container, Edge Computing
+Tags: Docker, Raspberry Pi, ARM, Linux, Installation, IoT, Containers, Edge Computing
 
 Description: Learn how to install Docker on Raspberry Pi OS 64-bit, with guidance on ARM image compatibility, resource optimization, and practical project examples.
 

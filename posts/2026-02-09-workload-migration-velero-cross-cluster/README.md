@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Velero, Backup, Migration, Disaster Recovery
+Tags: Kubernetes, Velero, Backups, Migration, Disaster Recovery
 
 Description: Learn how to migrate workloads between Kubernetes clusters using Velero's backup and restore capabilities for disaster recovery, cluster upgrades, and cloud migrations.
 

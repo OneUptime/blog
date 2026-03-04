@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Caching, Stampede Prevention, Algorithm, Performance
+Tags: Caching, Stampede Prevention, Algorithms, Performance
 
 Description: Learn to implement probabilistic early expiration to prevent cache stampedes under high load.
 

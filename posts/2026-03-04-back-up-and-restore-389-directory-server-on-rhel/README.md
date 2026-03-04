@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, 389 Directory Server, LDAP, Backup, Disaster Recovery
+Tags: RHEL, 389 Directory Server, LDAP, Backups, Disaster Recovery
 
 Description: Back up and restore 389 Directory Server on RHEL using LDIF exports and database-level backups to protect your LDAP directory from data loss.
 

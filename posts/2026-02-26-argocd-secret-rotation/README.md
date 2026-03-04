@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Secret, Security
+Tags: ArgoCD, GitOps, Kubernetes, Secrets, Security
 
 Description: Learn how to implement automated secret rotation in ArgoCD-managed Kubernetes clusters using External Secrets Operator, Vault, and rolling restart strategies for zero-downtime credential updates.
 

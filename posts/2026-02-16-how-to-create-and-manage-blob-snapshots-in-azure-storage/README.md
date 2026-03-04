@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Blob Storage, Snapshot, Data Protection, Backup, Azure Storage, Cloud Storage
+Tags: Azure, Blob Storage, Snapshots, Data Protection, Backups, Azure Storage, Cloud Storage
 
 Description: Learn how to create, manage, and restore blob snapshots in Azure Storage for point-in-time data protection and backup scenarios.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, KVM, virt-viewer, VNC, Virtual Machine, Virtualization, Linux
+Tags: RHEL, KVM, virt-viewer, VNC, Virtual Machines, Virtualization, Linux
 
 Description: Learn how to connect to KVM virtual machine consoles on RHEL using virt-viewer, VNC clients, and serial console for graphical and text-based access.
 

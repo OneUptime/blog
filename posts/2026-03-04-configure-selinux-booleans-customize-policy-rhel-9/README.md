@@ -50,7 +50,7 @@ sudo semanage boolean -l | grep httpd_can_network_connect
 
 Output:
 
-```
+```bash
 httpd_can_network_connect      (off  ,  off)  Allow httpd to can network connect
 ```
 
@@ -65,7 +65,7 @@ sudo getsebool httpd_can_network_connect
 
 Output:
 
-```
+```bash
 httpd_can_network_connect --> off
 ```
 
@@ -201,7 +201,7 @@ sudo sealert -a /var/log/audit/audit.log
 
 `sealert` will often suggest a specific boolean to enable:
 
-```
+```bash
 If you want to allow httpd to can network connect
 Then you must tell SELinux about this by enabling the 'httpd_can_network_connect' boolean.
 setsebool -P httpd_can_network_connect 1

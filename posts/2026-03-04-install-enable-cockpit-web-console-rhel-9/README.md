@@ -72,7 +72,7 @@ sudo systemctl status cockpit.socket
 
 You should see output indicating the socket is active and listening. Something like:
 
-```
+```bash
 ● cockpit.socket - Cockpit Web Service Socket
      Loaded: loaded (/usr/lib/systemd/system/cockpit.socket; enabled; preset: disabled)
      Active: active (listening) since ...
@@ -101,7 +101,7 @@ You should see `cockpit` in the list of allowed services.
 
 Open a browser and navigate to:
 
-```
+```bash
 https://<your-server-ip>:9090
 ```
 

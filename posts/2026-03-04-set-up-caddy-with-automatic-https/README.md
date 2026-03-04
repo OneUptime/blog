@@ -24,7 +24,7 @@ The simplest Caddyfile for automatic HTTPS:
 sudo vi /etc/caddy/Caddyfile
 ```
 
-```
+```bash
 example.com {
     respond "Hello, TLS!"
 }
@@ -38,7 +38,7 @@ That is it. Caddy will:
 
 ## Step 2: Reverse Proxy with Auto-HTTPS
 
-```
+```bash
 myapp.example.com {
     reverse_proxy localhost:3000
 }
@@ -46,7 +46,7 @@ myapp.example.com {
 
 ## Step 3: Custom Certificate Settings
 
-```
+```bash
 example.com {
     tls admin@example.com {
         protocols tls1.2 tls1.3
@@ -58,7 +58,7 @@ example.com {
 
 ## Step 4: Use Wildcard Certificates
 
-```
+```bash
 *.example.com {
     tls {
         dns cloudflare {env.CF_API_TOKEN}
@@ -77,7 +77,7 @@ caddy add-package github.com/caddy-dns/cloudflare
 
 For internal services that do not have public DNS:
 
-```
+```bash
 https://internal.local {
     tls internal
     reverse_proxy localhost:3000

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Bigtable, Cloud Monitoring, Dashboard, Performance
+Tags: GCP, Cloud Bigtable, Cloud Monitoring, Dashboards, Performance
 
 Description: Learn how to set up Cloud Monitoring dashboards for Cloud Bigtable to track latency, throughput, CPU usage, and storage metrics for optimal performance.
 

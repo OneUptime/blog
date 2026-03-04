@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Resource, Kubernetes, Performance, Production
+Tags: Istio, Resources, Kubernetes, Performance, Production
 
 Description: How to validate and optimize Istio resource allocation for production workloads including sidecar sizing, control plane resources, and capacity planning.
 

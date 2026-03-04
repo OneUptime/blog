@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Monitoring, Dashboard, Observability, DevOps
+Tags: GCP, Cloud Monitoring, Dashboards, Observability, DevOps
 
 Description: Build custom dashboards in Google Cloud Monitoring to visualize metrics, track application health, and monitor infrastructure performance in real time.
 

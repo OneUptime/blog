@@ -29,7 +29,7 @@ If you see local disks (like your boot disk) in the output, they should be black
 
 The simplest approach is to set `find_multipaths` in the defaults section:
 
-```
+```bash
 defaults {
     find_multipaths yes
 }
@@ -46,7 +46,7 @@ The `find_multipaths` parameter has several modes:
 
 ## Blacklisting by Device Name
 
-```
+```bash
 blacklist {
     devnode "^sd[a-z]$"
 }
@@ -65,7 +65,7 @@ sudo /lib/udev/scsi_id -g -u /dev/sda
 
 Add to multipath.conf:
 
-```
+```bash
 blacklist {
     wwid "2000000000000001"
     wwid "2000000000000002"
@@ -76,7 +76,7 @@ blacklist {
 
 If your local disks are from a specific vendor:
 
-```
+```bash
 blacklist {
     device {
         vendor "ATA"
@@ -93,7 +93,7 @@ This blacklists all ATA (SATA/IDE) disks and VMware virtual disks from multipath
 
 ## Blacklisting by Device Type
 
-```
+```bash
 blacklist {
     devnode "^(ram|raw|loop|fd|md|dm-|sr|scd|st)[0-9]*"
     devnode "^hd[a-z]"
@@ -105,7 +105,7 @@ blacklist {
 
 When you blacklist broadly, use exceptions to whitelist specific devices:
 
-```
+```bash
 blacklist {
     devnode ".*"
 }
@@ -117,7 +117,7 @@ blacklist_exceptions {
 
 Or more specifically:
 
-```
+```bash
 blacklist {
     device {
         vendor ".*"
@@ -141,7 +141,7 @@ blacklist_exceptions {
 
 Virtual machines often need to blacklist the virtual disk controller:
 
-```
+```bash
 blacklist {
     device {
         vendor "VMware"

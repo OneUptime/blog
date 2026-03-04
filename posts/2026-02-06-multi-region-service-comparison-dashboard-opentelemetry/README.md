@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Multi-Region, Distributed Systems, Metrics, Dashboard
+Tags: OpenTelemetry, Multi-Region, Distributed Systems, Metrics, Dashboards
 
 Description: Compare service performance across multiple regions using OpenTelemetry distributed metrics in a unified dashboard.
 

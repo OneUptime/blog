@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Terraform, Libvirt, KVM, Virtualization, Linux
+Tags: RHEL, Terraform, libvirt, KVM, Virtualization, Linux
 
 Description: Learn how to use Terraform with the libvirt provider to create and manage RHEL virtual machines on KVM hypervisors.
 

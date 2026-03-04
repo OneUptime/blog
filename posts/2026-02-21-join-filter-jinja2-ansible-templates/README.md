@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filter, Template
+Tags: Ansible, Jinja2, Filter, Templates
 
 Description: Learn how to use the Jinja2 join filter in Ansible templates to concatenate list elements into strings with custom separators.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Dependency Management, Collection, Team Collaboration
+Tags: Ansible, Dependency Management, Collections, Team Collaboration
 
 Description: Learn strategies for managing Ansible collection and role dependencies across multiple teams including version pinning and conflict resolution.
 

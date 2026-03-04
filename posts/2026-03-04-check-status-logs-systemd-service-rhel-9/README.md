@@ -25,7 +25,7 @@ sudo systemctl status httpd
 
 The output packs a lot of information into a compact format:
 
-```
+```bash
 httpd.service - The Apache HTTP Server
      Loaded: loaded (/usr/lib/systemd/system/httpd.service; enabled; preset: disabled)
      Active: active (running) since Tue 2026-03-04 10:15:30 UTC; 3h 22min ago

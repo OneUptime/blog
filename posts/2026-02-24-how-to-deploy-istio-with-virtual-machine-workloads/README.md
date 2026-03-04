@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Virtual Machine, Kubernetes, Service Mesh, Hybrid
+Tags: Istio, Virtual Machines, Kubernetes, Service Mesh, Hybrid
 
 Description: A complete walkthrough for adding virtual machine workloads to your Istio service mesh so VMs and Kubernetes pods communicate seamlessly.
 

@@ -73,15 +73,15 @@ Add a `--selector` flag to `argocd app sync` that allows bulk-syncing
 applications matching a label selector:
 
 ```bash
-# Sync all apps with the cluster=production label
+## Sync all apps with the cluster=production label
 argocd app sync --selector cluster=production
 
-# Sync all apps in a specific project
+## Sync all apps in a specific project
 argocd app sync --selector project=payments
 
-# Combine with existing sync options
+## Combine with existing sync options
 argocd app sync --selector cluster=production --prune --force
-```
+```bash
 
 ### API Changes
 
@@ -96,7 +96,7 @@ POST /api/v1/applications/bulk-sync
     "dryRun": false
   }
 }
-```
+```bash
 
 ### UI Changes
 

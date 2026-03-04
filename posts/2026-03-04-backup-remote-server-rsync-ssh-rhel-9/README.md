@@ -157,7 +157,7 @@ sudo chmod +x /usr/local/bin/remote-backup.sh
 sudo crontab -e
 ```
 
-```
+```bash
 # Remote backup at 2:00 AM daily
 0 2 * * * /usr/local/bin/remote-backup.sh
 ```

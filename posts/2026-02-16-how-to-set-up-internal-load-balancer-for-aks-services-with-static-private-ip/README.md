@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Internal Load Balancer, Kubernetes, Azure, Networking, Private IP, Service
+Tags: AKS, Internal Load Balancer, Kubernetes, Azure, Networking, Private IP, Services
 
 Description: How to configure an internal Azure Load Balancer for AKS services with a static private IP address for predictable internal routing.
 

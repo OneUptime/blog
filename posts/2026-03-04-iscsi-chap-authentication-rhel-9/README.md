@@ -27,7 +27,7 @@ sudo targetcli
 
 Set CHAP credentials for the initiator ACL:
 
-```
+```bash
 cd /iscsi/iqn.2024.com.example:target1/tpg1/acls/iqn.2024.com.example:client1
 set auth userid=iscsiuser
 set auth password=SecurePass123
@@ -37,14 +37,14 @@ The password must be between 12 and 16 characters.
 
 Enable authentication on the TPG:
 
-```
+```bash
 cd /iscsi/iqn.2024.com.example:target1/tpg1
 set attribute authentication=1
 ```
 
 Save and exit:
 
-```
+```bash
 saveconfig
 exit
 ```
@@ -59,7 +59,7 @@ sudo vi /etc/iscsi/iscsid.conf
 
 Set these values:
 
-```
+```bash
 node.session.auth.authmethod = CHAP
 node.session.auth.username = iscsiuser
 node.session.auth.password = SecurePass123
@@ -92,7 +92,7 @@ sudo targetcli
 
 Set both forward (target authenticates initiator) and reverse (initiator authenticates target) credentials:
 
-```
+```bash
 cd /iscsi/iqn.2024.com.example:target1/tpg1/acls/iqn.2024.com.example:client1
 set auth userid=iscsiuser
 set auth password=SecurePass123
@@ -100,7 +100,7 @@ set auth mutual_userid=targetuser
 set auth mutual_password=TargetPass456
 ```
 
-```
+```bash
 saveconfig
 exit
 ```
@@ -109,7 +109,7 @@ exit
 
 Edit `/etc/iscsi/iscsid.conf`:
 
-```
+```bash
 # Forward CHAP (initiator credentials)
 node.session.auth.authmethod = CHAP
 node.session.auth.username = iscsiuser
@@ -149,7 +149,7 @@ exit
 
 Edit `/etc/iscsi/iscsid.conf`:
 
-```
+```bash
 discovery.sendtargets.auth.authmethod = CHAP
 discovery.sendtargets.auth.username = discoveryuser
 discovery.sendtargets.auth.password = DiscPass789

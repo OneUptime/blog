@@ -85,13 +85,13 @@ vi /etc/fstab
 
 Before:
 
-```
+```bash
 /dev/vg_data/lv_data  /data  xfs  defaults  0 0
 ```
 
 After:
 
-```
+```bash
 /dev/vg_data/lv_data  /data  xfs  defaults,noatime  0 0
 ```
 
@@ -106,7 +106,7 @@ mount -o remount /data
 
 You can also apply noatime to the root filesystem:
 
-```
+```bash
 /dev/mapper/rhel-root  /  xfs  defaults,noatime  0 0
 ```
 
@@ -116,7 +116,7 @@ This requires a reboot to take effect on the root filesystem.
 
 If you want to keep file atime updates but skip them for directories:
 
-```
+```bash
 /dev/vg_data/lv_data  /data  xfs  defaults,nodiratime  0 0
 ```
 
@@ -172,7 +172,7 @@ The `A` (access time) qualifier in tmpfiles rules will not work correctly with `
 
 For a typical RHEL server:
 
-```
+```bash
 # /etc/fstab
 /dev/mapper/rhel-root   /       xfs   defaults,noatime  0 0
 /dev/mapper/rhel-home   /home   xfs   defaults,noatime  0 0
@@ -182,7 +182,7 @@ tmpfs                   /tmp    tmpfs defaults,noatime,size=4G  0 0
 
 For a mail server where atime matters for the mail spool:
 
-```
+```bash
 /dev/mapper/rhel-root    /          xfs   defaults,noatime   0 0
 /dev/mapper/rhel-home    /home      xfs   defaults,noatime   0 0
 /dev/vg_mail/lv_mail     /var/mail  xfs   defaults,relatime  0 0

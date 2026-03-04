@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filter, Template, Data Processing
+Tags: Ansible, Jinja2, Filter, Templates, Data Processing
 
 Description: Learn how to use the Jinja2 map filter in Ansible to transform list elements by applying filters or extracting attributes.
 

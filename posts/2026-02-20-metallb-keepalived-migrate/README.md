@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, keepalived, Migration, Load Balancing
+Tags: Kubernetes, MetalLB, Keepalived, Migration, Load Balancing
 
 Description: Step-by-step guide to migrating from Keepalived virtual IPs to MetalLB-managed LoadBalancer services on Kubernetes.
 

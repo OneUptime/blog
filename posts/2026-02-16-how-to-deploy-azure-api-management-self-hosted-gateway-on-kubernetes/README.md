@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, API Management, Kubernetes, Self-Hosted Gateway, Container, Hybrid Cloud
+Tags: Azure, API Management, Kubernetes, Self-Hosted Gateway, Containers, Hybrid Cloud
 
 Description: Step-by-step instructions for deploying the Azure API Management self-hosted gateway on Kubernetes for hybrid and multi-cloud API scenarios.
 

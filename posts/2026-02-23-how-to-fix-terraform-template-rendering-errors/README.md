@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Troubleshooting, Infrastructure as Code, Template
+Tags: Terraform, Troubleshooting, Infrastructure as Code, Templates
 
 Description: Diagnose and resolve Terraform template rendering errors including syntax issues, variable interpolation failures, and templatefile function problems.
 

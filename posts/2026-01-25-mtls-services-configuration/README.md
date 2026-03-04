@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: mTLS, Security, TLS, Certificate, Kubernetes, Microservices
+Tags: mTLS, Security, TLS, Certificates, Kubernetes, Microservices
 
 Description: A hands-on guide to implementing mutual TLS (mTLS) for service-to-service communication, covering certificate management, configuration for various frameworks, and automation with cert-manager.
 

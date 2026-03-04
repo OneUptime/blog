@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NGINX, Docker, Networking, DevOps, Container
+Tags: NGINX, Docker, Networking, DevOps, Containers
 
 Description: Learn how to configure Nginx inside a Docker container to connect to services running on your host machine's localhost, including solutions for different operating systems and Docker network modes.
 

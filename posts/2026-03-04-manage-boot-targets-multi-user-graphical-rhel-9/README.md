@@ -1,4 +1,4 @@
-# How to Manage System Boot Targets and Switch Between Multi-User and Graphical Mode on RHEL
+# How to Manage Boot Targets and Switch Multi-User/Graphical Mode on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -128,7 +128,7 @@ The emergency target is even more minimal than rescue. It mounts the root filesy
 
 From the GRUB menu, follow the same process as rescue mode but use:
 
-```
+```bash
 systemd.unit=emergency.target
 ```
 

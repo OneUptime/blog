@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Prometheus, Template, Alerting, PromQL
+Tags: Prometheus, Templates, Alerting, PromQL
 
 Description: Learn how to create and use Prometheus template functions to build dynamic, context-rich alert messages that help you respond to incidents faster.
 

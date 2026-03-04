@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Registry, DevOps, Container
+Tags: Ansible, Docker, Registry, DevOps, Containers
 
 Description: Step-by-step guide to deploying a secure private Docker registry with TLS, authentication, and storage backends using Ansible automation.
 

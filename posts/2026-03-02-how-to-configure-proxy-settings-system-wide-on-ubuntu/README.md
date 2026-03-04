@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, Proxy, Configuration, Sysadmin
+Tags: Ubuntu, Networking, Proxy, Configuration, SysAdmin
 
 Description: Learn how to configure HTTP, HTTPS, and SOCKS proxy settings system-wide on Ubuntu, covering environment variables, APT proxy config, and per-user settings.
 

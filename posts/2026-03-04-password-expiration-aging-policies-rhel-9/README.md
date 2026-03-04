@@ -42,7 +42,7 @@ These defaults apply to all newly created users:
 sudo vi /etc/login.defs
 ```
 
-```
+```bash
 # Maximum number of days a password is valid
 PASS_MAX_DAYS   90
 
@@ -79,7 +79,7 @@ sudo chage -l jsmith
 
 Example output:
 
-```
+```bash
 Last password change                                    : Mar 04, 2026
 Password expires                                        : Jun 02, 2026
 Password inactive                                       : Jul 02, 2026
@@ -184,7 +184,7 @@ sudo chage -l serviceaccount
 
 Expected output:
 
-```
+```bash
 Password expires                                        : never
 Password inactive                                       : never
 Account expires                                         : never
@@ -249,7 +249,7 @@ sudo chmod 700 /usr/local/bin/check-password-expiry.sh
 
 ### CIS Benchmark
 
-```
+```bash
 PASS_MAX_DAYS   365
 PASS_MIN_DAYS   1
 PASS_WARN_AGE   7
@@ -258,7 +258,7 @@ INACTIVE        30
 
 ### PCI DSS
 
-```
+```bash
 PASS_MAX_DAYS   90
 PASS_MIN_DAYS   1
 PASS_WARN_AGE   14
@@ -267,7 +267,7 @@ INACTIVE        90
 
 ### STIG
 
-```
+```bash
 PASS_MAX_DAYS   60
 PASS_MIN_DAYS   1
 PASS_WARN_AGE   7

@@ -59,7 +59,7 @@ sudo vi /etc/squid/squid.conf
 
 Add your network range so internal clients can use the proxy:
 
-```
+```bash
 # Define the local network ACL
 acl localnet src 10.0.0.0/8
 acl localnet src 172.16.0.0/12
@@ -73,7 +73,7 @@ http_access allow localnet
 
 Configure the disk cache directory. The `ufs` storage type is reliable for most setups:
 
-```
+```bash
 # Cache directory: type, path, size in MB, L1 dirs, L2 dirs
 cache_dir ufs /var/spool/squid 10000 16 256
 ```
@@ -84,7 +84,7 @@ This gives you a 10 GB disk cache. Adjust the size based on your available disk 
 
 Set the memory cache for frequently accessed objects:
 
-```
+```bash
 # Maximum memory used for caching (default is 256 MB)
 cache_mem 512 MB
 
@@ -97,7 +97,7 @@ maximum_object_size 512 MB
 
 ### Set the Proxy Port and Hostname
 
-```
+```bash
 # Listen on port 3128 (default)
 http_port 3128
 
@@ -109,7 +109,7 @@ visible_hostname proxy.example.com
 
 These rules determine when cached content is considered stale:
 
-```
+```bash
 # Refresh patterns: regex, min-age (minutes), percentage, max-age (minutes)
 refresh_pattern ^ftp:           1440    20%     10080
 refresh_pattern -i (/cgi-bin/|\?) 0     0%      0
@@ -118,7 +118,7 @@ refresh_pattern .               0       20%     4320
 
 ### Enable Access Logging
 
-```
+```bash
 # Access log location
 access_log /var/log/squid/access.log squid
 
@@ -197,7 +197,7 @@ Squid ACLs give you fine-grained control over who can access what.
 
 ### Block Specific Domains
 
-```
+```bash
 # Define blocked sites
 acl blocked_sites dstdomain .facebook.com .twitter.com .youtube.com
 
@@ -207,7 +207,7 @@ http_access deny blocked_sites
 
 ### Time-Based Access
 
-```
+```bash
 # Allow full access only during business hours
 acl business_hours time MTWHF 08:00-18:00
 http_access allow localnet business_hours
@@ -215,7 +215,7 @@ http_access allow localnet business_hours
 
 ### Restrict by Content Type
 
-```
+```bash
 # Block large file downloads
 acl large_downloads rep_mime_type -i video/
 http_access deny large_downloads
@@ -279,7 +279,7 @@ sudo semanage port -a -t squid_port_t -p tcp 8080
 
 For high-traffic environments, consider these tweaks:
 
-```
+```bash
 # Increase the number of file descriptors
 max_filedescriptors 65535
 
@@ -293,7 +293,7 @@ read_timeout 3 minutes
 
 Also increase the system file descriptor limit in `/etc/security/limits.conf`:
 
-```
+```bash
 squid soft nofile 65535
 squid hard nofile 65535
 ```

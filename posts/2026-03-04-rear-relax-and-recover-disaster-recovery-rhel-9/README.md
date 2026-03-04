@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ReaR, Disaster Recovery, Backup
+Tags: RHEL, ReaR, Disaster Recovery, Backups
 
 Description: Use ReaR on RHEL 9 to create bootable rescue images for disaster recovery.
 

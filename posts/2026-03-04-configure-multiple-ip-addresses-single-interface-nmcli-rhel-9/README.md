@@ -137,7 +137,7 @@ ping -I 10.0.1.51 8.8.8.8 -c 2
 
 The `ip addr show` output will list all addresses:
 
-```
+```bash
 2: ens192: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500
     inet 10.0.1.50/24 brd 10.0.1.255 scope global noprefixroute ens192
     inet 10.0.1.51/24 brd 10.0.1.255 scope global secondary noprefixroute ens192

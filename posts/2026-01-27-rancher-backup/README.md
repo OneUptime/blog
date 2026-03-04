@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Kubernetes, Backup, Disaster Recovery, S3, DevOps, High Availability
+Tags: Rancher, Kubernetes, Backups, Disaster Recovery, S3, DevOps, High Availability
 
 Description: A comprehensive guide to configuring Rancher Backup for protecting your Kubernetes cluster management data, including scheduled backups, S3 storage integration, and disaster recovery procedures.
 

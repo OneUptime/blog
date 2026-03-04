@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Plugin, Visualization, React, Observability
+Tags: Grafana, Plugins, Visualization, React, Observability
 
 Description: Develop custom Grafana plugins including data sources, panels, and apps using the plugin SDK and React for tailored visualizations.
 

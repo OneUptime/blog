@@ -19,7 +19,7 @@ Zombie processes and orphaned children are common issues that can accumulate and
 
 A zombie (defunct) process has finished execution but its parent has not yet called `wait()` to read its exit status. The process entry remains in the process table, consuming a PID but no CPU or memory.
 
-```
+```bash
 Process exits -> Becomes zombie -> Parent calls wait() -> Entry removed
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Network Interface, Naming, Kubernetes, System Administration
+Tags: Talos Linux, Network Interfaces, Naming, Kubernetes, System Administration
 
 Description: Understand predictable network interface naming in Talos Linux and learn when to use or disable it for consistent configurations.
 

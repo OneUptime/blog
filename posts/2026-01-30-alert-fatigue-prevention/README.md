@@ -704,7 +704,7 @@ This alert fires when a container's memory usage exceeds 90% of its limit.
 1. Check current memory usage:
    ```bash
    kubectl top pods -l app=<service-name>
-   ```
+   ```bash
 
 2. Review memory trends in Grafana:
    - [Memory Dashboard](https://grafana.example.com/d/memory)
@@ -712,19 +712,19 @@ This alert fires when a container's memory usage exceeds 90% of its limit.
 3. Check for memory leaks:
    ```bash
    kubectl exec -it <pod-name> -- pprof -http=:8080 /debug/pprof/heap
-   ```
+   ```bash
 
 4. Review recent deployments:
    ```bash
    kubectl rollout history deployment/<service-name>
-   ```
+   ```bash
 
 ## Resolution
 
 ### Option 1: Scale horizontally
 ```bash
 kubectl scale deployment/<service-name> --replicas=<new-count>
-```
+```bash
 
 ### Option 2: Increase memory limit
 Update the deployment manifest and apply:
@@ -732,12 +732,12 @@ Update the deployment manifest and apply:
 resources:
   limits:
     memory: "2Gi"  # Increase from current
-```
+```bash
 
 ### Option 3: Rollback recent deployment
 ```bash
 kubectl rollout undo deployment/<service-name>
-```
+```bash
 
 ## Escalation
 If unresolved after 30 minutes, escalate to: platform-oncall

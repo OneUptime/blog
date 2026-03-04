@@ -58,7 +58,7 @@ vi /etc/fuse.conf
 
 Uncomment or add:
 
-```
+```bash
 user_allow_other
 ```
 
@@ -90,7 +90,7 @@ mount -t ntfs-3g /dev/sdb1 /mnt/windows
 
 For fstab:
 
-```
+```bash
 /dev/sdb1  /mnt/windows  ntfs-3g  defaults,uid=1000,gid=1000  0 0
 ```
 
@@ -184,7 +184,7 @@ semodule -i myfuse.pp
 
 FUSE filesystems can be added to fstab, but they need the `_netdev` option if they depend on networking:
 
-```
+```bash
 sshfs#user@host:/remote/path  /mnt/remote  fuse  _netdev,user,idmap=user  0 0
 ```
 

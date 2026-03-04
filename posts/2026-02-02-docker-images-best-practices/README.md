@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container, DevOps, Best Practices, Dockerfile
+Tags: Docker, Containers, DevOps, Best Practices, Dockerfile
 
 Description: A practical guide to building production-ready Docker images with best practices covering multi-stage builds, layer optimization, security hardening, and caching strategies.
 

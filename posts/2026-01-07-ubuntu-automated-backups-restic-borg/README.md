@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, Backup, restic, borg, Disaster Recovery
+Tags: Ubuntu, Linux, Backups, Restic, borg, Disaster Recovery
 
 Description: Set up automated backups on Ubuntu using restic or borg with encryption, deduplication, and remote storage targets.
 

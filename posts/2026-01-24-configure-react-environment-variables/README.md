@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, Environment Variable, Configuration, JavaScript, Security, DevOps
+Tags: React, Environment Variables, Configuration, JavaScript, Security, DevOps
 
 Description: A comprehensive guide to configuring environment variables in React applications for different environments, including security best practices and deployment strategies.
 

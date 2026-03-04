@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Dashboard, Permissions
+Tags: Grafana, Dashboards, Permissions
 
 Description: Learn how to manage Grafana dashboard permissions, sharing options, and access controls to secure your monitoring infrastructure.
 

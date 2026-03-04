@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Amanda, Backup, Network Backup, Enterprise, Tutorial
+Tags: Ubuntu, Amanda, Backups, Network Backup, Enterprise, Tutorial
 
 Description: Complete guide to setting up Amanda network backup solution on Ubuntu.
 

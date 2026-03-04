@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container, Linux, DevOps, Learning Resource
+Tags: Docker, Containers, Linux, DevOps, Learning Resource
 
 Description: Learn how containers actually work under the hood by building a basic container engine from scratch.
 

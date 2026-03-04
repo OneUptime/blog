@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Incus, LXD, Migration, Container
+Tags: Ubuntu, Incus, LXD, Migration, Containers
 
 Description: Migrate existing LXD containers, storage pools, profiles, and networks from LXD to Incus on Ubuntu using the official migration tool with minimal downtime.
 

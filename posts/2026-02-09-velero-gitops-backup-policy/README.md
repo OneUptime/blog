@@ -568,7 +568,7 @@ Store runbooks in the same repository:
 If GitOps is unavailable, apply directly:
 ```bash
 kubectl apply -k overlays/production/
-```
+```bash
 ```text
 
 ## Conclusion
@@ -579,4 +579,5 @@ Start with a simple Git repository structure, integrate with ArgoCD for automate
 
 Remember that your disaster recovery strategy is only as reliable as your backup configurations. GitOps ensures those configurations are version controlled, tested, and consistently applied across all your clusters.
 
+```bash
 ```

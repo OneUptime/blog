@@ -1,4 +1,4 @@
-# How to Verify System Requirements and Supported Architectures Before Installing RHEL
+# How to Verify System Requirements Before Installing RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

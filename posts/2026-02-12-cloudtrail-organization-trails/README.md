@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CloudTrail, Security, Multi-Account, Organization
+Tags: AWS, CloudTrail, Security, Multi-Account, Organizations
 
 Description: Learn how to set up AWS CloudTrail organization trails to capture API activity across all accounts in your AWS Organization from a single configuration.
 

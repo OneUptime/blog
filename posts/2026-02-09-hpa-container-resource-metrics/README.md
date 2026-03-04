@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Autoscaling, Container
+Tags: Kubernetes, Autoscaling, Containers
 
 Description: Learn how to use HPA containerResource metrics to scale pods based on individual container resource utilization instead of aggregate pod metrics.
 

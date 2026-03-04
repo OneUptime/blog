@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Developer Experience, DevOps, Development, Container
+Tags: Developer Experience, DevOps, Development, Containers
 
 Description: A comprehensive guide to building a reproducible, containerized local development environment that mirrors production and eliminates 'works on my machine' problems.
 

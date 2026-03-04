@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Offline Installation, DevOps
+Tags: Ansible, Collections, Offline Installation, DevOps
 
 Description: How to install Ansible collections from tarball files for offline environments, air-gapped networks, and manual distribution workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Snapshot, Backup, Restore, S3, GCS, Disaster Recovery
+Tags: Elasticsearch, Snapshots, Backups, Restore, S3, GCS, Disaster Recovery
 
 Description: A comprehensive guide to setting up Elasticsearch snapshot and restore for backups, covering repository configuration for S3, GCS, and Azure, snapshot policies, and restore procedures.
 

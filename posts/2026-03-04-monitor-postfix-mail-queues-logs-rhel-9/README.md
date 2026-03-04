@@ -146,22 +146,22 @@ sudo journalctl -u postfix -f
 ### Key Log Patterns
 
 **Successful delivery:**
-```
+```bash
 postfix/smtp[PID]: QUEUE_ID: to=<user@remote.com>, relay=mx.remote.com[IP]:25, delay=0.5, status=sent (250 OK)
 ```
 
 **Deferred delivery:**
-```
+```bash
 postfix/smtp[PID]: QUEUE_ID: to=<user@remote.com>, relay=none, delay=300, status=deferred (connect to mx.remote.com: Connection timed out)
 ```
 
 **Bounced message:**
-```
+```bash
 postfix/smtp[PID]: QUEUE_ID: to=<user@remote.com>, relay=mx.remote.com[IP]:25, delay=0.1, status=bounced (550 User unknown)
 ```
 
 **Rejected at SMTP level:**
-```
+```bash
 postfix/smtpd[PID]: NOQUEUE: reject: RCPT from unknown[IP]: 554 Relay access denied
 ```
 
@@ -219,7 +219,7 @@ Create a cron job for daily reports:
 sudo crontab -e
 ```
 
-```
+```bash
 # Send daily Postfix report at midnight
 0 0 * * * /usr/sbin/pflogsumm -d yesterday /var/log/maillog | mail -s "Daily Mail Report" admin@example.com
 ```
@@ -249,7 +249,7 @@ sudo chmod +x /usr/local/bin/check_mailqueue.sh
 
 Add to crontab:
 
-```
+```bash
 # Check queue every 15 minutes
 */15 * * * * /usr/local/bin/check_mailqueue.sh
 ```

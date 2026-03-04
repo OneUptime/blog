@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, cron, systemd Timers, Scheduling, Linux, Automation
+Tags: RHEL, Cron, systemd Timers, Scheduling, Linux, Automation
 
 Description: A practical comparison of cron and systemd timers on RHEL, with examples of both approaches for scheduling recurring tasks, plus guidance on when to use each.
 
@@ -18,7 +18,7 @@ Cron has been the standard task scheduler on Unix systems for decades. It's simp
 
 Each cron entry has five time fields followed by the command:
 
-```
+```bash
 # minute  hour  day-of-month  month  day-of-week  command
   0       2     *             *      *            /opt/scripts/backup.sh
 ```

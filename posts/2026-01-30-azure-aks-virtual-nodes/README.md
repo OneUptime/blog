@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Azure, AKS, Kubernetes, Serverless, Virtual Nodes, ACI, Container
+Tags: Azure, AKS, Kubernetes, Serverless, Virtual Nodes, ACI, Containers
 
 Description: Learn how to set up Azure AKS virtual nodes with Azure Container Instances for serverless, burst-capable Kubernetes workloads.
 

@@ -46,7 +46,7 @@ sudo find / -xdev \( -perm -4000 -o -perm -2000 \) -type f 2>/dev/null | sort
 
 Common setuid binaries on RHEL include:
 
-```
+```bash
 /usr/bin/chage
 /usr/bin/gpasswd
 /usr/bin/mount
@@ -196,7 +196,7 @@ sudo aureport -x --summary | head -20
 
 A typical privileged command audit event:
 
-```
+```bash
 type=SYSCALL msg=audit(1709568000.789:1234): arch=c000003e syscall=59
 success=yes exit=0 a0=55d4a8f01010 a1=55d4a8f01080 a2=55d4a8f010f0 a3=7ffe1234
 items=2 ppid=5678 pid=9012 auid=1000 uid=0 gid=0 euid=0

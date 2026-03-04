@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Virtual Machine, Kubernetes, Service Mesh, VM Onboarding
+Tags: Istio, Virtual Machines, Kubernetes, Service Mesh, VM Onboarding
 
 Description: Complete guide to adding non-Kubernetes virtual machine workloads to your Istio service mesh for unified traffic management and security.
 

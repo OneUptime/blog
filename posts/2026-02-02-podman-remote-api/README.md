@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Remote API, Container, DevOps, Linux, Docker Alternative, Container Management, REST API
+Tags: Podman, Remote API, Containers, DevOps, Linux, Docker Alternative, Container Management, REST API
 
 Description: Learn how to configure and use the Podman Remote API for managing containers from remote clients. Covers socket activation, TLS authentication, SSH tunneling, and practical API usage examples.
 

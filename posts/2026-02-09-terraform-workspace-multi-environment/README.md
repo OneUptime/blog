@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Multi-Environment, Kubernetes, Infrastructure as Code
+Tags: Terraform, Workspaces, Multi-Environment, Kubernetes, Infrastructure as Code
 
 Description: Learn how to use Terraform workspaces to manage development, staging, and production Kubernetes environments with shared configurations and environment-specific overrides.
 

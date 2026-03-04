@@ -41,7 +41,7 @@ Reboot the server. When the GRUB menu appears, highlight the default kernel entr
 
 Find the line that starts with `linux` or `linuxefi`. Move to the end of that line and add `rd.break`.
 
-```
+```bash
 linuxefi /vmlinuz-5.14.0-362.el9.x86_64 root=/dev/mapper/rhel-root ro crashkernel=256M ... rd.break
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, CI/CD, GitHub Actions, GitLab CI, Jenkins, Automation
+Tags: Terraform, Workspaces, CI/CD, GitHub Actions, GitLab CI, Jenkins, Automation
 
 Description: Learn how to integrate Terraform workspaces into CI/CD pipelines for automated, workspace-aware infrastructure deployments across GitHub Actions, GitLab CI, and Jenkins.
 

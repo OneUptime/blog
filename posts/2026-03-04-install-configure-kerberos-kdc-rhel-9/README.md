@@ -124,7 +124,7 @@ Set up access control for the admin service.
 sudo vi /var/kerberos/krb5kdc/kadm5.acl
 ```
 
-```
+```bash
 # Grant full admin access to admin principals
 */admin@EXAMPLE.COM  *
 ```

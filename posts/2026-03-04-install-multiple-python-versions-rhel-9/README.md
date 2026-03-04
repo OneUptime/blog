@@ -102,7 +102,7 @@ sudo alternatives --config python3
 
 When you run `alternatives --config python3`, you will see a menu like this:
 
-```
+```bash
 There are 3 programs which provide 'python3'.
 
   Selection    Command

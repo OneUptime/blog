@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboard, Template
+Tags: Grafana, Observability, Dashboards, Templates
 
 Description: Learn how to create dynamic, informative text panels in Grafana using templates, variables, and HTML/Markdown formatting.
 

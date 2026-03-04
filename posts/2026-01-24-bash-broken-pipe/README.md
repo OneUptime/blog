@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Bash, Shell Scripting, Linux, Pipeline, Error Handling, SIGPIPE, Debugging
+Tags: Bash, Shell Scripting, Linux, Pipelines, Error Handling, SIGPIPE, Debugging
 
 Description: Learn how to diagnose and handle broken pipe errors in Bash pipelines when downstream commands exit before upstream commands finish.
 

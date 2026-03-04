@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, pip, DevOps, Virtual Environment
+Tags: Ansible, Python, pip, DevOps, Virtual Environments
 
 Description: Learn how to install Ansible using pip inside a Python virtual environment for clean dependency management and version control.
 

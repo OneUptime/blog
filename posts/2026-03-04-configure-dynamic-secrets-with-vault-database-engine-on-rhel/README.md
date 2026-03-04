@@ -147,7 +147,7 @@ vault read database/creds/myapp-readonly
 
 Output:
 
-```
+```bash
 Key                Value
 ---                -----
 lease_id           database/creds/myapp-readonly/abc123

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cosign, Binary Authorization, GKE, Security, Container, Supply Chain
+Tags: GCP, Cosign, Binary Authorization, GKE, Security, Containers, Supply Chain
 
 Description: Learn how to sign container images with Cosign and enforce image verification on GKE using Binary Authorization to secure your software supply chain.
 

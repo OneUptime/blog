@@ -34,7 +34,7 @@ cat /proc/self/uid_map
 
 This shows the UID mapping for the current process. For a regular user it typically shows:
 
-```
+```bash
          0       1000          1
 ```
 
@@ -53,7 +53,7 @@ cat /etc/subgid
 
 A typical entry looks like:
 
-```
+```bash
 username:100000:65536
 ```
 
@@ -91,7 +91,7 @@ podman run --rm -it registry.access.redhat.com/ubi9/ubi:latest cat /proc/self/ui
 
 You should see a mapping like:
 
-```
+```bash
          0       1000          1
          1     200000      65536
 ```
@@ -143,7 +143,7 @@ ls -la /usr/bin/newuidmap /usr/bin/newgidmap
 
 They should have the setuid bit set:
 
-```
+```bash
 -rwsr-xr-x. 1 root root ... /usr/bin/newuidmap
 -rwsr-xr-x. 1 root root ... /usr/bin/newgidmap
 ```

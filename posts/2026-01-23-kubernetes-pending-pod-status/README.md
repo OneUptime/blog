@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Troubleshooting, Scheduling, POD, DevOps
+Tags: Kubernetes, Troubleshooting, Scheduling, Pods, DevOps
 
 Description: A systematic guide to diagnosing and resolving Kubernetes pods stuck in Pending status, covering resource constraints, node selectors, affinity rules, and scheduling failures.
 

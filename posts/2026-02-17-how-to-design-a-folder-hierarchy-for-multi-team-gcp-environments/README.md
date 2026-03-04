@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Resource Hierarchy, Folders, Organization, Google Cloud
+Tags: GCP, Resource Hierarchy, Folders, Organizations, Google Cloud
 
 Description: Learn how to design an effective folder hierarchy in Google Cloud that scales across multiple teams while maintaining clear IAM boundaries and cost tracking.
 

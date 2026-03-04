@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Workspace, Virtual Desktop, Remote Work
+Tags: AWS, Workspaces, Virtual Desktop, Remote Work
 
 Description: Complete guide to setting up Amazon WorkSpaces for virtual desktop infrastructure, covering directory setup, workspace bundles, networking, and user management.
 

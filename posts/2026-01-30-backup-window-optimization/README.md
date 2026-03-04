@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backup, Disaster Recovery, Performance, SRE
+Tags: Backups, Disaster Recovery, Performance, SRE
 
 Description: Learn how to optimize backup windows for minimal production impact.
 

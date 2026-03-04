@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kafka, Quota, Rate Limiting, Performance
+Tags: Kafka, Quotas, Rate Limiting, Performance
 
 Description: Learn how to build a comprehensive Kafka quota management system that protects your cluster from resource exhaustion, ensures fair resource allocation in multi-tenant environments.
 

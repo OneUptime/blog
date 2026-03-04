@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Data Source, Plugin, Observability, Monitoring
+Tags: Grafana, Data Source, Plugins, Observability, Monitoring
 
 Description: A practical guide to configuring Grafana data source plugins for connecting to various backends like Prometheus, InfluxDB, Elasticsearch, and custom APIs.
 

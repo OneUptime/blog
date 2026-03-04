@@ -52,7 +52,7 @@ sudo cat /etc/aide.conf
 
 The default config on RHEL is pretty comprehensive. It monitors critical directories like `/boot`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/usr`, and `/etc`. The config file uses macros to define groups of attributes to check. For example:
 
-```
+```bash
 # Default attribute groups defined in aide.conf
 CONTENT_EX = sha512+ftype+p+u+g+n+acl+selinux+xattrs
 DATAONLY = p+n+u+g+s+acl+selinux+xattrs+sha512
@@ -103,7 +103,7 @@ If nothing has changed since you initialized the database, the output will show 
 
 Here is an example of what changed-file output looks like:
 
-```
+```bash
 AIDE found differences between database and filesystem!!
 
 Summary:

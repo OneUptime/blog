@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Resource Groups, Organization, Tagging, Infrastructure as Code
+Tags: Terraform, AWS, Resource Groups, Organizations, Tagging, Infrastructure as Code
 
 Description: Learn how to create and manage AWS Resource Groups with Terraform to organize, search, and take bulk actions on tagged resources across your account.
 

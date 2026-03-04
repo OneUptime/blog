@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Disk Management, File System, Storage, System Administration
+Tags: Ubuntu, Disk Management, File Systems, Storage, System Administration
 
 Description: Format partitions on Ubuntu with ext4, XFS, or Btrfs filesystems, understand the differences between them, and choose the right filesystem for your workload.
 

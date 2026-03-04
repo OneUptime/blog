@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Kubernetes, Image Cleaner, Disk Management, Azure, Container Image, Node Maintenance
+Tags: AKS, Kubernetes, Image Cleaner, Disk Management, Azure, Container Images, Node Maintenance
 
 Description: Learn how to configure the AKS Image Cleaner feature to automatically remove unused and vulnerable container images from nodes to free disk space.
 

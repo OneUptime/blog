@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, SSL, TLS, Security, Certificate
+Tags: GCP, Cloud SQL, SSL, TLS, Security, Certificates
 
 Description: A complete guide to configuring SSL/TLS certificates for Cloud SQL connections, including server CA certificates, client certificates, and enforcement settings.
 

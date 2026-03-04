@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Velero, Backup, Resource Management
+Tags: Kubernetes, Velero, Backups, Resource Management
 
 Description: Learn how to configure Velero backup include and exclude resource filters to create targeted backups, reduce storage costs, and optimize backup performance by backing up only what matters.
 

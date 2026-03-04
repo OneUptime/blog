@@ -16,12 +16,12 @@ I use Skopeo constantly for CI/CD pipelines where I need to move images between 
 
 Skopeo comes with the container-tools module:
 
-# Install skopeo (or install container-tools for the full suite)
+## Install skopeo (or install container-tools for the full suite)
 ```bash
 sudo dnf install -y skopeo
 ```
 
-# Verify installation
+## Verify installation
 ```bash
 skopeo --version
 ```
@@ -30,19 +30,19 @@ skopeo --version
 
 You can inspect an image on a remote registry without pulling it locally:
 
-# Inspect an image on Docker Hub
+## Inspect an image on Docker Hub
 ```bash
 skopeo inspect docker://docker.io/library/nginx:latest
 ```
 
-# Inspect a Red Hat UBI image
+## Inspect a Red Hat UBI image
 ```bash
 skopeo inspect docker://registry.access.redhat.com/ubi9/ubi-minimal:latest
 ```
 
 This returns JSON with the image's labels, architecture, OS, layers, and environment variables.
 
-# Get just specific fields using jq
+## Get just specific fields using jq
 ```bash
 skopeo inspect docker://docker.io/library/nginx:latest | jq '.Digest'
 skopeo inspect docker://docker.io/library/nginx:latest | jq '.Layers | length'
@@ -52,12 +52,12 @@ skopeo inspect docker://docker.io/library/nginx:latest | jq '.Layers | length'
 
 For deeper inspection, get the raw manifest:
 
-# Get the image manifest (OCI format)
+## Get the image manifest (OCI format)
 ```bash
 skopeo inspect --raw docker://docker.io/library/nginx:latest | jq .
 ```
 
-# Get the configuration blob
+## Get the configuration blob
 ```bash
 skopeo inspect --config docker://docker.io/library/nginx:latest | jq .
 ```
@@ -75,12 +75,12 @@ graph LR
     A -->|skopeo copy| C
 ```
 
-# Copy an image from Docker Hub to a private registry
+## Copy an image from Docker Hub to a private registry
 ```bash
 skopeo copy docker://docker.io/library/nginx:latest docker://registry.example.com/myteam/nginx:latest
 ```
 
-# Copy from one private registry to another
+## Copy from one private registry to another
 ```bash
 skopeo copy docker://registry1.example.com/app:v1 docker://registry2.example.com/app:v1
 ```
@@ -89,27 +89,27 @@ skopeo copy docker://registry1.example.com/app:v1 docker://registry2.example.com
 
 Skopeo supports several transport types for local operations:
 
-# Copy a remote image to a local directory (OCI format)
+## Copy a remote image to a local directory (OCI format)
 ```bash
 skopeo copy docker://docker.io/library/nginx:latest oci:/tmp/nginx-oci:latest
 ```
 
-# Copy a remote image to a local directory (Docker format)
+## Copy a remote image to a local directory (Docker format)
 ```bash
 skopeo copy docker://docker.io/library/nginx:latest dir:/tmp/nginx-dir
 ```
 
-# Copy to a Docker archive (tar file)
+## Copy to a Docker archive (tar file)
 ```bash
 skopeo copy docker://docker.io/library/nginx:latest docker-archive:/tmp/nginx.tar:nginx:latest
 ```
 
-# Load the archive into Podman
+## Load the archive into Podman
 ```bash
 podman load < /tmp/nginx.tar
 ```
 
-# Copy from local Podman storage to a registry
+## Copy from local Podman storage to a registry
 ```bash
 skopeo copy containers-storage:localhost/my-app:latest docker://registry.example.com/my-app:latest
 ```
@@ -118,12 +118,12 @@ skopeo copy containers-storage:localhost/my-app:latest docker://registry.example
 
 Check what tags are available for an image:
 
-# List all tags for an image on a registry
+## List all tags for an image on a registry
 ```bash
 skopeo list-tags docker://docker.io/library/nginx
 ```
 
-# List tags for a Red Hat image
+## List tags for a Red Hat image
 ```bash
 skopeo list-tags docker://registry.access.redhat.com/ubi9/ubi-minimal
 ```
@@ -132,22 +132,22 @@ skopeo list-tags docker://registry.access.redhat.com/ubi9/ubi-minimal
 
 Skopeo uses the same credential store as Podman:
 
-# Log in to a registry (credentials shared with Podman)
+## Log in to a registry (credentials shared with Podman)
 ```bash
 skopeo login registry.example.com
 ```
 
-# Log in with credentials on the command line
+## Log in with credentials on the command line
 ```bash
 skopeo login --username myuser --password mypass registry.example.com
 ```
 
-# Use a specific auth file
+## Use a specific auth file
 ```bash
 skopeo copy --authfile /path/to/auth.json docker://source/image:tag docker://dest/image:tag
 ```
 
-# Log out from a registry
+## Log out from a registry
 ```bash
 skopeo logout registry.example.com
 ```
@@ -156,7 +156,7 @@ skopeo logout registry.example.com
 
 When copying multi-arch images, preserve all architectures:
 
-# Copy all architectures of an image
+## Copy all architectures of an image
 ```bash
 skopeo copy --all docker://docker.io/library/nginx:latest docker://registry.example.com/nginx:latest
 ```
@@ -167,17 +167,17 @@ Without `--all`, Skopeo only copies the architecture matching your current syste
 
 Mirror entire repositories between registries:
 
-# Sync all tags of an image to a local directory
+## Sync all tags of an image to a local directory
 ```bash
 skopeo sync --src docker --dest dir docker.io/library/nginx /tmp/nginx-mirror
 ```
 
-# Sync from a local directory to a registry
+## Sync from a local directory to a registry
 ```bash
 skopeo sync --src dir --dest docker /tmp/nginx-mirror registry.example.com/mirror/
 ```
 
-# Sync specific tags using a YAML config
+## Sync specific tags using a YAML config
 ```bash
 cat > sync-config.yaml << 'EOF'
 docker.io:
@@ -198,7 +198,7 @@ skopeo sync --src yaml --dest docker sync-config.yaml registry.example.com/mirro
 
 Remove images from a registry (if the registry supports the deletion API):
 
-# Delete a specific tag from a registry
+## Delete a specific tag from a registry
 ```bash
 skopeo delete docker://registry.example.com/my-app:old-tag
 ```
@@ -233,7 +233,7 @@ echo "Image promoted to production: ${DEST}"
 
 Use Skopeo to compare image digests across registries:
 
-# Get the digest of an image on two registries
+## Get the digest of an image on two registries
 ```bash
 DIGEST_A=$(skopeo inspect docker://registry1.example.com/app:v1 | jq -r '.Digest')
 DIGEST_B=$(skopeo inspect docker://registry2.example.com/app:v1 | jq -r '.Digest')

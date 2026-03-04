@@ -39,7 +39,7 @@ You should see `ldap` in the output.
 
 For this guide, assume your LDAP directory has user entries like:
 
-```
+```bash
 dn: uid=jdoe,ou=People,dc=example,dc=com
 objectClass: inetOrgPerson
 objectClass: posixAccount
@@ -66,7 +66,7 @@ Create an LDAP configuration file for virtual alias lookups. This maps email add
 
 Create `/etc/postfix/ldap-aliases.cf`:
 
-```
+```bash
 # LDAP server connection settings
 server_host = ldap://ldap.example.com
 server_port = 389
@@ -94,7 +94,7 @@ timeout = 10
 
 If you are using virtual mailboxes, create `/etc/postfix/ldap-vmailbox.cf`:
 
-```
+```bash
 # LDAP server connection
 server_host = ldap://ldap.example.com
 server_port = 389
@@ -120,7 +120,7 @@ result_format = %s/
 
 To reject mail for addresses that do not exist in LDAP, create `/etc/postfix/ldap-recipients.cf`:
 
-```
+```bash
 # LDAP server connection
 server_host = ldap://ldap.example.com
 server_port = 389
@@ -145,7 +145,7 @@ result_attribute = mail
 
 Edit `/etc/postfix/main.cf` to use the LDAP lookup tables:
 
-```
+```bash
 # Virtual alias maps for address rewriting
 virtual_alias_maps = ldap:/etc/postfix/ldap-aliases.cf
 
@@ -169,14 +169,14 @@ For secure LDAP connections, use LDAPS or STARTTLS:
 
 ### LDAPS (port 636)
 
-```
+```bash
 server_host = ldaps://ldap.example.com
 server_port = 636
 ```
 
 ### STARTTLS (port 389 with encryption)
 
-```
+```bash
 server_host = ldap://ldap.example.com
 server_port = 389
 start_tls = yes
@@ -188,7 +188,7 @@ tls_require_cert = yes
 
 If your LDAP server is Active Directory, the configuration is slightly different. Create `/etc/postfix/ldap-ad-aliases.cf`:
 
-```
+```bash
 # Active Directory server
 server_host = ldap://dc01.corp.example.com
 

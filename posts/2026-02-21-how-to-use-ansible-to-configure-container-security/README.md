@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Security, Container, DevOps
+Tags: Ansible, Docker, Security, Containers, DevOps
 
 Description: Harden Docker container security with Ansible by configuring security profiles, user namespaces, read-only filesystems, and resource limits.
 

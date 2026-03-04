@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, OCI, Registry, Container
+Tags: Helm, Kubernetes, DevOps, OCI, Registry, Containers
 
 Description: Learn how to use OCI-compliant registries like Docker Hub, GHCR, ECR, and ACR to store and distribute Helm charts alongside container images.
 

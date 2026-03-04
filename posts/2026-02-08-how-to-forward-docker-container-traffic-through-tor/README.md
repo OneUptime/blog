@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Tor, Networking, Privacy, Security, Container
+Tags: Docker, Tor, Networking, Privacy, Security, Containers
 
 Description: Learn how to route Docker container traffic through the Tor network for anonymous browsing, testing, and privacy-focused applications.
 

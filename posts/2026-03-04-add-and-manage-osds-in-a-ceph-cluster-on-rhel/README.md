@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ceph, OSD, Storage, Cluster Management
+Tags: RHEL, Ceph, OSDs, Storage, Cluster Management
 
 Description: Add, remove, and manage Object Storage Daemons (OSDs) in a Ceph cluster on RHEL to expand or maintain your distributed storage capacity.
 

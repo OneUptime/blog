@@ -103,7 +103,7 @@ cat /etc/security/limits.conf
 
 The format is:
 
-```
+```bash
 <domain>  <type>  <item>  <value>
 ```
 
@@ -124,7 +124,7 @@ sudo vi /etc/security/limits.conf
 
 Add these entries:
 
-```
+```bash
 # Increase open file limits for all users
 *               soft    nofile          65536
 *               hard    nofile          131072
@@ -193,7 +193,7 @@ cat /etc/security/limits.d/20-nproc.conf
 
 You will typically see:
 
-```
+```bash
 # Default limit for number of user's processes to prevent
 # accidental fork bombs.
 *          soft    nproc     4096

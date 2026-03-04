@@ -1,4 +1,4 @@
-# How to Automate GRUB2 Configuration Using the bootloader RHEL System Role on RHEL
+# How to Automate GRUB2 Config Using the bootloader RHEL System Role
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

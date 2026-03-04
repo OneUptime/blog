@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, AWS, Marketplace, Subscription, Cloud
+Tags: RHEL, AWS, Marketplace, Subscriptions, Cloud
 
 Description: Learn how to launch RHEL instances on AWS using pay-as-you-go (PAYG) subscriptions from the AWS Marketplace, avoiding the need for pre-purchased Red Hat subscriptions.
 

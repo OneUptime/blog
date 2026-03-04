@@ -83,7 +83,7 @@ This shows every memory region: code segments, shared libraries, heap, stack, an
 cat /proc/$(pidof myapp)/io
 ```
 
-```
+```bash
 rchar: 1234567
 wchar: 456789
 read_bytes: 1024000

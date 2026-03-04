@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Library Charts, Template, DRY
+Tags: Helm, Kubernetes, DevOps, Library Charts, Templates, DRY
 
 Description: Learn how to create Helm library charts to share common templates and reduce duplication across multiple Helm charts in your organization.
 

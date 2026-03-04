@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Storage, Ubuntu, Persistent Volume, DevOps, How-To, CSI, NFS, Longhorn
+Tags: Kubernetes, Storage, Ubuntu, Persistent Volumes, DevOps, How-To, CSI, NFS, Longhorn
 
 Description: A comprehensive guide to configuring Kubernetes Persistent Volumes on Ubuntu, covering static and dynamic provisioning, NFS, StorageClasses, CSI drivers, Longhorn, backups, and troubleshooting.
 

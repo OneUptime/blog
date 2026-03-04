@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, OpenLDAP, TLS, Security, Certificate
+Tags: Ubuntu, OpenLDAP, TLS, Security, Certificates
 
 Description: Secure your OpenLDAP server on Ubuntu with TLS encryption using Let's Encrypt or self-signed certificates to protect directory traffic.
 

@@ -41,7 +41,7 @@ dnf --showduplicates list httpd
 
 This shows every version of the package across all enabled repositories. The output looks something like:
 
-```
+```bash
 Available Packages
 httpd.x86_64    2.4.53-7.el9       rhel-9-for-x86_64-appstream-rpms
 httpd.x86_64    2.4.53-11.el9_2.5  rhel-9-for-x86_64-appstream-rpms
@@ -63,7 +63,7 @@ sudo dnf history list
 
 You get a numbered list with the date, action, and number of packages affected:
 
-```
+```bash
 ID  | Command line             | Date and time    | Action(s) | Altered
 ----+--------------------------+------------------+-----------+--------
  15 | update                   | 2026-03-01 09:00 | Upgrade   |   42
@@ -209,7 +209,7 @@ sudo dnf update --exclude=httpd
 
 Sometimes a downgrade fails because other packages depend on the newer version:
 
-```
+```bash
 Error: Problem: problem with installed package libfoo-2.0-1.el9.x86_64
 ```
 

@@ -22,7 +22,7 @@ If a backend server goes down and HAProxy keeps sending traffic to it, your user
 
 The simplest check verifies that the backend port is open:
 
-```
+```bash
 backend web_servers
     balance roundrobin
     server web1 192.168.1.11:8080 check
@@ -35,7 +35,7 @@ The `check` keyword enables health checking. By default, HAProxy opens a TCP con
 
 TCP checks only verify the port is open. HTTP checks verify the application is actually working:
 
-```
+```bash
 backend web_servers
     balance roundrobin
     option httpchk GET /health
@@ -48,7 +48,7 @@ HAProxy sends a `GET /health` request and expects a 200 response. If the backend
 
 ## Step 3 - Tune Check Intervals
 
-```
+```bash
 backend web_servers
     option httpchk GET /health
 
@@ -68,7 +68,7 @@ backend web_servers
 
 You can verify the response body contains expected content:
 
-```
+```bash
 backend web_servers
     option httpchk GET /health
     http-check expect string "status":"ok"
@@ -78,7 +78,7 @@ backend web_servers
 
 Or use a regular expression:
 
-```
+```bash
 backend web_servers
     option httpchk GET /health
     http-check expect rstring "status.*(ok|healthy)"
@@ -89,7 +89,7 @@ backend web_servers
 
 Some backends require specific headers:
 
-```
+```bash
 backend web_servers
     option httpchk
     http-check send meth GET uri /health hdr Host www.example.com hdr User-Agent HAProxy-Health
@@ -122,7 +122,7 @@ sequenceDiagram
 
 HAProxy can also use an external agent for health status. The agent runs on the backend and reports its state:
 
-```
+```bash
 backend web_servers
     server web1 192.168.1.11:8080 check agent-check agent-port 8888 agent-inter 5s
 ```
@@ -140,7 +140,7 @@ echo "show stat" | sudo socat stdio /var/lib/haproxy/stats | cut -d',' -f1,2,18 
 
 Or use the stats web interface (if configured):
 
-```
+```bash
 listen stats
     bind *:8404
     stats enable
@@ -154,7 +154,7 @@ The stats page shows green for healthy servers, red for down servers, and yellow
 
 When a backend comes back online, it might need time to warm up. Use `slowstart` to gradually increase traffic:
 
-```
+```bash
 backend web_servers
     option httpchk GET /health
     server web1 192.168.1.11:8080 check slowstart 30s

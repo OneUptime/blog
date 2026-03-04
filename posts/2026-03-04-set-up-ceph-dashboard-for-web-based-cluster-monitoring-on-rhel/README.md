@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ceph, Dashboard, Monitoring, Storage
+Tags: RHEL, Ceph, Dashboards, Monitoring, Storage
 
 Description: Enable and configure the Ceph Dashboard on RHEL to monitor cluster health, manage pools, view OSD status, and track performance through a web interface.
 

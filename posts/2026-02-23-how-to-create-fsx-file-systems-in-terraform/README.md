@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, FSx, Storage, File System, Infrastructure as Code
+Tags: Terraform, AWS, FSx, Storage, File Systems, Infrastructure as Code
 
 Description: A practical guide to provisioning Amazon FSx file systems with Terraform, covering FSx for Windows, Lustre, NetApp ONTAP, and OpenZFS configurations.
 

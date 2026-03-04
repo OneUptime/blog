@@ -146,7 +146,7 @@ rpm -K --verbose mypackage-1.0-1.el9.x86_64.rpm
 
 Expected output for a properly signed package:
 
-```
+```bash
 mypackage-1.0-1.el9.x86_64.rpm: digests signatures OK
 ```
 

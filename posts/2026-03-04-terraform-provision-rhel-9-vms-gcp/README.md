@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, GCP, Infrastructure as Code
 
-Description: Use Terraform to provision RHEL 9 VMs on GCP.
+Description: Learn how to use Terraform to automate provisioning of RHEL 9 virtual machines on GCP.
 
 ---
 

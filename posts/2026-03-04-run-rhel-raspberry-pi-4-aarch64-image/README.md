@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Raspberry Pi, aarch64, ARM, Linux
+Tags: RHEL, Raspberry Pi, AArch64, ARM, Linux
 
 Description: Install and run RHEL on a Raspberry Pi 4 using the official aarch64 image for development, testing, or edge computing use cases.
 

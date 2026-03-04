@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Backup, Disaster Recovery
+Tags: ArgoCD, GitOps, Kubernetes, Backups, Disaster Recovery
 
 Description: Learn how to manage Kubernetes backup configurations declaratively with ArgoCD, including Velero schedules, backup policies, and disaster recovery workflows through GitOps.
 

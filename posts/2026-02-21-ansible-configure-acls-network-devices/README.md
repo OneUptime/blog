@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ACL, Network Security, Automation
+Tags: Ansible, ACLs, Network Security, Automation
 
 Description: Automate access control list configuration on network devices with Ansible, covering standard ACLs, extended ACLs, and applying them to interfaces.
 

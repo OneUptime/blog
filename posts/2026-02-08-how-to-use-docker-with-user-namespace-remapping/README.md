@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Security, Linux, Namespace, Container, Hardening, DevOps, Root Security
+Tags: Docker, Security, Linux, Namespace, Containers, Hardening, DevOps, Root Security
 
 Description: Learn how to configure Docker user namespace remapping so that root inside containers maps to an unprivileged user on the host.
 

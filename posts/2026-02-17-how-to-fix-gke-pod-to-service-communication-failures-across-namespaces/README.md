@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GKE, Kubernetes, Networking, DNS, Cross-Namespace, Service, Troubleshooting, GCP
+Tags: GKE, Kubernetes, Networking, DNS, Cross-Namespace, Services, Troubleshooting, GCP
 
 Description: Diagnose and fix pod-to-service communication failures across Kubernetes namespaces in GKE, covering DNS resolution, network policies, and service configuration issues.
 

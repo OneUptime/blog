@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Helm, Backup, Kubernetes, Disaster Recovery
+Tags: Talos Linux, Helm, Backups, Kubernetes, Disaster Recovery
 
 Description: Learn how to back up Helm releases on Talos Linux clusters to protect your application deployments and enable reliable disaster recovery.
 

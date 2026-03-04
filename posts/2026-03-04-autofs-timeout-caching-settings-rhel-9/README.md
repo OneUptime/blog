@@ -31,13 +31,13 @@ Edit `/etc/autofs.conf`:
 sudo vi /etc/autofs.conf
 ```
 
-```
+```bash
 timeout = 300
 ```
 
 Or in `/etc/sysconfig/autofs`:
 
-```
+```bash
 TIMEOUT=300
 ```
 
@@ -57,7 +57,7 @@ Short timeouts reduce the number of active NFS mounts but increase mount/unmount
 
 Set timeout to 0 to keep mounts active indefinitely:
 
-```
+```bash
 /nfs /etc/auto.nfs --timeout=0
 ```
 
@@ -76,13 +76,13 @@ Default is 60 seconds. During this period, accessing the same failed mount point
 
 Reduce it if NFS servers recover quickly:
 
-```
+```bash
 negative_timeout = 10
 ```
 
 Increase it if you want to reduce retry traffic:
 
-```
+```bash
 negative_timeout = 300
 ```
 
@@ -90,7 +90,7 @@ negative_timeout = 300
 
 Controls how long autofs waits for a mount operation to complete:
 
-```
+```bash
 # In /etc/autofs.conf
 mount_wait = 30
 ```
@@ -107,7 +107,7 @@ autofs can cache map data (the contents of map files) to reduce I/O when checkin
 sudo vi /etc/autofs.conf
 ```
 
-```
+```bash
 # Map entry cache timeout (seconds)
 # How long map entries are cached before re-reading
 map_hash_table_size = 1024
@@ -144,7 +144,7 @@ sudo systemctl restart autofs
 
 Browse mode controls whether autofs shows mount point directories in directory listings:
 
-```
+```bash
 # In /etc/autofs.conf
 browse_mode = yes
 ```
@@ -162,7 +162,7 @@ With `browse_mode = no` (default):
 
 Control the verbosity of autofs logging:
 
-```
+```bash
 # In /etc/autofs.conf
 logging = none
 ```
@@ -174,7 +174,7 @@ Options:
 
 For production:
 
-```
+```bash
 logging = verbose
 ```
 
@@ -198,7 +198,7 @@ sudo automount -m
 
 For a busy environment with many users and NFS shares:
 
-```
+```bash
 # /etc/autofs.conf
 timeout = 600
 negative_timeout = 30
@@ -209,7 +209,7 @@ logging = verbose
 
 Master map:
 
-```
+```bash
 /home /etc/auto.home --timeout=1800
 /data /etc/auto.data --timeout=600
 /tmp/shared /etc/auto.tmp --timeout=60

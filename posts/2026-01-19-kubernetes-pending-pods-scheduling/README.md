@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Troubleshooting, Scheduling, POD, Debugging, DevOps
+Tags: Kubernetes, Troubleshooting, Scheduling, Pods, Debugging, DevOps
 
 Description: Learn how to diagnose and fix Kubernetes pods stuck in Pending state due to insufficient resources, node selectors, taints, affinity rules, or PVC issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Managed Disks, Virtual Machine, Storage, Azure CLI, Cloud Infrastructure, IaaS
+Tags: Azure, Managed Disks, Virtual Machines, Storage, Azure CLI, Cloud Infrastructure, IaaS
 
 Description: A practical guide to creating and attaching managed disks to an existing Azure VM, including formatting and mounting on Linux and Windows.
 

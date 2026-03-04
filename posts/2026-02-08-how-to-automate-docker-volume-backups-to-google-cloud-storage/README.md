@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Backup, Google Cloud Storage, GCS, Docker Volumes, Automation, Disaster Recovery
+Tags: Docker, Backups, Google Cloud Storage, GCS, Docker Volumes, Automation, Disaster Recovery
 
 Description: Learn how to automate Docker volume backups to Google Cloud Storage using scripts, cron jobs, and helper containers for reliable data protection.
 

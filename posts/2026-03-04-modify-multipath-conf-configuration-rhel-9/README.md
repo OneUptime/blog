@@ -22,7 +22,7 @@ The file has five main sections:
 
 ## The defaults Section
 
-```
+```bash
 defaults {
     user_friendly_names yes
     find_multipaths yes
@@ -53,7 +53,7 @@ defaults {
 
 Override defaults for specific storage vendors:
 
-```
+```bash
 devices {
     device {
         vendor "NETAPP"
@@ -87,7 +87,7 @@ sudo multipathd show config
 
 Per-LUN overrides:
 
-```
+```bash
 multipaths {
     multipath {
         wwid 3600508b4000c4a37
@@ -147,7 +147,7 @@ sudo multipathd show config local
 
 ### Change All Devices to Active/Active Load Balancing
 
-```
+```bash
 defaults {
     path_grouping_policy multibus
     path_selector "service-time 0"
@@ -156,7 +156,7 @@ defaults {
 
 ### Set Queue Behavior for Critical Storage
 
-```
+```bash
 multipaths {
     multipath {
         wwid 3600508b4000c4a37
@@ -167,7 +167,7 @@ multipaths {
 
 ### Increase Polling Frequency
 
-```
+```bash
 defaults {
     polling_interval 2
 }
@@ -175,7 +175,7 @@ defaults {
 
 ### Use ALUA Path Priorities
 
-```
+```bash
 defaults {
     prio alua
     path_grouping_policy group_by_prio

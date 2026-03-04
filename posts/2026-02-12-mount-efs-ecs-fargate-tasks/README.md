@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EFS, ECS, Fargate, Container
+Tags: AWS, EFS, ECS, Fargate, Containers
 
 Description: Learn how to mount Amazon EFS file systems on ECS Fargate tasks for persistent, shared storage across containerized workloads.
 

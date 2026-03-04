@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Cost Optimization, Dashboard, CloudWatch, Monitoring
+Tags: Terraform, Cost Optimization, Dashboards, CloudWatch, Monitoring
 
 Description: Learn how to create cloud cost optimization dashboards with Terraform using CloudWatch, Grafana, and custom metrics to visualize spending and savings opportunities.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Crypto Policies, Custom Module, TLS, Security, Linux
+Tags: RHEL, Crypto Policies, Custom Modules, TLS, Security, Linux
 
 Description: Create custom crypto policy modules on RHEL 9 to define organization-specific cryptographic requirements that go beyond the built-in policy levels.
 
@@ -39,7 +39,7 @@ ls /etc/crypto-policies/policies/modules/
 
 A policy module file uses directives to modify the base policy:
 
-```
+```bash
 # Disable specific algorithms
 cipher = -CAMELLIA-256-GCM -CAMELLIA-128-GCM
 

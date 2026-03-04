@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Data Recovery, Troubleshooting, Corruption, Backup, Disaster Recovery, Database, Operations
+Tags: ClickHouse, Data Recovery, Troubleshooting, Corruption, Backups, Disaster Recovery, Database, Operations
 
 Description: A comprehensive guide to recovering from data corruption in ClickHouse, covering corruption detection, part recovery, checksum verification, and strategies for restoring data from backups or replicas.
 

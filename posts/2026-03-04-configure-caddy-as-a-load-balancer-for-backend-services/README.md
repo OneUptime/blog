@@ -21,7 +21,7 @@ Caddy can act as a load balancer, distributing traffic across multiple backend s
 sudo vi /etc/caddy/Caddyfile
 ```
 
-```
+```bash
 myapp.example.com {
     reverse_proxy 10.0.1.10:3000 10.0.1.11:3000 10.0.1.12:3000
 }
@@ -31,7 +31,7 @@ Caddy distributes requests across all three backends using round-robin by defaul
 
 ## Step 2: Choose a Load Balancing Policy
 
-```
+```bash
 myapp.example.com {
     reverse_proxy 10.0.1.10:3000 10.0.1.11:3000 {
         lb_policy least_conn
@@ -50,7 +50,7 @@ Available policies:
 
 ## Step 3: Add Health Checks
 
-```
+```bash
 myapp.example.com {
     reverse_proxy 10.0.1.10:3000 10.0.1.11:3000 {
         lb_policy least_conn
@@ -67,7 +67,7 @@ Caddy removes unhealthy backends from the pool and re-adds them when they recove
 
 ## Step 4: Configure Sticky Sessions
 
-```
+```bash
 myapp.example.com {
     reverse_proxy 10.0.1.10:3000 10.0.1.11:3000 {
         lb_policy cookie
@@ -79,7 +79,7 @@ This sets a cookie on the first response, ensuring subsequent requests from the 
 
 ## Step 5: Add Request Headers
 
-```
+```bash
 myapp.example.com {
     reverse_proxy 10.0.1.10:3000 10.0.1.11:3000 {
         header_up X-Real-IP {remote_host}

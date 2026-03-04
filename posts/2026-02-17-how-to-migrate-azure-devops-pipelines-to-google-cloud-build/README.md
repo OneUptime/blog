@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Build, Azure DevOps, CI/CD, Pipeline, Cloud Migration
+Tags: GCP, Google Cloud Build, Azure DevOps, CI/CD, Pipelines, Cloud Migration
 
 Description: A practical guide to converting Azure DevOps pipeline YAML definitions to Google Cloud Build configurations, covering build steps, triggers, variables, and deployment stages.
 

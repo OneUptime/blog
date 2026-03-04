@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, systemd-run, Service, Linux
+Tags: Ubuntu, systemd, systemd-run, Services, Linux
 
 Description: Use systemd-run to execute commands as transient systemd services on Ubuntu with resource limits, logging, and isolation without writing unit files.
 

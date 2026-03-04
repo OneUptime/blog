@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, chrony, NTP, Troubleshooting, Linux
+Tags: RHEL, Chrony, NTP, Troubleshooting, Linux
 
 Description: Diagnose and fix common time synchronization problems with chrony on RHEL, from unreachable servers to large clock offsets.
 
@@ -107,7 +107,7 @@ dig +short 0.rhel.pool.ntp.org
 
 If DNS is broken, temporarily use IP addresses in `/etc/chrony.conf` while you fix DNS:
 
-```
+```bash
 # Temporary IP-based NTP sources
 server 129.6.15.28 iburst
 server 129.6.15.29 iburst
@@ -242,7 +242,7 @@ The tracking log shows time offset and frequency error at each update, which hel
 
 VMs that get suspended and resumed often have large time jumps. Configure chrony to handle this:
 
-```
+```bash
 # In /etc/chrony.conf - allow stepping at any time if offset is over 1 second
 makestep 1 -1
 ```

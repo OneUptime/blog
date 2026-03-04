@@ -79,7 +79,7 @@ runcmd:
 
 Create a modular Terraform structure:
 
-```
+```bash
 multicloud/
   modules/
     aws/

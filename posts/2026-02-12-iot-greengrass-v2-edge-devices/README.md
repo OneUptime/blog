@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, IoT Greengrass, Edge Computing, IoT, Lambda, Container
+Tags: AWS, IoT Greengrass, Edge Computing, IoT, Lambda, Containers
 
 Description: Install and configure AWS IoT Greengrass v2 on edge devices to run local compute, messaging, and machine learning inference at the edge
 

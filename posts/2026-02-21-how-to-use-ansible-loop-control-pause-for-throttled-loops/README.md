@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Loops, Rate Limiting, Rolling Update
+Tags: Ansible, Loops, Rate Limiting, Rolling Updates
 
 Description: Learn how to use the pause option in Ansible loop_control to add delays between loop iterations for rate-limited APIs and rolling deployments.
 

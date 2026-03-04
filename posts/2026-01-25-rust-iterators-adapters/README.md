@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Iterator, Functional Programming, Collection, Performance
+Tags: Rust, Iterator, Functional Programming, Collections, Performance
 
 Description: Master Rust iterators and adapters for efficient collection processing. Learn map, filter, fold, and other combinators with practical examples and performance tips.
 

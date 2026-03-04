@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Updates, Patching, System Administration, dnf
+Tags: RHEL, Updates, Patching, System Administration, DNF
 
 Description: Learn how to safely perform a minor version update on Red Hat Enterprise Linux, moving between point releases like RHEL 9.2 to 9.4 using dnf.
 

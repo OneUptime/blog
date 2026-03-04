@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Podman, systemd, Container, Linux, DevOps
+Tags: Podman, systemd, Containers, Linux, DevOps
 
 Description: Learn how to integrate Podman containers with systemd for automatic startup, process supervision, health monitoring, and production-ready container management on Linux systems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Public IP, Quota, Networking, Troubleshooting, Subscription Limits, Cloud
+Tags: Azure, Public IP, Quotas, Networking, Troubleshooting, Subscription Limits, Cloud
 
 Description: Learn how to resolve PublicIPCountLimitReached errors in Azure by managing public IP allocations and requesting quota increases.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Container, SIGKILL, Debugging, Troubleshooting
+Tags: GCP, Cloud Run, Containers, SIGKILL, Debugging, Troubleshooting
 
 Description: A guide to diagnosing why your Cloud Run container is being killed with SIGKILL signal 9, covering memory limits, health checks, and timeout issues.
 

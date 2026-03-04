@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Template, Escaping, Configuration Management
+Tags: Ansible, Jinja2, Templates, Escaping, Configuration Management
 
 Description: Learn multiple techniques to escape double curly braces in Ansible templates when generating configs for tools that also use curly brace syntax.
 

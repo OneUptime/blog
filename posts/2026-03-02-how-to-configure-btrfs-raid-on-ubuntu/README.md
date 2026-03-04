@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Btrfs, RAID, Storage, File System
+Tags: Ubuntu, Btrfs, RAID, Storage, File Systems
 
 Description: A practical guide to setting up Btrfs RAID profiles on Ubuntu for data redundancy and improved storage performance.
 

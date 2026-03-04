@@ -81,7 +81,7 @@ sudo gluster volume rebalance distvol status
 
 Example output:
 
-```
+```bash
 Node        Rebalanced-files  size     scanned  failures  skipped  status     run time in h:m:s
 ---------   ----------------  ----     -------  --------  -------  ------     -----------------
 node1             1543        4.2GB    5420          0         0   completed  0:3:45

@@ -40,7 +40,7 @@ sudo filefrag /data/largefile
 
 Output:
 
-```
+```bash
 /data/largefile: 47 extents found
 ```
 

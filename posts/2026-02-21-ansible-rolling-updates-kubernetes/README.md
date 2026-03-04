@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Rolling Update, Deployment, Zero Downtime
+Tags: Ansible, Kubernetes, Rolling Updates, Deployment, Zero Downtime
 
 Description: Perform zero-downtime rolling updates in Kubernetes with Ansible, covering update strategies, canary deployments, rollback procedures, and health verification.
 

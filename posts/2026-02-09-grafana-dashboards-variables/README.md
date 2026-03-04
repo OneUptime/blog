@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Dashboard, Variables
+Tags: Grafana, Dashboards, Variables
 
 Description: Learn how to create dynamic Grafana dashboards using variables and templating to build reusable and interactive visualizations.
 

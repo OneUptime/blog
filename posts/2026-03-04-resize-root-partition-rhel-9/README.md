@@ -27,7 +27,7 @@ lsblk
 
 Typical RHEL output:
 
-```
+```bash
 NAME            MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
 sda               8:0    0   50G  0 disk
 |-sda1            8:1    0    1G  0 part /boot

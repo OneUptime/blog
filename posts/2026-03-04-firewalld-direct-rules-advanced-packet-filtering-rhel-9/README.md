@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Firewalld, Direct Rules, Packet Filtering, Linux
+Tags: RHEL, firewalld, Direct Rules, Packet Filtering, Linux
 
 Description: How to use firewalld direct rules on RHEL for advanced packet filtering scenarios that go beyond what zones and rich rules can handle.
 

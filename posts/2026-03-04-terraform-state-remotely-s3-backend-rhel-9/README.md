@@ -150,7 +150,7 @@ terraform init -backend-config=backend-prod.hcl
 
 When someone runs `terraform apply`, DynamoDB creates a lock entry. If another person tries to apply at the same time, they get an error:
 
-```
+```bash
 Error: Error acquiring the state lock
 Lock Info:
   ID:        a1b2c3d4-e5f6-7890-abcd-ef1234567890

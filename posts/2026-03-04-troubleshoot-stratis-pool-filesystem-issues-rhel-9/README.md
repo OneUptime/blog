@@ -20,7 +20,7 @@ While Stratis simplifies storage management, issues can still arise from daemon 
 
 ### Symptoms
 
-```
+```bash
 ERROR: stratisd is not running
 ```
 
@@ -76,7 +76,7 @@ sudo systemctl status stratisd
 
 Ensure fstab entries include the systemd dependency:
 
-```
+```bash
 UUID=your-uuid /data xfs defaults,x-systemd.requires=stratisd.service 0 0
 ```
 
@@ -136,7 +136,7 @@ After freeing or adding space, filesystems should become writable again.
 
 ### Symptoms
 
-```
+```bash
 ERROR: Failed to create pool
 ```
 
@@ -176,7 +176,7 @@ sudo wipefs -a /dev/sdb
 
 ### Symptoms
 
-```
+```bash
 ERROR: Pool has filesystems
 ```
 

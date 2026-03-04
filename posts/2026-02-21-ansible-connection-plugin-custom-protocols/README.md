@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Connection, Networking, Python
+Tags: Ansible, Plugins, Connection, Networking, Python
 
 Description: Write a custom Ansible connection plugin to manage devices that use proprietary protocols or non-standard communication methods.
 

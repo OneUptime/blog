@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Security, CI/CD, DevSecOps, Compliance, Pipeline, SAST, DAST
+Tags: Security, CI/CD, DevSecOps, Compliance, Pipelines, SAST, DAST
 
 Description: Learn how to diagnose and fix common security compliance failures in CI/CD pipelines including SAST, DAST, dependency scanning, and secrets detection.
 

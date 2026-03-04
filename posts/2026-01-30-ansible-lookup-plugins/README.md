@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Automation, Python
+Tags: Ansible, Plugins, Automation, Python
 
 Description: Build custom Ansible lookup plugins to fetch data from external sources like databases, APIs, and files during playbook execution.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, CLI Commands, State Management, DevOps
+Tags: Terraform, Workspaces, CLI Commands, State Management, DevOps
 
 Description: Learn how to switch between Terraform workspaces using terraform workspace select, understand what happens during a switch, and build safe automation around workspace transitions.
 

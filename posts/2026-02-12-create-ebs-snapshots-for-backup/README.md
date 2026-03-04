@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, EBS, Snapshot, Backup, Disaster Recovery
+Tags: AWS, EC2, EBS, Snapshots, Backups, Disaster Recovery
 
 Description: Learn how to create, manage, and automate EBS snapshots for reliable backups of your EC2 instance data, including consistency tips and cost management.
 

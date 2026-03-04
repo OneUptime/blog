@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, VXLAN, Overlay Network, Networking, Kubernetes, CNI, Flannel
+Tags: Talos Linux, VXLAN, Overlay Networks, Networking, Kubernetes, CNI, Flannel
 
 Description: Guide to setting up VXLAN overlay networks on Talos Linux for extending Layer 2 connectivity across Layer 3 boundaries.
 

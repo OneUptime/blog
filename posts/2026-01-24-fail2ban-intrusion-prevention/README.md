@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, Security, fail2ban, Intrusion Prevention, SSH, Firewall, System Administration
+Tags: Linux, Security, Fail2Ban, Intrusion Prevention, SSH, Firewall, System Administration
 
 Description: A comprehensive guide to installing, configuring, and managing fail2ban to protect Linux servers from brute-force attacks and unauthorized access attempts.
 

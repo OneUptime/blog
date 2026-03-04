@@ -52,7 +52,7 @@ sudo vi /etc/audit/plugins.d/au-remote.conf
 
 Set the plugin to active:
 
-```
+```bash
 active = yes
 direction = out
 path = /sbin/audisp-remote
@@ -69,7 +69,7 @@ sudo vi /etc/audit/audisp-remote.conf
 
 Configure the target SIEM collector:
 
-```
+```bash
 remote_server = siem.example.com
 port = 60
 transport = tcp
@@ -110,7 +110,7 @@ sudo vi /etc/rsyslog.d/audit-forward.conf
 
 Add the following configuration:
 
-```
+```bash
 # Load the file input module
 module(load="imfile")
 
@@ -159,7 +159,7 @@ sudo vi /etc/yum.repos.d/elastic.repo
 
 Add the repo definition:
 
-```
+```bash
 [elastic-8.x]
 name=Elastic repository for 8.x packages
 baseurl=https://artifacts.elastic.co/packages/8.x/yum
@@ -305,7 +305,7 @@ Audit logs contain sensitive data. Always encrypt the transport.
 
 For audisp-remote, enable TLS:
 
-```
+```bash
 # In /etc/audit/audisp-remote.conf
 transport = tcp
 enable_krb5 = no
@@ -313,7 +313,7 @@ enable_krb5 = no
 
 For rsyslog, use TLS with certificate verification:
 
-```
+```bash
 # In /etc/rsyslog.d/audit-forward.conf
 action(
     type="omfwd"

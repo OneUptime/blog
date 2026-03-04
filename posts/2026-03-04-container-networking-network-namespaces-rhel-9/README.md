@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Containers, Network Namespaces, Linux
 
-Description: Demystify container networking on RHEL by understanding the network namespace fundamentals that Podman and Docker use under the hood, with hands-on examples building container-style networking from scratch.
+Description: Demystify container networking on RHEL by understanding the network namespace fundamentals that Podman and Docker use under the hood, with hands-on examples building container-style networking...
 
 ---
 

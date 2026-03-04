@@ -44,7 +44,7 @@ grep -E '^(UID|GID)' /etc/login.defs
 
 The relevant settings:
 
-```
+```bash
 # Minimum and maximum UID for regular users
 UID_MIN                  1000
 UID_MAX                 60000
@@ -84,7 +84,7 @@ These control how long passwords last and when users get warned.
 grep -E '^PASS' /etc/login.defs
 ```
 
-```
+```bash
 # Maximum number of days a password may be used
 PASS_MAX_DAYS   99999
 
@@ -100,7 +100,7 @@ PASS_WARN_AGE   7
 
 The defaults are very permissive. `PASS_MAX_DAYS` at 99999 means passwords essentially never expire. Here is what I typically set on production servers:
 
-```
+```bash
 # Require password change every 90 days
 PASS_MAX_DAYS   90
 
@@ -142,7 +142,7 @@ The `UMASK` in login.defs sets the default file creation mask for new users.
 grep -E '^UMASK' /etc/login.defs
 ```
 
-```
+```bash
 # Default umask for new users
 UMASK           022
 ```
@@ -153,7 +153,7 @@ With `UMASK 022`:
 
 For tighter security:
 
-```
+```bash
 # Restrictive umask - files are owner-only by default
 UMASK           077
 ```
@@ -168,7 +168,7 @@ Note that on RHEL, the umask is also set in `/etc/profile` and `/etc/bashrc`, wh
 
 This controls whether `useradd` creates a home directory by default.
 
-```
+```bash
 # Automatically create home directories for new users
 CREATE_HOME     yes
 ```
@@ -184,7 +184,7 @@ This determines the hashing algorithm used for passwords in `/etc/shadow`.
 grep ENCRYPT_METHOD /etc/login.defs
 ```
 
-```
+```bash
 # Password hashing algorithm
 ENCRYPT_METHOD SHA512
 ```
@@ -201,7 +201,7 @@ RHEL defaults to `SHA512`, which is solid. The options are:
 
 If you want the strongest option:
 
-```
+```bash
 ENCRYPT_METHOD YESCRYPT
 ```
 
@@ -211,7 +211,7 @@ YESCRYPT is a modern password hashing scheme designed to be resistant to GPU and
 
 This controls the User Private Group (UPG) scheme.
 
-```
+```bash
 # Enable the user private group scheme
 USERGROUPS_ENAB yes
 ```
@@ -225,7 +225,7 @@ When set to `yes`:
 
 This controls whether unknown usernames are logged on failed login attempts.
 
-```
+```bash
 # Log unknown usernames on failed login attempts
 LOG_UNKFAIL_ENAB no
 ```
@@ -234,7 +234,7 @@ Setting this to `yes` logs the actual username that was attempted. This is usefu
 
 ## Other Useful Settings
 
-```
+```bash
 # Number of login retries before giving up
 LOGIN_RETRIES   5
 
@@ -260,7 +260,7 @@ grep -v '^#' /etc/login.defs | grep -v '^$'
 
 Here is what I typically set on production RHEL servers:
 
-```
+```bash
 PASS_MAX_DAYS   90
 PASS_MIN_DAYS   1
 PASS_MIN_LEN    12

@@ -724,7 +724,7 @@ if __name__ == '__main__':
    for key in r.scan_iter():
        if r.ttl(key) == -1:
            r.expire(key, 86400)
-   ```
+   ```bash
 
 3. **Delete unused keys**: Remove orphaned or stale data
 

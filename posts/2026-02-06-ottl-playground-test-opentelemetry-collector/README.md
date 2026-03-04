@@ -517,12 +517,12 @@ Create a repository of test cases:
 {
   "body": "Login from user@example.com"
 }
-```
+```bash
 
 **OTTL:**
 ```ottl
 - set(attributes["email"], ExtractPatterns(body, "[a-z]+@[a-z]+\\.[a-z]+"))
-```
+```bash
 
 **Expected Output:**
 ```json
@@ -531,7 +531,7 @@ Create a repository of test cases:
     "email": "user@example.com"
   }
 }
-```
+```bash
 ```text
 
 ## Testing Flow Diagram

@@ -47,7 +47,7 @@ umask -S
 
 The symbolic output is easier to read:
 
-```
+```bash
 # umask -S with 0022
 u=rwx,g=rx,o=rx
 
@@ -73,7 +73,7 @@ Let me walk through each one.
 grep -i umask /etc/login.defs
 ```
 
-```
+```bash
 UMASK           022
 ```
 
@@ -194,7 +194,7 @@ If it is not there, you can add it. But on RHEL, it is usually present. The PAM 
 sudo vi /etc/login.defs
 ```
 
-```
+```bash
 UMASK           027
 ```
 

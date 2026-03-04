@@ -51,7 +51,7 @@ getfacl /opt/shared-project
 
 Output shows both access and default ACLs:
 
-```
+```bash
 # file: opt/shared-project
 # owner: root
 # group: root

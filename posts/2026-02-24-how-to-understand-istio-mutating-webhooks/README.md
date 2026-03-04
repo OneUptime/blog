@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Webhook, Kubernetes, Sidecar Injection, Service Mesh
+Tags: Istio, Webhooks, Kubernetes, Sidecar Injection, Service Mesh
 
 Description: A deep explanation of how Istio mutating webhooks work for sidecar injection and how to inspect, debug, and customize their behavior.
 

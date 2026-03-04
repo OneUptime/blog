@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Environment Variable, Machine Configuration, Kubernetes, System Administration
+Tags: Talos Linux, Environment Variables, Machine Configuration, Kubernetes, System Administration
 
 Description: Learn how to set system-wide environment variables on Talos Linux through machine configuration for services and workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRI-O, Security, seccomp, System Calls
+Tags: Kubernetes, CRI-O, Security, Seccomp, System Calls
 
 Description: Learn how to configure and deploy seccomp profiles with CRI-O to filter dangerous system calls and enhance container security in Kubernetes clusters through syscall whitelisting.
 

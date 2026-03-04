@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backup, Disaster Recovery, System Administration
+Tags: Ubuntu, Backups, Disaster Recovery, System Administration
 
 Description: Learn how to verify backup integrity and practice restore procedures on Ubuntu so you can recover quickly and confidently when data loss actually occurs.
 

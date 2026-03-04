@@ -1057,56 +1057,56 @@ Execute this runbook when:
 
 ### Step 1: Verify Outage (2 minutes)
 ```bash
-# Check health check status
+## Check health check status
 aws route53 get-health-check-status \
     --health-check-id HC_PRIMARY_ID
 
-# Verify from multiple locations
+## Verify from multiple locations
 curl -I https://api.example.com/health
 curl -I --resolve api.example.com:443:SECONDARY_IP https://api.example.com/health
-```
+```bash
 
 ### Step 2: Confirm Secondary Region Ready (3 minutes)
 ```bash
-# Verify secondary region services
+## Verify secondary region services
 curl -I https://secondary-region.internal/health
 
-# Check database replication lag
+## Check database replication lag
 psql -h secondary-db.internal -c "SELECT pg_last_wal_replay_lsn();"
-```
+```bash
 
 ### Step 3: Execute Failover (2 minutes)
 ```bash
-# Update DNS records
+## Update DNS records
 aws route53 change-resource-record-sets \
     --hosted-zone-id ZONE_ID \
     --change-batch file://failover-changes.json
 
-# Verify change propagation
+## Verify change propagation
 aws route53 get-change --id CHANGE_ID
-```
+```bash
 
 ### Step 4: Verify Failover Success (5 minutes)
 ```bash
-# Test DNS resolution
+## Test DNS resolution
 dig +short api.example.com
 
-# Verify application functionality
+## Verify application functionality
 curl https://api.example.com/health
 
-# Monitor error rates
-# Check monitoring dashboard for error spikes
-```
+## Monitor error rates
+## Check monitoring dashboard for error spikes
+```bash
 
 ## Rollback Procedure
 If failover causes issues, execute the rollback:
 
 ```bash
-# Revert DNS changes
+## Revert DNS changes
 aws route53 change-resource-record-sets \
     --hosted-zone-id ZONE_ID \
     --change-batch file://rollback-changes.json
-```
+```bash
 
 ## Post-Failover Actions
 1. [ ] Update status page
@@ -1143,10 +1143,10 @@ Execute this runbook when:
 
 ### Step 1: Assess Cluster State (2 minutes)
 ```bash
-# Check Patroni cluster status
+## Check Patroni cluster status
 curl -s http://patroni-node:8008/cluster | jq .
 
-# Verify replication lag on replicas
+## Verify replication lag on replicas
 psql -h replica1.internal -c "
     SELECT
         pg_is_in_recovery(),
@@ -1154,61 +1154,61 @@ psql -h replica1.internal -c "
         pg_last_wal_replay_lsn(),
         pg_last_xact_replay_timestamp();
 "
-```
+```bash
 
 ### Step 2: Identify Promotion Target (1 minute)
 ```bash
-# List available replicas with lag
+## List available replicas with lag
 curl -s http://patroni-node:8008/cluster | \
     jq '.members[] | select(.role=="replica") | {name, lag, state}'
-```
+```bash
 
 ## Automatic Failover
 If Patroni automatic failover is enabled, monitor the promotion:
 
 ```bash
-# Watch for leader change
+## Watch for leader change
 watch -n 2 'curl -s http://patroni-node:8008/cluster | jq .'
-```
+```bash
 
 ## Manual Failover
 
 ### Step 3: Initiate Failover (1 minute)
 ```bash
-# Trigger planned failover
+## Trigger planned failover
 curl -s -X POST http://patroni-node:8008/failover \
     -H "Content-Type: application/json" \
     -d '{"leader": "current-leader", "candidate": "target-replica"}'
-```
+```bash
 
 ### Step 4: Verify Promotion (3 minutes)
 ```bash
-# Confirm new leader
+## Confirm new leader
 curl -s http://patroni-node:8008/cluster | jq '.members[] | select(.role=="leader")'
 
-# Verify new leader is accepting writes
+## Verify new leader is accepting writes
 psql -h new-leader.internal -c "SELECT pg_is_in_recovery();"
-# Should return 'f' (false) for primary
+## Should return 'f' (false) for primary
 
-# Test write operation
+## Test write operation
 psql -h new-leader.internal -c "
     CREATE TABLE failover_test (id serial, ts timestamp default now());
     INSERT INTO failover_test DEFAULT VALUES;
     SELECT * FROM failover_test;
     DROP TABLE failover_test;
 "
-```
+```bash
 
 ## Application Reconnection
 
 ### Step 5: Verify Application Connectivity (5 minutes)
 ```bash
-# Check application database connections
+## Check application database connections
 kubectl exec -it app-pod -- psql $DATABASE_URL -c "SELECT 1;"
 
-# Monitor connection pool stats
+## Monitor connection pool stats
 curl -s http://app-service/metrics | grep db_connection
-```
+```bash
 
 ## Rollback Procedure
 Rollback requires careful coordination to avoid data loss.
@@ -1216,10 +1216,10 @@ Rollback requires careful coordination to avoid data loss.
 **WARNING: Only perform if absolutely necessary and data conflicts are acceptable.**
 
 ```bash
-# Demote current leader (if still accessible)
+## Demote current leader (if still accessible)
 curl -s -X POST http://current-leader:8008/failover \
     -d '{"leader": "new-leader", "candidate": "original-leader"}'
-```
+```bash
 
 ## Post-Failover Actions
 1. [ ] Verify all applications reconnected
@@ -1233,13 +1233,13 @@ curl -s -X POST http://current-leader:8008/failover \
 After resolving the original issue:
 
 ```bash
-# On the old primary node
-# Patroni will automatically attempt to rejoin using pg_rewind
+## On the old primary node
+## Patroni will automatically attempt to rejoin using pg_rewind
 systemctl restart patroni
 
-# Monitor rejoin progress
+## Monitor rejoin progress
 journalctl -u patroni -f
-```
+```bash
 ```text
 
 ## Failover Testing Strategy

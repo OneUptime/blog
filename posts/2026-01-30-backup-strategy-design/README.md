@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backup, Disaster Recovery, Database, DevOps
+Tags: Backups, Disaster Recovery, Database, DevOps
 
 Description: A practical guide to designing a robust backup strategy that protects your data, meets recovery objectives, and scales with your infrastructure.
 
@@ -865,33 +865,33 @@ Document your recovery procedures before you need them.
 
 ### 2. Locate the Backup
 ```bash
-# List available backups
+## List available backups
 aws s3 ls s3://company-backups/postgres/ --recursive | sort -k1,2 | tail -20
-```
+```bash
 
 ### 3. Download the Backup
 ```bash
-# Download latest backup
+## Download latest backup
 aws s3 cp s3://company-backups/postgres/production-YYYYMMDD.dump /tmp/restore.dump
-```
+```bash
 
 ### 4. Verify the Backup
 ```bash
-# Check backup integrity before restoring
+## Check backup integrity before restoring
 pg_restore -l /tmp/restore.dump | head -50
-```
+```bash
 
 ### 5. Restore the Database
 ```bash
-# Stop application traffic first
+## Stop application traffic first
 kubectl scale deployment app --replicas=0
 
-# Restore to the database
+## Restore to the database
 pg_restore -d production -c /tmp/restore.dump
 
-# Restart application
+## Restart application
 kubectl scale deployment app --replicas=3
-```
+```bash
 
 ### 6. Verify Recovery
 - Run data integrity checks
@@ -954,4 +954,5 @@ Your backup strategy should be boring and reliable. If it is exciting, something
 
 Ready to monitor your backup jobs? OneUptime provides heartbeat monitoring to track backup status, alert on failures, and ensure your data protection strategy actually works when you need it most.
 
+```bash
 ```

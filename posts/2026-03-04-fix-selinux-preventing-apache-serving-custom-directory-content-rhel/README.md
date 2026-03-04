@@ -1,8 +1,8 @@
-# How to Fix SELinux Preventing Apache from Serving Custom Directory Content on RHEL
+# How to Fix SELinux Preventing Apache Custom Directory on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, SELinux, Apache, httpd, Troubleshooting, Web Server
+Tags: RHEL, SELinux, Apache, HTTPD, Troubleshooting, Web Server
 
 Description: Fix SELinux denials that prevent Apache httpd from serving content from custom directories on RHEL by setting the correct file contexts.
 

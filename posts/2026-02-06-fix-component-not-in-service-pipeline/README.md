@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Configuration, Pipeline
+Tags: OpenTelemetry, Collector, Configuration, Pipelines
 
 Description: Fix the silent misconfiguration where Collector components are defined but never included in the service pipeline section.
 

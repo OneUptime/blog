@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud DNS, DNS Zone, Domain Management, Networking
+Tags: GCP, Cloud DNS, DNS Zones, Domain Management, Networking
 
 Description: Step-by-step guide to creating a public managed DNS zone in Google Cloud DNS, configuring name servers, and managing DNS records for your domain.
 

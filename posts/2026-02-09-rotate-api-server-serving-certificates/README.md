@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Certificate
+Tags: Kubernetes, Security, Certificates
 
 Description: Learn how to safely rotate Kubernetes API server serving certificates before expiration, including certificate generation, validation, and zero-downtime rotation procedures for production clusters.
 

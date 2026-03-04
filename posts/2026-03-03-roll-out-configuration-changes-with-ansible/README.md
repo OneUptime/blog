@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Ansible, Rolling Update, Kubernetes, Configuration Management
+Tags: Talos Linux, Ansible, Rolling Updates, Kubernetes, Configuration Management
 
 Description: Learn how to safely roll out Talos Linux configuration changes across cluster nodes using Ansible with canary deployments and rollback strategies.
 

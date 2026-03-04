@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, Filesystem, FUSE
+Tags: Ubuntu, Linux, Filesystems, FUSE
 
 Description: Learn how to use bindfs on Ubuntu to mirror directories with different ownership and permissions, useful for sharing files between users and Docker containers without changing real file ownership.
 

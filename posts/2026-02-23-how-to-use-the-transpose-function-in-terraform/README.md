@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collection
+Tags: Terraform, Infrastructure as Code, DevOps, Terraform Functions, Collections
 
 Description: Learn how to use the transpose function in Terraform to swap keys and values in maps of lists for flexible resource lookups and tag management.
 

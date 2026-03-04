@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Velero, Backup, Cost Optimization
+Tags: Kubernetes, Velero, Backups, Cost Optimization
 
 Description: Learn how to implement Velero backup compression to reduce storage costs, optimize backup transfer times.
 

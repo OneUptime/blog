@@ -76,7 +76,7 @@ sudo firewall-cmd --reload
 
 Open your browser and go to:
 
-```
+```bash
 http://your-server-ip:3000
 ```
 

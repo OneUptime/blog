@@ -30,7 +30,7 @@ Key concepts:
 
 Edit `/etc/fstab` to add the project quota mount option:
 
-```
+```bash
 /dev/vg_data/lv_data /data xfs defaults,pquota 0 0
 ```
 
@@ -128,7 +128,7 @@ sudo xfs_quota -x -c 'report -p -h' /data
 
 Sample output:
 
-```
+```bash
 Project quota on /data (/dev/mapper/vg_data-lv_data)
                         Blocks
 Project ID   Used   Soft   Hard Warn/Grace
@@ -164,7 +164,7 @@ dd if=/dev/zero of=testfile bs=1M count=13000
 
 If the quota is working, this should fail when the hard limit is reached:
 
-```
+```bash
 dd: error writing 'testfile': No space left on device
 ```
 

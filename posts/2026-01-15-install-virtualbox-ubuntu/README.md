@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, VirtualBox, Virtualization, Virtual Machine, Tutorial
+Tags: Ubuntu, VirtualBox, Virtualization, Virtual Machines, Tutorial
 
 Description: Step-by-step guide to installing Oracle VirtualBox on Ubuntu for running virtual machines and testing environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Alerting, Dashboard, Grafana, Observability
+Tags: Alerting, Dashboards, Grafana, Observability
 
 Description: Learn how to generate dashboard links from alerts for quick investigation.
 

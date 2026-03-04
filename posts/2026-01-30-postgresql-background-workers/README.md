@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: PostgreSQL, Background Workers, Extension, C Programming
+Tags: PostgreSQL, Background Workers, Extensions, C Programming
 
 Description: Learn to implement custom background workers for PostgreSQL with process management, shared memory, and database connections for scheduled tasks.
 

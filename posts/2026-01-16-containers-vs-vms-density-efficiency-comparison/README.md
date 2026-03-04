@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Container, Virtual Machine, Docker, Kubernetes, Infrastructure, Performance, DevOps, Virtualization, Linux
+Tags: Containers, Virtual Machines, Docker, Kubernetes, Infrastructure, Performance, DevOps, Virtualization, Linux
 
 Description: A deep technical dive into why you can run 10x more containers than VMs on identical hardware.
 

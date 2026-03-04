@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, TLS, SSL, Linux
+Tags: RHEL, NGINX, TLS, SSL, Linux
 
 Description: How to configure TLS certificates on Nginx in RHEL, including Let's Encrypt automation and manual certificate setup.
 

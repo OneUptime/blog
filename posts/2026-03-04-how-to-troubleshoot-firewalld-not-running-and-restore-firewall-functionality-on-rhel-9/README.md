@@ -1,4 +1,4 @@
-# How to Troubleshoot 'Firewalld Not Running' and Restore Firewall Functionality on RHEL 9
+# How to Fix 'Firewalld Not Running' and Restore Firewall on RHEL 9
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

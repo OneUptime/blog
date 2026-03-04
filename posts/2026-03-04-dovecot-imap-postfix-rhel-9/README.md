@@ -44,7 +44,7 @@ Dovecot's configuration is split across multiple files in `/etc/dovecot/conf.d/`
 
 Edit `/etc/dovecot/dovecot.conf`:
 
-```
+```bash
 # Enable IMAP protocol (add pop3 if needed)
 protocols = imap
 
@@ -56,7 +56,7 @@ listen = *, ::
 
 Edit `/etc/dovecot/conf.d/10-auth.conf`:
 
-```
+```bash
 # Require clients to use encrypted connections for auth
 disable_plaintext_auth = yes
 
@@ -68,7 +68,7 @@ auth_mechanisms = plain login
 
 Edit `/etc/dovecot/conf.d/10-mail.conf`:
 
-```
+```bash
 # Use Maildir format in user home directories
 mail_location = maildir:~/Maildir
 ```
@@ -79,7 +79,7 @@ Make sure this matches the `home_mailbox` setting in Postfix. If Postfix uses `h
 
 Edit `/etc/dovecot/conf.d/10-ssl.conf`:
 
-```
+```bash
 # Require SSL/TLS
 ssl = required
 
@@ -100,7 +100,7 @@ Note the `<` before the file paths. This is Dovecot syntax for reading from a fi
 
 Edit `/etc/dovecot/conf.d/15-mailboxes.conf`:
 
-```
+```bash
 namespace inbox {
   mailbox Drafts {
     auto = subscribe
@@ -132,7 +132,7 @@ namespace inbox {
 
 Edit `/etc/dovecot/conf.d/10-logging.conf`:
 
-```
+```bash
 # Log to syslog
 log_path = syslog
 syslog_facility = mail
@@ -148,7 +148,7 @@ Dovecot can handle SASL authentication for Postfix, so users authenticate throug
 
 Edit `/etc/dovecot/conf.d/10-master.conf`:
 
-```
+```bash
 service auth {
   # Existing settings...
 
@@ -163,7 +163,7 @@ service auth {
 
 Configure Postfix to use Dovecot for SASL. Add to `/etc/postfix/main.cf`:
 
-```
+```bash
 # Use Dovecot for SASL authentication
 smtpd_sasl_type = dovecot
 smtpd_sasl_path = private/auth
@@ -207,7 +207,7 @@ openssl s_client -connect mail.example.com:993
 
 Once connected, you can issue IMAP commands:
 
-```
+```bash
 a1 LOGIN username password
 a2 LIST "" "*"
 a3 SELECT INBOX
@@ -244,7 +244,7 @@ sudo tail -20 /var/log/maillog
 
 Edit `/etc/dovecot/conf.d/10-master.conf` for high-traffic servers:
 
-```
+```bash
 service imap-login {
   # Number of connections before forking a new process
   service_count = 1

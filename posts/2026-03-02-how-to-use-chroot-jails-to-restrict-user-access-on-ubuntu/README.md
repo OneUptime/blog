@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, chroot, User Management, System Administration
+Tags: Ubuntu, Security, Chroot, User Management, System Administration
 
 Description: Learn how to set up chroot jails on Ubuntu to restrict user access to a limited environment, preventing them from accessing the broader filesystem.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: HAProxy, ACL, Load Balancing, Traffic Routing, DevOps, Networking, Linux
+Tags: HAProxy, ACLs, Load Balancing, Traffic Routing, DevOps, Networking, Linux
 
 Description: Learn how to implement HAProxy Access Control Lists (ACLs) for intelligent traffic routing, content-based switching, and request filtering.
 

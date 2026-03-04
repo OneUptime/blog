@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Pending, Scheduling, Debugging, Resource
+Tags: Kubernetes, Pending, Scheduling, Debugging, Resources
 
 Description: Learn how to troubleshoot pods stuck in Pending state due to insufficient resources, node selectors, taints, and storage issues.
 

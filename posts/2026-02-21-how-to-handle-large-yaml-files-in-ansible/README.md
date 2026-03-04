@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, YAML, Performance, Organization, DevOps
+Tags: Ansible, YAML, Performance, Organizations, DevOps
 
 Description: Strategies for managing large YAML files in Ansible including splitting, includes, caching, and performance optimization techniques.
 

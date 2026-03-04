@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, App Service, Azure DevOps, CI/CD, Continuous Deployment, DevOps, Pipeline
+Tags: Azure, App Service, Azure DevOps, CI/CD, Continuous Deployment, DevOps, Pipelines
 
 Description: A complete guide to setting up automated continuous deployment pipelines from Azure DevOps to Azure App Service with build and release stages.
 

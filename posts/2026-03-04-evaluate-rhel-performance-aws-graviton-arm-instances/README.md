@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, AWS, Graviton, ARM, aarch64, Cloud, Performance, Linux
+Tags: RHEL, AWS, Graviton, ARM, AArch64, Cloud, Performance, Linux
 
 Description: Benchmark and evaluate RHEL performance on AWS Graviton (ARM-based) instances to determine cost-performance benefits compared to x86_64 instances.
 

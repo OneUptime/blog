@@ -40,7 +40,7 @@ RHEL.1 introduced a dedicated configuration file:
 sudo vi /etc/security/pwhistory.conf
 ```
 
-```
+```bash
 # Remember the last 12 passwords
 remember = 12
 
@@ -72,7 +72,7 @@ sudo vi /etc/authselect/custom/myorg/system-auth
 
 Add the pam_pwhistory line in the password section:
 
-```
+```bash
 password    requisite     pam_pwquality.so retry=3
 password    required      pam_pwhistory.so remember=12 use_authtok enforce_for_root
 password    sufficient    pam_unix.so sha512 shadow nullok use_authtok
@@ -100,7 +100,7 @@ sudo chmod 600 /etc/security/opasswd
 
 The `pam_unix` module also has a `remember` option, which provides an alternative way to store password history:
 
-```
+```bash
 password    sufficient    pam_unix.so sha512 shadow nullok use_authtok remember=12
 ```
 
@@ -114,7 +114,7 @@ The `difok` parameter in pam_pwquality prevents passwords that are too similar t
 sudo vi /etc/security/pwquality.conf
 ```
 
-```
+```bash
 # Require at least 5 characters to differ from the old password
 difok = 5
 ```
@@ -151,19 +151,19 @@ sudo passwd reusetest
 
 ### PCI DSS - Remember last 4 passwords
 
-```
+```bash
 remember = 4
 ```
 
 ### CIS Benchmark - Remember last 24 passwords
 
-```
+```bash
 remember = 24
 ```
 
 ### STIG - Remember last 5 passwords
 
-```
+```bash
 remember = 5
 enforce_for_root
 ```
@@ -204,7 +204,7 @@ done
 
 By default, root can reuse passwords. Add `enforce_for_root` to prevent this:
 
-```
+```bash
 password    required    pam_pwhistory.so remember=12 use_authtok enforce_for_root
 ```
 

@@ -28,7 +28,7 @@ graph TD
 
 The key is the `--label io.containers.autoupdate=registry` label:
 
-# Run a container with auto-update enabled
+## Run a container with auto-update enabled
 ```bash
 podman run -d --name web \
   --label io.containers.autoupdate=registry \
@@ -87,17 +87,19 @@ Use `registry` for pulling from remote registries. Use `local` when a CI/CD syst
 
 ## Running Auto-Update Manually
 
-# Check for updates without applying them (dry run)
+This section covers running auto-update manually.
+
+## Check for updates without applying them (dry run)
 ```bash
 podman auto-update --dry-run
 ```
 
-# Apply updates
+## Apply updates
 ```bash
 podman auto-update
 ```
 
-# Show more detail about what changed
+## Show more detail about what changed
 ```bash
 podman auto-update --format "{{.Unit}} {{.Image}} {{.Updated}} {{.Policy}}"
 ```
@@ -106,24 +108,24 @@ podman auto-update --format "{{.Unit}} {{.Image}} {{.Updated}} {{.Policy}}"
 
 Podman ships with a systemd timer for auto-updates:
 
-# For rootless, enable the user timer
+## For rootless, enable the user timer
 ```bash
 systemctl --user enable --now podman-auto-update.timer
 ```
 
-# For rootful, enable the system timer
+## For rootful, enable the system timer
 ```bash
 sudo systemctl enable --now podman-auto-update.timer
 ```
 
-# Check when the timer is scheduled to run
+## Check when the timer is scheduled to run
 ```bash
 systemctl --user list-timers podman-auto-update.timer
 ```
 
 By default, the timer runs daily. To change the schedule:
 
-# Override the timer schedule
+## Override the timer schedule
 ```bash
 systemctl --user edit podman-auto-update.timer
 ```
@@ -209,19 +211,21 @@ WantedBy=default.target
 EOF
 ```
 
-# Check all auto-updatable containers
+## Check all auto-updatable containers
 ```bash
 podman auto-update --dry-run
 ```
 
 ## Monitoring Auto-Updates
 
-# View auto-update logs
+This section covers monitoring auto-updates.
+
+## View auto-update logs
 ```bash
 journalctl --user -u podman-auto-update.service
 ```
 
-# Check when the last update ran
+## Check when the last update ran
 ```bash
 systemctl --user status podman-auto-update.service
 ```
@@ -232,7 +236,7 @@ Auto-update works best with `latest` or mutable tags. If you use immutable tags 
 
 For controlled updates, use a floating tag strategy:
 
-```
+```bash
 registry.example.com/myapp:stable    # Updated when ready for production
 registry.example.com/myapp:v1.2.3    # Never changes
 registry.example.com/myapp:latest    # Updated on every build

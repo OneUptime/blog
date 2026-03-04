@@ -46,7 +46,7 @@ openssl version -a
 
 On RHEL, you should see something like:
 
-```
+```bash
 OpenSSL 3.0.7 1 Nov 2022 (Library: OpenSSL 3.0.7 1 Nov 2022)
 ```
 
@@ -273,7 +273,7 @@ If the built-in policies do not fit your needs:
 sudo vi /etc/crypto-policies/policies/modules/MY-POLICY.pmod
 ```
 
-```
+```bash
 # Allow TLS 1.2 and above
 min_tls_version = TLS1.2
 

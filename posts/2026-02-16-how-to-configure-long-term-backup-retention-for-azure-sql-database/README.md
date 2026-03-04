@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure SQL, Backup, Long-Term Retention, Compliance, Disaster Recovery, Azure, Database
+Tags: Azure SQL, Backups, Long-Term Retention, Compliance, Disaster Recovery, Azure, Database
 
 Description: Learn how to configure long-term backup retention for Azure SQL Database to keep backups for months or years to meet compliance and archival requirements.
 

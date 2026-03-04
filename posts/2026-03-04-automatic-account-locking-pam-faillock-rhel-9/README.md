@@ -34,7 +34,7 @@ sudo vi /etc/security/faillock.conf
 
 Here are the key settings:
 
-```
+```bash
 # Number of failed attempts before locking the account
 deny = 5
 
@@ -91,7 +91,7 @@ sudo vi /etc/security/faillock.conf
 
 Uncomment or add:
 
-```
+```bash
 # Enable lockout for root as well
 even_deny_root
 
@@ -118,7 +118,7 @@ sudo faillock --user jsmith
 
 Example output:
 
-```
+```bash
 jsmith:
 When                Type  Source                                           Valid
 2026-03-04 10:15:32 RHOST 192.168.1.50                                    V
@@ -148,7 +148,7 @@ Some service accounts or emergency access accounts should never be locked out.
 
 If you only want faillock to apply to local users (not LDAP or AD users):
 
-```
+```bash
 # In /etc/security/faillock.conf
 local_users_only
 ```
@@ -187,7 +187,7 @@ Different compliance frameworks have different requirements:
 
 ### PCI DSS
 
-```
+```bash
 deny = 6
 unlock_time = 1800
 fail_interval = 900
@@ -195,7 +195,7 @@ fail_interval = 900
 
 ### CIS Benchmark
 
-```
+```bash
 deny = 5
 unlock_time = 900
 fail_interval = 900
@@ -205,7 +205,7 @@ root_unlock_time = 60
 
 ### STIG
 
-```
+```bash
 deny = 3
 unlock_time = 0
 fail_interval = 900

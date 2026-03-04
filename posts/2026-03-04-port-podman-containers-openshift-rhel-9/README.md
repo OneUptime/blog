@@ -68,12 +68,12 @@ Key changes:
 - Listen on ports above 1024
 - Set USER to a non-root value
 
-# Build and test locally
+## Build and test locally
 ```bash
 podman build -t my-app:openshift .
 ```
 
-# Test with a random UID (simulating OpenShift)
+## Test with a random UID (simulating OpenShift)
 ```bash
 podman run --rm -u 1000650000:0 -p 8080:8080 my-app:openshift
 ```
@@ -82,12 +82,12 @@ podman run --rm -u 1000650000:0 -p 8080:8080 my-app:openshift
 
 OpenShift needs to pull your image from a registry it can reach:
 
-# Log in to the OpenShift internal registry
+## Log in to the OpenShift internal registry
 ```bash
 podman login -u $(oc whoami) -p $(oc whoami -t) default-route-openshift-image-registry.apps.cluster.example.com
 ```
 
-# Tag and push your image
+## Tag and push your image
 ```bash
 podman tag my-app:openshift default-route-openshift-image-registry.apps.cluster.example.com/myproject/my-app:latest
 podman push default-route-openshift-image-registry.apps.cluster.example.com/myproject/my-app:latest
@@ -175,22 +175,24 @@ spec:
 
 ## Step 4: Deploy to OpenShift
 
-# Log in to OpenShift
+This section covers step 4: deploy to openshift.
+
+## Log in to OpenShift
 ```bash
 oc login https://api.cluster.example.com:6443
 ```
 
-# Create or switch to your project
+## Create or switch to your project
 ```bash
 oc new-project my-app-project
 ```
 
-# Apply the deployment
+## Apply the deployment
 ```bash
 oc apply -f my-app-k8s.yaml
 ```
 
-# Check the deployment status
+## Check the deployment status
 ```bash
 oc get pods
 oc get svc
@@ -230,7 +232,7 @@ volumes:
 
 Move environment variables to OpenShift Secrets:
 
-# Create a secret
+## Create a secret
 ```bash
 oc create secret generic db-credentials \
   --from-literal=username=admin \
@@ -262,12 +264,12 @@ env:
 
 For simpler cases, OpenShift can create deployments directly:
 
-# Create an app from an image
+## Create an app from an image
 ```bash
 oc new-app quay.io/myorg/my-app:latest --name=my-app
 ```
 
-# Expose the service
+## Expose the service
 ```bash
 oc expose svc/my-app
 ```

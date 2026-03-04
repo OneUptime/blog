@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, File System, Disk, Storage, Metrics, Host Metrics, Observability
+Tags: OpenTelemetry, Collector, File Systems, Disk, Storage, Metrics, Host Metrics, Observability
 
 Description: Learn how to collect file system statistics using the OpenTelemetry Collector host metrics receiver to monitor disk usage, inodes, and I/O performance.
 

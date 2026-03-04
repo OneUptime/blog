@@ -126,7 +126,7 @@ swapon -p 5 /swapfile2
 
 Add to fstab with priority:
 
-```
+```bash
 /swapfile   none  swap  defaults,pri=10  0 0
 /swapfile2  none  swap  defaults,pri=5   0 0
 ```

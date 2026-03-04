@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LVM, Storage, Filesystem, Linux
+Tags: RHEL, LVM, Storage, Filesystems, Linux
 
 Description: Learn how to grow LVM logical volumes and their filesystems on RHEL without downtime.
 

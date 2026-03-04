@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, docker_container, Container, Automation
+Tags: Ansible, Docker, docker_container, Containers, Automation
 
 Description: Deep dive into the Ansible docker_container module covering all major parameters with practical examples for managing Docker containers.
 

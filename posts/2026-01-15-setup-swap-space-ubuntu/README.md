@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, SWAP, Memory, System Administration, Performance, Tutorial
+Tags: Ubuntu, Swap, Memory, System Administration, Performance, Tutorial
 
 Description: Learn how to create, configure, and optimize swap space on Ubuntu for better memory management and system stability.
 

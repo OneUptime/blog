@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Backup, BorgBackup, Linux
+Tags: Ansible, Backups, BorgBackup, Linux
 
 Description: Deploy and configure BorgBackup for deduplicated, compressed, and encrypted system backups using Ansible automation.
 

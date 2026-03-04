@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, Networking, Troubleshooting, Debugging, Container
+Tags: Kubernetes, Windows, Networking, Troubleshooting, Debugging, Containers
 
 Description: Learn practical techniques and tools for diagnosing and resolving networking issues with Windows containers running on Kubernetes clusters.
 

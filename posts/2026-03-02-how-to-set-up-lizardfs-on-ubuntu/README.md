@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LizardFS, Distributed Storage, File System, Storage
+Tags: Ubuntu, LizardFS, Distributed Storage, File Systems, Storage
 
 Description: A step-by-step guide to deploying LizardFS distributed file system on Ubuntu, covering master server, chunk servers, metadata backup, and client mounting.
 

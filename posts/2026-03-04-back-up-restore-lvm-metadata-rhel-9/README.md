@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LVM, Backup, Metadata, Storage, Linux
+Tags: RHEL, LVM, Backups, Metadata, Storage, Linux
 
 Description: Learn how to back up, inspect, and restore LVM metadata on RHEL to protect your volume group configurations against accidental changes or disk failures.
 
@@ -62,7 +62,7 @@ sudo grep -A 5 "archive {" /etc/lvm/lvm.conf
 
 Key settings include:
 
-```
+```bash
 backup {
     backup = 1
     backup_dir = "/etc/lvm/backup"

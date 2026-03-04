@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Jib, Spring Boot, Docker, Java, Container, Artifact Registry
+Tags: GCP, Jib, Spring Boot, Docker, Java, Containers, Artifact Registry
 
 Description: Learn how to use Google Jib to build optimized Docker images for Spring Boot apps without needing Docker installed, pushing directly to Artifact Registry.
 

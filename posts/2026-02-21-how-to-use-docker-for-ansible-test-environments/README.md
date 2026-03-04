@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Testing, Molecule, Container
+Tags: Ansible, Docker, Testing, Molecule, Containers
 
 Description: How to use Docker containers as lightweight, reproducible test environments for Ansible playbook and role development with Molecule integration.
 

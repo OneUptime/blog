@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Callback Plugins, Output, Minimal
+Tags: Ansible, Callback Plugins, Outputs, Minimal
 
 Description: Use the Ansible minimal callback plugin to reduce playbook output to only essential information like failures and changes.
 

@@ -55,7 +55,7 @@ log-facility=/var/log/dnsmasq.log
 sudo vi /etc/hosts
 ```
 
-```
+```bash
 192.168.1.10  server1.lab.local server1
 192.168.1.11  server2.lab.local server2
 192.168.1.12  db.lab.local db

@@ -18,13 +18,13 @@ Indirect maps mount file systems as subdirectories under a common parent directo
 
 Master map entry:
 
-```
+```bash
 /nfs /etc/auto.nfs
 ```
 
 Map file `/etc/auto.nfs`:
 
-```
+```bash
 data    -rw  nfsserver:/export/data
 logs    -ro  nfsserver:/export/logs
 ```
@@ -41,3 +41,7 @@ The parent directory `/nfs/` is managed by autofs. You cannot have permanent con
 # Master map
 sudo tee /etc/auto.master.d/indirect.autofs << 'EOF'
 /shares /etc/auto.shares --timeout=600
+EOF
+
+sudo systemctl restart autofs
+```

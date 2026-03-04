@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Health Check, Kubernetes, Dependencies, Reliability
+Tags: Rust, Health Checks, Kubernetes, Dependencies, Reliability
 
 Description: Learn how to build health check endpoints in Rust that properly manage and report on multiple service dependencies, with patterns for parallel checking, categorization, and graceful degradation.
 

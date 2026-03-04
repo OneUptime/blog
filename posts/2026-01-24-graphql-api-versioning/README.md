@@ -440,7 +440,7 @@ query {
     avatar
   }
 }
-```
+```bash
 
 After (v2):
 ```graphql
@@ -451,7 +451,7 @@ query {
     avatarUrl
   }
 }
-```
+```bash
 """
 type User {
   id: ID!

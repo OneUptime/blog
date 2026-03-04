@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ReaR, Disaster Recovery, Backup, System Recovery, Linux
+Tags: RHEL, ReaR, Disaster Recovery, Backups, System Recovery, Linux
 
 Description: Install and configure ReaR on RHEL to create bootable rescue images that can restore your entire system in a disaster recovery scenario.
 

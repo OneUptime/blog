@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Visualization, Worldmap, Geolocation, Dashboard
+Tags: Grafana, Visualization, Worldmap, Geolocation, Dashboards
 
 Description: Learn how to display geographic data points on Grafana's Worldmap panel using coordinates, country codes, and geohash data from Prometheus, InfluxDB, and other datasources.
 

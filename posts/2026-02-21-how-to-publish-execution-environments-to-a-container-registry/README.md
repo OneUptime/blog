@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Execution Environment, Container Registry, Docker, Podman
+Tags: Ansible, Execution Environments, Container Registry, Docker, Podman
 
 Description: Push your Ansible Execution Environment images to container registries like Docker Hub, Quay.io, and private registries for team-wide use.
 

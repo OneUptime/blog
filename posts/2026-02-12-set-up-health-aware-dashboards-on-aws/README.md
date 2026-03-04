@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Health, Dashboard, CloudWatch, Monitoring, Incident Management
+Tags: AWS, Health, Dashboards, CloudWatch, Monitoring, Incident Management
 
 Description: Build health-aware dashboards on AWS that combine service health events, resource status, and operational metrics into a single operational view.
 

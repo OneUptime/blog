@@ -1,4 +1,4 @@
-# How to Automate GRUB Boot Loader Configuration Using the bootloader RHEL System Role
+# How to Automate GRUB Config Using the bootloader RHEL System Role
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

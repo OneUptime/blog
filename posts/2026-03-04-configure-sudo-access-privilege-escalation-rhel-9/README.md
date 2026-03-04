@@ -44,7 +44,7 @@ groups jsmith
 
 The default `/etc/sudoers` file on RHEL includes this line:
 
-```
+```bash
 %wheel  ALL=(ALL)       ALL
 ```
 
@@ -66,7 +66,7 @@ sudo EDITOR=nano visudo
 
 The basic format of a sudoers rule is:
 
-```
+```bash
 who   where=(as_whom)   what
 ```
 
@@ -99,7 +99,7 @@ sudo grep -r "includedir" /etc/sudoers
 
 You should see:
 
-```
+```bash
 @includedir /etc/sudoers.d
 ```
 
@@ -112,7 +112,7 @@ sudo visudo -f /etc/sudoers.d/devops
 
 Add the content:
 
-```
+```bash
 # Allow devops group members to manage services and view logs
 %devops ALL=(ALL) /usr/bin/systemctl, /usr/bin/journalctl
 ```
@@ -137,7 +137,7 @@ Sometimes you need sudo to work without a password prompt, for example in automa
 sudo visudo -f /etc/sudoers.d/automation
 ```
 
-```
+```bash
 # Allow the deploy user to restart services without a password
 deploy    ALL=(ALL)    NOPASSWD: /usr/bin/systemctl restart httpd, /usr/bin/systemctl restart nginx
 
@@ -158,7 +158,7 @@ The real power of sudo is restricting what users can do. Instead of giving blank
 sudo visudo -f /etc/sudoers.d/webteam
 ```
 
-```
+```bash
 # Web team can manage web server services only
 %webteam    ALL=(ALL)    /usr/bin/systemctl start httpd, \
                          /usr/bin/systemctl stop httpd, \
@@ -177,7 +177,7 @@ sudo visudo -f /etc/sudoers.d/webteam
 
 You can also explicitly deny certain dangerous commands:
 
-```
+```bash
 # Allow all commands except dangerous ones
 jsmith    ALL=(ALL)    ALL, !/usr/bin/su, !/usr/bin/bash, !/usr/bin/sh
 ```
@@ -188,7 +188,7 @@ Note that command denylists can be bypassed by creative users (copying the binar
 
 For complex setups, sudoers supports aliases to group users, hosts, and commands:
 
-```
+```bash
 # Define command aliases
 Cmnd_Alias WEB_CMDS = /usr/bin/systemctl start httpd, \
                        /usr/bin/systemctl stop httpd, \
@@ -247,7 +247,7 @@ Each log entry shows who ran the command, what they ran, and whether it succeede
 
 **Require reauthentication for sensitive commands.** The default sudo password timeout is 5 minutes. You can adjust this:
 
-```
+```bash
 # Require password every time (no caching)
 Defaults    timestamp_timeout=0
 

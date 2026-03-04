@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Template, Automation
+Tags: Kubernetes, Templates, Automation
 
 Description: Learn how to create reusable namespace provisioning templates that automatically configure RBAC, network policies, resource quotas, and other resources for consistent, secure namespace deployment.
 

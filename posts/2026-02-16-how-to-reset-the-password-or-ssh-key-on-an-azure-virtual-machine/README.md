@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, Password Reset, SSH Key, Azure CLI, Troubleshooting, Security
+Tags: Azure, Virtual Machines, Password Reset, SSH Keys, Azure CLI, Troubleshooting, Security
 
 Description: How to reset the password or SSH key on an Azure VM when you are locked out, using the Azure CLI, portal, and VM Access Extension.
 

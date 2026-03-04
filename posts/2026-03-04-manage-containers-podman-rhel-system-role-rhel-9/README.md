@@ -16,12 +16,14 @@ RHEL System Roles are a collection of Ansible roles maintained by Red Hat for au
 
 ## Installing the System Roles
 
-# Install RHEL System Roles on your Ansible control node
+This section covers installing the system roles.
+
+## Install RHEL System Roles on your Ansible control node
 ```bash
 sudo dnf install -y rhel-system-roles
 ```
 
-# Verify the podman role is available
+## Verify the podman role is available
 ```bash
 ls /usr/share/ansible/roles/rhel-system-roles.podman/
 ```
@@ -74,7 +76,9 @@ EOF
 
 ## Running the Playbook
 
-# Deploy containers to all web servers
+This section covers running the playbook.
+
+## Deploy containers to all web servers
 ```bash
 ansible-playbook -i inventory.ini deploy-containers.yml
 ```

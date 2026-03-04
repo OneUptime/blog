@@ -173,7 +173,7 @@ sudo vi /etc/security/access.conf
 
 Example rules:
 
-```
+```bash
 # Allow the admins group from anywhere
 + : admins : ALL
 
@@ -227,7 +227,7 @@ cat /etc/nsswitch.conf
 
 With the SSSD profile, the relevant lines look like:
 
-```
+```bash
 passwd:     sss files
 group:      sss files
 shadow:     files sss

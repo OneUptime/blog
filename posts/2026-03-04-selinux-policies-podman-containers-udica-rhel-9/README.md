@@ -65,7 +65,7 @@ udica -j mywebapp.json mywebapp_policy
 
 `udica` analyzes the JSON and outputs something like:
 
-```
+```bash
 Policy mywebapp_policy created!
 
 Please load these modules using:

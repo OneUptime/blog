@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Pipelines, Docker, Azure Container Registry, CI/CD, Container, DevOps, ACR
+Tags: Azure Pipelines, Docker, Azure Container Registry, CI/CD, Containers, DevOps, ACR
 
 Description: A complete walkthrough of configuring Azure Pipelines to build Docker images, tag them properly, and push them to Azure Container Registry.
 

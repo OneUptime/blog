@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Collection, Automation, DevOps
+Tags: Ansible, Kubernetes, Collections, Automation, DevOps
 
 Description: Get started with the kubernetes.core Ansible collection for managing Kubernetes clusters with dedicated modules and plugins.
 

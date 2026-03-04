@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Container Networking, Linux Namespaces, Overlay Network, Docker, Kubernetes
+Tags: Container Networking, Linux Namespaces, Overlay Networks, Docker, Kubernetes
 
 Description: A deep dive into container networking from Linux network namespaces to overlay networks and container-to-container communication.
 

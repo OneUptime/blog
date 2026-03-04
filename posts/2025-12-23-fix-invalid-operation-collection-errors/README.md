@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, C#, Collection, Troubleshooting, Common Issues, Threading
+Tags: .NET, C#, Collections, Troubleshooting, Common Issues, Threading
 
 Description: Learn how to diagnose and fix 'Invalid operation' collection errors in C# applications.
 

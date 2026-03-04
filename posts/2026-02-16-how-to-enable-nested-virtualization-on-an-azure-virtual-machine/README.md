@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, Nested Virtualization, Hyper-V, DevOps, Cloud Computing
+Tags: Azure, Virtual Machines, Nested Virtualization, Hyper-V, DevOps, Cloud Computing
 
 Description: Learn how to enable and use nested virtualization on Azure VMs for running hypervisors, containers, and development environments inside a VM.
 

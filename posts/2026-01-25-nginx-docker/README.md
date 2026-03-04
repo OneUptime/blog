@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NGINX, Docker, Container, DevOps, Deployment
+Tags: NGINX, Docker, Containers, DevOps, Deployment
 
 Description: Learn how to run Nginx in Docker containers, including configuration management, SSL certificates, logging, and production deployment patterns.
 

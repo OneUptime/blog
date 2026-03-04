@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CloudNativePG, Kubernetes, PostgreSQL, Backup, Recovery, PITR, Disaster Recovery
+Tags: CloudNativePG, Kubernetes, PostgreSQL, Backups, Recovery, PITR, Disaster Recovery
 
 Description: A comprehensive guide to restoring PostgreSQL clusters with CloudNativePG, covering full recovery, point-in-time recovery (PITR), and disaster recovery procedures.
 

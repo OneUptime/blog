@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container Management, DevOps, Automation, Organization
+Tags: Docker, Container Management, DevOps, Automation, Organizations
 
 Description: Learn how to use Docker labels to organize containers, enable service discovery, integrate with reverse proxies, and build automated workflows based on metadata.
 

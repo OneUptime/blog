@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, GitLab, Webhook
+Tags: ArgoCD, GitOps, Kubernetes, GitLab, Webhooks
 
 Description: Step-by-step guide to setting up GitLab webhooks for ArgoCD to trigger instant reconciliation when commits are pushed to your GitLab repositories.
 

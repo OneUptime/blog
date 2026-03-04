@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Health Check, Application Monitoring, Kubernetes, Envoy
+Tags: Istio, Health Checks, Application Monitoring, Kubernetes, Envoy
 
 Description: Set up application-level health checks that flow through Istio's proxy, covering HTTP, gRPC, and TCP probe types with practical configuration examples.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Resource Management, Container, DevOps
+Tags: Ansible, Docker, Resource Management, Containers, DevOps
 
 Description: Set CPU, memory, and other resource limits on Docker containers using Ansible to prevent resource contention and ensure fair allocation.
 

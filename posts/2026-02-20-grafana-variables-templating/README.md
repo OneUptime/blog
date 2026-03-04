@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Variables, Templating, Dashboard, Dynamic
+Tags: Grafana, Variables, Templating, Dashboards, Dynamic
 
 Description: Learn how to use Grafana template variables to create dynamic, reusable dashboards with dropdown selectors and chained queries.
 

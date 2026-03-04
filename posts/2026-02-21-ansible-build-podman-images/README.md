@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Podman, Container Image, Buildah, DevOps
+Tags: Ansible, Podman, Container Images, Buildah, DevOps
 
 Description: Build container images using Ansible with Podman and Buildah for automated, reproducible image creation workflows.
 

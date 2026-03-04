@@ -14,13 +14,13 @@ If you have a stack of `docker-compose.yml` files and you are migrating to RHEL,
 
 Podman Compose is available as a Python package:
 
-# Install podman-compose using pip
+## Install podman-compose using pip
 ```bash
 sudo dnf install -y python3-pip
 pip3 install --user podman-compose
 ```
 
-# Verify installation
+## Verify installation
 ```bash
 podman-compose --version
 ```
@@ -80,17 +80,19 @@ EOF
 
 ## Starting the Stack
 
-# Start all services in the background
+This section covers starting the stack.
+
+## Start all services in the background
 ```bash
 podman-compose up -d
 ```
 
-# Start with build (if using build context)
+## Start with build (if using build context)
 ```bash
 podman-compose up -d --build
 ```
 
-# View running containers
+## View running containers
 ```bash
 podman-compose ps
 ```
@@ -106,32 +108,34 @@ graph TB
 
 ## Managing the Stack
 
-# View logs for all services
+This section covers managing the stack.
+
+## View logs for all services
 ```bash
 podman-compose logs
 ```
 
-# Follow logs for a specific service
+## Follow logs for a specific service
 ```bash
 podman-compose logs -f web
 ```
 
-# Stop all services
+## Stop all services
 ```bash
 podman-compose down
 ```
 
-# Stop and remove volumes
+## Stop and remove volumes
 ```bash
 podman-compose down -v
 ```
 
-# Restart a specific service
+## Restart a specific service
 ```bash
 podman-compose restart api
 ```
 
-# Scale a service (run multiple instances)
+## Scale a service (run multiple instances)
 ```bash
 podman-compose up -d --scale api=3
 ```
@@ -166,7 +170,7 @@ CMD ["python3", "app.py"]
 EOF
 ```
 
-# Build and start
+## Build and start
 ```bash
 podman-compose up -d --build
 ```
@@ -288,17 +292,17 @@ podman-compose up -d --force-recreate
 
 You can also use the original `docker-compose` binary with Podman's Docker-compatible socket:
 
-# Enable the Podman socket
+## Enable the Podman socket
 ```bash
 systemctl --user enable --now podman.socket
 ```
 
-# Point docker-compose to the Podman socket
+## Point docker-compose to the Podman socket
 ```bash
 export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 ```
 
-# Now docker-compose talks to Podman
+## Now docker-compose talks to Podman
 ```bash
 docker-compose up -d
 ```

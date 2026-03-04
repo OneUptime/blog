@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboard, Finance
+Tags: Grafana, Observability, Dashboards, Finance
 
 Description: Learn how to build candlestick charts in Grafana for visualizing price movements, system metrics volatility, and time-series data with OHLC patterns.
 

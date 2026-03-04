@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Resource Hierarchy, Organization, Folders, Infrastructure as Code
+Tags: Terraform, GCP, Resource Hierarchy, Organizations, Folders, Infrastructure as Code
 
 Description: Learn how to manage GCP organization structure, folders, and resource hierarchy using Terraform for scalable cloud governance.
 

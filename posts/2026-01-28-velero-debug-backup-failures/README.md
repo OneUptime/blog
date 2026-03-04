@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backup, Troubleshooting, Debugging
+Tags: Velero, Kubernetes, Backups, Troubleshooting, Debugging
 
 Description: A practical guide to diagnosing and resolving common Velero backup failures including storage issues, permission errors, and volume snapshot problems.
 

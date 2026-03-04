@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PHP, Laravel, Blade, Template, Frontend
+Tags: PHP, Laravel, Blade, Templates, Frontend
 
 Description: Learn how to use Laravel Blade for dynamic templating. This guide covers directives, layouts, components, and best practices for building maintainable views.
 

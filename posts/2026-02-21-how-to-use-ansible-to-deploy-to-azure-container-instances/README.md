@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Azure, ACI, Container, Cloud
+Tags: Ansible, Azure, ACI, Containers, Cloud
 
 Description: Deploy containers to Azure Container Instances using Ansible for quick serverless container deployments with virtual network integration.
 

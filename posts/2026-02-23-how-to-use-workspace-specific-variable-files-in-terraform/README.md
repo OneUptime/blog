@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Variables, Configuration Management, Infrastructure as Code
+Tags: Terraform, Workspaces, Variables, Configuration Management, Infrastructure as Code
 
 Description: Learn how to pair Terraform workspaces with environment-specific variable files using tfvars, automatic variable loading, and wrapper scripts for clean workspace management.
 

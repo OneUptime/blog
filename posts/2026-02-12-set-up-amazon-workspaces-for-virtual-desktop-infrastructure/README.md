@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Workspace, VDI, Virtual Desktop, Remote Work, End User Computing
+Tags: AWS, Workspaces, VDI, Virtual Desktop, Remote Work, End User Computing
 
 Description: Deploy Amazon WorkSpaces to provide secure virtual desktops for your workforce with persistent storage, Active Directory integration, and flexible billing.
 

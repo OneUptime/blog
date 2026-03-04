@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS Lambda, Environment Variable, Serverless, Configuration Management, Secrets Management, AWS
+Tags: AWS Lambda, Environment Variables, Serverless, Configuration Management, Secrets Management, AWS
 
 Description: Learn how to effectively manage environment variables in AWS Lambda functions, including best practices for secrets, encryption, configuration patterns.
 

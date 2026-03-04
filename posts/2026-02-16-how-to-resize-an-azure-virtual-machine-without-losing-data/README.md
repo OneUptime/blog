@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, VM Resize, Cloud Computing, Cost Optimization, Azure CLI, Infrastructure
+Tags: Azure, Virtual Machines, VM Resize, Cloud Computing, Cost Optimization, Azure CLI, Infrastructure
 
 Description: Learn how to safely resize an Azure Virtual Machine to a different SKU without losing data, including downtime considerations and best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, Table Snapshots, Backup, Data Recovery, Data Governance
+Tags: GCP, BigQuery, Table Snapshots, Backups, Data Recovery, Data Governance
 
 Description: Learn how to create and manage BigQuery table snapshots for point-in-time recovery, including snapshot scheduling, restoration, and cost-effective backup strategies.
 

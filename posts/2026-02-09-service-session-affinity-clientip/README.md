@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Service, Session Affinity, Load Balancing, Networking
+Tags: Kubernetes, Services, Session Affinity, Load Balancing, Networking
 
 Description: Configure session affinity based on client IP addresses in Kubernetes services to ensure requests from the same client consistently reach the same backend pod for stateful applications.
 

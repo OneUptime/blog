@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Mount, File System, Linux, Troubleshooting, fstab, ext4, XFS, NFS, System Administration
+Tags: Mount, File Systems, Linux, Troubleshooting, fstab, ext4, XFS, NFS, System Administration
 
 Description: Learn how to diagnose and fix common mount failed errors including corrupted filesystems, fstab misconfigurations, and permission issues on Linux systems.
 

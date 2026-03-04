@@ -68,7 +68,7 @@ sudo gluster volume info dispvol
 
 Output should include:
 
-```
+```bash
 Type: Disperse
 ...
 Number of Bricks: 1 x (4 + 2) = 6

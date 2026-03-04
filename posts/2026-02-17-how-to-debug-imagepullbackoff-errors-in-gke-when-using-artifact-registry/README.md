@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Artifact Registry, Kubernetes, Troubleshooting, Container Image
+Tags: GCP, GKE, Artifact Registry, Kubernetes, Troubleshooting, Container Images
 
 Description: A practical guide to diagnosing and fixing ImagePullBackOff errors in GKE when pulling container images from Google Artifact Registry.
 

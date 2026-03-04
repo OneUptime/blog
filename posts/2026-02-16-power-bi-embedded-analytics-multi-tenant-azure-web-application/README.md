@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Power BI, Embedded Analytics, Azure, Multi-Tenant, SaaS, Web Application, Data Visualization
+Tags: Power BI, Embedded Analytics, Azure, Multi-Tenant, SaaS, Web Applications, Data Visualization
 
 Description: Build a multi-tenant Power BI Embedded analytics solution in an Azure web application with row-level security and per-tenant report customization.
 

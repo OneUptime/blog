@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Custom Module, Python, DevOps
+Tags: Ansible, Collections, Custom Modules, Python, DevOps
 
 Description: Step-by-step guide to writing and adding custom modules to an Ansible collection with proper documentation, argument specs, and error handling.
 

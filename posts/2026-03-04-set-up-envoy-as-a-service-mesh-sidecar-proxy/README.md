@@ -18,7 +18,7 @@ Envoy is commonly deployed as a sidecar proxy in service mesh architectures, whe
 
 ## Understanding the Sidecar Pattern
 
-```
+```bash
 Client -> Envoy (inbound) -> Application -> Envoy (outbound) -> Upstream
 ```
 

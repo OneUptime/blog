@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Performance, Output, Optimization
+Tags: Ansible, Performance, Outputs, Optimization
 
 Description: Reduce Ansible output verbosity to improve playbook performance and execution speed, especially in CI/CD pipelines and large-scale runs.
 

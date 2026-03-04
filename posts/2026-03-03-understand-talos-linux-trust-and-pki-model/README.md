@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, PKI, Security, Certificate, TLS, Kubernetes
+Tags: Talos Linux, PKI, Security, Certificates, TLS, Kubernetes
 
 Description: A deep dive into the Public Key Infrastructure that secures all communication in a Talos Linux cluster.
 

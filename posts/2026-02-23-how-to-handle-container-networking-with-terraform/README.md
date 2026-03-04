@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Container, Networking, VPC, Kubernetes, ECS
+Tags: Terraform, Containers, Networking, VPC, Kubernetes, ECS
 
 Description: Learn how to configure container networking in Terraform including VPC setup, service discovery, load balancing, and network policies for secure container communication.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, chrony, NTP, Time Sync, Linux
+Tags: RHEL, Chrony, NTP, Time Sync, Linux
 
 Description: Step-by-step guide to configuring chrony as an NTP client on RHEL to keep your system clock accurate and synchronized.
 
@@ -43,7 +43,7 @@ cat /etc/chrony.conf
 
 The default config typically includes:
 
-```
+```bash
 # Use Red Hat's NTP pool servers
 pool 2.rhel.pool.ntp.org iburst
 
@@ -71,7 +71,7 @@ sudo vi /etc/chrony.conf
 
 Replace the default pool with your servers:
 
-```
+```bash
 # Company internal NTP servers (preferred)
 server ntp1.corp.example.com iburst
 server ntp2.corp.example.com iburst
@@ -101,7 +101,7 @@ graph TD
 
 Here are the most important options for a client configuration:
 
-```
+```bash
 # Step the clock if the offset exceeds 1 second, but only during the first 3 updates
 makestep 1.0 3
 
@@ -182,7 +182,7 @@ If your system loses network connectivity (common with laptops or VMs that get s
 
 You can also configure chrony to use the `offline` option and manually tell it when the network is available:
 
-```
+```bash
 # Mark sources as offline by default
 server ntp1.corp.example.com iburst offline
 ```
@@ -212,13 +212,13 @@ sudo vi /etc/chrony.keys
 
 Add a key:
 
-```
+```bash
 1 SHA1 HEX:A1B2C3D4E5F6A1B2C3D4E5F6A1B2C3D4E5F6A1B2
 ```
 
 Reference it in `/etc/chrony.conf`:
 
-```
+```bash
 server ntp1.corp.example.com iburst key 1
 ```
 

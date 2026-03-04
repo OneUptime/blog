@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backup, rdiff-backup, Versioning
+Tags: Ubuntu, Backups, rdiff-backup, Versioning
 
 Description: Set up rdiff-backup on Ubuntu for versioned, space-efficient backups that let you restore files from any point in time with reverse incremental storage.
 

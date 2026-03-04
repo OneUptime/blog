@@ -52,7 +52,7 @@ This is the easiest setup. Mail for virtual alias domains gets rewritten to loca
 
 Add to `/etc/postfix/main.cf`:
 
-```
+```bash
 # Your primary domain stays in mydestination
 mydestination = mail.example.com, localhost
 
@@ -67,7 +67,7 @@ virtual_alias_maps = hash:/etc/postfix/virtual
 
 Edit `/etc/postfix/virtual`:
 
-```
+```bash
 # example.com addresses
 admin@example.com       localadmin
 sales@example.com       john
@@ -132,7 +132,7 @@ sudo chown -R vmail:vmail /var/mail/vhosts
 
 Add to `/etc/postfix/main.cf`:
 
-```
+```bash
 # Do not include virtual domains in mydestination
 mydestination = mail.example.com, localhost
 
@@ -152,7 +152,7 @@ virtual_alias_maps = hash:/etc/postfix/virtual
 
 Edit `/etc/postfix/vmailbox`:
 
-```
+```bash
 # Format: email_address    mailbox_path (relative to virtual_mailbox_base)
 john@example.com        example.com/john/
 jane@example.com        example.com/jane/
@@ -178,7 +178,7 @@ sudo postmap /etc/postfix/vmailbox
 
 Edit `/etc/postfix/virtual` for aliases across domains:
 
-```
+```bash
 # Redirect postmaster to admin
 postmaster@example.com  admin@example.com
 postmaster@example.org  john@example.org
@@ -221,7 +221,7 @@ For larger setups with many domains, use a file listing domains instead of hardc
 
 Create `/etc/postfix/virtual_domains`:
 
-```
+```bash
 example.com     OK
 example.org     OK
 example.net     OK
@@ -234,7 +234,7 @@ sudo postmap /etc/postfix/virtual_domains
 
 Update `main.cf`:
 
-```
+```bash
 virtual_mailbox_domains = hash:/etc/postfix/virtual_domains
 ```
 

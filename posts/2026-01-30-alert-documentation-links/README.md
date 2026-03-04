@@ -278,15 +278,15 @@ on any monitored instance.
 
 ### 1. Identify the Cause
 ```bash
-# SSH to affected instance
+## SSH to affected instance
 ssh ${INSTANCE}
 
-# Check top processes by CPU
+## Check top processes by CPU
 top -bn1 | head -20
 
-# Check for runaway processes
+## Check for runaway processes
 ps aux --sort=-%cpu | head -10
-```
+```bash
 
 ### 2. Check Recent Deployments
 - Review deployment history in ArgoCD

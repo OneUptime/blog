@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, systemctl, Service, Linux
+Tags: Ubuntu, systemd, systemctl, Services, Linux
 
 Description: Master systemctl commands on Ubuntu to manage services including starting, stopping, restarting, enabling, disabling, and checking service status with practical examples.
 

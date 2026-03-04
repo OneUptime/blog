@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CNI, Networking, Container Runtime, Plugin
+Tags: Kubernetes, CNI, Networking, Container Runtime, Plugins
 
 Description: Deep dive into Container Network Interface plugin architecture, understanding how CNI plugins enable pod networking in Kubernetes through standardized interfaces and plugin chains.
 

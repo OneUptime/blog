@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, App Runner, Web Development, Container, Deployment
+Tags: AWS, App Runner, Web Development, Containers, Deployment
 
 Description: A hands-on tutorial for deploying a complete web application to AWS App Runner, covering image builds, configuration, custom domains, and production best practices.
 

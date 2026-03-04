@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Multi-Cloud, Backup, Disaster Recovery, AWS, Azure, GCP
+Tags: Multi-Cloud, Backups, Disaster Recovery, AWS, Azure, GCP
 
 Description: Learn how to implement multi-cloud backup strategies that protect against provider-level failures, covering cross-cloud replication, tool selection, and operational considerations.
 

@@ -70,7 +70,7 @@ sudo ausearch -m avc -c sshd
 
 A typical AVC denial looks like:
 
-```
+```bash
 type=AVC msg=audit(1709555123.456:789): avc:  denied  { read } for  pid=12345 comm="httpd" name="config.php" dev="sda1" ino=67890 scontext=system_u:system_r:httpd_t:s0 tcontext=unconfined_u:object_r:user_home_t:s0 tclass=file permissive=0
 ```
 
@@ -105,7 +105,7 @@ sudo ausearch -m avc -ts recent | sudo sealert -a -
 
 A typical sealert report:
 
-```
+```bash
 SELinux is preventing httpd from read access on the file config.php.
 
 *****  Plugin restorecon (94.8 confidence) suggests   ************************

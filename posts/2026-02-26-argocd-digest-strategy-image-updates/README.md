@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Image Updater, Container Image
+Tags: ArgoCD, GitOps, Kubernetes, Image Updater, Container Images
 
 Description: Learn how to use the digest update strategy in ArgoCD Image Updater to track mutable tags like latest and detect when the underlying image content changes by monitoring SHA256 digests.
 

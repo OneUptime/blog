@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Satellite Server, Content Management, Red Hat, Linux
 
-Description: A practical guide to configuring Red Hat Satellite Server for content management, covering repository syncing, content views, lifecycle environments, and best practices for managing RHEL content at scale.
+Description: A practical guide to configuring Red Hat Satellite Server for content management, covering repository syncing, content views, lifecycle environments, and best practices for managing RHEL content...
 
 ---
 

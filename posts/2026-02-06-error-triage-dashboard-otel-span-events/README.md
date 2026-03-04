@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Dashboard, Error Triage, Grafana
+Tags: OpenTelemetry, Dashboards, Error Triage, Grafana
 
 Description: Build a practical error triage dashboard using OpenTelemetry span events and exception stack traces with Grafana and Tempo.
 

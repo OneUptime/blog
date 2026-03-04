@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Monitoring, Script, Health Check, Resource Usage, Alerts, DevOps
+Tags: Docker, Monitoring, Script, Health Checks, Resource Usage, Alerts, DevOps
 
 Description: Build Docker container monitoring scripts that track resource usage, health status, and performance metrics with automated alerting.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Next.js, Docker, Cloud Run, Node.js, Container, Serverless
+Tags: GCP, Next.js, Docker, Cloud Run, Node.js, Containers, Serverless
 
 Description: Learn how to build an optimized Docker image for a Next.js application using standalone output mode and deploy it to Google Cloud Run.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, OpenSSL, Cryptography, Certificate
+Tags: Ubuntu, Security, OpenSSL, Cryptography, Certificates
 
 Description: Learn how to use the openssl command-line tool on Ubuntu for encryption, decryption, certificate management, key generation, and TLS inspection.
 

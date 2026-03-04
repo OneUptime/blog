@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Backup, VOLUME, Cron, DevOps
+Tags: Docker, Backups, Volumes, Cron, DevOps
 
 Description: Learn how to automate Docker volume backups using cron jobs, including compression, rotation, and remote storage integration.
 

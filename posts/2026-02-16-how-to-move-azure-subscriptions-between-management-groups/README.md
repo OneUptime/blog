@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Management Groups, Subscription, Governance, Organization, Azure Administration, Cloud Management
+Tags: Azure, Management Groups, Subscriptions, Governance, Organizations, Azure Administration, Cloud Management
 
 Description: A step-by-step guide to moving Azure subscriptions between management groups, including prerequisites, impact assessment, and rollback procedures.
 

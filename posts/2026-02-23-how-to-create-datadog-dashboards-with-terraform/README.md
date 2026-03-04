@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Datadog, Dashboard, Monitoring, Infrastructure as Code
+Tags: Terraform, Datadog, Dashboards, Monitoring, Infrastructure as Code
 
 Description: Learn how to create Datadog dashboards using Terraform to build consistent, reproducible monitoring visualizations for your infrastructure.
 

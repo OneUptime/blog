@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Snapshot, GRUB, Btrfs, Boot
+Tags: Ubuntu, Snapshots, GRUB, Btrfs, Boot
 
 Description: Configure boot-time snapshot integration on Ubuntu so you can select and boot into system snapshots directly from the GRUB menu for rapid recovery.
 

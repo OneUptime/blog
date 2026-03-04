@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Resource Management, Multi-Tenancy, Quota, DevOps
+Tags: Kubernetes, Resource Management, Multi-Tenancy, Quotas, DevOps
 
 Description: Configure Kubernetes resource quotas for namespace-level resource limits, object counts, and priority class quotas for multi-tenant clusters.
 

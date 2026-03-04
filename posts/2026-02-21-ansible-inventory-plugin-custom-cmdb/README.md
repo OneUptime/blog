@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Inventory, CMDB, Dynamic Inventory
+Tags: Ansible, Plugins, Inventory, CMDB, Dynamic Inventory
 
 Description: Build a custom Ansible inventory plugin that pulls hosts and groups from your organization's CMDB or asset management system.
 

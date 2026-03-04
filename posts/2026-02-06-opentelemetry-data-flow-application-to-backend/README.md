@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Data Flow, Architecture, Pipeline, Exporter
+Tags: OpenTelemetry, Data Flow, Architecture, Pipelines, Exporter
 
 Description: A comprehensive guide explaining how telemetry data travels from your application through OpenTelemetry components to your observability backend.
 

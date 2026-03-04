@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Security, Production, Authentication, Encryption, ACL, Network Security
+Tags: Redis, Security, Production, Authentication, Encryption, ACLs, Network Security
 
 Description: A comprehensive guide to securing Redis in production environments, covering authentication, ACLs, network security, encryption.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Failover, Pipeline, High Availability
+Tags: OpenTelemetry, Failover, Pipelines, High Availability
 
 Description: Build a resilient OpenTelemetry pipeline that automatically routes telemetry to a secondary backend when the primary becomes unavailable.
 

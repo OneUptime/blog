@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Restic, Backup, Linux
+Tags: RHEL, Restic, Backups, Linux
 
 Description: Learn how to set Up Restic for Encrypted Cloud Backups on RHEL with step-by-step instructions, configuration examples, and best practices.
 

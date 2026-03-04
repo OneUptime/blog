@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Helm, Charts, Package Management, Template, DevOps
+Tags: Kubernetes, Helm, Charts, Package Management, Templates, DevOps
 
 Description: Learn how to create Helm charts from scratch with proper structure, templates, values, dependencies, and best practices for Kubernetes application deployment.
 

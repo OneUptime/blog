@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: OpenTofu, Docker, Container, IaC, DevOps, CI/CD
+Tags: OpenTofu, Docker, Containers, IaC, DevOps, CI/CD
 
 Description: A complete guide to running OpenTofu inside Docker containers, covering official images, custom Dockerfiles, volume mounts, credential management, and CI/CD integration patterns.
 

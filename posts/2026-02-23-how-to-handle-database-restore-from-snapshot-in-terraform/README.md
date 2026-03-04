@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Database, Restore, Snapshot, RDS, Disaster Recovery
+Tags: Terraform, AWS, Database, Restore, Snapshots, RDS, Disaster Recovery
 
 Description: Learn how to restore databases from snapshots using Terraform including RDS instances, Aurora clusters, and handling the restore workflow effectively.
 

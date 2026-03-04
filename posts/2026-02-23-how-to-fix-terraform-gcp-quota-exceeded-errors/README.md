@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Quota, Troubleshooting, Infrastructure as Code
+Tags: Terraform, GCP, Quotas, Troubleshooting, Infrastructure as Code
 
 Description: Resolve quota exceeded errors when provisioning GCP resources with Terraform, including how to check current usage, request quota increases, and optimize resource allocation.
 

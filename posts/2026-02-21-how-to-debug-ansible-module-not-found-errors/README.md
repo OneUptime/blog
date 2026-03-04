@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Modules, Collection, Troubleshooting
+Tags: Ansible, Modules, Collections, Troubleshooting
 
 Description: Learn how to diagnose and fix Ansible module not found errors caused by missing collections, wrong module paths, or version mismatches.
 

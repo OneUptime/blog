@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lambda, Monitoring, Observability, Extension
+Tags: AWS, Lambda, Monitoring, Observability, Extensions
 
 Description: Learn how to use AWS Lambda Extensions to add monitoring, logging, and observability capabilities to your functions without modifying application code.
 

@@ -49,7 +49,7 @@ sudo subscription-manager register --username=your_rh_username --password=your_r
 
 You will see output like:
 
-```
+```bash
 The system has been registered with ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 The registered system name is: rhel9-server.example.com
 ```

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Pipelines, Docker, Container Jobs, CI/CD, DevOps, Container, Build Automation
+Tags: Azure Pipelines, Docker, Container Jobs, CI/CD, DevOps, Containers, Build Automation
 
 Description: Learn how to configure Azure Pipelines container jobs to run build steps inside custom Docker containers for consistent and reproducible build environments.
 

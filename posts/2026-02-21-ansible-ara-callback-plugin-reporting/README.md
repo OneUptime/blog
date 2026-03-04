@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, ARA, Callback Plugins, Reporting, Dashboard
+Tags: Ansible, ARA, Callback Plugins, Reporting, Dashboards
 
 Description: Set up the ARA callback plugin to record and browse Ansible playbook results through a web interface with searchable history and detailed reports.
 

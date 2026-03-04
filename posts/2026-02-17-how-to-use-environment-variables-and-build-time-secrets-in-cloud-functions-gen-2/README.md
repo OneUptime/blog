@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Functions, Environment Variable, Secret, Configuration
+Tags: GCP, Cloud Functions, Environment Variables, Secrets, Configuration
 
 Description: A complete guide to managing environment variables and build-time secrets in Google Cloud Functions Gen 2 for proper configuration management across environments.
 

@@ -67,7 +67,7 @@ google-authenticator
 
 Answer the prompts:
 
-```
+```bash
 Do you want authentication tokens to be time-based (y/n) y
 ```
 
@@ -77,7 +77,7 @@ The command outputs a QR code that you scan with your authenticator app. It also
 
 Continue answering:
 
-```
+```bash
 Do you want me to update your "/home/jsmith/.google_authenticator" file? (y/n) y
 Do you want to disallow multiple uses of the same authentication token? (y/n) y
 By default, a new token is generated every 30 seconds... Do you want to do so? (y/n) n
@@ -107,7 +107,7 @@ sudo vi /etc/pam.d/sshd
 
 Add the Google Authenticator module to the auth section. Place it after `pam_unix` (or the `password-auth` substack):
 
-```
+```bash
 auth       substack     password-auth
 auth       required     pam_google_authenticator.so nullok
 ```
@@ -122,14 +122,14 @@ sudo vi /etc/ssh/sshd_config
 
 Make sure these settings are present:
 
-```
+```bash
 ChallengeResponseAuthentication yes
 AuthenticationMethods keyboard-interactive
 ```
 
 Or if you want to require both a public key and TOTP:
 
-```
+```bash
 AuthenticationMethods publickey,keyboard-interactive
 ```
 
@@ -165,7 +165,7 @@ sudo vi /etc/pam.d/sshd
 
 If service accounts need to log in without MFA, use the `nullok` option or combine with `pam_succeed_if`:
 
-```
+```bash
 # Skip MFA for users in the 'svc-accounts' group
 auth    [success=1 default=ignore]    pam_succeed_if.so user ingroup svc-accounts
 auth    required                       pam_google_authenticator.so
@@ -179,7 +179,7 @@ Only add the `pam_google_authenticator.so` line to `/etc/pam.d/sshd`, not to `/e
 
 By default, secrets are stored in each user's home directory. For centralized management:
 
-```
+```bash
 auth    required    pam_google_authenticator.so secret=/etc/google-auth/${USER}/.google_authenticator user=root
 ```
 
@@ -201,14 +201,14 @@ For the strongest setup, require an SSH key as the first factor and TOTP as the 
 sudo vi /etc/ssh/sshd_config
 ```
 
-```
+```bash
 PubkeyAuthentication yes
 AuthenticationMethods publickey,keyboard-interactive:pam
 ```
 
 Then in `/etc/pam.d/sshd`, make sure `pam_google_authenticator.so` is the only auth module that prompts (comment out the password-auth substack):
 
-```
+```bash
 # auth    substack     password-auth
 auth    required     pam_google_authenticator.so
 ```

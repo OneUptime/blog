@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Go, Golang, Web Application, Deployment, Systemd, Linux
+Tags: RHEL, Go, Golang, Web Applications, Deployment, systemd, Linux
 
 Description: Build a Go web application and deploy it on RHEL with systemd service management, Nginx reverse proxy, and proper firewall configuration.
 

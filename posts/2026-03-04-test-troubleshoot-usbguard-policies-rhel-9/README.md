@@ -66,7 +66,7 @@ sudo usbguard list-devices -b | grep -A5 "keyboard"
 
 Fix by using a broader interface match:
 
-```
+```bash
 # Instead of matching exact subclass
 allow with-interface 03:01:01
 
@@ -85,7 +85,7 @@ Some devices present multiple interfaces. A USB headset might have audio and HID
 
 Your rule needs to account for all interfaces:
 
-```
+```bash
 # Allow the headset with all its interfaces
 allow id 046d:0a44 with-interface { 01:01:00 01:02:00 03:00:00 }
 

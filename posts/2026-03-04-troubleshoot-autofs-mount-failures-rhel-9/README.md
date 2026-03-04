@@ -45,13 +45,13 @@ sudo vi /etc/sysconfig/autofs
 
 Set:
 
-```
+```bash
 LOGGING="debug"
 ```
 
 Or use verbose/debug mode:
 
-```
+```bash
 OPTIONS="--debug"
 ```
 
@@ -146,7 +146,7 @@ host nfsserver
 
 If DNS fails, use the IP address in the map file as a workaround:
 
-```
+```bash
 data -rw,soft 192.168.1.10:/export/data
 ```
 

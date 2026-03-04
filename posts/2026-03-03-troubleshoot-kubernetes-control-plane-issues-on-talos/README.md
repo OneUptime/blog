@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Control Plane, Troubleshooting, API Server, Scheduler
+Tags: Talos Linux, Kubernetes, Control Plane, Troubleshooting, API Server, Schedulers
 
 Description: Complete troubleshooting guide for Kubernetes control plane problems on Talos Linux, covering the API server, scheduler, controller manager, and etcd.
 

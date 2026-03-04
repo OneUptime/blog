@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Storage, Persistent Volume, CSI
+Tags: Helm, Kubernetes, DevOps, Storage, Persistent Volumes, CSI
 
 Description: Comprehensive guide to deploying and managing storage classes, persistent volumes, and CSI drivers using Helm charts for stateful applications.
 

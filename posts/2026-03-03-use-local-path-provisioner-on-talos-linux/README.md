@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Local Path Provisioner, Kubernetes Storage, Persistent Volume, Rancher
+Tags: Talos Linux, Local Path Provisioner, Kubernetes Storage, Persistent Volumes, Rancher
 
 Description: Set up Rancher's Local Path Provisioner on Talos Linux for simple, node-local persistent volumes with dynamic provisioning.
 

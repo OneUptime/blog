@@ -264,7 +264,7 @@ The template syntax stays the same. The keys map to Consul KV paths.
 
 Confd provides several useful template functions:
 
-```
+```bash
 # Get a value with a default
 {{ getv "/key" "default_value" }}
 

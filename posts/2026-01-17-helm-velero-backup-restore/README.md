@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Velero, Backup, Disaster Recovery, Data Protection
+Tags: Helm, Kubernetes, DevOps, Velero, Backups, Disaster Recovery, Data Protection
 
 Description: Complete guide to deploying Velero with Helm for Kubernetes backup and disaster recovery across clusters and cloud providers.
 

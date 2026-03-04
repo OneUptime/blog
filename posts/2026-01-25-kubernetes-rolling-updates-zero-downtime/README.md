@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Rolling Update, Zero Downtime, Deployment, DevOps
+Tags: Kubernetes, Rolling Updates, Zero Downtime, Deployment, DevOps
 
 Description: A comprehensive guide to implementing rolling updates in Kubernetes that achieve true zero-downtime deployments through proper configuration of update strategies, readiness probes.
 

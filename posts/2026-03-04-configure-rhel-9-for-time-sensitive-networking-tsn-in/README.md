@@ -1,4 +1,4 @@
-# How to Configure RHEL for Time-Sensitive Networking (TSN) in Industrial Automation
+# How to Configure RHEL for Time-Sensitive Networking (TSN)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

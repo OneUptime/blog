@@ -14,7 +14,7 @@ Idle SSH sessions and unlimited authentication attempts are two easy-to-fix secu
 
 SSH idle timeout is controlled by two directives that work together:
 
-```
+```bash
 ClientAliveInterval 300
 ClientAliveCountMax 0
 ```
@@ -30,7 +30,7 @@ The total timeout is `ClientAliveInterval * (ClientAliveCountMax + 1)` when Clie
 sudo vi /etc/ssh/sshd_config.d/15-timeout.conf
 ```
 
-```
+```bash
 # Disconnect after 5 minutes of inactivity
 ClientAliveInterval 300
 ClientAliveCountMax 0
@@ -38,7 +38,7 @@ ClientAliveCountMax 0
 
 ### Set a 15-minute timeout with some tolerance
 
-```
+```bash
 # Send keep-alive every 5 minutes, disconnect after 3 missed responses
 # Total timeout: 5 * 3 = 15 minutes
 ClientAliveInterval 300
@@ -59,7 +59,7 @@ MaxAuthTries limits how many authentication attempts are allowed per connection:
 sudo vi /etc/ssh/sshd_config.d/15-timeout.conf
 ```
 
-```
+```bash
 # Allow only 3 authentication attempts per connection
 MaxAuthTries 3
 ```
@@ -86,7 +86,7 @@ The `IdentitiesOnly yes` setting tells the client to only offer the specified ke
 
 This setting controls how long the server waits for authentication to complete:
 
-```
+```bash
 # Allow 60 seconds to complete authentication
 LoginGraceTime 60
 ```
@@ -97,7 +97,7 @@ The default is 120 seconds. If a connection sits at the password prompt for long
 
 Limit the number of multiplexed sessions over a single SSH connection:
 
-```
+```bash
 # Maximum 4 sessions per connection
 MaxSessions 4
 ```
@@ -106,7 +106,7 @@ MaxSessions 4
 
 This throttles unauthenticated connections, which helps against connection flooding:
 
-```
+```bash
 # start:rate:full
 # After 10 unauthenticated connections, reject 30% of new ones
 # After 60, reject all new connections
@@ -121,7 +121,7 @@ Here is a comprehensive configuration file:
 sudo vi /etc/ssh/sshd_config.d/15-timeout.conf
 ```
 
-```
+```bash
 # Idle timeout: disconnect after 5 minutes of inactivity
 ClientAliveInterval 300
 ClientAliveCountMax 0
@@ -147,7 +147,7 @@ sudo sshd -t && sudo systemctl restart sshd
 
 ### CIS Benchmark
 
-```
+```bash
 ClientAliveInterval 300
 ClientAliveCountMax 3
 LoginGraceTime 60
@@ -156,14 +156,14 @@ MaxAuthTries 4
 
 ### STIG
 
-```
+```bash
 ClientAliveInterval 600
 ClientAliveCountMax 0
 ```
 
 ### PCI DSS
 
-```
+```bash
 ClientAliveInterval 900
 ClientAliveCountMax 0
 ```

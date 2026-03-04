@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Liveness Probe, Health Check, Kubernetes, Envoy Proxy
+Tags: Istio, Liveness Probe, Health Checks, Kubernetes, Envoy Proxy
 
 Description: How to configure liveness probes for the Istio sidecar proxy to automatically restart unhealthy proxy containers and maintain mesh reliability.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Looker, Scheduled Reports, Email Delivery, Dashboard, Automation, LookML
+Tags: GCP, Looker, Scheduled Reports, Email Delivery, Dashboards, Automation, LookML
 
 Description: A complete guide to scheduling Looker dashboards and looks for automatic email delivery to stakeholders on a recurring basis.
 

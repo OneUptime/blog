@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Fargate Spot, Cost Optimization, Container
+Tags: AWS, ECS, Fargate Spot, Cost Optimization, Containers
 
 Description: A practical guide to configuring AWS Fargate Spot to cut your ECS compute costs by up to 70 percent while maintaining service reliability.
 

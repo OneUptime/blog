@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, Managed Disks, Storage Performance, IOPS, Disk Tiers, Cloud
+Tags: Azure, Virtual Machines, Managed Disks, Storage Performance, IOPS, Disk Tiers, Cloud
 
 Description: A practical guide to choosing the right Azure managed disk tier for your VM workload to optimize both performance and cost.
 

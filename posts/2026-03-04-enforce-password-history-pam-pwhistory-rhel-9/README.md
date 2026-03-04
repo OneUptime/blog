@@ -46,7 +46,7 @@ sudo vi /etc/authselect/custom/myorg/system-auth
 
 Add the pam_pwhistory line in the password section, before pam_unix:
 
-```
+```bash
 password    requisite     pam_pwquality.so retry=3
 password    required      pam_pwhistory.so remember=12 use_authtok enforce_for_root retry=3
 password    sufficient    pam_unix.so sha512 shadow nullok use_authtok
@@ -110,7 +110,7 @@ sudo chown root:root /etc/security/opasswd
 
 Each line contains a username followed by password hashes separated by commas:
 
-```
+```bash
 jsmith:1000:3:$6$abc..hash1,$6$def..hash2,$6$ghi..hash3
 ```
 
@@ -144,7 +144,7 @@ Password history works best alongside password complexity rules. The typical sta
 2. **pam_pwhistory** - Check it has not been used before
 3. **pam_unix** - Actually store the new password
 
-```
+```bash
 password    requisite     pam_pwquality.so retry=3 minlen=12 dcredit=-1 ucredit=-1 lcredit=-1 ocredit=-1
 password    required      pam_pwhistory.so remember=12 use_authtok enforce_for_root
 password    sufficient    pam_unix.so sha512 shadow nullok use_authtok
@@ -168,7 +168,7 @@ sudo truncate -s 0 /etc/security/opasswd
 
 By default, pam_pwhistory does not apply to root. Adding `enforce_for_root` changes this:
 
-```
+```bash
 password    required    pam_pwhistory.so remember=12 use_authtok enforce_for_root
 ```
 

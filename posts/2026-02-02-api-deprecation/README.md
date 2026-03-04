@@ -362,13 +362,13 @@ involves updating endpoints, request formats, and response handling.
 **v2:** Bearer token in Authorization header
 
 ```bash
-# v1 (deprecated)
+## v1 (deprecated)
 curl "https://api.example.com/v1/users?api_key=YOUR_KEY"
 
-# v2 (current)
+## v2 (current)
 curl -H "Authorization: Bearer YOUR_TOKEN" \
      "https://api.example.com/v2/users"
-```
+```bash
 
 ### 2. Response Format
 **v1:** Flat structure with snake_case
@@ -395,7 +395,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 ### Python Migration
 
 ```python
-# Before (v1)
+## Before (v1)
 response = requests.get(
     'https://api.example.com/v1/users',
     params={'api_key': API_KEY}
@@ -403,14 +403,14 @@ response = requests.get(
 user = response.json()
 name = user['full_name']
 
-# After (v2)
+## After (v2)
 response = requests.get(
     'https://api.example.com/v2/users',
     headers={'Authorization': f'Bearer {TOKEN}'}
 )
 user = response.json()
 name = f"{user['firstName']} {user['lastName']}"
-```
+```bash
 
 ## Testing Your Migration
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Consul, Health Check, Service Discovery, Monitoring, HashiCorp
+Tags: Consul, Health Checks, Service Discovery, Monitoring, HashiCorp
 
 Description: Learn how to implement various types of Consul health checks including HTTP, TCP, script, gRPC, and TTL checks to ensure only healthy service instances receive traffic.
 

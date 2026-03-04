@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Networking, iproute2, ip command, Linux, Tutorial
+Tags: Ubuntu, Networking, iproute2, ip Command, Linux, Tutorial
 
 Description: Complete guide to iproute2 commands (ip, ss, tc) for modern Linux network configuration and management on Ubuntu.
 

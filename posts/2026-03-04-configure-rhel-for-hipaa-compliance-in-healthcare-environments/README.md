@@ -57,7 +57,7 @@ update-crypto-policies --show
 sudo vi /etc/ssh/sshd_conf.d/hipaa.conf
 ```
 
-```
+```bash
 # /etc/ssh/sshd_conf.d/hipaa.conf
 PermitRootLogin no
 PasswordAuthentication no

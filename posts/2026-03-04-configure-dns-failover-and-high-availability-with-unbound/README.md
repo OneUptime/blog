@@ -24,7 +24,7 @@ The simplest approach is listing multiple DNS servers:
 sudo vi /etc/resolv.conf
 ```
 
-```
+```bash
 nameserver 10.0.1.10
 nameserver 10.0.1.11
 options timeout:2 attempts:2
@@ -46,7 +46,7 @@ Configure the master:
 sudo vi /etc/keepalived/keepalived.conf
 ```
 
-```
+```bash
 vrrp_script check_unbound {
     script "/usr/bin/systemctl is-active unbound"
     interval 2

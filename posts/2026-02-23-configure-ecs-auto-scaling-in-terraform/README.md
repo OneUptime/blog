@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, Auto Scaling, Fargate, Container, Performance
+Tags: Terraform, AWS, ECS, Auto Scaling, Fargate, Containers, Performance
 
 Description: Learn how to configure auto scaling for ECS Fargate services using Terraform, covering target tracking, step scaling, scheduled scaling, and scaling policies for different workload patterns.
 

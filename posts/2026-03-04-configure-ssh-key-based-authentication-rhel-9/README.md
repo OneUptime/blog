@@ -34,7 +34,7 @@ ssh-keygen -t rsa -b 4096 -C "jsmith@workstation"
 
 ### What gets created
 
-```
+```bash
 ~/.ssh/id_ed25519      # Private key (NEVER share this)
 ~/.ssh/id_ed25519.pub  # Public key (this goes on servers)
 ```
@@ -139,7 +139,7 @@ ssh -vvv -i ~/.ssh/id_ed25519 admin@server.example.com
 
 In verbose output, look for:
 
-```
+```bash
 debug1: Offering public key: /home/jsmith/.ssh/id_ed25519 ED25519
 debug1: Server accepts key: /home/jsmith/.ssh/id_ed25519 ED25519
 debug1: Authentication succeeded (publickey).
@@ -155,7 +155,7 @@ sudo vi /etc/ssh/sshd_config
 
 Make sure these lines are present:
 
-```
+```bash
 PubkeyAuthentication yes
 AuthorizedKeysFile .ssh/authorized_keys
 ```
@@ -183,7 +183,7 @@ ssh-add -l
 vi ~/.ssh/config
 ```
 
-```
+```bash
 Host webserver
     HostName web.example.com
     User admin

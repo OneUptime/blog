@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, TLS, Gateway, Certificate, Kubernetes
+Tags: Istio, TLS, Gateway, Certificates, Kubernetes
 
 Description: Step-by-step guide to configuring multiple TLS certificates on an Istio ingress gateway for serving multiple domains with different SSL certificates.
 

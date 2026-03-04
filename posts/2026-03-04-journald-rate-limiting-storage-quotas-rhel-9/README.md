@@ -47,7 +47,7 @@ RateLimitBurst=1000
 
 With these settings, each service can log up to 1000 messages every 30 seconds. After that, journald suppresses additional messages and logs a notice like:
 
-```
+```bash
 Suppressed 4523 messages from myapp.service
 ```
 

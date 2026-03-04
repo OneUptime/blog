@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Disk Encryption, Virtual Machine, BitLocker, dm-crypt, Security, Troubleshooting
+Tags: Azure, Disk Encryption, Virtual Machines, BitLocker, dm-crypt, Security, Troubleshooting
 
 Description: Troubleshoot and resolve Azure Disk Encryption failures on Windows and Linux VMs including Key Vault configuration errors and encryption extension issues.
 

@@ -42,7 +42,7 @@ ssh -L 9090:localhost:9090 user@remote-server.example.com
 
 Once connected, open your browser and go to:
 
-```
+```bash
 https://localhost:9090
 ```
 

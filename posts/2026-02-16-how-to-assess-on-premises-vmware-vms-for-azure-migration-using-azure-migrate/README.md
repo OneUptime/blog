@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Migrate, VMware, Cloud Migration, Azure, On-Premise, Assessment, Virtual Machine
+Tags: Azure Migrate, VMware, Cloud Migration, Azure, On-Premise, Assessment, Virtual Machines
 
 Description: Learn how to assess on-premises VMware virtual machines for Azure migration using Azure Migrate, including discovery, assessment, and right-sizing recommendations.
 

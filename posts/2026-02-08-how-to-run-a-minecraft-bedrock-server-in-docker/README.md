@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Minecraft, Bedrock, Game Server, Container, Self-Hosted, Gaming, Cross-Platform
+Tags: Docker, Minecraft, Bedrock, Game Server, Containers, Self-Hosted, Gaming, Cross-Platform
 
 Description: Deploy a Minecraft Bedrock Edition dedicated server in Docker so players on mobile, console, and Windows 10/11 can connect to your self-hosted world.
 

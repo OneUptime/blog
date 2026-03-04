@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container, DevOps, Configuration, Security
+Tags: Docker, Containers, DevOps, Configuration, Security
 
 Description: Understand ARG vs ENV, .env files, Compose interpolation, and secret injection patterns to configure Docker builds and containers correctly.
 

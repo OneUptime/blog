@@ -152,7 +152,7 @@ This runs a 5-minute test on CPU 2 and outputs a latency histogram.
 
 Typical results on a well-tuned system:
 
-```
+```bash
 Min: 1 us
 Avg: 3 us
 Max: 8 us

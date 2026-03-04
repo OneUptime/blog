@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Swarm, Backup, Cluster State, Disaster Recovery, Raft, DevOps
+Tags: Docker, Docker Swarm, Backups, Cluster State, Disaster Recovery, Raft, DevOps
 
 Description: Back up and restore Docker Swarm cluster state including Raft logs, service definitions, secrets, configs, and network configurations.
 

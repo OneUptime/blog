@@ -75,7 +75,7 @@ sudo multipath -ll
 
 You should see each LUN with multiple paths listed. Example output:
 
-```
+```bash
 mpatha (360000000000000001) dm-2 VENDOR,PRODUCT
 size=100G features='0' hwhandler='0' wp=rw
 |-+- policy='service-time 0' prio=1 status=active
@@ -94,7 +94,7 @@ sudo vi /etc/lvm/lvm.conf
 
 Find the `filter` line and set it to accept only multipath devices:
 
-```
+```bash
 filter = [ "a|/dev/mapper/mpath.*|", "a|/dev/sda|", "r|.*|" ]
 ```
 
@@ -102,7 +102,7 @@ This accepts multipath devices and your local boot disk (`/dev/sda`) while rejec
 
 Also ensure the `preferred_names` setting prioritizes multipath names:
 
-```
+```bash
 preferred_names = [ "^/dev/mapper/mpath" ]
 ```
 
@@ -200,7 +200,7 @@ df -h /data /logs
 
 Configure multipath aliases in `/etc/multipath.conf` for easier identification:
 
-```
+```bash
 multipaths {
     multipath {
         wwid 360000000000000001
@@ -252,7 +252,7 @@ sudo vi /etc/lvm/lvm.conf
 
 Set:
 
-```
+```bash
 system_id_source = "uname"
 ```
 

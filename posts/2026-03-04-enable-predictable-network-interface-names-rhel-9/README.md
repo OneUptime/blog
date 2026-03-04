@@ -57,7 +57,7 @@ udevadm info --query=property /sys/class/net/enp0s25 | grep ID_NET_NAME
 
 The output from `udevadm info` shows all the name candidates:
 
-```
+```bash
 ID_NET_NAME_ONBOARD=eno1
 ID_NET_NAME_SLOT=ens3
 ID_NET_NAME_PATH=enp0s25

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Falco, Plugin, Security, Cloud Security, Extensibility
+Tags: Falco, Plugins, Security, Cloud Security, Extensibility
 
 Description: Learn how to extend Falco with plugins for AWS CloudTrail, Kubernetes audit logs, and custom data sources.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Kata Containers, Security, Virtualization, Container, Isolation, DevOps
+Tags: Docker, Kata Containers, Security, Virtualization, Containers, Isolation, DevOps
 
 Description: Learn how to run Docker containers inside lightweight VMs using Kata Containers for hardware-level isolation without sacrificing container workflow.
 

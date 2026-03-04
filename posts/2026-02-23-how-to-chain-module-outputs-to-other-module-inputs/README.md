@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Output, Composition, Infrastructure as Code, DevOps
+Tags: Terraform, Modules, Outputs, Composition, Infrastructure as Code, DevOps
 
 Description: Learn how to connect Terraform modules by passing output values from one module as input variables to another, creating a modular infrastructure pipeline.
 

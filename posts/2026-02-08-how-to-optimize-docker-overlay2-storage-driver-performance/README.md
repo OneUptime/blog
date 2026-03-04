@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Performance, Overlay2, Storage, Linux, Filesystem, DevOps, Optimization
+Tags: Docker, Performance, Overlay2, Storage, Linux, Filesystems, DevOps, Optimization
 
 Description: Learn how to tune the overlay2 storage driver for better Docker performance, including filesystem selection, mount options, and cleanup strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, VOLUME, Encryption, Security, LUKS, DevOps, Storage
+Tags: Docker, Volumes, Encryption, Security, LUKS, DevOps, Storage
 
 Description: Step-by-step instructions for encrypting Docker volumes at rest using LUKS, dm-crypt, and eCryptfs approaches.
 

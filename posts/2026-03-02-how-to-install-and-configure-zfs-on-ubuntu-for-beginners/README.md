@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, ZFS, Storage, Linux, File System
+Tags: Ubuntu, ZFS, Storage, Linux, File Systems
 
 Description: Install ZFS on Ubuntu from scratch, understand its key concepts, and configure a basic ZFS pool with datasets for beginners transitioning from traditional filesystems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Execution Environment, Dependencies, ansible-builder
+Tags: Ansible, Execution Environments, Dependencies, ansible-builder
 
 Description: Learn how to properly define and manage Galaxy collections, Python packages, and system dependencies for Ansible Execution Environments.
 

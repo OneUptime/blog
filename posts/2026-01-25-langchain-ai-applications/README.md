@@ -144,7 +144,7 @@ Review this code and provide structured feedback:
 
 ```python
 {code}
-```
+```bash
 
 Return your review as JSON with keys: issues, suggestions, score
 """)

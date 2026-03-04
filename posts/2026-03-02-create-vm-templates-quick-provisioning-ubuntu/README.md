@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, KVM, Virtualization, Template
+Tags: Ubuntu, KVM, Virtualization, Templates
 
 Description: Learn how to create reusable KVM virtual machine templates on Ubuntu using virt-sysprep and cloud-init for fast, consistent VM provisioning.
 

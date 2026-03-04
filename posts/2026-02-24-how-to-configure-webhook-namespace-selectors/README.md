@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Webhook, Namespace Selectors, Service Mesh
+Tags: Istio, Kubernetes, Webhooks, Namespace Selectors, Service Mesh
 
 Description: Learn how to configure namespace selectors on the Istio sidecar injection webhook to control which namespaces get automatic sidecar injection.
 

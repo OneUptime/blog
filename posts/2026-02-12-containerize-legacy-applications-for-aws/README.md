@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Docker, Container, ECS, Fargate, Legacy, Modernization
+Tags: AWS, Docker, Containers, ECS, Fargate, LEGACY, Modernization
 
 Description: Learn how to containerize legacy applications for deployment on AWS using Docker, ECS Fargate, and practical strategies for handling stateful and monolithic apps.
 

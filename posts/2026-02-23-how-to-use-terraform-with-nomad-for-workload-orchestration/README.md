@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Nomad, Workload Orchestration, HashiCorp, Container, Scheduling
+Tags: Terraform, Nomad, Workload Orchestration, HashiCorp, Containers, Scheduling
 
 Description: Learn how to use Terraform with HashiCorp Nomad for workload orchestration, including deploying the Nomad cluster, registering jobs, and managing rolling updates.
 

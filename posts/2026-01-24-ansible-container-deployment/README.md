@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Container, Kubernetes, DevOps, Automation, Deployment
+Tags: Ansible, Docker, Containers, Kubernetes, DevOps, Automation, Deployment
 
 Description: Learn how to configure Ansible for deploying and managing Docker containers and Kubernetes workloads effectively.
 

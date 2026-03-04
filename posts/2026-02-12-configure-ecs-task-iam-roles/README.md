@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, IAM, Security, Container
+Tags: AWS, ECS, IAM, Security, Containers
 
 Description: Learn how to configure ECS task IAM roles to give your containers the exact AWS permissions they need, following the principle of least privilege.
 

@@ -103,7 +103,7 @@ Use a "Stat" panel type for this metric.
 
 Add a variable to filter by host. Go to Dashboard Settings > Variables > Add variable:
 
-```
+```bash
 Name: instance
 Type: Query
 Query: label_values(node_uname_info, instance)

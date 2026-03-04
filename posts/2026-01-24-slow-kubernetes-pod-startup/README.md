@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Performance, Pod Startup, Container, DevOps, Docker, Optimization, Scheduling
+Tags: Kubernetes, Performance, Pod Startup, Containers, DevOps, Docker, Optimization, Scheduling
 
 Description: Learn how to diagnose and fix slow Kubernetes pod startup times, including image optimization, scheduling improvements, and probe configuration.
 

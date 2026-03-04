@@ -55,7 +55,7 @@ sudo cp /etc/postfix/main.cf /etc/postfix/main.cf.bak
 
 Set these values in `/etc/postfix/main.cf`:
 
-```
+```bash
 # Hostname of this machine
 myhostname = appserver01.example.com
 
@@ -103,7 +103,7 @@ sudo dnf install -y cyrus-sasl cyrus-sasl-plain
 
 Add these lines to `/etc/postfix/main.cf`:
 
-```
+```bash
 # Enable SASL authentication for the relay
 smtp_sasl_auth_enable = yes
 smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
@@ -120,7 +120,7 @@ sudo vi /etc/postfix/sasl_passwd
 
 Add the relay credentials:
 
-```
+```bash
 [relay.example.com] username:password
 ```
 
@@ -138,7 +138,7 @@ sudo postmap /etc/postfix/sasl_passwd
 
 If the relay requires TLS (and it should), add these settings:
 
-```
+```bash
 # Enable TLS for outgoing connections
 smtp_tls_security_level = encrypt
 smtp_tls_CAfile = /etc/pki/tls/certs/ca-bundle.crt
@@ -151,21 +151,21 @@ relayhost = [relay.example.com]:587
 
 You may want all outgoing mail to appear from a consistent address. Use sender canonical mapping:
 
-```
+```bash
 # Rewrite all sender addresses
 sender_canonical_maps = regexp:/etc/postfix/sender_canonical
 ```
 
 Create `/etc/postfix/sender_canonical`:
 
-```
+```bash
 # Rewrite all local senders to a single address
 /.+/ noreply@example.com
 ```
 
 If you only want to rewrite the domain but keep the username:
 
-```
+```bash
 # Rewrite only the domain part
 sender_canonical_classes = envelope_sender
 sender_canonical_maps = regexp:/etc/postfix/sender_canonical
@@ -173,7 +173,7 @@ sender_canonical_maps = regexp:/etc/postfix/sender_canonical
 
 And in `/etc/postfix/sender_canonical`:
 
-```
+```bash
 /@.*$/ @example.com
 ```
 
@@ -205,7 +205,7 @@ sudo tail -f /var/log/maillog
 
 You should see a line like:
 
-```
+```bash
 relay=relay.example.com[10.0.0.5]:25, delay=0.5, status=sent
 ```
 
@@ -230,7 +230,7 @@ sudo postconf inet_interfaces mydestination relayhost
 
 Expected output:
 
-```
+```bash
 inet_interfaces = loopback-only
 mydestination =
 relayhost = [relay.example.com]
@@ -247,7 +247,7 @@ sudo vi /etc/aliases
 
 Add:
 
-```
+```bash
 root: admin@example.com
 ```
 

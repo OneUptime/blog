@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Loki, Grafana, Data Source, Log Exploration, Observability, Dashboard
+Tags: Grafana Loki, Grafana, Data Source, Log Exploration, Observability, Dashboards
 
 Description: A comprehensive guide to connecting Grafana Loki to Grafana for log visualization, covering data source configuration, LogQL exploration, and advanced querying techniques.
 

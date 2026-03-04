@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, WAL Archiving, Continuous Archiving, PITR, Backup, Disaster Recovery
+Tags: PostgreSQL, WAL Archiving, Continuous Archiving, PITR, Backups, Disaster Recovery
 
 Description: A comprehensive guide to setting up PostgreSQL continuous archiving with WAL shipping, covering archive configuration, storage options, monitoring, and point-in-time recovery preparation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, Kubernetes, CI/CD, Pipeline, Workspace, Cloud Native, DevOps
+Tags: Tekton, Kubernetes, CI/CD, Pipelines, Workspaces, Cloud Native, DevOps
 
 Description: A practical guide to using Tekton workspaces for sharing data between pipeline tasks, including PersistentVolumeClaims, ConfigMaps, Secrets, and EmptyDir volumes with real-world examples.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificate, Root CA, Security, PKI, Kubernetes
+Tags: Istio, Certificates, Root CA, Security, PKI, Kubernetes
 
 Description: How to replace Istio's default self-signed root certificate with your own custom root CA for production deployments and multi-cluster trust.
 

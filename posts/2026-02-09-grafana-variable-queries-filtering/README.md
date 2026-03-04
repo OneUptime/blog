@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Dashboard, Variables, Filtering, Monitoring
+Tags: Grafana, Dashboards, Variables, Filtering, Monitoring
 
 Description: Master Grafana template variables and query variables to create dynamic, interactive dashboards that adapt to user selections and context.
 

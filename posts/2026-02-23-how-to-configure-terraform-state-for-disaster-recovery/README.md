@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Disaster Recovery, State Management, Infrastructure as Code, DevOps, Backup
+Tags: Terraform, Disaster Recovery, State Management, Infrastructure as Code, DevOps, Backups
 
 Description: Learn how to configure your Terraform state infrastructure for disaster recovery with cross-region replication, automated backups, and tested recovery procedures.
 

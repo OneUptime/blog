@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: C#, .NET, Collection, Threading, Error Handling, Concurrency
+Tags: C#, .NET, Collections, Threading, Error Handling, Concurrency
 
 Description: Learn how to diagnose and fix the 'Collection was modified; enumeration operation may not execute' error in C#. This guide covers safe iteration patterns, concurrent collections, and best practices.
 

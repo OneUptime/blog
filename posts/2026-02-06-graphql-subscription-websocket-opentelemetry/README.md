@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GraphQL, WebSocket, Subscription
+Tags: OpenTelemetry, GraphQL, WebSocket, Subscriptions
 
 Description: Trace GraphQL subscription lifecycle events over WebSocket connections using OpenTelemetry custom spans and events.
 

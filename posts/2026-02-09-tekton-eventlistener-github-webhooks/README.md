@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, Kubernetes, CI/CD, GitHub, Webhook
+Tags: Tekton, Kubernetes, CI/CD, GitHub, Webhooks
 
 Description: Build a Tekton EventListener that automatically triggers CI/CD pipelines from GitHub webhook events including push, pull request, and release events with dynamic parameter extraction.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Jib, Gradle, Java, Artifact Registry, Container, Docker
+Tags: GCP, Jib, Gradle, Java, Artifact Registry, Containers, Docker
 
 Description: Learn how to use the Jib Gradle plugin to build and push optimized Java container images directly to Google Artifact Registry without needing Docker.
 

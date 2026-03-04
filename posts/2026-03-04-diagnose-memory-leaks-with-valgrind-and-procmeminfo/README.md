@@ -30,7 +30,7 @@ valgrind --leak-check=full --show-leak-kinds=all ./myapp
 
 Valgrind runs your program in a virtual CPU and tracks every memory allocation. When the program exits, it reports:
 
-```
+```bash
 LEAK SUMMARY:
    definitely lost: 1,024 bytes in 4 blocks
    indirectly lost: 0 bytes in 0 blocks

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Template, Variables
+Tags: Ansible, Jinja2, Templates, Variables
 
 Description: Learn how to use Jinja2 variables in Ansible templates including variable types, scoping, defaults, and advanced referencing patterns.
 

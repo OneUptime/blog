@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, BI Engine, Dashboard, Performance, Looker
+Tags: GCP, BigQuery, BI Engine, Dashboards, Performance, Looker
 
 Description: Learn how to set up BigQuery BI Engine reservations to deliver sub-second query responses for interactive dashboards and reporting tools.
 

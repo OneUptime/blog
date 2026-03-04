@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Filesystem, Facts, Storage Management
+Tags: Ansible, Filesystems, Facts, Storage Management
 
 Description: Learn how to use Ansible to gather mount point information including filesystem types, usage stats, and mount options on managed hosts.
 

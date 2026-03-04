@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Health Check, Monitoring, Web Application, ASP.NET, Load Balancing, Observability
+Tags: Azure, Health Checks, Monitoring, Web Applications, ASP.NET, Load Balancing, Observability
 
 Description: Build comprehensive health endpoint monitoring for Azure web applications with dependency checks, degraded states, and integration with load balancers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, CNI, Networking, Plugin
+Tags: Kubernetes, CNI, Networking, Plugins
 
 Description: Learn to implement CNI plugins for custom network configuration with ADD, DEL, and CHECK operations for specialized networking requirements.
 

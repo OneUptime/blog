@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Sysdig, Monitoring, Container, Security
+Tags: Ubuntu, Sysdig, Monitoring, Containers, Security
 
 Description: Learn how to install and use Sysdig on Ubuntu to monitor system calls, container activity, network connections, and performance metrics at the kernel level.
 

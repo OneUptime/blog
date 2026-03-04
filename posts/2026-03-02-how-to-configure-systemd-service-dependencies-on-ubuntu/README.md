@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Service, Linux, Administration
+Tags: Ubuntu, systemd, Services, Linux, Administration
 
 Description: Configure systemd service dependencies on Ubuntu using Requires, Wants, After, Before, and BindsTo directives to control service start order and failure behavior.
 

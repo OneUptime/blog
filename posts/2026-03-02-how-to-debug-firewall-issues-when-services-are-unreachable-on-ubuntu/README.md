@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Firewall, Troubleshooting, Networking, Sysadmin
+Tags: Ubuntu, Firewall, Troubleshooting, Networking, SysAdmin
 
 Description: Systematically diagnose and fix firewall-related connectivity issues on Ubuntu when services appear to be running but are unreachable, using tcpdump, iptables tracing, and connection testing tools.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, App Runner, VPC, Networking, Container
+Tags: Terraform, AWS, App Runner, VPC, Networking, Containers
 
 Description: Learn how to deploy AWS App Runner services with custom VPC connectivity using Terraform for secure access to private resources like databases and internal APIs.
 

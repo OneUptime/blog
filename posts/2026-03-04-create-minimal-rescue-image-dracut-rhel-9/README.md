@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dracut, Rescue, Initramfs, Boot, Linux
+Tags: RHEL, dracut, Rescue, initramfs, Boot, Linux
 
 Description: Learn how to create a minimal, self-contained rescue initramfs image with dracut on RHEL that can boot into a usable emergency environment.
 

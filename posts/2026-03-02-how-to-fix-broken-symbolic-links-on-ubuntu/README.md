@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Filesystem, Troubleshooting, System Administration, Linux
+Tags: Ubuntu, Filesystems, Troubleshooting, System Administration, Linux
 
 Description: Find and fix broken symbolic links on Ubuntu using various tools and techniques, including automated cleanup scripts and best practices for managing symlinks reliably.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Skopeo, Container, OCI, Container Registry
+Tags: Ubuntu, Skopeo, Containers, OCI, Container Registry
 
 Description: Manage and inspect container images on Ubuntu using Skopeo to copy images between registries, inspect image metadata, and sign images without pulling them locally.
 

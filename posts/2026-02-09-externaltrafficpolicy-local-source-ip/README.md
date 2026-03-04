@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Networking, LoadBalancer, Service, IP
+Tags: Kubernetes, Networking, LoadBalancer, Services, IP
 
 Description: Configure Kubernetes ExternalTrafficPolicy Local to preserve client source IP addresses for services, enabling accurate logging, security policies.
 

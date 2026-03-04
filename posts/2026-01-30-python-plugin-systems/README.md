@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Plugin, Architecture, Extensibility, Design Pattern
+Tags: Python, Plugins, Architecture, Extensibility, Design Pattern
 
 Description: Design flexible plugin systems in Python with dynamic loading, discovery mechanisms, hooks, and lifecycle management for extensible applications.
 

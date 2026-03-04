@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Migration, Virtual Machine, Kubernetes, Service Mesh
+Tags: Istio, Migration, Virtual Machines, Kubernetes, Service Mesh
 
 Description: A practical migration strategy for moving VM-based services into Kubernetes using Istio for zero-downtime traffic shifting.
 

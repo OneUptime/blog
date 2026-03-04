@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, PHP, Auto-Instrumentation, Extension, C Extension
+Tags: OpenTelemetry, PHP, Auto-Instrumentation, Extensions, C Extension
 
 Description: Learn how to install and configure the OpenTelemetry PHP auto-instrumentation extension to automatically trace PHP applications without code changes.
 

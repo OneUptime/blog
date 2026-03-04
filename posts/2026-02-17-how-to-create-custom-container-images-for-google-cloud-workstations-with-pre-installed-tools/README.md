@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud, Cloud Workstations, Docker, Container Image, Development Tools
+Tags: GCP, Google Cloud, Cloud Workstations, Docker, Container Images, Development Tools
 
 Description: Learn how to build custom container images for Google Cloud Workstations that come pre-loaded with your team's specific development tools and configurations.
 

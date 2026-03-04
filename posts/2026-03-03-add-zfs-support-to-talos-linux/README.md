@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, ZFS, Storage, Kubernetes, Filesystem
+Tags: Talos Linux, ZFS, Storage, Kubernetes, Filesystems
 
 Description: Complete guide to adding ZFS filesystem support to Talos Linux, including installing the ZFS extension, creating pools, and using ZFS for persistent storage in Kubernetes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Failover, High Availability, keepalived, Production, DevOps
+Tags: Docker, Failover, High Availability, Keepalived, Production, DevOps
 
 Description: Build an active-passive failover setup for Docker containers using Keepalived and health check scripts for automatic recovery.
 

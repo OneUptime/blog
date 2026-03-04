@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, VOLUME, Storage, Troubleshooting, PersistentVolume, DevOps
+Tags: Kubernetes, Volumes, Storage, Troubleshooting, PersistentVolume, DevOps
 
 Description: Learn how to diagnose and fix read-only volume mount issues in Kubernetes.
 

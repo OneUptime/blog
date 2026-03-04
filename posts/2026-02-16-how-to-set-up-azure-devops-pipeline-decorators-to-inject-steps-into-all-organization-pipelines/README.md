@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure DevOps, Pipeline Decorators, CI/CD, DevOps, Azure Pipelines, Automation, Extension
+Tags: Azure DevOps, Pipeline Decorators, CI/CD, DevOps, Azure Pipelines, Automation, Extensions
 
 Description: Learn how to create and deploy Azure DevOps pipeline decorators that automatically inject steps into every pipeline across your organization for consistent governance.
 

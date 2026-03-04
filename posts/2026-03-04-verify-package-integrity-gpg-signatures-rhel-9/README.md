@@ -104,13 +104,13 @@ rpm --checksig package-name.rpm
 
 Example output for a properly signed package:
 
-```
+```bash
 package-name.rpm: digests signatures OK
 ```
 
 If the key is not imported, you will see:
 
-```
+```bash
 package-name.rpm: digests OK (MISSING KEYS: RSA#fd431d51)
 ```
 
@@ -138,7 +138,7 @@ rpm -V httpd
 
 If everything is intact, there is no output. If files have been modified, you get output like:
 
-```
+```bash
 S.5....T.  c /etc/httpd/conf/httpd.conf
 ```
 

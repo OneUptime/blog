@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Collection, Vec, HashMap, HashSet, Data Structures
+Tags: Rust, Collections, Vec, HashMap, HashSet, Data Structures
 
 Description: A practical guide to using Rust's standard collections with performance considerations and common patterns.
 

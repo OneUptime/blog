@@ -96,7 +96,7 @@ sudo subscription-manager status
 
 With SCA active, you will see:
 
-```
+```bash
 Overall Status: Disabled
 Content Access Mode is set to Simple Content Access.
 ```

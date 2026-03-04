@@ -97,7 +97,7 @@ pesign -S -i /boot/vmlinuz-$(uname -r)
 
 If you use third-party drivers (NVIDIA, VirtualBox, custom modules), they may not be signed by a trusted key. You will see errors like:
 
-```
+```bash
 module verification failed: signature and/or required key missing
 ```
 

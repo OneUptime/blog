@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, System Extensions, Build, Kubernetes, Custom Module
+Tags: Talos Linux, System Extensions, Build, Kubernetes, Custom Modules
 
 Description: Step-by-step guide to building custom system extensions for Talos Linux, from setting up the development environment to packaging and testing your extensions.
 

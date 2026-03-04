@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Template, HTML, text/template, html/template, Web Development
+Tags: Go, Golang, Templates, HTML, text/template, html/template, Web Development
 
 Description: Master Go's powerful template engines for generating text, HTML, emails, and configuration files with dynamic data, custom functions, and template composition.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Docker, Container, Troubleshooting, Networking, Debugging
+Tags: IPv6, Docker, Containers, Troubleshooting, Networking, Debugging
 
 Description: A comprehensive guide to diagnosing and resolving IPv6 connectivity problems in containerized environments using systematic debugging techniques and practical command-line tools.
 

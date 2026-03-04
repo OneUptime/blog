@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Disaster Recovery, High Availability, Infrastructure as Code
+Tags: Terraform, Workspaces, Disaster Recovery, High Availability, Infrastructure as Code
 
 Description: Learn how to use Terraform workspaces to manage disaster recovery infrastructure across regions and test failover procedures.
 

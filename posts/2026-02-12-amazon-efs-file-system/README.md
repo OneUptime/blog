@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EFS, Storage, File System
+Tags: AWS, EFS, Storage, File Systems
 
 Description: Step-by-step guide to creating an Amazon EFS file system, configuring mount targets, setting up security groups, and preparing it for use with EC2, ECS, and Lambda.
 

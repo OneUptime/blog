@@ -258,22 +258,22 @@ Runbooks provide step-by-step guides for common incidents. Store them where your
 
 ### 1. Verify the Issue
 ```bash
-# Check current connections on PostgreSQL
+## Check current connections on PostgreSQL
 psql -c "SELECT count(*) FROM pg_stat_activity WHERE state = 'active';"
 
-# Check connection pool metrics
+## Check connection pool metrics
 curl -s localhost:9090/metrics | grep 'db_pool'
-```
+```bash
 
 ### 2. Immediate Mitigation
 ```bash
-# Kill long-running queries (over 5 minutes)
+## Kill long-running queries (over 5 minutes)
 psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity
          WHERE state = 'active' AND query_start < now() - interval '5 minutes';"
 
-# Restart affected service pods
+## Restart affected service pods
 kubectl rollout restart deployment/api-server -n production
-```
+```bash
 
 ### 3. Investigate Root Cause
 - Check recent deployments for connection leak

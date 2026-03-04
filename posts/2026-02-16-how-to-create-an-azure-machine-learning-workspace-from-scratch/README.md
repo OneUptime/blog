@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Machine Learning, Workspace, Cloud, MLOps, Data Science
+Tags: Azure, Machine Learning, Workspaces, Cloud, MLOps, Data Science
 
 Description: A complete guide to creating and configuring an Azure Machine Learning workspace with all the associated resources and security settings.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LXD, Container, Configuration, DevOps
+Tags: Ubuntu, LXD, Containers, Configuration, DevOps
 
 Description: Learn how to create and manage LXD profiles on Ubuntu to standardize container configurations, define resource limits, and apply templates to new containers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Template, Configuration Management
+Tags: Ansible, Jinja2, Templates, Configuration Management
 
 Description: Learn how to control whitespace in Jinja2 templates for Ansible to produce clean, properly formatted configuration files.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, SageMaker, Machine Learning, Algorithm
+Tags: AWS, SageMaker, Machine Learning, Algorithms
 
 Description: Explore Amazon SageMaker's built-in algorithms for common ML tasks including classification, regression, clustering, and natural language processing.
 

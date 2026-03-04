@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, CloudWatch, Monitoring, Container
+Tags: AWS, ECS, CloudWatch, Monitoring, Containers
 
 Description: A complete guide to setting up and using Amazon CloudWatch Container Insights to monitor your ECS clusters, services, and tasks in production.
 

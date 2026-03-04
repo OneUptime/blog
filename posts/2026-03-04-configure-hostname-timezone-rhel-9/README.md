@@ -95,7 +95,7 @@ cat /etc/hosts
 
 Edit `/etc/hosts` to include your new hostname:
 
-```
+```bash
 127.0.0.1   localhost localhost.localdomain
 ::1         localhost localhost.localdomain
 127.0.1.1   db01.prod.example.com db01

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, Temporary Infrastructure, Cost Optimization, DevOps
+Tags: Terraform, Workspaces, Temporary Infrastructure, Cost Optimization, DevOps
 
 Description: Learn how to use Terraform workspaces to create short-lived infrastructure for demos, testing, and experiments with automatic cleanup.
 

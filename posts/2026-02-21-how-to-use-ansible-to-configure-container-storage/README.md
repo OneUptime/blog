@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Storage, VOLUME, Container
+Tags: Ansible, Docker, Storage, Volumes, Containers
 
 Description: Manage Docker container storage with Ansible including named volumes, bind mounts, NFS storage, and volume driver configuration.
 

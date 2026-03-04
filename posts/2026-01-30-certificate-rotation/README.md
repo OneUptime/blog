@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Security, Certificate, TLS, Automation
+Tags: Security, Certificates, TLS, Automation
 
 Description: Learn to implement certificate rotation for automated SSL/TLS certificate renewal.
 

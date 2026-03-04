@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, KVM, Cockpit, Virtual Machine, Web Console, Virtualization, Linux
+Tags: RHEL, KVM, Cockpit, Virtual Machines, Web Console, Virtualization, Linux
 
 Description: Learn how to create and manage virtual machines on RHEL using the Cockpit web console, providing a browser-based interface for KVM virtualization.
 

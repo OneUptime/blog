@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, Container, DevOps, Docker CLI
+Tags: Docker, Networking, Containers, DevOps, Docker CLI
 
 Description: Learn how to dynamically attach and detach Docker containers from networks using the connect and disconnect commands.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafonnet, Grafana, Dashboard, Infrastructure as Code, Kubernetes
+Tags: Grafonnet, Grafana, Dashboards, Infrastructure as Code, Kubernetes
 
 Description: Learn how to create maintainable Grafana dashboards using Grafonnet (Jsonnet library) to define dashboards as code with version control and reusability.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Firewalld, Port Forwarding, Networking, Linux
+Tags: RHEL, firewalld, Port Forwarding, Networking, Linux
 
 Description: How to set up port forwarding with firewalld on RHEL, covering local port redirection, forwarding to other hosts, and common use cases like NAT and load balancing.
 

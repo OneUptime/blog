@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, systemd, Linux, Socket Activation, DevOps, Container, System Administration, Performance
+Tags: Docker, systemd, Linux, Socket Activation, DevOps, Containers, System Administration, Performance
 
 Description: How to configure Docker Engine with systemd socket activation for on-demand daemon startup, reduced resource usage, and better system integration.
 

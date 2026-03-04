@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, Auto-Shutdown, Cost Optimization, Scheduling, Azure CLI, DevOps
+Tags: Azure, Virtual Machines, Auto-Shutdown, Cost Optimization, Scheduling, Azure CLI, DevOps
 
 Description: Learn how to configure auto-shutdown schedules on Azure VMs to cut costs by automatically stopping development and test machines after hours.
 

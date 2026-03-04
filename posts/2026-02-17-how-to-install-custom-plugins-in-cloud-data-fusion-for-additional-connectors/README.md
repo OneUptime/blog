@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Data Fusion, Plugin, Custom Connector, CDAP, Data Integration
+Tags: GCP, Cloud Data Fusion, Plugins, Custom Connector, CDAP, Data Integration
 
 Description: Learn how to install and configure custom plugins in Cloud Data Fusion to extend the platform with additional connectors and transformations.
 

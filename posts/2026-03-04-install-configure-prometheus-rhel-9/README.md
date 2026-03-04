@@ -212,7 +212,7 @@ sudo firewall-cmd --reload
 
 Open your browser and navigate to:
 
-```
+```bash
 http://your-server-ip:9090
 ```
 

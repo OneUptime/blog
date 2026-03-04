@@ -62,12 +62,12 @@ Document the version management tool in your README:
 This project uses [mise](https://mise.jdx.dev/) for version management.
 
 ```bash
-# Install mise
+## Install mise
 curl https://mise.run | sh
 
-# Install project runtimes
+## Install project runtimes
 mise install
-```
+```bash
 ```text
 
 ## Layer 2: Package Dependencies

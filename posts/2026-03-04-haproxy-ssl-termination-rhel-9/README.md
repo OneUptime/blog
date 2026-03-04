@@ -170,7 +170,7 @@ sequenceDiagram
 
 HAProxy can serve different certificates based on SNI:
 
-```
+```bash
 frontend https_front
     bind *:443 ssl crt /etc/haproxy/certs/
 
@@ -185,7 +185,7 @@ Place each site's PEM file in `/etc/haproxy/certs/` (e.g., `site-a.pem`, `site-b
 
 If your backends need to handle TLS themselves, use TCP mode instead:
 
-```
+```bash
 frontend tcp_front
     bind *:443
     mode tcp

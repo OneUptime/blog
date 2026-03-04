@@ -87,53 +87,53 @@ Install the following tools:
 
 ### 1. Terraform
 ```bash
-# macOS
+## macOS
 brew install terraform
 
-# Verify installation
+## Verify installation
 terraform version
-# Expected: Terraform v1.6.x or later
-```
+## Expected: Terraform v1.6.x or later
+```bash
 
 ### 2. AWS CLI
 ```bash
-# macOS
+## macOS
 brew install awscli
 
-# Configure your profile
+## Configure your profile
 aws configure --profile myorg-dev
-# Use the access key ID and secret from your onboarding email
-```
+## Use the access key ID and secret from your onboarding email
+```bash
 
 ### 3. TFLint
 ```bash
 brew install tflint
 tflint --init
-```
+```bash
 
 ### 4. Pre-commit
 ```bash
 pip install pre-commit
 cd /path/to/infrastructure-repo
 pre-commit install
-```
+```bash
 
 ## Repository Setup
 
 ```bash
-# Clone the infrastructure repository
+## Clone the infrastructure repository
 git clone git@github.com:myorg/infrastructure.git
 cd infrastructure
 
-# Install pre-commit hooks
+## Install pre-commit hooks
 pre-commit install
 
-# Verify you can access the dev environment
+## Verify you can access the dev environment
 cd teams/YOUR_TEAM/development
 terraform init
 terraform plan
-# You should see "No changes. Your infrastructure matches the configuration."
-```
+## You should see "No changes. Your infrastructure matches the configuration."
+```bash
 ```text
 
 ## Writing the Architecture Overview
@@ -272,7 +272,7 @@ resource "aws_instance" "web" {
   instance_type = "t3.medium"  # Hardcoded
   ami           = "ami-12345"  # Hardcoded
 }
-```
+```bash
 
 GOOD:
 ```hcl
@@ -280,7 +280,7 @@ resource "aws_instance" "web" {
   instance_type = var.instance_type
   ami           = data.aws_ami.latest.id
 }
-```
+```bash
 
 ## Mistake 4: Not using our shared modules
 Before writing a new resource configuration, check our
@@ -292,7 +292,7 @@ Our pre-commit hooks should catch this, but if you see
 formatting errors in CI, run:
 ```bash
 terraform fmt -recursive
-```
+```bash
 ```text
 
 ## Creating a Cheat Sheet

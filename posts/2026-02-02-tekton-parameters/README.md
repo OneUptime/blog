@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, Kubernetes, CI/CD, DevOps, Parameters, Pipeline
+Tags: Tekton, Kubernetes, CI/CD, DevOps, Parameters, Pipelines
 
 Description: A practical guide to working with Tekton parameters in Tasks and Pipelines. Learn how to define, pass, and validate parameters for flexible and reusable CI/CD workflows.
 

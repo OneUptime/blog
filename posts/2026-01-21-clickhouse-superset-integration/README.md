@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Superset, BI, Visualization, Analytics, Dashboard, Self-Service, SQL
+Tags: ClickHouse, Superset, BI, Visualization, Analytics, Dashboards, Self-Service, SQL
 
 Description: A step-by-step guide to integrating Apache Superset with ClickHouse for self-service analytics, covering database connection, query optimization, dashboard creation, and performance tuning.
 

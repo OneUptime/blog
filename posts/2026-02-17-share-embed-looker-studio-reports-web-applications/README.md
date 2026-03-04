@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Looker Studio, Embedding, Reports, Web Application, Dashboard, Sharing
+Tags: GCP, Looker Studio, Embedding, Reports, Web Applications, Dashboards, Sharing
 
 Description: Learn how to share Looker Studio reports with stakeholders and embed interactive dashboards directly into your web applications.
 

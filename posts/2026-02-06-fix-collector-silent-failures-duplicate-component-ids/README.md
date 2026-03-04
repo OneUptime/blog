@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Configuration, Pipeline
+Tags: OpenTelemetry, Collector, Configuration, Pipelines
 
 Description: Fix silent data loss caused by duplicate component IDs in OpenTelemetry Collector pipeline configuration YAML files.
 

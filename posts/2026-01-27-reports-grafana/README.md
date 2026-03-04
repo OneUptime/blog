@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Reporting, PDF, Scheduled Reports, Enterprise, Analytics, Dashboard
+Tags: Grafana, Reporting, PDF, Scheduled Reports, Enterprise, Analytics, Dashboards
 
 Description: Learn how to create, schedule, and distribute reports from Grafana dashboards for stakeholders who need regular visibility into system health and performance.
 

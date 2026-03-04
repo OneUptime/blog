@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Kafka, Streaming, Message Queue, DevOps, Container
+Tags: Docker, Kafka, Streaming, Message Queue, DevOps, Containers
 
 Description: Learn how to run Apache Kafka in Docker containers for local development and production environments.
 

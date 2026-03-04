@@ -129,7 +129,7 @@ sudo crontab -e
 
 Add:
 
-```
+```bash
 # Run ansible-pull every 30 minutes
 */30 * * * * /usr/bin/ansible-pull -U https://git.example.com/ops/rhel-config.git -C main -d /var/lib/ansible/local >> /var/log/ansible-pull.log 2>&1
 ```

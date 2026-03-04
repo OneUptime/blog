@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, iptables, Firewall, Networking, Security, Linux, Container
+Tags: Docker, iptables, Firewall, Networking, Security, Linux, Containers
 
 Description: Learn how to safely add custom iptables rules alongside Docker without breaking container networking or port publishing.
 

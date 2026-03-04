@@ -63,7 +63,7 @@ vi /etc/fstab
 
 Find the line for your XFS partition and add the appropriate quota options. For user and group quotas:
 
-```
+```bash
 /dev/vg_data/lv_data  /data  xfs  defaults,uquota,gquota  0 0
 ```
 

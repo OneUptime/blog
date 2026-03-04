@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Container, Serverless
+Tags: GCP, Cloud Run, Containers, Serverless
 
 Description: A practical guide to deploying containerized applications on Google Cloud Run with gcloud CLI and Terraform, covering traffic management, concurrency, CPU allocation, and VPC connectivity.
 

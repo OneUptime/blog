@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, CI/CD, Pipeline, DevOps, Automation
+Tags: GitLab CI, CI/CD, Pipelines, DevOps, Automation
 
 Description: Learn how to build GitLab CI pipelines from scratch, covering stages, jobs, artifacts, caching, and deployment strategies for automating your software delivery.
 

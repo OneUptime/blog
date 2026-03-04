@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Workspace, CLI Commands, State Management, DevOps
+Tags: Terraform, Workspaces, CLI Commands, State Management, DevOps
 
 Description: Learn how to use terraform workspace show to display the current active workspace, integrate it into scripts, build safety checks.
 

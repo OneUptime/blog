@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Terraform Cloud, Organization, DevOps
+Tags: Terraform, HCP Terraform, Terraform Cloud, Organizations, DevOps
 
 Description: Step-by-step guide to creating and configuring an organization in HCP Terraform, including team setup, authentication settings, and organization-level policies.
 

@@ -21,7 +21,7 @@ grep hosts /etc/nsswitch.conf
 
 Typical output:
 
-```
+```bash
 hosts:      files dns myhostname
 ```
 
@@ -52,7 +52,7 @@ cat /etc/hosts
 
 Default RHEL `/etc/hosts`:
 
-```
+```bash
 127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
 ::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
 ```
@@ -75,7 +75,7 @@ EOF
 
 Each line can have multiple hostnames. The first hostname is typically the FQDN, and additional entries are short aliases:
 
-```
+```bash
 10.0.1.50   db-primary.example.com db-primary dbmaster
 ```
 
@@ -109,7 +109,7 @@ This is important for applications that need to resolve their own hostname to a 
 
 Never remove or modify the default localhost entries. Many services depend on `127.0.0.1 localhost` being resolvable:
 
-```
+```bash
 # These lines should always be present
 127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
 ::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
@@ -197,7 +197,7 @@ vi /etc/nsswitch.conf
 
 Some variations:
 
-```
+```bash
 # Default: check hosts file first, then DNS
 hosts:      files dns myhostname
 

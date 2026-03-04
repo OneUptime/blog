@@ -332,21 +332,21 @@ Document ServiceAccount best practices:
 ## RBAC Configuration
 
 ```yaml
-# Create ServiceAccount
+## Create ServiceAccount
 kubectl create sa my-app -n production
 
-# Create Role with minimal permissions
+## Create Role with minimal permissions
 kubectl create role my-app-role \
   --verb=get,list \
   --resource=configmaps \
   --namespace=production
 
-# Bind Role to ServiceAccount
+## Bind Role to ServiceAccount
 kubectl create rolebinding my-app-binding \
   --role=my-app-role \
   --serviceaccount=production:my-app \
   --namespace=production
-```
+```bash
 
 ## Using in Deployments
 
@@ -356,7 +356,7 @@ spec:
   containers:
   - name: app
     image: my-app:v1
-```
+```bash
 
 ## ❌ Do NOT
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Dashboard, Developer Experience, Self-Service
+Tags: OpenTelemetry, Dashboards, Developer Experience, Self-Service
 
 Description: Build a dashboard catalog that lets developers create, discover, and reuse observability dashboards backed by standardized OpenTelemetry metrics.
 

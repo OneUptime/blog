@@ -24,7 +24,7 @@ ip route show default
 
 Typical output looks like:
 
-```
+```bash
 default via 10.0.1.1 dev ens192 proto static metric 100
 10.0.1.0/24 dev ens192 proto kernel scope link src 10.0.1.50 metric 100
 ```

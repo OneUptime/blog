@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Docker, Container, DevOps
+Tags: Ubuntu, Docker, Containers, DevOps
 
 Description: Install Docker Engine on Ubuntu using the official Docker repository method, covering GPG key setup, repository configuration, and post-installation verification steps.
 

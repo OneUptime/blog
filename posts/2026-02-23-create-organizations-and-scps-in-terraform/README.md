@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Organization, SCP, Security, Governance, Infrastructure as Code
+Tags: Terraform, AWS, Organizations, SCP, Security, Governance, Infrastructure as Code
 
 Description: Learn how to create AWS Organizations, organizational units, accounts, and service control policies using Terraform for multi-account governance.
 

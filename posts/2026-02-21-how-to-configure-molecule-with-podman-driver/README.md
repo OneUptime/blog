@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Molecule, Podman, Testing, Container
+Tags: Ansible, Molecule, Podman, Testing, Containers
 
 Description: Configure Molecule to use Podman for rootless, daemonless Ansible role testing with container-based test instances and systemd support.
 

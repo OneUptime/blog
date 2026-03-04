@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kernel, Memory, Tuning, Linux
 
-Description: A comprehensive guide to monitoring and tuning the Linux kernel's memory management subsystem on RHEL, covering swappiness, dirty pages, OOM killer behavior, page cache, and memory pressure indicators.
+Description: A comprehensive guide to monitoring and tuning the Linux kernel's memory management subsystem on RHEL, covering swappiness, dirty pages, OOM killer behavior, page cache, and memory pressure...
 
 ---
 

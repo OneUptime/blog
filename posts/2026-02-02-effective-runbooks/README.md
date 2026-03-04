@@ -162,13 +162,13 @@ Check the replication status on the primary database. This determines if failove
 Run this command to check replication health:
 
 ```bash
-# Connect to primary and check replication status
+## Connect to primary and check replication status
 psql -h db-primary-01.prod.internal -U admin -d postgres -c \
   "SELECT client_addr, state, sent_lsn, write_lsn,
    flush_lsn, replay_lsn,
    pg_wal_lsn_diff(sent_lsn, replay_lsn) AS replication_lag_bytes
    FROM pg_stat_replication;"
-```
+```bash
 
 **Expected Output (Healthy):**
 ```text
@@ -176,7 +176,7 @@ psql -h db-primary-01.prod.internal -U admin -d postgres -c \
 --------------+-----------+----------------------
  10.0.1.52    | streaming |                 1024
  10.0.1.53    | streaming |                  512
-```
+```bash
 
 **Expected Output (Problem):**
 ```text
@@ -184,7 +184,7 @@ psql -h db-primary-01.prod.internal -U admin -d postgres -c \
 --------------+------------+----------------------
  10.0.1.52    | catchup    |            104857600
  10.0.1.53    | startup    |                    0
-```
+```bash
 
 **If replication_lag_bytes exceeds 100MB:** Proceed to Step 2.
 **If all replicas show state='streaming' with low lag:** Investigate other causes before failover.
@@ -196,14 +196,14 @@ Stop writes to the primary to allow replicas to catch up.
 Run this command to prevent new connections to the primary:
 
 ```bash
-# Block new connections to primary
+## Block new connections to primary
 psql -h db-primary-01.prod.internal -U admin -d postgres -c \
   "ALTER SYSTEM SET max_connections = 0;"
 
-# Reload configuration
+## Reload configuration
 psql -h db-primary-01.prod.internal -U admin -d postgres -c \
   "SELECT pg_reload_conf();"
-```
+```bash
 
 **Expected Output:**
 ```text
@@ -211,7 +211,7 @@ ALTER SYSTEM
  pg_reload_conf
 ----------------
  t
-```
+```bash
 
 Wait 30 seconds for existing transactions to complete.
 
@@ -222,25 +222,25 @@ Execute the promotion command on the standby server designated for failover.
 SSH into the standby and run the promotion command:
 
 ```bash
-# Connect to standby server
+## Connect to standby server
 ssh admin@db-standby-01.prod.internal
 
-# Promote standby to primary
+## Promote standby to primary
 sudo -u postgres pg_ctl promote -D /var/lib/postgresql/14/main
-```
+```bash
 
 **Expected Output:**
 ```text
 waiting for server to promote.... done
 server promoted
-```
+```bash
 
 **If you see "server is not in standby mode":**
 The server may have already been promoted. Verify with:
 
 ```bash
 psql -c "SELECT pg_is_in_recovery();"
-```
+```bash
 
 Returns `f` for primary, `t` for standby.
 ```text
@@ -262,7 +262,7 @@ These verification steps confirm the procedure completed successfully and the sy
 psql -h db-primary-02.prod.internal -U admin -d postgres -c \
   "CREATE TABLE failover_test_$(date +%s) (id int);
    DROP TABLE failover_test_$(date +%s);"
-```
+```bash
 
 Expected: Query completes without error.
 
@@ -270,7 +270,7 @@ Expected: Query completes without error.
 
 ```bash
 curl -s https://api.example.com/health | jq '.database'
-```
+```bash
 
 Expected: `"status": "connected"`
 
@@ -335,7 +335,7 @@ If failover causes additional issues, use this procedure to restore the previous
 ```bash
 ssh admin@db-primary-02.prod.internal
 sudo systemctl stop postgresql
-```
+```bash
 
 2. Restore connectivity to original primary:
 
@@ -343,13 +343,13 @@ sudo systemctl stop postgresql
 ssh admin@db-primary-01.prod.internal
 psql -U admin -d postgres -c "ALTER SYSTEM RESET max_connections;"
 psql -U admin -d postgres -c "SELECT pg_reload_conf();"
-```
+```bash
 
 3. Verify original primary accepts connections:
 
 ```bash
 psql -h db-primary-01.prod.internal -U admin -c "SELECT 1;"
-```
+```bash
 
 4. Update DNS or load balancer to point to original primary.
 ```text
@@ -372,7 +372,7 @@ You may want to check the logs for any errors that might indicate the root cause
 Check the application logs for errors. Run:
 ```bash
 kubectl logs -l app=api-server --tail=100 --since=15m
-```
+```bash
 ```text
 
 ### Include Expected Outputs
@@ -413,7 +413,7 @@ Check the nginx error log:
 
 ```bash
 tail -50 /var/log/nginx/error.log
-```
+```bash
 
 **Common errors and solutions:**
 
@@ -439,13 +439,13 @@ ssh admin@api-server-01.prod.internal
 
 # Or if variables are necessary, define them explicitly:
 ```bash
-# Set environment variables first
+## Set environment variables first
 export ENV="prod"
 export REGION="us-east-1"
 
-# Then use them in commands
+## Then use them in commands
 kubectl --context=${REGION}-${ENV} get pods -l app=api
-```
+```bash
 ```text
 
 ## Creating Runbooks for Common Scenarios
@@ -477,7 +477,7 @@ Connect to the affected host and identify CPU-heavy processes:
 ```bash
 ssh admin@${HOSTNAME}
 top -bn1 -o %CPU | head -20
-```
+```bash
 
 **Expected output:** List of processes sorted by CPU usage.
 
@@ -486,27 +486,27 @@ top -bn1 -o %CPU | head -20
 Verify if any expected operations are running:
 
 ```bash
-# Check for running backups
+## Check for running backups
 pgrep -a backup
 
-# Check for batch jobs
+## Check for batch jobs
 systemctl status batch-processor
-```
+```bash
 
 ### Step 3: Analyze Process Behavior
 
 For the top CPU-consuming process, gather details:
 
 ```bash
-# Get process details
+## Get process details
 ps aux | grep ${PID}
 
-# Check open files
+## Check open files
 lsof -p ${PID} | head -50
 
-# Check process threads
+## Check process threads
 ps -T -p ${PID}
-```
+```bash
 
 ### Step 4: Determine Action
 
@@ -523,13 +523,13 @@ Based on findings:
 
 ```bash
 sudo systemctl restart ${SERVICE_NAME}
-```
+```bash
 
 Verify service health:
 
 ```bash
 systemctl status ${SERVICE_NAME}
-```
+```bash
 ```text
 
 ### Service Deployment Runbook Template
@@ -560,13 +560,13 @@ Record current version and health:
 
 ```bash
 kubectl get deployment api-server -o jsonpath='{.spec.template.spec.containers[0].image}'
-```
+```bash
 
 Check current pod health:
 
 ```bash
 kubectl get pods -l app=api-server
-```
+```bash
 
 **All pods should show Running and Ready.**
 
@@ -575,12 +575,12 @@ kubectl get pods -l app=api-server
 Confirm the new image exists and is scannable:
 
 ```bash
-# Check image exists
+## Check image exists
 docker manifest inspect registry.example.com/api-server:${NEW_VERSION}
 
-# Check vulnerability scan passed
+## Check vulnerability scan passed
 curl -s https://harbor.example.com/api/v2.0/projects/api/repositories/api-server/artifacts/${NEW_VERSION}/scan | jq '.severity'
-```
+```bash
 
 ## Deployment Procedure
 
@@ -592,7 +592,7 @@ Apply the new deployment configuration:
 kubectl set image deployment/api-server \
   api-server=registry.example.com/api-server:${NEW_VERSION} \
   --record
-```
+```bash
 
 ### Step 4: Monitor Rollout
 
@@ -600,12 +600,12 @@ Watch the rollout progress:
 
 ```bash
 kubectl rollout status deployment/api-server --timeout=300s
-```
+```bash
 
 **Expected output:**
 ```text
 deployment "api-server" successfully rolled out
-```
+```bash
 
 ### Step 5: Verify New Version
 
@@ -613,19 +613,19 @@ Confirm pods are running the new version:
 
 ```bash
 kubectl get pods -l app=api-server -o jsonpath='{.items[*].spec.containers[0].image}'
-```
+```bash
 
 ## Post-Deployment Verification
 
 ### Step 6: Health Checks
 
 ```bash
-# Check endpoint health
+## Check endpoint health
 curl -s https://api.example.com/health | jq '.'
 
-# Check error rate
+## Check error rate
 curl -s "https://prometheus.example.com/api/v1/query?query=rate(http_requests_total{status=~'5..'}[5m])" | jq '.data.result[0].value[1]'
-```
+```bash
 
 **Error rate should be below 0.01 (1%).**
 
@@ -636,7 +636,7 @@ If issues are detected:
 ```bash
 kubectl rollout undo deployment/api-server
 kubectl rollout status deployment/api-server --timeout=300s
-```
+```bash
 ```text
 
 ### Certificate Rotation Runbook Template
@@ -671,16 +671,16 @@ This maintenance runbook guides operators through TLS certificate rotation.
 Validate the new certificate:
 
 ```bash
-# Check certificate dates
+## Check certificate dates
 openssl x509 -in new-cert.pem -noout -dates
 
-# Verify certificate chain
+## Verify certificate chain
 openssl verify -CAfile ca-bundle.pem new-cert.pem
 
-# Check certificate matches private key
+## Check certificate matches private key
 openssl x509 -noout -modulus -in new-cert.pem | md5sum
 openssl rsa -noout -modulus -in new-key.pem | md5sum
-```
+```bash
 
 **Both md5sums must match.**
 
@@ -690,7 +690,7 @@ openssl rsa -noout -modulus -in new-key.pem | md5sum
 
 ```bash
 kubectl get secret tls-certificate -o yaml > tls-certificate-backup-$(date +%Y%m%d).yaml
-```
+```bash
 
 ### Step 3: Update Kubernetes Secret
 
@@ -699,14 +699,14 @@ kubectl create secret tls tls-certificate \
   --cert=new-cert.pem \
   --key=new-key.pem \
   --dry-run=client -o yaml | kubectl apply -f -
-```
+```bash
 
 ### Step 4: Reload Ingress Controller
 
 ```bash
 kubectl rollout restart deployment/ingress-nginx-controller -n ingress-nginx
 kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx
-```
+```bash
 
 ## Verification
 
@@ -714,7 +714,7 @@ kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx
 
 ```bash
 echo | openssl s_client -connect api.example.com:443 -servername api.example.com 2>/dev/null | openssl x509 -noout -dates
-```
+```bash
 
 **Not After date should match new certificate.**
 
@@ -725,7 +725,7 @@ If issues occur:
 ```bash
 kubectl apply -f tls-certificate-backup-$(date +%Y%m%d).yaml
 kubectl rollout restart deployment/ingress-nginx-controller -n ingress-nginx
-```
+```bash
 ```text
 
 ## Automating Runbook Execution

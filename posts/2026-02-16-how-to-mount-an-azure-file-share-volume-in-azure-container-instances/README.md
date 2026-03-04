@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Instances, Azure Files, VOLUME, Storage, Container, Cloud Computing
+Tags: Azure, Container Instances, Azure Files, Volumes, Storage, Containers, Cloud Computing
 
 Description: How to mount Azure File Share volumes in Azure Container Instances for persistent storage that survives container restarts and redeployments.
 

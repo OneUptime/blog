@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab, CI/CD, Variables, Environment Variable, DevOps, Secrets Management
+Tags: GitLab, CI/CD, Variables, Environment Variables, DevOps, Secrets Management
 
 Description: Master GitLab CI variables for managing configuration, secrets, and dynamic values in your pipelines. Learn about predefined variables, custom variables, and security best practices.
 

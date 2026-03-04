@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Stargz, Container Image, Lazy Loading, Kubernetes
+Tags: Talos Linux, Stargz, Container Images, Lazy Loading, Kubernetes
 
 Description: Learn how to install and configure the Stargz Snapshotter on Talos Linux for lazy-loading container images and faster pod startup times.
 

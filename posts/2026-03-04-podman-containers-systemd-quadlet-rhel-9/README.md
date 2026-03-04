@@ -34,12 +34,12 @@ For user-level services (rootless):
 
 Let us create a simple web server that starts on boot:
 
-# Create the Quadlet directory for rootless containers
+## Create the Quadlet directory for rootless containers
 ```bash
 mkdir -p ~/.config/containers/systemd/
 ```
 
-# Create a Quadlet container file
+## Create a Quadlet container file
 ```bash
 cat > ~/.config/containers/systemd/nginx.container << 'EOF'
 [Unit]
@@ -59,22 +59,22 @@ WantedBy=default.target
 EOF
 ```
 
-# Reload systemd to pick up the new unit
+## Reload systemd to pick up the new unit
 ```bash
 systemctl --user daemon-reload
 ```
 
-# Start the container service
+## Start the container service
 ```bash
 systemctl --user start nginx
 ```
 
-# Check the status
+## Check the status
 ```bash
 systemctl --user status nginx
 ```
 
-# Enable it to start on boot
+## Enable it to start on boot
 ```bash
 systemctl --user enable nginx
 ```
@@ -198,7 +198,7 @@ EOF
 
 For system-level services that need root privileges:
 
-# Create the system-wide Quadlet directory
+## Create the system-wide Quadlet directory
 ```bash
 sudo mkdir -p /etc/containers/systemd/
 ```
@@ -232,22 +232,22 @@ sudo systemctl enable monitoring
 
 Quadlet services behave like any systemd service:
 
-# View service logs
+## View service logs
 ```bash
 journalctl --user -u nginx -f
 ```
 
-# Stop the service
+## Stop the service
 ```bash
 systemctl --user stop nginx
 ```
 
-# Restart the service
+## Restart the service
 ```bash
 systemctl --user restart nginx
 ```
 
-# Check if the container is running
+## Check if the container is running
 ```bash
 podman ps
 ```
@@ -282,17 +282,17 @@ The `Requires=` and `After=` directives ensure the database starts before the AP
 
 If your Quadlet file is not generating a service:
 
-# Check for generator errors
+## Check for generator errors
 ```bash
 /usr/libexec/podman/quadlet --dryrun --user 2>&1
 ```
 
-# Verify the generated unit file
+## Verify the generated unit file
 ```bash
 systemctl --user cat nginx.service
 ```
 
-# Check journal for startup errors
+## Check journal for startup errors
 ```bash
 journalctl --user -u nginx --no-pager -n 50
 ```

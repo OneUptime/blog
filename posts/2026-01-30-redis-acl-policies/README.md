@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Redis, ACL, Security, Access Control
+Tags: Redis, ACLs, Security, Access Control
 
 Description: Learn to implement Redis ACL with user management, command restrictions, and key patterns for fine-grained access control.
 

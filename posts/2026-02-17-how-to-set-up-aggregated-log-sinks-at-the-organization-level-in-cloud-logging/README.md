@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Logging, Aggregated Sinks, Organization, Centralized Logging
+Tags: GCP, Cloud Logging, Aggregated Sinks, Organizations, Centralized Logging
 
 Description: Learn how to create aggregated log sinks at the organization or folder level in Cloud Logging to centralize logs from all projects in one destination.
 

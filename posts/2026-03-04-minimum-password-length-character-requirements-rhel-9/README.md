@@ -36,7 +36,7 @@ sudo vi /etc/security/pwquality.conf
 
 The `minlen` parameter controls the minimum length:
 
-```
+```bash
 # Minimum acceptable password length
 minlen = 14
 ```
@@ -45,7 +45,7 @@ minlen = 14
 
 If you use positive credit values, the effective minimum length can be lower than `minlen`. For example:
 
-```
+```bash
 minlen = 14
 dcredit = 1
 ucredit = 1
@@ -57,7 +57,7 @@ With these settings, a password with one character from each class gets +4 credi
 
 To avoid this confusion, use negative credit values or set credits to 0:
 
-```
+```bash
 # Strict minimum length of 14 characters, no credits
 minlen = 14
 dcredit = 0
@@ -68,7 +68,7 @@ ocredit = 0
 
 With negative credits, the length requirement stays firm:
 
-```
+```bash
 # Require 14 characters AND at least one of each type
 minlen = 14
 dcredit = -1
@@ -85,14 +85,14 @@ sudo vi /etc/login.defs
 
 Find and update the `PASS_MIN_LEN` setting:
 
-```
+```bash
 # Minimum password length
 PASS_MIN_LEN    14
 ```
 
 While you are editing login.defs, also check these related settings:
 
-```
+```bash
 # Minimum number of days between password changes
 PASS_MIN_DAYS   1
 
@@ -112,7 +112,7 @@ ENCRYPT_METHOD SHA512
 
 In `/etc/security/pwquality.conf`:
 
-```
+```bash
 # Require at least 1 digit
 dcredit = -1
 
@@ -130,7 +130,7 @@ ocredit = -1
 
 Instead of requiring specific types, you can require a minimum number of different classes:
 
-```
+```bash
 # Require characters from at least 3 of 4 classes
 minclass = 3
 ```
@@ -139,7 +139,7 @@ This is more flexible for users, as they can choose which three classes to inclu
 
 ### Limit consecutive repeated characters
 
-```
+```bash
 # No more than 3 consecutive identical characters
 maxrepeat = 3
 
@@ -191,7 +191,7 @@ sudo vi /etc/pam.d/system-auth
 
 Use `pam_succeed_if` to branch based on group membership:
 
-```
+```bash
 # For admin users, use stricter requirements
 password    [success=1 default=ignore]    pam_succeed_if.so user notingroup admins
 password    requisite     pam_pwquality.so retry=3 minlen=20 minclass=4
@@ -204,7 +204,7 @@ password    requisite     pam_pwquality.so retry=3 minlen=14 minclass=3
 
 ### Strong policy for internet-facing servers
 
-```
+```bash
 minlen = 16
 minclass = 4
 dcredit = -1
@@ -221,7 +221,7 @@ enforce_for_root
 
 Modern NIST guidelines emphasize length over character complexity:
 
-```
+```bash
 minlen = 15
 minclass = 0
 dcredit = 0
@@ -234,7 +234,7 @@ usercheck = 1
 
 ### Moderate policy for internal workstations
 
-```
+```bash
 minlen = 12
 minclass = 3
 maxrepeat = 3
@@ -245,14 +245,14 @@ dictcheck = 1
 
 When users try to change their password and it fails, pam_pwquality provides error messages. You can customize the number of retries:
 
-```
+```bash
 # Allow 3 attempts to set a compliant password
 retry = 3
 ```
 
 The error messages are descriptive, telling the user exactly why their password was rejected:
 
-```
+```bash
 BAD PASSWORD: The password is shorter than 14 characters
 BAD PASSWORD: The password contains less than 1 uppercase letters
 BAD PASSWORD: The password fails the dictionary check
@@ -274,7 +274,7 @@ grep -n "." /etc/security/pwquality.conf | grep -v "^.*:#"
 
 By default, root is exempt. Add `enforce_for_root` to the config file to change this:
 
-```
+```bash
 enforce_for_root
 ```
 

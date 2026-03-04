@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, GRUB2, Password, Security, Linux
+Tags: RHEL, GRUB2, Passwords, Security, Linux
 
 Description: Learn how to add password protection to the GRUB2 boot loader on RHEL to prevent unauthorized kernel parameter changes and single-user mode access.
 

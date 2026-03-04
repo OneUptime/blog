@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: BullMQ, Docker, Node.js, Redis, Container, Microservices, DevOps
+Tags: BullMQ, Docker, Node.js, Redis, Containers, Microservices, DevOps
 
 Description: A comprehensive guide to running BullMQ workers in Docker containers, including Dockerfile optimization, Docker Compose setups, health checks, graceful shutdown handling.
 

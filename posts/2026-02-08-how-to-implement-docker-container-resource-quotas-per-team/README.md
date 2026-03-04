@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Resource Management, Quota, Multi-Team, Production, DevOps, Governance
+Tags: Docker, Resource Management, Quotas, Multi-Team, Production, DevOps, Governance
 
 Description: Enforce per-team resource quotas for Docker containers using cgroups, scripts, and monitoring to prevent resource contention.
 

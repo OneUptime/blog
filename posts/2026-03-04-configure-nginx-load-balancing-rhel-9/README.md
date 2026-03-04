@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, Load Balancing, Linux
+Tags: RHEL, NGINX, Load Balancing, Linux
 
 Description: How to set up Nginx as a load balancer on RHEL, covering round-robin, least connections, and IP hash methods.
 

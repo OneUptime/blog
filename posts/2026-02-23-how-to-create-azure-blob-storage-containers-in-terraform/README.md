@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Azure, Blob Storage, Container, Infrastructure as Code, Cloud Storage
+Tags: Terraform, Azure, Blob Storage, Containers, Infrastructure as Code, Cloud Storage
 
 Description: Learn how to create and configure Azure Blob Storage containers in Terraform with access levels, lifecycle policies, and immutability settings.
 

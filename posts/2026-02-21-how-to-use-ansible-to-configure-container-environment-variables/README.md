@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Environment Variable, Configuration, Container
+Tags: Ansible, Docker, Environment Variables, Configuration, Containers
 
 Description: Manage Docker container environment variables with Ansible using multiple strategies including env files, Vault secrets, and dynamic configuration.
 

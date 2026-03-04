@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Webhook, Certificate, TLS, Kubernetes
+Tags: Istio, Webhooks, Certificates, TLS, Kubernetes
 
 Description: How to manage and troubleshoot webhook certificate rotation in Istio including CA bundle updates, certificate expiry, and automated rotation mechanisms.
 

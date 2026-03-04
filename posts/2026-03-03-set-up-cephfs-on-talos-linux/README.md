@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, CephFS, Rook-Ceph, Kubernetes, Shared Storage, Filesystem
+Tags: Talos Linux, CephFS, Rook-Ceph, Kubernetes, Shared Storage, Filesystems
 
 Description: Step-by-step guide to deploying CephFS shared filesystem storage on a Talos Linux cluster using Rook-Ceph.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, CI/CD, GitHub Actions, Kubernetes, DevOps, Automation, Pipeline
+Tags: Talos Linux, CI/CD, GitHub Actions, Kubernetes, DevOps, Automation, Pipelines
 
 Description: Build CI/CD pipelines for Talos Linux clusters that validate configurations, test changes, and deploy workloads automatically.
 

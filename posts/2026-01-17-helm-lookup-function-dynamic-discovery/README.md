@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Template, Dynamic Discovery, Best Practices
+Tags: Helm, Kubernetes, DevOps, Templates, Dynamic Discovery, Best Practices
 
 Description: Guide to using Helm's lookup function to query existing cluster resources during template rendering for dynamic configuration and conditional logic.
 

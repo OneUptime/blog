@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, talosctl, File System, Storage, System Administration
+Tags: Talos Linux, talosctl, File Systems, Storage, System Administration
 
 Description: Learn how to use talosctl mounts to view and analyze file system mounts on Talos Linux nodes for storage troubleshooting
 

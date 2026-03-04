@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Kaniko, Cloud Build, Docker, Security, Container, Artifact Registry
+Tags: GCP, Kaniko, Cloud Build, Docker, Security, Containers, Artifact Registry
 
 Description: Learn how to use Kaniko in Google Cloud Build to build Docker images without requiring a Docker daemon or privileged access to the host.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, bonnie++, Filesystem, Benchmarking, Storage, Performance
+Tags: RHEL, bonnie++, Filesystems, Benchmarking, Storage, Performance
 
 Description: Learn how to use bonnie++ on RHEL to benchmark filesystem performance including sequential I/O, random seeks, and metadata operations.
 
@@ -46,7 +46,7 @@ bonnie++ -d /mnt/data -s 16g -n 256 -b -u root
 
 bonnie++ outputs results in CSV format. Key metrics include:
 
-```
+```bash
 # Sequential Output (write):
 #   - Per character: byte-by-byte write speed
 #   - Block: block write speed (most relevant)

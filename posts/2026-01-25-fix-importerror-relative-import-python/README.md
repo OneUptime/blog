@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Import, Modules, Package, Debugging
+Tags: Python, Import, Modules, Packages, Debugging
 
 Description: Understand and fix the 'ImportError: attempted relative import with no known parent package' error in Python with clear explanations and solutions.
 

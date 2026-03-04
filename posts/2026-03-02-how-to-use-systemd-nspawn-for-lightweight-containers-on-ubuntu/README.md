@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Container, Virtualization
+Tags: Ubuntu, systemd, Containers, Virtualization
 
 Description: Learn how to use systemd-nspawn to create and run lightweight containers on Ubuntu without Docker, including creating container images and managing them with machinectl.
 

@@ -174,7 +174,7 @@ sudo -u amandabackup crontab -e
 
 Add:
 
-```
+```bash
 # Run Amanda daily backup at 1 AM
 0 1 * * * /usr/sbin/amdump daily
 ```

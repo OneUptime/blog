@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Cron, rsync, Backup
+Tags: RHEL, Cron, rsync, Backups
 
 Description: Combine cron and rsync on RHEL 9 for automated backup schedules.
 

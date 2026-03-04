@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Security, Privilege Escalation, Python
+Tags: Ansible, Plugins, Security, Privilege Escalation, Python
 
 Description: Learn how to write a custom Ansible become plugin for privilege escalation methods beyond sudo, su, and the built-in options.
 

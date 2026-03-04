@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, IoT Core, Device Provisioning, IoT, Certificate
+Tags: AWS, IoT Core, Device Provisioning, IoT, Certificates
 
 Description: Set up AWS IoT Core device provisioning to automatically register and configure IoT devices at scale with certificates and policies
 

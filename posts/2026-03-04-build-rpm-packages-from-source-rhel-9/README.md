@@ -35,7 +35,7 @@ rpmdev-setuptree
 
 This creates the following structure:
 
-```
+```bash
 ~/rpmbuild/
   BUILD/      - Where source code gets unpacked and compiled
   RPMS/       - Where finished binary RPMs land

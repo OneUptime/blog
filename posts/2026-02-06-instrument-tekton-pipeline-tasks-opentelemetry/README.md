@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Tekton, CI/CD, Kubernetes, Tracing, Pipeline, Observability
+Tags: OpenTelemetry, Tekton, CI/CD, Kubernetes, Tracing, Pipelines, Observability
 
 Description: Learn how to instrument Tekton pipeline tasks with OpenTelemetry for full visibility into your Kubernetes-native CI/CD workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Docker, Container, DevOps, CI/CD
+Tags: Go, Docker, Containers, DevOps, CI/CD
 
 Description: Build minimal, secure Docker images for Go applications using multi-stage builds with scratch and distroless base images.
 

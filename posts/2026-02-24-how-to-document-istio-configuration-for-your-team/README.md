@@ -46,7 +46,7 @@ graph LR
     Checkout --> Inventory[Inventory Service]
     Payments --> Stripe[External: Stripe API]
     Catalog --> DB[(PostgreSQL)]
-```
+```bash
 
 ### Namespaces
 - `frontend` - Web UI and BFF
@@ -194,7 +194,7 @@ When rolling out a new version, use weight-based routing:
 
 Template:
 ```yaml
-# destinationrule.yaml
+## destinationrule.yaml
 spec:
   host: <service>.svc.cluster.local
   subsets:
@@ -205,7 +205,7 @@ spec:
       labels:
         version: v2
 
-# virtualservice.yaml
+## virtualservice.yaml
 spec:
   http:
     - route:
@@ -217,7 +217,7 @@ spec:
             host: <service>.svc.cluster.local
             subset: canary
           weight: 5
-```
+```bash
 
 ### Pattern: External Service Access
 
@@ -243,7 +243,7 @@ spec:
       protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
-```
+```bash
 ```text
 
 ## Troubleshooting Guide

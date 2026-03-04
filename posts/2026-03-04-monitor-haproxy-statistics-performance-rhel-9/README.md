@@ -21,7 +21,7 @@ Running a load balancer without monitoring is flying blind. You need to know how
 
 Add a stats listener to your HAProxy configuration:
 
-```
+```bash
 listen stats
     bind *:8404
     mode http
@@ -70,7 +70,7 @@ The dashboard shows a table for each frontend and backend. Key columns:
 
 The stats socket lets you query HAProxy and make runtime changes:
 
-```
+```bash
 global
     stats socket /var/lib/haproxy/stats level admin
     stats timeout 30s
@@ -118,7 +118,7 @@ echo "show errors" | sudo socat stdio /var/lib/haproxy/stats
 
 You can expose stats as CSV via HTTP for external monitoring tools:
 
-```
+```bash
 frontend http_front
     bind *:80
 
@@ -179,7 +179,7 @@ flowchart LR
 
 HAProxy can expose metrics in Prometheus format:
 
-```
+```bash
 frontend prometheus
     bind *:8405
     mode http
@@ -193,7 +193,7 @@ Then configure Prometheus to scrape `http://your-haproxy:8405/metrics`.
 
 Configure detailed logging:
 
-```
+```bash
 global
     log /dev/log local0 info
 

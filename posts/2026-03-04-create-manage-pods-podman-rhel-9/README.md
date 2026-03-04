@@ -36,38 +36,42 @@ Every pod gets an "infra" container that holds the namespaces. Your application 
 
 ## Creating a Pod
 
-# Create a basic pod
+This section covers creating a pod.
+
+## Create a basic pod
 ```bash
 podman pod create --name my-pod
 ```
 
-# Create a pod with published ports
+## Create a pod with published ports
 ```bash
 podman pod create --name web-pod -p 8080:80 -p 8443:443
 ```
 
 Port mappings are defined on the pod, not on individual containers. This makes sense because all containers in the pod share the same network.
 
-# Create a pod with a hostname
+## Create a pod with a hostname
 ```bash
 podman pod create --name my-pod --hostname myapp
 ```
 
 ## Adding Containers to a Pod
 
-# Run a container inside the pod
+This section covers adding containers to a pod.
+
+## Run a container inside the pod
 ```bash
 podman run -d --pod my-pod --name app registry.access.redhat.com/ubi9/ubi-minimal sleep infinity
 ```
 
-# Add another container to the same pod
+## Add another container to the same pod
 ```bash
 podman run -d --pod my-pod --name sidecar registry.access.redhat.com/ubi9/ubi-minimal sleep infinity
 ```
 
 Both containers share the same network namespace, so they can communicate over localhost:
 
-# Test localhost communication between containers in the pod
+## Test localhost communication between containers in the pod
 ```bash
 podman exec app curl -s http://localhost:80
 ```
@@ -76,12 +80,12 @@ podman exec app curl -s http://localhost:80
 
 Let us set up a realistic pod with nginx and a database:
 
-# Create a pod with the web port exposed
+## Create a pod with the web port exposed
 ```bash
 podman pod create --name webapp-pod -p 8080:80
 ```
 
-# Run the database container in the pod
+## Run the database container in the pod
 ```bash
 podman run -d --pod webapp-pod --name db \
   -e MYSQL_ROOT_PASSWORD=secret \
@@ -90,7 +94,7 @@ podman run -d --pod webapp-pod --name db \
   docker.io/library/mariadb:latest
 ```
 
-# Run the web server in the pod
+## Run the web server in the pod
 ```bash
 podman run -d --pod webapp-pod --name web \
   docker.io/library/nginx:latest
@@ -100,37 +104,39 @@ The web container can reach the database on `localhost:3306` since they share th
 
 ## Managing Pod Lifecycle
 
-# List all pods
+This section covers managing pod lifecycle.
+
+## List all pods
 ```bash
 podman pod ls
 ```
 
-# Check pod details
+## Check pod details
 ```bash
 podman pod inspect my-pod
 ```
 
-# View containers in a pod
+## View containers in a pod
 ```bash
 podman pod ps
 ```
 
-# Stop all containers in a pod
+## Stop all containers in a pod
 ```bash
 podman pod stop my-pod
 ```
 
-# Start all containers in a pod
+## Start all containers in a pod
 ```bash
 podman pod start my-pod
 ```
 
-# Restart a pod
+## Restart a pod
 ```bash
 podman pod restart my-pod
 ```
 
-# Pause and unpause a pod
+## Pause and unpause a pod
 ```bash
 podman pod pause my-pod
 podman pod unpause my-pod
@@ -138,29 +144,33 @@ podman pod unpause my-pod
 
 ## Pod Resource Monitoring
 
-# View resource usage for all containers in a pod
+This section covers pod resource monitoring.
+
+## View resource usage for all containers in a pod
 ```bash
 podman pod stats my-pod
 ```
 
-# View logs from a specific container in the pod
+## View logs from a specific container in the pod
 ```bash
 podman logs web
 ```
 
 ## Removing Pods
 
-# Remove a stopped pod and all its containers
+This section covers removing pods.
+
+## Remove a stopped pod and all its containers
 ```bash
 podman pod rm my-pod
 ```
 
-# Force remove a running pod
+## Force remove a running pod
 ```bash
 podman pod rm -f my-pod
 ```
 
-# Remove all pods
+## Remove all pods
 ```bash
 podman pod rm --all
 ```
@@ -190,12 +200,12 @@ spec:
 EOF
 ```
 
-# Create the pod from YAML
+## Create the pod from YAML
 ```bash
 podman kube play my-pod.yaml
 ```
 
-# Stop and remove the pod created from YAML
+## Stop and remove the pod created from YAML
 ```bash
 podman kube down my-pod.yaml
 ```
@@ -204,7 +214,7 @@ podman kube down my-pod.yaml
 
 Export your running pod configuration to YAML:
 
-# Generate Kubernetes YAML from a running pod
+## Generate Kubernetes YAML from a running pod
 ```bash
 podman kube generate my-pod > exported-pod.yaml
 ```
@@ -215,7 +225,7 @@ This is great for prototyping on your local machine and then deploying to Kubern
 
 All containers in a pod share one IP address:
 
-# Check the pod's IP address
+## Check the pod's IP address
 ```bash
 podman inspect --format '{{.NetworkSettings.IPAddress}}' $(podman pod inspect my-pod --format '{{.InfraContainerID}}')
 ```
@@ -226,12 +236,12 @@ Since containers share the network, be careful about port conflicts. Two contain
 
 By default, containers in a pod share the network but have separate PID namespaces. You can share the PID namespace too:
 
-# Create a pod with shared PID namespace
+## Create a pod with shared PID namespace
 ```bash
 podman pod create --name shared-pid --share pid,net --infra
 ```
 
-# Now containers can see each other's processes
+## Now containers can see each other's processes
 ```bash
 podman run -d --pod shared-pid --name app1 registry.access.redhat.com/ubi9/ubi-minimal sleep infinity
 podman run -d --pod shared-pid --name app2 registry.access.redhat.com/ubi9/ubi-minimal sleep infinity
@@ -243,12 +253,12 @@ podman exec app1 ps aux
 
 Share volumes between containers in a pod:
 
-# Create a pod
+## Create a pod
 ```bash
 podman pod create --name vol-pod
 ```
 
-# Both containers mount the same volume
+## Both containers mount the same volume
 ```bash
 podman run -d --pod vol-pod --name writer \
   -v shared-data:/data \

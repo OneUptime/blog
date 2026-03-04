@@ -38,7 +38,7 @@ sudo semanage port -l | grep -E "mysql|postgres|mongod"
 
 Example output for HTTP:
 
-```
+```bash
 http_port_t                    tcp      80, 81, 443, 488, 8008, 8009, 8443, 9000
 ```
 
@@ -81,7 +81,7 @@ sudo semanage port -m -t http_port_t -p tcp 8080
 
 If you try `-a` (add) on a port that already has a type, you get an error:
 
-```
+```bash
 ValueError: Port tcp/8080 already defined
 ```
 
@@ -176,7 +176,7 @@ sudo ausearch -m avc -ts recent | grep name_bind
 
 A typical port denial looks like:
 
-```
+```bash
 type=AVC msg=audit(1234567890.123:456): avc:  denied  { name_bind } for  pid=1234 comm="httpd" src=9090 scontext=system_u:system_r:httpd_t:s0 tcontext=system_u:object_r:unreserved_port_t:s0 tclass=tcp_socket
 ```
 

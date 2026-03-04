@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Mailu, Mail Server, Email, SMTP, IMAP, Self-Hosted, Container, Postfix, Dovecot
+Tags: Docker, Mailu, Mail Server, Email, SMTP, IMAP, Self-Hosted, Containers, Postfix, Dovecot
 
 Description: Deploy Mailu, a full-featured self-hosted mail server, in Docker with SMTP, IMAP, webmail, antispam, antivirus, and automatic TLS certificate management.
 

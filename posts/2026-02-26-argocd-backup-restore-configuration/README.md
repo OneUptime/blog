@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Backup, Disaster Recovery
+Tags: ArgoCD, GitOps, Kubernetes, Backups, Disaster Recovery
 
 Description: Learn how to backup and restore ArgoCD configuration including applications, projects, repositories, clusters, and settings, with automated backup strategies.
 

@@ -30,7 +30,7 @@ sudo mkdir -p /etc/nats
 sudo vi /etc/nats/nats-server.conf
 ```
 
-```
+```bash
 port: 4222
 http_port: 8222
 

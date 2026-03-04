@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Grafana, Monitoring, Dashboard
+Tags: Ansible, Grafana, Monitoring, Dashboards
 
 Description: Automate Grafana deployment and dashboard provisioning with Ansible to maintain consistent monitoring dashboards across environments.
 

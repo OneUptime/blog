@@ -98,7 +98,7 @@ sudo stratis blockdev list datapool
 
 Output shows each device's tier:
 
-```
+```bash
 Pool       Device       Physical Size   Tier
 datapool   /dev/sdb     100 GiB         Data
 datapool   /dev/sdc     100 GiB         Data

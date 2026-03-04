@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, cgroups, Resource Management, Performance, Linux, Containers
+Tags: RHEL, Cgroups, Resource Management, Performance, Linux, Containers
 
 Description: Learn how to configure cgroups v2 on RHEL to limit and manage CPU, memory, and I/O resources for processes and services.
 
@@ -25,7 +25,7 @@ mount | grep cgroup2
 
 Expected output:
 
-```
+```bash
 cgroup2 on /sys/fs/cgroup type cgroup2 (rw,nosuid,nodev,noexec,relatime)
 ```
 

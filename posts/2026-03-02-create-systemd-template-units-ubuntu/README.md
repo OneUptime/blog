@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, systemd, Service, System Administration
+Tags: Ubuntu, systemd, Services, System Administration
 
 Description: Learn how to create and use systemd template units on Ubuntu to manage multiple instances of a service with a single unit file, using instance-specific configuration.
 

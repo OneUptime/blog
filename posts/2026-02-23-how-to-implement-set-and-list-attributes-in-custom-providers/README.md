@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Provider Development, Schema Design, Collection, Infrastructure as Code
+Tags: Terraform, Provider Development, Schema Design, Collections, Infrastructure as Code
 
 Description: Learn how to implement set and list attributes in custom Terraform providers, including simple collections, nested object lists, and proper handling of ordering and uniqueness.
 

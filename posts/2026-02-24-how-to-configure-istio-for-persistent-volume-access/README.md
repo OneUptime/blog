@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Persistent Volume, Kubernetes, Storage, Sidecar
+Tags: Istio, Persistent Volumes, Kubernetes, Storage, Sidecar
 
 Description: Configure Istio to work with Kubernetes Persistent Volumes, handling storage controller traffic, init containers, and volume mount considerations.
 

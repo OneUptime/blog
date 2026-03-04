@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Secret, Security, Kubernetes, Certificate Management
+Tags: Istio, Secrets, Security, Kubernetes, Certificate Management
 
 Description: Learn how to properly manage secrets in Istio including TLS certificates, CA keys, and integration with external secret stores.
 

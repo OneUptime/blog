@@ -205,7 +205,7 @@ rm -f /tmp/vault_pass
 
 ## Project Structure with Vault
 
-```
+```bash
 ansible-project/
   ansible.cfg
   inventory/

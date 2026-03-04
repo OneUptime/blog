@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, DPDK, Networking, High Performance, Container, Linux, Packet Processing
+Tags: Docker, DPDK, Networking, High Performance, Containers, Linux, Packet Processing
 
 Description: Run DPDK applications inside Docker containers for high-speed packet processing with millions of packets per second.
 

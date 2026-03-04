@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, CI/CD, Kubernetes, Pipeline, DevOps
+Tags: Tekton, CI/CD, Kubernetes, Pipelines, DevOps
 
 Description: Learn how to use Tekton Catalog tasks to build reusable pipelines, including installation, usage, and customization tips.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, XFS, xfsdump, xfsrestore, Backup, Storage, Linux
+Tags: RHEL, XFS, xfsdump, xfsrestore, Backups, Storage, Linux
 
 Description: Learn how to use xfsdump and xfsrestore on RHEL to create full and incremental backups of XFS file systems and restore them reliably.
 
@@ -145,7 +145,7 @@ sudo xfsrestore -f /backup/data_full.dump -i /data
 
 In the interactive prompt:
 
-```
+```bash
 xfsrestore > ls
 xfsrestore > cd important_dir
 xfsrestore > add file1.txt

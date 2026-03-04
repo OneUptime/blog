@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Environment Variable, Configuration, OTEL, Quick Start
+Tags: OpenTelemetry, Environment Variables, Configuration, OTEL, Quick Start
 
 Description: Master OpenTelemetry configuration using environment variables for fast, flexible setup without hardcoding values in your application code.
 

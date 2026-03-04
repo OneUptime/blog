@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, 502, Troubleshooting, Linux
+Tags: RHEL, NGINX, 502, Troubleshooting, Linux
 
 Description: A systematic approach to diagnosing and fixing 502 Bad Gateway errors when using Nginx as a reverse proxy on RHEL.
 

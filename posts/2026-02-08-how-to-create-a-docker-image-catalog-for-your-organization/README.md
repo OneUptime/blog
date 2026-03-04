@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Images, Registry, Catalog, DevOps, Organization, Governance
+Tags: Docker, Images, Registry, Catalog, DevOps, Organizations, Governance
 
 Description: Build an internal Docker image catalog to standardize base images, improve security, and streamline container development across your teams.
 

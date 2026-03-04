@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Container, DevOps
+Tags: Kubernetes, Containers, DevOps
 
 Description: Master Kubernetes PostStart and PreStop lifecycle hooks to execute custom logic during container startup and shutdown. Learn implementation patterns, best practices, and troubleshooting techniques.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Debugging, Core Dump, Troubleshooting, Linux
+Tags: RHEL, Debugging, Core Dumps, Troubleshooting, Linux
 
 Description: Learn how to capture, analyze, and fix segmentation fault crashes on RHEL using core dumps and debugging tools.
 

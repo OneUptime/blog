@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Filesystem, Alignment, Performance, Linux
+Tags: RHEL, Filesystems, Alignment, Performance, Linux
 
 Description: Learn how to properly align partitions and filesystems to underlying storage geometry on RHEL to avoid performance penalties on SSDs and RAID arrays.
 

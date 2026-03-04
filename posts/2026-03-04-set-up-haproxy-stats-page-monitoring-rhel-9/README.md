@@ -86,7 +86,7 @@ sudo firewall-cmd --reload
 ## Step 5: Access the Stats Page
 
 Open your browser and visit:
-```
+```bash
 http://your-server-ip:8404/stats
 ```
 

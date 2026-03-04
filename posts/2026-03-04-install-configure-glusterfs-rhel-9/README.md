@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, GlusterFS, Storage, Distributed File System, Linux
+Tags: RHEL, GlusterFS, Storage, Distributed File Systems, Linux
 
 Description: Step-by-step guide to installing and configuring GlusterFS on RHEL, including server setup, volume creation, and client mounting.
 

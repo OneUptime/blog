@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, fail2ban, Security, SSH, NGINX
+Tags: Ubuntu, Fail2Ban, Security, SSH, NGINX
 
 Description: Detailed guide to configuring fail2ban jails on Ubuntu to block brute force attacks on SSH, Apache, and Nginx, including custom filters, ban actions, and monitoring failed attempts.
 

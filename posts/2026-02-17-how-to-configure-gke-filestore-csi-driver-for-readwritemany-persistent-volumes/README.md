@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Filestore, CSI Driver, Persistent Volume, Kubernetes, Storage
+Tags: GCP, GKE, Filestore, CSI Driver, Persistent Volumes, Kubernetes, Storage
 
 Description: Learn how to set up the Filestore CSI driver on GKE to create ReadWriteMany persistent volumes that multiple pods can access simultaneously.
 

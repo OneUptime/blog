@@ -56,7 +56,7 @@ cat /proc/mdstat
 
 You will see something like:
 
-```
+```bash
 md5 : active raid5 sde[3](S) sdd[2] sdc[1] sdb[0]
 ```
 

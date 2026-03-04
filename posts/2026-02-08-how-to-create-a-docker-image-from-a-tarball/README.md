@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Images, Tarball, Import, DevOps, Container, Filesystem
+Tags: Docker, Images, Tarball, Import, DevOps, Containers, Filesystems
 
 Description: Learn how to create Docker images from tar archives using docker import, including rootfs creation and practical use cases.
 

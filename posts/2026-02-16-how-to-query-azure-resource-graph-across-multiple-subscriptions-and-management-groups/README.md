@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Resource Graph, KQL, Management Groups, Subscription, Cross-Subscription, Governance
+Tags: Azure, Azure Resource Graph, KQL, Management Groups, Subscriptions, Cross-Subscription, Governance
 
 Description: Learn how to query Azure Resource Graph across multiple subscriptions and management groups for comprehensive tenant-wide resource visibility.
 

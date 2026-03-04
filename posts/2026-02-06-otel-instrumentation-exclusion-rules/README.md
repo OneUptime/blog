@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Instrumentation, Exclusion Rules, Health Check
+Tags: OpenTelemetry, Instrumentation, Exclusion Rules, Health Checks
 
 Description: Configure OpenTelemetry declarative YAML to exclude health check endpoints and other noisy instrumentation from your telemetry.
 

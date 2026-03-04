@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Secret Manager, Security, Secret, Configuration
+Tags: GCP, Secret Manager, Security, Secrets, Configuration
 
 Description: A comprehensive guide to creating, storing, and retrieving secrets using Google Cloud Secret Manager, covering the CLI, client libraries, and best practices for secret management.
 

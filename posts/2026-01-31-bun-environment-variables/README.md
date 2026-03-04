@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Bun, JavaScript, Environment Variable, Configuration
+Tags: Bun, JavaScript, Environment Variables, Configuration
 
 Description: Learn how to effectively manage environment variables in Bun applications, including .env files, type safety, secrets management, and production best practices.
 

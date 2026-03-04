@@ -199,7 +199,7 @@ firewall-cmd --zone=public --list-all
 
 Expected output:
 
-```
+```bash
 public (active)
   target: default
   icmp-block-inversion: no

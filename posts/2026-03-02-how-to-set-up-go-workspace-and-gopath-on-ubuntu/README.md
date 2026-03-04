@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Go, Golang, Development, Workspace
+Tags: Ubuntu, Go, Golang, Development, Workspaces
 
 Description: Configure the Go workspace and GOPATH on Ubuntu, understand the modern module system, and organize Go projects for efficient development.
 

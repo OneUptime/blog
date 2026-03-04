@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Organization, Billing, Cost Management
+Tags: AWS, Organizations, Billing, Cost Management
 
 Description: Step-by-step guide to setting up AWS Organizations consolidated billing to get volume discounts, centralized cost management, and better visibility across multiple accounts.
 

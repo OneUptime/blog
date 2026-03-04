@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, CI/CD, Secret, Security, DevOps, Environment Variable
+Tags: GitHub Actions, CI/CD, Secrets, Security, DevOps, Environment Variables
 
 Description: Learn how to securely manage and use secrets in GitHub Actions workflows, including repository secrets, environment secrets, organization secrets.
 

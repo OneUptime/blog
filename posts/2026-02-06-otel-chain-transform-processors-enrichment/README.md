@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Transform Processor, OTTL, Data Enrichment, Pipeline
+Tags: OpenTelemetry, Transform Processor, OTTL, Data Enrichment, Pipelines
 
 Description: Learn how to chain multiple transform processors in a single OpenTelemetry Collector pipeline for sequential, layered data enrichment.
 

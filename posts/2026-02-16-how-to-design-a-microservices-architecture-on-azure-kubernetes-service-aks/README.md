@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Kubernetes, AKS, Microservices, Architecture, Container, Cloud Native
+Tags: Azure, Kubernetes, AKS, Microservices, Architecture, Containers, Cloud Native
 
 Description: A practical guide to designing and deploying a microservices architecture on Azure Kubernetes Service with real-world patterns and configurations.
 

@@ -50,7 +50,7 @@ nfsstat -a
 
 A typical server output includes:
 
-```
+```bash
 Server nfs v4:
 null         compound     access       close        commit
 0         0% 15234   100% 3421    22% 1205     7% 890      5%

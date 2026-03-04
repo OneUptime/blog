@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, ALB, Load Balancer, Fargate, Container
+Tags: Terraform, AWS, ECS, ALB, Load Balancer, Fargate, Containers
 
 Description: How to create ECS Fargate services with Application Load Balancer integration in Terraform, covering target groups, health checks, HTTPS listeners, and blue-green deployments.
 

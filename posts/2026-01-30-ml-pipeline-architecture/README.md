@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MLOps, Machine Learning, Pipeline, Architecture
+Tags: MLOps, Machine Learning, Pipelines, Architecture
 
 Description: Learn how to design ML pipelines for reproducible model training and deployment.
 

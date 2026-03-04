@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Jib, Java, Distroless, GKE, Kubernetes, Health Check
+Tags: GCP, Jib, Java, Distroless, GKE, Kubernetes, Health Checks
 
 Description: Learn how to use Jib to build distroless Java container images with minimal attack surface and deploy them to GKE with proper health check configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Container, containerd, Docker, Kubernetes, DevOps, Container Runtime
+Tags: Containers, containerd, Docker, Kubernetes, DevOps, Container Runtime
 
 Description: Learn what containerd is, how it differs from Docker, why Kubernetes adopted it as the default runtime, and when you should care about container runtimes.
 

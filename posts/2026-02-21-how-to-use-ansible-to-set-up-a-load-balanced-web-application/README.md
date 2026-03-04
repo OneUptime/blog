@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Load Balancing, NGINX, Web Application
+Tags: Ansible, Load Balancing, NGINX, Web Applications
 
 Description: Deploy a load-balanced web application with Ansible using Nginx as a reverse proxy, multiple backend servers, and health check monitoring.
 

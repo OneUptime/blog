@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, kdump, Crash Dump, Kernel, Linux
+Tags: RHEL, kdump, Crash Dumps, Kernel, Linux
 
 Description: A complete guide to setting up and configuring kdump on RHEL for capturing kernel crash dumps, covering memory reservation, dump targets, crash analysis with the crash tool, and troubleshooting.
 
@@ -90,7 +90,7 @@ sudo vi /etc/kdump.conf
 
 Key settings for local storage:
 
-```
+```bash
 # Save dumps to the local filesystem
 path /var/crash
 

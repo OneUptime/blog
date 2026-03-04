@@ -25,7 +25,7 @@ chmod 600 ~/.ssh/config
 vi ~/.ssh/config
 ```
 
-```
+```bash
 # Web server
 Host web01
     HostName web01.prod.example.com
@@ -52,7 +52,7 @@ ssh db01
 
 ### Apply settings to all hosts in a domain
 
-```
+```bash
 Host *.prod.example.com
     User admin
     IdentityFile ~/.ssh/id_ed25519
@@ -69,7 +69,7 @@ Host *.dev.example.com
 
 Put this at the bottom of the file (SSH uses the first matching value):
 
-```
+```bash
 Host *
     ServerAliveInterval 60
     ServerAliveCountMax 3
@@ -82,7 +82,7 @@ Host *
 
 ### Using ProxyJump
 
-```
+```bash
 # Bastion host
 Host bastion
     HostName bastion.example.com
@@ -106,7 +106,7 @@ Now `ssh internal-web01` automatically jumps through the bastion.
 
 ### Multi-hop jumps
 
-```
+```bash
 Host deep-internal
     HostName 172.16.0.10
     ProxyJump bastion,midtier
@@ -119,7 +119,7 @@ This connects through bastion, then midtier, then to the final destination.
 
 ### Full production environment config
 
-```
+```bash
 # Global defaults
 Host *
     ServerAliveInterval 60
@@ -178,7 +178,7 @@ Host staging-db-01
 
 ### Connection multiplexing for faster connections
 
-```
+```bash
 Host *
     ControlMaster auto
     ControlPath ~/.ssh/sockets/%r@%h-%p
@@ -212,7 +212,7 @@ With multiplexing, the first SSH connection to a host creates a socket. Subseque
 
 ## Setting Up Port Forwarding in Config
 
-```
+```bash
 Host db-tunnel
     HostName bastion.example.com
     User admin

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Grafana, Dashboard, Reporting, Data Visualization, Linux
+Tags: RHEL, Grafana, Dashboards, Reporting, Data Visualization, Linux
 
 Description: Set up Grafana on RHEL for business dashboard reporting, connecting it to multiple data sources and building production-ready visualizations.
 
@@ -112,7 +112,7 @@ Log in to Grafana at `http://your-server:3000` and add data sources.
 
 Navigate to Configuration > Data Sources > Add Data Source > PostgreSQL.
 
-```
+```bash
 Host: db-server.example.com:5432
 Database: business_analytics
 User: grafana_reader
@@ -122,7 +122,7 @@ TLS/SSL Mode: require
 
 ### MySQL Data Source
 
-```
+```bash
 Host: mysql-server.example.com:3306
 Database: sales_data
 User: grafana_reader
@@ -182,7 +182,7 @@ ORDER BY 1;
 
 Add template variables to make dashboards interactive. In your dashboard settings, add variables:
 
-```
+```bash
 # Variable: region
 Type: Query
 Query: SELECT DISTINCT region FROM orders ORDER BY region;

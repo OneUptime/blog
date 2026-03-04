@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Btrfs, Snapshot, Storage, Backup
+Tags: Ubuntu, Btrfs, Snapshots, Storage, Backups
 
 Description: Set up Snapper on Ubuntu with a Btrfs filesystem to automatically take snapshots before package updates and system changes, enabling quick rollback when things go wrong.
 

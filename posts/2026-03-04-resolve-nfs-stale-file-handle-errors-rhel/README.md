@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, NFS, Filesystem, Troubleshooting, Storage
+Tags: RHEL, NFS, Filesystems, Troubleshooting, Storage
 
 Description: Fix NFS stale file handle errors on RHEL by re-exporting shares, remounting clients, and tuning NFS configurations.
 

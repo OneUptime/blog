@@ -61,7 +61,7 @@ sudo visudo -c
 
 Output for a valid configuration:
 
-```
+```bash
 /etc/sudoers: parsed OK
 /etc/sudoers.d/webadmins: parsed OK
 ```
@@ -86,7 +86,7 @@ echo 'export EDITOR=nano' >> ~/.bashrc
 
 You can also configure it system-wide in `/etc/sudoers`:
 
-```
+```bash
 Defaults editor=/usr/bin/nano
 ```
 
@@ -94,7 +94,7 @@ Defaults editor=/usr/bin/nano
 
 If you introduce a syntax error and try to save, visudo shows:
 
-```
+```bash
 >>> /etc/sudoers: syntax error near line 25 <<<
 What now?
 Options are:
@@ -109,7 +109,7 @@ Options are:
 
 Common mistakes:
 
-```
+```bash
 # Missing colon separator - WRONG
 %webadmins ALL=(root) /usr/bin/systemctl
 
@@ -125,7 +125,7 @@ Common mistakes:
 
 ### Basic rule structure
 
-```
+```bash
 # User-based rule
 jsmith  ALL=(root) /usr/bin/systemctl restart httpd
 
@@ -140,7 +140,7 @@ jsmith  ALL=(root) /usr/bin/systemctl restart httpd
 
 ### Using aliases
 
-```
+```bash
 # Host aliases
 Host_Alias WEBSERVERS = web01, web02, web03
 
@@ -157,7 +157,7 @@ WEBADMINS WEBSERVERS=(root) WEB_CMDS
 
 ### Default settings
 
-```
+```bash
 # Set defaults for all users
 Defaults    env_reset
 Defaults    secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -173,7 +173,7 @@ Defaults:%webadmins    timestamp_timeout=10
 
 If someone edited sudoers without visudo and introduced a syntax error, sudo will refuse to work:
 
-```
+```bash
 >>> /etc/sudoers: syntax error near line 25 <<<
 sudo: parse error in /etc/sudoers near line 25
 sudo: no valid sudoers sources found, quitting

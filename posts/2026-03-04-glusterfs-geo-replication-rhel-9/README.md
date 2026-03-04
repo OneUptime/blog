@@ -14,7 +14,7 @@ Geo-replication in GlusterFS provides asynchronous replication between two Glust
 
 The master volume detects changes using a changelog mechanism. A geo-replication daemon reads these changelogs and replicates the changes to the slave volume over SSH. This is asynchronous, so there is always some lag between the master and slave.
 
-```
+```bash
 Master Cluster (Site A)         Slave Cluster (Site B)
 +------------------+            +------------------+
 | Master Volume    |  -- SSH -> | Slave Volume     |

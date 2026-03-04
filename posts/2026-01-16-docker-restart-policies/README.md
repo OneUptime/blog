@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Container, DevOps, Reliability, High Availability
+Tags: Docker, Containers, DevOps, Reliability, High Availability
 
 Description: Configure automatic container restarts with Docker restart policies. Explains the differences between always, unless-stopped, and on-failure with recommendations for each use case.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, tar, gzip, Backups, Linux
+Tags: RHEL, tar, Gzip, Backups, Linux
 
 Description: Create compressed system backups on RHEL using tar and gzip, including full system archives and selective directory backups.
 

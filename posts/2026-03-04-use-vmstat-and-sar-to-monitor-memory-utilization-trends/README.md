@@ -103,7 +103,7 @@ sudo vi /etc/sysstat/sysstat
 
 Change collection interval:
 
-```
+```bash
 HISTORY=28
 SADC_OPTIONS="-S ALL"
 ```

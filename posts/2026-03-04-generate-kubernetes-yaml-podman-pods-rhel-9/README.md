@@ -14,12 +14,12 @@ One of the best development workflows with Podman is prototyping locally and the
 
 Start simple with a single container:
 
-# Run a container
+## Run a container
 ```bash
 podman run -d --name web -p 8080:80 docker.io/library/nginx:latest
 ```
 
-# Generate Kubernetes YAML from the running container
+## Generate Kubernetes YAML from the running container
 ```bash
 podman kube generate web
 ```
@@ -30,7 +30,7 @@ This outputs a Pod manifest to stdout. Save it to a file:
 podman kube generate web > web-pod.yaml
 ```
 
-# View the generated YAML
+## View the generated YAML
 ```bash
 cat web-pod.yaml
 ```
@@ -39,7 +39,7 @@ cat web-pod.yaml
 
 Pods with multiple containers produce more useful output:
 
-# Create a pod with multiple containers
+## Create a pod with multiple containers
 ```bash
 podman pod create --name app-stack -p 8080:80
 
@@ -52,7 +52,7 @@ podman run -d --pod app-stack --name api \
   sleep infinity
 ```
 
-# Generate YAML for the entire pod
+## Generate YAML for the entire pod
 ```bash
 podman kube generate app-stack > app-stack.yaml
 ```
@@ -98,7 +98,7 @@ spec:
 
 Volumes are captured in the generated YAML:
 
-# Create a container with volumes
+## Create a container with volumes
 ```bash
 podman volume create web-data
 
@@ -108,7 +108,7 @@ podman run -d --name persistent-web \
   docker.io/library/nginx:latest
 ```
 
-# Generate YAML with volume definitions
+## Generate YAML with volume definitions
 ```bash
 podman kube generate persistent-web > persistent-web.yaml
 ```
@@ -119,7 +119,7 @@ The YAML will include a PersistentVolumeClaim for the named volume.
 
 By default, `podman kube generate` creates Pod manifests. For Deployments:
 
-# Generate a Deployment instead of a Pod
+## Generate a Deployment instead of a Pod
 ```bash
 podman kube generate --type deployment web > web-deployment.yaml
 ```
@@ -154,7 +154,7 @@ spec:
 
 Include a Service definition with your pod:
 
-# Generate YAML with a Service
+## Generate YAML with a Service
 ```bash
 podman kube generate --service web > web-with-service.yaml
 ```
@@ -212,17 +212,17 @@ livenessProbe:
 
 Before deploying, validate the YAML:
 
-# Dry-run against a Kubernetes cluster
+## Dry-run against a Kubernetes cluster
 ```bash
 kubectl apply --dry-run=client -f web-pod.yaml
 ```
 
-# Validate YAML syntax
+## Validate YAML syntax
 ```bash
 python3 -c "import yaml; yaml.safe_load(open('web-pod.yaml'))"
 ```
 
-# Test with podman kube play locally
+## Test with podman kube play locally
 ```bash
 podman kube play web-pod.yaml
 podman kube down web-pod.yaml

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ceph, Kubernetes, Storage, Persistent Volume, Rook, Cloud Native
+Tags: Ceph, Kubernetes, Storage, Persistent Volumes, Rook, Cloud Native
 
 Description: Learn how to configure Ceph RBD (RADOS Block Device) as persistent volume storage for Kubernetes workloads.
 

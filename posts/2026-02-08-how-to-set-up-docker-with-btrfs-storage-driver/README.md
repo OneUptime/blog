@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Btrfs, Storage Driver, DevOps, Linux, Filesystem
+Tags: Docker, Btrfs, Storage Driver, DevOps, Linux, Filesystems
 
 Description: Step-by-step instructions for configuring Docker with the Btrfs storage driver for efficient copy-on-write container storage.
 

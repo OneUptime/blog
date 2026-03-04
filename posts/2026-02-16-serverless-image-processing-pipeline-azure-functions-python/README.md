@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Functions, Python, Serverless, Image Processing, Blob Storage, Pipeline, Pillow
+Tags: Azure Functions, Python, Serverless, Image Processing, Blob Storage, Pipelines, Pillow
 
 Description: Build a serverless image processing pipeline using Azure Functions in Python that automatically resizes, watermarks, and optimizes images on upload.
 

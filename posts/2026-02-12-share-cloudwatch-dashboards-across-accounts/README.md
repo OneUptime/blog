@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CloudWatch, Dashboard, Multi-Account, Observability
+Tags: AWS, CloudWatch, Dashboards, Multi-Account, Observability
 
 Description: Learn how to share CloudWatch dashboards across AWS accounts so teams can view centralized monitoring data without switching accounts or credentials.
 

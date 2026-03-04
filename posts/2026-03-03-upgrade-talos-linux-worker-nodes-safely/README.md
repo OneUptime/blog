@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Worker Nodes, Upgrade, Pod Disruption, Rolling Update
+Tags: Talos Linux, Kubernetes, Worker Nodes, Upgrade, Pod Disruption, Rolling Updates
 
 Description: Best practices for upgrading Talos Linux worker nodes safely using cordoning, draining, and pod disruption budgets.
 

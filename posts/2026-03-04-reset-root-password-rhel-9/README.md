@@ -44,13 +44,13 @@ You will see the GRUB configuration for that entry, including lines starting wit
 
 Find the line that starts with `linux` (or `linuxefi` on UEFI systems). It will look something like:
 
-```
+```bash
 linuxefi /vmlinuz-5.14.0-... root=/dev/mapper/rhel-root ro ...
 ```
 
 Move your cursor to the end of this line and add `rd.break`.
 
-```
+```bash
 linuxefi /vmlinuz-5.14.0-... root=/dev/mapper/rhel-root ro ... rd.break
 ```
 
@@ -62,7 +62,7 @@ Press `Ctrl+X` to boot with these modified parameters.
 
 You will land at a minimal shell prompt that looks like:
 
-```
+```bash
 switch_root:/#
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS, Lambda, Serverless, Extension, Monitoring, Observability
+Tags: AWS, Lambda, Serverless, Extensions, Monitoring, Observability
 
 Description: Learn how to implement AWS Lambda Extensions to add monitoring, security, and configuration capabilities to your functions without modifying application code.
 

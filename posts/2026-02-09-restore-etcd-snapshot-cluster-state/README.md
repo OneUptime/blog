@@ -434,23 +434,23 @@ Maintain clear documentation:
 1. Download latest snapshot:
    ```bash
    aws s3 cp s3://backups/etcd-snapshot-latest.db /root/snapshot.db
-   ```
+   ```bash
 
 2. Verify snapshot:
    ```bash
    etcdctl snapshot status /root/snapshot.db -w table
-   ```
+   ```bash
 
 3. Execute restore script:
    ```bash
    ./etcd-restore.sh /root/snapshot.db
-   ```
+   ```bash
 
 4. Verify cluster health:
    ```bash
    kubectl get nodes
    kubectl get pods --all-namespaces
-   ```
+   ```bash
 
 ## Rollback Procedure
 If restore fails, rollback to backup:
@@ -459,7 +459,7 @@ systemctl stop etcd
 rm -rf /var/lib/etcd
 mv /var/lib/etcd.backup-TIMESTAMP /var/lib/etcd
 systemctl start etcd
-```
+```bash
 
 ## Contacts
 - On-call: +1-555-0100
@@ -470,4 +470,5 @@ systemctl start etcd
 
 Mastering etcd restoration ensures you can recover your Kubernetes cluster from catastrophic failures. Understand the restore process thoroughly, including stopping dependencies, performing the restore, and validating cluster state. Automate restoration procedures through scripts, test regularly in non-production environments, and maintain clear documentation for incident response. Combined with regular automated backups, a well-practiced restore process provides the confidence and capability to recover quickly from cluster failures, protecting your applications and maintaining service availability even during disasters.
 
+```bash
 ```

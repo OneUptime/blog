@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Container, Container Image, DevOps, Docker Alternative, Linux, OCI
+Tags: Podman, Containers, Container Images, DevOps, Docker Alternative, Linux, OCI
 
 Description: A practical guide to managing container images with Podman, covering pulling, building, tagging, pushing, cleaning, and organizing images effectively in development and production environments.
 

@@ -111,7 +111,7 @@ The index state should show `online`.
 
 ### Symptoms
 
-```
+```bash
 ERROR: Cannot activate VDO volume
 ```
 

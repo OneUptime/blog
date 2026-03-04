@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, Networking, System Administration, Troubleshooting, Network Interface, systemd-networkd, NetworkManager
+Tags: Linux, Networking, System Administration, Troubleshooting, Network Interfaces, systemd-networkd, NetworkManager
 
 Description: A practical guide to diagnosing and resolving network interface failures on Linux systems, covering hardware checks, driver issues, and configuration problems.
 

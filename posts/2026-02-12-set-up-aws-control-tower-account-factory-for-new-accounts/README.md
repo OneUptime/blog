@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Control Tower, Account Factory, Multi-Account, Organization
+Tags: AWS, Control Tower, Account Factory, Multi-Account, Organizations
 
 Description: Step-by-step guide to setting up AWS Control Tower Account Factory to automate the creation and configuration of new AWS accounts in your organization.
 

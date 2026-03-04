@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Nginx, Caching, Performance, Linux
+Tags: RHEL, NGINX, Caching, Performance, Linux
 
 Description: Learn how to set up Nginx caching for static files and proxy responses on RHEL to reduce backend load and improve response times.
 

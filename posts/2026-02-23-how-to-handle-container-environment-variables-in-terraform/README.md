@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Container, Environment Variable, ECS, Kubernetes, Configuration
+Tags: Terraform, Containers, Environment Variables, ECS, Kubernetes, Configuration
 
 Description: Learn how to manage container environment variables in Terraform across ECS, Kubernetes, and other platforms with best practices for secrets and configuration.
 

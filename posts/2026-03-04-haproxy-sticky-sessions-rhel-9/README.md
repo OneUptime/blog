@@ -24,7 +24,7 @@ The better long-term solution is to make your application stateless or use a sha
 
 This is the most reliable method. HAProxy inserts a cookie that identifies which backend server the client should use:
 
-```
+```bash
 backend web_servers
     balance roundrobin
     cookie SERVERID insert indirect nocache
@@ -47,7 +47,7 @@ The `indirect` flag means HAProxy removes the cookie before forwarding to the ba
 
 Route based on client IP:
 
-```
+```bash
 backend web_servers
     balance source
     hash-type consistent
@@ -65,7 +65,7 @@ The `hash-type consistent` option uses consistent hashing, which minimizes sessi
 
 Stick tables let you persist sessions based on various criteria and store them in a shared table:
 
-```
+```bash
 backend web_servers
     balance roundrobin
 
@@ -83,7 +83,7 @@ When a new client connects, HAProxy records which backend served them. On subseq
 
 If your application already sets a session cookie, HAProxy can use it:
 
-```
+```bash
 backend web_servers
     balance roundrobin
     cookie JSESSIONID prefix nocache
@@ -116,7 +116,7 @@ sequenceDiagram
 
 Stick based on a specific HTTP header:
 
-```
+```bash
 backend web_servers
     balance roundrobin
     stick-table type string len 64 size 100k expire 30m
@@ -130,7 +130,7 @@ backend web_servers
 
 What happens when a sticky server goes down?
 
-```
+```bash
 backend web_servers
     balance roundrobin
     cookie SERVERID insert indirect nocache
@@ -156,7 +156,7 @@ The `option redispatch` directive tells HAProxy to send the client to a differen
 
 A production cookie configuration:
 
-```
+```bash
 backend web_servers
     cookie SERVERID insert indirect nocache httponly secure
     server web1 192.168.1.11:8080 check cookie web1

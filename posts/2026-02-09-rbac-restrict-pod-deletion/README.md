@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, POD, Deployment, Operations
+Tags: Kubernetes, RBAC, Pods, Deployment, Operations
 
 Description: Learn how to implement RBAC policies that prevent direct pod deletion while allowing deployment updates, protecting workloads from accidental disruption.
 
@@ -378,32 +378,32 @@ Document the approved workflow:
 ## ❌ Do NOT Delete Pods Directly
 ```bash
 kubectl delete pod my-app-abc123  # Causes immediate disruption
-```
+```bash
 
 ## ✅ Use Deployment Operations Instead
 
 ### Restart All Pods
 ```bash
 kubectl rollout restart deployment my-app
-```
+```bash
 
 ### Update Container Image
 ```bash
 kubectl set image deployment my-app app=my-app:v2.0
-```
+```bash
 
 ### Roll Back to Previous Version
 ```bash
 kubectl rollout undo deployment my-app
-```
+```bash
 
 ### Force Pod Recreation (if stuck)
 ```bash
 kubectl rollout restart deployment my-app
-# Or scale to 0 and back up
+## Or scale to 0 and back up
 kubectl scale deployment my-app --replicas=0
 kubectl scale deployment my-app --replicas=3
-```
+```bash
 ```text
 
 Provide training and onboarding materials explaining why direct pod deletion is restricted.

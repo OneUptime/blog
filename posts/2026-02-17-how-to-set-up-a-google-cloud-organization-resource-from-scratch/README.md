@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Organization, Cloud Identity, Resource Hierarchy, Google Cloud
+Tags: GCP, Organizations, Cloud Identity, Resource Hierarchy, Google Cloud
 
 Description: A complete guide to creating a Google Cloud Organization resource from scratch, including setting up Cloud Identity, verifying your domain, and configuring the resource hierarchy.
 

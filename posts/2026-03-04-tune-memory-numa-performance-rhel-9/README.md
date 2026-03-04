@@ -25,7 +25,7 @@ numactl --hardware
 
 Example output:
 
-```
+```bash
 available: 2 nodes (0-1)
 node 0 cpus: 0 1 2 3 4 5 6 7
 node 0 size: 32768 MB

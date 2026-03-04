@@ -39,25 +39,27 @@ graph TB
 
 If you somehow have Docker installed on RHEL:
 
-# Stop and disable Docker
+## Stop and disable Docker
 ```bash
 sudo systemctl stop docker docker.socket
 sudo systemctl disable docker docker.socket
 ```
 
-# Remove Docker packages
+## Remove Docker packages
 ```bash
 sudo dnf remove -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 ```
 
-# Remove Docker data (back up first if needed)
+## Remove Docker data (back up first if needed)
 ```bash
 sudo mv /var/lib/docker /var/lib/docker.backup
 ```
 
 ## Step 2: Install Podman
 
-# Install the container tools suite
+This section covers step 2: install podman.
+
+## Install the container tools suite
 ```bash
 sudo dnf install -y container-tools
 ```
@@ -68,7 +70,7 @@ This installs Podman, Buildah, and Skopeo.
 
 For muscle memory and scripts that call `docker`:
 
-# Add a docker alias to your shell profile
+## Add a docker alias to your shell profile
 ```bash
 echo 'alias docker=podman' >> ~/.bashrc
 source ~/.bashrc
@@ -76,7 +78,7 @@ source ~/.bashrc
 
 For system-wide aliasing, install the podman-docker package:
 
-# Install the docker CLI compatibility package
+## Install the docker CLI compatibility package
 ```bash
 sudo dnf install -y podman-docker
 ```
@@ -87,13 +89,13 @@ This creates a `/usr/bin/docker` symlink that points to Podman and also provides
 
 Export images from Docker and import into Podman:
 
-# On the old Docker system, save images to tar files
+## On the old Docker system, save images to tar files
 ```bash
 docker save my-app:latest -o my-app.tar
 docker save my-db:latest -o my-db.tar
 ```
 
-# On the new RHEL system, load them into Podman
+## On the new RHEL system, load them into Podman
 ```bash
 podman load -i my-app.tar
 podman load -i my-db.tar
@@ -109,17 +111,17 @@ skopeo copy docker-daemon:my-app:latest containers-storage:my-app:latest
 
 Docker volumes live in `/var/lib/docker/volumes/`. Copy the data:
 
-# On the Docker system, find the volume data
+## On the Docker system, find the volume data
 ```bash
 docker volume inspect my-data --format '{{.Mountpoint}}'
 ```
 
-# Copy the volume data
+## Copy the volume data
 ```bash
 sudo tar czf volume-backup.tar.gz -C /var/lib/docker/volumes/my-data/_data .
 ```
 
-# On the RHEL system, create a Podman volume and restore
+## On the RHEL system, create a Podman volume and restore
 ```bash
 podman volume create my-data
 sudo tar xzf volume-backup.tar.gz -C $(podman volume inspect my-data --format '{{.Mountpoint}}')
@@ -129,7 +131,7 @@ sudo tar xzf volume-backup.tar.gz -C $(podman volume inspect my-data --format '{
 
 Your existing `docker-compose.yml` files need minor adjustments:
 
-# Install podman-compose
+## Install podman-compose
 ```bash
 pip3 install --user podman-compose
 ```
@@ -187,17 +189,17 @@ systemctl --user enable --now web
 
 Enable the Podman socket for tools that expect a Docker socket:
 
-# Enable rootless Podman socket
+## Enable rootless Podman socket
 ```bash
 systemctl --user enable --now podman.socket
 ```
 
-# Set DOCKER_HOST for compatibility
+## Set DOCKER_HOST for compatibility
 ```bash
 export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 ```
 
-# For rootful socket
+## For rootful socket
 ```bash
 sudo systemctl enable --now podman.socket
 ```

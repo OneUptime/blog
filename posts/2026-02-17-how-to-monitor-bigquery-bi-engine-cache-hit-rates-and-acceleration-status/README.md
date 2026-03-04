@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, BI Engine, Monitoring, Performance, Dashboard
+Tags: GCP, BigQuery, BI Engine, Monitoring, Performance, Dashboards
 
 Description: Learn how to monitor BigQuery BI Engine cache hit rates, track acceleration status, and optimize memory reservations for dashboard performance.
 

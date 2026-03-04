@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, .NET Aspire, Dashboard, Local Development, Debugging
+Tags: OpenTelemetry, .NET Aspire, Dashboards, Local Development, Debugging
 
 Description: Discover how to use the .NET Aspire Dashboard as a powerful local development tool for visualizing OpenTelemetry traces, metrics, and logs without requiring external infrastructure.
 

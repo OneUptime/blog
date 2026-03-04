@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Rolling Update, Deployment, Zero Downtime, Production, DevOps
+Tags: Docker, Rolling Updates, Deployment, Zero Downtime, Production, DevOps
 
 Description: Implement zero-downtime rolling updates for Docker containers without Kubernetes or Swarm using scripts and a reverse proxy.
 

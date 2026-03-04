@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Certificate, Monitoring, Prometheus, Security, Kubernetes
+Tags: Istio, Certificates, Monitoring, Prometheus, Security, Kubernetes
 
 Description: How to set up comprehensive monitoring for certificate health in Istio, including metrics, alerts, and dashboards for tracking certificate expiry and rotation.
 

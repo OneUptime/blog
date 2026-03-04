@@ -154,7 +154,7 @@ On the RHEL server:
 sudo vi /etc/ssh/sshd_config
 ```
 
-```
+```bash
 GSSAPIAuthentication yes
 GSSAPICleanupCredentials yes
 ```

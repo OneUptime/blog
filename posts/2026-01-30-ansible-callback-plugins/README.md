@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ansible, Plugin, Automation, DevOps
+Tags: Ansible, Plugins, Automation, DevOps
 
 Description: Learn how to build custom Ansible callback plugins for output formatting, notifications, and metrics collection with practical Python examples.
 

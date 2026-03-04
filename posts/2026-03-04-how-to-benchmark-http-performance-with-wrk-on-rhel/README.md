@@ -83,7 +83,7 @@ wrk -t4 -c100 -d30s -s /tmp/auth.lua http://localhost/
 
 ## Interpreting Results
 
-```
+```bash
 # Sample output:
 #   Latency   Avg     Stdev     Max   +/- Stdev
 #             1.2ms   0.5ms    15ms     85%

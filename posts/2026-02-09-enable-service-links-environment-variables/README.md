@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Configuration, Service
+Tags: Kubernetes, Configuration, Services
 
 Description: Learn how to use enableServiceLinks in Kubernetes to control automatic service environment variable injection, reducing container startup time and environment variable clutter in large clusters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure Patterns, Zero Downtime, Deployment, Auto Scaling, Rolling Update
+Tags: Terraform, Infrastructure Patterns, Zero Downtime, Deployment, Auto Scaling, Rolling Updates
 
 Description: A practical guide to building zero-downtime deployment infrastructure with Terraform using rolling updates, health checks, connection draining, and database migrations.
 

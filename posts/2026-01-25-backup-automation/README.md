@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Backup, Automation, DevOps, Infrastructure as Code, CI/CD
+Tags: Backups, Automation, DevOps, Infrastructure as Code, CI/CD
 
 Description: A comprehensive guide to automating backup processes using scripts, schedulers, and infrastructure as code, ensuring reliable backups without manual intervention.
 

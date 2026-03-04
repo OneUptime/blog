@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Btrfs, Filesystem, Storage
+Tags: Ubuntu, Btrfs, Filesystems, Storage
 
 Description: How to install Ubuntu Server using Btrfs as the root filesystem, configure subvolumes for efficient snapshots, and use Btrfs-specific features for system management.
 

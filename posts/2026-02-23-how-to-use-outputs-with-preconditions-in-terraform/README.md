@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Output, Preconditions, Validation, Infrastructure as Code
+Tags: Terraform, Outputs, Preconditions, Validation, Infrastructure as Code
 
 Description: Learn how to add precondition blocks to Terraform outputs to validate that resources are in the expected state before exposing their values to consumers.
 

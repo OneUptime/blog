@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, DNS, Networking, Container, Service Discovery, DevOps
+Tags: Docker, DNS, Networking, Containers, Service Discovery, DevOps
 
 Description: Learn how Docker's embedded DNS server works and how to use it for container service discovery, custom DNS, and troubleshooting.
 

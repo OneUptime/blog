@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, EC2, Docker, Container
+Tags: AWS, ECS, EC2, Docker, Containers
 
 Description: A step-by-step guide to deploying Docker containers on ECS using the EC2 launch type, including instance setup, capacity providers, task placement, and cost optimization.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Pulumi, Azure, Container Apps, Python, Serverless, Infrastructure as Code, Container
+Tags: Pulumi, Azure, Container Apps, Python, Serverless, Infrastructure as Code, Containers
 
 Description: Deploy Azure Container Apps with Pulumi using Python for a fully managed serverless container platform with auto-scaling, ingress, and Dapr integration.
 

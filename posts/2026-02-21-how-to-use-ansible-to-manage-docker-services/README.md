@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Container, DevOps, Automation
+Tags: Ansible, Docker, Containers, DevOps, Automation
 
 Description: Learn how to manage Docker containers and Docker Swarm services with Ansible modules for container lifecycle, networking, and orchestration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Magento, E-Commerce, PHP, MySQL, Elasticsearch, NGINX, Container, DevOps
+Tags: Docker, Magento, E-Commerce, PHP, MySQL, Elasticsearch, NGINX, Containers, DevOps
 
 Description: A practical guide to running Magento 2 in Docker containers with MySQL, Elasticsearch, and Nginx for local development and production e-commerce deployments.
 

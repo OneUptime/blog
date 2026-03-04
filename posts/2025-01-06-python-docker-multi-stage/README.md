@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Docker, Container, DevOps, Security, pip, Poetry, uv, Optimization
+Tags: Python, Docker, Containers, DevOps, Security, pip, Poetry, uv, Optimization
 
 Description: Learn how to create minimal, secure Docker images for Python applications using multi-stage builds. This guide covers pip, Poetry, and uv with best practices for production deployments.
 

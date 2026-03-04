@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, OCI, Images, Container, Registry, DevOps, Standard, Skopeo
+Tags: Docker, OCI, Images, Containers, Registry, DevOps, Standard, Skopeo
 
 Description: Learn how to convert Docker images to OCI format for broader compatibility with container runtimes and registries.
 

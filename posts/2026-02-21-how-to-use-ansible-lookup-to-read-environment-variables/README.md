@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Lookup, Environment Variable, Automation
+Tags: Ansible, Lookup, Environment Variables, Automation
 
 Description: A detailed guide to using the Ansible env lookup plugin to read environment variables from the control node into your playbooks and templates.
 

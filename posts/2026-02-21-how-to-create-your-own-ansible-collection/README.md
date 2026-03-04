@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Collection, Custom Module, DevOps, Automation
+Tags: Ansible, Collections, Custom Modules, DevOps, Automation
 
 Description: A complete walkthrough of creating your own Ansible collection from scratch with custom modules, plugins, roles, and metadata configuration.
 

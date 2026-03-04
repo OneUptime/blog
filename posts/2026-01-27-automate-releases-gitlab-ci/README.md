@@ -317,12 +317,12 @@ release:
       ### npm
       ```bash
       npm install my-package@${CI_COMMIT_TAG}
-      ```
+      ```bash
 
       ### Docker
       ```bash
       docker pull ${CI_REGISTRY_IMAGE}:${CI_COMMIT_TAG}
-      ```
+      ```bash
   rules:
     - if: $CI_COMMIT_TAG
   needs:

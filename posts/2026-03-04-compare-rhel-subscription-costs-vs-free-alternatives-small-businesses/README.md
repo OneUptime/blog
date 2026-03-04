@@ -64,7 +64,7 @@ The subscription fee is not the only cost. Consider the time your team spends on
 
 For a small business with 5 servers running customer-facing applications:
 
-```
+```bash
 # Cost comparison per year (approximate)
 # RHEL Standard: 5 x $799 = $3,995
 # RHEL Self-Support: 5 x $349 = $1,745

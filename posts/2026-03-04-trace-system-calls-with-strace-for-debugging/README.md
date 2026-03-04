@@ -78,7 +78,7 @@ strace -c ls /tmp
 
 This produces a summary table showing how much time was spent in each system call.
 
-```
+```bash
 % time     seconds  usecs/call     calls    errors syscall
 ------ ----------- ----------- --------- --------- --------
  45.00    0.000090          10         9           openat

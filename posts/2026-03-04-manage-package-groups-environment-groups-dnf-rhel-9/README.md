@@ -63,7 +63,7 @@ dnf group list --ids
 
 You will see output like:
 
-```
+```bash
 Available Groups:
    RPM Development Tools (rpm-development-tools)
    Development Tools (development)
@@ -89,7 +89,7 @@ The output categorizes packages into three types:
 
 Example output:
 
-```
+```bash
 Group: Development Tools
  Mandatory Packages:
    autoconf

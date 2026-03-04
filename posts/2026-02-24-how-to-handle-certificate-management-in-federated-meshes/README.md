@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Federation, Certificate, PKI, Security, Kubernetes
+Tags: Istio, Federation, Certificates, PKI, Security, Kubernetes
 
 Description: How to manage certificate lifecycles across federated Istio meshes, including issuance, rotation, monitoring, and external CA integration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Backup, Managed Disks, Disk Restore, Snapshot, Azure VMs, Data Recovery, Instant Restore
+Tags: Azure Backup, Managed Disks, Disk Restore, Snapshots, Azure VMs, Data Recovery, Instant Restore
 
 Description: Step-by-step guide to restoring Azure managed disks from Azure Backup snapshots, including full disk restore, disk swap, and cross-region restore scenarios.
 

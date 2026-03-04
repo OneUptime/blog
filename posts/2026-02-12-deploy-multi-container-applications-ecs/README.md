@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Docker, Microservices, Container
+Tags: AWS, ECS, Docker, Microservices, Containers
 
 Description: Learn how to design and deploy multi-container applications on Amazon ECS, including task definitions, networking, shared volumes, and service configurations.
 

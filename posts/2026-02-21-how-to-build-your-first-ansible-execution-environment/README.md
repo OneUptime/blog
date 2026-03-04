@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Execution Environment, Container, ansible-builder
+Tags: Ansible, Execution Environments, Containers, ansible-builder
 
 Description: A beginner-friendly walkthrough for building your first Ansible Execution Environment using ansible-builder and running it with ansible-navigator.
 

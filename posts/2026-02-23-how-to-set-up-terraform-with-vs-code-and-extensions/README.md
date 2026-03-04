@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, VS Code, IDE, Extension, Development, DevOps, Productivity
+Tags: Terraform, VS Code, IDE, Extensions, Development, DevOps, Productivity
 
 Description: Set up Visual Studio Code for Terraform development with syntax highlighting, auto-formatting, IntelliSense, and helpful extensions for a productive workflow.
 

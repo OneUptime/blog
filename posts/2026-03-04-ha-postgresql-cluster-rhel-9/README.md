@@ -43,7 +43,7 @@ sudo -u postgres vi /var/lib/pgsql/data/postgresql.conf
 
 Set these parameters:
 
-```
+```bash
 listen_addresses = '*'
 wal_level = replica
 max_wal_senders = 5
@@ -59,7 +59,7 @@ sudo -u postgres vi /var/lib/pgsql/data/pg_hba.conf
 
 Add:
 
-```
+```bash
 host    replication     replicator      192.168.1.0/24          scram-sha-256
 host    all             all             192.168.1.0/24          scram-sha-256
 ```

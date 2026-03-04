@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Auto-Destroy, Cost Management, Workspace
+Tags: Terraform, HCP Terraform, Auto-Destroy, Cost Management, Workspaces
 
 Description: Configure workspace auto-destroy in HCP Terraform to automatically tear down temporary infrastructure and control cloud costs.
 

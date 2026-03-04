@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Filter, Template
+Tags: Ansible, Jinja2, Filter, Templates
 
 Description: Learn how to use the ternary filter in Ansible templates for inline conditional expressions that simplify your configuration logic.
 

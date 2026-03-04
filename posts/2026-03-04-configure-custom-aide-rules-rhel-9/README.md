@@ -16,7 +16,7 @@ AIDE rules in `/etc/aide.conf` follow a straightforward pattern. Each rule is a 
 
 The basic syntax looks like this:
 
-```
+```bash
 /path/to/monitor   ATTRIBUTE_GROUP
 !/path/to/exclude
 =/path/to/dir/only
@@ -49,7 +49,7 @@ sudo vi /etc/aide.conf
 
 Add custom groups near the top of the file, after the existing group definitions:
 
-```
+```bash
 # Custom group for web application files - check content and permissions
 WEBAPP = sha512+p+u+g+s+acl+selinux+xattrs
 
@@ -86,7 +86,7 @@ The individual selectors you can use include:
 
 Now add rules that use your custom groups. Place these after the group definitions:
 
-```
+```bash
 # Monitor web application files
 /var/www/html WEBAPP
 
@@ -105,7 +105,7 @@ Now add rules that use your custom groups. Place these after the group definitio
 
 Some directories change too frequently to monitor effectively. Use exclusion rules to reduce false positives:
 
-```
+```bash
 # Exclude temporary and cache directories
 !/var/cache
 !/var/tmp
@@ -125,7 +125,7 @@ Some directories change too frequently to monitor effectively. Use exclusion rul
 
 AIDE supports regular expressions for more flexible matching. Prefix the path with `@@` to use regex:
 
-```
+```bash
 # Monitor all .conf files in /etc using regex
 @@/etc/.*\.conf$ FULLCHECK
 
@@ -140,7 +140,7 @@ AIDE supports regular expressions for more flexible matching. Prefix the path wi
 
 Sometimes you only want to monitor a directory entry itself, not its contents. Use `=` for this:
 
-```
+```bash
 # Only check the /data directory attributes, not files inside it
 =/data PERMS
 ```
@@ -149,7 +149,7 @@ Sometimes you only want to monitor a directory entry itself, not its contents. U
 
 For complex environments, split your rules into separate files. AIDE supports an include directive:
 
-```
+```bash
 # In /etc/aide.conf, add includes at the bottom
 @@include /etc/aide.conf.d/webapp.conf
 @@include /etc/aide.conf.d/custom.conf
@@ -223,7 +223,7 @@ flowchart TD
 
 Here is a complete example for a server running a Java application:
 
-```
+```bash
 # Custom attribute groups
 APPCONFIG = sha512+p+u+g+acl+selinux+xattrs
 APPBIN = sha512+p+u+g+s+n+acl+selinux+xattrs+ftype

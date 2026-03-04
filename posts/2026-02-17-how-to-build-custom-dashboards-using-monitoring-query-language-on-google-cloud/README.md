@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, MQL, Cloud Monitoring, Dashboard, Google Cloud, Observability
+Tags: GCP, MQL, Cloud Monitoring, Dashboards, Google Cloud, Observability
 
 Description: Learn how to build custom dashboards in Google Cloud Monitoring using Monitoring Query Language for flexible and powerful metric visualization.
 

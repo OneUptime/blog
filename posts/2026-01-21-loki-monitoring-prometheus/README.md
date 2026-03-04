@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana Loki, Prometheus, Monitoring, Observability, Metrics, Dashboard
+Tags: Grafana Loki, Prometheus, Monitoring, Observability, Metrics, Dashboards
 
 Description: A comprehensive guide to monitoring Grafana Loki with Prometheus and Grafana, covering internal metrics, dashboard configuration, alerting, and operational best practices.
 

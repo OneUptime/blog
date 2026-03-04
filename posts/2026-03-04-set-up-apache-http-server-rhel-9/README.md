@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Apache, httpd, Web Server, Linux
+Tags: RHEL, Apache, HTTPD, Web Server, Linux
 
 Description: A complete guide to installing, configuring, and running Apache HTTP Server on RHEL, from initial setup to serving your first website.
 

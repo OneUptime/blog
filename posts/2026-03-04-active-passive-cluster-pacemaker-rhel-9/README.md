@@ -85,7 +85,7 @@ sudo pcs status
 
 Expected output:
 
-```
+```bash
 Node List:
   * Online: [ node1 node2 ]
 

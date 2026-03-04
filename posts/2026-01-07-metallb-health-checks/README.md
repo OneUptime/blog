@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MetalLB, Kubernetes, Health Check, Load Balancing, Reliability, Monitoring, High Availability
+Tags: MetalLB, Kubernetes, Health Checks, Load Balancing, Reliability, Monitoring, High Availability
 
 Description: Learn how to configure health checks for MetalLB-exposed services to ensure traffic only reaches healthy endpoints.
 

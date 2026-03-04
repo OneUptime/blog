@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Firebase, GCP, Extension, IAM, Troubleshooting
+Tags: Firebase, GCP, Extensions, IAM, Troubleshooting
 
 Description: A practical guide to diagnosing and fixing service account permission errors when installing or running Firebase Extensions on Google Cloud Platform.
 

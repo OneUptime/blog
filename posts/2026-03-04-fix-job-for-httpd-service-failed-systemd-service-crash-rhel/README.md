@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, httpd, Apache, systemd, Troubleshooting, Web Server
+Tags: RHEL, HTTPD, Apache, systemd, Troubleshooting, Web Server
 
 Description: Diagnose and fix 'Job for httpd.service failed' errors on RHEL by examining configuration syntax, port conflicts, and SELinux issues.
 

@@ -59,7 +59,7 @@ def review_code(code, language="python", context=""):
 
 ```{language}
 {code}
-```
+```bash
 
 {f"Context: {context}" if context else ""}
 
@@ -103,7 +103,7 @@ def review_diff(diff_text, pr_description=""):
 
 ```diff
 {diff_text}
-```
+```bash
 
 {"PR Description: " + pr_description if pr_description else ""}
 
@@ -157,7 +157,7 @@ def suggest_refactoring(code, language="python", goals=None):
 Original code:
 ```{language}
 {code}
-```
+```bash
 
 {goal_text}
 
@@ -338,7 +338,7 @@ def generate_tests(code, language="python", framework="pytest"):
 
 ```{language}
 {code}
-```
+```bash
 
 Requirements:
 - Cover all public functions and methods
@@ -380,4 +380,5 @@ print(tests)
 
 Automated code review with Gemini does not replace human reviewers - it augments them. The model catches pattern-level issues consistently, suggests refactors with working code, and can run security scans across entire codebases. Use it as a first pass before human review to catch the easy stuff, so human reviewers can focus on architecture and design decisions. Monitor your automated review pipeline's accuracy and usefulness with tools like OneUptime, and refine your system instructions based on team feedback.
 
+```bash
 ```

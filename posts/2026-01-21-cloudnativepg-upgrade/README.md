@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CloudNativePG, Kubernetes, PostgreSQL, Upgrade, Rolling Update, Migration
+Tags: CloudNativePG, Kubernetes, PostgreSQL, Upgrade, Rolling Updates, Migration
 
 Description: A comprehensive guide to upgrading PostgreSQL clusters with CloudNativePG, covering minor version updates, major version upgrades, rolling updates, and in-place upgrades with minimal downtime.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: mTLS, TLS, Service Authentication, Security, Certificate
+Tags: mTLS, TLS, Service Authentication, Security, Certificates
 
 Description: Learn how to implement mutual TLS for secure service-to-service authentication with certificate management.
 

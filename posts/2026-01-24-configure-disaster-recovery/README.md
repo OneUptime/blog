@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Disaster Recovery, Business Continuity, High Availability, Backup, DevOps, SRE, Infrastructure
+Tags: Disaster Recovery, Business Continuity, High Availability, Backups, DevOps, SRE, Infrastructure
 
 Description: A practical guide to configuring disaster recovery plans, including RTO/RPO definitions, backup strategies, failover procedures, and testing protocols.
 
@@ -594,32 +594,32 @@ Do NOT activate DR for:
 ### 1. Database Failover (10 min)
 
 ```bash
-# Promote replica to primary
+## Promote replica to primary
 ./failover.py --component database --reason "Primary region failure"
 
-# Verify database is accepting writes
+## Verify database is accepting writes
 psql -h dr.db.company.internal -c "INSERT INTO health_check VALUES (now());"
-```
+```bash
 
 ### 2. Application Failover (5 min)
 
 ```bash
-# Scale up DR application servers
+## Scale up DR application servers
 kubectl --context=dr-cluster scale deployment/api --replicas=10
 
-# Verify applications are healthy
+## Verify applications are healthy
 curl -f https://dr.api.company.com/health
-```
+```bash
 
 ### 3. DNS Failover (5 min)
 
 ```bash
-# Update DNS to point to DR
+## Update DNS to point to DR
 ./failover.py --component dns
 
-# Verify DNS propagation
+## Verify DNS propagation
 dig api.company.com
-```
+```bash
 
 ### 4. Verification (5 min)
 
@@ -660,4 +660,5 @@ Only failback when:
 
 Disaster recovery is insurance you hope to never use. But when you need it, having a well-configured, well-tested DR plan is the difference between a bad day and a business-ending catastrophe. Invest the time now to configure it properly, and test it regularly.
 
+```bash
 ```

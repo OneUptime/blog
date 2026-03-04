@@ -34,7 +34,7 @@ cat /sys/block/sda/queue/scheduler
 
 Output shows available schedulers with the active one in brackets:
 
-```
+```bash
 [mq-deadline] kyber bfq none
 ```
 

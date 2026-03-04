@@ -20,7 +20,7 @@ systemd socket activation lets services start on demand when a client connects t
 
 Traditional services start at boot and listen on their ports continuously. With socket activation, systemd holds the socket and starts the service only when a connection arrives. Once the service finishes handling requests, it can exit, and systemd will restart it on the next connection.
 
-```
+```bash
 Client connects to port 8080
         |
         v

@@ -86,7 +86,7 @@ If you need to tweak specific algorithms without changing the entire system poli
 sudo vi /etc/crypto-policies/policies/modules/SSH-STRICT.pmod
 ```
 
-```
+```bash
 # Disable CBC mode ciphers for SSH
 cipher@SSH = -AES-128-CBC -AES-256-CBC -3DES-CBC
 
@@ -121,7 +121,7 @@ If you absolutely need to set SSH-specific crypto settings that override the sys
 sudo vi /etc/ssh/sshd_config.d/50-crypto.conf
 ```
 
-```
+```bash
 # Override system crypto policy for SSH
 # Only do this if you have a specific reason
 Ciphers aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr

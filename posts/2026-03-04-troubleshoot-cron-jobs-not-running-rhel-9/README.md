@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, cron, Troubleshooting, Linux, System Administration
+Tags: RHEL, Cron, Troubleshooting, Linux, System Administration
 
 Description: A systematic approach to diagnosing and fixing cron jobs that refuse to run on RHEL, covering the most common causes from service issues to SELinux denials.
 

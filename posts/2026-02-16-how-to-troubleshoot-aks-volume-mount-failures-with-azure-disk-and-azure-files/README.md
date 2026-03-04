@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Kubernetes, Azure Disk, Azure Files, Storage, Troubleshooting, Persistent Volume
+Tags: AKS, Kubernetes, Azure Disk, Azure Files, Storage, Troubleshooting, Persistent Volumes
 
 Description: Practical troubleshooting guide for fixing volume mount failures with Azure Disk and Azure Files on AKS including common errors and their solutions.
 

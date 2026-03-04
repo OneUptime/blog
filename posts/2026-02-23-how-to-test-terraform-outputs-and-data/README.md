@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Testing, Output, Data Source, Infrastructure as Code
+Tags: Terraform, Testing, Outputs, Data Source, Infrastructure as Code
 
 Description: Learn how to write tests for Terraform outputs and data sources to verify your modules return correct values and data lookups work as expected.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linux, File System, Troubleshooting, System Administration, Storage
+Tags: Linux, File Systems, Troubleshooting, System Administration, Storage
 
 Description: Learn how to diagnose and fix read-only file system errors in Linux, including causes like disk failures, mount issues, and filesystem corruption.
 

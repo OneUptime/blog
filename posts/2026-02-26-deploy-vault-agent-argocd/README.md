@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Vault, Secret
+Tags: ArgoCD, GitOps, Kubernetes, Vault, Secrets
 
 Description: Learn how to deploy HashiCorp Vault Agent with ArgoCD for GitOps-managed secret injection, dynamic secrets, and secure credential management on Kubernetes.
 

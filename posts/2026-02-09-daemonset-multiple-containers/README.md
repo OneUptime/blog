@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Container
+Tags: Kubernetes, DaemonSet, Containers
 
 Description: Learn how to deploy multiple containers within a single DaemonSet pod to run complementary node-level services that work together.
 

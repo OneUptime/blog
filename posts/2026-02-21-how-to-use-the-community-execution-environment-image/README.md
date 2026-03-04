@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Execution Environment, Community, ansible-navigator
+Tags: Ansible, Execution Environments, Community, ansible-navigator
 
 Description: Get started with the community Ansible Execution Environment image, understand what it includes, and learn when to use it versus building custom EEs.
 

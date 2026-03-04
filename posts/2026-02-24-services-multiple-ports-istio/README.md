@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Service, Port, Networking
+Tags: Istio, Kubernetes, Services, Port, Networking
 
 Description: Configure and manage Kubernetes services with multiple ports in Istio, covering port naming, traffic routing, load balancing, and common pitfalls.
 

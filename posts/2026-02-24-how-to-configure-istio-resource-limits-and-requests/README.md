@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Resource, Kubernetes, Performance, Service Mesh
+Tags: Istio, Resources, Kubernetes, Performance, Service Mesh
 
 Description: A practical guide to properly sizing CPU and memory resource requests and limits for Istio control plane and sidecar proxy containers.
 

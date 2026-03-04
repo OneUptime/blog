@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Automation Hub, Collection, Red Hat, DevOps
+Tags: Ansible, Automation Hub, Collections, Red Hat, DevOps
 
 Description: Learn how to configure and install Ansible collections from Red Hat Automation Hub, including authentication setup and private hub configuration.
 

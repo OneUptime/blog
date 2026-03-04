@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Backup, Linux
+Tags: RHEL, Backups, Linux
 
 Description: Step-by-step guide on install and configure bacula backup server using Red Hat Enterprise Linux 9.
 

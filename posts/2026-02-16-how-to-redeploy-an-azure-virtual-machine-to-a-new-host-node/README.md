@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machine, Redeployment, Troubleshooting, Host Node, Cloud Operations
+Tags: Azure, Virtual Machines, Redeployment, Troubleshooting, Host Node, Cloud Operations
 
 Description: Learn when and how to redeploy an Azure VM to a new physical host node to resolve connectivity and performance issues.
 

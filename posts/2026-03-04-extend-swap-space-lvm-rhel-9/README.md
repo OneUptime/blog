@@ -166,7 +166,7 @@ blkid /dev/rhel/swap
 
 Update the fstab entry with the new UUID, or switch to using the device path which does not change with reformatting:
 
-```
+```bash
 /dev/rhel/swap  none  swap  defaults  0 0
 ```
 

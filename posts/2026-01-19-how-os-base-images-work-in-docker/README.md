@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container, Linux, DevOps, Virtualization, Ubuntu, Base Image
+Tags: Docker, Containers, Linux, DevOps, Virtualization, Ubuntu, Base Image
 
 Description: A deep dive into how OS base images like Ubuntu work in Docker containers.
 

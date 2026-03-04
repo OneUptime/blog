@@ -28,7 +28,7 @@ sudo gluster volume status repvol detail
 
 This shows per-brick details including disk space, inode counts, and process information:
 
-```
+```bash
 Brick                : node1:/data/glusterfs/replica/brick1/data
 TCP Port             : 49152
 Online               : Y

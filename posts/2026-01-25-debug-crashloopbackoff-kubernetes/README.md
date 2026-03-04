@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Troubleshooting, Debugging, DevOps, Container
+Tags: Kubernetes, Troubleshooting, Debugging, DevOps, Containers
 
 Description: Learn how to diagnose and fix CrashLoopBackOff errors in Kubernetes pods. This guide covers common causes, debugging techniques, and practical solutions to get your pods running again.
 

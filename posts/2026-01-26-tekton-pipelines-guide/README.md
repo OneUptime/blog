@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, Kubernetes, CI/CD, Pipeline, DevOps, Cloud Native
+Tags: Tekton, Kubernetes, CI/CD, Pipelines, DevOps, Cloud Native
 
 Description: A practical introduction to Tekton Pipelines covering installation, core concepts, and building your first CI/CD pipeline on Kubernetes.
 

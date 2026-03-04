@@ -56,7 +56,7 @@ sudo mount /dev/vg_vm/lv_vmstore /var/lib/libvirt/images
 
 Add to `/etc/fstab`:
 
-```
+```bash
 /dev/vg_vm/lv_vmstore /var/lib/libvirt/images xfs defaults,discard 0 0
 ```
 

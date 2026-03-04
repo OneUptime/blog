@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Terraform, Workspace, Environment, Infrastructure as Code
+Tags: GCP, Terraform, Workspaces, Environment, Infrastructure as Code
 
 Description: Learn how to use Terraform workspaces to manage development, staging, and production environments on GCP with a single configuration and isolated state files.
 

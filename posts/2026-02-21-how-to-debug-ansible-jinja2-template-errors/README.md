@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Jinja2, Template, Debugging
+Tags: Ansible, Jinja2, Templates, Debugging
 
 Description: Learn how to identify, understand, and fix common Jinja2 template errors in Ansible playbooks with practical debugging techniques.
 

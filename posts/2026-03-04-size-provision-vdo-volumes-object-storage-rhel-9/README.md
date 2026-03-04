@@ -61,13 +61,13 @@ Deduplication and compression work together. Combined savings are multiplicative
 
 Use this formula:
 
-```
+```bash
 Physical Storage = (Logical Data Size) / (Expected Combined Ratio) + Overhead
 ```
 
 Example: 10 TB of backup data with an expected 5:1 combined ratio:
 
-```
+```bash
 Physical Storage = 10 TB / 5 + 15% overhead
 Physical Storage = 2 TB + 0.3 TB = 2.3 TB
 ```
@@ -138,7 +138,7 @@ sudo mount -o discard /dev/vg_objstore/lv_objects /srv/object-storage
 
 Add to `/etc/fstab`:
 
-```
+```bash
 /dev/vg_objstore/lv_objects /srv/object-storage xfs defaults,discard 0 0
 ```
 

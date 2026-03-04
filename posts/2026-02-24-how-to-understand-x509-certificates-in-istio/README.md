@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, X.509, Certificate, mTLS, Security, PKI
+Tags: Istio, X.509, Certificates, mTLS, Security, PKI
 
 Description: A clear explanation of how X.509 certificates work in Istio, covering certificate structure, the trust chain, istiod as a CA, and how workload identities are represented.
 

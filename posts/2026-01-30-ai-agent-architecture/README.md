@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AI, Agent, LLM, Architecture, Machine Learning
+Tags: AI, Agents, LLM, Architecture, Machine Learning
 
 Description: Design AI agent systems with planning, tool use, memory, and orchestration for autonomous task completion and multi-agent collaboration.
 

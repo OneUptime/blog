@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kernel Module, Blacklist, Linux
+Tags: RHEL, Kernel Modules, Blacklist, Linux
 
 Description: Learn how to permanently blacklist kernel modules on RHEL to prevent them from loading, covering modprobe blacklisting, initramfs updates, and common use cases like disabling USB storage or Nouveau.
 

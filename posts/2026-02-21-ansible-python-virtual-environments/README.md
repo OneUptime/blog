@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Virtual Environment, venv, pip
+Tags: Ansible, Python, Virtual Environments, venv, pip
 
 Description: Configure Ansible to work with Python virtual environments on both the control node and remote hosts for isolated dependency management.
 

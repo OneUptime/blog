@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Container Registry, Docker, CI/CD, DevOps, Container
+Tags: GitLab CI, Container Registry, Docker, CI/CD, DevOps, Containers
 
 Description: Learn how to set up and use GitLab Container Registry in your CI/CD pipelines. This guide covers building images, pushing to registry, image tagging strategies, and cleanup policies.
 

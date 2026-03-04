@@ -139,7 +139,7 @@ sudo xfs_growfs /data
 
 Output:
 
-```
+```bash
 meta-data=/dev/mapper/vg_data-lv_data isize=512    agcount=4, agsize=1310720 blks
          =                       sectsz=512   attr=2, projid32bit=1
 data     =                       bsize=4096   blocks=5242880, imaxpct=25

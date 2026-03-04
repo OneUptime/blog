@@ -1,4 +1,4 @@
-# How to Resolve 'Transaction Check Error' When Installing Packages with DNF on RHEL
+# How to Resolve 'Transaction Check Error' with DNF on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
