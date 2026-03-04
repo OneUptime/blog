@@ -1,14 +1,14 @@
-# How to Tune IdM Performance for Large-Scale Deployments on RHEL 9
+# How to Tune IdM Performance for Large-Scale Deployments on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Performance, FreeIPA, Linux
 
-Description: A guide to tuning IdM (FreeIPA) for large-scale environments on RHEL 9, covering Directory Server tuning, Kerberos optimization, SSSD client settings, and system-level improvements.
+Description: A guide to tuning IdM (FreeIPA) for large-scale environments on RHEL, covering Directory Server tuning, Kerberos optimization, SSSD client settings, and system-level improvements.
 
 ---
 
-IdM works fine out of the box for a few hundred users. When you scale to thousands of users, hundreds of hosts, and dozens of replicas, the default settings start showing cracks. Searches get slow, replication lags, and clients time out. This guide covers the performance knobs that actually matter when scaling IdM on RHEL 9.
+IdM works fine out of the box for a few hundred users. When you scale to thousands of users, hundreds of hosts, and dozens of replicas, the default settings start showing cracks. Searches get slow, replication lags, and clients time out. This guide covers the performance knobs that actually matter when scaling IdM on RHEL.
 
 ## Where Performance Bottlenecks Happen
 
@@ -184,7 +184,7 @@ SSSD's memory cache speeds up repeated lookups significantly.
 
 ```ini
 [nss]
-# Enable the memcache (enabled by default on RHEL 9)
+# Enable the memcache (enabled by default on RHEL)
 memcache_timeout = 300
 ```
 

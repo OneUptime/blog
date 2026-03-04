@@ -1,14 +1,14 @@
-# How to Set Up a Private Container Registry on RHEL 9
+# How to Set Up a Private Container Registry on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Container Registry, Podman, Linux
 
-Description: Step-by-step guide to setting up a private container registry on RHEL 9 using Podman, complete with TLS certificates, authentication, and storage configuration.
+Description: Step-by-step guide to setting up a private container registry on RHEL using Podman, complete with TLS certificates, authentication, and storage configuration.
 
 ---
 
-Running your own container registry is essential when you want to keep images close to your infrastructure, control access, and avoid depending on external registries for production deployments. On RHEL 9, you can spin up a private registry with Podman in about 15 minutes.
+Running your own container registry is essential when you want to keep images close to your infrastructure, control access, and avoid depending on external registries for production deployments. On RHEL, you can spin up a private registry with Podman in about 15 minutes.
 
 ## Planning the Registry
 
@@ -259,4 +259,4 @@ sudo tar czf /backup/registry-config-$(date +%Y%m%d).tar.gz -C /opt/registry aut
 
 ## Summary
 
-A private container registry on RHEL 9 gives you full control over your container images. Set it up with TLS and authentication from the start, configure it as a systemd service for reliability, and distribute the CA certificate to all client machines. With proper storage planning and garbage collection, it will serve your team well.
+A private container registry on RHEL gives you full control over your container images. Set it up with TLS and authentication from the start, configure it as a systemd service for reliability, and distribute the CA certificate to all client machines. With proper storage planning and garbage collection, it will serve your team well.

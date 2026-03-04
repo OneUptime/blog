@@ -1,14 +1,14 @@
-# How to Configure Smart Card Authentication with IdM on RHEL 9
+# How to Configure Smart Card Authentication with IdM on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Smart Card, Authentication, Linux
 
-Description: A practical guide to setting up smart card (PIV/CAC) authentication with Red Hat Identity Management on RHEL 9, covering certificate mapping, SSSD configuration, and login setup.
+Description: A practical guide to setting up smart card (PIV/CAC) authentication with Red Hat Identity Management on RHEL, covering certificate mapping, SSSD configuration, and login setup.
 
 ---
 
-Smart card authentication replaces or supplements password-based login with a physical token containing a digital certificate. In government and defense environments, this is mandatory (think PIV and CAC cards). FreeIPA on RHEL 9 supports smart card authentication natively, integrating with the system's SSSD and PAM stack. This guide walks through the setup from end to end.
+Smart card authentication replaces or supplements password-based login with a physical token containing a digital certificate. In government and defense environments, this is mandatory (think PIV and CAC cards). FreeIPA on RHEL supports smart card authentication natively, integrating with the system's SSSD and PAM stack. This guide walks through the setup from end to end.
 
 ## How Smart Card Authentication Works
 
@@ -26,7 +26,7 @@ The smart card contains a private key and an X.509 certificate. When the user in
 
 ## Prerequisites
 
-- A working IdM deployment on RHEL 9 with an integrated CA
+- A working IdM deployment on RHEL with an integrated CA
 - Smart card readers connected to client machines
 - Smart cards with X.509 certificates (PIV, CAC, or PKCS#11 compatible)
 - The CA that issued the smart card certificates must be trusted by IdM

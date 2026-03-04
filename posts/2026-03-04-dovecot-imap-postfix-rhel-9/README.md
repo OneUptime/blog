@@ -1,16 +1,16 @@
-# How to Set Up Dovecot IMAP with Postfix on RHEL 9
+# How to Set Up Dovecot IMAP with Postfix on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Dovecot, IMAP, Postfix, Linux
 
-Description: Install and configure Dovecot as an IMAP server alongside Postfix on RHEL 9 so users can read their email with any mail client.
+Description: Install and configure Dovecot as an IMAP server alongside Postfix on RHEL so users can read their email with any mail client.
 
 ---
 
 ## Why Dovecot?
 
-Postfix handles sending and receiving email, but it does not provide mailbox access. Users need an IMAP (or POP3) server to read their mail with clients like Thunderbird, Outlook, or a mobile app. Dovecot is the standard choice on RHEL 9 - it is fast, well-maintained, and integrates smoothly with Postfix.
+Postfix handles sending and receiving email, but it does not provide mailbox access. Users need an IMAP (or POP3) server to read their mail with clients like Thunderbird, Outlook, or a mobile app. Dovecot is the standard choice on RHEL - it is fast, well-maintained, and integrates smoothly with Postfix.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 with Postfix installed and configured
+- RHEL with Postfix installed and configured
 - TLS certificate and key for your mail server
 - DNS records pointing to your mail server
 

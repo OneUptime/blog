@@ -1,14 +1,14 @@
-# How to Manage systemd Services and Units on RHEL 9
+# How to Manage systemd Services and Units on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Services, Linux, System Administration
 
-Description: A hands-on guide to managing systemd services and units on RHEL 9, covering systemctl commands, unit types, custom service files, targets, and dependency management.
+Description: A hands-on guide to managing systemd services and units on RHEL, covering systemctl commands, unit types, custom service files, targets, and dependency management.
 
 ---
 
-systemd is the init system and service manager on RHEL 9. Whether you're starting a web server, enabling a database at boot, or debugging why a service won't come up, you'll be working with systemd every day. This guide covers the practical commands and concepts you need to manage services effectively.
+systemd is the init system and service manager on RHEL. Whether you're starting a web server, enabling a database at boot, or debugging why a service won't come up, you'll be working with systemd every day. This guide covers the practical commands and concepts you need to manage services effectively.
 
 ## Understanding Unit Types
 
@@ -315,4 +315,4 @@ This is stronger than `disable`. A disabled service can still be started manuall
 
 ## Summary
 
-systemd is a big system, but for daily operations you really only need a handful of commands. Get comfortable with `start`, `stop`, `enable`, `status`, and `journalctl`, and you'll handle most situations. When you need to go deeper, custom unit files and drop-in overrides give you fine-grained control over how services behave on your RHEL 9 systems.
+systemd is a big system, but for daily operations you really only need a handful of commands. Get comfortable with `start`, `stop`, `enable`, `status`, and `journalctl`, and you'll handle most situations. When you need to go deeper, custom unit files and drop-in overrides give you fine-grained control over how services behave on your RHEL systems.

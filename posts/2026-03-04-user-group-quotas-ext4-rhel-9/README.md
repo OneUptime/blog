@@ -1,14 +1,14 @@
-# How to Set Up User and Group Quotas on ext4 File Systems on RHEL 9
+# How to Set Up User and Group Quotas on ext4 File Systems on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ext4, Quotas, Linux
 
-Description: A practical guide to enabling user and group quotas on ext4 file systems in RHEL 9, covering setup, configuration, and verification of disk usage limits.
+Description: A practical guide to enabling user and group quotas on ext4 file systems in RHEL, covering setup, configuration, and verification of disk usage limits.
 
 ---
 
-While XFS is the default filesystem on RHEL 9, plenty of environments still run ext4 - especially on older partitions migrated from RHEL 7 or 8, or on systems where ext4's specific characteristics are preferred. If you need disk quotas on ext4, the process involves a few more steps than XFS, but it is well-tested and reliable.
+While XFS is the default filesystem on RHEL, plenty of environments still run ext4 - especially on older partitions migrated from RHEL 7 or 8, or on systems where ext4's specific characteristics are preferred. If you need disk quotas on ext4, the process involves a few more steps than XFS, but it is well-tested and reliable.
 
 ## How ext4 Quotas Work
 
@@ -303,4 +303,4 @@ quotaon /home
 
 ## Summary
 
-ext4 quotas on RHEL 9 require a bit more setup than XFS, but they work reliably once configured. The key steps are: add mount options, create quota databases with `quotacheck`, enable enforcement with `quotaon`, and set limits with `setquota` or `edquota`. Use journaled quotas for resilience, and automate reporting so you catch issues early.
+ext4 quotas on RHEL require a bit more setup than XFS, but they work reliably once configured. The key steps are: add mount options, create quota databases with `quotacheck`, enable enforcement with `quotaon`, and set limits with `setquota` or `edquota`. Use journaled quotas for resilience, and automate reporting so you catch issues early.

@@ -1,14 +1,14 @@
-# How to Manage Virtual Machines Using the Cockpit Web Console on RHEL 9
+# How to Manage Virtual Machines Using the Cockpit Web Console on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, KVM, Virtual Machines, Linux
 
-Description: Learn how to create, manage, and monitor KVM virtual machines through the Cockpit web console on RHEL 9, including storage, networking, and snapshot management.
+Description: Learn how to create, manage, and monitor KVM virtual machines through the Cockpit web console on RHEL, including storage, networking, and snapshot management.
 
 ---
 
-Running virtual machines on RHEL 9 with KVM is straightforward from the command line if you know virsh and virt-install. But managing VMs through Cockpit gives you a visual interface that's particularly useful for teams that aren't comfortable with libvirt's CLI tools. You get VM creation, console access, snapshot management, and resource monitoring all in one place.
+Running virtual machines on RHEL with KVM is straightforward from the command line if you know virsh and virt-install. But managing VMs through Cockpit gives you a visual interface that's particularly useful for teams that aren't comfortable with libvirt's CLI tools. You get VM creation, console access, snapshot management, and resource monitoring all in one place.
 
 ## Prerequisites
 
@@ -65,7 +65,7 @@ Click "Create VM" on the Virtual Machines page. You'll need to provide:
 - **Storage** - disk size and location
 - **Immediately start VM** - toggle to boot after creation
 
-For example, to create a RHEL 9 VM with 2 vCPUs, 4GB RAM, and a 20GB disk, fill in those values and point the installation source to your RHEL ISO.
+For example, to create a RHEL VM with 2 vCPUs, 4GB RAM, and a 20GB disk, fill in those values and point the installation source to your RHEL ISO.
 
 The virt-install equivalent:
 

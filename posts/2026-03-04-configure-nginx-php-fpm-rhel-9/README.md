@@ -1,10 +1,10 @@
-# How to Configure Nginx with PHP-FPM on RHEL 9
+# How to Configure Nginx with PHP-FPM on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, PHP-FPM, Linux
 
-Description: How to set up Nginx with PHP-FPM on RHEL 9 to serve PHP applications efficiently.
+Description: How to set up Nginx with PHP-FPM on RHEL to serve PHP applications efficiently.
 
 ---
 
@@ -14,7 +14,7 @@ Nginx does not have a built-in PHP module like Apache's mod_php. Instead, it han
 
 ## Prerequisites
 
-- RHEL 9 with Nginx installed
+- RHEL with Nginx installed
 - Root or sudo access
 
 ## Step 1 - Install PHP-FPM
@@ -32,7 +32,7 @@ php -v
 
 ## Step 2 - Configure PHP-FPM for Nginx
 
-By default, PHP-FPM on RHEL 9 is configured for Apache. You need to change the user and group:
+By default, PHP-FPM on RHEL is configured for Apache. You need to change the user and group:
 
 ```bash
 # Edit the PHP-FPM pool configuration
@@ -259,4 +259,4 @@ sudo setsebool -P httpd_can_network_connect on
 
 ## Wrap-Up
 
-Nginx with PHP-FPM is the recommended stack for PHP applications on RHEL 9. Unix sockets are faster than TCP for same-server setups. Size the FPM pool based on your available memory and traffic, and do not forget to set SELinux contexts on your document root. The separation between Nginx and PHP-FPM gives you flexibility to scale and tune each component independently.
+Nginx with PHP-FPM is the recommended stack for PHP applications on RHEL. Unix sockets are faster than TCP for same-server setups. Size the FPM pool based on your available memory and traffic, and do not forget to set SELinux contexts on your document root. The separation between Nginx and PHP-FPM gives you flexibility to scale and tune each component independently.

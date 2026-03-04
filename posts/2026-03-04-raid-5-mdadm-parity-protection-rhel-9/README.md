@@ -1,10 +1,10 @@
-# How to Set Up RAID 5 with mdadm on RHEL 9 for Parity Protection
+# How to Set Up RAID 5 with mdadm on RHEL for Parity Protection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RAID 5, mdadm, Storage, Linux
 
-Description: Step-by-step instructions for configuring a RAID 5 array with mdadm on RHEL 9, providing both performance and single-disk fault tolerance through distributed parity.
+Description: Step-by-step instructions for configuring a RAID 5 array with mdadm on RHEL, providing both performance and single-disk fault tolerance through distributed parity.
 
 ---
 
@@ -16,7 +16,7 @@ The trade-off compared to RAID 1 is that rebuilds are slower and more stressful 
 
 ## Prerequisites
 
-- RHEL 9 with root access
+- RHEL with root access
 - At least three unused disks of equal size
 - mdadm installed
 
@@ -171,4 +171,4 @@ Every write to a RAID 5 array requires reading the old data and old parity, comp
 
 ## Wrap-Up
 
-RAID 5 on RHEL 9 gives you a good balance of capacity, performance, and fault tolerance. With three disks you lose only one disk's worth of space to parity. Just remember that RAID 5 cannot survive two simultaneous disk failures, so for larger arrays or mission-critical data, consider RAID 6 or RAID 10. And always keep backups, because RAID is not a backup strategy.
+RAID 5 on RHEL gives you a good balance of capacity, performance, and fault tolerance. With three disks you lose only one disk's worth of space to parity. Just remember that RAID 5 cannot survive two simultaneous disk failures, so for larger arrays or mission-critical data, consider RAID 6 or RAID 10. And always keep backups, because RAID is not a backup strategy.

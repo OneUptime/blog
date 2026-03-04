@@ -1,14 +1,14 @@
-# How to Use AWS Systems Manager with RHEL 9 Instances
+# How to Use AWS Systems Manager with RHEL Instances
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, AWS, Systems Manager, SSM, Cloud, Linux
 
-Description: Set up AWS Systems Manager on RHEL 9 instances for remote management, patching, inventory, and compliance without SSH access.
+Description: Set up AWS Systems Manager on RHEL instances for remote management, patching, inventory, and compliance without SSH access.
 
 ---
 
-AWS Systems Manager (SSM) provides agentless-like management for RHEL 9 instances through the SSM Agent. It enables remote command execution, automated patching, inventory collection, and compliance checking without opening SSH ports. This guide covers setting up and using SSM with RHEL 9.
+AWS Systems Manager (SSM) provides agentless-like management for RHEL instances through the SSM Agent. It enables remote command execution, automated patching, inventory collection, and compliance checking without opening SSH ports. This guide covers setting up and using SSM with RHEL.
 
 ## SSM Architecture
 
@@ -16,15 +16,15 @@ AWS Systems Manager (SSM) provides agentless-like management for RHEL 9 instance
 graph LR
     Admin[Administrator] --> Console[AWS Console / CLI]
     Console --> SSM[Systems Manager]
-    SSM --> Agent1[SSM Agent - RHEL 9 Instance 1]
-    SSM --> Agent2[SSM Agent - RHEL 9 Instance 2]
-    SSM --> Agent3[SSM Agent - RHEL 9 Instance 3]
+    SSM --> Agent1[SSM Agent - RHEL Instance 1]
+    SSM --> Agent2[SSM Agent - RHEL Instance 2]
+    SSM --> Agent3[SSM Agent - RHEL Instance 3]
 ```
 
 ## Step 1: Install the SSM Agent
 
 ```bash
-# The SSM Agent is pre-installed on official AWS RHEL 9 AMIs
+# The SSM Agent is pre-installed on official AWS RHEL AMIs
 # Verify it is running
 sudo systemctl status amazon-ssm-agent
 
@@ -91,7 +91,7 @@ aws ssm get-command-invocation \
 ## Step 4: Configure Patch Manager
 
 ```bash
-# Create a patch baseline for RHEL 9
+# Create a patch baseline for RHEL
 aws ssm create-patch-baseline \
   --name "RHEL9-Security-Patches" \
   --operating-system REDHAT_ENTERPRISE_LINUX \
@@ -140,4 +140,4 @@ aws ssm get-inventory \
 
 ## Conclusion
 
-AWS Systems Manager with RHEL 9 provides a centralized way to manage, patch, and monitor your fleet without requiring SSH access. It reduces your attack surface by eliminating the need for inbound SSH ports while giving you powerful automation and compliance capabilities.
+AWS Systems Manager with RHEL provides a centralized way to manage, patch, and monitor your fleet without requiring SSH access. It reduces your attack surface by eliminating the need for inbound SSH ports while giving you powerful automation and compliance capabilities.

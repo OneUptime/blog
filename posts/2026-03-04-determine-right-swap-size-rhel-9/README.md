@@ -1,18 +1,18 @@
-# How to Determine the Right Swap Size for Your RHEL 9 System
+# How to Determine the Right Swap Size for Your RHEL System
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Swap, Sizing, Memory, Linux
 
-Description: A practical guide to determining the right swap size for RHEL 9 systems based on workload, RAM, and use case.
+Description: A practical guide to determining the right swap size for RHEL systems based on workload, RAM, and use case.
 
 ---
 
-The "how much swap do I need?" question has been debated since the early days of Unix. The old rule of "twice your RAM" made sense when systems had 64 MB of memory. With modern systems running 64 GB, 128 GB, or more, that rule is outdated. Here is how to think about swap sizing on RHEL 9 in a practical way.
+The "how much swap do I need?" question has been debated since the early days of Unix. The old rule of "twice your RAM" made sense when systems had 64 MB of memory. With modern systems running 64 GB, 128 GB, or more, that rule is outdated. Here is how to think about swap sizing on RHEL in a practical way.
 
 ## Red Hat's Official Recommendations
 
-Red Hat provides specific guidance for RHEL 9:
+Red Hat provides specific guidance for RHEL:
 
 | System RAM | Recommended Swap | If Hibernation Needed |
 |-----------|-----------------|----------------------|
@@ -228,4 +228,4 @@ swapon -a
 
 ## Summary
 
-The right swap size depends on your workload, not a simple formula. For most RHEL 9 servers with 8-64 GB of RAM, 4-8 GB of swap is a reasonable starting point. Database servers need less swap but lower swappiness. Systems that hibernate need swap equal to RAM. Kubernetes nodes typically run without swap. Analyze your historical usage, check for OOM events, and size accordingly. You can always add more swap later using LVM or swap files without downtime.
+The right swap size depends on your workload, not a simple formula. For most RHEL servers with 8-64 GB of RAM, 4-8 GB of swap is a reasonable starting point. Database servers need less swap but lower swappiness. Systems that hibernate need swap equal to RAM. Kubernetes nodes typically run without swap. Analyze your historical usage, check for OOM events, and size accordingly. You can always add more swap later using LVM or swap files without downtime.

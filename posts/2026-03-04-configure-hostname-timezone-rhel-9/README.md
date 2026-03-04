@@ -1,18 +1,18 @@
-# How to Configure the System Hostname and Time Zone on RHEL 9
+# How to Configure the System Hostname and Time Zone on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Hostname, Timezone, Linux, System Administration
 
-Description: A detailed guide to setting and managing the system hostname and time zone on RHEL 9 using hostnamectl and timedatectl, including the differences between static and transient hostnames.
+Description: A detailed guide to setting and managing the system hostname and time zone on RHEL using hostnamectl and timedatectl, including the differences between static and transient hostnames.
 
 ---
 
-The hostname and time zone are two of the first things I configure on any new server. They seem simple, but getting them wrong creates confusion that compounds over time. Imagine correlating logs across 50 servers when half of them report times in UTC and the other half in local time. Or trying to SSH into the right box when every hostname is still `localhost.localdomain`. This guide covers how to set these up correctly on RHEL 9.
+The hostname and time zone are two of the first things I configure on any new server. They seem simple, but getting them wrong creates confusion that compounds over time. Imagine correlating logs across 50 servers when half of them report times in UTC and the other half in local time. Or trying to SSH into the right box when every hostname is still `localhost.localdomain`. This guide covers how to set these up correctly on RHEL.
 
 ## Understanding Hostname Types
 
-RHEL 9 actually maintains three separate hostnames:
+RHEL actually maintains three separate hostnames:
 
 | Type | Purpose | Persistence |
 |------|---------|-------------|
@@ -244,7 +244,7 @@ sudo hwclock --systohc
 sudo hwclock --show
 ```
 
-On RHEL 9, the RTC should be set to UTC. If it shows "RTC in local TZ: yes", fix it:
+On RHEL, the RTC should be set to UTC. If it shows "RTC in local TZ: yes", fix it:
 
 ```bash
 # Set the RTC to store UTC (not local time)
@@ -290,4 +290,4 @@ echo "NTP active: $(timedatectl show --property=NTPSynchronized --value)"
 
 ## Wrapping Up
 
-Hostname and timezone configuration on RHEL 9 is handled by two clean tools: `hostnamectl` and `timedatectl`. Set a meaningful hostname, use UTC for servers, enable NTP, and update `/etc/hosts`. These are small steps that pay dividends when you're managing infrastructure at scale. Get them right on every server from day one, and you'll avoid a whole category of annoying problems down the road.
+Hostname and timezone configuration on RHEL is handled by two clean tools: `hostnamectl` and `timedatectl`. Set a meaningful hostname, use UTC for servers, enable NTP, and update `/etc/hosts`. These are small steps that pay dividends when you're managing infrastructure at scale. Get them right on every server from day one, and you'll avoid a whole category of annoying problems down the road.

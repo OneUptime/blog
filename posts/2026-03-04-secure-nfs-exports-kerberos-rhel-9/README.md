@@ -1,10 +1,10 @@
-# How to Secure NFS Exports with Kerberos Authentication on RHEL 9
+# How to Secure NFS Exports with Kerberos Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NFS, Kerberos, Security, Linux
 
-Description: Secure your NFS exports with Kerberos authentication on RHEL 9, providing strong user identity verification and optional data encryption.
+Description: Secure your NFS exports with Kerberos authentication on RHEL, providing strong user identity verification and optional data encryption.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Secure your NFS exports with Kerberos authentication on RHEL 9, pro
 
 Standard NFS relies on trusting client IP addresses and UIDs, which is easily spoofable. Anyone who can send packets from an allowed IP can access your exports. Kerberos solves this by requiring proper authentication tickets, so NFS access is tied to verified user identities rather than network addresses.
 
-RHEL 9 supports three Kerberos security levels for NFS:
+RHEL supports three Kerberos security levels for NFS:
 
 - **krb5** - Authentication only
 - **krb5i** - Authentication plus integrity checking
@@ -91,7 +91,7 @@ sudo systemctl enable --now gssproxy
 # Enable and start rpc-gssd (NFS GSS authentication daemon)
 sudo systemctl enable --now rpc-gssd
 
-# On the server, also enable rpc-svcgssd is not needed on RHEL 9
+# On the server, also enable rpc-svcgssd is not needed on RHEL
 # gssproxy handles both sides
 ```
 
@@ -198,4 +198,4 @@ Common issues:
 
 ## Wrap-Up
 
-Kerberos-secured NFS on RHEL 9 replaces weak IP-based trust with proper cryptographic authentication. The setup requires a working Kerberos infrastructure, but once in place, it provides strong security that scales well. For most organizations already running Active Directory or FreeIPA, the Kerberos infrastructure is already there, making this a natural step to securing your NFS exports.
+Kerberos-secured NFS on RHEL replaces weak IP-based trust with proper cryptographic authentication. The setup requires a working Kerberos infrastructure, but once in place, it provides strong security that scales well. For most organizations already running Active Directory or FreeIPA, the Kerberos infrastructure is already there, making this a natural step to securing your NFS exports.

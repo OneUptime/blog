@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP, Ansible, System Roles, Automation, Linux
 
-Description: Automate SAP system preparation on RHEL 9 using Red Hat's official Ansible System Roles for consistent and repeatable configurations.
+Description: Automate SAP system preparation on RHEL using Red Hat's official Ansible System Roles for consistent and repeatable configurations.
 
 ---
 
-Red Hat provides official Ansible roles that automate the preparation of RHEL 9 systems for SAP workloads. These roles ensure that every server meets SAP requirements consistently, eliminating manual configuration errors and saving significant setup time.
+Red Hat provides official Ansible roles that automate the preparation of RHEL systems for SAP workloads. These roles ensure that every server meets SAP requirements consistently, eliminating manual configuration errors and saving significant setup time.
 
 ## Available SAP System Roles
 
@@ -24,7 +24,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 with an SAP Solutions subscription
+- RHEL with an SAP Solutions subscription
 - Ansible installed on a control node
 - SSH access to target SAP hosts
 
@@ -69,7 +69,7 @@ INVENTORY
 ```bash
 cat <<'PLAYBOOK' > prepare-hana.yml
 ---
-- name: Prepare RHEL 9 for SAP HANA
+- name: Prepare RHEL for SAP HANA
   hosts: sap_hana
   become: true
   vars:
@@ -99,7 +99,7 @@ PLAYBOOK
 ```bash
 cat <<'PLAYBOOK' > prepare-netweaver.yml
 ---
-- name: Prepare RHEL 9 for SAP NetWeaver
+- name: Prepare RHEL for SAP NetWeaver
   hosts: sap_app
   become: true
   vars:

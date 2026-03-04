@@ -1,16 +1,16 @@
-# How to Install and Initialize AIDE on RHEL 9 for File Integrity Monitoring
+# How to Install and Initialize AIDE on RHEL for File Integrity Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, AIDE, File Integrity, Security, Linux
 
-Description: Learn how to install and initialize AIDE (Advanced Intrusion Detection Environment) on RHEL 9 to monitor file integrity and detect unauthorized changes to your system.
+Description: Learn how to install and initialize AIDE (Advanced Intrusion Detection Environment) on RHEL to monitor file integrity and detect unauthorized changes to your system.
 
 ---
 
 File integrity monitoring is one of those things you don't think about until something goes wrong. Maybe a config file got changed and nobody knows who did it, or worse, an attacker modified a system binary and you had no way to notice. AIDE (Advanced Intrusion Detection Environment) solves this by taking a snapshot of your filesystem and alerting you when things change.
 
-In this guide, I will walk through installing AIDE on RHEL 9, initializing the database, and running your first integrity check.
+In this guide, I will walk through installing AIDE on RHEL, initializing the database, and running your first integrity check.
 
 ## What AIDE Does
 
@@ -25,7 +25,7 @@ This is especially useful for:
 
 ## Installing AIDE
 
-AIDE is available in the standard RHEL 9 repositories. Install it with dnf:
+AIDE is available in the standard RHEL repositories. Install it with dnf:
 
 ```bash
 # Install AIDE from the base repository
@@ -50,7 +50,7 @@ Before initializing the database, take a look at the default configuration:
 sudo cat /etc/aide.conf
 ```
 
-The default config on RHEL 9 is pretty comprehensive. It monitors critical directories like `/boot`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/usr`, and `/etc`. The config file uses macros to define groups of attributes to check. For example:
+The default config on RHEL is pretty comprehensive. It monitors critical directories like `/boot`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/usr`, and `/etc`. The config file uses macros to define groups of attributes to check. For example:
 
 ```
 # Default attribute groups defined in aide.conf
@@ -79,7 +79,7 @@ The first step after installation is to build the initial database. This creates
 sudo aide --init
 ```
 
-This process scans every file and directory specified in `/etc/aide.conf` and records their attributes. On a typical RHEL 9 system, this takes anywhere from 2 to 15 minutes depending on how many files you have and your disk speed.
+This process scans every file and directory specified in `/etc/aide.conf` and records their attributes. On a typical RHEL system, this takes anywhere from 2 to 15 minutes depending on how many files you have and your disk speed.
 
 The output file is written to `/var/lib/aide/aide.db.new.gz`. AIDE does not use this file directly for checks - you need to copy it to the expected location:
 
@@ -175,7 +175,7 @@ A few things to watch out for:
 
 2. **Running init on a compromised system** - The initial database should be created right after a clean OS install, before the system is exposed to the network.
 
-3. **Not excluding noisy directories** - Directories like `/var/log` and `/tmp` change constantly. The default RHEL 9 config handles most of these, but you may need to add exclusions for application-specific directories.
+3. **Not excluding noisy directories** - Directories like `/var/log` and `/tmp` change constantly. The default RHEL config handles most of these, but you may need to add exclusions for application-specific directories.
 
 4. **Database permissions** - Make sure the database file is only readable by root.
 
@@ -183,4 +183,4 @@ A few things to watch out for:
 
 With AIDE installed and initialized, you will want to set up automated checks using cron, customize the rules for your environment, and configure email alerts. Those topics are covered in the follow-up guides in this series.
 
-AIDE is a lightweight but powerful tool. It does not replace a full HIDS solution, but for file integrity monitoring on RHEL 9, it is hard to beat for simplicity and reliability.
+AIDE is a lightweight but powerful tool. It does not replace a full HIDS solution, but for file integrity monitoring on RHEL, it is hard to beat for simplicity and reliability.

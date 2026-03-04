@@ -1,10 +1,10 @@
-# How to Manage Storage Disks and Partitions Using the RHEL 9 Web Console
+# How to Manage Storage Disks and Partitions Using the RHEL Web Console
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Storage, Partitions, Linux
 
-Description: Learn how to manage disks, create partitions, format filesystems, and configure mount points using the Cockpit web console on RHEL 9.
+Description: Learn how to manage disks, create partitions, format filesystems, and configure mount points using the Cockpit web console on RHEL.
 
 ---
 
@@ -60,7 +60,7 @@ You'll be asked to choose between:
 - **GPT** - the modern standard, supports disks larger than 2TB, up to 128 partitions
 - **MBR (DOS)** - legacy format, limited to 2TB and 4 primary partitions
 
-For RHEL 9 systems, GPT is almost always the right choice.
+For RHEL systems, GPT is almost always the right choice.
 
 The CLI equivalent:
 
@@ -87,7 +87,7 @@ The equivalent command sequence:
 # Create a partition using parted
 sudo parted /dev/sdb mkpart primary xfs 0% 100%
 
-# Format it with XFS (default RHEL 9 filesystem)
+# Format it with XFS (default RHEL filesystem)
 sudo mkfs.xfs /dev/sdb1
 
 # Create the mount point
@@ -108,7 +108,7 @@ If you need to reformat a partition (destroying all data on it), click on the pa
 
 Supported filesystems in Cockpit:
 
-- **XFS** - the default for RHEL 9, great for large files and high-throughput workloads
+- **XFS** - the default for RHEL, great for large files and high-throughput workloads
 - **ext4** - a solid general-purpose filesystem, supports shrinking unlike XFS
 - **swap** - for swap partitions
 

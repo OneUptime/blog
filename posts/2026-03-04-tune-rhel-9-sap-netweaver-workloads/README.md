@@ -1,20 +1,20 @@
-# How to Tune RHEL 9 for SAP NetWeaver Workloads
+# How to Tune RHEL for SAP NetWeaver Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP NetWeaver, Performance Tuning, SAP, Linux
 
-Description: Learn how to optimize RHEL 9 for SAP NetWeaver application server workloads with kernel tuning, memory settings, and performance profiles.
+Description: Learn how to optimize RHEL for SAP NetWeaver application server workloads with kernel tuning, memory settings, and performance profiles.
 
 ---
 
-SAP NetWeaver is the application foundation for most SAP products, and running it efficiently on RHEL 9 requires specific operating system tuning. This guide covers the kernel parameters, memory settings, filesystem configurations, and tuned profiles that will give your NetWeaver workloads the best performance.
+SAP NetWeaver is the application foundation for most SAP products, and running it efficiently on RHEL requires specific operating system tuning. This guide covers the kernel parameters, memory settings, filesystem configurations, and tuned profiles that will give your NetWeaver workloads the best performance.
 
 ## Understanding NetWeaver Requirements
 
 ```mermaid
 graph TB
-    subgraph "SAP NetWeaver Stack on RHEL 9"
+    subgraph "SAP NetWeaver Stack on RHEL"
         App[SAP Application Server]
         App --> Kernel[Kernel Parameters]
         App --> Memory[Memory Management]
@@ -29,7 +29,7 @@ graph TB
 
 ## Prerequisites
 
-- RHEL 9 with SAP Solutions subscription
+- RHEL with SAP Solutions subscription
 - Root or sudo access
 - SAP NetWeaver installation media
 
@@ -54,7 +54,7 @@ sudo dnf install -y tuned-profiles-sap
 # Create the playbook for SAP NetWeaver preparation
 cat <<'EOF' > /tmp/sap-netweaver-prepare.yml
 ---
-- name: Prepare RHEL 9 for SAP NetWeaver
+- name: Prepare RHEL for SAP NetWeaver
   hosts: localhost
   become: true
   vars:
@@ -229,4 +229,4 @@ graph LR
 
 ## Conclusion
 
-Proper OS-level tuning is essential for SAP NetWeaver performance on RHEL 9. The RHEL System Roles for SAP automate most of this configuration, but understanding each setting helps you troubleshoot issues and fine-tune for your specific workload. Always validate your configuration against the latest SAP Notes before going to production.
+Proper OS-level tuning is essential for SAP NetWeaver performance on RHEL. The RHEL System Roles for SAP automate most of this configuration, but understanding each setting helps you troubleshoot issues and fine-tune for your specific workload. Always validate your configuration against the latest SAP Notes before going to production.

@@ -1,14 +1,14 @@
-# How to Configure Custom AIDE Rules in /etc/aide.conf on RHEL 9
+# How to Configure Custom AIDE Rules in /etc/aide.conf on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, AIDE, Custom Rules, Security, Linux
 
-Description: Learn how to write custom AIDE rules in /etc/aide.conf on RHEL 9 to monitor specific files and directories with tailored attribute checks.
+Description: Learn how to write custom AIDE rules in /etc/aide.conf on RHEL to monitor specific files and directories with tailored attribute checks.
 
 ---
 
-The default AIDE configuration on RHEL 9 does a reasonable job of monitoring system files, but most production environments need custom rules. Maybe you want to track changes to application config files, monitor a web root for unauthorized modifications, or exclude directories that produce too much noise. This guide covers how to write and organize custom AIDE rules.
+The default AIDE configuration on RHEL does a reasonable job of monitoring system files, but most production environments need custom rules. Maybe you want to track changes to application config files, monitor a web root for unauthorized modifications, or exclude directories that produce too much noise. This guide covers how to write and organize custom AIDE rules.
 
 ## How AIDE Rules Work
 
@@ -24,7 +24,7 @@ The basic syntax looks like this:
 
 ## Built-in Attribute Groups
 
-RHEL 9 ships with several predefined attribute groups in `/etc/aide.conf`. Here are the most commonly used ones:
+RHEL ships with several predefined attribute groups in `/etc/aide.conf`. Here are the most commonly used ones:
 
 ```bash
 # View the predefined groups in the config

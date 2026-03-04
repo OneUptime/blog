@@ -1,10 +1,10 @@
-# How to Configure nftables Sets and Maps for Efficient Packet Filtering on RHEL 9
+# How to Configure nftables Sets and Maps for Efficient Packet Filtering on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nftables, Sets, Maps, Linux
 
-Description: Learn how to use nftables sets and maps on RHEL 9 to build efficient firewall rules that can match against large groups of addresses, ports, and more.
+Description: Learn how to use nftables sets and maps on RHEL to build efficient firewall rules that can match against large groups of addresses, ports, and more.
 
 ---
 

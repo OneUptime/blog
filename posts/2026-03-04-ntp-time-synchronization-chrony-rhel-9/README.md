@@ -1,14 +1,14 @@
-# How to Set Up NTP Time Synchronization with Chrony on RHEL 9
+# How to Set Up NTP Time Synchronization with Chrony on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NTP, Chrony, Time Synchronization, Linux
 
-Description: A practical guide to configuring NTP time synchronization with Chrony on RHEL 9, covering chrony.conf, chronyc commands, NTP pools, hardware timestamping, and monitoring.
+Description: A practical guide to configuring NTP time synchronization with Chrony on RHEL, covering chrony.conf, chronyc commands, NTP pools, hardware timestamping, and monitoring.
 
 ---
 
-Accurate time is not optional on modern servers. Kerberos authentication fails if clocks are off by more than five minutes. TLS certificate validation breaks with incorrect timestamps. Distributed databases like CockroachDB and Cassandra require tight clock synchronization to maintain consistency. RHEL 9 uses Chrony as its default NTP implementation, and it's one of the best NTP clients available. This guide covers how to configure it properly.
+Accurate time is not optional on modern servers. Kerberos authentication fails if clocks are off by more than five minutes. TLS certificate validation breaks with incorrect timestamps. Distributed databases like CockroachDB and Cassandra require tight clock synchronization to maintain consistency. RHEL uses Chrony as its default NTP implementation, and it's one of the best NTP clients available. This guide covers how to configure it properly.
 
 ## Why Chrony Over ntpd
 
@@ -21,7 +21,7 @@ Red Hat replaced ntpd with Chrony starting in RHEL 8, and for good reason:
 
 ## Installing and Enabling Chrony
 
-Chrony comes installed by default on RHEL 9. If it's not there for some reason:
+Chrony comes installed by default on RHEL. If it's not there for some reason:
 
 ```bash
 # Install chrony
@@ -57,7 +57,7 @@ cat /etc/chrony.conf
 Here's a well-commented configuration with the settings you'll most commonly adjust:
 
 ```bash
-# Use Red Hat's NTP pool (default on RHEL 9)
+# Use Red Hat's NTP pool (default on RHEL)
 # The "iburst" option sends 4 requests in quick succession at startup
 # for faster initial synchronization
 pool 2.rhel.pool.ntp.org iburst
@@ -294,7 +294,7 @@ The `-1` means always allow stepping, regardless of how many updates have occurr
 
 ## Firewall Configuration
 
-If your RHEL 9 server needs to serve NTP to other machines, open the NTP port:
+If your RHEL server needs to serve NTP to other machines, open the NTP port:
 
 ```bash
 # Allow NTP traffic through the firewall
@@ -331,4 +331,4 @@ sudo ss -ulnp | grep 123
 
 ## Wrapping Up
 
-Chrony is a solid NTP implementation that works well out of the box on RHEL 9. For most setups, the default configuration with the Red Hat NTP pool is sufficient. If you're running an enterprise environment, point Chrony at internal NTP servers, enable hardware timestamping where supported, and monitor the sync status as part of your standard health checks. Accurate time is one of those things you don't think about until it breaks something, so set it up right from the start and let it run.
+Chrony is a solid NTP implementation that works well out of the box on RHEL. For most setups, the default configuration with the Red Hat NTP pool is sufficient. If you're running an enterprise environment, point Chrony at internal NTP servers, enable hardware timestamping where supported, and monitor the sync status as part of your standard health checks. Accurate time is one of those things you don't think about until it breaks something, so set it up right from the start and let it run.

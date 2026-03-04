@@ -1,10 +1,10 @@
-# How to Configure Role-Based Access Control (RBAC) in IdM on RHEL 9
+# How to Configure Role-Based Access Control (RBAC) in IdM on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IdM, RBAC, Access Control, Linux
 
-Description: A practical guide to configuring role-based access control in Red Hat Identity Management on RHEL 9, covering roles, privileges, permissions, and delegation.
+Description: A practical guide to configuring role-based access control in Red Hat Identity Management on RHEL, covering roles, privileges, permissions, and delegation.
 
 ---
 

@@ -1,14 +1,14 @@
-# How to Monitor RHEL 9 with Prometheus and Grafana
+# How to Monitor RHEL with Prometheus and Grafana
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Prometheus, Grafana, Monitoring, Linux
 
-Description: Learn how to build a complete monitoring stack on RHEL 9 using Prometheus for metrics collection and Grafana for visualization, with practical dashboards and alert rules.
+Description: Learn how to build a complete monitoring stack on RHEL using Prometheus for metrics collection and Grafana for visualization, with practical dashboards and alert rules.
 
 ---
 
-Prometheus and Grafana together form the most popular open-source monitoring stack. Prometheus handles metrics collection and storage, while Grafana provides the visualization layer. This guide walks you through setting up a complete monitoring solution on RHEL 9 that covers system health, service availability, and alerting.
+Prometheus and Grafana together form the most popular open-source monitoring stack. Prometheus handles metrics collection and storage, while Grafana provides the visualization layer. This guide walks you through setting up a complete monitoring solution on RHEL that covers system health, service availability, and alerting.
 
 ## Full Stack Architecture
 
@@ -36,8 +36,8 @@ graph TD
 
 ## Prerequisites
 
-- A dedicated RHEL 9 server for the monitoring stack (4GB RAM, 50GB disk recommended)
-- Target RHEL 9 servers to monitor
+- A dedicated RHEL server for the monitoring stack (4GB RAM, 50GB disk recommended)
+- Target RHEL servers to monitor
 - Network access between the monitoring server and targets
 
 ## Step 1: Install All Components
@@ -380,4 +380,4 @@ promtool check config /etc/prometheus/prometheus.yml
 
 ## Summary
 
-A complete RHEL 9 monitoring stack with Prometheus and Grafana gives you real-time visibility into your infrastructure. Install Node Exporter on every server you want to monitor, configure Prometheus to scrape them, set up alert rules for critical conditions, and build Grafana dashboards for visualization. Import community dashboards like Node Exporter Full (ID 1860) for immediate visibility, then customize as your needs grow.
+A complete RHEL monitoring stack with Prometheus and Grafana gives you real-time visibility into your infrastructure. Install Node Exporter on every server you want to monitor, configure Prometheus to scrape them, set up alert rules for critical conditions, and build Grafana dashboards for visualization. Import community dashboards like Node Exporter Full (ID 1860) for immediate visibility, then customize as your needs grow.

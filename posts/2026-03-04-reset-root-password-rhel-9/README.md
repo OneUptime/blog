@@ -1,10 +1,10 @@
-# How to Reset the Root Password on RHEL 9 When Locked Out
+# How to Reset the Root Password on RHEL When Locked Out
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Root Password, Password Reset, Linux, Security
 
-Description: Step-by-step instructions for resetting a forgotten root password on RHEL 9 using the GRUB bootloader, rd.break, and chroot, including SELinux relabeling.
+Description: Step-by-step instructions for resetting a forgotten root password on RHEL using the GRUB bootloader, rd.break, and chroot, including SELinux relabeling.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Step-by-step instructions for resetting a forgotten root password o
 
 You have been there. A server that was set up months ago, the root password was documented "somewhere," and now nobody can find it. Or maybe you inherited a system and the previous admin did not leave credentials behind. Whatever the reason, you need physical console access (or virtual console access for VMs) and about 10 minutes.
 
-This procedure works on RHEL 9 with default configurations. It requires access to the GRUB boot menu, which means you need physical access, a KVM connection, or virtual machine console access. You cannot do this over SSH.
+This procedure works on RHEL with default configurations. It requires access to the GRUB boot menu, which means you need physical access, a KVM connection, or virtual machine console access. You cannot do this over SSH.
 
 ## Before You Start
 
@@ -20,7 +20,7 @@ A few important notes:
 
 - This requires a server reboot, so plan for downtime.
 - If the disk is encrypted with LUKS, you will need the LUKS passphrase. This guide does not cover disk encryption recovery.
-- SELinux is enabled by default on RHEL 9. You must relabel the file system after changing the password, otherwise SELinux will prevent login with the new password.
+- SELinux is enabled by default on RHEL. You must relabel the file system after changing the password, otherwise SELinux will prevent login with the new password.
 - If your organization has compliance requirements, document that you performed this procedure and why.
 
 ## Step-by-Step Password Reset
@@ -182,9 +182,9 @@ On some virtual machines, the GRUB timeout is set to 0 seconds. You can try:
 
 ## Alternative Method: Rescue Mode from Installation Media
 
-If the GRUB method does not work for your situation, you can boot from the RHEL 9 installation ISO.
+If the GRUB method does not work for your situation, you can boot from the RHEL installation ISO.
 
-1. Boot from the RHEL 9 ISO
+1. Boot from the RHEL ISO
 2. Select **Troubleshooting** from the boot menu
 3. Select **Rescue a Red Hat Enterprise Linux system**
 4. The rescue environment will find and mount your installed system at `/mnt/sysimage`
@@ -211,4 +211,4 @@ ausearch -m USER_CHNG -ts recent
 
 ## Summary
 
-Resetting the root password on RHEL 9 is a straightforward process: interrupt GRUB, add `rd.break`, remount the file system, change the password, and trigger an SELinux relabel. The most critical step that people forget is `touch /.autorelabel`. Without it, SELinux will block the new password from working. Always document password changes, keep credentials in a proper secrets manager, and consider GRUB passwords and disk encryption to prevent unauthorized resets.
+Resetting the root password on RHEL is a straightforward process: interrupt GRUB, add `rd.break`, remount the file system, change the password, and trigger an SELinux relabel. The most critical step that people forget is `touch /.autorelabel`. Without it, SELinux will block the new password from working. Always document password changes, keep credentials in a proper secrets manager, and consider GRUB passwords and disk encryption to prevent unauthorized resets.

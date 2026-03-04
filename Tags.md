@@ -11,14 +11,18 @@
 - @azure/service-bus
 - @grpc/grpc-js
 - /etc/environment
+- /etc/hosts
 - $lookup
 - 1Password
 - 2dsphere
 - 2FA
+- 3-2-1
+- 3-2-1 Rule
 - 389 Directory Server
 - 3D Models
 - 3D Printing
 - 3D Visualization
+- 403
 - 403 Errors
 - 403 Forbidden
 - 404
@@ -40,6 +44,7 @@
 - 7 Days to Die
 - 802.1Q
 - 802.1X
+- 802.3ad
 - A/B Deployments
 - A/B Routing
 - A/B Testing
@@ -86,6 +91,8 @@
 - AccessMode
 - Account Creation
 - Account Factory
+- Account Locking
+- Account Lockout
 - Account Migration
 - Accounts Payable
 - ACH
@@ -96,6 +103,8 @@
 - ACK
 - Acknowledgments
 - ACL
+- ACL Mask
+- ACLs
 - ACM
 - ACME
 - ACPI
@@ -111,15 +120,18 @@
 - ActionController
 - ActionItems
 - Actions
+- Activation Key
 - Active Directory
 - Active Endpoints
 - Active Passive
 - Active Record
 - Active Storage
 - Active-Active
+- Active-Backup
 - Active-Passive
 - ActiveJob
 - ActiveMQ
+- ActiveMQ Artemis
 - ActiveRecord
 - ActiveStorage
 - ActiveSupport
@@ -190,6 +202,7 @@
 - Advanced Types
 - Advanced TypeScript
 - Advertising Pipeline
+- Advisor
 - Advisories
 - Advisory
 - Advisory Locks
@@ -204,6 +217,7 @@
 - Agent Engine
 - Agent Execution
 - Agent Forwarding
+- Agent Monitoring
 - Agent Pools
 - Agent Registration
 - Agent Startup
@@ -212,6 +226,7 @@
 - Agentic RAG
 - Agentless
 - Agentless Migration
+- Agents
 - Aggregate Functions
 - Aggregated Sinks
 - Aggregates
@@ -283,10 +298,12 @@
 - Alerts
 - Algolia
 - Algorithm
+- Algorithms
 - Alias IP
 - Alias Records
 - Aliases
 - Alibaba Cloud
+- Alignment
 - Allocation
 - Allocator
 - Allow All
@@ -379,6 +396,7 @@
 - Anonymous Access
 - Anonymous Pull
 - Ansible
+- Ansible Automation Platform
 - Ansible Galaxy
 - Ansible Roles
 - Ansible Tower
@@ -418,6 +436,7 @@
 - Apache Atlas
 - Apache Avro
 - Apache Beam
+- Apache Bench
 - Apache Camel
 - Apache Doris
 - Apache Druid
@@ -549,6 +568,7 @@
 - Application Design
 - Application Development
 - Application Discovery Service
+- Application Errors
 - Application Events
 - Application Factory
 - Application Gateway
@@ -565,13 +585,16 @@
 - Application Performance
 - Application Performance Monitoring
 - Application Proxy
+- Application Repository
 - Application Rules
 - Application Security
 - Application Security Groups
 - Application Server
 - Application Signals
 - Application Streaming
+- Application Streams
 - Application Structure
+- Application Whitelisting
 - ApplicationSet
 - Appointment Scheduling
 - AppRegistry
@@ -701,6 +724,7 @@
 - asyncio
 - asyncpg
 - AsyncStorage
+- at
 - at Command
 - At Scale
 - At-Least-Once
@@ -716,6 +740,7 @@
 - Atomicity
 - Attachments
 - Attack Path Simulation
+- Attack Surface
 - Attack Surface Reduction
 - Attack Vectors
 - Attacks
@@ -738,6 +763,7 @@
 - Audio Production
 - Audio Synthesis
 - Audio Transcription
+- audisp
 - Audit
 - Audit Controls
 - Audit Evidence
@@ -746,13 +772,17 @@
 - Audit Manager
 - Audit Monitoring
 - Audit Policies
+- Audit Rules
 - Audit Trail
+- audit2allow
 - Auditbeat
 - auditd
 - Auditing
 - Augmented Reality
+- aureport
 - Aurora
 - Aurora Serverless
+- ausearch
 - Auth Proxy
 - Auth0
 - Authelia
@@ -768,6 +798,7 @@
 - AuthorizationPolicy
 - Authorized Routines
 - Authorized Views
+- authselect
 - Auto
 - Auto DevOps
 - Auto mTLS
@@ -795,11 +826,15 @@
 - Auto-Recovery
 - Auto-Refresh
 - Auto-Remediation
+- Auto-Renewal
 - Auto-Repair
+- Auto-Restart
 - Auto-Scaling
 - Auto-Shutdown
 - Auto-Stop
+- Auto-Unlock
 - Auto-Unseal
+- Auto-Updates
 - Auto-Upgrade
 - autoAssign
 - Autoclass
@@ -817,6 +852,7 @@
 - Automated Response
 - Automated Rollback
 - Automated Testing
+- Automated Unlock
 - Automatic Cleanup
 - Automatic Deletion
 - Automatic Deployment
@@ -827,10 +863,13 @@
 - automatic1111
 - Automation
 - Automation API
+- Automation Controller
 - Automation Hub
+- Automation Mesh
 - Automation Platform
 - AutoML
 - Automotive
+- Automount
 - Autonomous Agents
 - Autonomous Systems
 - Autonomous Vehicles
@@ -844,6 +883,7 @@
 - Availability Sets
 - Availability Tests
 - Availability Zones
+- AVC
 - AVD
 - avg_over_time
 - Aviation
@@ -886,6 +926,7 @@
 - AWS Kinesis
 - AWS KMS
 - AWS Lambda
+- AWS Marketplace
 - AWS MSK
 - AWS Network Firewall
 - AWS Organizations
@@ -1117,6 +1158,7 @@
 - Background Workers
 - BackgroundJobs
 - BackgroundService
+- Backint
 - Backlog
 - backoff
 - Backpressure
@@ -1130,6 +1172,7 @@
 - Backup Automation
 - Backup Optimization
 - Backup Plan
+- Backup Planning
 - Backup Policy
 - Backup Recovery
 - Backup Reports
@@ -1138,12 +1181,15 @@
 - Backup Strategy
 - Backup Testing
 - Backup Vault
+- Backup Verification
+- Backups
 - Backward Compatibility
 - backwards-compatibility
 - Bacula
 - Bad Gateway
 - Badges
 - Baggage
+- Balance-RR
 - Banana Pi
 - Bandwidth
 - Bandwidth Management
@@ -1157,6 +1203,8 @@
 - Bare Metal Solution
 - Bare Workflow
 - bare-metal
+- Bare-Metal Recovery
+- Bareos
 - Barman
 - Barriers
 - Base Image
@@ -1169,6 +1217,7 @@
 - Baseline
 - Baseline Security
 - basename Function
+- BaseOS
 - Baserow
 - Bash
 - Bash Scripting
@@ -1282,6 +1331,7 @@
 - Bitwarden
 - Blackbox Exporter
 - Blackbox Monitoring
+- Blacklist
 - Blacklisting
 - Blade
 - Blameless Culture
@@ -1289,6 +1339,7 @@
 - Blazor Server
 - Blazor WebAssembly
 - BLE
+- blkid
 - Bloat
 - Bloat Prevention
 - Blob
@@ -1298,6 +1349,8 @@
 - BLoC
 - Block
 - Block Blobs
+- Block Device Encryption
+- Block Devices
 - Block Scalars
 - Block Storage
 - Blockchain
@@ -1307,6 +1360,7 @@
 - Bloom Filter
 - bloom_filter
 - BLPOP
+- BLS
 - Blue Ocean
 - Blue-Green
 - Blue-Green Deployment
@@ -1323,6 +1377,8 @@
 - Bokeh
 - BOM
 - Bonding
+- Bonding Modes
+- bonnie++
 - Bookinfo
 - Booking Engine
 - Booking Systems
@@ -1334,21 +1390,29 @@
 - Boolean
 - Boolean Logic
 - Boolean Queries
+- Booleans
 - Boosting
 - Boot
 - Boot Configuration
 - Boot Diagnostics
+- Boot Failure
 - Boot Failures
 - Boot Loader
 - Boot Loops
 - Boot Management
 - Boot Media
+- Boot Order
 - BOOT Partition
+- Boot Performance
 - Boot Process
 - Boot Protection
 - Boot Services
+- Boot Targets
 - Boot Time
+- Boot Troubleshooting
 - Bootable USB
+- bootc
+- Booth
 - Booting
 - Bootloader
 - Bootstrap
@@ -1370,6 +1434,8 @@
 - Bounded Contexts
 - Bounds Checking
 - Box
+- BPF
+- bpftool
 - bpftrace
 - Branch Deployments
 - Branch Management
@@ -1385,6 +1451,7 @@
 - Break Glass
 - Breaking Changes
 - Breakpoints
+- Brick Replacement
 - Bridge
 - Bridge Network
 - Bridge Tables
@@ -1433,6 +1500,7 @@
 - Buffer
 - Buffer Pool
 - Buffer Pool Monitoring
+- Buffer Sizes
 - Buffered I/O
 - BufferExhaustedException
 - Buffering
@@ -1508,6 +1576,7 @@
 - Business Intelligence
 - Business Logic
 - Business Metrics
+- Business One
 - Business Process
 - Business Rules
 - Business Value
@@ -1518,11 +1587,13 @@
 - C Extension
 - C Programming
 - C-States
+- C/C++
 - C#
 - C++
 - C4 Model
 - CA
 - CA Certificates
+- CA Trust Store
 - CAB
 - CABPT
 - Cache
@@ -1542,6 +1613,7 @@
 - Cache-Aside Pattern
 - Caching
 - Caching Patterns
+- Caching Proxy
 - Cacti
 - CAD
 - Caddy
@@ -1588,6 +1660,7 @@
 - Capacity Reservations
 - CAPI
 - Capped Collections
+- Capsule
 - CAPT
 - Captions
 - Captive Portal
@@ -1641,6 +1714,7 @@
 - Cell Site
 - Center of Excellence
 - CentOS
+- CentOS Stream
 - CentOS Stream 9
 - Central Policy
 - Centralization
@@ -1649,6 +1723,7 @@
 - Centralized Logging
 - Centralized Logs
 - Ceph
+- cephadm
 - CephFS
 - Cerner
 - cert-manager
@@ -1669,14 +1744,17 @@
 - Certificate Signing Request
 - Certificate Verification
 - Certificate-Based Access
+- Certificates
 - Certification
 - CfCT
 - Cgroup Metrics
 - Cgroup v2
 - cgroups
+- chage
 - Chain of Trust
 - Chain Validation
 - Chainguard
+- Chains
 - Change Analysis
 - Change Data Capture
 - Change Detection
@@ -1698,6 +1776,7 @@
 - Chaos Studio
 - Chaos Testing
 - ChaosEngineering
+- CHAP
 - Character Encoding
 - Chargeback
 - Chargebee
@@ -1718,6 +1797,7 @@
 - Check Mode
 - Check Point
 - checkinstall
+- Checklist
 - Checkmk
 - Checkout
 - Checkout Funnel
@@ -1728,6 +1808,7 @@
 - Checks
 - Checksums
 - Chef
+- Chef InSpec
 - Cherry-Pick
 - Chi
 - Chi Router
@@ -1758,12 +1839,14 @@
 - Chronicle SOAR
 - Chronosphere
 - chrony
+- chronyc
 - chroot
 - Chunk
 - Chunking
 - Churn Prediction
 - CI/CD
 - CIAM
+- CIB
 - CICD
 - CIDR
 - CIDR Routing
@@ -1771,6 +1854,7 @@
 - Cilium
 - cilium/ebpf
 - Cipher Suites
+- Ciphers
 - Circe
 - CircleCI
 - Circuit Breaker
@@ -1780,6 +1864,8 @@
 - Circular References
 - CIS
 - CIS Benchmark
+- CIS Level 1
+- CIS Level 2
 - CIS-CAT
 - Cisco
 - Cisco IOS
@@ -1852,6 +1938,7 @@
 - Clock Drift
 - Clock Skew
 - Clojure
+- Clone
 - Clonezilla
 - Cloning
 - Closures
@@ -2099,6 +2186,7 @@
 - CodeCatalyst
 - CodeCommit
 - Codecov
+- Codecs
 - CodeDeploy
 - Codefresh
 - CodeGuru
@@ -2127,6 +2215,7 @@
 - Collection Functions
 - Collection Group Queries
 - Collection Management
+- Collections
 - Collector
 - Collector Builder
 - Collector Configuration
@@ -2156,6 +2245,7 @@
 - Command Queue
 - Command Runner
 - Command Substitution
+- Command-Line
 - CommandLine
 - Commands
 - Comments
@@ -2207,6 +2297,7 @@
 - Compliance Scanning
 - Compliance Testing
 - Compliance Tracking
+- ComplianceAsCode
 - Component Communication
 - Component Design
 - Component Framework
@@ -2216,6 +2307,7 @@
 - Compose
 - compose file
 - Composer
+- composer-cli
 - Composite Actions
 - Composite Alerts
 - Composite Indexes
@@ -2298,6 +2390,7 @@
 - Conformance Packs
 - Conformed Dimensions
 - Conftest
+- Congestion Control
 - Conky
 - Connect
 - Connect Gateway
@@ -2326,6 +2419,7 @@
 - Connection Pool
 - Connection Pool Metrics
 - Connection Pooling
+- Connection Profiles
 - Connection Recovery
 - Connection Refused
 - Connection Reset
@@ -2339,6 +2433,7 @@
 - Connectivity Tests
 - Connector
 - Connector Metrics
+- Conntrack
 - Consensus
 - Consensus Protocols
 - Consistency
@@ -2394,6 +2489,7 @@
 - Container Hardening
 - Container Host
 - Container Image
+- Container Images
 - Container Insights
 - Container Instances
 - Container Isolation
@@ -2430,7 +2526,9 @@
 - Container-Runtime
 - ContainerCreating
 - containerd
+- Containerfile
 - Containerization
+- Containers
 - ContainerStorage
 - Content Analysis
 - Content Block
@@ -2449,6 +2547,7 @@
 - Content Search
 - Content Security Policy
 - Content Trust
+- Content Views
 - Content-Based Routing
 - Content-Type
 - Context
@@ -2490,6 +2589,7 @@
 - Control Flow
 - Control Flow Analysis
 - Control Groups
+- Control Node
 - Control Plane
 - Control Tower
 - Controlled Components
@@ -2512,6 +2612,7 @@
 - Conversion
 - Conversion Debugging
 - Conversion Tracking
+- Convert2RHEL
 - Converter Functions
 - Conveyor Systems
 - Cookies
@@ -2529,6 +2630,7 @@
 - Core
 - Core Banking
 - Core Data
+- Core Dump
 - Core Dumps
 - Core Web Vitals
 - CoreDNS
@@ -2595,12 +2697,14 @@
 - CPU
 - CPU Allocation
 - CPU Analysis
+- CPU Frequency
 - CPU Governor
 - CPU Isolation
 - CPU Limits
 - CPU Management
 - CPU Metrics
 - CPU Optimization
+- CPU Partitioning
 - CPU Pinning
 - CPU Profiling
 - CPU Throttling
@@ -2610,12 +2714,15 @@
 - Crane
 - Crash
 - Crash Analysis
+- Crash Dump
+- Crash Dumps
 - Crash Loop
 - Crash Recovery
 - Crash Reporting
 - CrashLoopBackOff
 - Crates
 - Crawlers
+- CRC
 - CRD
 - CRDT
 - Create React App
@@ -2642,6 +2749,7 @@
 - Cron Jobs
 - cron.yaml
 - CronJob
+- crontab
 - Cross Product
 - Cross-Account
 - Cross-Border Data Transfer
@@ -2672,6 +2780,7 @@
 - Cross-Project Access
 - Cross-Project Monitoring
 - Cross-Realm
+- Cross-Realm Trust
 - Cross-Region
 - Cross-Region Backup
 - Cross-Region Replication
@@ -2679,6 +2788,8 @@
 - Cross-Selling
 - Cross-Service
 - Cross-Signal
+- Cross-Site
+- Cross-Site Replication
 - Cross-Subscription
 - Cross-Tenant
 - Cross-VNet
@@ -2694,10 +2805,13 @@
 - CRUD Operations
 - Cruise Line
 - CRUSH
+- Crypto Policies
+- Crypto Policy
 - Crypto-Shredding
 - Cryptocurrency
 - Cryptographic
 - Cryptography
+- cryptsetup
 - Crystal
 - CS2
 - CSharp
@@ -2751,6 +2865,7 @@
 - Custom Dependencies
 - Custom Dimensions
 - Custom Directives
+- Custom Directories
 - Custom Distribution
 - Custom DNS
 - Custom Domain
@@ -2772,11 +2887,14 @@
 - Custom ID Generator
 - Custom Images
 - Custom InfoTypes
+- Custom Installation
 - Custom Instrumentation
 - Custom Instruments
 - Custom Integration
 - Custom Interceptors
 - Custom ISO
+- Custom Kernel
+- Custom Keys
 - Custom Labels
 - Custom Library
 - Custom Logs
@@ -2787,16 +2905,19 @@
 - Custom Mode
 - Custom Models
 - Custom Module
+- Custom Modules
 - Custom Operator
 - Custom Origin
 - Custom Packages
 - Custom Partitioner
 - Custom Platforms
 - Custom Policies
+- Custom Policy
 - Custom Ports
 - Custom Prediction
 - Custom Presets
 - Custom Processor
+- Custom Profiles
 - Custom Propagator
 - Custom Provider
 - Custom Ranking
@@ -2816,6 +2937,8 @@
 - Custom Search
 - Custom Secrets
 - Custom Server
+- Custom Service
+- Custom Services
 - Custom Spans
 - Custom Tags
 - Custom Targets
@@ -2847,6 +2970,7 @@
 - Cyber Defense
 - CyberArk
 - cybersecurity
+- cyclictest
 - CycloneDX
 - Cypher
 - Cypress
@@ -2856,6 +2980,7 @@
 - Daemon
 - daemon_reload
 - daemon.json
+- Daemons
 - DaemonSet
 - DAG
 - Dagger
@@ -2873,6 +2998,7 @@
 - Dashboard Management
 - Dashboard Templates
 - Dashboard Variables
+- Dashboards
 - Dashboards as Code
 - Dask
 - DAST
@@ -3092,6 +3218,7 @@
 - Database Tracing
 - Database Triggers
 - Database Tuning
+- Database Update
 - Database Updates
 - Database Versioning
 - database/sql
@@ -3174,11 +3301,13 @@
 - debsums
 - Debug
 - Debug Exporter
+- Debug Logging
 - Debug Mode
 - Debugging
 - Decentralization
 - Decentralized
 - Decentralized Identity
+- Decision Environments
 - Decision Guide
 - Decision Making
 - Declaration Files
@@ -3199,6 +3328,7 @@
 - Deep Learning
 - Deep Linking
 - Deep Merge
+- Default ACLs
 - Default Gateway
 - Default Policies
 - Default Profile
@@ -3209,6 +3339,7 @@
 - defer
 - Deferrable Operators
 - Deferred Processing
+- Defragmentation
 - Degenerate Dimensions
 - Deja Dup
 - Delay Queue
@@ -3248,6 +3379,8 @@
 - Deny Assignments
 - Deny Policies
 - DENY Policy
+- Deny Rules
+- Deny-All
 - Dependabot
 - Dependencies
 - Dependency Analysis
@@ -3301,6 +3434,7 @@
 - Desired State Configuration
 - Desktop
 - Desktop Applications
+- Desktop Customization
 - Desktop Linux
 - Desktop Management
 - DestinationRule
@@ -3341,11 +3475,14 @@
 - Device Connectivity
 - Device Control
 - Device Defender
+- Device Edge
 - Device Flow
 - Device Info
 - Device Management
 - Device Mapper
 - Device Monitoring
+- Device Names
+- Device Naming
 - Device Plugin
 - Device Policy
 - Device Provisioning
@@ -3415,8 +3552,10 @@
 - DinD
 - Direct Connect
 - Direct Exchange
+- Direct Maps
 - Direct Messaging
 - Direct Methods
+- Direct Rules
 - Direct VPC Egress
 - direct-connect
 - Directed Acyclic Graph
@@ -3430,8 +3569,12 @@
 - Directus
 - direnv
 - dirname Function
+- DISA
+- DISA STIG
+- Disable
 - Disaster Recovery
 - Disaster-Recovery
+- Disconnected
 - DisconnectException
 - Discord
 - Discounts
@@ -3461,6 +3604,7 @@
 - Disk Performance
 - Disk Pressure
 - Disk Recovery
+- Disk Replacement
 - Disk Replication
 - Disk Resize
 - Disk Restore
@@ -3472,6 +3616,7 @@
 - Disk Usage
 - Dispatch
 - Dispatch Rules
+- Dispersed Volume
 - Display
 - Display Server
 - Disposal
@@ -3487,6 +3632,7 @@
 - Distributed Counters
 - Distributed Database
 - Distributed Debugging
+- Distributed File System
 - Distributed File Systems
 - Distributed Filesystem
 - Distributed Ledger
@@ -3494,6 +3640,7 @@
 - Distributed Locks
 - Distributed Logging
 - Distributed Map
+- Distributed Monitoring
 - Distributed Processing
 - Distributed Queries
 - Distributed Search
@@ -3509,6 +3656,7 @@
 - Distributed Tracing
 - Distributed Training
 - Distributed Transactions
+- Distributed Volume
 - Distributed-Systems
 - distributed-testing
 - DistributedStorage
@@ -3527,11 +3675,15 @@
 - Djongo
 - DKIM
 - DKMS
+- DLM
 - DLNA
 - DLP
 - DLP API
 - DLQ
+- dm-cache
 - dm-crypt
+- DM-Multipath
+- dm-writecache
 - DMA
 - DMARC
 - dmesg
@@ -3541,6 +3693,7 @@
 - DMZ
 - DNAT
 - DNF
+- dnf-automatic
 - dnf5
 - DNS
 - DNS Configuration
@@ -3548,6 +3701,7 @@
 - DNS Failover
 - DNS Firewall
 - DNS Forwarding
+- DNS Logging
 - DNS Migration
 - DNS Monitoring
 - DNS Peering
@@ -3561,7 +3715,10 @@
 - DNS Routing
 - DNS Security
 - DNS Troubleshooting
+- DNS Views
 - DNS Zone
+- DNS Zones
+- DNS-over-TLS
 - DNS64
 - dnsmasq
 - DNSSEC
@@ -3578,6 +3735,7 @@
 - Docker Build
 - Docker Build Cloud
 - Docker Buildx
+- Docker CE
 - Docker Cleanup
 - Docker CLI
 - Docker Commands
@@ -3674,6 +3832,7 @@
 - DORA Metrics
 - DoS
 - DoS Prevention
+- DoT
 - Dot Product
 - dotenv
 - DotNet
@@ -3691,6 +3850,7 @@
 - DR
 - DR Testing
 - DRA
+- dracut
 - Draft
 - Dragonfly
 - Drain
@@ -3713,6 +3873,7 @@
 - Droplets
 - DRS
 - Drug Interactions
+- Drupal
 - DRY
 - Dry Run
 - DSC
@@ -3768,6 +3929,7 @@
 - Dynamic Mapping
 - Dynamic Metadata
 - Dynamic Module
+- Dynamic Mounts
 - Dynamic Parsing
 - Dynamic Pipelines
 - Dynamic Playbooks
@@ -3781,6 +3943,7 @@
 - Dynamic Secrets
 - Dynamic Targets
 - Dynamic Thresholds
+- Dynamic Tuning
 - Dynamic Variables
 - Dynamic-Blocks
 - DynamicProvisioning
@@ -3794,13 +3957,16 @@
 - E-Prescribing
 - E2E
 - E2E Testing
+- e2fsck
 - Earthly
 - East-West Gateway
+- Easy-RSA
 - eBook
 - eBPF
 - EBS
 - EC2
 - EC2 Fleet
+- EC2 Image Builder
 - ECDSA
 - Echo
 - ECK
@@ -3814,6 +3980,7 @@
 - ECS Anywhere
 - ECS CLI
 - Ecto
+- EDA
 - EDC
 - Edge
 - Edge AI
@@ -3824,6 +3991,7 @@
 - Edge Computing
 - Edge Devices
 - Edge Functions
+- Edge Gateway
 - Edge ML
 - Edge Modules
 - Edge N-grams
@@ -3896,9 +4064,11 @@
 - Email API
 - Email Authentication
 - Email Delivery
+- Email Encryption
 - Email Notifications
 - Email Processing
 - Email Queue
+- Email Relay
 - Email Search
 - Email Security
 - Email Templates
@@ -3913,6 +4083,8 @@
 - Emergency Access
 - Emergency Changes
 - Emergency Deployment
+- Emergency Mode
+- Emergency Shell
 - EMF
 - Emissary
 - Emissary-Ingress
@@ -3927,6 +4099,7 @@
 - Encoding
 - encoding/binary
 - Encrypted Backup
+- Encrypted Backups
 - Encryption
 - End User Computing
 - End-to-End Encryption
@@ -3954,6 +4127,7 @@
 - ENI
 - Enrichment
 - Enrollment
+- ENSA2
 - Ensemble
 - Enterprise
 - Enterprise Analytics
@@ -3997,6 +4171,7 @@
 - Environment Routing
 - Environment Tracking
 - Environment Variable
+- Environment Variables
 - Envoy
 - Envoy Gateway
 - Envoy Listeners
@@ -4022,6 +4197,7 @@
 - Erasure Coding
 - ErasureCoding
 - Erlang
+- Errata
 - errgroup
 - Error
 - Error Analysis
@@ -4124,6 +4300,7 @@
 - Event Tracking
 - Event Versioning
 - Event-Driven
+- Event-Driven Ansible
 - Event-Driven Architecture
 - Event-Driven Automation
 - Event-Driven Autoscaling
@@ -4170,6 +4347,7 @@
 - Execution
 - Execution Control
 - Execution Environment
+- Execution Environments
 - Execution Mode
 - Execution Order
 - Execution Plan
@@ -4219,6 +4397,7 @@
 - Extension
 - Extension Functions
 - Extension Providers
+- Extensions
 - External
 - External Authorization
 - External CA
@@ -4280,9 +4459,11 @@
 - Failed Logins
 - failed precondition
 - failed Test
+- faillock
 - Failover
 - Failover Groups
 - Failover Monitoring
+- Failover Testing
 - Failure Analysis
 - Failure Domains
 - Failure Recovery
@@ -4299,6 +4480,7 @@
 - Fan-Out
 - Fan-Out Fan-In
 - fanotify
+- fapolicyd
 - Faraday
 - Fargate
 - Fargate Spot
@@ -4332,6 +4514,7 @@
 - Feature Store
 - Feature Toggle
 - Feature-Gates
+- Features
 - Federated Credentials
 - Federated Queries
 - Federated Query
@@ -4362,6 +4545,7 @@
 - File
 - File Access
 - File API
+- File Contexts
 - File Conversion
 - File Creation
 - File Descriptors
@@ -4390,6 +4574,7 @@
 - File Provider
 - File Recovery
 - File Search
+- File Security
 - File Server
 - File Service Discovery
 - File Share
@@ -4400,6 +4585,7 @@
 - File Synchronization
 - File System
 - File System Analysis
+- File Systems
 - File Transfer
 - File Upload
 - File Watcher
@@ -4423,7 +4609,9 @@
 - Filestore
 - Filesystem
 - Filesystem Mirror
+- Filesystem Recovery
 - Filesystem Scanning
+- Filesystems
 - FileUpload
 - Filter
 - Filter Chain
@@ -4450,6 +4638,7 @@
 - fio
 - FIPS
 - FIPS 140-2
+- FIPS 140-3
 - Firebase
 - Firebase Auth
 - Firebase Authentication
@@ -4490,6 +4679,7 @@
 - FlaskInstrumentor
 - Flat Index
 - Flatcar Linux
+- Flathub
 - FlatList
 - Flatpak
 - Flattened Fields
@@ -4564,12 +4754,15 @@
 - FoundationDB
 - Four Signals
 - FPE
+- fq_codel
 - FQCN
 - FQDN
 - FQDN Filtering
 - FQDN Rules
+- Fractional Scaling
 - Fragment
 - Fragment Caching
+- Fragmentation
 - Frame Protocol
 - Framework
 - Framework Design
@@ -4615,6 +4808,7 @@
 - Fulcio
 - Fulfillment
 - Fulfillment API
+- Full Disk Encryption
 - Full Load
 - Full Stack
 - Full Stack Observability
@@ -4636,9 +4830,12 @@
 - Funnel Metrics
 - FUSE
 - Fusion Detection
+- FUTURE
+- FUTURE Policy
 - Futures
 - Fuzzing
 - Fuzzy Search
+- fwupd
 - Galaxy
 - Galera
 - Galera Cluster
@@ -4699,6 +4896,7 @@
 - generate_series
 - Generated Columns
 - Generation
+- Generation 2
 - Generative AI
 - Generator
 - Generics
@@ -4738,6 +4936,7 @@
 - getopts
 - getStaticPaths
 - Getting Started
+- GFS2
 - GGUF
 - GHC
 - GHCR
@@ -4817,6 +5016,7 @@
 - gMSA
 - GNOME
 - GnuPG
+- GnuTLS
 - Go
 - Go 1.18
 - Go 1.21
@@ -4837,6 +5037,7 @@
 - Godot
 - Golang
 - golang-migrate
+- Gold Image
 - Golden AMI
 - Golden Image
 - Golden Path
@@ -4918,6 +5119,7 @@
 - GPG Keys
 - GPG Signing
 - GPIO
+- GPO
 - GPS Tracking
 - GPT
 - GPT-4
@@ -4944,6 +5146,7 @@
 - Grafana Tempo
 - Grafonnet
 - Grains
+- Granite
 - Grape
 - Graph API
 - Graph Database
@@ -4962,6 +5165,7 @@
 - Great Expectations
 - Green Computing
 - Greenbone
+- Greenboot
 - Greenfield
 - Gremlin
 - Gremlin API
@@ -5002,9 +5206,12 @@
 - GRR
 - GRS
 - GRUB
+- GRUB2
 - GSConnect
 - GSLB
 - GSLT
+- GSSAPI
+- GStreamer
 - gsutil
 - Guacamole
 - GuardDuty
@@ -5012,6 +5219,7 @@
 - Guards
 - Guest Agent
 - Guest Configuration
+- Guest OS
 - Guest Users
 - GUI
 - GUI Applications
@@ -5022,12 +5230,16 @@
 - Gzip
 - H3
 - HA
+- HA Cluster
 - HA VPN
+- hacluster
 - Hadolint
 - Hadoop
 - Hairpin
 - HAL
 - Half-Open Connections
+- HANA
+- HANA System Replication
 - HandBrake
 - Handlers
 - Hands-On Labs
@@ -5040,6 +5252,7 @@
 - Hard-Mandatory
 - Hardening
 - Hardware
+- Hardware Acceleration
 - Hardware Access
 - Hardware Diagnostics
 - Hardware Monitoring
@@ -5047,6 +5260,7 @@
 - Hardware Recycling
 - Hardware Security
 - Hardware Security Module
+- Hardware Timestamping
 - Hardware Tokens
 - Hardware Watchdog
 - Harness
@@ -5070,6 +5284,7 @@
 - Hasura
 - HATEOAS
 - haystack
+- HBAC
 - HBase
 - HBONE
 - HCL
@@ -5079,6 +5294,7 @@
 - HDFS
 - hdparm
 - Head Sampling
+- Header Backup
 - Header Matching
 - Header Propagation
 - Header Routing
@@ -5089,12 +5305,14 @@
 - Headless Chrome
 - Headless CMS
 - Headless Commerce
+- Headless Server
 - Headless Service
 - Health
 - Health Apps
 - Health Check
 - Health Check Rewriting
 - Health Checking
+- Health Checks
 - Health Dashboard
 - Health Data
 - Health Diagnostics
@@ -5162,6 +5380,7 @@
 - High-Availability
 - High-Frequency Data
 - High-Frequency Trading
+- High-Performance
 - High-Throughput
 - HighAvailability
 - Higher-Order Functions
@@ -5191,6 +5410,7 @@
 - HoloLens
 - Home Assistant
 - Home Automation
+- Home Directories
 - Home Directory
 - Home Lab
 - Home Network
@@ -5231,6 +5451,7 @@
 - Hosting
 - Hostname
 - Hostname Configuration
+- hostnamectl
 - hostNetwork
 - Hosts File
 - hostvars
@@ -5239,6 +5460,7 @@
 - Hot Reload
 - Hot Reloading
 - Hot Restart
+- Hot Spare
 - Hot Spots
 - Hot Standby
 - Hot Storage
@@ -5261,6 +5483,7 @@
 - HSTS
 - HTML
 - HTML Parsing
+- HTML Reports
 - html/template
 - htop
 - htpasswd
@@ -5270,6 +5493,7 @@
 - HTTP Abort
 - HTTP API
 - HTTP Backend
+- HTTP Benchmarking
 - HTTP Cache
 - HTTP Check
 - HTTP Client
@@ -5336,6 +5560,7 @@
 - Hybrid
 - Hybrid Architecture
 - Hybrid Cloud
+- Hybrid Cloud Console
 - Hybrid Cluster
 - Hybrid Connections
 - Hybrid Connectivity
@@ -5364,7 +5589,9 @@
 - Hystrix
 - I/O
 - I/O Optimization
+- I/O Scheduler
 - I/O Schedulers
+- I/O Wait
 - I/O-Optimized
 - i18n
 - i3
@@ -5388,6 +5615,7 @@
 - ICU
 - ID Generation
 - ID Generator
+- ID Mapping
 - IDE
 - IDE Configuration
 - IDE Integration
@@ -5414,11 +5642,13 @@
 - IDisposable
 - Idle Resources
 - Idle Timeout
+- IdM
 - IDOR
 - IdP
 - iDRAC
 - IDS
 - IDs Filter
+- ifcfg
 - ifconfig
 - IGMP
 - IgnoreDifferences
@@ -5431,6 +5661,7 @@
 - ILB
 - ILM
 - iLO
+- IMA
 - Image Allow Lists
 - Image Analysis
 - Image Automation
@@ -5484,6 +5715,7 @@
 - Immutable Configuration
 - Immutable Infrastructure
 - Immutable OS
+- Immutable Rules
 - Immutable Storage
 - Immutable Vault
 - Impact
@@ -5540,6 +5772,7 @@
 - Incremental
 - Incremental Apply
 - Incremental Backup
+- Incremental Backups
 - Incremental Deployment
 - Incremental Ingestion
 - Incremental Load
@@ -5571,9 +5804,11 @@
 - Indexing
 - IndexOutOfRangeException
 - Indicators of Compromise
+- Indirect Maps
 - Indoor Maps
 - Indoor Positioning
 - Industrial Automation
+- Industrial IoT
 - Industrial Monitoring
 - Industrial Networks
 - Industrial Security
@@ -5633,6 +5868,7 @@
 - Init System
 - Initialization
 - Initializer
+- Initiator
 - initramfs
 - Inject
 - Injection
@@ -5679,6 +5915,7 @@
 - Instant
 - Instant Restore
 - Instruction Tuning
+- InstructLab
 - Instrument Types
 - Instrumentation
 - Instrumentation Coverage
@@ -5737,6 +5974,7 @@
 - Interoperability
 - Interpretability
 - Interpreter
+- Interrupt Coalescing
 - Interrupts
 - Intersection Types
 - Interval
@@ -5789,6 +6027,7 @@
 - IoT TwinMaker
 - IoT Visualization
 - iota
+- iotop
 - IP
 - IP Address
 - IP Address Management
@@ -5806,6 +6045,7 @@
 - IP Groups
 - IP Management
 - IP Monitoring
+- ip netns
 - IP Planning
 - IP Pools
 - IP Ranges
@@ -5822,7 +6062,10 @@
 - IPFamilyPolicy
 - IPFIX
 - IPFS
+- IPIP
 - IPMI
+- IPoIB
+- IPP
 - IPP Everywhere
 - iproute2
 - IPS
@@ -5847,8 +6090,11 @@
 - ISMS
 - ISO
 - ISO 27001
+- ISO Repository
+- Isolated Network
 - Isolated Worker
 - Isolation
+- isolcpus
 - ISR
 - Issues
 - Istanbul
@@ -5900,6 +6146,7 @@
 - JCasC
 - JDBC
 - JDK
+- JDK 17
 - Jellyfin
 - Jenkins
 - Jenkins X
@@ -6042,9 +6289,13 @@
 - Kerberos
 - Kernel
 - Kernel Customization
+- Kernel Debugging
+- Kernel Live Patching
 - Kernel Logs
+- Kernel Module
 - Kernel Modules
 - Kernel Monitoring
+- Kernel Panic
 - Kernel Parameters
 - Kernel Security
 - Kernel Tuning
@@ -6052,13 +6303,16 @@
 - Kestrel
 - Key Access Justifications
 - Key Design
+- Key Generation
 - Key Management
 - Key Pairs
 - Key Rotation
 - Key Salting
+- Key Slots
 - Key Value Maps
 - Key Vault
 - Key Visualizer
+- Key-Based Auth
 - Key-Value
 - Key-Value Store
 - Keybase
@@ -6068,13 +6322,18 @@
 - Keychain
 - Keycloak
 - KeyDB
+- Keyfile
+- Keyrings
 - Keys
 - Keyspace
+- Keytab
 - KeyVault
 - Keyword Fields
 - Keyword Search
 - Kiali
 - Kibana
+- Kickstart
+- Kickstart Generator
 - KICS
 - kill
 - Kind
@@ -6105,6 +6364,7 @@
 - Kops
 - Kotest
 - Kotlin
+- kpatch
 - KQL
 - KRaft
 - KrakenD
@@ -6237,10 +6497,12 @@
 - Late Events
 - Latency
 - Latency Analysis
+- Latency Benchmarking
 - Latency Monitoring
 - Latency Optimization
 - Latency Regression
 - Latency Routing
+- Latency Tuning
 - LATERAL JOIN
 - Lateral Movement
 - LaTeX
@@ -6273,6 +6535,7 @@
 - Leadership
 - Leaky Bucket
 - Leap
+- Leapp
 - Learning
 - Learning Analytics
 - Learning Management System
@@ -6294,6 +6557,7 @@
 - Legacy Migration
 - Legacy Modernization
 - Legacy Network
+- LEGACY Policy
 - Legacy Systems
 - Legal Hold
 - Legal Tech
@@ -6317,6 +6581,7 @@
 - LibreNMS
 - LibreOffice
 - LibreSpeed
+- Libreswan
 - libvirt
 - License
 - License Management
@@ -6378,6 +6643,7 @@
 - Linux Optimization
 - Linux Security
 - Linux tc
+- linuxptp
 - Liqo
 - Liquibase
 - LIS
@@ -6398,6 +6664,7 @@
 - Live Metrics
 - Live Migration
 - Live Monitoring
+- Live Patching
 - Live Restore
 - Live Stream API
 - Live Streaming
@@ -6422,9 +6689,11 @@
 - LLM Serving
 - LLM-as-Judge
 - LLMOps
+- lm_sensors
 - lm-sensors
 - LMDB
 - LMS
+- LMTP
 - LNP
 - Load Balancer
 - Load Balancing
@@ -6458,6 +6727,7 @@
 - Local Provider
 - Local PV
 - Local Rate Limit
+- Local Repository
 - Local Secondary Index
 - Local Setup
 - Local SSD
@@ -6555,6 +6825,7 @@
 - Logical Operators
 - Logical Replication
 - Login
+- login.defs
 - logind
 - Logistics
 - LogQL
@@ -6591,6 +6862,7 @@
 - loop_control
 - Loops
 - LoRaWAN
+- Lorax
 - Low Bandwidth
 - Low Latency
 - Low Power
@@ -6604,6 +6876,7 @@
 - Loyalty Program
 - LPUSH
 - LRU
+- lsblk
 - lshw
 - LSI
 - lsof
@@ -6614,9 +6887,14 @@
 - Lua Scripts
 - Lucene
 - LUKS
+- LUKS1
 - LUKS2
+- LUN
+- LUN Resize
 - Lustre
+- LV
 - LVM
+- lvmcache
 - LXC
 - LXD
 - lxml
@@ -6647,11 +6925,15 @@
 - Macros
 - MACsec
 - Macvlan
+- macvtap
 - Maestro
 - Magento
 - Magic Link
 - Maglev
+- Mail
 - Mail Filtering
+- Mail Queue
+- Mail Relay
 - Mail Server
 - Mailcow
 - Mailgun
@@ -6686,6 +6968,7 @@
 - Managed Kafka
 - Managed Lustre
 - Managed Microsoft AD
+- Managed Node
 - Managed Prometheus
 - Managed Rules
 - Managed Service
@@ -6712,6 +6995,7 @@
 - MapReduce
 - Maps
 - MapStruct
+- mariabackup
 - MariaDB
 - Mariner
 - Markdown
@@ -6723,6 +7007,7 @@
 - Marshaling
 - Marten
 - Masking
+- Masquerading
 - Mass Assignment
 - Mass Insert
 - MassTransit
@@ -6756,6 +7041,7 @@
 - max.poll.records
 - MaxScale
 - Mayastor
+- MBR
 - MCP
 - MCS API
 - MD5
@@ -6763,6 +7049,7 @@
 - mDNS
 - MEAN
 - MEAN Stack
+- Measured Boot
 - Medallion Architecture
 - Media
 - Media Asset Management
@@ -6797,6 +7084,7 @@
 - Memory
 - Memory Analysis
 - Memory Ballast
+- Memory Bandwidth
 - Memory Bank
 - Memory Cache
 - Memory Consolidation
@@ -6937,6 +7225,7 @@
 - Microservice Extractor
 - Microservices
 - Microservices Security
+- MicroShift
 - Microsoft
 - Microsoft 365
 - Microsoft Azure
@@ -6961,6 +7250,8 @@
 - Migration
 - Migration Failures
 - Migration Hub
+- Migration Strategy
+- Milters
 - Milvus
 - MIME Types
 - Mimir
@@ -6972,9 +7263,11 @@
 - Minimal
 - Minimal API
 - Minimal Images
+- Minimal Install
 - Minimal Profile
 - MinIO
 - minmax
+- Minor Update
 - Mirantis
 - Mirror
 - Mirrord
@@ -7030,6 +7323,7 @@
 - Mocking
 - Mockito
 - mod_pagespeed
+- mod_proxy
 - mod_rewrite
 - mod_wsgi
 - Modal
@@ -7066,6 +7360,8 @@
 - Modern Swift
 - Modern Web
 - Modernization
+- Modes
+- modprobe
 - ModSecurity
 - Modular Deployment
 - Modular Design
@@ -7080,6 +7376,7 @@
 - Module Registry
 - Module Resolution
 - Module Sharing
+- Module Streams
 - Module Types
 - Module Utilities
 - Module Versioning
@@ -7088,6 +7385,7 @@
 - Molecule
 - Moleculer
 - Moltbot
+- MON
 - Monetization
 - Mongo Express
 - MongoDB
@@ -7113,6 +7411,8 @@
 - Motor
 - Mount
 - Mount Errors
+- Mount Options
+- Mount Units
 - Mounting
 - Move Semantics
 - MOVED
@@ -7121,7 +7421,9 @@
 - MPI
 - MPIO
 - MPLS
+- MPM
 - MPP
+- MPTCP
 - MQL
 - MQTT
 - MSAL.js
@@ -7148,6 +7450,7 @@
 - Multi-AZ
 - Multi-Backend
 - Multi-Burn-Rate
+- Multi-Channel
 - Multi-Chart Deployment
 - Multi-Cloud
 - Multi-Cloud Networking
@@ -7188,6 +7491,7 @@
 - Multi-Node
 - Multi-OS
 - Multi-Page Documents
+- Multi-Path
 - Multi-Platform
 - Multi-Platform Builds
 - Multi-Platform Testing
@@ -7225,6 +7529,7 @@
 - Multi-Turn Dialogs
 - Multi-User
 - Multi-Vendor
+- Multi-Version
 - Multi-Workspace
 - Multi-Zone
 - Multi-Zone Replication
@@ -7240,16 +7545,21 @@
 - Multipart Forms
 - Multipass
 - Multipath
+- multipath.conf
+- Multipathing
 - Multiplatform
 - Multiplayer
 - Multiplayer Gaming
 - Multiple Accounts
 - Multiple Data Sources
+- Multiple Domains
 - Multiple Environments
 - Multiple Gateways
 - Multiple Hosts
+- Multiple IPs
 - Multiple Monitors
 - Multiple Providers
+- Multiple Versions
 - Multiplexing
 - Multiprocessing
 - MultiSite
@@ -7271,6 +7581,7 @@
 - Mute Rules
 - Mutex
 - Muting Rules
+- Mutt
 - Mutual Authentication
 - Mutual TLS
 - MVC
@@ -7287,6 +7598,7 @@
 - MySQL Protocol
 - MySQL Router
 - mysqlbinlog
+- mysqldump
 - N+1
 - N+1 Problem
 - N+1 Queries
@@ -7331,6 +7643,8 @@
 - Navigation
 - Navigation Guards
 - NB-IoT
+- NBDE
+- NCPA
 - NCPDP SCRIPT
 - NDP
 - Nearby Search
@@ -7343,6 +7657,7 @@
 - NER
 - Nessus
 - NEST
+- Nested
 - Nested Blocks
 - Nested Data
 - Nested Deployments
@@ -7357,6 +7672,7 @@
 - Nested Virtualization
 - Nesting
 - NestJS
+- Net-SNMP
 - net/http
 - NetApp
 - NetApp Files
@@ -7374,6 +7690,7 @@
 - Netperf
 - Netplan
 - netstat
+- NetWeaver
 - Network
 - Network ACLs
 - Network Administration
@@ -7382,6 +7699,7 @@
 - Network Analyzer
 - Network Architecture
 - Network Audit
+- Network Authentication
 - Network Automation
 - Network Backup
 - Network Bandwidth
@@ -7389,6 +7707,7 @@
 - Network Boot
 - Network Bridge
 - Network Configuration
+- Network Connections
 - Network Connectivity Center
 - Network Costs
 - Network Debugging
@@ -7407,10 +7726,12 @@
 - Network Forensics
 - Network Functions
 - Network Insights
+- Network Installation
 - Network Intelligence
 - Network Intelligence Center
 - Network Interception
 - Network Interface
+- Network Interfaces
 - Network Isolation
 - Network Issues
 - Network Latency
@@ -7430,6 +7751,7 @@
 - Network Plugins
 - Network Policies
 - Network Policy
+- Network Printer
 - Network Redundancy
 - Network Resilience
 - Network Routes
@@ -7438,15 +7760,19 @@
 - Network Security
 - Network Security Group
 - Network Segmentation
+- Network Server
+- Network Simulation
 - Network Slicing
 - Network Statistics
 - Network Storage
 - Network Tags
+- Network Teaming
 - Network Testing
 - Network Tiers
 - Network Tools
 - Network Topology
 - Network Troubleshooting
+- Network Tuning
 - Network Watcher
 - networkctl
 - Networking
@@ -7471,6 +7797,7 @@
 - Nexus
 - Nexus Repository
 - NFS
+- nfsstat
 - nftables
 - NGINX
 - NGINX Ingress
@@ -7480,12 +7807,14 @@
 - ngrambf_v1
 - ngx_otel_module
 - NIC
+- nice
 - NICE DCV
 - NIDS
 - Nikto
 - Nil Pointer
 - Nim
 - NIST
+- NIST 800-53
 - nitro
 - Nitro Enclaves
 - Nix
@@ -7498,10 +7827,14 @@
 - NLU
 - nmap
 - nmcli
+- Nmstate
+- nmstatectl
+- nmtui
 - No Reboot
 - no_log
 - no-advertise
 - No-Code
+- noatime
 - Nocalhost
 - Nocloud
 - NocoDB
@@ -7604,12 +7937,14 @@
 - npm
 - NRDOT
 - NRI
+- NRPE
 - NSA
 - NSEC
 - NSEC3
 - NServiceBus
 - NSG
 - NSG Flow Logs
+- nslookup
 - NSM
 - nspawn
 - NSQ
@@ -7620,12 +7955,15 @@
 - ntfy
 - ntopng
 - NTP
+- NTP Server
+- ntpd
 - NTS
 - Nuclei
 - Nuclio
 - NuGet
 - Null
 - Null Checks
+- Null Client
 - Null Provider
 - Null Resource
 - Null Safety
@@ -7634,6 +7972,7 @@
 - NullPointerException
 - NullReferenceException
 - NUMA
+- numastat
 - Number Matching
 - Number Portability
 - Numeric Functions
@@ -7650,6 +7989,7 @@
 - NVLink
 - NVM
 - NVMe
+- NVMe-oF
 - NVMeoF
 - NWDAF
 - Nx
@@ -7703,6 +8043,7 @@
 - Office 365
 - Office Documents
 - Offline
+- Offline Access
 - Offline Installation
 - Offline Mode
 - Offline Persistence
@@ -7739,6 +8080,7 @@
 - OneLogin
 - OneUptime
 - OnionShare
+- Online Encryption
 - Online Learning
 - Online Migration
 - Online Offline
@@ -7759,6 +8101,7 @@
 - OPA Gatekeeper
 - OpAMP
 - OPC UA
+- OPcache
 - Open Banking
 - Open Cluster Management
 - open container initiative
@@ -7769,6 +8112,7 @@
 - Open Source
 - Open Source Networking
 - Open Source Security
+- Open VM Tools
 - Open vSwitch
 - open webui
 - open-iscsi
@@ -7862,6 +8206,7 @@
 - Organization Security
 - Organization Settings
 - Organizational Design
+- Organizations
 - Origin Authentication
 - Origin Groups
 - Origin Shielding
@@ -7875,6 +8220,10 @@
 - OS Login
 - OS Patch Management
 - OS Updates
+- osbuild
+- oscap
+- oscap-ssh
+- OSD
 - OSDs
 - OSPF
 - OSProvisioning
@@ -7922,6 +8271,7 @@
 - Output Formatters
 - Output Formatting
 - Output Redirection
+- Outputs
 - OvenMediaEngine
 - OVER
 - Overcommitment
@@ -7929,6 +8279,7 @@
 - Overlap
 - Overlay
 - Overlay Network
+- Overlay Networks
 - Overlay2
 - Overprivileged
 - Overprovisioning
@@ -7938,6 +8289,7 @@
 - OVH
 - OVHcloud
 - OVMF
+- OVS
 - OWASP
 - OWASP ZAP
 - Owner References
@@ -7952,16 +8304,23 @@
 - PaaS Security
 - Pacemaker
 - Package
+- Package Building
 - Package Caching
 - Package Configuration
+- Package Downgrade
+- Package Groups
+- Package Integrity
 - Package Management
 - Package Manager
 - Package Pinning
 - Package Registry
 - Package Repository
+- Package Signing
+- Package Verification
 - package.json
 - PackageManagement
 - PackageManager
+- Packages
 - Packaging
 - Packer
 - Packet Analysis
@@ -7971,6 +8330,7 @@
 - Packet Loss
 - Packet Mirroring
 - Packet Processing
+- Packet Steering
 - Packets
 - Pacman
 - PACS
@@ -7991,6 +8351,9 @@
 - Palo Alto
 - Palworld
 - PAM
+- pam_faillock
+- pam_pwhistory
+- pam_pwquality
 - Pandas
 - Pandoc
 - Panel
@@ -8026,6 +8389,7 @@
 - Parametric Functions
 - Parametrize
 - Paramiko
+- Paravirtual
 - Parcel Sorting
 - Parent Pipelines
 - Parent-Based Sampling
@@ -8042,6 +8406,8 @@
 - Partial Search
 - Partial Updates
 - PartiQL
+- Partition
+- Partition Alignment
 - Partition Assignment
 - PARTITION BY
 - Partition Hotspots
@@ -8060,6 +8426,8 @@
 - Passkeys
 - Passport
 - Passthrough
+- Password
+- Password Aging
 - Password Auditing
 - Password Hash Sync
 - Password Hashing
@@ -8067,6 +8435,7 @@
 - Password Manager
 - Password Policy
 - Password Reset
+- Password Reuse
 - Password Rotation
 - password-manager
 - Passwordless
@@ -8090,6 +8459,7 @@
 - Path Routing
 - Path Traversal
 - Path Triggers
+- Path Units
 - Path-Based
 - Path-Based Routing
 - pathlib
@@ -8117,6 +8487,7 @@
 - PCI DSS
 - PCI Passthrough
 - PCI-DSS
+- PCP
 - pcs
 - PDB
 - PDF
@@ -8127,6 +8498,7 @@
 - PDFKit
 - PDTs
 - Peak Load
+- PECL
 - Peek Messages
 - peer-to-peer
 - PeerAuthentication
@@ -8170,21 +8542,29 @@
 - Performance Testing
 - Performance Tuning
 - Performance Validation
+- perftest
 - Periodic Tasks
 - Perl
+- Permanent
 - Permission Boundaries
 - Permission Denied
 - Permissions
 - Permissions Boundaries
 - Permissive Mode
 - Persistence
+- Persistent
 - Persistent Connections
 - Persistent Data
 - Persistent Derived Tables
 - Persistent Disk
+- Persistent Logging
+- Persistent Messaging
+- Persistent Naming
 - Persistent Queue
+- Persistent Sessions
 - Persistent Storage
 - Persistent Volume
+- Persistent Volumes
 - PersistentVolume
 - PersistentVolumeClaim
 - Personal Access Tokens
@@ -8194,6 +8574,7 @@
 - Pet Names
 - PF_RING
 - pfexec
+- pg_basebackup
 - pg_cron
 - pg_dump
 - pg_hba.conf
@@ -8204,12 +8585,15 @@
 - pg_restore
 - pg_stat_statements
 - pg_trgm
+- pg_upgrade
 - PGAdapter
 - pgAdmin
 - pgAudit
 - pgBackRest
 - pgBadger
+- pgbench
 - PgBouncer
+- pgloader
 - PGO
 - Pgpool-II
 - pgvector
@@ -8224,6 +8608,7 @@
 - Phone Number Search
 - Phone Numbers
 - Phoronix
+- Phoronix Test Suite
 - Photo Management
 - Photon OS
 - photoprism
@@ -8286,6 +8671,7 @@
 - Pipeline Troubleshooting
 - Pipeline Validation
 - PipelineRuns
+- Pipelines
 - Pipelining
 - Pipenv
 - Pipes
@@ -8348,6 +8734,7 @@
 - Plugin Framework
 - Plugin SDK
 - Plugin System
+- Plugins
 - PM2
 - pnpm
 - POD
@@ -8386,7 +8773,9 @@
 - PodDisruptionBudget
 - Podman
 - Podman Compose
+- Podman Desktop
 - PodMonitor
+- Pods
 - PodSecurityPolicy
 - Poetry
 - Point In Time
@@ -8441,6 +8830,7 @@
 - Pool Configuration
 - Pool Management
 - Pools
+- POP3
 - Populate
 - Population Health
 - Port
@@ -8459,9 +8849,11 @@
 - Port Monitoring
 - Port Naming
 - Port Scanning
+- Port Types
 - Port-Level Settings
 - Portability
 - Portable
+- Portable Services
 - Portage
 - Portainer
 - Portal
@@ -8475,6 +8867,7 @@
 - Post-Deployment
 - Post-Deployment Verification
 - Post-Install
+- Post-Installation
 - Post-Mortem
 - Post-Processing
 - Post-Tasks
@@ -8515,6 +8908,7 @@
 - Pre-Deployment Validation
 - Pre-Filtering
 - Pre-Flight Checks
+- Pre-Hardened Images
 - Pre-Kubernetes
 - Pre-Processing
 - Pre-Pull
@@ -8583,6 +8977,7 @@
 - Privacy
 - Private
 - Private 5G
+- Private Automation Hub
 - Private CA
 - Private Cloud
 - Private Cluster
@@ -8617,9 +9012,11 @@
 - Privilege Management
 - Privileged Access
 - Privileged Access Manager
+- Privileged Commands
 - Privileged Containers
 - Privileged Identity Management
 - Privileged Mode
+- Privileged Users
 - Privileges
 - Proactive
 - Proactive Monitoring
@@ -8631,13 +9028,17 @@
 - Probability Sampling
 - Probe
 - Probing
+- proc
 - Proc Filesystem
 - Proc Mount
 - proc-macro
 - Process
+- Process Affinity
 - Process Customization
 - Process Isolation
+- Process Limits
 - Process Management
+- Process Manager
 - Process Metrics
 - Process Monitoring
 - Process Substitution
@@ -8646,6 +9047,7 @@
 - ProcessFunction
 - Processing
 - Processor
+- Processor Pinning
 - Procfile
 - Proctoring
 - Procurement
@@ -8691,6 +9093,7 @@
 - Progressive Web App
 - Project Loom
 - Project Management
+- Project Quotas
 - Project Reactor
 - Project References
 - Project Setup
@@ -8798,6 +9201,7 @@
 - Public Endpoint
 - Public Images
 - Public IP
+- Public Key
 - Publisher Confirms
 - Publishers
 - Publishing
@@ -8835,8 +9239,10 @@
 - Pusher
 - Pushgateway
 - Pushover
+- PV
 - PVC
 - pvmove
+- PVSCSI
 - PWA
 - PXE
 - PXE Boot
@@ -8865,6 +9271,7 @@
 - Q&A System
 - QA
 - qBittorrent
+- QCOW2
 - Qdrant
 - QEMU
 - QLDB
@@ -8872,6 +9279,7 @@
 - QnA Maker
 - QoS
 - QoS Classes
+- Quadlet
 - Quality
 - Quality Assurance
 - Quality Control
@@ -8941,6 +9349,7 @@
 - Quorum Queues
 - Quota
 - Quota Management
+- Quotas
 - Quoting
 - qwik
 - qwik city
@@ -8958,10 +9367,17 @@
 - Raft
 - RAG
 - RAID
+- RAID 0
+- RAID 1
+- RAID 10
+- RAID 5
+- RAID 6
 - RAII
 - Rails
 - Railway
 - RAM
+- RAM Disk
+- ramfs
 - RAN
 - Rancher
 - Rancher Desktop
@@ -9015,6 +9431,7 @@
 - RDS Custom
 - RDS Proxy
 - Re-Authentication
+- Re-encryption
 - Re-Ranking
 - Reachability Analyzer
 - React
@@ -9036,6 +9453,7 @@
 - Read Preferences
 - Read Replicas
 - Read Scaling
+- Read-Ahead
 - Read-Only
 - Read-Only Variables
 - Read-Through
@@ -9057,6 +9475,7 @@
 - Real-Time Communication
 - Real-Time Dashboards
 - Real-Time Data
+- Real-Time Kernel
 - Real-Time Messaging
 - Real-Time ML
 - Real-Time Monitoring
@@ -9069,9 +9488,11 @@
 - Real-Time Updates
 - Real-Time Weather
 - Real-User Monitoring
+- realmd
 - Realtime Database
 - Reanimated
 - Reaper
+- ReaR
 - Reasoning
 - ReBAC
 - RebalanceInProgressException
@@ -9106,12 +9527,16 @@
 - Recursive CTE
 - Recursive Resolver
 - Red Hat
+- Red Hat Insights
+- Red Hat Satellite
+- Red Hat Support
 - RED Method
 - RED Metrics
 - Red Status
 - Red Team
 - Redaction
 - Redaction Processor
+- Redash
 - Redeployment
 - Redirect
 - Redirection
@@ -9166,6 +9591,7 @@
 - Registered Variables
 - Registrar
 - Registration
+- Registries
 - Registry
 - Registry Mirror
 - REGISTRY_ONLY
@@ -9208,6 +9634,7 @@
 - Reliable Messaging
 - Reloader
 - Remediation
+- Remi
 - Remix
 - Remote
 - Remote Access
@@ -9216,6 +9643,7 @@
 - Remote Apps
 - Remote Automation
 - Remote Backend
+- Remote Backup
 - Remote Builds
 - Remote Commands
 - Remote Config
@@ -9227,12 +9655,15 @@
 - Remote Functions
 - Remote Graphics
 - Remote Hosts
+- Remote Logging
 - Remote Management
+- Remote Monitoring
 - Remote Operations
 - Remote Patient Monitoring
 - Remote Rendering
 - Remote Repository
 - Remote Sampling
+- Remote Scanning
 - Remote State
 - Remote Storage
 - Remote Tap
@@ -9247,16 +9678,19 @@
 - removed Block
 - Renaming
 - Rendering
+- renice
 - Renovate
 - REPL
 - replace Function
 - ReplacingMergeTree
 - Replatform
 - Replay
+- Replica
 - Replica Placement
 - Replica Set
 - Replicas
 - Replicated Storage
+- Replicated Volume
 - Replication
 - Replication Lag
 - Replication Policy
@@ -9268,6 +9702,7 @@
 - Repositories
 - Repository
 - Repository Dispatch
+- Repository Errors
 - Repository Management
 - Repository Manager
 - Repository Pattern
@@ -9315,11 +9750,14 @@
 - Requirements
 - reqwest
 - Rescue
+- Rescue Image
+- Rescue Mode
 - Reservations
 - Reserved Capacity
 - Reserved Concurrency
 - Reserved Instances
 - Reset
+- Reshape
 - Resharding
 - Resilience
 - Resilience Hub
@@ -9327,6 +9765,7 @@
 - Resilience Testing
 - Resilience4j
 - Resiliency
+- Resize
 - Resolution
 - resolv.conf
 - resolve
@@ -9399,6 +9838,7 @@
 - Resource Utilization
 - Resource-Management
 - ResourceQuota
+- Resources
 - ResourceVersion
 - Response
 - Response Aggregation
@@ -9422,6 +9862,7 @@
 - restic
 - Restoration
 - Restore
+- restorecon
 - RestTemplate
 - Result
 - Result Set Caching
@@ -9489,8 +9930,14 @@
 - RFC5424
 - RFC6902
 - RFC7662
+- RFS
 - RGW
+- RHCE
+- RHCSA
 - RHEL
+- RHEL 10
+- RHEL AI
+- Rich Rules
 - Ride-Sharing
 - Right to Erasure
 - Right-Sizing
@@ -9506,6 +9953,7 @@
 - rkhunter
 - RLS
 - Roadmap
+- RoCE
 - Rock Pi
 - Rocket
 - Rocket.Chat
@@ -9523,6 +9971,7 @@
 - Rolling Reboots
 - Rolling Release
 - Rolling Update
+- Rolling Updates
 - Rolling Upgrade
 - Rolling Window
 - Rollout
@@ -9536,6 +9985,7 @@
 - Root CA
 - Root Cause Analysis
 - Root Detection
+- Root Password
 - Root Security
 - Rootkit
 - Rootkit Detection
@@ -9560,6 +10010,7 @@
 - Route53
 - Router
 - Router Advertisement
+- Router Advertisements
 - Router Operator
 - Routes
 - Routing
@@ -9569,6 +10020,7 @@
 - Routing Policies
 - Routing Precedence
 - Routing Rules
+- Routing Tables
 - Row Filtering
 - Row Keys
 - ROW_NUMBER
@@ -9576,8 +10028,12 @@
 - rp_filter
 - RPC
 - RPM
+- rpm-ostree
+- rpmbuild
 - RPO
 - RPOP
+- RPS
+- RRDtool
 - RSA
 - RSC
 - rsnapshot
@@ -9595,6 +10051,7 @@
 - Ruby
 - Ruby on Rails
 - Rule Management
+- Rule Priorities
 - Rules
 - Rules Engine
 - RUM
@@ -9613,10 +10070,13 @@
 - Runbook Automation
 - runc
 - Rundeck
+- Runlevels
+- Runner
 - Runners
 - Running Totals
 - Runtime
 - Runtime Fields
+- Runtime Integrity
 - Runtime Management
 - Runtime Metrics
 - Runtime Monitoring
@@ -9630,6 +10090,7 @@
 - Rust Development
 - RustDesk
 - RxJS
+- S/4HANA
 - S3
 - s390x
 - s3fs
@@ -9666,23 +10127,33 @@
 - samply
 - SAN
 - Sanctum
+- Sandbox
 - Sandboxed Processor
 - Sandboxing
 - Sangria
 - Sanitization
 - Sanity Tests
 - SAP
+- SAP BI
+- SAP Business One
+- SAP BusinessObjects
 - SAP HANA
+- SAP NetWeaver
+- SAP Router
+- SAP S/4HANA
+- sar
 - SAS
 - SAS Tokens
 - SASI
 - SASL
 - SAST
 - Satellite
+- Satellite Server
 - Satisfactory
 - Saturation
 - Savepoints
 - Savings Plans
+- SBD
 - SBOM
 - sbt
 - sbuild
@@ -9707,6 +10178,8 @@
 - SCAN
 - Scanning
 - SCAP
+- SCAP Workbench
+- scap-security-guide
 - SCC
 - SCD
 - Scenarios
@@ -9722,6 +10195,7 @@
 - Scheduled Tasks
 - Scheduled Workflows
 - Scheduler
+- Schedulers
 - Scheduling
 - Scheduling Gates
 - Scheduling Metrics
@@ -9784,6 +10258,7 @@
 - Scrum
 - SCSS
 - SCT
+- SCTP
 - ScyllaDB
 - SD-WAN
 - SDK
@@ -9798,6 +10273,7 @@
 - Seal Wrap
 - Sealed Classes
 - Sealed Secrets
+- sealert
 - SeaORM
 - Search
 - Search After
@@ -9833,6 +10309,7 @@
 - Secret Synchronization
 - Secret Versioning
 - SecretDelivery
+- Secrets
 - Secrets Detection
 - Secrets Encryption
 - Secrets Management
@@ -9888,6 +10365,7 @@
 - Security Standards
 - Security Testing
 - security tools
+- Security Updates
 - securityContext
 - sed
 - Seedbox
@@ -9918,6 +10396,7 @@
 - Self-Monitoring
 - Self-Service
 - Self-Service Sign-Up
+- Self-Signed
 - Self-Signed Certificates
 - SELinux
 - Semantic Caching
@@ -9945,6 +10424,7 @@
 - Sentry
 - SEO
 - SEPA
+- sepolicy
 - Sequelize
 - sequenceCount
 - sequenceMatch
@@ -10029,6 +10509,7 @@
 - Service Logs
 - Service Management
 - Service Map
+- Service Masking
 - Service Maturity
 - Service Mesh
 - Service Mesh Federation
@@ -10076,6 +10557,7 @@
 - ServiceMonitor
 - ServiceNow
 - ServiceNow Cloud Observability
+- Services
 - SES
 - Session Affinity
 - Session Analysis
@@ -10088,6 +10570,7 @@
 - Session Manager
 - Session Monitoring
 - Session Persistence
+- Session Recording
 - Session Replay
 - Session Storage
 - Session Store
@@ -10102,6 +10585,8 @@
 - set_fact
 - set_stats
 - SETBIT
+- setfacl
+- Sets
 - Settings Management
 - Setup
 - Severity
@@ -10109,6 +10594,8 @@
 - Severity Levels
 - sFlow
 - SFTP
+- SGID
+- SHA-1
 - SHA-256
 - SHA1
 - SHA256
@@ -10125,6 +10612,7 @@
 - ShardingSphere
 - Shards
 - Shareable Link
+- Shared Access
 - Shared Access Signatures
 - Shared Channels
 - Shared Configuration
@@ -10216,6 +10704,7 @@
 - Silent Push
 - Similarity Metrics
 - Similarity Search
+- Simple Content Access
 - Simulation
 - Sinatra
 - Single Active Consumer
@@ -10280,8 +10769,10 @@
 - Slowly Changing Dimensions
 - SLSA
 - Slurm
+- Small Business
 - Small Teams
 - SmallRye
+- SMART
 - Smart Buildings
 - Smart Card
 - Smart Contracts
@@ -10292,6 +10783,7 @@
 - SMART on FHIR
 - Smart Pointers
 - smart-home
+- smartctl
 - SMB
 - SMI
 - Smoke Testing
@@ -10307,11 +10799,14 @@
 - Snapshot
 - Snapshot Debugger
 - Snapshot Testing
+- Snapshots
 - SnapStart
 - SNAT
 - SNI
 - SNI Passthrough
 - SNMP
+- snmptrapd
+- SNMPv3
 - snmpwalk
 - Snort
 - Snowball
@@ -10331,6 +10826,7 @@
 - Social Media
 - Social Networks
 - Socket Activation
+- Socket Parameters
 - Socket.IO
 - Sockets
 - SOCKS Proxy
@@ -10340,6 +10836,7 @@
 - SoftEther
 - Software Architecture
 - software bill of materials
+- Software Collections
 - Software Delivery Shield
 - Software Design
 - Software Development
@@ -10367,6 +10864,7 @@
 - Sort Keys
 - Sorted Sets
 - Sorting
+- sosreport
 - Sound
 - Sound Server
 - Source Address
@@ -10464,6 +10962,7 @@
 - Split DNS
 - split Function
 - Split Tunneling
+- Split-Brain
 - Split-Horizon
 - Split-Horizon DNS
 - Splunk
@@ -10542,10 +11041,14 @@
 - SSH Config
 - SSH Deploy Keys
 - SSH Key
+- SSH Keys
 - SSH Tunneling
+- sshd
 - SSHFP
+- SSHFS
 - sshpass
 - SSL
+- SSL Bump
 - SSL Certificate
 - SSL Decryption
 - SSL Monitoring
@@ -10643,6 +11146,7 @@
 - Static Generation
 - Static Imports
 - Static IP
+- Static Leases
 - Static Linking
 - Static Passphrase
 - Static Pods
@@ -10672,6 +11176,8 @@
 - Step Functions
 - Step Mode
 - Step-Up Authentication
+- Stick Tables
+- Sticky Bit
 - Sticky Sessions
 - STIG
 - Stimulus
@@ -10712,9 +11218,11 @@
 - Storage Operator
 - Storage Optimization
 - Storage Performance
+- Storage Planning
 - Storage Provisioner
 - Storage Queues
 - Storage Read API
+- Storage Recovery
 - Storage Replication
 - Storage Security
 - Storage Tiers
@@ -10738,6 +11246,7 @@
 - Strategy Recommendations
 - Stratis
 - Strawberry
+- STREAM
 - Stream Analytics
 - Stream Joins
 - Stream Metrics
@@ -10774,6 +11283,7 @@
 - String Sanitization
 - String Types
 - Stripe
+- Striping
 - strongSwan
 - Struct
 - Struct Tags
@@ -10798,6 +11308,7 @@
 - Subcharts
 - Subcollections
 - subelements
+- Subgid
 - Subiquity
 - Submariner
 - Submodules
@@ -10817,18 +11328,25 @@
 - Subscription Filters
 - Subscription Limits
 - Subscription Management
+- Subscription Manager
 - Subscription Security
+- Subscription Transfer
+- subscription-manager
+- Subscriptions
 - Subset Pattern
 - Subsets
 - Subshells
 - Substitution Variables
 - Subtitles
+- Subuid
 - Subversion
 - Subworkflows
 - Success Rate
 - sudo
+- sudoers.d
 - Suggester
 - Suggestions
+- SUID
 - Sum Connector
 - Summaries
 - Summary
@@ -10861,14 +11379,19 @@
 - Sustainability
 - Svelte
 - SvelteKit
+- sVirt
 - SVN
 - Swagger
 - SWAP
 - Swap Deployment
+- Swap Encryption
+- Swap File
+- swappiness
 - Swarm
 - Swashbuckle
 - Swift
 - SwiftUI
+- SWIG
 - Switch Configuration
 - SWR
 - Syft
@@ -10923,6 +11446,7 @@
 - System Commands
 - System Configuration
 - System Design
+- System Diagnostics
 - System Extensions
 - System Hardening
 - System Image
@@ -10933,18 +11457,26 @@
 - System Migration
 - System Monitoring
 - System Packages
+- System Purpose
 - System Recovery
 - System Reliability
+- System Replication
 - System Requirements
+- System Resources
 - System Restore
+- System Roles
 - System Services
+- System Settings
 - System State
 - System Tables
+- System Testing
 - System Topics
 - System Troubleshooting
 - System Tuning
+- System Update
 - System Updates
 - System Upgrade Controller
+- System-Wide
 - System.Diagnostics
 - System.IO.Pipelines
 - System.Text.Json
@@ -10952,6 +11484,7 @@
 - systemctl
 - systemd
 - Systemd Logs
+- systemd Timers
 - systemd-boot
 - systemd-homed
 - systemd-networkd
@@ -10959,6 +11492,7 @@
 - systemd-resolved
 - systemd-run
 - systemd-timesyncd
+- Systems Management
 - Systems Manager
 - Systems Programming
 - SystemTap
@@ -11000,6 +11534,7 @@
 - Talos Linux
 - talosconfig
 - talosctl
+- Tamper Resistance
 - Tamper-Proof
 - Tang
 - TanStack Query
@@ -11011,6 +11546,7 @@
 - Target Groups
 - Target Servers
 - Target Tracking
+- targetcli
 - Targeted Operations
 - Targeting
 - Targets
@@ -11041,10 +11577,13 @@
 - Tax Calculation
 - TAXII
 - tc
+- tc htb
+- tc netem
 - TCO
 - TCP
 - TCP Connections
 - TCP Forwarding
+- TCP Keepalive
 - TCP Metrics
 - TCP Monitoring
 - TCP Probes
@@ -11121,6 +11660,7 @@
 - Template Specs
 - Template Variables
 - templatefile
+- Templates
 - Templating
 - Tempo
 - Temporal
@@ -11244,14 +11784,17 @@
 - Themes
 - thin pool
 - Thin Provisioning
+- Thin Snapshots
 - Thing Shadows
 - Thinking Mode
 - Third-Party
 - Third-Party APIs
+- Third-Party Repositories
 - thiserror
 - Thread Analysis
 - Thread Contention
 - Thread Pool
+- Thread Priority
 - Thread Safety
 - Threading
 - ThreadPool
@@ -11277,10 +11820,12 @@
 - Tick Data
 - Tick Rate
 - Ticketing
+- Tickets
 - TiDB
 - Tiered Storage
 - Tiering
 - TIFF Processing
+- TigerVNC
 - Tile Layers
 - Tiling
 - Tilt
@@ -11331,6 +11876,7 @@
 - TimeoutError
 - Timer
 - Timer Trigger
+- Timers
 - TimescaleDB
 - TimeSeries
 - Timeshift
@@ -11346,6 +11892,7 @@
 - TKE
 - TKG
 - Tkinter
+- tlog
 - TLP
 - TLS
 - TLS 1.3
@@ -11435,6 +11982,7 @@
 - Toxiproxy
 - TPL Dataflow
 - TPM
+- TPM 2.0
 - TPROXY
 - TPU
 - TR-069
@@ -11456,6 +12004,7 @@
 - Traceloop
 - tracemalloc
 - traceparent
+- tracepath
 - TraceQL
 - Tracer Provider
 - traceroute
@@ -11535,6 +12084,7 @@
 - Transform Processor
 - Transformation
 - Transformers
+- Transient Units
 - Transit
 - Transit Auto-Unseal
 - Transit Engine
@@ -11548,7 +12098,9 @@
 - Translator
 - transmission
 - Transparency
+- Transparent Proxy
 - Transport Layer
+- Traps
 - Travel
 - Travel Aggregator
 - Travel Insurance
@@ -11572,10 +12124,14 @@
 - Trunk-Based Development
 - Trust
 - Trust and Safety
+- trust Command
 - Trust Domain
+- Trust Policies
 - Trust Policy
+- Trust Rules
 - Trust Services
 - Trust Services Criteria
+- Trust Store
 - trustd
 - Trusted Advisor
 - Trusted Execution
@@ -11585,12 +12141,14 @@
 - TSDB
 - tshark
 - TShock
+- TSIG
 - tsquery
 - tsvector
 - TTFB
 - TTL
 - TTL Index
 - TUI
+- tuna
 - Tuned
 - Tuning
 - Tunneling
@@ -11608,6 +12166,7 @@
 - twine
 - Twitch
 - Two-Factor Authentication
+- Two-Node Cluster
 - Two-way Binding
 - TXT Records
 - Tyk
@@ -11647,6 +12206,7 @@
 - typing
 - Typo Tolerance
 - Typography
+- UBI
 - Ubiquiti
 - Ubuntu
 - Ubuntu Core
@@ -11655,6 +12215,7 @@
 - udev
 - Udev Rules
 - UDF
+- udica
 - udisks2
 - UDM
 - UDM Search
@@ -11675,8 +12236,10 @@
 - ulimit
 - Ultra Disk
 - Umami
+- umask
 - Umbrella Charts
 - Unassigned Shards
+- Unattended Installation
 - Unauthorized
 - Unauthorized Access
 - Unbound
@@ -11702,6 +12265,7 @@
 - Unique Identifiers
 - Unique Values
 - Unique Visitors
+- Unit Files
 - Unit Testing
 - Unit Tests
 - unit-testing
@@ -11730,6 +12294,7 @@
 - Untyped Constants
 - Unused
 - Unused Resources
+- Update
 - Update API
 - Update By Query
 - Update Domains
@@ -11737,6 +12302,7 @@
 - Update Management
 - Update Strategies
 - Updates
+- UPG
 - Upgrade
 - Upgrade Compatibility
 - Upgrade Failure
@@ -11783,6 +12349,7 @@
 - Usage-Based Billing
 - USB
 - USB Boot
+- USB Security
 - USBGuard
 - Use Cases
 - USE Method
@@ -11807,15 +12374,19 @@
 - User Interactions
 - User Journey
 - User Management
+- User Mappings
 - User Model
 - User Namespaces
 - User Permissions
 - User Portal
 - User Preferences
+- User Private Groups
 - User Profiles
 - User Provisioning
 - User Research
+- User Services
 - User Sessions
+- User Settings
 - User Switching
 - User Tracking
 - User-Agent
@@ -11845,6 +12416,7 @@
 - UX
 - V Language
 - v-model
+- VA-API
 - VAAPI
 - VACUUM
 - Vagrant
@@ -11868,11 +12440,14 @@
 - Vault Lock
 - Vault Secrets Operator
 - Vaulted Backup
+- Vaults
 - Vaultwarden
 - vCenter
 - vCore
 - VCS
 - VDI
+- VDO
+- VDPAU
 - Vec
 - Vector
 - Vector Database
@@ -11910,6 +12485,7 @@
 - Version Conflicts
 - Version Constraints
 - Version Control
+- Version Lock
 - Version Locking
 - Version Management
 - Version Mismatch
@@ -11926,9 +12502,12 @@
 - Vertical Scaling
 - veth
 - VEX
+- VF
 - VFIO
 - VFS
+- VG
 - vGPU
+- VHD
 - Vibration Analysis
 - Victoria Metrics
 - VictoriaMetrics
@@ -11943,6 +12522,7 @@
 - Video Intelligence
 - Video Intelligence API
 - Video On Demand
+- Video Playback
 - Video Player
 - Video Processing
 - Video Quality
@@ -11960,21 +12540,30 @@
 - VIP
 - Viper
 - virsh
+- virt-clone
+- virt-install
 - virt-manager
+- virt-viewer
+- virtio
+- virtqemud
 - Virtual Agent
 - Virtual Classroom
 - Virtual Columns
 - Virtual Currency
 - Virtual Desktop
 - Virtual Desktop Infrastructure
+- Virtual Disks
 - Virtual DOM
 - Virtual Entities
 - Virtual Environment
+- Virtual Environments
 - Virtual Hosts
 - Virtual Interfaces
 - Virtual IP
 - Virtual Kubelet
 - Virtual Machine
+- Virtual Machines
+- Virtual Mailboxes
 - Virtual Memory
 - Virtual Network
 - Virtual Network Computing
@@ -11985,7 +12574,9 @@
 - Virtual Repository
 - Virtual Rooms
 - Virtual Scrolling
+- Virtual Servers
 - Virtual Threads
+- Virtual Users
 - Virtual WAN
 - VirtualBox
 - virtualenv
@@ -12002,11 +12593,13 @@
 - Visual Search
 - Visual Testing
 - Visualization
+- visudo
 - Vite
 - Vitess
 - Vitest
 - VLAN
 - VLAN Attachment
+- VLAN Filtering
 - vLLM
 - VM
 - VM Access
@@ -12032,13 +12625,17 @@
 - VM Scheduling
 - VM Security
 - VM Sizing
+- vm.swappiness
+- VMDK
 - vMotion
 - VMs
 - VMSS
+- vmstat
 - VMware
 - VMware Engine
 - VMware HCX
 - VMware Tanzu
+- VMXNET3
 - VNC
 - VNet
 - VNet Integration
@@ -12067,7 +12664,9 @@
 - VolumeCloning
 - VolumeExpansion
 - VolumePopulator
+- Volumes
 - VolumeSnapshot
+- Voting
 - VPA
 - VPC
 - VPC CNI
@@ -12176,10 +12775,12 @@
 - Web Application
 - Web Application Firewall
 - Web Application Security
+- Web Applications
 - Web Apps
 - Web Architecture
 - Web Automation
 - Web Categories
+- Web Console
 - Web Crawler
 - Web Crawling
 - Web Development
@@ -12197,6 +12798,7 @@
 - Web Security Scanner
 - Web Server
 - Web Server Configuration
+- Web Service
 - Web Services
 - Web Streams API
 - Web Testing
@@ -12221,6 +12823,7 @@
 - Webhook Development
 - Webhook Security
 - Webhook Triggers
+- Webhooks
 - WebJobs
 - Webmail
 - Webmin
@@ -12242,9 +12845,11 @@
 - wget
 - What If
 - What-If
+- Wheel Group
 - when Clause
 - whisper
 - White-Label
+- Whitelist
 - Wi-Fi
 - Widevine
 - WiFi
@@ -12254,6 +12859,7 @@
 - Wildcard
 - Wildcard Certificate
 - Wildcard DNS
+- Wildcard Maps
 - Wildcard Tables
 - WildFly
 - Winbind
@@ -12286,6 +12892,7 @@
 - with Statement
 - Wiz
 - WMS
+- WoL
 - WooCommerce
 - Woodpecker
 - Woodpecker CI
@@ -12343,8 +12950,10 @@
 - Workspace Health
 - Workspace Management
 - Workspace Tags
+- Workspaces
 - Workstations
 - Worktrees
+- World-Writable
 - Worldmap
 - WORM
 - WP-CLI
@@ -12380,6 +12989,7 @@
 - X12
 - x2go
 - x86
+- x86_64
 - XADD
 - XAI
 - xAPI
@@ -12387,15 +12997,23 @@
 - xargs
 - Xcode
 - XCTest
+- Xdebug
 - XDP
 - XDR
 - xDS
+- Xen
 - XFCE
 - XFS
+- xfs_fsr
+- xfs_growfs
+- xfs_repair
+- xfsdump
+- xfsrestore
 - XHR
 - XML
 - XMLHttpRequest
 - XMPP
+- XPS
 - XRDP
 - XREAD
 - XSS
@@ -12436,6 +13054,7 @@
 - Zero-Copy
 - Zero-Cost Abstractions
 - Zero-Downtime
+- Zero-Touch
 - Zero-Trust
 - Zeroconf
 - Zerolog
@@ -12462,6 +13081,7 @@
 - Zone Sharding
 - Zone Signing
 - Zone-Redundant Storage
+- Zones
 - ZooKeeper
 - Zot
 - zPages

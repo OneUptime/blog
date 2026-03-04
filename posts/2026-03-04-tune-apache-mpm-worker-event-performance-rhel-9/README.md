@@ -1,18 +1,18 @@
-# How to Tune Apache MPM Worker and Event for Performance on RHEL 9
+# How to Tune Apache MPM Worker and Event for Performance on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, MPM, Performance Tuning, Linux
 
-Description: A guide to selecting and tuning Apache Multi-Processing Modules (MPM) on RHEL 9 for optimal performance under different workloads.
+Description: A guide to selecting and tuning Apache Multi-Processing Modules (MPM) on RHEL for optimal performance under different workloads.
 
 ---
 
-Apache uses Multi-Processing Modules (MPMs) to handle incoming connections. The choice between prefork, worker, and event MPMs dramatically affects performance and resource usage. On RHEL 9, the event MPM is the default and best choice for most workloads. This guide explains how to select and tune the right MPM.
+Apache uses Multi-Processing Modules (MPMs) to handle incoming connections. The choice between prefork, worker, and event MPMs dramatically affects performance and resource usage. On RHEL, the event MPM is the default and best choice for most workloads. This guide explains how to select and tune the right MPM.
 
 ## Prerequisites
 
-- A RHEL 9 system with Apache installed
+- A RHEL system with Apache installed
 - Root or sudo access
 - Understanding of your expected traffic patterns
 
@@ -79,7 +79,7 @@ Only one MPM can be loaded at a time.
 
 ## Step 3: Tune the Event MPM
 
-The event MPM is the default on RHEL 9. Here are the key settings:
+The event MPM is the default on RHEL. Here are the key settings:
 
 ```apache
 # /etc/httpd/conf.d/mpm-tuning.conf
@@ -260,4 +260,4 @@ free -h
 
 ## Summary
 
-The event MPM is the best choice for most Apache workloads on RHEL 9. It handles keepalive connections efficiently without tying up worker threads. Key tuning parameters are MaxRequestWorkers (total concurrent connections), ThreadsPerChild (threads per process), and KeepAliveTimeout (how long idle connections persist). Monitor your server's memory usage and connection patterns to find the right balance.
+The event MPM is the best choice for most Apache workloads on RHEL. It handles keepalive connections efficiently without tying up worker threads. Key tuning parameters are MaxRequestWorkers (total concurrent connections), ThreadsPerChild (threads per process), and KeepAliveTimeout (how long idle connections persist). Monitor your server's memory usage and connection patterns to find the right balance.

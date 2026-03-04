@@ -1,18 +1,18 @@
-# How to Set Up Nginx as a TCP/UDP Load Balancer on RHEL 9
+# How to Set Up Nginx as a TCP/UDP Load Balancer on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, TCP, UDP, Load Balancing, Linux
 
-Description: Configure Nginx stream module on RHEL 9 to load balance TCP and UDP traffic for databases, DNS, mail servers, and other non-HTTP services.
+Description: Configure Nginx stream module on RHEL to load balance TCP and UDP traffic for databases, DNS, mail servers, and other non-HTTP services.
 
 ---
 
-Nginx is not just for HTTP. The stream module enables TCP and UDP load balancing for services like databases, mail servers, DNS, and custom protocols. This guide covers setting up the Nginx stream module on RHEL 9.
+Nginx is not just for HTTP. The stream module enables TCP and UDP load balancing for services like databases, mail servers, DNS, and custom protocols. This guide covers setting up the Nginx stream module on RHEL.
 
 ## Prerequisites
 
-- A RHEL 9 system with Nginx installed
+- A RHEL system with Nginx installed
 - Backend services running on TCP or UDP ports
 - Root or sudo access
 
@@ -22,7 +22,7 @@ Nginx is not just for HTTP. The stream module enables TCP and UDP load balancing
 # Check if the stream module is included
 nginx -V 2>&1 | grep stream
 
-# On RHEL 9, the stream module is included by default
+# On RHEL, the stream module is included by default
 # but may need to be loaded in the configuration
 ```
 
@@ -277,4 +277,4 @@ sudo tail -f /var/log/nginx/stream-mysql-error.log
 
 ## Summary
 
-The Nginx stream module on RHEL 9 provides TCP and UDP load balancing for any network service. You can load balance databases, DNS servers, mail servers, and any other TCP/UDP service. SNI-based routing allows multiplexing multiple TLS services on a single IP address. Health checks automatically remove failing backends from the pool.
+The Nginx stream module on RHEL provides TCP and UDP load balancing for any network service. You can load balance databases, DNS servers, mail servers, and any other TCP/UDP service. SNI-based routing allows multiplexing multiple TLS services on a single IP address. Health checks automatically remove failing backends from the pool.

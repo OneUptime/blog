@@ -1,10 +1,10 @@
-# How to Choose Between Network Bonding Modes on RHEL 9
+# How to Choose Between Network Bonding Modes on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Bonding, Bonding Modes, Linux
 
-Description: A practical comparison of all Linux bonding modes available on RHEL 9, helping you pick the right one for your workload, switch setup, and redundancy requirements.
+Description: A practical comparison of all Linux bonding modes available on RHEL, helping you pick the right one for your workload, switch setup, and redundancy requirements.
 
 ---
 

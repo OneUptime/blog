@@ -1,18 +1,18 @@
-# How to Register a RHEL 9 System to the Red Hat Customer Portal Using subscription-manager
+# How to Register a RHEL System to the Red Hat Customer Portal Using subscription-manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Subscription Manager, Registration, Red Hat, Linux
 
-Description: A practical walkthrough for registering your RHEL 9 system to the Red Hat Customer Portal using subscription-manager, covering interactive and non-interactive methods along with common pitfalls.
+Description: A practical walkthrough for registering your RHEL system to the Red Hat Customer Portal using subscription-manager, covering interactive and non-interactive methods along with common pitfalls.
 
 ---
 
-If you have just installed RHEL 9 and need access to official packages, security patches, and support, the first thing you need to do is register the system with Red Hat. The tool for this job is `subscription-manager`, and it has been part of RHEL for years. In this guide, I will walk through the registration process step by step, including tips for automation and what to check when things go sideways.
+If you have just installed RHEL and need access to official packages, security patches, and support, the first thing you need to do is register the system with Red Hat. The tool for this job is `subscription-manager`, and it has been part of RHEL for years. In this guide, I will walk through the registration process step by step, including tips for automation and what to check when things go sideways.
 
 ## Why Register?
 
-Without registration, your RHEL 9 system cannot pull packages from Red Hat's CDN. You will not receive security errata, bug fixes, or access to additional repositories like CodeReady Builder. Registration ties your system to your Red Hat account and lets Red Hat track which subscriptions are in use.
+Without registration, your RHEL system cannot pull packages from Red Hat's CDN. You will not receive security errata, bug fixes, or access to additional repositories like CodeReady Builder. Registration ties your system to your Red Hat account and lets Red Hat track which subscriptions are in use.
 
 ## Prerequisites
 
@@ -21,11 +21,11 @@ Before you begin, make sure you have:
 - A Red Hat account (create one at access.redhat.com if needed)
 - An active RHEL subscription associated with that account
 - Network connectivity to subscription.rhsm.redhat.com (port 443)
-- Root or sudo access on the RHEL 9 system
+- Root or sudo access on the RHEL system
 
 ## Step 1 - Verify subscription-manager Is Installed
 
-The `subscription-manager` package should already be installed on a fresh RHEL 9 system. Verify it like this:
+The `subscription-manager` package should already be installed on a fresh RHEL system. Verify it like this:
 
 ```bash
 # Check that subscription-manager is available
@@ -96,7 +96,7 @@ Here is how the registration process works at a high level:
 
 ```mermaid
 flowchart TD
-    A[RHEL 9 System] -->|subscription-manager register| B[Red Hat CDN]
+    A[RHEL System] -->|subscription-manager register| B[Red Hat CDN]
     B -->|Authenticates credentials| C[Red Hat Customer Portal]
     C -->|Issues identity certificate| A
     A -->|subscription-manager attach| D[Subscription Allocated]
@@ -187,4 +187,4 @@ You should see at least the `rhel-9-for-x86_64-baseos-rpms` and `rhel-9-for-x86_
 
 ## Summary
 
-Registering a RHEL 9 system is straightforward with `subscription-manager`. Whether you are doing it interactively for a single workstation or scripting it for hundreds of servers, the process is the same: authenticate, register, and optionally attach. Keep an eye on proxy settings and certificates if you are in a restricted network, and always verify that repositories are accessible after registration. This is the foundation for keeping your RHEL systems patched and secure.
+Registering a RHEL system is straightforward with `subscription-manager`. Whether you are doing it interactively for a single workstation or scripting it for hundreds of servers, the process is the same: authenticate, register, and optionally attach. Keep an eye on proxy settings and certificates if you are in a restricted network, and always verify that repositories are accessible after registration. This is the foundation for keeping your RHEL systems patched and secure.

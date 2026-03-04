@@ -1,10 +1,10 @@
-# How to Configure Simple Content Access for RHEL 9 Systems
+# How to Configure Simple Content Access for RHEL Systems
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Simple Content Access, SCA, Red Hat, Linux
 
-Description: A practical guide to enabling and configuring Simple Content Access (SCA) for RHEL 9, simplifying subscription management by removing the need for per-system entitlement attachment.
+Description: A practical guide to enabling and configuring Simple Content Access (SCA) for RHEL, simplifying subscription management by removing the need for per-system entitlement attachment.
 
 ---
 
@@ -60,7 +60,7 @@ Once enabled, all systems registered to your organization will switch to SCA mod
 
 ## Verifying SCA on an Existing System
 
-After enabling SCA at the account level, verify it on your RHEL 9 systems:
+After enabling SCA at the account level, verify it on your RHEL systems:
 
 ```bash
 # Refresh the subscription data

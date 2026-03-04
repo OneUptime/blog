@@ -1,14 +1,14 @@
-# How to Troubleshoot DHCP Lease Assignment Issues on RHEL 9
+# How to Troubleshoot DHCP Lease Assignment Issues on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DHCP, Troubleshooting, Linux
 
-Description: Diagnose and fix common DHCP lease assignment problems on RHEL 9, from clients not getting addresses to duplicate IP conflicts.
+Description: Diagnose and fix common DHCP lease assignment problems on RHEL, from clients not getting addresses to duplicate IP conflicts.
 
 ---
 
-DHCP problems are sneaky. A client doesn't get an IP, or gets the wrong one, or two clients end up with the same address. The symptoms are usually vague - "the network isn't working." This guide helps you systematically narrow down what's going wrong with DHCP lease assignments on RHEL 9.
+DHCP problems are sneaky. A client doesn't get an IP, or gets the wrong one, or two clients end up with the same address. The symptoms are usually vague - "the network isn't working." This guide helps you systematically narrow down what's going wrong with DHCP lease assignments on RHEL.
 
 ## The DHCP Process
 

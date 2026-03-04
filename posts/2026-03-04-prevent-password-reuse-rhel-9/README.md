@@ -1,18 +1,18 @@
-# How to Prevent Password Reuse on RHEL 9
+# How to Prevent Password Reuse on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Password Reuse, pam_pwhistory, Security, Linux
 
-Description: Configure RHEL 9 to prevent users from recycling old passwords using pam_pwhistory and pam_unix, with compliance-focused examples.
+Description: Configure RHEL to prevent users from recycling old passwords using pam_pwhistory and pam_unix, with compliance-focused examples.
 
 ---
 
-Users love to reuse passwords. Change it from "Summer2025!" to "Summer2026!" and call it a day. On RHEL 9, you can prevent this with pam_pwhistory, which maintains a record of previous password hashes and blocks reuse. Combined with pam_pwquality's similarity check, you get solid protection against password recycling.
+Users love to reuse passwords. Change it from "Summer2025!" to "Summer2026!" and call it a day. On RHEL, you can prevent this with pam_pwhistory, which maintains a record of previous password hashes and blocks reuse. Combined with pam_pwquality's similarity check, you get solid protection against password recycling.
 
 ## Two Mechanisms for Preventing Reuse
 
-RHEL 9 has two ways to block password reuse, and they work at different levels:
+RHEL has two ways to block password reuse, and they work at different levels:
 
 ```mermaid
 graph TD
@@ -32,9 +32,9 @@ graph TD
 
 ## Configuring pam_pwhistory
 
-### Option 1: Using the pam_pwhistory.conf file (RHEL 9.1+)
+### Option 1: Using the pam_pwhistory.conf file (RHEL.1+)
 
-RHEL 9.1 introduced a dedicated configuration file:
+RHEL.1 introduced a dedicated configuration file:
 
 ```bash
 sudo vi /etc/security/pwhistory.conf
@@ -242,4 +242,4 @@ sudo chown root:root /etc/security/opasswd
 
 ## Wrapping Up
 
-Preventing password reuse on RHEL 9 requires configuring pam_pwhistory for exact reuse prevention and pam_pwquality's `difok` for similarity checking. Set the `remember` value according to your compliance needs, make sure the opasswd file has the right permissions, and test thoroughly before rolling out. The combination of these two checks ensures users actually pick new passwords rather than just tweaking old ones.
+Preventing password reuse on RHEL requires configuring pam_pwhistory for exact reuse prevention and pam_pwquality's `difok` for similarity checking. Set the `remember` value according to your compliance needs, make sure the opasswd file has the right permissions, and test thoroughly before rolling out. The combination of these two checks ensures users actually pick new passwords rather than just tweaking old ones.

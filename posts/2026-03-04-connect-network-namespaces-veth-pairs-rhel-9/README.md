@@ -1,14 +1,14 @@
-# How to Connect Network Namespaces Using veth Pairs on RHEL 9
+# How to Connect Network Namespaces Using veth Pairs on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, veth, Network Namespaces, Linux
 
-Description: Learn how to use virtual Ethernet (veth) pairs to connect network namespaces on RHEL 9, including direct connections, bridge-based topologies, and multi-namespace networks.
+Description: Learn how to use virtual Ethernet (veth) pairs to connect network namespaces on RHEL, including direct connections, bridge-based topologies, and multi-namespace networks.
 
 ---
 
-Virtual Ethernet (veth) pairs are the standard mechanism for connecting network namespaces. They work like a virtual cable - packets sent into one end come out the other. This is how containers communicate with each other and with the host. Understanding veth pairs is essential for anyone working with container networking or network isolation on RHEL 9.
+Virtual Ethernet (veth) pairs are the standard mechanism for connecting network namespaces. They work like a virtual cable - packets sent into one end come out the other. This is how containers communicate with each other and with the host. Understanding veth pairs is essential for anyone working with container networking or network isolation on RHEL.
 
 ## How veth Pairs Work
 
@@ -249,4 +249,4 @@ bridge link show dev veth-br-ns1
 
 ## Wrapping Up
 
-veth pairs are the pipes that connect network namespaces on RHEL 9. For two namespaces, a direct veth pair is sufficient. For three or more, use a bridge. This is exactly how container runtimes like Podman and Docker set up networking, so understanding veth pairs gives you deep insight into container networking behavior.
+veth pairs are the pipes that connect network namespaces on RHEL. For two namespaces, a direct veth pair is sufficient. For three or more, use a bridge. This is exactly how container runtimes like Podman and Docker set up networking, so understanding veth pairs gives you deep insight into container networking behavior.

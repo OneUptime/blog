@@ -1,28 +1,28 @@
-# How to Configure RAID in the RHEL 9 Web Console (Cockpit)
+# How to Configure RAID in the RHEL Web Console (Cockpit)
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RAID, Cockpit, Storage, Linux
 
-Description: Use the RHEL 9 Cockpit web console to create and manage RAID arrays through a browser-based interface, with no command line required.
+Description: Use the RHEL Cockpit web console to create and manage RAID arrays through a browser-based interface, with no command line required.
 
 ---
 
 ## Why Use Cockpit for RAID?
 
-Cockpit is the web-based administration console that ships with RHEL 9. It provides a clean graphical interface for storage management, including RAID array creation and monitoring. If you prefer a visual approach or need to hand off RAID management to team members who are not comfortable with the command line, Cockpit is an excellent option.
+Cockpit is the web-based administration console that ships with RHEL. It provides a clean graphical interface for storage management, including RAID array creation and monitoring. If you prefer a visual approach or need to hand off RAID management to team members who are not comfortable with the command line, Cockpit is an excellent option.
 
 Under the hood, Cockpit uses the same mdadm tools, so everything it creates is standard and can be managed from the CLI as well.
 
 ## Prerequisites
 
-- RHEL 9 with Cockpit installed and enabled
+- RHEL with Cockpit installed and enabled
 - Unused disks for the RAID array
 - A web browser
 
 ## Step 1 - Enable Cockpit
 
-Cockpit is installed by default on RHEL 9. Just enable and start it:
+Cockpit is installed by default on RHEL. Just enable and start it:
 
 ```bash
 # Enable and start the Cockpit socket
@@ -165,4 +165,4 @@ sudo firewall-cmd --reload
 
 ## Wrap-Up
 
-Cockpit provides a solid graphical interface for basic RAID management on RHEL 9. It covers array creation, filesystem setup, and monitoring without requiring any CLI knowledge. For advanced operations, the command line is still necessary, but for day-to-day management and monitoring, Cockpit handles the job well. The combination of Cockpit for visual management and mdadm for advanced tasks gives you the best of both worlds.
+Cockpit provides a solid graphical interface for basic RAID management on RHEL. It covers array creation, filesystem setup, and monitoring without requiring any CLI knowledge. For advanced operations, the command line is still necessary, but for day-to-day management and monitoring, Cockpit handles the job well. The combination of Cockpit for visual management and mdadm for advanced tasks gives you the best of both worlds.

@@ -1,10 +1,10 @@
-# How to Mask and Unmask Services to Prevent Accidental Startup on RHEL 9
+# How to Mask and Unmask Services to Prevent Accidental Startup on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Service Masking, Security, Linux
 
-Description: Learn how to use systemctl mask and unmask on RHEL 9 to completely prevent services from starting, even by accident or as a dependency.
+Description: Learn how to use systemctl mask and unmask on RHEL to completely prevent services from starting, even by accident or as a dependency.
 
 ---
 
@@ -270,4 +270,4 @@ Run this periodically to make sure nothing unexpected has been masked.
 
 ## Wrapping Up
 
-Masking is a simple but powerful tool for service management on RHEL 9. It gives you absolute control over which services can run on a system. Use it for security hardening, conflict prevention, and maintenance scenarios where you need a guarantee that a service will not start. Just remember to document your masks, because "it's masked" is not obvious to the next person who logs into the server.
+Masking is a simple but powerful tool for service management on RHEL. It gives you absolute control over which services can run on a system. Use it for security hardening, conflict prevention, and maintenance scenarios where you need a guarantee that a service will not start. Just remember to document your masks, because "it's masked" is not obvious to the next person who logs into the server.

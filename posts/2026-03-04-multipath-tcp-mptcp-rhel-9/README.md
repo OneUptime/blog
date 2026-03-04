@@ -1,10 +1,10 @@
-# How to Set Up Multipath TCP (MPTCP) on RHEL 9
+# How to Set Up Multipath TCP (MPTCP) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MPTCP, TCP, Networking, Multi-Path, Linux
 
-Description: Learn how to enable and configure Multipath TCP (MPTCP) on RHEL 9 to use multiple network paths simultaneously for improved throughput and redundancy.
+Description: Learn how to enable and configure Multipath TCP (MPTCP) on RHEL to use multiple network paths simultaneously for improved throughput and redundancy.
 
 ---
 
@@ -30,7 +30,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9.1 or later (MPTCP support is included in the kernel)
+- RHEL.1 or later (MPTCP support is included in the kernel)
 - At least two network interfaces
 - Root or sudo access
 
@@ -150,4 +150,4 @@ cat /proc/net/mptcp_net/snmp
 
 ## Summary
 
-You have enabled and configured Multipath TCP on RHEL 9. MPTCP allows your applications to use multiple network paths simultaneously, improving both throughput and resilience. This is particularly valuable for mobile devices transitioning between networks, multi-homed servers, and any workload that benefits from link aggregation at the transport layer.
+You have enabled and configured Multipath TCP on RHEL. MPTCP allows your applications to use multiple network paths simultaneously, improving both throughput and resilience. This is particularly valuable for mobile devices transitioning between networks, multi-homed servers, and any workload that benefits from link aggregation at the transport layer.

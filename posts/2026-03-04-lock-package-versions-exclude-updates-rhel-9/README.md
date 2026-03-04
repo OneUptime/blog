@@ -1,14 +1,14 @@
-# How to Lock Package Versions and Exclude Packages from Updates on RHEL 9
+# How to Lock Package Versions and Exclude Packages from Updates on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNF, Version Lock, Package Management, Linux
 
-Description: Learn how to use the DNF versionlock plugin and exclusion rules to prevent specific packages from being updated on RHEL 9, keeping your critical software at tested versions.
+Description: Learn how to use the DNF versionlock plugin and exclusion rules to prevent specific packages from being updated on RHEL, keeping your critical software at tested versions.
 
 ---
 
-There are times when you absolutely do not want a package updated. Maybe your application is certified against a specific library version, or a known regression in the latest update breaks something. Whatever the reason, RHEL 9 gives you two mechanisms to control this: the versionlock plugin and package exclusions. This guide covers both approaches and when to use each one.
+There are times when you absolutely do not want a package updated. Maybe your application is certified against a specific library version, or a known regression in the latest update breaks something. Whatever the reason, RHEL gives you two mechanisms to control this: the versionlock plugin and package exclusions. This guide covers both approaches and when to use each one.
 
 ## Why Lock Package Versions?
 

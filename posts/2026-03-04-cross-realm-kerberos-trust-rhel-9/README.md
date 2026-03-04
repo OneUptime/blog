@@ -1,14 +1,14 @@
-# How to Set Up Cross-Realm Kerberos Trust on RHEL 9
+# How to Set Up Cross-Realm Kerberos Trust on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kerberos, Cross-Realm Trust, Authentication, Linux
 
-Description: A step-by-step guide to establishing Kerberos cross-realm trust between two Kerberos realms on RHEL 9 for seamless authentication.
+Description: A step-by-step guide to establishing Kerberos cross-realm trust between two Kerberos realms on RHEL for seamless authentication.
 
 ---
 
-When your organization has multiple Kerberos realms, users in one realm may need to access services in another. Cross-realm trust lets this happen without requiring separate accounts in each realm. This guide covers setting up both one-way and two-way trust between Kerberos realms on RHEL 9.
+When your organization has multiple Kerberos realms, users in one realm may need to access services in another. Cross-realm trust lets this happen without requiring separate accounts in each realm. This guide covers setting up both one-way and two-way trust between Kerberos realms on RHEL.
 
 ## How Cross-Realm Trust Works
 

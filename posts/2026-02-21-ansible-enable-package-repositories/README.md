@@ -45,7 +45,7 @@ This creates a file at `/etc/yum.repos.d/nginx-stable.repo` with the correct con
 RHEL and CentOS ship with several repositories that are disabled by default. You can enable them using the `dnf` or `yum` command through the `command` module, but a cleaner approach is to use `community.general.rhsm_repository` for RHEL subscribed systems or edit the repo file directly.
 
 ```yaml
-# Enable the CodeReady Builder (CRB) repository on RHEL 9
+# Enable the CodeReady Builder (CRB) repository on RHEL
 - name: Enable CRB repository
   ansible.builtin.command:
     cmd: dnf config-manager --set-enabled crb

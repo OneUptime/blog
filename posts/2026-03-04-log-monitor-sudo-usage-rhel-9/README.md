@@ -1,18 +1,18 @@
-# How to Log and Monitor Sudo Usage on RHEL 9
+# How to Log and Monitor Sudo Usage on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, sudo, Logging, Monitoring, Linux
 
-Description: Set up comprehensive sudo logging and monitoring on RHEL 9 using syslog, sudo I/O logging, and auditd to track privileged command execution.
+Description: Set up comprehensive sudo logging and monitoring on RHEL using syslog, sudo I/O logging, and auditd to track privileged command execution.
 
 ---
 
-Every sudo command is a privileged action. If you are not logging and monitoring these, you are flying blind when it comes to insider threats, compromised accounts, and compliance audits. RHEL 9 gives you several ways to track sudo usage, from basic syslog entries to full session recordings.
+Every sudo command is a privileged action. If you are not logging and monitoring these, you are flying blind when it comes to insider threats, compromised accounts, and compliance audits. RHEL gives you several ways to track sudo usage, from basic syslog entries to full session recordings.
 
 ## Default Sudo Logging
 
-Out of the box, sudo logs every command to syslog. These entries go to `/var/log/secure` on RHEL 9:
+Out of the box, sudo logs every command to syslog. These entries go to `/var/log/secure` on RHEL:
 
 ```bash
 # View recent sudo entries
@@ -272,4 +272,4 @@ sudo systemctl restart rsyslog
 
 ## Wrapping Up
 
-Sudo logging on RHEL 9 should be a given, not an afterthought. At minimum, make sure sudo events are going to syslog and being retained. For sensitive environments, enable I/O logging to capture complete session recordings. Combine sudo logs with auditd rules for comprehensive monitoring, and forward everything to your SIEM for correlation with other security events. The goal is simple: know who did what, when, and from where.
+Sudo logging on RHEL should be a given, not an afterthought. At minimum, make sure sudo events are going to syslog and being retained. For sensitive environments, enable I/O logging to capture complete session recordings. Combine sudo logs with auditd rules for comprehensive monitoring, and forward everything to your SIEM for correlation with other security events. The goal is simple: know who did what, when, and from where.

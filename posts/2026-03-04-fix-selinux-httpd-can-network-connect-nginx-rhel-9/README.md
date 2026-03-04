@@ -1,16 +1,16 @@
-# How to Fix SELinux httpd_can_network_connect Issues with Nginx on RHEL 9
+# How to Fix SELinux httpd_can_network_connect Issues with Nginx on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, SELinux, Troubleshooting, Linux
 
-Description: A focused guide to diagnosing and fixing SELinux network connection denials for Nginx on RHEL 9.
+Description: A focused guide to diagnosing and fixing SELinux network connection denials for Nginx on RHEL.
 
 ---
 
 ## The Problem
 
-You set up Nginx as a reverse proxy on RHEL 9. Everything looks correct in the config. But when you browse to the site, you get a 502 Bad Gateway error. The Nginx error log shows something like:
+You set up Nginx as a reverse proxy on RHEL. Everything looks correct in the config. But when you browse to the site, you get a 502 Bad Gateway error. The Nginx error log shows something like:
 
 ```
 connect() to 127.0.0.1:3000 failed (13: Permission denied) while connecting to upstream
@@ -20,7 +20,7 @@ That "Permission denied" is not a file permission issue. It is SELinux blocking 
 
 ## Why This Happens
 
-RHEL 9 ships with SELinux in enforcing mode. The default policy for the `httpd_t` domain (which covers both Apache and Nginx) does not allow outgoing network connections. This is a security feature. A compromised web server cannot phone home or connect to other services unless you explicitly allow it.
+RHEL ships with SELinux in enforcing mode. The default policy for the `httpd_t` domain (which covers both Apache and Nginx) does not allow outgoing network connections. This is a security feature. A compromised web server cannot phone home or connect to other services unless you explicitly allow it.
 
 ## Step 1 - Confirm SELinux Is the Cause
 
@@ -150,4 +150,4 @@ If the site works in permissive mode but not in enforcing mode, you know it is a
 
 ## Wrap-Up
 
-The `httpd_can_network_connect` boolean is the single most common SELinux issue with Nginx reverse proxies on RHEL 9. The fix is one command. The important thing is recognizing SELinux as the cause, which means checking the audit log rather than assuming the problem is in your Nginx config. Keep SELinux enforcing, set the right booleans, and move on.
+The `httpd_can_network_connect` boolean is the single most common SELinux issue with Nginx reverse proxies on RHEL. The fix is one command. The important thing is recognizing SELinux as the cause, which means checking the audit log rather than assuming the problem is in your Nginx config. Keep SELinux enforcing, set the right booleans, and move on.

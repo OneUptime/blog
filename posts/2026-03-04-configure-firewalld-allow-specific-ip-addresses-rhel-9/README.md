@@ -1,10 +1,10 @@
-# How to Configure Firewalld to Allow Specific IP Addresses on RHEL 9
+# How to Configure Firewalld to Allow Specific IP Addresses on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, IP Whitelist, Security, Linux
 
-Description: How to configure firewalld on RHEL 9 to restrict service access to specific IP addresses and subnets using rich rules and source-based zone assignments.
+Description: How to configure firewalld on RHEL to restrict service access to specific IP addresses and subnets using rich rules and source-based zone assignments.
 
 ---
 

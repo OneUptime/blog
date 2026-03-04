@@ -1,10 +1,10 @@
-# How to Set Up HAProxy with SSL Termination on RHEL 9
+# How to Set Up HAProxy with SSL Termination on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, SSL, TLS, Linux
 
-Description: How to configure HAProxy to handle TLS termination on RHEL 9 so backend servers receive plain HTTP traffic.
+Description: How to configure HAProxy to handle TLS termination on RHEL so backend servers receive plain HTTP traffic.
 
 ---
 
@@ -14,7 +14,7 @@ SSL termination means HAProxy handles the TLS encryption and decryption. Clients
 
 ## Prerequisites
 
-- RHEL 9 with HAProxy installed
+- RHEL with HAProxy installed
 - A TLS certificate and private key
 - Root or sudo access
 

@@ -1,16 +1,16 @@
-# How to Integrate RHEL 9 Audit Logs with a SIEM Solution
+# How to Integrate RHEL Audit Logs with a SIEM Solution
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, auditd, SIEM, Security, Linux
 
-Description: Learn how to forward RHEL 9 audit logs to a SIEM platform using audisp-remote, rsyslog, and other methods for centralized security monitoring.
+Description: Learn how to forward RHEL audit logs to a SIEM platform using audisp-remote, rsyslog, and other methods for centralized security monitoring.
 
 ---
 
 If you run any kind of production RHEL environment, you probably already have auditd generating logs on each box. The problem is that those logs sitting on individual servers are only useful if someone actually goes and reads them. In a real-world scenario, you need those audit events flowing into a centralized SIEM (Security Information and Event Management) system where you can correlate events across your entire infrastructure.
 
-This guide walks through the practical steps to get RHEL 9 audit data into your SIEM.
+This guide walks through the practical steps to get RHEL audit data into your SIEM.
 
 ## Understanding the Audit Log Pipeline
 
@@ -33,7 +33,7 @@ There are two primary approaches:
 
 ## Method 1: Using audisp-remote for Direct Forwarding
 
-The audispd plugin framework ships with RHEL 9 and can forward events in real time.
+The audispd plugin framework ships with RHEL and can forward events in real time.
 
 ### Install the remote plugin
 

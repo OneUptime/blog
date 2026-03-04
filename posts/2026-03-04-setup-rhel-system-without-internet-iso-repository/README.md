@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Offline Installation, ISO Repository, Linux, Air-Gapped
 
-Description: Step-by-step instructions for configuring a local package repository from a RHEL 9 ISO image, enabling system management in air-gapped environments without internet access.
+Description: Step-by-step instructions for configuring a local package repository from a RHEL ISO image, enabling system management in air-gapped environments without internet access.
 
 ---
 
@@ -20,7 +20,7 @@ Not every RHEL system lives on a network with internet access. Secure environmen
 
 ## What You Need
 
-- The RHEL 9 installation ISO (e.g., `rhel-9.3-x86_64-dvd.iso`)
+- The RHEL installation ISO (e.g., `rhel-9.3-x86_64-dvd.iso`)
 - Enough disk space to store the ISO or its contents (approximately 10 GB)
 - Root or sudo access on the target system
 
@@ -78,14 +78,14 @@ Create a repo file that points `dnf` to the mounted ISO:
 # Create the local repository configuration
 sudo tee /etc/yum.repos.d/rhel9-local.repo << 'EOF'
 [rhel9-baseos-local]
-name=RHEL 9 BaseOS (Local ISO)
+name=RHEL BaseOS (Local ISO)
 baseurl=file:///mnt/rhel9-iso/BaseOS/
 enabled=1
 gpgcheck=1
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
 [rhel9-appstream-local]
-name=RHEL 9 AppStream (Local ISO)
+name=RHEL AppStream (Local ISO)
 baseurl=file:///mnt/rhel9-iso/AppStream/
 enabled=1
 gpgcheck=1
@@ -126,7 +126,7 @@ sudo dnf install -y tree
 
 ```mermaid
 flowchart TD
-    A[RHEL 9 ISO] -->|Mount| B[/mnt/rhel9-iso/]
+    A[RHEL ISO] -->|Mount| B[/mnt/rhel9-iso/]
     B --> C[BaseOS Repository]
     B --> D[AppStream Repository]
     E[/etc/yum.repos.d/rhel9-local.repo] -->|Points to| C
@@ -161,14 +161,14 @@ Then update the repo file to point to the copied location:
 # Update repo configuration for copied files
 sudo tee /etc/yum.repos.d/rhel9-local.repo << 'EOF'
 [rhel9-baseos-local]
-name=RHEL 9 BaseOS (Local Copy)
+name=RHEL BaseOS (Local Copy)
 baseurl=file:///opt/rhel9-repo/BaseOS/
 enabled=1
 gpgcheck=1
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
 [rhel9-appstream-local]
-name=RHEL 9 AppStream (Local Copy)
+name=RHEL AppStream (Local Copy)
 baseurl=file:///opt/rhel9-repo/AppStream/
 enabled=1
 gpgcheck=1
@@ -201,14 +201,14 @@ On client systems, configure the repo to point to the HTTP server:
 # Remote repo configuration pointing to the local server
 sudo tee /etc/yum.repos.d/rhel9-local.repo << 'EOF'
 [rhel9-baseos-local]
-name=RHEL 9 BaseOS (Network)
+name=RHEL BaseOS (Network)
 baseurl=http://reposerver.local/rhel9-repo/BaseOS/
 enabled=1
 gpgcheck=1
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
 [rhel9-appstream-local]
-name=RHEL 9 AppStream (Network)
+name=RHEL AppStream (Network)
 baseurl=http://reposerver.local/rhel9-repo/AppStream/
 enabled=1
 gpgcheck=1
@@ -228,7 +228,7 @@ For environments that need updates in air-gapped networks, consider setting up a
 
 ## Updating the Repository
 
-When a new RHEL 9 minor release ISO becomes available, update your repository:
+When a new RHEL minor release ISO becomes available, update your repository:
 
 ```bash
 # Unmount the old ISO

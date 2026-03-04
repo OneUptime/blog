@@ -1,14 +1,14 @@
-# How to Deploy RHEL 9 on AWS EC2 with Best Practices
+# How to Deploy RHEL on AWS EC2 with Best Practices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, AWS, EC2, Cloud, Linux
 
-Description: Deploy RHEL 9 on AWS EC2 following best practices for instance selection, storage, networking, and security configuration.
+Description: Deploy RHEL on AWS EC2 following best practices for instance selection, storage, networking, and security configuration.
 
 ---
 
-Running RHEL 9 on AWS EC2 is a common deployment pattern for enterprise workloads. This guide covers best practices from selecting the right instance type to configuring storage, networking, and security for a production-ready deployment.
+Running RHEL on AWS EC2 is a common deployment pattern for enterprise workloads. This guide covers best practices from selecting the right instance type to configuring storage, networking, and security for a production-ready deployment.
 
 ## Deployment Architecture
 
@@ -19,8 +19,8 @@ graph TB
             ALB[Application Load Balancer]
         end
         subgraph "Private Subnet"
-            EC2A[RHEL 9 Instance A]
-            EC2B[RHEL 9 Instance B]
+            EC2A[RHEL Instance A]
+            EC2B[RHEL Instance B]
         end
         subgraph "Data Subnet"
             EBS[EBS Volumes]
@@ -38,7 +38,7 @@ graph TB
 ## Step 1: Select the Right AMI
 
 ```bash
-# Find the official Red Hat RHEL 9 AMI using AWS CLI
+# Find the official Red Hat RHEL AMI using AWS CLI
 aws ec2 describe-images \
   --owners 309956199498 \
   --filters "Name=name,Values=RHEL-9.*_HVM-*-x86_64-*-Hourly2-GP3" \
@@ -61,7 +61,7 @@ aws ec2 create-key-pair --key-name rhel9-key --query 'KeyMaterial' \
   --output text > rhel9-key.pem
 chmod 400 rhel9-key.pem
 
-# Launch a RHEL 9 instance with best practice settings
+# Launch a RHEL instance with best practice settings
 aws ec2 run-instances \
   --image-id ami-0abcdef1234567890 \
   --instance-type m6i.xlarge \
@@ -193,4 +193,4 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
 
 ## Conclusion
 
-Deploying RHEL 9 on AWS EC2 with best practices means using the official AMI, enforcing IMDSv2, encrypting EBS volumes, configuring security at both the OS and AWS levels, and setting up monitoring. These foundations ensure your RHEL instances are secure, observable, and ready for production workloads.
+Deploying RHEL on AWS EC2 with best practices means using the official AMI, enforcing IMDSv2, encrypting EBS volumes, configuring security at both the OS and AWS levels, and setting up monitoring. These foundations ensure your RHEL instances are secure, observable, and ready for production workloads.

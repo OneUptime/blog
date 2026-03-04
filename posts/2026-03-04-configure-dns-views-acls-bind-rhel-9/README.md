@@ -1,10 +1,10 @@
-# How to Configure DNS Views and ACLs on RHEL 9 with BIND
+# How to Configure DNS Views and ACLs on RHEL with BIND
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BIND, DNS Views, ACLs, Linux
 
-Description: Master BIND's view and ACL features on RHEL 9 to control DNS access and serve different responses based on client identity.
+Description: Master BIND's view and ACL features on RHEL to control DNS access and serve different responses based on client identity.
 
 ---
 

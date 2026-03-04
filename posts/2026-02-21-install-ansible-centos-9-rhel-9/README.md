@@ -1,4 +1,4 @@
-# How to Install Ansible on CentOS 9 and RHEL 9
+# How to Install Ansible on CentOS 9 and RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,11 +8,11 @@ Description: Step-by-step instructions for installing Ansible on CentOS Stream 9
 
 ---
 
-CentOS Stream 9 and RHEL 9 share the same package base, so the installation process is nearly identical on both distributions. Both ship with Python 3.9 by default, and Ansible is available through the EPEL (Extra Packages for Enterprise Linux) repository or directly via pip. This guide covers both approaches, walks you through initial configuration, and shows you how to verify everything is working.
+CentOS Stream 9 and RHEL share the same package base, so the installation process is nearly identical on both distributions. Both ship with Python 3.9 by default, and Ansible is available through the EPEL (Extra Packages for Enterprise Linux) repository or directly via pip. This guide covers both approaches, walks you through initial configuration, and shows you how to verify everything is working.
 
 ## Prerequisites
 
-You need a CentOS Stream 9 or RHEL 9 system with:
+You need a CentOS Stream 9 or RHEL system with:
 
 - Root or sudo access
 - An active internet connection
@@ -27,7 +27,7 @@ sudo dnf update -y
 
 ## Method 1: Install from EPEL Repository
 
-The EPEL repository is maintained by the Fedora project and provides high-quality packages for Enterprise Linux distributions. This is the most straightforward way to install Ansible on CentOS 9 or RHEL 9.
+The EPEL repository is maintained by the Fedora project and provides high-quality packages for Enterprise Linux distributions. This is the most straightforward way to install Ansible on CentOS 9 or RHEL.
 
 First, enable the EPEL repository:
 
@@ -36,13 +36,13 @@ First, enable the EPEL repository:
 sudo dnf install epel-release -y
 ```
 
-On RHEL 9, you also need to enable the CodeReady Builder (CRB) repository, which provides additional build dependencies:
+On RHEL, you also need to enable the CodeReady Builder (CRB) repository, which provides additional build dependencies:
 
 ```bash
-# RHEL 9 only: enable CRB repository
+# RHEL only: enable CRB repository
 sudo dnf config-manager --set-enabled crb
 
-# RHEL 9 only: install EPEL from the Fedora project
+# RHEL only: install EPEL from the Fedora project
 sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm -y
 ```
 
@@ -184,7 +184,7 @@ Create a playbook that installs a package to verify the full pipeline works:
 ```yaml
 # ~/ansible-project/test-setup.yml
 ---
-- name: Test Ansible installation on CentOS/RHEL 9
+- name: Test Ansible installation on CentOS/RHEL
   hosts: all
   become: true
 
@@ -222,7 +222,7 @@ ansible-playbook test-setup.yml
 
 ## Firewall Considerations
 
-CentOS 9 and RHEL 9 use firewalld by default. If your managed nodes have strict firewall rules, make sure SSH (port 22) is allowed:
+CentOS 9 and RHEL use firewalld by default. If your managed nodes have strict firewall rules, make sure SSH (port 22) is allowed:
 
 ```bash
 # On each managed node, verify SSH is allowed through the firewall
@@ -236,7 +236,7 @@ sudo firewall-cmd --reload
 
 ## SELinux Notes
 
-Both CentOS 9 and RHEL 9 have SELinux enabled in enforcing mode by default. Ansible generally works fine with SELinux enabled, but some modules that modify file contexts may need the `libselinux-python3` package on managed nodes:
+Both CentOS 9 and RHEL have SELinux enabled in enforcing mode by default. Ansible generally works fine with SELinux enabled, but some modules that modify file contexts may need the `libselinux-python3` package on managed nodes:
 
 ```bash
 # Install on managed nodes that need SELinux context management
@@ -266,4 +266,4 @@ ansible_python_interpreter=/usr/bin/python3
 
 ## Summary
 
-Installing Ansible on CentOS 9 or RHEL 9 is straightforward whether you use the EPEL repository or pip. The EPEL method is simpler and integrates with your existing package management workflow. The pip method gives you more control over versioning. Either way, once Ansible is installed and SSH keys are configured, you are ready to start automating your infrastructure.
+Installing Ansible on CentOS 9 or RHEL is straightforward whether you use the EPEL repository or pip. The EPEL method is simpler and integrates with your existing package management workflow. The pip method gives you more control over versioning. Either way, once Ansible is installed and SSH keys are configured, you are ready to start automating your infrastructure.

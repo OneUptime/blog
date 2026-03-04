@@ -1,10 +1,10 @@
-# How to Configure DNS Logging and Diagnostics with BIND on RHEL 9
+# How to Configure DNS Logging and Diagnostics with BIND on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BIND, DNS Logging, Linux
 
-Description: Set up comprehensive DNS logging and diagnostic tools in BIND on RHEL 9 to monitor queries, troubleshoot issues, and maintain visibility into your DNS infrastructure.
+Description: Set up comprehensive DNS logging and diagnostic tools in BIND on RHEL to monitor queries, troubleshoot issues, and maintain visibility into your DNS infrastructure.
 
 ---
 

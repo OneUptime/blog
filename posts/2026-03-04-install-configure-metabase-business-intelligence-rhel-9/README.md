@@ -1,18 +1,18 @@
-# How to Install and Configure Metabase for Business Intelligence on RHEL 9
+# How to Install and Configure Metabase for Business Intelligence on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Metabase, Business Intelligence, Data Analytics, Linux
 
-Description: Install and configure Metabase on RHEL 9 to give your team an intuitive, self-service business intelligence tool for querying databases and building dashboards.
+Description: Install and configure Metabase on RHEL to give your team an intuitive, self-service business intelligence tool for querying databases and building dashboards.
 
 ---
 
-Metabase is an open-source business intelligence tool that lets non-technical users ask questions about data and build dashboards without writing SQL. It connects to your existing databases and provides a clean interface for data exploration. This guide covers installing Metabase on RHEL 9 with a production-ready configuration.
+Metabase is an open-source business intelligence tool that lets non-technical users ask questions about data and build dashboards without writing SQL. It connects to your existing databases and provides a clean interface for data exploration. This guide covers installing Metabase on RHEL with a production-ready configuration.
 
 ## Prerequisites
 
-- RHEL 9 with at least 2 GB RAM
+- RHEL with at least 2 GB RAM
 - Java 11 or later
 - PostgreSQL for the application database
 - Root or sudo access
@@ -260,4 +260,4 @@ echo "0 2 * * * metabase /opt/metabase/backup.sh" | sudo tee /etc/cron.d/metabas
 
 ## Conclusion
 
-Metabase is now running on your RHEL 9 server with PostgreSQL as the application database and Nginx as a reverse proxy. Your team can start connecting data sources, asking questions about their data, and building dashboards without writing code. For production deployments, add SSL with certbot, configure LDAP or SAML for authentication, and set up automated backups.
+Metabase is now running on your RHEL server with PostgreSQL as the application database and Nginx as a reverse proxy. Your team can start connecting data sources, asking questions about their data, and building dashboards without writing code. For production deployments, add SSL with certbot, configure LDAP or SAML for authentication, and set up automated backups.

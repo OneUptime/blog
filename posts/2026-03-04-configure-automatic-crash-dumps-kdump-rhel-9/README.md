@@ -1,16 +1,16 @@
-# How to Configure Automatic Crash Dumps with kdump on RHEL 9
+# How to Configure Automatic Crash Dumps with kdump on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, kdump, Crash Dumps, Debugging, Linux, System Administration
 
-Description: Set up kdump on RHEL 9 to automatically capture crash dumps when your system panics. This guide covers installation, configuration, testing, and analyzing vmcore files.
+Description: Set up kdump on RHEL to automatically capture crash dumps when your system panics. This guide covers installation, configuration, testing, and analyzing vmcore files.
 
 ---
 
 A kernel panic on a production server is bad enough. A kernel panic with no crash dump to investigate is worse. kdump is the standard tool on RHEL for capturing the state of memory when the kernel crashes, giving you a vmcore file you can analyze after the fact to figure out what went wrong.
 
-I have been running kdump on every RHEL server I manage for years. It has saved me more than once when tracking down a buggy kernel module or a hardware issue that only showed up under load. Here is how to set it up properly on RHEL 9.
+I have been running kdump on every RHEL server I manage for years. It has saved me more than once when tracking down a buggy kernel module or a hardware issue that only showed up under load. Here is how to set it up properly on RHEL.
 
 ---
 
@@ -32,7 +32,7 @@ flowchart TD
 
 ## Installing and Enabling kdump
 
-On a minimal RHEL 9 install, kdump might not be installed. Let's fix that:
+On a minimal RHEL install, kdump might not be installed. Let's fix that:
 
 ```bash
 # Install the kdump tools and crash analysis utility
@@ -61,14 +61,14 @@ You should see "active (exited)" in the output. kdump loads the crash kernel int
 
 ## Configuring the crashkernel Boot Parameter
 
-RHEL 9 usually sets the `crashkernel` parameter automatically during installation. You can verify it is present in your boot configuration:
+RHEL usually sets the `crashkernel` parameter automatically during installation. You can verify it is present in your boot configuration:
 
 ```bash
 # Check the current crashkernel setting
 cat /proc/cmdline | tr ' ' '\n' | grep crashkernel
 ```
 
-On RHEL 9 with the default configuration, you should see something like `crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M`. This is the auto-scaling syntax that reserves different amounts of memory based on total system RAM.
+On RHEL with the default configuration, you should see something like `crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M`. This is the auto-scaling syntax that reserves different amounts of memory based on total system RAM.
 
 If the parameter is missing or you need to change it, use `grubby`:
 

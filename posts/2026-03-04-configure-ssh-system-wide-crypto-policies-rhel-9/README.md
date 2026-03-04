@@ -1,14 +1,14 @@
-# How to Configure SSH with System-Wide Crypto Policies on RHEL 9
+# How to Configure SSH with System-Wide Crypto Policies on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Crypto Policies, Security, Linux
 
-Description: Learn how RHEL 9 system-wide crypto policies control SSH ciphers, MACs, and key exchange algorithms, and how to customize them for your security requirements.
+Description: Learn how RHEL system-wide crypto policies control SSH ciphers, MACs, and key exchange algorithms, and how to customize them for your security requirements.
 
 ---
 
-On RHEL 9, SSH does not independently choose its own ciphers and algorithms. Instead, it follows the system-wide cryptographic policy set by `update-crypto-policies`. This means changing one policy affects SSH, TLS, IPsec, and every other crypto-aware application at once.
+On RHEL, SSH does not independently choose its own ciphers and algorithms. Instead, it follows the system-wide cryptographic policy set by `update-crypto-policies`. This means changing one policy affects SSH, TLS, IPsec, and every other crypto-aware application at once.
 
 ## How Crypto Policies Affect SSH
 
@@ -28,7 +28,7 @@ graph TD
 update-crypto-policies --show
 ```
 
-Default output on RHEL 9: `DEFAULT`
+Default output on RHEL: `DEFAULT`
 
 ### See what SSH settings the current policy produces
 
@@ -158,4 +158,4 @@ nmap --script ssh2-enum-algos -p 22 server.example.com
 
 ## Wrapping Up
 
-System-wide crypto policies on RHEL 9 are the intended way to manage SSH cryptography. They keep your SSH server aligned with the same security standards as every other crypto-aware service on the system. Use subpolicy modules for targeted tweaks rather than overriding settings in sshd_config, and always test client connectivity after changing policies, especially when moving to FUTURE or custom strict policies.
+System-wide crypto policies on RHEL are the intended way to manage SSH cryptography. They keep your SSH server aligned with the same security standards as every other crypto-aware service on the system. Use subpolicy modules for targeted tweaks rather than overriding settings in sshd_config, and always test client connectivity after changing policies, especially when moving to FUTURE or custom strict policies.

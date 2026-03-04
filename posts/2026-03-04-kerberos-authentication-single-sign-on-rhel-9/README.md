@@ -1,14 +1,14 @@
-# How to Set Up Kerberos Authentication for Single Sign-On on RHEL 9
+# How to Set Up Kerberos Authentication for Single Sign-On on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kerberos, SSO, Authentication, Linux
 
-Description: A comprehensive guide to setting up Kerberos authentication for single sign-on across Linux services on RHEL 9, covering KDC basics, ticket management, and kerberized service integration.
+Description: A comprehensive guide to setting up Kerberos authentication for single sign-on across Linux services on RHEL, covering KDC basics, ticket management, and kerberized service integration.
 
 ---
 
-Kerberos gives you single sign-on (SSO). You authenticate once, get a ticket-granting ticket (TGT), and that ticket lets you access kerberized services (SSH, NFS, web applications) without entering your password again. On RHEL 9, Kerberos is baked into the system, whether you use it through IdM, Active Directory, or a standalone KDC. This guide explains how to set up and use Kerberos SSO effectively.
+Kerberos gives you single sign-on (SSO). You authenticate once, get a ticket-granting ticket (TGT), and that ticket lets you access kerberized services (SSH, NFS, web applications) without entering your password again. On RHEL, Kerberos is baked into the system, whether you use it through IdM, Active Directory, or a standalone KDC. This guide explains how to set up and use Kerberos SSO effectively.
 
 ## How Kerberos SSO Works
 
@@ -197,13 +197,13 @@ echo "0 */6 * * * username kinit -R" | sudo tee /etc/cron.d/krb5-renew
 
 ## Step 7 - Credential Cache Types
 
-RHEL 9 supports several credential cache types:
+RHEL supports several credential cache types:
 
 ```bash
 # Check the current cache type
 klist
 
-# KCM (recommended on RHEL 9) - managed by sssd-kcm
+# KCM (recommended on RHEL) - managed by sssd-kcm
 # Persists across logins, supports multiple principals
 default_ccache_name = KCM:
 

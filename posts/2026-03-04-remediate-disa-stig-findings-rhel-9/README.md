@@ -1,14 +1,14 @@
-# How to Remediate DISA STIG Findings on RHEL 9 Step by Step
+# How to Remediate DISA STIG Findings on RHEL Step by Step
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DISA STIG, Remediation, Compliance, Linux
 
-Description: A step-by-step guide to remediating the most common DISA STIG findings on RHEL 9, organized by severity category.
+Description: A step-by-step guide to remediating the most common DISA STIG findings on RHEL, organized by severity category.
 
 ---
 
-After running a STIG scan, you will likely see dozens of findings. The sheer number can be overwhelming, but the trick is to work through them systematically: fix all CAT I findings first, then CAT II, then CAT III. This guide walks through the most common findings on a default RHEL 9 installation and shows you exactly how to fix each one.
+After running a STIG scan, you will likely see dozens of findings. The sheer number can be overwhelming, but the trick is to work through them systematically: fix all CAT I findings first, then CAT II, then CAT III. This guide walks through the most common findings on a default RHEL installation and shows you exactly how to fix each one.
 
 ## Triage Your Findings
 

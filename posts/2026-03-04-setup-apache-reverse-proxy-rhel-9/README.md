@@ -1,10 +1,10 @@
-# How to Set Up Apache as a Reverse Proxy on RHEL 9
+# How to Set Up Apache as a Reverse Proxy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, Reverse Proxy, Linux
 
-Description: Learn how to configure Apache httpd as a reverse proxy to forward requests to backend application servers on RHEL 9.
+Description: Learn how to configure Apache httpd as a reverse proxy to forward requests to backend application servers on RHEL.
 
 ---
 
@@ -14,13 +14,13 @@ A reverse proxy sits between the client and your backend application servers. Th
 
 ## Prerequisites
 
-- RHEL 9 with Apache httpd installed
+- RHEL with Apache httpd installed
 - A backend application running on a local port (e.g., Node.js on port 3000)
 - Root or sudo access
 
 ## Step 1 - Enable the Required Modules
 
-Apache needs the proxy modules loaded. On RHEL 9, they are included but may not be active:
+Apache needs the proxy modules loaded. On RHEL, they are included but may not be active:
 
 ```bash
 # Check if proxy modules are loaded
@@ -74,7 +74,7 @@ Instead of proxying everything, you can forward only specific paths:
 
 ## Step 4 - Handle SELinux
 
-SELinux on RHEL 9 blocks Apache from making outgoing network connections by default. You need to enable the `httpd_can_network_connect` boolean:
+SELinux on RHEL blocks Apache from making outgoing network connections by default. You need to enable the `httpd_can_network_connect` boolean:
 
 ```bash
 # Allow Apache to make network connections to backend servers

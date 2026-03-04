@@ -1,4 +1,4 @@
-# How to Deploy RHEL 9 on AWS, Azure, and Google Cloud
+# How to Deploy RHEL on AWS, Azure, and Google Cloud
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: A practical guide to deploying Red Hat Enterprise Linux 9 across th
 
 ---
 
-Running RHEL 9 in the cloud is pretty standard these days, but each provider has its own quirks when it comes to image availability, licensing, and post-launch configuration. I have deployed RHEL across all three major clouds more times than I can count, and there are always a few gotchas that trip people up. This guide walks through the process on AWS, Azure, and Google Cloud so you know what to expect.
+Running RHEL in the cloud is pretty standard these days, but each provider has its own quirks when it comes to image availability, licensing, and post-launch configuration. I have deployed RHEL across all three major clouds more times than I can count, and there are always a few gotchas that trip people up. This guide walks through the process on AWS, Azure, and Google Cloud so you know what to expect.
 
 ## Choosing the Right RHEL Image
 
@@ -23,10 +23,10 @@ For most teams just getting started, the on-demand images are the path of least 
 
 ### Finding the AMI
 
-AWS provides RHEL 9 images through the EC2 AMI catalog. You can search for them in the console or use the CLI.
+AWS provides RHEL images through the EC2 AMI catalog. You can search for them in the console or use the CLI.
 
 ```bash
-# Search for official RHEL 9 AMIs in your region
+# Search for official RHEL AMIs in your region
 aws ec2 describe-images \
   --owners 309956199498 \
   --filters "Name=name,Values=RHEL-9*" \
@@ -40,7 +40,7 @@ Owner ID `309956199498` is Red Hat's official AWS account. Always use this to av
 ### Launching an Instance
 
 ```bash
-# Launch a RHEL 9 instance on AWS
+# Launch a RHEL instance on AWS
 aws ec2 run-instances \
   --image-id ami-0abc12345example \
   --instance-type t3.medium \
@@ -76,7 +76,7 @@ You should see repos like `rhel-9-baseos-rhui-rpms` and `rhel-9-appstream-rhui-r
 Azure lists RHEL images under the Red Hat publisher in the marketplace.
 
 ```bash
-# List available RHEL 9 images on Azure
+# List available RHEL images on Azure
 az vm image list \
   --publisher RedHat \
   --offer RHEL \
@@ -91,7 +91,7 @@ az vm image list \
 # Create a resource group first
 az group create --name rhel-rg --location eastus
 
-# Deploy a RHEL 9 VM
+# Deploy a RHEL VM
 az vm create \
   --resource-group rhel-rg \
   --name rhel9-server \
@@ -128,7 +128,7 @@ sudo subscription-manager attach --auto
 Google Cloud provides RHEL images in the `rhel-cloud` project.
 
 ```bash
-# List available RHEL 9 images on GCP
+# List available RHEL images on GCP
 gcloud compute images list \
   --project rhel-cloud \
   --filter="name~'rhel-9'" \
@@ -138,7 +138,7 @@ gcloud compute images list \
 ### Launching an Instance
 
 ```bash
-# Create a RHEL 9 VM on Google Cloud
+# Create a RHEL VM on Google Cloud
 gcloud compute instances create rhel9-server \
   --zone=us-central1-a \
   --machine-type=e2-medium \
@@ -161,13 +161,13 @@ sudo dnf repolist enabled
 
 ## Cloud-Init Basics
 
-All three clouds support cloud-init for post-launch configuration. RHEL 9 images come with cloud-init pre-installed. You can pass user data scripts to automate the initial setup.
+All three clouds support cloud-init for post-launch configuration. RHEL images come with cloud-init pre-installed. You can pass user data scripts to automate the initial setup.
 
 Here is a practical cloud-init configuration that works across all three providers:
 
 ```yaml
 #cloud-config
-# Basic cloud-init config for RHEL 9 post-launch setup
+# Basic cloud-init config for RHEL post-launch setup
 
 # Update all packages on first boot
 package_update: true
@@ -240,7 +240,7 @@ The key thing to remember: do not try to register an on-demand instance with RHS
 
 ## Post-Deployment Checklist
 
-Once your RHEL 9 instance is running on any cloud, run through these basics:
+Once your RHEL instance is running on any cloud, run through these basics:
 
 ```bash
 # Verify the release
@@ -252,7 +252,7 @@ sudo dnf check-update
 # Ensure SELinux is enforcing
 getenforce
 
-# Verify time synchronization (chronyd is default on RHEL 9)
+# Verify time synchronization (chronyd is default on RHEL)
 chronyc tracking
 
 # Check firewall status
@@ -270,4 +270,4 @@ A few things worth noting on the cost side:
 
 ## Wrapping Up
 
-Deploying RHEL 9 in the cloud is straightforward once you understand the image types, subscription models, and cloud-init setup for each provider. The biggest source of confusion I see is around RHUI vs RHSM, so make sure you pick the right image type for your licensing situation and do not mix the two. Once the instance is up and the repos are working, everything else is just standard RHEL administration.
+Deploying RHEL in the cloud is straightforward once you understand the image types, subscription models, and cloud-init setup for each provider. The biggest source of confusion I see is around RHUI vs RHSM, so make sure you pick the right image type for your licensing situation and do not mix the two. Once the instance is up and the repos are working, everything else is just standard RHEL administration.

@@ -1,14 +1,14 @@
-# How to Mount and Configure FUSE-Based File Systems on RHEL 9
+# How to Mount and Configure FUSE-Based File Systems on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FUSE, Filesystems, Linux
 
-Description: Learn how to install, mount, and configure FUSE-based file systems on RHEL 9 for user-space filesystem access.
+Description: Learn how to install, mount, and configure FUSE-based file systems on RHEL for user-space filesystem access.
 
 ---
 
-FUSE (Filesystem in Userspace) lets you mount filesystems without kernel modules. This means regular users can mount filesystems, developers can create custom filesystems, and you can access remote storage, archives, and cloud services as if they were local directories. RHEL 9 has solid FUSE support built in.
+FUSE (Filesystem in Userspace) lets you mount filesystems without kernel modules. This means regular users can mount filesystems, developers can create custom filesystems, and you can access remote storage, archives, and cloud services as if they were local directories. RHEL has solid FUSE support built in.
 
 ## What Is FUSE
 
@@ -26,7 +26,7 @@ graph TD
 
 ## Installing FUSE
 
-FUSE is available by default on RHEL 9, but verify:
+FUSE is available by default on RHEL, but verify:
 
 ```bash
 # Install FUSE packages
@@ -64,7 +64,7 @@ user_allow_other
 
 This allows users to use the `allow_other` mount option, making their FUSE mounts accessible to other users.
 
-## Common FUSE Filesystems on RHEL 9
+## Common FUSE Filesystems on RHEL
 
 Several popular FUSE filesystems are available:
 
@@ -165,7 +165,7 @@ ls -la /dev/fuse
 
 ## SELinux and FUSE
 
-SELinux on RHEL 9 may block some FUSE operations. Check for denials:
+SELinux on RHEL may block some FUSE operations. Check for denials:
 
 ```bash
 # Check for FUSE-related SELinux denials
@@ -214,4 +214,4 @@ systemctl enable --now mnt-remote.mount
 
 ## Summary
 
-FUSE on RHEL 9 gives you flexible, user-space filesystem access for remote storage, cloud services, and non-native filesystem formats. Install the FUSE packages, configure `/etc/fuse.conf` for user access, and use the appropriate FUSE filesystem for your needs. Keep in mind the performance overhead compared to kernel filesystems, and use `fusermount -u` for clean unmounts.
+FUSE on RHEL gives you flexible, user-space filesystem access for remote storage, cloud services, and non-native filesystem formats. Install the FUSE packages, configure `/etc/fuse.conf` for user access, and use the appropriate FUSE filesystem for your needs. Keep in mind the performance overhead compared to kernel filesystems, and use `fusermount -u` for clean unmounts.

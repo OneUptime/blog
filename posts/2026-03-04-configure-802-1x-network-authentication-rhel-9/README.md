@@ -1,26 +1,26 @@
-# How to Configure 802.1X Network Authentication on RHEL 9
+# How to Configure 802.1X Network Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, 802.1X, Network Authentication, Security, Linux
 
-Description: A step-by-step guide to configuring 802.1X wired network authentication on RHEL 9 using NetworkManager, with examples for PEAP, EAP-TLS, and EAP-TTLS.
+Description: A step-by-step guide to configuring 802.1X wired network authentication on RHEL using NetworkManager, with examples for PEAP, EAP-TLS, and EAP-TTLS.
 
 ---
 
-In high-security environments, plugging a cable into a switch port does not automatically grant network access. 802.1X port-based authentication requires each device to prove its identity before the switch allows traffic through. Hospitals, financial institutions, government networks, and any organization that takes network access control seriously uses 802.1X. Setting it up on RHEL 9 involves configuring NetworkManager with the right EAP credentials and certificates.
+In high-security environments, plugging a cable into a switch port does not automatically grant network access. 802.1X port-based authentication requires each device to prove its identity before the switch allows traffic through. Hospitals, financial institutions, government networks, and any organization that takes network access control seriously uses 802.1X. Setting it up on RHEL involves configuring NetworkManager with the right EAP credentials and certificates.
 
 ## How 802.1X Works
 
 802.1X is a standard for port-based network access control. It involves three parties:
 
-1. **Supplicant** - The client device (your RHEL 9 server)
+1. **Supplicant** - The client device (your RHEL server)
 2. **Authenticator** - The network switch
 3. **Authentication server** - Typically a RADIUS server (like FreeRADIUS or Microsoft NPS)
 
 ```mermaid
 sequenceDiagram
-    participant S as Supplicant (RHEL 9)
+    participant S as Supplicant (RHEL)
     participant A as Authenticator (Switch)
     participant R as RADIUS Server
     S->>A: EAPOL Start
@@ -40,7 +40,7 @@ Until authentication succeeds, the switch only allows 802.1X (EAPOL) frames thro
 
 ## Prerequisites
 
-Before configuring 802.1X on RHEL 9, you need:
+Before configuring 802.1X on RHEL, you need:
 
 - A switch port configured for 802.1X authentication
 - A RADIUS server with your authentication method configured
@@ -89,7 +89,7 @@ Putting passwords directly in the command or keyfile is not ideal. You can confi
 nmcli connection modify corporate-802.1x 802-1x.password-flags 1
 
 # Or store the password in the keyfile but restrict file permissions
-# (passwords in keyfiles are encrypted at rest on RHEL 9)
+# (passwords in keyfiles are encrypted at rest on RHEL)
 nmcli connection modify corporate-802.1x 802-1x.password "YourSecurePassword"
 ```
 
@@ -283,4 +283,4 @@ chmod 644 /etc/pki/tls/certs/corporate-ca.pem
 
 ## Wrapping Up
 
-802.1X on RHEL 9 is handled cleanly through NetworkManager and wpa_supplicant. The most common deployment uses PEAP/MSCHAPv2 with username and password, but for servers in production environments, EAP-TLS with client certificates is the better choice. The setup requires coordination with your network team (switch configuration) and your security team (RADIUS server and certificates), but once everything is in place, it provides a strong layer of network access control that ensures only authorized devices can communicate on your network.
+802.1X on RHEL is handled cleanly through NetworkManager and wpa_supplicant. The most common deployment uses PEAP/MSCHAPv2 with username and password, but for servers in production environments, EAP-TLS with client certificates is the better choice. The setup requires coordination with your network team (switch configuration) and your security team (RADIUS server and certificates), but once everything is in place, it provides a strong layer of network access control that ensures only authorized devices can communicate on your network.

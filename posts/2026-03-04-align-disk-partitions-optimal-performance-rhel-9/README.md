@@ -1,10 +1,10 @@
-# How to Align Disk Partitions for Optimal Performance on RHEL 9
+# How to Align Disk Partitions for Optimal Performance on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Partition Alignment, Performance, Linux
 
-Description: Understand why partition alignment matters and how to ensure your partitions are optimally aligned on RHEL 9 for best disk performance.
+Description: Understand why partition alignment matters and how to ensure your partitions are optimally aligned on RHEL for best disk performance.
 
 ---
 
@@ -46,7 +46,7 @@ Look at the "Start" column. For 512-byte sector disks, the first partition shoul
 
 ### With parted
 
-parted aligns to optimal boundaries by default when you use the `-a optimal` flag (which is the default on RHEL 9):
+parted aligns to optimal boundaries by default when you use the `-a optimal` flag (which is the default on RHEL):
 
 ```bash
 # Create a GPT label
@@ -66,7 +66,7 @@ sudo parted /dev/sdb mkpart primary xfs 50GiB 100%
 
 ### With fdisk
 
-fdisk on RHEL 9 also aligns to 2048-sector boundaries by default:
+fdisk on RHEL also aligns to 2048-sector boundaries by default:
 
 ```bash
 # Start fdisk
@@ -149,15 +149,15 @@ done
 While partition alignment handles the physical layer, matching your filesystem block size to the storage is also important:
 
 ```bash
-# Create XFS with 4K block size (default on RHEL 9)
+# Create XFS with 4K block size (default on RHEL)
 sudo mkfs.xfs -b size=4096 /dev/sdb1
 
 # Create ext4 with 4K blocks
 sudo mkfs.ext4 -b 4096 /dev/sdb1
 ```
 
-The default 4096-byte block size on RHEL 9 is correct for virtually all modern drives.
+The default 4096-byte block size on RHEL is correct for virtually all modern drives.
 
 ## Wrap-Up
 
-On RHEL 9, both parted and fdisk default to optimal alignment, so if you use default settings, your partitions will be properly aligned. The key is to avoid manually specifying sector offsets unless you know what you are doing. When in doubt, start partitions at 1 MiB boundaries, use the `-a optimal` flag in parted, and verify with `align-check`. Proper alignment is a one-time setup that pays performance dividends for the life of the disk.
+On RHEL, both parted and fdisk default to optimal alignment, so if you use default settings, your partitions will be properly aligned. The key is to avoid manually specifying sector offsets unless you know what you are doing. When in doubt, start partitions at 1 MiB boundaries, use the `-a optimal` flag in parted, and verify with `align-check`. Proper alignment is a one-time setup that pays performance dividends for the life of the disk.

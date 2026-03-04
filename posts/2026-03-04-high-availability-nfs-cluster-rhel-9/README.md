@@ -1,10 +1,10 @@
-# How to Set Up a High-Availability NFS Cluster on RHEL 9
+# How to Set Up a High-Availability NFS Cluster on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NFS, High Availability, Cluster, Linux
 
-Description: Build a highly available NFS cluster on RHEL 9 using Pacemaker and Corosync, ensuring NFS exports survive node failures with automatic failover.
+Description: Build a highly available NFS cluster on RHEL using Pacemaker and Corosync, ensuring NFS exports survive node failures with automatic failover.
 
 ---
 
@@ -29,7 +29,7 @@ Clients connect to the virtual IP. Pacemaker moves the IP and NFS service to the
 
 ## Prerequisites
 
-- Two RHEL 9 servers with the High Availability Add-On
+- Two RHEL servers with the High Availability Add-On
 - Shared storage accessible from both nodes (SAN, iSCSI, or DRBD)
 - Network connectivity between nodes for cluster heartbeat
 - A separate network for cluster communication (recommended)
@@ -213,4 +213,4 @@ journalctl -u corosync
 
 ## Wrap-Up
 
-A high-availability NFS cluster on RHEL 9 eliminates the single point of failure that a standalone NFS server represents. Using Pacemaker and Corosync, the NFS service, filesystem, and virtual IP failover automatically when a node goes down. The setup requires shared storage, proper fencing, and careful resource configuration, but once running, it provides reliable NFS service that survives node failures with minimal disruption to clients.
+A high-availability NFS cluster on RHEL eliminates the single point of failure that a standalone NFS server represents. Using Pacemaker and Corosync, the NFS service, filesystem, and virtual IP failover automatically when a node goes down. The setup requires shared storage, proper fencing, and careful resource configuration, but once running, it provides reliable NFS service that survives node failures with minimal disruption to clients.

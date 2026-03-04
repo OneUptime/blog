@@ -1,10 +1,10 @@
-# How to Configure Sticky Bit, SUID, and SGID Permissions on RHEL 9
+# How to Configure Sticky Bit, SUID, and SGID Permissions on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Sticky Bit, SUID, SGID, Linux
 
-Description: Understand and configure the special permission bits - sticky bit, SUID, and SGID - on RHEL 9 for secure shared directories and controlled privilege escalation.
+Description: Understand and configure the special permission bits - sticky bit, SUID, and SGID - on RHEL for secure shared directories and controlled privilege escalation.
 
 ---
 
@@ -63,7 +63,7 @@ SUID binaries are one of the most common privilege escalation vectors. A vulnera
 sudo find / -xdev -type f -perm -4000 2>/dev/null
 ```
 
-On a default RHEL 9 system, legitimate SUID files include:
+On a default RHEL system, legitimate SUID files include:
 
 - `/usr/bin/passwd`
 - `/usr/bin/su`

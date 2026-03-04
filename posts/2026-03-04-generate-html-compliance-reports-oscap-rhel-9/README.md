@@ -1,14 +1,14 @@
-# How to Generate HTML Compliance Reports with oscap on RHEL 9
+# How to Generate HTML Compliance Reports with oscap on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, oscap, HTML Reports, Compliance, Linux
 
-Description: Generate professional HTML compliance reports using oscap on RHEL 9, with tips for customization, automation, and distribution to auditors.
+Description: Generate professional HTML compliance reports using oscap on RHEL, with tips for customization, automation, and distribution to auditors.
 
 ---
 
-A well-formatted compliance report can save hours of back-and-forth with auditors. The oscap tool on RHEL 9 generates self-contained HTML reports that include everything an auditor needs: which rules passed, which failed, what the expected configuration is, and how to fix the failures. This guide covers all the report generation options and how to make the most of them.
+A well-formatted compliance report can save hours of back-and-forth with auditors. The oscap tool on RHEL generates self-contained HTML reports that include everything an auditor needs: which rules passed, which failed, what the expected configuration is, and how to fix the failures. This guide covers all the report generation options and how to make the most of them.
 
 ## Generate a Basic HTML Report
 

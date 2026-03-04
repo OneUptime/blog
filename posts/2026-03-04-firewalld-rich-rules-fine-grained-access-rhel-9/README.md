@@ -1,10 +1,10 @@
-# How to Write Firewalld Rich Rules for Fine-Grained Access Control on RHEL 9
+# How to Write Firewalld Rich Rules for Fine-Grained Access Control on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Rich Rules, Security, Linux
 
-Description: How to use firewalld rich rules on RHEL 9 for granular traffic control, including source-based filtering, rate limiting, logging, and complex allow/deny patterns.
+Description: How to use firewalld rich rules on RHEL for granular traffic control, including source-based filtering, rate limiting, logging, and complex allow/deny patterns.
 
 ---
 

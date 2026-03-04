@@ -1,10 +1,10 @@
-# How to Configure kdump for Kernel Crash Dump Analysis on RHEL 9
+# How to Configure kdump for Kernel Crash Dump Analysis on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, kdump, Crash Dump, Kernel, Linux
 
-Description: A complete guide to setting up and configuring kdump on RHEL 9 for capturing kernel crash dumps, covering memory reservation, dump targets, crash analysis with the crash tool, and troubleshooting.
+Description: A complete guide to setting up and configuring kdump on RHEL for capturing kernel crash dumps, covering memory reservation, dump targets, crash analysis with the crash tool, and troubleshooting.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A complete guide to setting up and configuring kdump on RHEL 9 for 
 
 When the Linux kernel crashes (a kernel panic), the system normally just freezes or reboots. Without a crash dump, you have no way to figure out what happened. kdump solves this by using a second kernel, pre-loaded into reserved memory, that activates when the primary kernel crashes. This "capture kernel" boots, collects the memory contents of the crashed kernel, saves them to disk or a remote location, and then reboots normally.
 
-On RHEL 9, kdump is the supported mechanism for capturing kernel crash dumps, and setting it up on production systems is considered a best practice.
+On RHEL, kdump is the supported mechanism for capturing kernel crash dumps, and setting it up on production systems is considered a best practice.
 
 ## How kdump Works
 
@@ -46,13 +46,13 @@ systemctl status kdump
 
 ## Reserving Memory for the Crash Kernel
 
-kdump needs memory reserved at boot time for the capture kernel. On RHEL 9, the default reservation is usually sufficient, but you can adjust it.
+kdump needs memory reserved at boot time for the capture kernel. On RHEL, the default reservation is usually sufficient, but you can adjust it.
 
 ```bash
 # Check current crashkernel reservation
 cat /proc/cmdline | grep crashkernel
 
-# The default on RHEL 9 is typically:
+# The default on RHEL is typically:
 # crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M
 ```
 
@@ -291,4 +291,4 @@ Common issues:
 
 ## Wrapping Up
 
-kdump is an essential safety net for production RHEL 9 systems. When a kernel panic hits, having a crash dump is the difference between guessing what went wrong and actually knowing. Set it up early, test it once to make sure it works, and then forget about it until you need it. The crash utility gives you powerful analysis capabilities, and combined with kernel debuginfo packages, you can usually pinpoint exactly what caused the panic.
+kdump is an essential safety net for production RHEL systems. When a kernel panic hits, having a crash dump is the difference between guessing what went wrong and actually knowing. Set it up early, test it once to make sure it works, and then forget about it until you need it. The crash utility gives you powerful analysis capabilities, and combined with kernel debuginfo packages, you can usually pinpoint exactly what caused the panic.

@@ -1,10 +1,10 @@
-# How to Password-Protect the GRUB2 Boot Loader on RHEL 9
+# How to Password-Protect the GRUB2 Boot Loader on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GRUB2, Password, Security, Linux
 
-Description: Learn how to add password protection to the GRUB2 boot loader on RHEL 9 to prevent unauthorized kernel parameter changes and single-user mode access.
+Description: Learn how to add password protection to the GRUB2 boot loader on RHEL to prevent unauthorized kernel parameter changes and single-user mode access.
 
 ---
 
@@ -106,7 +106,7 @@ EOF
 sudo chmod +x /etc/grub.d/40_custom
 ```
 
-To make specific menu entries accessible without a password, you would need to mark them as `--unrestricted` in the GRUB configuration. However, on RHEL 9 with BLS, the simpler approach using `grub2-setpassword` is recommended.
+To make specific menu entries accessible without a password, you would need to mark them as `--unrestricted` in the GRUB configuration. However, on RHEL with BLS, the simpler approach using `grub2-setpassword` is recommended.
 
 ## Security Considerations
 
@@ -140,4 +140,4 @@ ls -la /boot/grub2/user.cfg
 
 ## Wrapping Up
 
-Password-protecting GRUB2 on RHEL 9 is a quick task thanks to the `grub2-setpassword` command. It takes under a minute to set up and it closes a real security gap on systems where someone could access the console. Just remember that it is one layer of defense, not the whole strategy. Combine it with UEFI Secure Boot and disk encryption for comprehensive boot security, and keep the password stored safely, because if you lose it, you will need to boot from installation media to recover.
+Password-protecting GRUB2 on RHEL is a quick task thanks to the `grub2-setpassword` command. It takes under a minute to set up and it closes a real security gap on systems where someone could access the console. Just remember that it is one layer of defense, not the whole strategy. Combine it with UEFI Secure Boot and disk encryption for comprehensive boot security, and keep the password stored safely, because if you lose it, you will need to boot from installation media to recover.

@@ -1,14 +1,14 @@
-# How to Install Jenkins on RHEL 9
+# How to Install Jenkins on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Jenkins, CI/CD, Automation, DevOps, Linux
 
-Description: A complete guide to installing Jenkins on RHEL 9 with Java, firewall configuration, and initial setup.
+Description: A complete guide to installing Jenkins on RHEL with Java, firewall configuration, and initial setup.
 
 ---
 
-Jenkins remains one of the most widely used CI/CD servers. It runs on Java and provides a web interface for building, testing, and deploying software. This guide covers a clean Jenkins installation on RHEL 9.
+Jenkins remains one of the most widely used CI/CD servers. It runs on Java and provides a web interface for building, testing, and deploying software. This guide covers a clean Jenkins installation on RHEL.
 
 ## Prerequisites
 
@@ -115,4 +115,4 @@ sudo systemctl edit jenkins
 sudo systemctl restart jenkins
 ```
 
-Jenkins is now installed and running on RHEL 9. From here, you can configure pipelines, add agents, and integrate with your version control system.
+Jenkins is now installed and running on RHEL. From here, you can configure pipelines, add agents, and integrate with your version control system.

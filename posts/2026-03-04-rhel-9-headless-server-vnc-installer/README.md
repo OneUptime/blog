@@ -1,16 +1,16 @@
-# How to Set Up RHEL 9 on a Headless Server Using the VNC Graphical Installer
+# How to Set Up RHEL on a Headless Server Using the VNC Graphical Installer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VNC, Headless Server, Installation, Linux
 
-Description: Learn how to install RHEL 9 on a headless server by enabling the VNC-based graphical installer through boot parameters, connecting remotely with a VNC client, and completing the full installation without a monitor or keyboard attached.
+Description: Learn how to install RHEL on a headless server by enabling the VNC-based graphical installer through boot parameters, connecting remotely with a VNC client, and completing the full installation without a monitor or keyboard attached.
 
 ---
 
 If you have ever tried to install RHEL on a rack-mounted server sitting in a data center with no monitor plugged in, you know the frustration. The Anaconda installer ships with a perfectly good graphical interface, but you need some way to see it. That is where VNC comes in. You can tell the installer to start a VNC server during boot, connect from your workstation, and run through the entire graphical installation remotely.
 
-This guide walks through the full process on RHEL 9, from modifying boot parameters to finishing the install and rebooting into your new system.
+This guide walks through the full process on RHEL, from modifying boot parameters to finishing the install and rebooting into your new system.
 
 ## Why VNC Instead of a Text Installer?
 
@@ -20,14 +20,14 @@ The text-based installer works fine for basic setups, but it is limited. You can
 
 Before you start, make sure you have the following ready:
 
-- A RHEL 9 installation ISO (either burned to USB or mounted via IPMI/iLO/iDRAC virtual media)
+- A RHEL installation ISO (either burned to USB or mounted via IPMI/iLO/iDRAC virtual media)
 - Network connectivity between your workstation and the target server
 - A VNC client installed on your workstation (TigerVNC, RealVNC, or even the built-in macOS Screen Sharing app)
 - Console access to the server's boot menu (via IPMI, serial, or a one-time keyboard/monitor hookup)
 
 ## Step 1: Boot from the Installation Media
 
-Boot the server from your RHEL 9 installation media. When the GRUB boot menu appears, you will see options like "Install Red Hat Enterprise Linux 9" and "Test this media & install." Do not press Enter yet.
+Boot the server from your RHEL installation media. When the GRUB boot menu appears, you will see options like "Install Red Hat Enterprise Linux 9" and "Test this media & install." Do not press Enter yet.
 
 Highlight the "Install Red Hat Enterprise Linux 9" entry and press `e` to edit the boot parameters. You will see the kernel command line, which typically ends with something like `quiet`.
 
@@ -80,7 +80,7 @@ sequenceDiagram
     participant Server as Headless Server
     participant Anaconda as Anaconda Installer
 
-    Server->>Server: Boot from RHEL 9 media
+    Server->>Server: Boot from RHEL media
     Server->>Server: Kernel reads inst.vnc parameter
     Server->>Anaconda: Start Anaconda with VNC server
     Anaconda->>Anaconda: VNC listening on port 5901
@@ -88,7 +88,7 @@ sequenceDiagram
     Anaconda->>Admin: Graphical installer displayed
     Admin->>Anaconda: Configure disk, network, packages
     Admin->>Anaconda: Click "Begin Installation"
-    Anaconda->>Server: Install RHEL 9 to disk
+    Anaconda->>Server: Install RHEL to disk
     Anaconda->>Admin: Installation complete, reboot prompt
 ```
 
@@ -135,7 +135,7 @@ vncviewer localhost:1
 
 ## Step 7: VNC Connect Mode (Reverse Connection)
 
-RHEL 9's installer also supports "connect mode," where the installer connects back to a VNC client listening on your workstation. This is useful when the server is behind a firewall that blocks incoming connections.
+RHEL's installer also supports "connect mode," where the installer connects back to a VNC client listening on your workstation. This is useful when the server is behind a firewall that blocks incoming connections.
 
 On your workstation, start a listening VNC client:
 
@@ -155,7 +155,7 @@ Replace `192.168.1.10` with your workstation's IP. The installer will initiate t
 
 ## Post-Installation: Enable VNC for Ongoing Access
 
-Once RHEL 9 is installed and running, you might want ongoing remote graphical access. That is a separate setup from the installer VNC, but here is a quick way to get it running:
+Once RHEL is installed and running, you might want ongoing remote graphical access. That is a separate setup from the installer VNC, but here is a quick way to get it running:
 
 ```bash
 # Install the TigerVNC server package
@@ -185,4 +185,4 @@ For production servers, most sysadmins rely on SSH and Cockpit rather than VNC f
 
 ## Wrapping Up
 
-VNC installation is one of those techniques every sysadmin should have in their toolkit. It comes up constantly when you are provisioning bare-metal servers in data centers, working with IPMI interfaces that have poor Java-based KVM clients, or deploying to machines where the only console access is flaky. The RHEL 9 Anaconda installer makes it straightforward with just a couple of boot parameters, and you get the full graphical experience without needing to be physically present.
+VNC installation is one of those techniques every sysadmin should have in their toolkit. It comes up constantly when you are provisioning bare-metal servers in data centers, working with IPMI interfaces that have poor Java-based KVM clients, or deploying to machines where the only console access is flaky. The RHEL Anaconda installer makes it straightforward with just a couple of boot parameters, and you get the full graphical experience without needing to be physically present.

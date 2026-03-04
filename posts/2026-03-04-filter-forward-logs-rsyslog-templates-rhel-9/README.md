@@ -1,14 +1,14 @@
-# How to Filter and Forward Logs with rsyslog Templates on RHEL 9
+# How to Filter and Forward Logs with rsyslog Templates on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, rsyslog, Logging, Templates, Linux
 
-Description: Learn how to use rsyslog templates and filter conditions to selectively forward and format log messages on RHEL 9 for targeted log management.
+Description: Learn how to use rsyslog templates and filter conditions to selectively forward and format log messages on RHEL for targeted log management.
 
 ---
 
-rsyslog on RHEL 9 is far more than a simple log forwarder. Its template and filtering system lets you control exactly which messages go where, in what format, and under what conditions. This is essential when you want to send security logs to one server, application logs to another, and format everything differently for each destination.
+rsyslog on RHEL is far more than a simple log forwarder. Its template and filtering system lets you control exactly which messages go where, in what format, and under what conditions. This is essential when you want to send security logs to one server, application logs to another, and format everything differently for each destination.
 
 ## Understanding rsyslog Templates
 
@@ -289,4 +289,4 @@ sudo tail -f /var/log/all-errors.log
 
 ## Summary
 
-rsyslog templates and filters on RHEL 9 give you precise control over log routing and formatting. String templates work for simple formatting, list templates for structured output, and RainerScript conditions for complex filtering logic. By combining these features, you can route security logs to your SIEM, application logs to dedicated files, and format everything in JSON for downstream processing.
+rsyslog templates and filters on RHEL give you precise control over log routing and formatting. String templates work for simple formatting, list templates for structured output, and RainerScript conditions for complex filtering logic. By combining these features, you can route security logs to your SIEM, application logs to dedicated files, and format everything in JSON for downstream processing.

@@ -1,14 +1,14 @@
-# How to Install and Configure USBGuard on RHEL 9 to Block Rogue USB Devices
+# How to Install and Configure USBGuard on RHEL to Block Rogue USB Devices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, USBGuard, USB Security, Linux
 
-Description: Install and configure USBGuard on RHEL 9 to protect your systems from rogue USB devices, BadUSB attacks, and unauthorized peripheral connections.
+Description: Install and configure USBGuard on RHEL to protect your systems from rogue USB devices, BadUSB attacks, and unauthorized peripheral connections.
 
 ---
 
-USB ports are one of the most overlooked attack vectors on Linux servers. Someone plugs in a malicious USB device, and suddenly you have a keyboard injecting commands, a storage device exfiltrating data, or a network adapter redirecting traffic. USBGuard lets you define a policy for which USB devices are allowed and blocks everything else. Here is how to set it up on RHEL 9.
+USB ports are one of the most overlooked attack vectors on Linux servers. Someone plugs in a malicious USB device, and suddenly you have a keyboard injecting commands, a storage device exfiltrating data, or a network adapter redirecting traffic. USBGuard lets you define a policy for which USB devices are allowed and blocks everything else. Here is how to set it up on RHEL.
 
 ## What USBGuard Does
 

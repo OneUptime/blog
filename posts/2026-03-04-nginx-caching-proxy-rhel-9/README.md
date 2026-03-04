@@ -1,10 +1,10 @@
-# How to Set Up Nginx as a Caching Proxy on RHEL 9
+# How to Set Up Nginx as a Caching Proxy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Caching, Proxy, Linux
 
-Description: How to configure Nginx as a caching reverse proxy on RHEL 9 to reduce backend load and improve response times.
+Description: How to configure Nginx as a caching reverse proxy on RHEL to reduce backend load and improve response times.
 
 ---
 
@@ -14,7 +14,7 @@ When Nginx sits in front of your application servers, it can cache responses and
 
 ## Prerequisites
 
-- RHEL 9 with Nginx installed
+- RHEL with Nginx installed
 - A backend application to proxy
 - Root or sudo access
 - SELinux boolean `httpd_can_network_connect` enabled

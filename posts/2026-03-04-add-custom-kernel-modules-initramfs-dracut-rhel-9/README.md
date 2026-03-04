@@ -1,14 +1,14 @@
-# How to Add Custom Kernel Modules to the Initramfs with dracut on RHEL 9
+# How to Add Custom Kernel Modules to the Initramfs with dracut on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, dracut, Kernel Modules, Initramfs, Boot, Linux
 
-Description: Step-by-step instructions for adding custom or third-party kernel modules to the RHEL 9 initramfs using dracut so they load during early boot.
+Description: Step-by-step instructions for adding custom or third-party kernel modules to the RHEL initramfs using dracut so they load during early boot.
 
 ---
 
-Some hardware requires specific kernel modules to be available during the earliest stages of boot, before the root filesystem is mounted. Storage controllers, RAID adapters, and encryption hardware are common examples. If the module is not in the initramfs, the kernel cannot access the root filesystem, and the system will not boot. On RHEL 9, dracut handles this, and adding custom modules is straightforward once you know the process.
+Some hardware requires specific kernel modules to be available during the earliest stages of boot, before the root filesystem is mounted. Storage controllers, RAID adapters, and encryption hardware are common examples. If the module is not in the initramfs, the kernel cannot access the root filesystem, and the system will not boot. On RHEL, dracut handles this, and adding custom modules is straightforward once you know the process.
 
 ## When You Need Modules in the Initramfs
 
@@ -197,7 +197,7 @@ sudo dracut --force /boot/initramfs-$(uname -r)-test.img $(uname -r)
 # This way you can fall back to the original if boot fails
 sudo grubby --add-kernel=/boot/vmlinuz-$(uname -r) \
     --initrd=/boot/initramfs-$(uname -r)-test.img \
-    --title="RHEL 9 Test Initramfs" \
+    --title="RHEL Test Initramfs" \
     --copy-default
 
 # Reboot and select the test entry from GRUB menu
@@ -207,4 +207,4 @@ sudo grubby --add-kernel=/boot/vmlinuz-$(uname -r) \
 
 ## Conclusion
 
-Adding custom kernel modules to the RHEL 9 initramfs is a common task when dealing with specialized hardware or third-party storage controllers. The key steps are: install the module properly, run depmod, configure dracut to include it, and rebuild the initramfs. Always keep a known-good initramfs as a fallback, and use DKMS for modules that need to persist across kernel updates. Testing with a separate GRUB entry before committing to the change prevents situations where a bad initramfs leaves you unable to boot.
+Adding custom kernel modules to the RHEL initramfs is a common task when dealing with specialized hardware or third-party storage controllers. The key steps are: install the module properly, run depmod, configure dracut to include it, and rebuild the initramfs. Always keep a known-good initramfs as a fallback, and use DKMS for modules that need to persist across kernel updates. Testing with a separate GRUB entry before committing to the change prevents situations where a bad initramfs leaves you unable to boot.

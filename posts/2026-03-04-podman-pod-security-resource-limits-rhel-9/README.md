@@ -1,14 +1,14 @@
-# How to Configure Podman Pod Security and Resource Limits on RHEL 9
+# How to Configure Podman Pod Security and Resource Limits on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Security, Resource Limits, Linux
 
-Description: Learn how to configure security contexts, capabilities, resource limits, and isolation settings for Podman pods and containers on RHEL 9.
+Description: Learn how to configure security contexts, capabilities, resource limits, and isolation settings for Podman pods and containers on RHEL.
 
 ---
 
-Running containers without resource limits is a recipe for trouble. One runaway process and it consumes all your CPU and memory, taking down everything else on the system. On RHEL 9, Podman with cgroups v2 gives you solid resource controls for both individual containers and pods.
+Running containers without resource limits is a recipe for trouble. One runaway process and it consumes all your CPU and memory, taking down everything else on the system. On RHEL, Podman with cgroups v2 gives you solid resource controls for both individual containers and pods.
 
 ## Setting Memory Limits
 
@@ -236,4 +236,4 @@ podman run -d --name ulimit-app \
 
 ## Summary
 
-Resource limits and security hardening are essential for production containers on RHEL 9. At minimum, set memory limits (to prevent OOM), CPU limits (to prevent resource starvation), drop unnecessary capabilities, and run as a non-root user. These controls, combined with SELinux and seccomp profiles, create multiple layers of defense for your container workloads.
+Resource limits and security hardening are essential for production containers on RHEL. At minimum, set memory limits (to prevent OOM), CPU limits (to prevent resource starvation), drop unnecessary capabilities, and run as a non-root user. These controls, combined with SELinux and seccomp profiles, create multiple layers of defense for your container workloads.

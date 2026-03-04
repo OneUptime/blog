@@ -1,18 +1,18 @@
-# How to Change the Default systemd Target (Runlevel) on RHEL 9
+# How to Change the Default systemd Target (Runlevel) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Targets, Runlevels, Linux
 
-Description: Learn how to view and change the default systemd target on RHEL 9, including the relationship between classic runlevels and modern targets, and how to override at boot via GRUB.
+Description: Learn how to view and change the default systemd target on RHEL, including the relationship between classic runlevels and modern targets, and how to override at boot via GRUB.
 
 ---
 
 ## Runlevels Are Gone, Targets Are Here
 
-If you grew up with SysVinit, you remember runlevels: 0 through 6, each with a specific meaning. RHEL 9 uses systemd, and the equivalent concept is called a "target." Targets are more flexible than runlevels because they can depend on each other and you can create custom ones.
+If you grew up with SysVinit, you remember runlevels: 0 through 6, each with a specific meaning. RHEL uses systemd, and the equivalent concept is called a "target." Targets are more flexible than runlevels because they can depend on each other and you can create custom ones.
 
-That said, the old runlevel numbers still work as aliases. RHEL 9 ships compatibility symlinks so you can reference them if muscle memory takes over.
+That said, the old runlevel numbers still work as aliases. RHEL ships compatibility symlinks so you can reference them if muscle memory takes over.
 
 ## Targets vs Runlevels: The Mapping
 
@@ -28,7 +28,7 @@ Here is how the classic runlevels map to systemd targets:
 | 5        | graphical.target        | Multi-user with GUI                |
 | 6        | reboot.target           | Reboot the system                  |
 
-On RHEL 9 servers, the two you will work with most are `multi-user.target` (headless server) and `graphical.target` (desktop/workstation).
+On RHEL servers, the two you will work with most are `multi-user.target` (headless server) and `graphical.target` (desktop/workstation).
 
 ## Checking the Current Default Target
 
@@ -39,7 +39,7 @@ Before changing anything, check what you have now.
 systemctl get-default
 ```
 
-On a fresh RHEL 9 minimal install, this returns `multi-user.target`. On a workstation install, it returns `graphical.target`.
+On a fresh RHEL minimal install, this returns `multi-user.target`. On a workstation install, it returns `graphical.target`.
 
 You can also check what target the system is currently running in:
 

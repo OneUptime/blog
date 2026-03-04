@@ -1,10 +1,10 @@
-# How to Blacklist a Kernel Module on RHEL 9
+# How to Blacklist a Kernel Module on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kernel Module, Blacklist, Linux
 
-Description: Learn how to permanently blacklist kernel modules on RHEL 9 to prevent them from loading, covering modprobe blacklisting, initramfs updates, and common use cases like disabling USB storage or Nouveau.
+Description: Learn how to permanently blacklist kernel modules on RHEL to prevent them from loading, covering modprobe blacklisting, initramfs updates, and common use cases like disabling USB storage or Nouveau.
 
 ---
 
@@ -18,7 +18,7 @@ Sometimes you need to prevent a kernel module from loading. Common reasons inclu
 - Disabling unused wireless or Bluetooth modules on servers
 - Preventing a buggy driver from causing system instability
 
-RHEL 9 provides a clean mechanism for this through modprobe blacklisting.
+RHEL provides a clean mechanism for this through modprobe blacklisting.
 
 ## How Module Blacklisting Works
 
@@ -119,7 +119,7 @@ sudo systemctl reboot
 ### Disabling IPv6 via Module Blacklisting
 
 ```bash
-# Note: On RHEL 9, IPv6 is built into the kernel, so blacklisting
+# Note: On RHEL, IPv6 is built into the kernel, so blacklisting
 # the module alone is not sufficient. Use sysctl instead.
 sudo tee /etc/sysctl.d/90-disable-ipv6.conf <<EOF
 net.ipv6.conf.all.disable_ipv6 = 1
@@ -235,4 +235,4 @@ grep -r "^install.*\/bin\/false\|^install.*\/bin\/true" /etc/modprobe.d/ /usr/li
 
 ## Wrapping Up
 
-Module blacklisting on RHEL 9 is a two-step process: add the `blacklist` and `install` directives to a file in `/etc/modprobe.d/`, then rebuild the initramfs with `dracut --force` if the module loads during early boot. For security-related blacklisting like USB storage, always use both directives to prevent the module from loading under any circumstances. And remember to test on a non-production system first, because blacklisting the wrong module can leave you with a system that will not boot properly.
+Module blacklisting on RHEL is a two-step process: add the `blacklist` and `install` directives to a file in `/etc/modprobe.d/`, then rebuild the initramfs with `dracut --force` if the module loads during early boot. For security-related blacklisting like USB storage, always use both directives to prevent the module from loading under any circumstances. And remember to test on a non-production system first, because blacklisting the wrong module can leave you with a system that will not boot properly.

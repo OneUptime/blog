@@ -1,14 +1,14 @@
-# How to Customize the Initramfs with dracut on RHEL 9
+# How to Customize the Initramfs with dracut on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, dracut, Initramfs, Boot, Kernel, Linux
 
-Description: A practical guide to customizing the initial RAM filesystem (initramfs) using dracut on RHEL 9, including adding modules, scripts, and files.
+Description: A practical guide to customizing the initial RAM filesystem (initramfs) using dracut on RHEL, including adding modules, scripts, and files.
 
 ---
 
-The initramfs is a compressed filesystem that the kernel loads into memory during boot before the real root filesystem is available. On RHEL 9, dracut is the tool that builds and manages the initramfs. Customizing it lets you add drivers for special hardware, include custom scripts that run during boot, or strip it down for faster boot times.
+The initramfs is a compressed filesystem that the kernel loads into memory during boot before the real root filesystem is available. On RHEL, dracut is the tool that builds and manages the initramfs. Customizing it lets you add drivers for special hardware, include custom scripts that run during boot, or strip it down for faster boot times.
 
 ## How the Boot Process Uses the Initramfs
 
@@ -175,7 +175,7 @@ add_drivers+=" nvme vfio-pci "
 # Exclude modules you do not need
 omit_dracutmodules+=" plymouth multipath "
 
-# Set compression algorithm (zstd is fastest on RHEL 9)
+# Set compression algorithm (zstd is fastest on RHEL)
 compress="zstd"
 
 # Include firmware files
@@ -211,4 +211,4 @@ sudo cp /tmp/test-initramfs.img /boot/initramfs-$(uname -r)-test.img
 
 ## Conclusion
 
-dracut gives you full control over what runs during the earliest stages of RHEL 9 boot. Whether you need custom hardware drivers, network setup scripts, or specialized storage initialization, the module system provides a clean way to package and maintain your customizations. Always keep a known-good initramfs as a fallback, and test changes thoroughly before deploying to production systems.
+dracut gives you full control over what runs during the earliest stages of RHEL boot. Whether you need custom hardware drivers, network setup scripts, or specialized storage initialization, the module system provides a clean way to package and maintain your customizations. Always keep a known-good initramfs as a fallback, and test changes thoroughly before deploying to production systems.

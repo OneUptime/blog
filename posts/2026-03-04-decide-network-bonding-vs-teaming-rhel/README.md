@@ -8,7 +8,7 @@ Description: A comparison of network bonding vs teaming on RHEL, covering featur
 
 ---
 
-If you are reading this, you are probably trying to decide between bonding and teaming for link aggregation on RHEL. The short answer is: use bonding. Red Hat deprecated teaming in RHEL 9, and bonding is the supported path going forward. But let me explain the full picture so you understand why.
+If you are reading this, you are probably trying to decide between bonding and teaming for link aggregation on RHEL. The short answer is: use bonding. Red Hat deprecated teaming in RHEL, and bonding is the supported path going forward. But let me explain the full picture so you understand why.
 
 ## A Brief History
 
@@ -23,12 +23,12 @@ The reality did not quite work out that way. Bonding continued to improve, and t
 ```mermaid
 graph LR
     A[RHEL 7] -->|Both supported| B[RHEL 8]
-    B -->|Teaming deprecated| C[RHEL 9]
+    B -->|Teaming deprecated| C[RHEL]
     C -->|Teaming likely removed| D[RHEL 10]
 ```
 
 - **RHEL 7 and 8**: Both bonding and teaming fully supported
-- **RHEL 9**: Teaming deprecated, package still available but not recommended for new deployments
+- **RHEL**: Teaming deprecated, package still available but not recommended for new deployments
 - **Future RHEL releases**: Teaming will likely be removed entirely
 
 ## Feature Comparison
@@ -47,7 +47,7 @@ graph LR
 | Link monitoring | MII, ARP | Multiple link watchers (ethtool, ARP, nsna_ping) |
 | Hot-plug support | Basic | Better |
 | IPv6 NS/NA monitoring | No | Yes |
-| RHEL 9 status | Fully supported | Deprecated |
+| RHEL status | Fully supported | Deprecated |
 | Kernel overhead | Minimal | Higher (kernel + user space) |
 
 ## When Teaming Had Advantages
@@ -102,7 +102,7 @@ nmcli connection add type bond con-name bond0 ifname bond0 \
 
 ## Current Recommendation
 
-For all new RHEL deployments, use bonding. For existing RHEL 9 systems with teaming, plan a migration to bonding during your next maintenance window. Do not wait until teaming is removed and you are forced to migrate under pressure.
+For all new RHEL deployments, use bonding. For existing RHEL systems with teaming, plan a migration to bonding during your next maintenance window. Do not wait until teaming is removed and you are forced to migrate under pressure.
 
 For most workloads, these two bonding modes cover everything:
 
@@ -133,4 +133,4 @@ If you find team interfaces, start planning the migration.
 
 ## Summary
 
-The bonding vs teaming debate is settled. Bonding is the standard, supported approach on RHEL 9 and going forward. Teaming had some nice features, but the complexity of maintaining two parallel solutions was not justified by the marginal benefits. Use bonding for new deployments and migrate existing team interfaces before the package is removed. Active-backup for simple redundancy, 802.3ad for aggregated throughput - those two modes handle the vast majority of production use cases.
+The bonding vs teaming debate is settled. Bonding is the standard, supported approach on RHEL and going forward. Teaming had some nice features, but the complexity of maintaining two parallel solutions was not justified by the marginal benefits. Use bonding for new deployments and migrate existing team interfaces before the package is removed. Active-backup for simple redundancy, 802.3ad for aggregated throughput - those two modes handle the vast majority of production use cases.

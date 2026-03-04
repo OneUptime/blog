@@ -1,14 +1,14 @@
-# How to Use Kubernetes YAML with podman kube play on RHEL 9
+# How to Use Kubernetes YAML with podman kube play on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Kubernetes, YAML, Linux
 
-Description: Learn how to use podman kube play on RHEL 9 to run Kubernetes Pod, Deployment, and Service YAML manifests locally without a Kubernetes cluster.
+Description: Learn how to use podman kube play on RHEL to run Kubernetes Pod, Deployment, and Service YAML manifests locally without a Kubernetes cluster.
 
 ---
 
-One of Podman's most useful features is `podman kube play`, which takes standard Kubernetes YAML and runs it locally as Podman containers. This bridges the gap between local development and Kubernetes deployment. You write your YAML once and test it on your RHEL 9 workstation before pushing it to a cluster.
+One of Podman's most useful features is `podman kube play`, which takes standard Kubernetes YAML and runs it locally as Podman containers. This bridges the gap between local development and Kubernetes deployment. You write your YAML once and test it on your RHEL workstation before pushing it to a cluster.
 
 ## Basic Pod YAML
 
@@ -330,4 +330,4 @@ This runs your Kubernetes YAML as a systemd service.
 
 ## Summary
 
-`podman kube play` lets you develop and test Kubernetes YAML locally on RHEL 9 without needing a cluster. Write your manifests, test them with Podman, then deploy the same YAML to Kubernetes or OpenShift. It is not a full Kubernetes implementation, but for validating pod specs and multi-container configurations, it saves a lot of time.
+`podman kube play` lets you develop and test Kubernetes YAML locally on RHEL without needing a cluster. Write your manifests, test them with Podman, then deploy the same YAML to Kubernetes or OpenShift. It is not a full Kubernetes implementation, but for validating pod specs and multi-container configurations, it saves a lot of time.

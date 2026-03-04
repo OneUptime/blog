@@ -1,16 +1,16 @@
-# How to Configure SELinux for Apache HTTPD with Non-Standard Configurations on RHEL 9
+# How to Configure SELinux for Apache HTTPD with Non-Standard Configurations on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, Apache, Security, Linux
 
-Description: Adjust SELinux settings on RHEL 9 to support Apache HTTPD configurations that use custom directories, ports, and features beyond the default setup.
+Description: Adjust SELinux settings on RHEL to support Apache HTTPD configurations that use custom directories, ports, and features beyond the default setup.
 
 ---
 
 ## The Default SELinux Policy for Apache
 
-Out of the box, SELinux on RHEL 9 confines Apache (httpd) to a strict policy. It can serve files from `/var/www/html`, listen on standard HTTP/HTTPS ports, and not much else. The moment you customize Apache, whether it is a different document root, a reverse proxy, CGI scripts, or database connections, SELinux steps in and blocks it.
+Out of the box, SELinux on RHEL confines Apache (httpd) to a strict policy. It can serve files from `/var/www/html`, listen on standard HTTP/HTTPS ports, and not much else. The moment you customize Apache, whether it is a different document root, a reverse proxy, CGI scripts, or database connections, SELinux steps in and blocks it.
 
 This post covers the most common non-standard Apache configurations and the SELinux adjustments each one requires.
 

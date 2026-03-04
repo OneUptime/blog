@@ -1,10 +1,10 @@
-# How to Replace a Failed Drive in an mdadm RAID Array on RHEL 9
+# How to Replace a Failed Drive in an mdadm RAID Array on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RAID, mdadm, Recovery, Linux
 
-Description: A practical walkthrough for identifying and replacing a failed drive in an mdadm RAID array on RHEL 9, covering detection, removal, physical swap, and rebuild.
+Description: A practical walkthrough for identifying and replacing a failed drive in an mdadm RAID array on RHEL, covering detection, removal, physical swap, and rebuild.
 
 ---
 

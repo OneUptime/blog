@@ -1,14 +1,14 @@
-# How to Configure the System Timezone with timedatectl on RHEL 9
+# How to Configure the System Timezone with timedatectl on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, timedatectl, Timezone, Linux
 
-Description: A practical guide to viewing, setting, and managing system timezone configuration on RHEL 9 using timedatectl and related tools.
+Description: A practical guide to viewing, setting, and managing system timezone configuration on RHEL using timedatectl and related tools.
 
 ---
 
-Setting the timezone on a server seems trivial until you get it wrong. Then your log timestamps are off by hours, cron jobs fire at the wrong time, and database records have confusing timestamps. RHEL 9 provides `timedatectl` as the standard way to manage timezone settings, and it handles both the system clock and the RTC (hardware clock) cleanly.
+Setting the timezone on a server seems trivial until you get it wrong. Then your log timestamps are off by hours, cron jobs fire at the wrong time, and database records have confusing timestamps. RHEL provides `timedatectl` as the standard way to manage timezone settings, and it handles both the system clock and the RTC (hardware clock) cleanly.
 
 ## Checking the Current Timezone
 
@@ -45,7 +45,7 @@ The `/etc/localtime` file is a symlink to the appropriate timezone data file in 
 
 ## Listing Available Timezones
 
-RHEL 9 includes timezone data for the entire world:
+RHEL includes timezone data for the entire world:
 
 ```bash
 # List all available timezones
@@ -131,7 +131,7 @@ graph LR
 
 ## The RTC (Hardware Clock)
 
-The hardware clock (RTC) runs independently of the OS. It keeps time when the system is powered off. RHEL 9 can keep the RTC in either UTC or local time:
+The hardware clock (RTC) runs independently of the OS. It keeps time when the system is powered off. RHEL can keep the RTC in either UTC or local time:
 
 ```bash
 # Check if the RTC is set to UTC
@@ -185,7 +185,7 @@ sudo timedatectl set-ntp true
 
 ## Timezone Data Updates
 
-Timezone rules change. Countries move their DST boundaries, some countries abandon DST entirely, and new timezones get created. RHEL 9 ships timezone data in the `tzdata` package:
+Timezone rules change. Countries move their DST boundaries, some countries abandon DST entirely, and new timezones get created. RHEL ships timezone data in the `tzdata` package:
 
 ```bash
 # Check the current tzdata version
@@ -290,4 +290,4 @@ done
 
 ## Wrapping Up
 
-Timezone configuration is one of those "set it once and forget it" tasks, but setting it wrong causes subtle problems that can take hours to diagnose. Use `timedatectl` on RHEL 9, set your servers to UTC, keep your RTC in UTC, and update the `tzdata` package regularly. If applications need local time, let them handle the conversion at the display layer.
+Timezone configuration is one of those "set it once and forget it" tasks, but setting it wrong causes subtle problems that can take hours to diagnose. Use `timedatectl` on RHEL, set your servers to UTC, keep your RTC in UTC, and update the `tzdata` package regularly. If applications need local time, let them handle the conversion at the display layer.

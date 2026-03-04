@@ -1,10 +1,10 @@
-# How to Configure Receive Packet Steering (RPS) and Receive Flow Steering (RFS) on RHEL 9
+# How to Configure Receive Packet Steering (RPS) and Receive Flow Steering (RFS) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RPS, RFS, Networking, Performance Tuning, Linux
 
-Description: Learn how to configure RPS and RFS on RHEL 9 to distribute network packet processing across multiple CPU cores for improved throughput.
+Description: Learn how to configure RPS and RFS on RHEL to distribute network packet processing across multiple CPU cores for improved throughput.
 
 ---
 
@@ -27,7 +27,7 @@ graph TD
 
 ## Prerequisites
 
-- RHEL 9 with a multi-core CPU
+- RHEL with a multi-core CPU
 - Root or sudo access
 
 ## Step 1: Check Current NIC Queue Configuration
@@ -142,4 +142,4 @@ tuned-adm active
 
 ## Summary
 
-You have configured RPS and RFS on RHEL 9 to distribute network packet processing across multiple CPU cores. RPS provides software-based packet distribution when hardware RSS is not available, and RFS ensures packets are processed on the CPU where the receiving application runs, improving cache locality and reducing latency. For high-traffic servers, combine these settings with proper interrupt affinity and the tuned network-throughput profile.
+You have configured RPS and RFS on RHEL to distribute network packet processing across multiple CPU cores. RPS provides software-based packet distribution when hardware RSS is not available, and RFS ensures packets are processed on the CPU where the receiving application runs, improving cache locality and reducing latency. For high-traffic servers, combine these settings with proper interrupt affinity and the tuned network-throughput profile.

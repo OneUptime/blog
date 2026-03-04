@@ -1,10 +1,10 @@
-# How to Install Red Hat Satellite Server 6 on RHEL 9
+# How to Install Red Hat Satellite Server 6 on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Satellite, Patch Management, Systems Management, Linux
 
-Description: A complete walkthrough for installing Red Hat Satellite Server 6 on RHEL 9, covering prerequisites, storage, and initial configuration.
+Description: A complete walkthrough for installing Red Hat Satellite Server 6 on RHEL, covering prerequisites, storage, and initial configuration.
 
 ---
 
@@ -111,7 +111,7 @@ sudo hammer subscription upload \
     --file /path/to/manifest.zip \
     --organization "My Organization"
 
-# Enable RHEL 9 repositories
+# Enable RHEL repositories
 sudo hammer repository-set enable \
     --organization "My Organization" \
     --product "Red Hat Enterprise Linux for x86_64" \
@@ -151,4 +151,4 @@ hammer product list --organization "My Organization"
 
 ## Conclusion
 
-Installing Red Hat Satellite Server 6 on RHEL 9 is a straightforward but resource-intensive process. The critical steps are getting the hostname and DNS right, ensuring adequate storage, and properly configuring the subscription manifest. Once the initial sync is complete, you have a fully functional content management and provisioning platform for your entire RHEL infrastructure. The next steps are creating Content Views, setting up Lifecycle Environments, and registering your managed hosts.
+Installing Red Hat Satellite Server 6 on RHEL is a straightforward but resource-intensive process. The critical steps are getting the hostname and DNS right, ensuring adequate storage, and properly configuring the subscription manifest. Once the initial sync is complete, you have a fully functional content management and provisioning platform for your entire RHEL infrastructure. The next steps are creating Content Views, setting up Lifecycle Environments, and registering your managed hosts.

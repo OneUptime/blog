@@ -1,10 +1,10 @@
-# How to Restrict Cron and At Access to Specific Users on RHEL 9
+# How to Restrict Cron and At Access to Specific Users on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, cron, at, Access Control, Security, Linux
 
-Description: Learn how to control which users can schedule cron and at jobs on RHEL 9 using cron.allow, cron.deny, at.allow, and at.deny files, with clear precedence rules and practical examples.
+Description: Learn how to control which users can schedule cron and at jobs on RHEL using cron.allow, cron.deny, at.allow, and at.deny files, with clear precedence rules and practical examples.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to control which users can schedule cron and at jobs on R
 
 On a shared RHEL system, every user can schedule cron and at jobs by default. That might sound harmless, but it creates real problems. Users can schedule resource-heavy tasks during peak hours, fill up disk with log output, or accidentally create fork bombs with badly written scripts. On production servers, you should control who can schedule jobs, period.
 
-RHEL 9 gives you fine-grained control over this through four simple files. Let us walk through exactly how they work.
+RHEL gives you fine-grained control over this through four simple files. Let us walk through exactly how they work.
 
 ## The Access Control Files
 
@@ -52,16 +52,16 @@ The key points:
 3. If neither file exists, the behavior differs: all users can use cron, but only root can use at.
 4. Root can always use both services regardless of what is in these files.
 
-## Default State on RHEL 9
+## Default State on RHEL
 
-On a fresh RHEL 9 installation, check what exists by default.
+On a fresh RHEL installation, check what exists by default.
 
 ```bash
 # Check which access control files exist
 ls -la /etc/cron.allow /etc/cron.deny /etc/at.allow /etc/at.deny 2>&1
 ```
 
-Typically on RHEL 9, you will find an empty `/etc/cron.deny` and an empty `/etc/at.deny`. This means all users can use both cron and at by default (since the deny files exist but are empty, nobody is denied).
+Typically on RHEL, you will find an empty `/etc/cron.deny` and an empty `/etc/at.deny`. This means all users can use both cron and at by default (since the deny files exist but are empty, nobody is denied).
 
 ## Setting Up Cron Access Control
 
@@ -285,7 +285,7 @@ The `-A` flag shows invisible characters. Each line should end with just `$` (th
 
 ## Security Recommendations
 
-For production RHEL 9 servers, here is what I recommend:
+For production RHEL servers, here is what I recommend:
 
 1. Use `.allow` files, not `.deny` files. It is safer to explicitly list who has access than to try to keep up with who should not.
 2. Limit cron access to service accounts and administrators. Regular users rarely need cron on a server.
@@ -294,4 +294,4 @@ For production RHEL 9 servers, here is what I recommend:
 
 ## Summary
 
-Controlling cron and at access on RHEL 9 is straightforward but important. The `.allow` files give you a whitelist approach, the `.deny` files give you a blacklist approach, and the precedence rules are simple: `.allow` always wins over `.deny`. For production systems, I strongly recommend using the `.allow` approach so you have an explicit, auditable list of who can schedule tasks on your servers.
+Controlling cron and at access on RHEL is straightforward but important. The `.allow` files give you a whitelist approach, the `.deny` files give you a blacklist approach, and the precedence rules are simple: `.allow` always wins over `.deny`. For production systems, I strongly recommend using the `.allow` approach so you have an explicit, auditable list of who can schedule tasks on your servers.

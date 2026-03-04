@@ -1,10 +1,10 @@
-# How to Write a Custom SELinux Policy with sepolicy generate on RHEL 9
+# How to Write a Custom SELinux Policy with sepolicy generate on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, sepolicy, Custom Policy, Linux
 
-Description: Use sepolicy generate on RHEL 9 to create a custom SELinux policy module for confining applications that do not have a default policy.
+Description: Use sepolicy generate on RHEL to create a custom SELinux policy module for confining applications that do not have a default policy.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Manage Runtime vs Permanent Firewall Rules on RHEL 9
+# How to Manage Runtime vs Permanent Firewall Rules on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Runtime, Permanent, Linux
 
-Description: Understanding the difference between runtime and permanent firewalld rules on RHEL 9, and how to use this dual-layer system effectively for safe firewall changes.
+Description: Understanding the difference between runtime and permanent firewalld rules on RHEL, and how to use this dual-layer system effectively for safe firewall changes.
 
 ---
 

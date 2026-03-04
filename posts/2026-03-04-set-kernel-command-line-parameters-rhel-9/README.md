@@ -1,10 +1,10 @@
-# How to Set Kernel Command-Line Parameters on RHEL 9
+# How to Set Kernel Command-Line Parameters on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kernel, Command-Line, GRUB2, Linux
 
-Description: Learn how to set, modify, and manage kernel command-line parameters on RHEL 9 using grubby and GRUB2, with practical examples for common tuning and troubleshooting scenarios.
+Description: Learn how to set, modify, and manage kernel command-line parameters on RHEL using grubby and GRUB2, with practical examples for common tuning and troubleshooting scenarios.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to set, modify, and manage kernel command-line parameters
 
 Kernel command-line parameters are options passed to the Linux kernel at boot time. They control how the kernel initializes hardware, manages memory, configures networking, and handles various subsystems. Some parameters are critical for the system to boot, while others fine-tune performance or enable debugging.
 
-On RHEL 9, you can view the parameters that were passed to the currently running kernel:
+On RHEL, you can view the parameters that were passed to the currently running kernel:
 
 ```bash
 # Show the current kernel command line
@@ -27,7 +27,7 @@ BOOT_IMAGE=(hd0,msdos1)/vmlinuz-5.14.0-362.el9.x86_64 root=/dev/mapper/rhel-root
 
 ## Adding Parameters with grubby
 
-The `grubby` command is the standard tool for managing kernel boot parameters on RHEL 9.
+The `grubby` command is the standard tool for managing kernel boot parameters on RHEL.
 
 ```bash
 # Add a parameter to all installed kernels
@@ -189,4 +189,4 @@ cat /boot/loader/entries/*.conf
 
 ## Wrapping Up
 
-Kernel command-line parameters on RHEL 9 are managed through `grubby` for targeted changes and `/etc/default/grub` for global defaults. The key is knowing where each parameter should go: use `grubby --update-kernel=ALL` for changes that need to apply now, and edit `/etc/default/grub` with `grub2-mkconfig` for changes that must persist across future kernel installations. Always verify with `cat /proc/cmdline` after rebooting, and test unfamiliar parameters with a one-time GRUB menu edit before making them permanent.
+Kernel command-line parameters on RHEL are managed through `grubby` for targeted changes and `/etc/default/grub` for global defaults. The key is knowing where each parameter should go: use `grubby --update-kernel=ALL` for changes that need to apply now, and edit `/etc/default/grub` with `grub2-mkconfig` for changes that must persist across future kernel installations. Always verify with `cat /proc/cmdline` after rebooting, and test unfamiliar parameters with a one-time GRUB menu edit before making them permanent.

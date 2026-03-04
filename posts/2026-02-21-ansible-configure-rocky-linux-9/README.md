@@ -8,11 +8,11 @@ Description: Automate Rocky Linux 9 server setup with Ansible including dnf mana
 
 ---
 
-Rocky Linux 9 is a community-driven RHEL-compatible distribution created after CentOS shifted to CentOS Stream. It is binary-compatible with RHEL 9, which means almost all RHEL Ansible playbooks work unchanged. This guide focuses on Rocky-specific details and provides a complete configuration playbook.
+Rocky Linux 9 is a community-driven RHEL-compatible distribution created after CentOS shifted to CentOS Stream. It is binary-compatible with RHEL, which means almost all RHEL Ansible playbooks work unchanged. This guide focuses on Rocky-specific details and provides a complete configuration playbook.
 
 ## What Makes Rocky Linux 9 Different
 
-Rocky Linux 9 is a 1:1 RHEL 9 rebuild, so the vast majority of configuration is identical. The differences that affect Ansible:
+Rocky Linux 9 is a 1:1 RHEL rebuild, so the vast majority of configuration is identical. The differences that affect Ansible:
 
 - Package repositories are Rocky-specific (BaseOS, AppStream, CRB, Extras)
 - The EPEL package name is `epel-release`
@@ -266,7 +266,7 @@ ansible_python_interpreter=/usr/bin/python3
 
 ## Summary
 
-Rocky Linux 9 is configured nearly identically to RHEL 9 through Ansible. The main differences are repository names and the absence of subscription management. This playbook covers package installation, user management, SELinux enforcement, firewalld configuration, SSH hardening, NTP, and automatic security updates. Since Rocky is a direct RHEL rebuild, any role or playbook built for RHEL 9 will work on Rocky with minimal changes to distribution detection conditionals.
+Rocky Linux 9 is configured nearly identically to RHEL through Ansible. The main differences are repository names and the absence of subscription management. This playbook covers package installation, user management, SELinux enforcement, firewalld configuration, SSH hardening, NTP, and automatic security updates. Since Rocky is a direct RHEL rebuild, any role or playbook built for RHEL will work on Rocky with minimal changes to distribution detection conditionals.
 
 ## Common Use Cases
 

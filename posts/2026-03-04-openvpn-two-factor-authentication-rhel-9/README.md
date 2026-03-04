@@ -1,14 +1,14 @@
-# How to Set Up OpenVPN with Two-Factor Authentication on RHEL 9
+# How to Set Up OpenVPN with Two-Factor Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenVPN, 2FA, Security, Linux
 
-Description: Learn how to add two-factor authentication to OpenVPN on RHEL 9 using Google Authenticator (TOTP), combining certificate-based identity with time-based one-time passwords for stronger VPN security.
+Description: Learn how to add two-factor authentication to OpenVPN on RHEL using Google Authenticator (TOTP), combining certificate-based identity with time-based one-time passwords for stronger VPN security.
 
 ---
 
-Certificates alone or passwords alone are not enough for VPN access to sensitive networks. Two-factor authentication adds a second layer: something you have (a TOTP token on your phone) on top of something you know (your password) or something you are issued (a certificate). Here's how to set it up with OpenVPN and Google Authenticator on RHEL 9.
+Certificates alone or passwords alone are not enough for VPN access to sensitive networks. Two-factor authentication adds a second layer: something you have (a TOTP token on your phone) on top of something you know (your password) or something you are issued (a certificate). Here's how to set it up with OpenVPN and Google Authenticator on RHEL.
 
 ## How 2FA Works with OpenVPN
 
@@ -32,7 +32,7 @@ The user enters their password followed by their 6-digit TOTP code (from Google 
 
 ## Prerequisites
 
-- OpenVPN installed and working on RHEL 9
+- OpenVPN installed and working on RHEL
 - Existing PKI with client certificates
 - Root or sudo access
 - Users with shell accounts on the server (for PAM)
@@ -269,4 +269,4 @@ sudo semodule -i openvpn-2fa.pp
 
 ## Wrapping Up
 
-Two-factor authentication with OpenVPN on RHEL 9 significantly raises the bar for unauthorized access. The combination of TLS certificates plus password plus TOTP means an attacker needs to compromise the client's certificate, know their password, and have access to their authenticator app. The PAM integration makes it work with the standard Linux authentication stack, and Google Authenticator is free and widely supported.
+Two-factor authentication with OpenVPN on RHEL significantly raises the bar for unauthorized access. The combination of TLS certificates plus password plus TOTP means an attacker needs to compromise the client's certificate, know their password, and have access to their authenticator app. The PAM integration makes it work with the standard Linux authentication stack, and Google Authenticator is free and widely supported.

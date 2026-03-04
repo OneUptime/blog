@@ -1,14 +1,14 @@
-# How to Troubleshoot IPv6 Connectivity Issues on RHEL 9
+# How to Troubleshoot IPv6 Connectivity Issues on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IPv6, Troubleshooting, Linux
 
-Description: A practical troubleshooting guide for diagnosing and fixing common IPv6 connectivity problems on RHEL 9, covering address assignment, routing, DNS, firewall, and neighbor discovery issues.
+Description: A practical troubleshooting guide for diagnosing and fixing common IPv6 connectivity problems on RHEL, covering address assignment, routing, DNS, firewall, and neighbor discovery issues.
 
 ---
 
-IPv6 troubleshooting follows a logical pattern, much like IPv4, but with its own quirks. The protocols are different, the addressing is different, and the tools have different flags. When IPv6 stops working on a RHEL 9 box, here's the systematic approach I use to track down the problem.
+IPv6 troubleshooting follows a logical pattern, much like IPv4, but with its own quirks. The protocols are different, the addressing is different, and the tools have different flags. When IPv6 stops working on a RHEL box, here's the systematic approach I use to track down the problem.
 
 ## The Troubleshooting Flow
 
@@ -167,7 +167,7 @@ sudo nmcli connection up "ens192"
 
 ## Step 8: Check the Firewall
 
-firewalld on RHEL 9 handles IPv6 automatically, but misconfigurations happen.
+firewalld on RHEL handles IPv6 automatically, but misconfigurations happen.
 
 ```bash
 # Check current firewall rules
@@ -245,4 +245,4 @@ sysctl net.ipv6.conf.all.forwarding
 
 ## Wrapping Up
 
-IPv6 troubleshooting on RHEL 9 follows a bottom-up approach: start at the interface level, check addresses, test link-local, verify routing, test external connectivity, and finally check DNS and applications. The most common issues I see are disabled IPv6 (someone set a sysctl and forgot), missing Router Advertisements, and firewalls blocking ICMPv6. Work through each layer systematically and you'll find the problem.
+IPv6 troubleshooting on RHEL follows a bottom-up approach: start at the interface level, check addresses, test link-local, verify routing, test external connectivity, and finally check DNS and applications. The most common issues I see are disabled IPv6 (someone set a sysctl and forgot), missing Router Advertisements, and firewalls blocking ICMPv6. Work through each layer systematically and you'll find the problem.

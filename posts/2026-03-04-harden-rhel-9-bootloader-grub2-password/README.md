@@ -1,14 +1,14 @@
-# How to Harden the RHEL 9 Bootloader with GRUB2 Password Protection
+# How to Harden the RHEL Bootloader with GRUB2 Password Protection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GRUB2, Bootloader, Security, Linux
 
-Description: Protect your RHEL 9 bootloader with GRUB2 password authentication to prevent unauthorized changes to boot parameters and single-user mode access.
+Description: Protect your RHEL bootloader with GRUB2 password authentication to prevent unauthorized changes to boot parameters and single-user mode access.
 
 ---
 
-If someone can get to the GRUB2 menu on your RHEL 9 server, they can boot into single-user mode, reset the root password, and own the entire system. This takes about 30 seconds. All the SSH hardening and firewall rules in the world mean nothing if an attacker has physical or console access and the bootloader is unprotected.
+If someone can get to the GRUB2 menu on your RHEL server, they can boot into single-user mode, reset the root password, and own the entire system. This takes about 30 seconds. All the SSH hardening and firewall rules in the world mean nothing if an attacker has physical or console access and the bootloader is unprotected.
 
 GRUB2 password protection is one of those controls that is easy to implement and addresses a real threat, especially for servers in shared data centers, colo facilities, or anywhere the physical console might be accessible.
 
@@ -181,7 +181,7 @@ augenrules --load
 
 If you forget the GRUB password, you will need to boot from rescue media:
 
-1. Boot from the RHEL 9 installation ISO
+1. Boot from the RHEL installation ISO
 2. Choose "Troubleshooting" then "Rescue a Red Hat Enterprise Linux system"
 3. Mount the installed system (the rescue environment will offer to do this)
 4. Remove or edit `/etc/grub.d/01_users`

@@ -1,10 +1,10 @@
-# How to Install and Enable the Cockpit Web Console on RHEL 9
+# How to Install and Enable the Cockpit Web Console on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Web Console, Installation, Linux
 
-Description: Learn how to install, enable, and start the Cockpit web console on RHEL 9 for browser-based server management.
+Description: Learn how to install, enable, and start the Cockpit web console on RHEL for browser-based server management.
 
 ---
 
@@ -32,13 +32,13 @@ graph LR
 
 Before you begin, make sure you have:
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Network connectivity to reach port 9090
 
 ## Installing Cockpit
 
-On a minimal RHEL 9 installation, Cockpit might not be present. On a server or workstation install, it's usually already there. Let's check first.
+On a minimal RHEL installation, Cockpit might not be present. On a server or workstation install, it's usually already there. Let's check first.
 
 Check if Cockpit is already installed:
 
@@ -80,7 +80,7 @@ You should see output indicating the socket is active and listening. Something l
 
 ## Opening the Firewall
 
-RHEL 9 ships with firewalld enabled by default. You need to allow traffic on the cockpit service (port 9090/tcp).
+RHEL ships with firewalld enabled by default. You need to allow traffic on the cockpit service (port 9090/tcp).
 
 Allow Cockpit through the firewall:
 
@@ -204,4 +204,4 @@ Each of these topics deserves its own deep dive, and we'll cover them in upcomin
 
 ## Wrapping Up
 
-Setting up Cockpit on RHEL 9 takes about five minutes. The socket-activated design means it costs you almost nothing when nobody is using it, and it provides a solid web interface when you need one. For teams that need visibility into server health without granting everyone SSH access, it's a practical solution that doesn't require a heavyweight monitoring stack.
+Setting up Cockpit on RHEL takes about five minutes. The socket-activated design means it costs you almost nothing when nobody is using it, and it provides a solid web interface when you need one. For teams that need visibility into server health without granting everyone SSH access, it's a practical solution that doesn't require a heavyweight monitoring stack.

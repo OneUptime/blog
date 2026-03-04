@@ -1,14 +1,14 @@
-# How to Set Up RHEL 9 for Remote Monitoring of Distributed IoT Networks
+# How to Set Up RHEL for Remote Monitoring of Distributed IoT Networks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IoT, Remote Monitoring, Prometheus, Grafana, Linux
 
-Description: Learn how to configure RHEL 9 as a centralized monitoring hub for distributed IoT networks using Prometheus, Grafana, and MQTT collectors.
+Description: Learn how to configure RHEL as a centralized monitoring hub for distributed IoT networks using Prometheus, Grafana, and MQTT collectors.
 
 ---
 
-Managing IoT networks that span multiple locations requires a reliable monitoring platform. RHEL 9 provides the stability and performance needed to serve as the backbone for centralized monitoring of distributed IoT devices. In this guide, you will set up a complete monitoring stack that collects metrics from remote IoT gateways and visualizes them in real time.
+Managing IoT networks that span multiple locations requires a reliable monitoring platform. RHEL provides the stability and performance needed to serve as the backbone for centralized monitoring of distributed IoT devices. In this guide, you will set up a complete monitoring stack that collects metrics from remote IoT gateways and visualizes them in real time.
 
 ## Architecture Overview
 
@@ -24,7 +24,7 @@ graph TB
         IoTB2[IoT Sensor 2] --> GWB
         GWB --> MQTT
     end
-    subgraph "RHEL 9 Monitoring Server"
+    subgraph "RHEL Monitoring Server"
         MQTT --> Telegraph[Telegraf Collector]
         Telegraph --> Prometheus[Prometheus]
         Prometheus --> Grafana[Grafana Dashboard]
@@ -34,7 +34,7 @@ graph TB
 
 ## Prerequisites
 
-- A RHEL 9 server with at least 4 GB RAM and 2 CPUs
+- A RHEL server with at least 4 GB RAM and 2 CPUs
 - Root or sudo access
 - Network connectivity to your IoT gateways
 - A valid RHEL subscription
@@ -332,4 +332,4 @@ sudo firewall-cmd --reload
 
 ## Conclusion
 
-You now have a fully functional IoT monitoring stack on RHEL 9. The setup collects data from distributed IoT gateways through MQTT, processes it with Telegraf, stores it in Prometheus, and visualizes it in Grafana. For production environments, add TLS encryption, set up Alertmanager for notifications, and consider using Prometheus federation if you have multiple monitoring sites.
+You now have a fully functional IoT monitoring stack on RHEL. The setup collects data from distributed IoT gateways through MQTT, processes it with Telegraf, stores it in Prometheus, and visualizes it in Grafana. For production environments, add TLS encryption, set up Alertmanager for notifications, and consider using Prometheus federation if you have multiple monitoring sites.

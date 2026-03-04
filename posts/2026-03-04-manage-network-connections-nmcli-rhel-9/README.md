@@ -1,14 +1,14 @@
-# How to Manage Network Connections with nmcli on RHEL 9
+# How to Manage Network Connections with nmcli on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nmcli, Network Connections, Linux
 
-Description: A comprehensive guide to managing network connections on RHEL 9 using the nmcli command-line tool, covering everything from listing and creating connections to advanced management tasks.
+Description: A comprehensive guide to managing network connections on RHEL using the nmcli command-line tool, covering everything from listing and creating connections to advanced management tasks.
 
 ---
 
-The nmcli tool is the primary command-line interface for NetworkManager on RHEL 9. Whether you are configuring a single server or scripting network setups across hundreds of machines, nmcli gives you full control over every aspect of your network connections. This post covers the day-to-day operations you will use most often.
+The nmcli tool is the primary command-line interface for NetworkManager on RHEL. Whether you are configuring a single server or scripting network setups across hundreds of machines, nmcli gives you full control over every aspect of your network connections. This post covers the day-to-day operations you will use most often.
 
 ## Getting Started with nmcli
 
@@ -254,4 +254,4 @@ journalctl -u NetworkManager --since "5 minutes ago" --no-pager
 
 ## Wrapping Up
 
-nmcli is a powerful tool that covers the full lifecycle of network connection management on RHEL 9. Once you get comfortable with the `connection` and `device` subcommands, you can handle pretty much any networking task from the command line. The terse output mode makes it easy to integrate into shell scripts and automation tools, and the monitor mode is invaluable for real-time troubleshooting.
+nmcli is a powerful tool that covers the full lifecycle of network connection management on RHEL. Once you get comfortable with the `connection` and `device` subcommands, you can handle pretty much any networking task from the command line. The terse output mode makes it easy to integrate into shell scripts and automation tools, and the monitor mode is invaluable for real-time troubleshooting.

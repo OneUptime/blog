@@ -1,14 +1,14 @@
-# How to Search and Filter Logs with journalctl on RHEL 9
+# How to Search and Filter Logs with journalctl on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, journalctl, journald, Logging, Linux
 
-Description: Master journalctl on RHEL 9 to efficiently search, filter, and analyze system logs using time ranges, service filters, priority levels, and advanced query techniques.
+Description: Master journalctl on RHEL to efficiently search, filter, and analyze system logs using time ranges, service filters, priority levels, and advanced query techniques.
 
 ---
 
-journalctl is the command-line tool for querying the systemd journal on RHEL 9. It is much more powerful than simply reading flat log files because the journal stores structured data with metadata about each log entry. You can filter by time, service, priority, process ID, and even custom fields.
+journalctl is the command-line tool for querying the systemd journal on RHEL. It is much more powerful than simply reading flat log files because the journal stores structured data with metadata about each log entry. You can filter by time, service, priority, process ID, and even custom fields.
 
 ## Basic Usage
 
@@ -312,4 +312,4 @@ journalctl --verify
 
 ## Summary
 
-journalctl on RHEL 9 provides powerful, structured log queries that go far beyond what plain text log files offer. The key filtering options are `-u` for services, `-p` for priority, `--since`/`--until` for time ranges, `-b` for boot sessions, and `--grep` for text search. Use `-o json-pretty` for structured output and combine filters to narrow down exactly the log entries you need.
+journalctl on RHEL provides powerful, structured log queries that go far beyond what plain text log files offer. The key filtering options are `-u` for services, `-p` for priority, `--since`/`--until` for time ranges, `-b` for boot sessions, and `--grep` for text search. Use `-o json-pretty` for structured output and combine filters to narrow down exactly the log entries you need.

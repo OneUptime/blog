@@ -1,10 +1,10 @@
-# How to Copy and Inspect Container Images with Skopeo on RHEL 9
+# How to Copy and Inspect Container Images with Skopeo on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Skopeo, Container Images, Linux
 
-Description: Learn how to use Skopeo on RHEL 9 to inspect, copy, and manage container images across registries without requiring a local container runtime.
+Description: Learn how to use Skopeo on RHEL to inspect, copy, and manage container images across registries without requiring a local container runtime.
 
 ---
 
@@ -257,4 +257,4 @@ fi
 
 ## Summary
 
-Skopeo fills a gap that neither Podman nor Docker addresses well - operating on images without needing to pull them into local storage. For registry mirroring, CI/CD image promotion, and remote image inspection, Skopeo is the right tool. Combined with Podman and Buildah, you have a complete, daemonless container workflow on RHEL 9.
+Skopeo fills a gap that neither Podman nor Docker addresses well - operating on images without needing to pull them into local storage. For registry mirroring, CI/CD image promotion, and remote image inspection, Skopeo is the right tool. Combined with Podman and Buildah, you have a complete, daemonless container workflow on RHEL.

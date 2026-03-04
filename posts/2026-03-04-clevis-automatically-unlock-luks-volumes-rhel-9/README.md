@@ -1,14 +1,14 @@
-# How to Configure Clevis to Automatically Unlock LUKS Volumes on RHEL 9
+# How to Configure Clevis to Automatically Unlock LUKS Volumes on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Clevis, LUKS, NBDE, Linux
 
-Description: Configure Clevis on RHEL 9 client systems to automatically unlock LUKS-encrypted volumes by binding them to a Tang server for seamless network-bound disk encryption.
+Description: Configure Clevis on RHEL client systems to automatically unlock LUKS-encrypted volumes by binding them to a Tang server for seamless network-bound disk encryption.
 
 ---
 
-Once you have a Tang server running, the next step is configuring Clevis on your RHEL 9 systems so their LUKS volumes unlock automatically during boot. No more typing passphrases, no more out-of-band console access for reboots. As long as the server can reach the Tang server, the disks unlock on their own.
+Once you have a Tang server running, the next step is configuring Clevis on your RHEL systems so their LUKS volumes unlock automatically during boot. No more typing passphrases, no more out-of-band console access for reboots. As long as the server can reach the Tang server, the disks unlock on their own.
 
 ## Installing Clevis
 

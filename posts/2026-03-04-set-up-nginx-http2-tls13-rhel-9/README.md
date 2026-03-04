@@ -1,24 +1,24 @@
-# How to Set Up Nginx with HTTP/2 and TLS 1.3 on RHEL 9
+# How to Set Up Nginx with HTTP/2 and TLS 1.3 on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, HTTP/2, TLS 1.3, Security, Linux
 
-Description: Configure Nginx on RHEL 9 to use HTTP/2 and TLS 1.3 for maximum performance and security with modern protocol support.
+Description: Configure Nginx on RHEL to use HTTP/2 and TLS 1.3 for maximum performance and security with modern protocol support.
 
 ---
 
-HTTP/2 and TLS 1.3 represent the latest standards in web performance and security. HTTP/2 enables multiplexed streams over a single connection, while TLS 1.3 reduces the handshake to just one round trip. Nginx on RHEL 9 supports both. This guide shows you how to enable and optimize them.
+HTTP/2 and TLS 1.3 represent the latest standards in web performance and security. HTTP/2 enables multiplexed streams over a single connection, while TLS 1.3 reduces the handshake to just one round trip. Nginx on RHEL supports both. This guide shows you how to enable and optimize them.
 
 ## Prerequisites
 
-- A RHEL 9 system with Nginx installed
+- A RHEL system with Nginx installed
 - A valid SSL certificate (from Let's Encrypt or another CA)
 - Root or sudo access
 
 ## Step 1: Verify OpenSSL Version
 
-TLS 1.3 requires OpenSSL 1.1.1 or newer. RHEL 9 ships with OpenSSL 3.x:
+TLS 1.3 requires OpenSSL 1.1.1 or newer. RHEL ships with OpenSSL 3.x:
 
 ```bash
 # Check OpenSSL version
@@ -190,4 +190,4 @@ grep -r "listen.*443" /etc/nginx/conf.d/
 
 ## Summary
 
-With HTTP/2 and TLS 1.3 enabled on Nginx on RHEL 9, your server handles connections more efficiently through multiplexing, delivers content faster with header compression, and completes TLS handshakes in a single round trip. The configuration is straightforward since Nginx and RHEL 9 both ship with modern protocol support out of the box.
+With HTTP/2 and TLS 1.3 enabled on Nginx on RHEL, your server handles connections more efficiently through multiplexing, delivers content faster with header compression, and completes TLS handshakes in a single round trip. The configuration is straightforward since Nginx and RHEL both ship with modern protocol support out of the box.

@@ -1,14 +1,14 @@
-# How to Set Up Grafana for Dashboard Visualization on RHEL 9
+# How to Set Up Grafana for Dashboard Visualization on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Grafana, Monitoring, Dashboards, Visualization, Linux
 
-Description: Learn how to install and configure Grafana on RHEL 9 to create monitoring dashboards that visualize metrics from Prometheus and other data sources.
+Description: Learn how to install and configure Grafana on RHEL to create monitoring dashboards that visualize metrics from Prometheus and other data sources.
 
 ---
 
-Grafana is the standard open-source platform for building monitoring dashboards. It connects to data sources like Prometheus, InfluxDB, and Elasticsearch, and lets you create rich visualizations with graphs, tables, heatmaps, and alerts. On RHEL 9, you can install Grafana from the official repository and have it running in minutes.
+Grafana is the standard open-source platform for building monitoring dashboards. It connects to data sources like Prometheus, InfluxDB, and Elasticsearch, and lets you create rich visualizations with graphs, tables, heatmaps, and alerts. On RHEL, you can install Grafana from the official repository and have it running in minutes.
 
 ## Architecture
 
@@ -343,4 +343,4 @@ curl -s http://localhost:9090/api/v1/query?query=up
 
 ## Summary
 
-Grafana on RHEL 9 gives you powerful dashboard visualization for your monitoring data. Install it from the official repository, add Prometheus (or any other supported data source), and either import community dashboards or build your own. For production deployments, configure SMTP for alert notifications, use provisioning for automated setup, and put Grafana behind a reverse proxy with TLS.
+Grafana on RHEL gives you powerful dashboard visualization for your monitoring data. Install it from the official repository, add Prometheus (or any other supported data source), and either import community dashboards or build your own. For production deployments, configure SMTP for alert notifications, use provisioning for automated setup, and put Grafana behind a reverse proxy with TLS.

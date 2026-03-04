@@ -1,10 +1,10 @@
-# How to Write Custom USBGuard Rules for USB Device Authorization on RHEL 9
+# How to Write Custom USBGuard Rules for USB Device Authorization on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, USBGuard, Custom Rules, Linux
 
-Description: Write advanced USBGuard rules on RHEL 9 using conditions, device attributes, and interface matching to create precise USB device authorization policies.
+Description: Write advanced USBGuard rules on RHEL using conditions, device attributes, and interface matching to create precise USB device authorization policies.
 
 ---
 

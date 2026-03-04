@@ -1,10 +1,10 @@
-# How to Build Container Images Using Containerfiles with Podman on RHEL 9
+# How to Build Container Images Using Containerfiles with Podman on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Containerfile, Build, Linux
 
-Description: Learn how to write Containerfiles and build production-ready container images with Podman on RHEL 9, including multi-stage builds and optimization techniques.
+Description: Learn how to write Containerfiles and build production-ready container images with Podman on RHEL, including multi-stage builds and optimization techniques.
 
 ---
 
@@ -287,4 +287,4 @@ podman image scan my-app:latest
 
 ## Summary
 
-Building container images with Podman and Containerfiles on RHEL 9 uses the same syntax you already know from Docker. Focus on layer ordering for cache efficiency, multi-stage builds for small images, and non-root users for security. The result is OCI-compliant images that run on any container runtime.
+Building container images with Podman and Containerfiles on RHEL uses the same syntax you already know from Docker. Focus on layer ordering for cache efficiency, multi-stage builds for small images, and non-root users for security. The result is OCI-compliant images that run on any container runtime.

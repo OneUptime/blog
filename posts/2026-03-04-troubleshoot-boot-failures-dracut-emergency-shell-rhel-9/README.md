@@ -1,14 +1,14 @@
-# How to Troubleshoot Boot Failures Using the dracut Emergency Shell on RHEL 9
+# How to Troubleshoot Boot Failures Using the dracut Emergency Shell on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, dracut, Boot, Troubleshooting, Emergency Shell, Linux
 
-Description: Learn how to use the dracut emergency shell to diagnose and fix boot failures on RHEL 9 when the system cannot mount the root filesystem.
+Description: Learn how to use the dracut emergency shell to diagnose and fix boot failures on RHEL when the system cannot mount the root filesystem.
 
 ---
 
-When RHEL 9 cannot find or mount its root filesystem during boot, dracut drops you into an emergency shell. This shell runs from the initramfs and gives you a minimal environment to diagnose and fix the problem. Knowing how to navigate it can save you from needing a rescue disk.
+When RHEL cannot find or mount its root filesystem during boot, dracut drops you into an emergency shell. This shell runs from the initramfs and gives you a minimal environment to diagnose and fix the problem. Knowing how to navigate it can save you from needing a rescue disk.
 
 ## Understanding the dracut Emergency Shell
 
@@ -205,4 +205,4 @@ lsinitrd /boot/initramfs-$(uname -r).img | grep -E "\.ko" | sort
 
 ## Conclusion
 
-The dracut emergency shell is your lifeline when RHEL 9 will not boot. The most common causes are missing storage drivers, incorrect root device references, and LVM activation failures. The key tools available in the shell are blkid, lvm commands, modprobe, and mount. Once you fix the immediate problem, always rebuild the initramfs and verify GRUB configuration to prevent the issue from recurring.
+The dracut emergency shell is your lifeline when RHEL will not boot. The most common causes are missing storage drivers, incorrect root device references, and LVM activation failures. The key tools available in the shell are blkid, lvm commands, modprobe, and mount. Once you fix the immediate problem, always rebuild the initramfs and verify GRUB configuration to prevent the issue from recurring.

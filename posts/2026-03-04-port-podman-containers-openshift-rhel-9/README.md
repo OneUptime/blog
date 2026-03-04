@@ -1,20 +1,20 @@
-# How to Port Podman Containers to OpenShift from RHEL 9
+# How to Port Podman Containers to OpenShift from RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, OpenShift, Migration, Linux
 
-Description: A practical guide to porting Podman containers and pods from RHEL 9 to OpenShift, covering image requirements, security constraints, and deployment strategies.
+Description: A practical guide to porting Podman containers and pods from RHEL to OpenShift, covering image requirements, security constraints, and deployment strategies.
 
 ---
 
-Moving containers from a standalone RHEL 9 server to OpenShift is a natural progression. You have been running containers with Podman, they work well, and now you need the orchestration, scaling, and management that OpenShift provides. The good news is that Podman and OpenShift share the same container runtime foundations. The challenge is meeting OpenShift's security requirements.
+Moving containers from a standalone RHEL server to OpenShift is a natural progression. You have been running containers with Podman, they work well, and now you need the orchestration, scaling, and management that OpenShift provides. The good news is that Podman and OpenShift share the same container runtime foundations. The challenge is meeting OpenShift's security requirements.
 
 ## Understanding the Differences
 
 ```mermaid
 graph TB
-    subgraph "Podman on RHEL 9"
+    subgraph "Podman on RHEL"
         A[Podman CLI]
         B[Rootful or Rootless]
         C[Manual management]
@@ -292,4 +292,4 @@ podman run --rm -u 1001:0 my-app:openshift id
 
 ## Summary
 
-Porting Podman containers to OpenShift from RHEL 9 requires adapting your images for OpenShift's security model - specifically running as a non-root arbitrary UID, using non-privileged ports, and setting proper group permissions. Generate your Kubernetes YAML from Podman, add OpenShift-specific resources like Routes and PVCs, and deploy. Test locally with random UIDs before deploying to catch permission issues early.
+Porting Podman containers to OpenShift from RHEL requires adapting your images for OpenShift's security model - specifically running as a non-root arbitrary UID, using non-privileged ports, and setting proper group permissions. Generate your Kubernetes YAML from Podman, add OpenShift-specific resources like Routes and PVCs, and deploy. Test locally with random UIDs before deploying to catch permission issues early.

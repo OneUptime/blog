@@ -1,14 +1,14 @@
-# How to Migrate from ifcfg Files to Keyfile Format in RHEL 9
+# How to Migrate from ifcfg Files to Keyfile Format in RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NetworkManager, ifcfg, Keyfile, Migration, Linux
 
-Description: A practical guide to migrating network configuration from the legacy ifcfg format to the keyfile format on RHEL 9, with step-by-step procedures and rollback strategies.
+Description: A practical guide to migrating network configuration from the legacy ifcfg format to the keyfile format on RHEL, with step-by-step procedures and rollback strategies.
 
 ---
 
-If you have been managing Red Hat systems for a while, you are probably familiar with the ifcfg files that lived in `/etc/sysconfig/network-scripts/`. Those files were the standard way to configure networking for over two decades. With RHEL 9, Red Hat has officially deprecated the ifcfg format in favor of NetworkManager keyfiles. This is not just a cosmetic change - the ifcfg plugin may be removed entirely in a future release, so migration is something you should plan for now.
+If you have been managing Red Hat systems for a while, you are probably familiar with the ifcfg files that lived in `/etc/sysconfig/network-scripts/`. Those files were the standard way to configure networking for over two decades. With RHEL, Red Hat has officially deprecated the ifcfg format in favor of NetworkManager keyfiles. This is not just a cosmetic change - the ifcfg plugin may be removed entirely in a future release, so migration is something you should plan for now.
 
 ## What Changed and Why
 
@@ -17,12 +17,12 @@ In RHEL 8 and earlier, NetworkManager supported two configuration backends:
 - **ifcfg-rh plugin**: Read and wrote files in `/etc/sysconfig/network-scripts/`
 - **keyfile plugin**: Read and wrote `.nmconnection` files in `/etc/NetworkManager/system-connections/`
 
-RHEL 9 defaults to the keyfile format. The ifcfg plugin is still included for backward compatibility, but it is deprecated. New installations create keyfiles by default.
+RHEL defaults to the keyfile format. The ifcfg plugin is still included for backward compatibility, but it is deprecated. New installations create keyfiles by default.
 
 ```mermaid
 flowchart LR
     A[RHEL 7/8] -->|ifcfg files| B[/etc/sysconfig/network-scripts/]
-    C[RHEL 9] -->|keyfiles| D[/etc/NetworkManager/system-connections/]
+    C[RHEL] -->|keyfiles| D[/etc/NetworkManager/system-connections/]
     B -->|Migration| D
 ```
 
@@ -117,7 +117,7 @@ nmcli connection show ens192
 # Delete the old ifcfg-based connection
 nmcli connection delete ens192
 
-# Create a new connection (will use keyfile format by default on RHEL 9)
+# Create a new connection (will use keyfile format by default on RHEL)
 nmcli connection add \
   con-name ens192 \
   ifname ens192 \

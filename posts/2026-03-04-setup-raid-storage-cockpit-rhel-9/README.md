@@ -1,10 +1,10 @@
-# How to Set Up RAID Storage Using the Cockpit Web Console on RHEL 9
+# How to Set Up RAID Storage Using the Cockpit Web Console on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, RAID, Storage, Linux
 
-Description: Learn how to create and manage software RAID arrays using the Cockpit web console on RHEL 9, covering RAID levels, monitoring, and disk replacement.
+Description: Learn how to create and manage software RAID arrays using the Cockpit web console on RHEL, covering RAID levels, monitoring, and disk replacement.
 
 ---
 

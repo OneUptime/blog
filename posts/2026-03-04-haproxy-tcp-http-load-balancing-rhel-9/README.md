@@ -1,10 +1,10 @@
-# How to Set Up HAProxy for TCP and HTTP Load Balancing on RHEL 9
+# How to Set Up HAProxy for TCP and HTTP Load Balancing on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, TCP, HTTP, Load Balancing, Linux
 
-Description: How to configure HAProxy on RHEL 9 for both TCP (layer 4) and HTTP (layer 7) load balancing with practical examples.
+Description: How to configure HAProxy on RHEL for both TCP (layer 4) and HTTP (layer 7) load balancing with practical examples.
 
 ---
 
@@ -19,7 +19,7 @@ You can mix both in the same HAProxy instance.
 
 ## Prerequisites
 
-- RHEL 9 with HAProxy installed
+- RHEL with HAProxy installed
 - Root or sudo access
 - Backend services to load balance
 

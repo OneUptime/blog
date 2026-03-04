@@ -1,10 +1,10 @@
-# How to Troubleshoot NFS Mount Failures and Stale Handles on RHEL 9
+# How to Troubleshoot NFS Mount Failures and Stale Handles on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NFS, Troubleshooting, Linux
 
-Description: Diagnose and fix common NFS problems on RHEL 9, including mount failures, stale file handles, permission issues, and hung mounts.
+Description: Diagnose and fix common NFS problems on RHEL, including mount failures, stale file handles, permission issues, and hung mounts.
 
 ---
 
@@ -238,4 +238,4 @@ The Domain value in /etc/idmapd.conf must be identical on server and all clients
 
 ## Wrap-Up
 
-NFS troubleshooting on RHEL 9 follows a logical progression: check connectivity, then the service, then exports, then permissions, then SELinux. Most problems fall into one of these categories, and the fix is usually straightforward once you identify which layer is failing. Keep rpcdebug and nfsstat in your toolkit for the trickier issues, and always check SELinux early in your diagnosis.
+NFS troubleshooting on RHEL follows a logical progression: check connectivity, then the service, then exports, then permissions, then SELinux. Most problems fall into one of these categories, and the fix is usually straightforward once you identify which layer is failing. Keep rpcdebug and nfsstat in your toolkit for the trickier issues, and always check SELinux early in your diagnosis.

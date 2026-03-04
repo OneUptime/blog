@@ -1,10 +1,10 @@
-# How to Configure Kernel Huge Pages for Database and VM Performance on RHEL 9
+# How to Configure Kernel Huge Pages for Database and VM Performance on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Huge Pages, Kernel, Performance, Linux
 
-Description: Learn how to configure huge pages on RHEL 9 to improve performance for databases like PostgreSQL and Oracle, as well as KVM virtual machines, by reducing TLB misses and memory overhead.
+Description: Learn how to configure huge pages on RHEL to improve performance for databases like PostgreSQL and Oracle, as well as KVM virtual machines, by reducing TLB misses and memory overhead.
 
 ---
 
@@ -14,11 +14,11 @@ By default, Linux uses 4 KB memory pages. Every page requires an entry in the Tr
 
 Huge pages solve this by using larger page sizes, typically 2 MB or 1 GB. Fewer pages means fewer TLB entries needed, which means fewer misses. Databases like PostgreSQL, Oracle, and MySQL benefit significantly, as do KVM virtual machines.
 
-## Types of Huge Pages on RHEL 9
+## Types of Huge Pages on RHEL
 
 ```mermaid
 flowchart TD
-    A["Huge Pages on RHEL 9"] --> B["Static Huge Pages<br/>Pre-allocated at boot<br/>2 MB or 1 GB"]
+    A["Huge Pages on RHEL"] --> B["Static Huge Pages<br/>Pre-allocated at boot<br/>2 MB or 1 GB"]
     A --> C["Transparent Huge Pages (THP)<br/>Managed by kernel automatically<br/>2 MB only"]
 ```
 
@@ -124,7 +124,7 @@ Applications access huge pages through the hugetlbfs filesystem.
 # Create a mount point
 sudo mkdir -p /dev/hugepages
 
-# Mount hugetlbfs (this is usually auto-mounted on RHEL 9)
+# Mount hugetlbfs (this is usually auto-mounted on RHEL)
 sudo mount -t hugetlbfs nodev /dev/hugepages
 
 # Make it persistent in fstab
@@ -218,4 +218,4 @@ cat /proc/buddyinfo
 
 ## Wrapping Up
 
-Huge pages are one of the most effective memory optimizations for database and virtualization workloads on RHEL 9. The key decisions are how many pages to allocate and whether to use 2 MB or 1 GB pages. For databases, disable THP and use static huge pages. For KVM, match huge page allocation to your total VM memory. Always test performance before and after to confirm the improvement matches your expectations.
+Huge pages are one of the most effective memory optimizations for database and virtualization workloads on RHEL. The key decisions are how many pages to allocate and whether to use 2 MB or 1 GB pages. For databases, disable THP and use static huge pages. For KVM, match huge page allocation to your total VM memory. Always test performance before and after to confirm the improvement matches your expectations.

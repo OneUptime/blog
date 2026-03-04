@@ -1,23 +1,23 @@
-# How to Set Up SAP S/4HANA on RHEL 9
+# How to Set Up SAP S/4HANA on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP S/4HANA, SAP HANA, Enterprise, Linux
 
-Description: Complete guide to deploying SAP S/4HANA on RHEL 9, covering HANA database setup, application server installation, and initial configuration.
+Description: Complete guide to deploying SAP S/4HANA on RHEL, covering HANA database setup, application server installation, and initial configuration.
 
 ---
 
-SAP S/4HANA is the next-generation ERP suite that runs exclusively on SAP HANA. Deploying it on RHEL 9 requires preparing both the database and application tiers. This guide covers the end-to-end process.
+SAP S/4HANA is the next-generation ERP suite that runs exclusively on SAP HANA. Deploying it on RHEL requires preparing both the database and application tiers. This guide covers the end-to-end process.
 
 ## Deployment Architecture
 
 ```mermaid
 graph TB
-    subgraph "RHEL 9 - Database Server"
+    subgraph "RHEL - Database Server"
         HANA[SAP HANA Database]
     end
-    subgraph "RHEL 9 - Application Server"
+    subgraph "RHEL - Application Server"
         ASCS[ABAP SAP Central Services]
         PAS[Primary Application Server]
         WD[Web Dispatcher]
@@ -30,7 +30,7 @@ graph TB
 
 ## Prerequisites
 
-- Two RHEL 9 servers (or one large server for all-in-one)
+- Two RHEL servers (or one large server for all-in-one)
 - Database server: 128 GB+ RAM, 8+ CPUs
 - Application server: 32 GB+ RAM, 4+ CPUs
 - SAP S/4HANA installation media (Software Provisioning Manager)
@@ -163,4 +163,4 @@ sudo firewall-cmd --reload
 
 ## Conclusion
 
-Deploying SAP S/4HANA on RHEL 9 involves preparing both the database and application tiers with the correct OS settings, then running SAP's Software Provisioning Manager for the actual installation. The RHEL System Roles simplify the OS preparation significantly. After installation, configure the Web Dispatcher for Fiori access and set up monitoring for both the HANA database and the application server.
+Deploying SAP S/4HANA on RHEL involves preparing both the database and application tiers with the correct OS settings, then running SAP's Software Provisioning Manager for the actual installation. The RHEL System Roles simplify the OS preparation significantly. After installation, configure the Web Dispatcher for Fiori access and set up monitoring for both the HANA database and the application server.

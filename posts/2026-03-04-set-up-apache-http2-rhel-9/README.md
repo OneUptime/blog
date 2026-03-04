@@ -1,18 +1,18 @@
-# How to Set Up Apache with HTTP/2 on RHEL 9
+# How to Set Up Apache with HTTP/2 on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, HTTP/2, Performance, Linux
 
-Description: Learn how to enable and configure HTTP/2 protocol support in Apache on RHEL 9 for faster page loads through multiplexing and header compression.
+Description: Learn how to enable and configure HTTP/2 protocol support in Apache on RHEL for faster page loads through multiplexing and header compression.
 
 ---
 
-HTTP/2 brings significant performance improvements over HTTP/1.1, including multiplexed streams, header compression, and server push. Apache on RHEL 9 supports HTTP/2 through the mod_http2 module. This guide shows you how to enable and configure it.
+HTTP/2 brings significant performance improvements over HTTP/1.1, including multiplexed streams, header compression, and server push. Apache on RHEL supports HTTP/2 through the mod_http2 module. This guide shows you how to enable and configure it.
 
 ## Prerequisites
 
-- A RHEL 9 system with Apache installed
+- A RHEL system with Apache installed
 - SSL/TLS configured (HTTP/2 in browsers requires HTTPS)
 - The event or worker MPM (HTTP/2 does not work well with prefork)
 - Root or sudo access
@@ -203,4 +203,4 @@ curl -v --http2 https://www.example.com/ 2>&1 | grep "using HTTP/2"
 
 ## Summary
 
-HTTP/2 on Apache with RHEL 9 brings multiplexed connections, header compression, and optional server push to your web server. The main requirements are using the event MPM, having TLS configured, and loading mod_http2. With these in place, browsers automatically negotiate HTTP/2 and your users get faster page loads.
+HTTP/2 on Apache with RHEL brings multiplexed connections, header compression, and optional server push to your web server. The main requirements are using the event MPM, having TLS configured, and loading mod_http2. With these in place, browsers automatically negotiate HTTP/2 and your users get faster page loads.

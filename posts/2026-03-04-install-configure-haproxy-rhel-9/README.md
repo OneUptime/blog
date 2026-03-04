@@ -1,4 +1,4 @@
-# How to Install and Configure HAProxy on RHEL 9
+# How to Install and Configure HAProxy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -14,13 +14,13 @@ HAProxy (High Availability Proxy) is a dedicated load balancer and proxy that ha
 
 ## Prerequisites
 
-- RHEL 9 with active subscription or configured repositories
+- RHEL with active subscription or configured repositories
 - Root or sudo access
 - Two or more backend servers to load balance
 
 ## Step 1 - Install HAProxy
 
-HAProxy is available in the RHEL 9 AppStream repository:
+HAProxy is available in the RHEL AppStream repository:
 
 ```bash
 # Install HAProxy
@@ -187,7 +187,7 @@ done
 
 ## Step 10 - View Logs
 
-HAProxy logs via syslog. On RHEL 9, check the journal:
+HAProxy logs via syslog. On RHEL, check the journal:
 
 ```bash
 # View HAProxy logs
@@ -222,4 +222,4 @@ echo "show stat" | sudo socat stdio /var/lib/haproxy/stats
 
 ## Wrap-Up
 
-HAProxy on RHEL 9 gives you a robust, purpose-built load balancer. The configuration is declarative and easy to reason about: frontends receive traffic, backends serve it, and defaults keep things consistent. Enable the stats page from the start because it is invaluable for monitoring. From here you can add SSL termination, health checks, and more sophisticated routing.
+HAProxy on RHEL gives you a robust, purpose-built load balancer. The configuration is declarative and easy to reason about: frontends receive traffic, backends serve it, and defaults keep things consistent. Enable the stats page from the start because it is invaluable for monitoring. From here you can add SSL termination, health checks, and more sophisticated routing.

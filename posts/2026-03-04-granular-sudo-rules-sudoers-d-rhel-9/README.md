@@ -1,14 +1,14 @@
-# How to Create Granular Sudo Rules in /etc/sudoers.d on RHEL 9
+# How to Create Granular Sudo Rules in /etc/sudoers.d on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, sudo, sudoers.d, Security, Linux
 
-Description: Learn how to create fine-grained sudo rules using drop-in files in /etc/sudoers.d on RHEL 9, following the principle of least privilege.
+Description: Learn how to create fine-grained sudo rules using drop-in files in /etc/sudoers.d on RHEL, following the principle of least privilege.
 
 ---
 
-Dumping everyone into the wheel group with full root access is easy but lazy. In production, you want specific users or teams to have access to specific commands and nothing more. The `/etc/sudoers.d/` directory on RHEL 9 lets you create modular, maintainable sudo rules without touching the main sudoers file.
+Dumping everyone into the wheel group with full root access is easy but lazy. In production, you want specific users or teams to have access to specific commands and nothing more. The `/etc/sudoers.d/` directory on RHEL lets you create modular, maintainable sudo rules without touching the main sudoers file.
 
 ## Why Use /etc/sudoers.d
 
@@ -215,4 +215,4 @@ Use number prefixes to control processing order. Aliases should come first (00-)
 
 ## Wrapping Up
 
-Drop-in files in `/etc/sudoers.d/` are the right way to manage sudo rules on RHEL 9. They keep your configuration modular, auditable, and easy to manage with automation. Always use `visudo -f` to create and edit them, always use full command paths, and validate your configuration with `visudo -c` after every change. The goal is giving people exactly the access they need and nothing more.
+Drop-in files in `/etc/sudoers.d/` are the right way to manage sudo rules on RHEL. They keep your configuration modular, auditable, and easy to manage with automation. Always use `visudo -f` to create and edit them, always use full command paths, and validate your configuration with `visudo -c` after every change. The goal is giving people exactly the access they need and nothing more.

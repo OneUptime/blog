@@ -1,10 +1,10 @@
-# How to Troubleshoot Secure Boot Failures with Unsigned Kernel Modules on RHEL 9
+# How to Troubleshoot Secure Boot Failures with Unsigned Kernel Modules on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Secure Boot, Kernel Modules, Linux
 
-Description: Diagnose and resolve Secure Boot failures caused by unsigned kernel modules on RHEL 9, including third-party drivers and custom modules.
+Description: Diagnose and resolve Secure Boot failures caused by unsigned kernel modules on RHEL, including third-party drivers and custom modules.
 
 ---
 

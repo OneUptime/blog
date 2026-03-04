@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Installation, Red Hat, System Administration
 
-Description: A complete walkthrough for installing RHEL 9 from ISO media, covering everything from downloading the image and creating a bootable USB to completing the Anaconda installer and performing first boot tasks.
+Description: A complete walkthrough for installing RHEL from ISO media, covering everything from downloading the image and creating a bootable USB to completing the Anaconda installer and performing first boot tasks.
 
 ---
 
-If you have been running CentOS, Fedora, or an older RHEL release, upgrading or fresh-installing RHEL 9 is pretty straightforward once you know the steps. This guide walks through the entire process from grabbing the ISO to logging in for the first time. No hand-waving, just the actual steps you will follow on real hardware or a VM.
+If you have been running CentOS, Fedora, or an older RHEL release, upgrading or fresh-installing RHEL is pretty straightforward once you know the steps. This guide walks through the entire process from grabbing the ISO to logging in for the first time. No hand-waving, just the actual steps you will follow on real hardware or a VM.
 
-## Downloading the RHEL 9 ISO
+## Downloading the RHEL ISO
 
 Head to the Red Hat Customer Portal at https://access.redhat.com/downloads and log in with your Red Hat account. If you do not have a subscription, the Red Hat Developer Subscription gives you a free license for development and testing.
 
@@ -53,7 +53,7 @@ Insert the USB drive into the target machine and reboot. You need to access the 
 - **Legacy BIOS**: press F12, F2, or Del during POST (varies by manufacturer).
 - **UEFI**: same keys usually work, or go through the firmware settings.
 
-Select the USB drive as the boot device. If you are running UEFI with Secure Boot enabled, RHEL 9 supports it out of the box, so you do not need to disable it.
+Select the USB drive as the boot device. If you are running UEFI with Secure Boot enabled, RHEL supports it out of the box, so you do not need to disable it.
 
 Once the USB boots, you will see the GRUB menu with options like "Install Red Hat Enterprise Linux 9" and "Test this media & install." The media test takes a few minutes but catches corrupted ISOs before you waste time on a failed install.
 
@@ -94,7 +94,7 @@ For servers, always set a static IP. DHCP is fine for workstations.
 
 ### Time and Date
 
-Click "Time & Date" and set your timezone. Enable NTP if the machine has network access. RHEL 9 uses `chrony` as the default NTP client.
+Click "Time & Date" and set your timezone. Enable NTP if the machine has network access. RHEL uses `chrony` as the default NTP client.
 
 ### Software Selection
 
@@ -109,7 +109,7 @@ For most server deployments, go with Minimal Install and add packages later. Les
 
 ### Root Password and User Creation
 
-Click "Root Password" to set the root password. In RHEL 9, you can optionally disable root login and rely entirely on a regular user with sudo access, which is the recommended practice.
+Click "Root Password" to set the root password. In RHEL, you can optionally disable root login and rely entirely on a regular user with sudo access, which is the recommended practice.
 
 Click "User Creation" to add your everyday user account. Check "Make this user administrator" to add them to the `wheel` group, which grants sudo access.
 
@@ -121,7 +121,7 @@ When it finishes, click "Reboot System."
 
 ## First Boot Tasks
 
-After the reboot, remove the USB drive. The system should boot from the disk into RHEL 9. Log in with the user you created.
+After the reboot, remove the USB drive. The system should boot from the disk into RHEL. Log in with the user you created.
 
 ### Register the System
 
@@ -163,7 +163,7 @@ sudo firewall-cmd --list-all
 
 ### Set SELinux to Enforcing
 
-RHEL 9 ships with SELinux in enforcing mode by default. Verify it:
+RHEL ships with SELinux in enforcing mode by default. Verify it:
 
 ```bash
 # Check current SELinux status
@@ -178,7 +178,7 @@ Here is a quick summary of what to verify after installation:
 
 ```mermaid
 flowchart TD
-    A[RHEL 9 Installed] --> B[Register Subscription]
+    A[RHEL Installed] --> B[Register Subscription]
     B --> C[Run dnf update]
     C --> D[Verify Firewall]
     D --> E[Verify SELinux]
@@ -195,4 +195,4 @@ flowchart TD
 - Use Minimal Install for production servers. You can always add packages with `dnf`, but removing unnecessary ones after the fact is more work.
 - Document your partition layout. Future you will appreciate knowing why `/var` is 30 GiB when you need to extend it at 3 AM.
 
-That covers the full RHEL 9 installation from media. Once the system is up and registered, you are ready to start configuring services, hardening the OS, and deploying workloads.
+That covers the full RHEL installation from media. Once the system is up and registered, you are ready to start configuring services, hardening the OS, and deploying workloads.

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, System Roles, Automation, Linux
 
-Description: Learn how to use the rhel-system-roles package to automate common RHEL 9 configuration tasks like networking, time synchronization, SELinux, and storage using Red Hat's officially supported Ansible roles.
+Description: Learn how to use the rhel-system-roles package to automate common RHEL configuration tasks like networking, time synchronization, SELinux, and storage using Red Hat's officially supported Ansible roles.
 
 ---
 

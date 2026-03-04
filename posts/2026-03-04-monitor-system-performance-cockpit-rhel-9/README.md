@@ -1,10 +1,10 @@
-# How to Monitor System Performance Using the Cockpit Web Console on RHEL 9
+# How to Monitor System Performance Using the Cockpit Web Console on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Performance Monitoring, Linux
 
-Description: A hands-on guide to using the Cockpit web console for real-time performance monitoring on RHEL 9, covering CPU, memory, disk, and network metrics.
+Description: A hands-on guide to using the Cockpit web console for real-time performance monitoring on RHEL, covering CPU, memory, disk, and network metrics.
 
 ---
 
@@ -241,4 +241,4 @@ pmrep -a /var/log/pcp/pmlogger/$(hostname)/$(date +%Y%m%d) \
 
 ## Wrapping Up
 
-Cockpit gives you a visual, real-time window into your server's performance. Combined with PCP for historical data, it covers most day-to-day monitoring needs. For quick health checks and trend analysis, the browser-based graphs are faster than assembling the same picture from command-line tools. When you need to dig deeper, the integrated terminal is right there. It's a solid first-response tool for performance troubleshooting on RHEL 9.
+Cockpit gives you a visual, real-time window into your server's performance. Combined with PCP for historical data, it covers most day-to-day monitoring needs. For quick health checks and trend analysis, the browser-based graphs are faster than assembling the same picture from command-line tools. When you need to dig deeper, the integrated terminal is right there. It's a solid first-response tool for performance troubleshooting on RHEL.

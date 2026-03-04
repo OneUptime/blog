@@ -1,10 +1,10 @@
-# How to Roll Back Package Updates Using DNF History on RHEL 9
+# How to Roll Back Package Updates Using DNF History on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNF, Rollback, Package Management, Linux
 
-Description: Learn how to use DNF history to review, undo, and roll back package transactions on RHEL 9, giving you a safety net when updates cause problems.
+Description: Learn how to use DNF history to review, undo, and roll back package transactions on RHEL, giving you a safety net when updates cause problems.
 
 ---
 

@@ -1,14 +1,14 @@
-# How to Set Up VLAN Tagging Over a Bonded Interface on RHEL 9
+# How to Set Up VLAN Tagging Over a Bonded Interface on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VLAN, Network Bonding, Networking, Linux
 
-Description: Learn how to stack VLAN tagging on top of a bonded interface in RHEL 9, giving you both link redundancy and network segmentation in one setup.
+Description: Learn how to stack VLAN tagging on top of a bonded interface in RHEL, giving you both link redundancy and network segmentation in one setup.
 
 ---
 
-Running VLANs over bonded interfaces is a common pattern in data centers. You get the redundancy and bandwidth of bonding combined with the network segmentation of VLANs. On RHEL 9, this is all managed through nmcli and works reliably once you layer things correctly.
+Running VLANs over bonded interfaces is a common pattern in data centers. You get the redundancy and bandwidth of bonding combined with the network segmentation of VLANs. On RHEL, this is all managed through nmcli and works reliably once you layer things correctly.
 
 ## The Architecture
 
@@ -30,7 +30,7 @@ The physical interfaces feed into a bond, and VLANs sit on top of that bond. The
 
 ## Prerequisites
 
-- RHEL 9 with at least two network interfaces
+- RHEL with at least two network interfaces
 - A network switch configured with trunk ports carrying your VLANs
 - Root or sudo access
 - An existing bond interface (or we will create one)

@@ -1,10 +1,10 @@
-# How to Troubleshoot WireGuard VPN Connection Issues on RHEL 9
+# How to Troubleshoot WireGuard VPN Connection Issues on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, WireGuard, VPN, Troubleshooting, Linux
 
-Description: A systematic guide to diagnosing and resolving common WireGuard VPN connection problems on RHEL 9, from failed handshakes and routing issues to DNS and performance problems.
+Description: A systematic guide to diagnosing and resolving common WireGuard VPN connection problems on RHEL, from failed handshakes and routing issues to DNS and performance problems.
 
 ---
 
@@ -207,7 +207,7 @@ journalctl -u wg-quick@wg0 --since "5 minutes ago"
 # Common issues:
 # - Config file permissions too open
 # - IP address conflict with existing interface
-# - Missing wireguard kernel module (unlikely on RHEL 9)
+# - Missing wireguard kernel module (unlikely on RHEL)
 ```
 
 ```bash

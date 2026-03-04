@@ -1,10 +1,10 @@
-# How to Configure Balance-RR Bonding for Load Balancing on RHEL 9
+# How to Configure Balance-RR Bonding for Load Balancing on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Balance-RR, Load Balancing, Bonding, Linux
 
-Description: How to set up round-robin (balance-rr) bonding on RHEL 9 for maximum throughput, including its trade-offs, switch requirements, and real-world use cases.
+Description: How to set up round-robin (balance-rr) bonding on RHEL for maximum throughput, including its trade-offs, switch requirements, and real-world use cases.
 
 ---
 
@@ -110,7 +110,7 @@ If you see high retransmission counts, balance-rr might be hurting more than hel
 
 ## Tuning packets_per_slave
 
-RHEL 9 supports the `packets_per_slave` option for balance-rr, which controls how many packets are sent on one slave before switching to the next:
+RHEL supports the `packets_per_slave` option for balance-rr, which controls how many packets are sent on one slave before switching to the next:
 
 ```bash
 # Send 1 packet per slave before rotating (default)

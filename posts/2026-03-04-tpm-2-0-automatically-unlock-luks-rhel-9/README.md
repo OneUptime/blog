@@ -1,10 +1,10 @@
-# How to Use TPM 2.0 to Automatically Unlock LUKS Volumes on RHEL 9
+# How to Use TPM 2.0 to Automatically Unlock LUKS Volumes on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, TPM, LUKS, Auto-Unlock, Linux
 
-Description: Configure TPM 2.0-based automatic LUKS volume unlocking on RHEL 9 using Clevis, so encrypted disks unlock only when the system's boot chain is trusted.
+Description: Configure TPM 2.0-based automatic LUKS volume unlocking on RHEL using Clevis, so encrypted disks unlock only when the system's boot chain is trusted.
 
 ---
 
@@ -28,7 +28,7 @@ flowchart TD
 ## Prerequisites
 
 You need:
-- RHEL 9 with a LUKS-encrypted volume
+- RHEL with a LUKS-encrypted volume
 - A TPM 2.0 chip (most modern servers have one)
 - Clevis packages installed
 

@@ -1,10 +1,10 @@
-# How to Create Custom Firewalld Services and Zones on RHEL 9
+# How to Create Custom Firewalld Services and Zones on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Custom Services, Security, Linux
 
-Description: Learn how to create custom firewalld services and zones on RHEL 9 for applications that do not have predefined firewall definitions, with practical examples.
+Description: Learn how to create custom firewalld services and zones on RHEL for applications that do not have predefined firewall definitions, with practical examples.
 
 ---
 

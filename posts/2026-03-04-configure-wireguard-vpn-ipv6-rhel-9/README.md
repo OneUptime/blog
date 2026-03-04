@@ -1,10 +1,10 @@
-# How to Configure WireGuard VPN with IPv6 on RHEL 9
+# How to Configure WireGuard VPN with IPv6 on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, WireGuard, IPv6, VPN, Linux
 
-Description: Learn how to set up WireGuard VPN with full IPv6 support on RHEL 9, including dual-stack tunnel configuration, IPv6 endpoint connectivity, and routing both protocols through the tunnel.
+Description: Learn how to set up WireGuard VPN with full IPv6 support on RHEL, including dual-stack tunnel configuration, IPv6 endpoint connectivity, and routing both protocols through the tunnel.
 
 ---
 
@@ -31,7 +31,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 systems with WireGuard tools installed
+- RHEL systems with WireGuard tools installed
 - IPv6 connectivity on both sides (for IPv6 transport)
 - An IPv6 /64 prefix for tunnel addresses
 
@@ -227,4 +227,4 @@ sudo wg-quick down wg0 && sudo wg-quick up wg0
 
 ## Wrapping Up
 
-WireGuard's IPv6 support on RHEL 9 is first-class. Whether you're using IPv6 for transport, carrying IPv6 through the tunnel, or running a full dual-stack setup, the configuration stays clean and readable. The main things to remember are: use bracket notation for IPv6 endpoints, include `::/0` in AllowedIPs if you want all IPv6 traffic tunneled, and enable IPv6 forwarding on the server if you're routing traffic.
+WireGuard's IPv6 support on RHEL is first-class. Whether you're using IPv6 for transport, carrying IPv6 through the tunnel, or running a full dual-stack setup, the configuration stays clean and readable. The main things to remember are: use bracket notation for IPv6 endpoints, include `::/0` in AllowedIPs if you want all IPv6 traffic tunneled, and enable IPv6 forwarding on the server if you're routing traffic.

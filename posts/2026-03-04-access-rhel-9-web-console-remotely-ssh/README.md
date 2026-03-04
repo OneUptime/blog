@@ -1,14 +1,14 @@
-# How to Access the RHEL 9 Web Console Remotely via SSH
+# How to Access the RHEL Web Console Remotely via SSH
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, SSH, Remote Access, Linux
 
-Description: Learn how to securely access the Cockpit web console on a remote RHEL 9 server using SSH tunneling and port forwarding.
+Description: Learn how to securely access the Cockpit web console on a remote RHEL server using SSH tunneling and port forwarding.
 
 ---
 
-You've got Cockpit running on a RHEL 9 box, but the server is behind a firewall or on a private network where port 9090 isn't exposed. No problem. SSH tunneling lets you access the web console securely without opening any additional ports to the outside world.
+You've got Cockpit running on a RHEL box, but the server is behind a firewall or on a private network where port 9090 isn't exposed. No problem. SSH tunneling lets you access the web console securely without opening any additional ports to the outside world.
 
 I use this approach regularly for servers in locked-down environments. It's simple, secure, and doesn't require any changes to the server's firewall configuration.
 
@@ -19,13 +19,13 @@ Opening port 9090 directly to the internet is a bad idea, even with TLS. SSH tun
 ```mermaid
 graph LR
     A[Local Browser] -->|localhost:9090| B[SSH Tunnel]
-    B -->|Encrypted| C[Remote RHEL 9 Server]
+    B -->|Encrypted| C[Remote RHEL Server]
     C -->|localhost:9090| D[Cockpit Web Service]
 ```
 
 ## Prerequisites
 
-- Cockpit installed and running on the remote RHEL 9 server
+- Cockpit installed and running on the remote RHEL server
 - SSH access to the server with key-based or password authentication
 - An SSH client on your local machine (OpenSSH, PuTTY, etc.)
 
@@ -149,7 +149,7 @@ When you access Cockpit through a tunnel at `localhost:9090`, the certificate wo
 Export and inspect the certificate:
 
 ```bash
-# On the RHEL 9 server, check the certificate
+# On the RHEL server, check the certificate
 openssl x509 -in /etc/cockpit/ws-certs.d/0-self-signed.cert -noout -text | head -20
 ```
 

@@ -1,20 +1,20 @@
-# How to Configure Certbot Auto-Renewal for TLS Certificates on RHEL 9
+# How to Configure Certbot Auto-Renewal for TLS Certificates on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Certbot, Auto-Renewal, TLS, Linux
 
-Description: Learn how to set up and verify automatic TLS certificate renewal with Certbot on RHEL 9, including hooks for reloading web servers.
+Description: Learn how to set up and verify automatic TLS certificate renewal with Certbot on RHEL, including hooks for reloading web servers.
 
 ---
 
 Getting a Let's Encrypt certificate is the easy part. Keeping it valid is where most people slip up. Let's Encrypt certificates expire every 90 days, and if your renewal process breaks silently, you wake up to a site serving expired certificates and angry users.
 
-This guide covers everything about Certbot auto-renewal on RHEL 9, from the default systemd timer to custom hooks and monitoring.
+This guide covers everything about Certbot auto-renewal on RHEL, from the default systemd timer to custom hooks and monitoring.
 
 ## How Certbot Renewal Works
 
-When you install Certbot on RHEL 9, it registers a systemd timer that fires twice daily. Each time it runs, Certbot checks all managed certificates and renews any that are within 30 days of expiry. Since certificates last 90 days, that gives you a 30-day window where renewal attempts happen automatically.
+When you install Certbot on RHEL, it registers a systemd timer that fires twice daily. Each time it runs, Certbot checks all managed certificates and renews any that are within 30 days of expiry. Since certificates last 90 days, that gives you a 30-day window where renewal attempts happen automatically.
 
 ```mermaid
 graph LR

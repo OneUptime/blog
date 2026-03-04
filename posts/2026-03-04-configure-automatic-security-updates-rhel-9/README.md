@@ -1,16 +1,16 @@
-# How to Configure Automatic Security Updates on RHEL 9
+# How to Configure Automatic Security Updates on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Security Updates, Automation, Linux
 
-Description: Set up automatic security updates on RHEL 9 using dnf-automatic so critical patches are applied promptly without manual intervention.
+Description: Set up automatic security updates on RHEL using dnf-automatic so critical patches are applied promptly without manual intervention.
 
 ---
 
 Unpatched vulnerabilities are one of the most common ways systems get compromised. The problem is not that administrators do not know they should patch - it is that patching gets deprioritized when things are busy. Automatic security updates solve this by applying critical fixes without waiting for someone to run dnf update manually.
 
-On RHEL 9, the tool for this is dnf-automatic. It integrates with systemd timers and gives you fine-grained control over what gets updated and when.
+On RHEL, the tool for this is dnf-automatic. It integrates with systemd timers and gives you fine-grained control over what gets updated and when.
 
 ## Install dnf-automatic
 

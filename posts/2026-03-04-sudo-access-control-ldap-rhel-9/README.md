@@ -1,10 +1,10 @@
-# How to Set Up Sudo Access Control with LDAP on RHEL 9
+# How to Set Up Sudo Access Control with LDAP on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Sudo, LDAP, Access Control, Linux
 
-Description: A guide to managing sudo privileges centrally through LDAP on RHEL 9, enabling consistent access control across multiple servers.
+Description: A guide to managing sudo privileges centrally through LDAP on RHEL, enabling consistent access control across multiple servers.
 
 ---
 

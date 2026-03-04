@@ -1,14 +1,14 @@
-# How to Diagnose DNS Issues with dig and nslookup on RHEL 9
+# How to Diagnose DNS Issues with dig and nslookup on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, dig, nslookup, DNS, Troubleshooting, Linux
 
-Description: Master the dig and nslookup commands on RHEL 9 to diagnose DNS problems quickly, from basic lookups to advanced debugging.
+Description: Master the dig and nslookup commands on RHEL to diagnose DNS problems quickly, from basic lookups to advanced debugging.
 
 ---
 
-When DNS breaks, you need to figure out what's going wrong fast. The `dig` and `nslookup` commands are your primary tools for this. Both come with the `bind-utils` package on RHEL 9. While `nslookup` is simpler and good for quick checks, `dig` gives you the detailed output you need for real troubleshooting. This guide covers both.
+When DNS breaks, you need to figure out what's going wrong fast. The `dig` and `nslookup` commands are your primary tools for this. Both come with the `bind-utils` package on RHEL. While `nslookup` is simpler and good for quick checks, `dig` gives you the detailed output you need for real troubleshooting. This guide covers both.
 
 ## Installing the Tools
 

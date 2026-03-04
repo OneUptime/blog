@@ -1,14 +1,14 @@
-# How to Attach and Manage Subscriptions with subscription-manager on RHEL 9
+# How to Attach and Manage Subscriptions with subscription-manager on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Subscriptions, subscription-manager, Red Hat, Linux
 
-Description: A hands-on guide to attaching, listing, removing, and managing RHEL 9 subscriptions using subscription-manager, including auto-attach and pool-based attachment.
+Description: A hands-on guide to attaching, listing, removing, and managing RHEL subscriptions using subscription-manager, including auto-attach and pool-based attachment.
 
 ---
 
-Once your RHEL 9 system is registered with Red Hat, the next step is making sure it has the right subscriptions attached. Subscriptions determine what content your system can access, from base OS packages to add-ons like High Availability or supplementary tools. This guide covers the day-to-day tasks of managing subscriptions with `subscription-manager`.
+Once your RHEL system is registered with Red Hat, the next step is making sure it has the right subscriptions attached. Subscriptions determine what content your system can access, from base OS packages to add-ons like High Availability or supplementary tools. This guide covers the day-to-day tasks of managing subscriptions with `subscription-manager`.
 
 ## Subscriptions vs. Registration
 
@@ -195,4 +195,4 @@ If the status shows "Invalid" or "Insufficient", either renew the subscription i
 
 ## Summary
 
-Managing subscriptions on RHEL 9 is mostly about knowing a few key `subscription-manager` subcommands: `list`, `attach`, `remove`, and `refresh`. If your account uses Simple Content Access, most of this is handled automatically upon registration. But for environments with specific compliance requirements or complex subscription portfolios, understanding pool-based attachment and subscription removal is essential for keeping things tidy and making the most of your entitlements.
+Managing subscriptions on RHEL is mostly about knowing a few key `subscription-manager` subcommands: `list`, `attach`, `remove`, and `refresh`. If your account uses Simple Content Access, most of this is handled automatically upon registration. But for environments with specific compliance requirements or complex subscription portfolios, understanding pool-based attachment and subscription removal is essential for keeping things tidy and making the most of your entitlements.

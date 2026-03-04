@@ -1,20 +1,20 @@
-# How to Configure RHEL 9 High Availability for SAP HANA System Replication
+# How to Configure RHEL High Availability for SAP HANA System Replication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP HANA, High Availability, Pacemaker, Corosync, Linux
 
-Description: Set up RHEL 9 High Availability clustering with Pacemaker and Corosync for SAP HANA System Replication to ensure automatic failover.
+Description: Set up RHEL High Availability clustering with Pacemaker and Corosync for SAP HANA System Replication to ensure automatic failover.
 
 ---
 
-SAP HANA System Replication (HSR) combined with RHEL High Availability provides automated failover for your database tier. This guide configures a two-node Pacemaker cluster on RHEL 9 that manages SAP HANA System Replication and performs automatic takeover when the primary node fails.
+SAP HANA System Replication (HSR) combined with RHEL High Availability provides automated failover for your database tier. This guide configures a two-node Pacemaker cluster on RHEL that manages SAP HANA System Replication and performs automatic takeover when the primary node fails.
 
 ## Architecture Overview
 
 ```mermaid
 graph TB
-    subgraph "RHEL 9 HA Cluster"
+    subgraph "RHEL HA Cluster"
         subgraph "Node 1 - Primary"
             HANA1[SAP HANA Primary]
             PA1[Pacemaker Agent]
@@ -33,7 +33,7 @@ graph TB
 
 ## Prerequisites
 
-- Two RHEL 9 servers with SAP HANA installed on both
+- Two RHEL servers with SAP HANA installed on both
 - RHEL High Availability Add-On subscription
 - SAP HANA System Replication already configured between the two nodes
 - Shared fencing mechanism (SBD, IPMI, or cloud fencing agent)
@@ -196,4 +196,4 @@ sequenceDiagram
 
 ## Conclusion
 
-You now have a fully automated SAP HANA HA cluster on RHEL 9. Pacemaker monitors the HANA system replication status and automatically performs takeover if the primary node fails. Always test your failover procedures regularly and keep the resource agents updated with the latest versions from Red Hat.
+You now have a fully automated SAP HANA HA cluster on RHEL. Pacemaker monitors the HANA system replication status and automatically performs takeover if the primary node fails. Always test your failover procedures regularly and keep the resource agents updated with the latest versions from Red Hat.

@@ -1,14 +1,14 @@
-# How to Use Terraform to Deploy RHEL 9 on Azure Virtual Machines
+# How to Use Terraform to Deploy RHEL on Azure Virtual Machines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, Azure, Cloud, Virtual Machines, Linux
 
-Description: Deploy RHEL 9 virtual machines on Microsoft Azure using Terraform, covering resource groups, networking, and VM configuration.
+Description: Deploy RHEL virtual machines on Microsoft Azure using Terraform, covering resource groups, networking, and VM configuration.
 
 ---
 
-Azure provides RHEL 9 images through the marketplace, and Terraform makes it easy to deploy and manage them programmatically. This guide walks through deploying a RHEL 9 VM on Azure with proper networking and security.
+Azure provides RHEL images through the marketplace, and Terraform makes it easy to deploy and manage them programmatically. This guide walks through deploying a RHEL VM on Azure with proper networking and security.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ graph TD
     C --> D[Virtual Network]
     D --> E[Subnet]
     E --> F[Network Interface]
-    F --> G[RHEL 9 VM]
+    F --> G[RHEL VM]
     C --> H[Network Security Group]
     H --> F
     C --> I[Public IP]
@@ -174,7 +174,7 @@ resource "azurerm_network_interface_security_group_association" "rhel" {
 ## Virtual Machine
 
 ```hcl
-# vm.tf - RHEL 9 virtual machine
+# vm.tf - RHEL virtual machine
 
 resource "azurerm_linux_virtual_machine" "rhel" {
   name                = "rhel9-vm"
@@ -200,7 +200,7 @@ resource "azurerm_linux_virtual_machine" "rhel" {
     disk_size_gb         = 30
   }
 
-  # Use the RHEL 9 marketplace image
+  # Use the RHEL marketplace image
   source_image_reference {
     publisher = "RedHat"
     offer     = "RHEL"
@@ -249,4 +249,4 @@ ssh azureuser@$(terraform output -raw public_ip_address)
 terraform destroy -auto-approve
 ```
 
-Using Terraform with Azure gives you repeatable RHEL 9 deployments that you can extend with additional disks, load balancers, or scale sets as your needs grow.
+Using Terraform with Azure gives you repeatable RHEL deployments that you can extend with additional disks, load balancers, or scale sets as your needs grow.

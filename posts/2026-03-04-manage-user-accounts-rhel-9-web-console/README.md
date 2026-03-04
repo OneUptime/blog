@@ -1,10 +1,10 @@
-# How to Manage User Accounts Using the RHEL 9 Web Console
+# How to Manage User Accounts Using the RHEL Web Console
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, User Management, Linux
 
-Description: Learn how to create, modify, and manage local user accounts through the Cockpit web console on RHEL 9, including password policies and SSH key management.
+Description: Learn how to create, modify, and manage local user accounts through the Cockpit web console on RHEL, including password policies and SSH key management.
 
 ---
 
@@ -96,7 +96,7 @@ The output of `passwd -S` shows `L` (locked) or `P` (password set) as the second
 
 ## Managing Group Memberships
 
-On the user detail page, you can see which groups the user belongs to and add or remove them. The most important group on RHEL 9 is `wheel`, which grants sudo access.
+On the user detail page, you can see which groups the user belongs to and add or remove them. The most important group on RHEL is `wheel`, which grants sudo access.
 
 ```bash
 # List a user's groups

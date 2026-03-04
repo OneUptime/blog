@@ -1,10 +1,10 @@
-# How to Migrate from BIND to Unbound DNS Resolver on RHEL 9
+# How to Migrate from BIND to Unbound DNS Resolver on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BIND, Unbound, DNS, Migration, Linux
 
-Description: Step-by-step guide to migrating your recursive DNS resolver from BIND to Unbound on RHEL 9, covering configuration mapping and validation.
+Description: Step-by-step guide to migrating your recursive DNS resolver from BIND to Unbound on RHEL, covering configuration mapping and validation.
 
 ---
 

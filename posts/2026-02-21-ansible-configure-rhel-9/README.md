@@ -1,4 +1,4 @@
-# How to Use Ansible to Configure RHEL 9
+# How to Use Ansible to Configure RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,11 +8,11 @@ Description: Automate Red Hat Enterprise Linux 9 configuration with Ansible cove
 
 ---
 
-Red Hat Enterprise Linux 9 is the enterprise standard for production workloads. Automating RHEL 9 with Ansible requires handling subscription management, SELinux, firewalld, and the dnf package manager. This guide covers a complete server configuration playbook.
+Red Hat Enterprise Linux 9 is the enterprise standard for production workloads. Automating RHEL with Ansible requires handling subscription management, SELinux, firewalld, and the dnf package manager. This guide covers a complete server configuration playbook.
 
 ## Prerequisites
 
-RHEL 9 requires an active subscription for package installation. Make sure your servers are registered with Red Hat or have access to a Satellite server.
+RHEL requires an active subscription for package installation. Make sure your servers are registered with Red Hat or have access to a Satellite server.
 
 ```ini
 # inventory/hosts
@@ -30,7 +30,7 @@ ansible_python_interpreter=/usr/bin/python3
 ```yaml
 ---
 # configure_rhel9.yml
-- name: Configure RHEL 9 servers
+- name: Configure RHEL servers
   hosts: rhel9
   become: true
 
@@ -104,7 +104,7 @@ ansible_python_interpreter=/usr/bin/python3
 
 ## SELinux Configuration
 
-RHEL 9 has SELinux enforcing by default. Never disable it; instead, configure it properly:
+RHEL has SELinux enforcing by default. Never disable it; instead, configure it properly:
 
 ```yaml
     - name: Ensure SELinux is enforcing
@@ -262,7 +262,7 @@ RHEL 9 has SELinux enforcing by default. Never disable it; instead, configure it
 
 ## Summary
 
-RHEL 9 configuration with Ansible involves subscription management, SELinux policy (never disable it, configure it), firewalld zones and services, dnf package management with EPEL, and RHEL-specific crypto policies. This playbook provides a solid base configuration that follows Red Hat best practices. Keep SELinux in enforcing mode and use the SELinux boolean and context modules to grant specific permissions rather than disabling security controls.
+RHEL configuration with Ansible involves subscription management, SELinux policy (never disable it, configure it), firewalld zones and services, dnf package management with EPEL, and RHEL-specific crypto policies. This playbook provides a solid base configuration that follows Red Hat best practices. Keep SELinux in enforcing mode and use the SELinux boolean and context modules to grant specific permissions rather than disabling security controls.
 
 ## Common Use Cases
 

@@ -1,16 +1,16 @@
-# How to Downgrade a Package to a Previous Version Using DNF on RHEL 9
+# How to Downgrade a Package to a Previous Version Using DNF on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNF, Package Downgrade, Linux, Troubleshooting
 
-Description: Learn how to safely downgrade packages to previous versions on RHEL 9 using DNF, including finding older versions, using history undo, and caching strategies.
+Description: Learn how to safely downgrade packages to previous versions on RHEL using DNF, including finding older versions, using history undo, and caching strategies.
 
 ---
 
 Package updates usually make things better. But every now and then, an update breaks something. Maybe a new version of a library causes your application to crash, or a kernel update introduces a regression with your hardware. When that happens, you need to roll back to the version that worked.
 
-I have been in this situation more times than I would like to admit, and RHEL 9 gives you a few solid options for handling it. Let me walk you through each approach.
+I have been in this situation more times than I would like to admit, and RHEL gives you a few solid options for handling it. Let me walk you through each approach.
 
 ## The Quick Downgrade with dnf downgrade
 
@@ -277,4 +277,4 @@ curl -I http://localhost/
 
 ## Summary
 
-Downgrading packages on RHEL 9 is well-supported and there are multiple approaches depending on your situation. For a single package, `dnf downgrade` is quick and simple. For rolling back a whole update session, `dnf history undo` is the way to go. Either way, remember to lock the package version afterward so it does not get upgraded again before you are ready. And if you are in an environment where downgrades might be needed, keep `keepcache=1` in your DNF configuration. You will thank yourself later.
+Downgrading packages on RHEL is well-supported and there are multiple approaches depending on your situation. For a single package, `dnf downgrade` is quick and simple. For rolling back a whole update session, `dnf history undo` is the way to go. Either way, remember to lock the package version afterward so it does not get upgraded again before you are ready. And if you are in an environment where downgrades might be needed, keep `keepcache=1` in your DNF configuration. You will thank yourself later.

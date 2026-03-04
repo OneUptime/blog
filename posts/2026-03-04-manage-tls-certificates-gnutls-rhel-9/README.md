@@ -1,16 +1,16 @@
-# How to Manage TLS Certificates Using GnuTLS on RHEL 9
+# How to Manage TLS Certificates Using GnuTLS on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GnuTLS, TLS, Certificates, Linux
 
-Description: A hands-on guide to using GnuTLS tools on RHEL 9 for generating keys, creating certificates, and inspecting TLS connections.
+Description: A hands-on guide to using GnuTLS tools on RHEL for generating keys, creating certificates, and inspecting TLS connections.
 
 ---
 
 Most RHEL admins reach for OpenSSL by default when working with certificates. That is totally fine, but GnuTLS is actually the preferred TLS library on many Red Hat systems, and its command-line tool `certtool` is worth knowing. Several RHEL components, including libvirt and GNOME, use GnuTLS under the hood.
 
-This post covers practical GnuTLS usage on RHEL 9 for day-to-day certificate management tasks.
+This post covers practical GnuTLS usage on RHEL for day-to-day certificate management tasks.
 
 ## Installing GnuTLS Tools
 
@@ -238,7 +238,7 @@ certtool --p12-info --inder --infile server.p12
 
 ## GnuTLS Priority Strings
 
-RHEL 9 uses GnuTLS priority strings to control TLS behavior in applications that use the library. The system-wide default is set by the crypto policy, but you can also set them per-application.
+RHEL uses GnuTLS priority strings to control TLS behavior in applications that use the library. The system-wide default is set by the crypto policy, but you can also set them per-application.
 
 Common priority strings:
 
@@ -281,4 +281,4 @@ certtool --generate-crl --load-ca-certificate ca.crt --load-ca-privkey ca.key --
 
 ## Wrapping Up
 
-GnuTLS is a capable alternative to OpenSSL for certificate management on RHEL 9. The template-based approach of `certtool` is arguably cleaner for scripting than OpenSSL's config file syntax, and `gnutls-cli` is an excellent TLS debugging tool. Since GnuTLS underpins many RHEL components, knowing your way around it will come in handy sooner or later.
+GnuTLS is a capable alternative to OpenSSL for certificate management on RHEL. The template-based approach of `certtool` is arguably cleaner for scripting than OpenSSL's config file syntax, and `gnutls-cli` is an excellent TLS debugging tool. Since GnuTLS underpins many RHEL components, knowing your way around it will come in handy sooner or later.

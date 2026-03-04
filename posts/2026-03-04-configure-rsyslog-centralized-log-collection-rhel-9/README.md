@@ -1,14 +1,14 @@
-# How to Configure rsyslog for Centralized Log Collection on RHEL 9
+# How to Configure rsyslog for Centralized Log Collection on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, rsyslog, Logging, Centralized Logging, Linux
 
-Description: Learn how to set up rsyslog on RHEL 9 for centralized log collection, allowing you to aggregate logs from multiple servers into a single location for easier analysis and troubleshooting.
+Description: Learn how to set up rsyslog on RHEL for centralized log collection, allowing you to aggregate logs from multiple servers into a single location for easier analysis and troubleshooting.
 
 ---
 
-Managing logs across dozens or hundreds of servers individually is not practical. A centralized logging setup collects all logs in one place, making it much easier to search, correlate events, and troubleshoot issues. On RHEL 9, rsyslog is the default logging daemon and it supports both receiving and forwarding logs out of the box.
+Managing logs across dozens or hundreds of servers individually is not practical. A centralized logging setup collects all logs in one place, making it much easier to search, correlate events, and troubleshoot issues. On RHEL, rsyslog is the default logging daemon and it supports both receiving and forwarding logs out of the box.
 
 ## Architecture Overview
 
@@ -25,9 +25,9 @@ graph TD
 
 ## Prerequisites
 
-- RHEL 9 servers with root or sudo access
+- RHEL servers with root or sudo access
 - Firewall access between clients and the central log server on port 514
-- rsyslog installed (it comes pre-installed on RHEL 9)
+- rsyslog installed (it comes pre-installed on RHEL)
 
 Verify rsyslog is installed and running:
 
@@ -127,7 +127,7 @@ sudo firewall-cmd --list-ports
 
 ### Step 5: Configure SELinux
 
-SELinux on RHEL 9 may block rsyslog from listening on non-standard configurations. Allow it:
+SELinux on RHEL may block rsyslog from listening on non-standard configurations. Allow it:
 
 ```bash
 # Allow rsyslog to use the syslogd port
@@ -298,4 +298,4 @@ sudo ausearch -m AVC -c rsyslogd
 
 ## Summary
 
-Centralized log collection with rsyslog on RHEL 9 gives you a single place to search and analyze logs from your entire infrastructure. The key steps are enabling TCP reception on the central server, creating per-host templates for organized storage, and configuring clients to forward their logs with reliable queuing. Combined with log rotation, this setup scales well and keeps your logging manageable.
+Centralized log collection with rsyslog on RHEL gives you a single place to search and analyze logs from your entire infrastructure. The key steps are enabling TCP reception on the central server, creating per-host templates for organized storage, and configuring clients to forward their logs with reliable queuing. Combined with log rotation, this setup scales well and keeps your logging manageable.

@@ -1,14 +1,14 @@
-# How to Set Up SAP HANA Backup with Backint on RHEL 9
+# How to Set Up SAP HANA Backup with Backint on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP HANA, Backup, Backint, Linux
 
-Description: Configure SAP HANA backups using the Backint interface on RHEL 9 for reliable database backup to third-party storage solutions.
+Description: Configure SAP HANA backups using the Backint interface on RHEL for reliable database backup to third-party storage solutions.
 
 ---
 
-SAP HANA's Backint interface provides a standardized way to back up your database to external storage solutions like Azure Blob Storage, AWS S3, or dedicated backup appliances. This guide covers setting up Backint-based backups on RHEL 9.
+SAP HANA's Backint interface provides a standardized way to back up your database to external storage solutions like Azure Blob Storage, AWS S3, or dedicated backup appliances. This guide covers setting up Backint-based backups on RHEL.
 
 ## Backup Architecture
 
@@ -22,7 +22,7 @@ graph LR
 
 ## Prerequisites
 
-- SAP HANA running on RHEL 9
+- SAP HANA running on RHEL
 - A Backint-certified backup agent (e.g., Azure Backup, AWS Backint Agent)
 - Sufficient storage capacity for backup retention
 
@@ -155,4 +155,4 @@ hdbsql -i 00 -u SYSTEM -p YourPassword \
 
 ## Conclusion
 
-Backint-based backup on RHEL 9 provides a reliable and scalable way to protect your SAP HANA data. Whether you use cloud object storage or a dedicated backup appliance, the Backint interface keeps the configuration within HANA's standard backup framework. Always test your recovery procedures regularly.
+Backint-based backup on RHEL provides a reliable and scalable way to protect your SAP HANA data. Whether you use cloud object storage or a dedicated backup appliance, the Backint interface keeps the configuration within HANA's standard backup framework. Always test your recovery procedures regularly.

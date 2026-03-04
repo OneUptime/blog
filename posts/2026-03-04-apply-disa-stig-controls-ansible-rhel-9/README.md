@@ -1,10 +1,10 @@
-# How to Apply DISA STIG Controls to RHEL 9 with Ansible Playbooks
+# How to Apply DISA STIG Controls to RHEL with Ansible Playbooks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DISA STIG, Ansible, Compliance, Linux
 
-Description: Apply DISA STIG security controls to RHEL 9 servers using Ansible playbooks, automating compliance for government and DoD environments.
+Description: Apply DISA STIG security controls to RHEL servers using Ansible playbooks, automating compliance for government and DoD environments.
 
 ---
 
@@ -20,7 +20,7 @@ DISA STIGs are more prescriptive than CIS benchmarks. Each finding has a severit
 
 ```mermaid
 flowchart TD
-    A[DISA STIG for RHEL 9] --> B[CAT I - High Severity]
+    A[DISA STIG for RHEL] --> B[CAT I - High Severity]
     A --> C[CAT II - Medium Severity]
     A --> D[CAT III - Low Severity]
     B --> E[Fix Immediately]
@@ -86,7 +86,7 @@ Here are the most critical STIG controls implemented as Ansible tasks:
 ### FIPS mode (CAT I)
 
 ```yaml
-# V-257844 - RHEL 9 must implement NIST FIPS-validated cryptography
+# V-257844 - RHEL must implement NIST FIPS-validated cryptography
 - name: Check if FIPS mode is enabled
   ansible.builtin.command:
     cmd: fips-mode-setup --check
@@ -189,7 +189,7 @@ Here are the most critical STIG controls implemented as Ansible tasks:
 
 ```yaml
 ---
-# DISA STIG Hardening Playbook for RHEL 9
+# DISA STIG Hardening Playbook for RHEL
 - name: Apply DISA STIG Controls
   hosts: stig_servers
   become: yes

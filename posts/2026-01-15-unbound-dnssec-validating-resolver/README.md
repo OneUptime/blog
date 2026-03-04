@@ -29,7 +29,7 @@ Without DNSSEC, your resolver trusts whatever response arrives first on UDP port
 
 Before starting, ensure you have:
 
-- A Linux server (Ubuntu 22.04+, Debian 12+, RHEL 9+, or Rocky Linux 9+)
+- A Linux server (Ubuntu 22.04+, Debian 12+, RHEL+, or Rocky Linux 9+)
 - Root or sudo access
 - Outbound connectivity to UDP/TCP port 53
 - Basic familiarity with DNS concepts (A records, NS records, TTL)

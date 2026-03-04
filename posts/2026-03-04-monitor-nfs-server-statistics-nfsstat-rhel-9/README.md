@@ -1,10 +1,10 @@
-# How to Monitor NFS Server Statistics with nfsstat on RHEL 9
+# How to Monitor NFS Server Statistics with nfsstat on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NFS, nfsstat, Monitoring, Linux
 
-Description: Use nfsstat and other monitoring tools on RHEL 9 to track NFS server performance, identify bottlenecks, and diagnose client issues.
+Description: Use nfsstat and other monitoring tools on RHEL to track NFS server performance, identify bottlenecks, and diagnose client issues.
 
 ---
 
@@ -14,7 +14,7 @@ An NFS server can appear healthy while silently degrading. High retransmission r
 
 ## nfsstat Basics
 
-nfsstat is the primary tool for NFS statistics on RHEL 9. It reads kernel counters to report RPC and NFS operation statistics.
+nfsstat is the primary tool for NFS statistics on RHEL. It reads kernel counters to report RPC and NFS operation statistics.
 
 ### Server-Side Statistics
 
@@ -82,7 +82,7 @@ The mountstats output includes:
 
 ## Monitoring with mountstats Tool
 
-RHEL 9 includes a Python-based mountstats tool for better formatting:
+RHEL includes a Python-based mountstats tool for better formatting:
 
 ```bash
 # Show formatted mount statistics
@@ -223,4 +223,4 @@ nfsstat -s | grep write | awk '{print $1}'
 
 ## Wrap-Up
 
-nfsstat is your primary window into NFS performance on RHEL 9. Check it regularly, watch for retransmissions, monitor thread utilization, and keep an eye on operation counts. Establish a baseline when things are working well, so you have something to compare against when problems arise. Combine nfsstat with mountstats for per-mount detail and ss for connection tracking to get a complete picture of your NFS infrastructure.
+nfsstat is your primary window into NFS performance on RHEL. Check it regularly, watch for retransmissions, monitor thread utilization, and keep an eye on operation counts. Establish a baseline when things are working well, so you have something to compare against when problems arise. Combine nfsstat with mountstats for per-mount detail and ss for connection tracking to get a complete picture of your NFS infrastructure.

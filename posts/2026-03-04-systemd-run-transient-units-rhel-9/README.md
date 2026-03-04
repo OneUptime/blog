@@ -1,10 +1,10 @@
-# How to Run Transient Units with systemd-run on RHEL 9
+# How to Run Transient Units with systemd-run on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, systemd-run, Transient Units, Linux
 
-Description: Learn how to use systemd-run on RHEL 9 to create temporary service units on the fly with resource limits, sandboxing, and proper process management.
+Description: Learn how to use systemd-run on RHEL to create temporary service units on the fly with resource limits, sandboxing, and proper process management.
 
 ---
 
@@ -110,4 +110,4 @@ sudo systemd-run --collect --unit=one-shot-task /usr/bin/task.sh
 
 ## Summary
 
-You have learned to use systemd-run for creating transient systemd units on RHEL 9. This tool is invaluable for running one-off tasks with resource limits, scheduling future jobs, and sandboxing untrusted processes, all without creating permanent unit files.
+You have learned to use systemd-run for creating transient systemd units on RHEL. This tool is invaluable for running one-off tasks with resource limits, scheduling future jobs, and sandboxing untrusted processes, all without creating permanent unit files.

@@ -1,10 +1,10 @@
-# How to Generate CIS Compliance Reports for RHEL 9 Using oscap
+# How to Generate CIS Compliance Reports for RHEL Using oscap
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CIS, oscap, Reporting, Linux
 
-Description: Generate professional CIS compliance reports for RHEL 9 using oscap, including HTML reports, XML results, and custom reporting for audit purposes.
+Description: Generate professional CIS compliance reports for RHEL using oscap, including HTML reports, XML results, and custom reporting for audit purposes.
 
 ---
 
@@ -16,7 +16,7 @@ When an auditor asks to see your CIS compliance status, handing them a well-form
 # Install OpenSCAP and the SCAP Security Guide
 dnf install -y openscap-scanner scap-security-guide
 
-# Verify the RHEL 9 datastream is available
+# Verify the RHEL datastream is available
 ls -la /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 ```
 

@@ -1,20 +1,20 @@
-# How to Integrate RHEL 9 with Active Directory Using Kerberos
+# How to Integrate RHEL with Active Directory Using Kerberos
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kerberos, Active Directory, Integration, Linux
 
-Description: A guide to integrating RHEL 9 with Active Directory using Kerberos for authentication, covering krb5.conf configuration, keytab creation, and kerberized service setup.
+Description: A guide to integrating RHEL with Active Directory using Kerberos for authentication, covering krb5.conf configuration, keytab creation, and kerberized service setup.
 
 ---
 
-Active Directory is fundamentally a Kerberos realm. Every AD domain controller is a KDC. This means RHEL 9 can use Kerberos directly for authentication against AD without any third-party software, just the built-in MIT Kerberos client. While most AD integrations use SSSD with realmd for a complete solution, understanding the raw Kerberos integration underneath helps when you need to kerberize specific services or troubleshoot authentication issues.
+Active Directory is fundamentally a Kerberos realm. Every AD domain controller is a KDC. This means RHEL can use Kerberos directly for authentication against AD without any third-party software, just the built-in MIT Kerberos client. While most AD integrations use SSSD with realmd for a complete solution, understanding the raw Kerberos integration underneath helps when you need to kerberize specific services or troubleshoot authentication issues.
 
 ## How RHEL Kerberos Talks to AD
 
 ```mermaid
 flowchart LR
-    A[RHEL 9 Client] -->|kinit user@AD.EXAMPLE.COM| B[AD Domain Controller / KDC]
+    A[RHEL Client] -->|kinit user@AD.EXAMPLE.COM| B[AD Domain Controller / KDC]
     B -->|TGT| A
     A -->|Service Ticket Request| B
     B -->|Service Ticket| A

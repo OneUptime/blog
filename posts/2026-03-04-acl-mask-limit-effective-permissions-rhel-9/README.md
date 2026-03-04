@@ -1,10 +1,10 @@
-# How to Use the ACL Mask to Limit Effective Permissions on RHEL 9
+# How to Use the ACL Mask to Limit Effective Permissions on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ACL Mask, Permissions, Linux
 
-Description: Understand and use the POSIX ACL mask on RHEL 9 to control the maximum effective permissions for named users and groups without modifying individual ACL entries.
+Description: Understand and use the POSIX ACL mask on RHEL to control the maximum effective permissions for named users and groups without modifying individual ACL entries.
 
 ---
 

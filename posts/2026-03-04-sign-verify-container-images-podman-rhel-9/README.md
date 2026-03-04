@@ -1,14 +1,14 @@
-# How to Sign and Verify Container Images with Podman on RHEL 9
+# How to Sign and Verify Container Images with Podman on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Image Signing, Security, Linux
 
-Description: Learn how to sign container images with GPG keys and verify image signatures with Podman on RHEL 9 to ensure image integrity and authenticity in your container supply chain.
+Description: Learn how to sign container images with GPG keys and verify image signatures with Podman on RHEL to ensure image integrity and authenticity in your container supply chain.
 
 ---
 
-Container image signing is one of those things that everyone knows they should do but few actually implement. On RHEL 9, Podman makes it straightforward to sign images with GPG keys and configure policies that require valid signatures before pulling or running images. This is a critical part of securing your container supply chain.
+Container image signing is one of those things that everyone knows they should do but few actually implement. On RHEL, Podman makes it straightforward to sign images with GPG keys and configure policies that require valid signatures before pulling or running images. This is a critical part of securing your container supply chain.
 
 ## Why Sign Container Images?
 
@@ -79,7 +79,7 @@ The trust policy file at `/etc/containers/policy.json` controls what images are 
 cat /etc/containers/policy.json
 ```
 
-The default policy on RHEL 9 looks like:
+The default policy on RHEL looks like:
 
 ```json
 {
@@ -258,4 +258,4 @@ ls -la /var/lib/containers/sigstore/
 
 ## Summary
 
-Image signing on RHEL 9 with Podman gives you cryptographic proof that your container images are authentic and untampered. Start with GPG signing for simplicity, or use Cosign/Sigstore for a more modern approach. Either way, configure your policy.json to reject unsigned images in production. It is one of those security measures that costs very little to implement but provides significant protection.
+Image signing on RHEL with Podman gives you cryptographic proof that your container images are authentic and untampered. Start with GPG signing for simplicity, or use Cosign/Sigstore for a more modern approach. Either way, configure your policy.json to reject unsigned images in production. It is one of those security measures that costs very little to implement but provides significant protection.

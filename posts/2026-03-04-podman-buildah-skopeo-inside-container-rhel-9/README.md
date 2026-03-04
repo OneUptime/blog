@@ -1,10 +1,10 @@
-# How to Run Podman, Buildah, and Skopeo Inside a Container on RHEL 9
+# How to Run Podman, Buildah, and Skopeo Inside a Container on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Buildah, Skopeo, Nested, Linux
 
-Description: A guide to running container tools inside containers on RHEL 9, enabling CI/CD pipelines and nested container workflows with proper security configuration.
+Description: A guide to running container tools inside containers on RHEL, enabling CI/CD pipelines and nested container workflows with proper security configuration.
 
 ---
 
@@ -238,4 +238,4 @@ When running container tools inside containers:
 
 ## Summary
 
-Running Podman, Buildah, and Skopeo inside containers is a common requirement for CI/CD pipelines on RHEL 9. The approach is cleaner than Docker-in-Docker because there is no daemon to manage. Use `--device /dev/fuse` and `--cap-add=SYS_ADMIN` for the minimum privileges needed, or use the Podman remote client through a socket for better security. For simple image inspection and copying, Skopeo works without any special privileges at all.
+Running Podman, Buildah, and Skopeo inside containers is a common requirement for CI/CD pipelines on RHEL. The approach is cleaner than Docker-in-Docker because there is no daemon to manage. Use `--device /dev/fuse` and `--cap-add=SYS_ADMIN` for the minimum privileges needed, or use the Podman remote client through a socket for better security. For simple image inspection and copying, Skopeo works without any special privileges at all.

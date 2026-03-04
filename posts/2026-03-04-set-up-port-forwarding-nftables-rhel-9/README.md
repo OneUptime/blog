@@ -1,21 +1,21 @@
-# How to Set Up Port Forwarding with nftables on RHEL 9
+# How to Set Up Port Forwarding with nftables on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nftables, Port Forwarding, Firewall, Linux
 
-Description: A hands-on guide to configuring port forwarding (DNAT and SNAT) using nftables on RHEL 9, covering common use cases like redirecting traffic to internal servers.
+Description: A hands-on guide to configuring port forwarding (DNAT and SNAT) using nftables on RHEL, covering common use cases like redirecting traffic to internal servers.
 
 ---
 
-Port forwarding lets you redirect network traffic arriving on one port to a different port or host. On RHEL 9, nftables has replaced iptables as the default packet filtering framework. This guide walks you through setting up port forwarding rules with nftables so you can route external traffic to internal services.
+Port forwarding lets you redirect network traffic arriving on one port to a different port or host. On RHEL, nftables has replaced iptables as the default packet filtering framework. This guide walks you through setting up port forwarding rules with nftables so you can route external traffic to internal services.
 
 ## Prerequisites
 
 Before you begin, make sure you have:
 
-- A RHEL 9 system with root or sudo access
-- The nftables package installed (it ships by default on RHEL 9)
+- A RHEL system with root or sudo access
+- The nftables package installed (it ships by default on RHEL)
 - IP forwarding enabled in the kernel
 - Basic familiarity with networking concepts
 
@@ -28,7 +28,7 @@ Port forwarding involves two main NAT operations:
 
 ```mermaid
 graph LR
-    A[External Client] -->|Request to Public IP:8080| B[RHEL 9 Gateway]
+    A[External Client] -->|Request to Public IP:8080| B[RHEL Gateway]
     B -->|DNAT to 192.168.1.10:80| C[Internal Web Server]
     C -->|Response| B
     B -->|SNAT/Masquerade| A
@@ -267,4 +267,4 @@ sudo systemctl status firewalld
 
 ## Summary
 
-You now have port forwarding configured with nftables on RHEL 9. The key steps are enabling IP forwarding in the kernel, creating NAT prerouting rules for DNAT, adding postrouting rules for masquerade, and making sure the filter chain allows the forwarded traffic. Remember to save your configuration so it persists across reboots.
+You now have port forwarding configured with nftables on RHEL. The key steps are enabling IP forwarding in the kernel, creating NAT prerouting rules for DNAT, adding postrouting rules for masquerade, and making sure the filter chain allows the forwarded traffic. Remember to save your configuration so it persists across reboots.

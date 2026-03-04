@@ -1,10 +1,10 @@
-# How to Configure SSH with Kerberos GSSAPI Authentication on RHEL 9
+# How to Configure SSH with Kerberos GSSAPI Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Kerberos, GSSAPI, Linux
 
-Description: A step-by-step guide to configuring SSH with Kerberos GSSAPI authentication on RHEL 9, enabling password-less SSH login using Kerberos tickets.
+Description: A step-by-step guide to configuring SSH with Kerberos GSSAPI authentication on RHEL, enabling password-less SSH login using Kerberos tickets.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Schedule One-Time Tasks with the at Command on RHEL 9
+# How to Schedule One-Time Tasks with the at Command on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, at Command, Scheduling, Linux, System Administration
 
-Description: Learn how to schedule one-time tasks using the at command on RHEL 9, including managing the at queue, controlling user access, and using the batch command for load-aware execution.
+Description: Learn how to schedule one-time tasks using the at command on RHEL, including managing the at queue, controlling user access, and using the batch command for load-aware execution.
 
 ---
 
@@ -16,7 +16,7 @@ I have used `at` for years in production environments. It is perfect for those s
 
 ## Installing and Enabling the at Service
 
-On RHEL 9, the `at` command is provided by the `at` package. If it is not already installed, grab it with dnf.
+On RHEL, the `at` command is provided by the `at` package. If it is not already installed, grab it with dnf.
 
 ```bash
 # Install the at package
@@ -139,7 +139,7 @@ atrm 3 5 7
 
 ## The batch Command
 
-The `batch` command is a close relative of `at`. Instead of running at a specific time, it runs when the system load drops below a threshold (default is 1.5 on RHEL 9). This is excellent for resource-intensive tasks that should only run when the system is not busy.
+The `batch` command is a close relative of `at`. Instead of running at a specific time, it runs when the system load drops below a threshold (default is 1.5 on RHEL). This is excellent for resource-intensive tasks that should only run when the system is not busy.
 
 ```bash
 # Schedule a heavy compression task to run when load is low
@@ -222,7 +222,7 @@ source ~/.bash_profile
 EOF
 ```
 
-**Check /var/log/cron for at job logs.** On RHEL 9, both cron and at job activity is logged here.
+**Check /var/log/cron for at job logs.** On RHEL, both cron and at job activity is logged here.
 
 ```bash
 # Check recent at job execution logs
@@ -231,4 +231,4 @@ sudo grep atd /var/log/cron | tail -20
 
 ## Summary
 
-The `at` command is a simple but powerful tool for one-off scheduled tasks. It fills the gap between "I need to do this later" and "I need to do this on a recurring basis." Combined with `batch` for load-sensitive work and proper access controls through `at.allow` and `at.deny`, it is a reliable part of any sysadmin's toolkit on RHEL 9.
+The `at` command is a simple but powerful tool for one-off scheduled tasks. It fills the gap between "I need to do this later" and "I need to do this on a recurring basis." Combined with `batch` for load-sensitive work and proper access controls through `at.allow` and `at.deny`, it is a reliable part of any sysadmin's toolkit on RHEL.

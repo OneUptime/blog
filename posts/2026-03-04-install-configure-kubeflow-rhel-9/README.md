@@ -1,20 +1,20 @@
-# How to Install and Configure Kubeflow on RHEL 9
+# How to Install and Configure Kubeflow on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kubeflow, Machine Learning, Kubernetes, MLOps, Linux
 
-Description: Learn how to install and configure Kubeflow on RHEL 9 for building scalable machine learning pipelines on Kubernetes.
+Description: Learn how to install and configure Kubeflow on RHEL for building scalable machine learning pipelines on Kubernetes.
 
 ---
 
-Machine learning workflows involve multiple stages from data preparation to model training, serving, and monitoring. Kubeflow brings all of these stages together on Kubernetes, giving you a unified platform for ML operations. This guide walks you through installing Kubeflow on RHEL 9.
+Machine learning workflows involve multiple stages from data preparation to model training, serving, and monitoring. Kubeflow brings all of these stages together on Kubernetes, giving you a unified platform for ML operations. This guide walks you through installing Kubeflow on RHEL.
 
 ## Prerequisites
 
 Before getting started, make sure you have:
 
-- A RHEL 9 system with at least 16 GB RAM and 4 CPU cores
+- A RHEL system with at least 16 GB RAM and 4 CPU cores
 - A running Kubernetes cluster (v1.25 or later)
 - kubectl configured to interact with your cluster
 - kustomize installed
@@ -39,7 +39,7 @@ graph TD
 
 ## Step 1: Install Required Tools
 
-First, install kubectl and kustomize on your RHEL 9 system.
+First, install kubectl and kustomize on your RHEL system.
 
 ```bash
 # Install kubectl
@@ -276,4 +276,4 @@ kubectl get events -n kubeflow --sort-by='.lastTimestamp'
 
 ## Conclusion
 
-You now have Kubeflow running on RHEL 9 with a Kubernetes cluster. This setup gives you access to Jupyter notebooks, ML pipelines, model serving with KServe, and hyperparameter tuning with Katib. For production environments, consider adding GPU support, setting up proper authentication, and configuring external storage backends.
+You now have Kubeflow running on RHEL with a Kubernetes cluster. This setup gives you access to Jupyter notebooks, ML pipelines, model serving with KServe, and hyperparameter tuning with Katib. For production environments, consider adding GPU support, setting up proper authentication, and configuring external storage backends.

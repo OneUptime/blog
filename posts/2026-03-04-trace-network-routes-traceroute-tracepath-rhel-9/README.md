@@ -1,14 +1,14 @@
-# How to Trace Network Routes with traceroute and tracepath on RHEL 9
+# How to Trace Network Routes with traceroute and tracepath on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, traceroute, tracepath, Networking, Linux
 
-Description: Learn how to use traceroute and tracepath on RHEL 9 to trace packet paths across networks, identify routing issues, discover MTU problems, and diagnose latency bottlenecks.
+Description: Learn how to use traceroute and tracepath on RHEL to trace packet paths across networks, identify routing issues, discover MTU problems, and diagnose latency bottlenecks.
 
 ---
 
-When packets aren't reaching their destination, you need to know where they're getting lost. Traceroute and tracepath show you every hop between your RHEL 9 system and a remote host, letting you pinpoint exactly where things break down. Both tools are similar but have important differences.
+When packets aren't reaching their destination, you need to know where they're getting lost. Traceroute and tracepath show you every hop between your RHEL system and a remote host, letting you pinpoint exactly where things break down. Both tools are similar but have important differences.
 
 ## traceroute vs tracepath
 
@@ -22,7 +22,7 @@ When packets aren't reaching their destination, you need to know where they're g
 
 ## Installing traceroute
 
-tracepath is included in RHEL 9 by default. traceroute needs to be installed.
+tracepath is included in RHEL by default. traceroute needs to be installed.
 
 ```bash
 # Install traceroute
@@ -198,4 +198,4 @@ traceroute -n -m 5 -q 1 8.8.8.8 | grep -v '*'
 
 ## Wrapping Up
 
-traceroute and tracepath are complementary tools on RHEL 9. Use tracepath when you don't have root access or need MTU discovery. Use traceroute when you need protocol flexibility (TCP, ICMP) to get through firewalls. When diagnosing routing problems, start with `ip route get` to check local routing, then use traceroute to see the full path. Asterisks in the output are not always a problem, so focus on where the trace stops or where latency spikes.
+traceroute and tracepath are complementary tools on RHEL. Use tracepath when you don't have root access or need MTU discovery. Use traceroute when you need protocol flexibility (TCP, ICMP) to get through firewalls. When diagnosing routing problems, start with `ip route get` to check local routing, then use traceroute to see the full path. Asterisks in the output are not always a problem, so focus on where the trace stops or where latency spikes.

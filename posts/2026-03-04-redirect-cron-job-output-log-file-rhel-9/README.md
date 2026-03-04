@@ -1,10 +1,10 @@
-# How to Redirect Cron Job Output to a Log File on RHEL 9
+# How to Redirect Cron Job Output to a Log File on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, cron, Logging, Output Redirection, Linux
 
-Description: Master the art of redirecting cron job output on RHEL 9, from basic stdout/stderr redirection to MAILTO configuration and log rotation strategies.
+Description: Master the art of redirecting cron job output on RHEL, from basic stdout/stderr redirection to MAILTO configuration and log rotation strategies.
 
 ---
 
@@ -146,7 +146,7 @@ You can also disable email for all jobs by setting MAILTO to an empty string.
 MAILTO=""
 ```
 
-For email to work, you need a functioning mail transfer agent on the system. On RHEL 9, postfix is the default.
+For email to work, you need a functioning mail transfer agent on the system. On RHEL, postfix is the default.
 
 ```bash
 # Check if postfix is running

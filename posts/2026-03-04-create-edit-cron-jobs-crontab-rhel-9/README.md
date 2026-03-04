@@ -1,16 +1,16 @@
-# How to Create and Edit Cron Jobs with crontab on RHEL 9
+# How to Create and Edit Cron Jobs with crontab on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, cron, crontab, Scheduling, Linux, Automation
 
-Description: A hands-on guide to creating, editing, and managing cron jobs on RHEL 9, covering crontab syntax, special scheduling strings, user vs root crontabs, and common pitfalls.
+Description: A hands-on guide to creating, editing, and managing cron jobs on RHEL, covering crontab syntax, special scheduling strings, user vs root crontabs, and common pitfalls.
 
 ---
 
 ## What cron Does
 
-cron is the standard job scheduler on Linux. It runs commands at specified times, dates, or intervals. On RHEL 9, the crond daemon handles this, and you interact with it through the `crontab` command. If you need to run a backup every night, rotate logs every week, or check disk space every hour, cron is the tool.
+cron is the standard job scheduler on Linux. It runs commands at specified times, dates, or intervals. On RHEL, the crond daemon handles this, and you interact with it through the `crontab` command. If you need to run a backup every night, rotate logs every week, or check disk space every hour, cron is the tool.
 
 ## Making Sure crond is Running
 
@@ -204,7 +204,7 @@ The sixth field specifies which user runs the command. This is different from us
 
 ### Drop-in Directories
 
-RHEL 9 also supports cron drop-in directories:
+RHEL also supports cron drop-in directories:
 
 ```bash
 # System cron directories
@@ -252,7 +252,7 @@ sudo vi /etc/cron.deny
 The logic is:
 1. If `/etc/cron.allow` exists, only users listed in it can use crontab
 2. If `/etc/cron.allow` does not exist but `/etc/cron.deny` does, everyone except listed users can use crontab
-3. If neither file exists, only root can use crontab (on RHEL 9)
+3. If neither file exists, only root can use crontab (on RHEL)
 
 ## Handling Output
 
@@ -331,4 +331,4 @@ The cron log shows when jobs start but not their output. That is why logging out
 
 ## Wrapping Up
 
-cron has been around for decades and it is still the go-to tool for scheduled tasks on RHEL 9. The syntax is a little quirky, but once you have the five-field pattern memorized, it becomes second nature. Use `crontab -e` for personal jobs, `/etc/cron.d/` for system jobs that need to be managed by configuration management, and the `cron.daily/weekly/monthly` directories for simple scripts. Always use full paths, always log output, and always escape your percent signs.
+cron has been around for decades and it is still the go-to tool for scheduled tasks on RHEL. The syntax is a little quirky, but once you have the five-field pattern memorized, it becomes second nature. Use `crontab -e` for personal jobs, `/etc/cron.d/` for system jobs that need to be managed by configuration management, and the `cron.daily/weekly/monthly` directories for simple scripts. Always use full paths, always log output, and always escape your percent signs.

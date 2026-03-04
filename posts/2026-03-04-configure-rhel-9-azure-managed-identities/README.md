@@ -1,20 +1,20 @@
-# How to Configure RHEL 9 with Azure Managed Identities
+# How to Configure RHEL with Azure Managed Identities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Azure, Managed Identity, Security, Cloud, Linux
 
-Description: Configure Azure Managed Identities on RHEL 9 VMs to securely access Azure services without storing credentials on the server.
+Description: Configure Azure Managed Identities on RHEL VMs to securely access Azure services without storing credentials on the server.
 
 ---
 
-Azure Managed Identities eliminate the need to store credentials on your RHEL 9 virtual machines. Instead, the VM gets an automatically managed identity in Azure AD that can be granted access to Azure resources. This guide shows you how to set up and use managed identities on RHEL 9.
+Azure Managed Identities eliminate the need to store credentials on your RHEL virtual machines. Instead, the VM gets an automatically managed identity in Azure AD that can be granted access to Azure resources. This guide shows you how to set up and use managed identities on RHEL.
 
 ## Managed Identity Flow
 
 ```mermaid
 sequenceDiagram
-    participant VM as RHEL 9 VM
+    participant VM as RHEL VM
     participant IMDS as Instance Metadata Service
     participant AAD as Azure AD
     participant KV as Key Vault
@@ -65,10 +65,10 @@ az role assignment create \
   --scope /subscriptions/.../servers/myserver
 ```
 
-## Step 3: Use the Managed Identity from RHEL 9
+## Step 3: Use the Managed Identity from RHEL
 
 ```bash
-# On the RHEL 9 VM, get a token from the Instance Metadata Service
+# On the RHEL VM, get a token from the Instance Metadata Service
 # This works without any credentials
 
 # Get a token for Azure Resource Manager
@@ -83,7 +83,7 @@ curl -s "https://my-keyvault.vault.azure.net/secrets/my-secret?api-version=7.4" 
 ## Step 4: Use Managed Identity with Azure CLI
 
 ```bash
-# Install Azure CLI on RHEL 9
+# Install Azure CLI on RHEL
 sudo dnf install -y azure-cli
 
 # Login using the managed identity (no credentials needed)
@@ -121,4 +121,4 @@ PYSCRIPT
 
 ## Conclusion
 
-Azure Managed Identities on RHEL 9 provide a secure, credential-free way to access Azure services. System-assigned identities are tied to the VM lifecycle, while user-assigned identities can be shared across multiple VMs. Use managed identities whenever possible to eliminate credential management overhead and reduce security risk.
+Azure Managed Identities on RHEL provide a secure, credential-free way to access Azure services. System-assigned identities are tied to the VM lifecycle, while user-assigned identities can be shared across multiple VMs. Use managed identities whenever possible to eliminate credential management overhead and reduce security risk.

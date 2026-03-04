@@ -1,14 +1,14 @@
-# How to Automate NBDE Deployment with RHEL 9 System Roles
+# How to Automate NBDE Deployment with RHEL System Roles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NBDE, Ansible, System Roles, Linux
 
-Description: Use RHEL 9 System Roles to automate the deployment of Network-Bound Disk Encryption with Tang servers and Clevis clients across your infrastructure using Ansible.
+Description: Use RHEL System Roles to automate the deployment of Network-Bound Disk Encryption with Tang servers and Clevis clients across your infrastructure using Ansible.
 
 ---
 
-Setting up NBDE manually on each server works fine for a handful of systems, but when you are managing dozens or hundreds of encrypted RHEL 9 hosts, Ansible automation becomes essential. The RHEL System Roles include roles for both Tang server deployment and Clevis client configuration, letting you manage NBDE across your entire fleet from a single playbook.
+Setting up NBDE manually on each server works fine for a handful of systems, but when you are managing dozens or hundreds of encrypted RHEL hosts, Ansible automation becomes essential. The RHEL System Roles include roles for both Tang server deployment and Clevis client configuration, letting you manage NBDE across your entire fleet from a single playbook.
 
 ## Installing RHEL System Roles
 

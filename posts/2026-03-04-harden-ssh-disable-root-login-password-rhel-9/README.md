@@ -1,14 +1,14 @@
-# How to Harden SSH on RHEL 9 by Disabling Root Login and Password Authentication
+# How to Harden SSH on RHEL by Disabling Root Login and Password Authentication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Hardening, Security, Linux
 
-Description: Harden your RHEL 9 SSH server by disabling direct root login and password authentication, forcing key-based access for significantly improved security.
+Description: Harden your RHEL SSH server by disabling direct root login and password authentication, forcing key-based access for significantly improved security.
 
 ---
 
-Every RHEL 9 server running SSH is a target. Bots scan the internet constantly, trying root passwords against every SSH server they find. The two most impactful things you can do are disabling root login over SSH and turning off password authentication entirely. Together, these changes eliminate the most common SSH attack vectors.
+Every RHEL server running SSH is a target. Bots scan the internet constantly, trying root passwords against every SSH server they find. The two most impactful things you can do are disabling root login over SSH and turning off password authentication entirely. Together, these changes eliminate the most common SSH attack vectors.
 
 ## Before You Start
 
@@ -98,7 +98,7 @@ ssh root@your-server
 
 ## Using Drop-in Configuration Files
 
-RHEL 9 supports drop-in SSH configuration files in `/etc/ssh/sshd_config.d/`:
+RHEL supports drop-in SSH configuration files in `/etc/ssh/sshd_config.d/`:
 
 ```bash
 sudo vi /etc/ssh/sshd_config.d/10-hardening.conf
@@ -153,7 +153,7 @@ X11Forwarding no
 # Disable TCP forwarding (if not needed)
 AllowTcpForwarding no
 
-# Restrict to SSH protocol 2 (default on RHEL 9 but explicit)
+# Restrict to SSH protocol 2 (default on RHEL but explicit)
 Protocol 2
 
 # Set a login grace time

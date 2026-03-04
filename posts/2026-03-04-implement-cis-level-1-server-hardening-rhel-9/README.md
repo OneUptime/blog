@@ -1,14 +1,14 @@
-# How to Implement CIS Level 1 Server Hardening on RHEL 9
+# How to Implement CIS Level 1 Server Hardening on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CIS Level 1, Hardening, Compliance, Linux
 
-Description: A hands-on guide to implementing CIS Level 1 Server hardening controls on RHEL 9, covering the essential security configurations every server should have.
+Description: A hands-on guide to implementing CIS Level 1 Server hardening controls on RHEL, covering the essential security configurations every server should have.
 
 ---
 
-CIS Level 1 is the baseline security configuration that every server should meet. It represents the minimum set of security controls that can be applied without significantly impacting functionality. If you are not meeting CIS Level 1, your servers have gaps that most attackers can exploit. This guide walks through the key control areas with practical commands for RHEL 9.
+CIS Level 1 is the baseline security configuration that every server should meet. It represents the minimum set of security controls that can be applied without significantly impacting functionality. If you are not meeting CIS Level 1, your servers have gaps that most attackers can exploit. This guide walks through the key control areas with practical commands for RHEL.
 
 ## CIS Level 1 Overview
 
@@ -295,7 +295,7 @@ lcredit = -1
 EOF
 
 # Configure account lockout (faillock)
-# This is configured in /etc/security/faillock.conf on RHEL 9
+# This is configured in /etc/security/faillock.conf on RHEL
 cat > /etc/security/faillock.conf << 'EOF'
 deny = 5
 unlock_time = 900
@@ -347,4 +347,4 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 ```
 
-CIS Level 1 is the foundation that every RHEL 9 server should build on. It does not cover everything, but it addresses the most common configuration weaknesses. Get Level 1 in place first, and then evaluate whether Level 2 controls are appropriate for your environment.
+CIS Level 1 is the foundation that every RHEL server should build on. It does not cover everything, but it addresses the most common configuration weaknesses. Get Level 1 in place first, and then evaluate whether Level 2 controls are appropriate for your environment.

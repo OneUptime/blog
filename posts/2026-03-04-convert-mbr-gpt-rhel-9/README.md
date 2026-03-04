@@ -1,10 +1,10 @@
-# How to Convert an MBR Partition Table to GPT on RHEL 9
+# How to Convert an MBR Partition Table to GPT on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MBR, GPT, Partitioning, Linux
 
-Description: Step-by-step instructions for converting an MBR partition table to GPT on RHEL 9 using gdisk, with considerations for data preservation and boot compatibility.
+Description: Step-by-step instructions for converting an MBR partition table to GPT on RHEL using gdisk, with considerations for data preservation and boot compatibility.
 
 ---
 
@@ -16,7 +16,7 @@ The good news is that you can convert MBR to GPT without destroying your data, a
 
 ## Prerequisites
 
-- RHEL 9 with root access
+- RHEL with root access
 - A disk currently using an MBR partition table
 - A full backup of the disk (non-negotiable)
 - gdisk package installed
@@ -190,4 +190,4 @@ sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 
 ## Wrap-Up
 
-Converting from MBR to GPT on RHEL 9 is a well-supported operation when you use gdisk. The key is having a solid backup before you start. For data disks, the conversion is nearly risk-free. For boot disks, you need to account for the boot partition requirements of your firmware type. Once converted, you get all the benefits of GPT: large disk support, more partitions, and a more resilient partition table format.
+Converting from MBR to GPT on RHEL is a well-supported operation when you use gdisk. The key is having a solid backup before you start. For data disks, the conversion is nearly risk-free. For boot disks, you need to account for the boot partition requirements of your firmware type. Once converted, you get all the benefits of GPT: large disk support, more partitions, and a more resilient partition table format.

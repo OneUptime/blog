@@ -1,14 +1,14 @@
-# How to Manage Container Networking with Podman on RHEL 9
+# How to Manage Container Networking with Podman on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Container Networking, Linux
 
-Description: A complete guide to Podman networking on RHEL 9, covering bridge networks, DNS resolution, port mapping, and network troubleshooting for both rootful and rootless containers.
+Description: A complete guide to Podman networking on RHEL, covering bridge networks, DNS resolution, port mapping, and network troubleshooting for both rootful and rootless containers.
 
 ---
 
-Container networking can be confusing, especially when you are juggling rootful and rootless modes with different network backends. On RHEL 9, Podman uses Netavark as the default network backend for rootful containers and pasta for rootless networking. This guide covers how to set up and manage networks for your containers.
+Container networking can be confusing, especially when you are juggling rootful and rootless modes with different network backends. On RHEL, Podman uses Netavark as the default network backend for rootful containers and pasta for rootless networking. This guide covers how to set up and manage networks for your containers.
 
 ## Default Networking Behavior
 
@@ -26,7 +26,7 @@ podman inspect web1 --format '{{.NetworkSettings.Networks}}'
 
 ## Checking Your Network Backend
 
-RHEL 9 uses Netavark (not CNI) as the default:
+RHEL uses Netavark (not CNI) as the default:
 
 # Verify the network backend
 ```bash
@@ -226,4 +226,4 @@ podman network prune
 
 ## Summary
 
-Podman's networking on RHEL 9 with Netavark gives you bridge networks with DNS, macvlan for physical network integration, and host networking for maximum performance. Custom networks with automatic DNS resolution make it easy to build multi-container applications where services find each other by name.
+Podman's networking on RHEL with Netavark gives you bridge networks with DNS, macvlan for physical network integration, and host networking for maximum performance. Custom networks with automatic DNS resolution make it easy to build multi-container applications where services find each other by name.

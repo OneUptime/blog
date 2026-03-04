@@ -1,22 +1,22 @@
-# How to Install Multiple Python Versions on RHEL 9 Using Software Collections
+# How to Install Multiple Python Versions on RHEL Using Software Collections
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Python, Software Collections, Linux, Development
 
-Description: Learn how to install and manage multiple Python versions side by side on RHEL 9 using Software Collections and the AppStream module system.
+Description: Learn how to install and manage multiple Python versions side by side on RHEL using Software Collections and the AppStream module system.
 
 ---
 
-Running multiple Python versions on a single RHEL 9 system is a common requirement. You might need Python 3.9 for one project and Python 3.12 for another. RHEL 9 makes this possible through its AppStream module system, which replaced the older Software Collections approach.
+Running multiple Python versions on a single RHEL system is a common requirement. You might need Python 3.9 for one project and Python 3.12 for another. RHEL makes this possible through its AppStream module system, which replaced the older Software Collections approach.
 
-## Understanding RHEL 9 AppStream Modules
+## Understanding RHEL AppStream Modules
 
-RHEL 9 ships Python 3.9 as the default system Python. Additional versions are available through AppStream modules. This modular approach lets you install multiple interpreters without conflicts.
+RHEL ships Python 3.9 as the default system Python. Additional versions are available through AppStream modules. This modular approach lets you install multiple interpreters without conflicts.
 
 ```mermaid
 graph TD
-    A[RHEL 9 System] --> B[Default Python 3.9]
+    A[RHEL System] --> B[Default Python 3.9]
     A --> C[AppStream Modules]
     C --> D[Python 3.11]
     C --> E[Python 3.12]
@@ -27,7 +27,7 @@ graph TD
 
 ## Checking Available Python Versions
 
-Start by listing the Python modules available in your RHEL 9 repositories.
+Start by listing the Python modules available in your RHEL repositories.
 
 ```bash
 # List all available Python module streams
@@ -39,7 +39,7 @@ rpm -qa | grep python3
 
 ## Installing the Default Python 3.9
 
-Python 3.9 comes pre-installed on most RHEL 9 systems, but if you need to install it manually:
+Python 3.9 comes pre-installed on most RHEL systems, but if you need to install it manually:
 
 ```bash
 # Install the default Python 3.9
@@ -52,7 +52,7 @@ python3 --version
 
 ## Installing Python 3.11
 
-Python 3.11 is available as an additional package in the RHEL 9 AppStream repository.
+Python 3.11 is available as an additional package in the RHEL AppStream repository.
 
 ```bash
 # Install Python 3.11
@@ -71,7 +71,7 @@ sudo dnf install -y python3.11-devel
 
 ## Installing Python 3.12
 
-Python 3.12 is also available on RHEL 9.4 and later.
+Python 3.12 is also available on RHEL.4 and later.
 
 ```bash
 # Install Python 3.12
@@ -165,10 +165,10 @@ done
 
 ## Important Considerations
 
-- Never remove or replace the system Python 3.9 that ships with RHEL 9. Many system tools depend on it.
+- Never remove or replace the system Python 3.9 that ships with RHEL. Many system tools depend on it.
 - Each Python version has its own pip and site-packages directory, so installed libraries do not conflict.
 - If you need a Python version not available in the RHEL repositories, consider compiling from source (covered in a separate guide).
 
 ## Summary
 
-RHEL 9 provides a straightforward way to run multiple Python versions through the AppStream repository. Install additional versions with `dnf`, use the `alternatives` system or direct version commands to pick which one runs, and rely on virtual environments to keep project dependencies isolated.
+RHEL provides a straightforward way to run multiple Python versions through the AppStream repository. Install additional versions with `dnf`, use the `alternatives` system or direct version commands to pick which one runs, and rely on virtual environments to keep project dependencies isolated.

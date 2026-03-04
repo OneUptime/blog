@@ -1,16 +1,16 @@
-# How to Set Environment Variables in Cron Jobs on RHEL 9
+# How to Set Environment Variables in Cron Jobs on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, cron, Environment Variables, Linux, Automation
 
-Description: A practical guide to managing environment variables in cron jobs on RHEL 9, covering PATH, SHELL, HOME, profile sourcing, and wrapper script patterns.
+Description: A practical guide to managing environment variables in cron jobs on RHEL, covering PATH, SHELL, HOME, profile sourcing, and wrapper script patterns.
 
 ---
 
 ## The Environment Gap
 
-One of the most common reasons cron jobs fail is the environment gap. When you log into a RHEL 9 system, your shell loads a rich set of environment variables from `/etc/profile`, `~/.bash_profile`, `~/.bashrc`, and other files. You get a fully configured PATH, custom variables, aliases, and functions.
+One of the most common reasons cron jobs fail is the environment gap. When you log into a RHEL system, your shell loads a rich set of environment variables from `/etc/profile`, `~/.bash_profile`, `~/.bashrc`, and other files. You get a fully configured PATH, custom variables, aliases, and functions.
 
 Cron does not do any of that.
 
@@ -191,7 +191,7 @@ The `set -a` command tells bash to automatically export all variables that get s
 
 ## The SHELL Variable
 
-By default, cron uses `/bin/sh` to execute commands. On RHEL 9, `/bin/sh` is actually a symlink to bash, but it runs in POSIX mode, which disables some bash-specific features. Set SHELL explicitly if you need bash features.
+By default, cron uses `/bin/sh` to execute commands. On RHEL, `/bin/sh` is actually a symlink to bash, but it runs in POSIX mode, which disables some bash-specific features. Set SHELL explicitly if you need bash features.
 
 ```bash
 # Set bash as the shell for your cron jobs

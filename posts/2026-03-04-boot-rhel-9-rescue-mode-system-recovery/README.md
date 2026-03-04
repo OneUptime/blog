@@ -1,16 +1,16 @@
-# How to Boot RHEL 9 into Rescue Mode for System Recovery
+# How to Boot RHEL into Rescue Mode for System Recovery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Rescue Mode, Recovery, Linux
 
-Description: A step-by-step guide to booting RHEL 9 into rescue mode (single-user mode) for system recovery, covering how to access it from the GRUB menu, what services are available, and common recovery tasks.
+Description: A step-by-step guide to booting RHEL into rescue mode (single-user mode) for system recovery, covering how to access it from the GRUB menu, what services are available, and common recovery tasks.
 
 ---
 
 ## What Is Rescue Mode?
 
-Rescue mode on RHEL 9 is a minimal boot target (systemd's rescue.target) that starts a single-user shell with basic system services. The root filesystem is mounted read-write, networking is available if needed, and you get a root shell to fix whatever went wrong.
+Rescue mode on RHEL is a minimal boot target (systemd's rescue.target) that starts a single-user shell with basic system services. The root filesystem is mounted read-write, networking is available if needed, and you get a root shell to fix whatever went wrong.
 
 This is the mode you reach for when the system boots but something is broken: a misconfigured service, a bad fstab entry, a full disk, or a locked-out user account.
 
@@ -166,4 +166,4 @@ systemctl reboot
 
 ## Wrapping Up
 
-Rescue mode on RHEL 9 is your first-line recovery tool. It gives you a working system with enough services to diagnose and fix most problems. The workflow is simple: boot into rescue mode from GRUB, diagnose the issue, fix it, and reboot into normal operation. Keep the process in your mental toolkit so that when a 3 AM page comes in about a server that will not boot properly, you already know what to do.
+Rescue mode on RHEL is your first-line recovery tool. It gives you a working system with enough services to diagnose and fix most problems. The workflow is simple: boot into rescue mode from GRUB, diagnose the issue, fix it, and reboot into normal operation. Keep the process in your mental toolkit so that when a 3 AM page comes in about a server that will not boot properly, you already know what to do.

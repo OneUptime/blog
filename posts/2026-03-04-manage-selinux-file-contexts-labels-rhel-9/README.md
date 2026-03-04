@@ -1,16 +1,16 @@
-# How to Manage SELinux File Contexts and Labels on RHEL 9
+# How to Manage SELinux File Contexts and Labels on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, File Contexts, Security, Linux
 
-Description: Learn how to view, set, and manage SELinux file contexts and labels on RHEL 9 to ensure services can access the files they need.
+Description: Learn how to view, set, and manage SELinux file contexts and labels on RHEL to ensure services can access the files they need.
 
 ---
 
 ## What Are SELinux File Contexts?
 
-Every file and directory on an SELinux-enabled RHEL 9 system has a security label (also called a context). This label determines which processes can read, write, or execute the file. When a file has the wrong context, the process trying to access it gets denied, even if traditional Unix permissions allow it.
+Every file and directory on an SELinux-enabled RHEL system has a security label (also called a context). This label determines which processes can read, write, or execute the file. When a file has the wrong context, the process trying to access it gets denied, even if traditional Unix permissions allow it.
 
 A typical SELinux context looks like this:
 

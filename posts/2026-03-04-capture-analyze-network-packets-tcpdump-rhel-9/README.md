@@ -1,10 +1,10 @@
-# How to Capture and Analyze Network Packets with tcpdump on RHEL 9
+# How to Capture and Analyze Network Packets with tcpdump on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, tcpdump, Packet Capture, Networking, Linux
 
-Description: A practical guide to using tcpdump on RHEL 9 for capturing and analyzing network traffic, covering filters, output formats, file captures, and real-world troubleshooting examples.
+Description: A practical guide to using tcpdump on RHEL for capturing and analyzing network traffic, covering filters, output formats, file captures, and real-world troubleshooting examples.
 
 ---
 
@@ -211,4 +211,4 @@ sudo tcpdump -i ens192 -nn 'icmp[icmptype] == 3'
 
 ## Wrapping Up
 
-tcpdump is the first tool I reach for when diagnosing network issues on RHEL 9. The filter syntax is powerful enough to isolate exactly the traffic you need, and the pcap output format is the universal standard for packet analysis. Learn the common filters, always use `-nn` to avoid slow DNS lookups, and save captures to files when you need deeper analysis.
+tcpdump is the first tool I reach for when diagnosing network issues on RHEL. The filter syntax is powerful enough to isolate exactly the traffic you need, and the pcap output format is the universal standard for packet analysis. Learn the common filters, always use `-nn` to avoid slow DNS lookups, and save captures to files when you need deeper analysis.

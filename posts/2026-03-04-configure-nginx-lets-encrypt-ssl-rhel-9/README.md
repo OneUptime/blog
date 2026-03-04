@@ -1,18 +1,18 @@
-# How to Configure Nginx with Let's Encrypt SSL on RHEL 9
+# How to Configure Nginx with Let's Encrypt SSL on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, SSL, TLS, Let's Encrypt, Certbot, Linux
 
-Description: Step-by-step instructions for securing Nginx with free TLS certificates from Let's Encrypt using Certbot on RHEL 9, including automatic renewal.
+Description: Step-by-step instructions for securing Nginx with free TLS certificates from Let's Encrypt using Certbot on RHEL, including automatic renewal.
 
 ---
 
-Securing your Nginx web server with HTTPS is essential. Let's Encrypt provides free, trusted TLS certificates, and Certbot automates their installation and renewal. This guide covers the full process on RHEL 9.
+Securing your Nginx web server with HTTPS is essential. Let's Encrypt provides free, trusted TLS certificates, and Certbot automates their installation and renewal. This guide covers the full process on RHEL.
 
 ## Prerequisites
 
-- A RHEL 9 system with Nginx installed and running
+- A RHEL system with Nginx installed and running
 - A domain name pointing to your server's public IP
 - Ports 80 and 443 open in the firewall
 - Root or sudo access
@@ -178,4 +178,4 @@ sudo certbot renew --dry-run --debug-challenges
 
 ## Summary
 
-Your Nginx server on RHEL 9 now serves traffic over HTTPS with a free Let's Encrypt certificate. Certbot handles the certificate lifecycle, including automatic renewal every 60 days. With the additional SSL hardening settings, your server only accepts modern TLS connections and tells browsers to always use HTTPS via HSTS headers.
+Your Nginx server on RHEL now serves traffic over HTTPS with a free Let's Encrypt certificate. Certbot handles the certificate lifecycle, including automatic renewal every 60 days. With the additional SSL hardening settings, your server only accepts modern TLS connections and tells browsers to always use HTTPS via HSTS headers.

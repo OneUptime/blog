@@ -1,18 +1,18 @@
-# How to Update the Kernel on RHEL 9
+# How to Update the Kernel on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kernel, Update, Linux
 
-Description: A step-by-step guide to safely updating the kernel on RHEL 9 using dnf, covering pre-update checks, the update process itself, verification, rollback options, and kernel lifecycle management.
+Description: A step-by-step guide to safely updating the kernel on RHEL using dnf, covering pre-update checks, the update process itself, verification, rollback options, and kernel lifecycle management.
 
 ---
 
 ## Why Update the Kernel?
 
-Kernel updates on RHEL 9 bring security patches, bug fixes, driver updates, and occasionally new features. Unlike most package updates, kernel updates install a new kernel alongside the existing one rather than replacing it. This means you always have a fallback if the new kernel causes issues.
+Kernel updates on RHEL bring security patches, bug fixes, driver updates, and occasionally new features. Unlike most package updates, kernel updates install a new kernel alongside the existing one rather than replacing it. This means you always have a fallback if the new kernel causes issues.
 
-Red Hat backports security fixes to their kernel releases without changing the major version number, so a kernel update on RHEL 9 is generally low-risk. Still, you should follow a process, especially on production systems.
+Red Hat backports security fixes to their kernel releases without changing the major version number, so a kernel update on RHEL is generally low-risk. Still, you should follow a process, especially on production systems.
 
 ## Pre-Update Checks
 
@@ -53,7 +53,7 @@ sudo dnf update kernel -y
 sudo dnf update -y
 ```
 
-The `dnf update kernel` command installs the new kernel without removing the old one. RHEL 9 keeps the three most recent kernel versions by default.
+The `dnf update kernel` command installs the new kernel without removing the old one. RHEL keeps the three most recent kernel versions by default.
 
 ```mermaid
 flowchart TD
@@ -90,7 +90,7 @@ rpm -qa kernel-core | sort
 
 ## Controlling How Many Kernels Are Kept
 
-RHEL 9 uses the `installonly_limit` setting in dnf to control how many kernel versions to keep.
+RHEL uses the `installonly_limit` setting in dnf to control how many kernel versions to keep.
 
 ```bash
 # Check the current limit
@@ -137,7 +137,7 @@ sudo dnf remove kernel-modules-<version> kernel-modules-extra-<version>
 
 ## Kernel Lifecycle and Support
 
-RHEL 9 kernels follow Red Hat's support lifecycle. Each minor release gets a specific kernel version that receives backported security fixes.
+RHEL kernels follow Red Hat's support lifecycle. Each minor release gets a specific kernel version that receives backported security fixes.
 
 ```bash
 # Check the kernel changelog for security fixes
@@ -199,4 +199,4 @@ sudo dkms autoinstall
 
 ## Wrapping Up
 
-Kernel updates on RHEL 9 are straightforward thanks to the multi-kernel installation approach. The process is: check current state, update with dnf, reboot, verify. If something goes wrong, boot the old kernel from GRUB. Keep at least three kernels installed for rollback safety, and always test kernel updates on non-production systems first when possible. For large deployments, stage the updates and use a configuration management tool to roll them out in batches.
+Kernel updates on RHEL are straightforward thanks to the multi-kernel installation approach. The process is: check current state, update with dnf, reboot, verify. If something goes wrong, boot the old kernel from GRUB. Keep at least three kernels installed for rollback safety, and always test kernel updates on non-production systems first when possible. For large deployments, stage the updates and use a configuration management tool to roll them out in batches.

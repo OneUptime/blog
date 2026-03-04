@@ -1,22 +1,22 @@
-# How to Reset the Root Password Using GRUB2 on RHEL 9
+# How to Reset the Root Password Using GRUB2 on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Root Password, GRUB2, Recovery, Linux
 
-Description: A step-by-step guide to resetting a forgotten root password on RHEL 9 by editing GRUB2 boot parameters and using the rd.break method.
+Description: A step-by-step guide to resetting a forgotten root password on RHEL by editing GRUB2 boot parameters and using the rd.break method.
 
 ---
 
 ## When You Need to Reset the Root Password
 
-Forgetting the root password happens. Maybe you inherited a server from a colleague who left, or maybe the password was set during installation and never documented. Whatever the reason, RHEL 9 provides a supported method to reset it through the GRUB2 boot loader.
+Forgetting the root password happens. Maybe you inherited a server from a colleague who left, or maybe the password was set during installation and never documented. Whatever the reason, RHEL provides a supported method to reset it through the GRUB2 boot loader.
 
 This process requires physical or console access to the server (via iLO, iDRAC, IPMI, or similar). You cannot do this remotely through SSH.
 
 ## The rd.break Method
 
-The recommended approach on RHEL 9 is to interrupt the boot process using `rd.break`, which drops you into the initramfs before the root filesystem is fully mounted. From there, you can remount the filesystem and change the password.
+The recommended approach on RHEL is to interrupt the boot process using `rd.break`, which drops you into the initramfs before the root filesystem is fully mounted. From there, you can remount the filesystem and change the password.
 
 ```mermaid
 flowchart TD
@@ -133,7 +133,7 @@ The fact that anyone with console access can reset the root password is a securi
 
 If you cannot access the GRUB menu (for example, if GRUB itself is broken or password-protected), boot from RHEL installation media:
 
-1. Boot from the RHEL 9 DVD/USB
+1. Boot from the RHEL DVD/USB
 2. Select **Troubleshooting > Rescue a Red Hat Enterprise Linux system**
 3. Let it mount your installation under `/mnt/sysimage`
 4. Chroot into the system:
@@ -148,4 +148,4 @@ reboot
 
 ## Wrapping Up
 
-Resetting the root password on RHEL 9 takes about five minutes once you know the process. The key steps are: edit the GRUB entry to add `rd.break`, remount `/sysroot` as read-write, chroot in, change the password, touch `/.autorelabel`, and reboot. The most common mistake people make is forgetting the `/.autorelabel` step, which leads to the new password not working because of SELinux context mismatches. Follow the steps in order and you will be fine.
+Resetting the root password on RHEL takes about five minutes once you know the process. The key steps are: edit the GRUB entry to add `rd.break`, remount `/sysroot` as read-write, chroot in, change the password, touch `/.autorelabel`, and reboot. The most common mistake people make is forgetting the `/.autorelabel` step, which leads to the new password not working because of SELinux context mismatches. Follow the steps in order and you will be fine.

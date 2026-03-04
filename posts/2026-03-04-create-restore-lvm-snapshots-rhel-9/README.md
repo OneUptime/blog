@@ -1,10 +1,10 @@
-# How to Create and Restore LVM Snapshots on RHEL 9
+# How to Create and Restore LVM Snapshots on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Snapshots, Storage, Linux
 
-Description: Learn how to create, manage, and restore LVM snapshots on RHEL 9 for quick backups, safe upgrades, and easy rollbacks.
+Description: Learn how to create, manage, and restore LVM snapshots on RHEL for quick backups, safe upgrades, and easy rollbacks.
 
 ---
 
@@ -228,4 +228,4 @@ systemctl start myapp
 
 ## Summary
 
-LVM snapshots on RHEL 9 give you instant rollback capability. Create them before risky operations, back up from them for consistent copies, and merge them to roll back changes. Size them appropriately (20-50% of origin for most use cases), monitor their fill percentage, and remove them promptly when no longer needed to avoid performance impact.
+LVM snapshots on RHEL give you instant rollback capability. Create them before risky operations, back up from them for consistent copies, and merge them to roll back changes. Size them appropriately (20-50% of origin for most use cases), monitor their fill percentage, and remove them promptly when no longer needed to avoid performance impact.

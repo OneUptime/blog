@@ -1,16 +1,16 @@
-# How to Set Up Multi-Factor Authentication with PAM on RHEL 9
+# How to Set Up Multi-Factor Authentication with PAM on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MFA, PAM, Security, Linux
 
-Description: Configure multi-factor authentication on RHEL 9 using PAM with Google Authenticator TOTP, requiring both a password and a one-time code for login.
+Description: Configure multi-factor authentication on RHEL using PAM with Google Authenticator TOTP, requiring both a password and a one-time code for login.
 
 ---
 
-Passwords alone are not enough these days. Even strong passwords get phished, leaked in breaches, or brute-forced. Adding a second factor to your RHEL 9 login, typically a time-based one-time password (TOTP) from an authenticator app, makes compromised credentials far less useful to an attacker.
+Passwords alone are not enough these days. Even strong passwords get phished, leaked in breaches, or brute-forced. Adding a second factor to your RHEL login, typically a time-based one-time password (TOTP) from an authenticator app, makes compromised credentials far less useful to an attacker.
 
-This guide walks through setting up TOTP-based MFA using the Google Authenticator PAM module on RHEL 9.
+This guide walks through setting up TOTP-based MFA using the Google Authenticator PAM module on RHEL.
 
 ## How It Works
 
@@ -238,4 +238,4 @@ sudo grep "Failed to verify" /var/log/secure
 
 ## Wrapping Up
 
-MFA with TOTP on RHEL 9 is one of the highest-impact security improvements you can make with relatively little effort. Start by deploying it to your admin team with `nullok` so users who have not enrolled yet are not locked out, then enforce it for everyone once enrollment is complete. Keep those emergency scratch codes somewhere safe, and always test MFA changes from a separate terminal while keeping an existing root session open.
+MFA with TOTP on RHEL is one of the highest-impact security improvements you can make with relatively little effort. Start by deploying it to your admin team with `nullok` so users who have not enrolled yet are not locked out, then enforce it for everyone once enrollment is complete. Keep those emergency scratch codes somewhere safe, and always test MFA changes from a separate terminal while keeping an existing root session open.

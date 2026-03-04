@@ -1,18 +1,18 @@
-# How to Set Up Apache with mod_ssl and Let's Encrypt on RHEL 9
+# How to Set Up Apache with mod_ssl and Let's Encrypt on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, SSL, TLS, Let's Encrypt, Certbot, Linux
 
-Description: A practical guide to securing Apache with free SSL/TLS certificates from Let's Encrypt using Certbot on RHEL 9, including automatic renewal configuration.
+Description: A practical guide to securing Apache with free SSL/TLS certificates from Let's Encrypt using Certbot on RHEL, including automatic renewal configuration.
 
 ---
 
-HTTPS is no longer optional. Browsers flag unencrypted sites as insecure, and search engines penalize them in rankings. Let's Encrypt provides free, automated SSL/TLS certificates, and Certbot makes it simple to install and renew them on Apache. This guide walks you through the entire process on RHEL 9.
+HTTPS is no longer optional. Browsers flag unencrypted sites as insecure, and search engines penalize them in rankings. Let's Encrypt provides free, automated SSL/TLS certificates, and Certbot makes it simple to install and renew them on Apache. This guide walks you through the entire process on RHEL.
 
 ## Prerequisites
 
-- A RHEL 9 system with Apache installed and running
+- A RHEL system with Apache installed and running
 - A registered domain name pointing to your server's public IP
 - Port 80 and 443 open in the firewall
 - Root or sudo access
@@ -218,4 +218,4 @@ echo | openssl s_client -connect example.com:443 2>/dev/null | openssl x509 -noo
 
 ## Summary
 
-Your Apache server on RHEL 9 is now secured with a free SSL/TLS certificate from Let's Encrypt. Certbot handles both the initial setup and ongoing renewals. With the additional hardening steps, your server only accepts modern TLS connections and includes security headers like HSTS. The automatic renewal timer makes sure your certificates never expire unexpectedly.
+Your Apache server on RHEL is now secured with a free SSL/TLS certificate from Let's Encrypt. Certbot handles both the initial setup and ongoing renewals. With the additional hardening steps, your server only accepts modern TLS connections and includes security headers like HSTS. The automatic renewal timer makes sure your certificates never expire unexpectedly.

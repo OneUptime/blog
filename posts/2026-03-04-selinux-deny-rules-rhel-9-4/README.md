@@ -1,16 +1,16 @@
-# How to Use SELinux Deny Rules Introduced in RHEL 9.4
+# How to Use SELinux Deny Rules Introduced in RHEL.4
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, Deny Rules, Security, Linux
 
-Description: Explore the new SELinux deny rules feature introduced in RHEL 9.4 that provides explicit denial capabilities, overriding any allow rules in the policy.
+Description: Explore the new SELinux deny rules feature introduced in RHEL.4 that provides explicit denial capabilities, overriding any allow rules in the policy.
 
 ---
 
-## What Changed in RHEL 9.4
+## What Changed in RHEL.4
 
-RHEL 9.4 introduced a significant new capability to SELinux: explicit deny rules. Before this, SELinux worked on a "default deny, explicit allow" model. You could only add `allow` rules to grant access. There was no way to create a rule that explicitly denied access and could not be overridden by other allow rules.
+RHEL.4 introduced a significant new capability to SELinux: explicit deny rules. Before this, SELinux worked on a "default deny, explicit allow" model. You could only add `allow` rules to grant access. There was no way to create a rule that explicitly denied access and could not be overridden by other allow rules.
 
 With deny rules, you can now create ironclad restrictions that take precedence over everything else in the policy. Even if another module or boolean grants access, a deny rule blocks it.
 
@@ -35,7 +35,7 @@ Use cases:
 ## Prerequisites
 
 ```bash
-# Verify you are running RHEL 9.4 or later
+# Verify you are running RHEL.4 or later
 cat /etc/redhat-release
 
 # Check the SELinux policy version
@@ -47,7 +47,7 @@ sudo dnf install -y selinux-policy-devel policycoreutils-python-utils
 
 ## Creating a Deny Rule
 
-Deny rules use the `neverallow` statement in the SELinux policy language. However, for runtime deny rules in RHEL 9.4+, you use the CIL (Common Intermediate Language) format with the `deny` keyword.
+Deny rules use the `neverallow` statement in the SELinux policy language. However, for runtime deny rules in RHEL.4+, you use the CIL (Common Intermediate Language) format with the `deny` keyword.
 
 ### Example: Deny httpd from Reading Shadow File
 
@@ -207,7 +207,7 @@ This makes deny rules a powerful tool for security hardening, but also means you
 
 Traditional `neverallow` rules in SELinux are compile-time checks. They prevent policy authors from writing allow rules that violate the constraint, but they are only checked when the policy is compiled.
 
-The new deny rules in RHEL 9.4 are runtime rules. They are evaluated during every access check and take precedence over allow rules that are already in the loaded policy. This is a much stronger guarantee.
+The new deny rules in RHEL.4 are runtime rules. They are evaluated during every access check and take precedence over allow rules that are already in the loaded policy. This is a much stronger guarantee.
 
 ## Troubleshooting
 
@@ -227,4 +227,4 @@ This is expected behavior for deny rules. The deny rule takes precedence. If you
 
 ## Wrapping Up
 
-Deny rules are a valuable addition to SELinux in RHEL 9.4. They give you explicit, un-overridable restrictions that strengthen your security posture. Use them for your most critical security boundaries, like preventing web servers from accessing password files or containers from modifying host configuration. Start with targeted, specific rules, test carefully, and keep them under version control. They are a powerful tool, and with power comes the need for discipline.
+Deny rules are a valuable addition to SELinux in RHEL.4. They give you explicit, un-overridable restrictions that strengthen your security posture. Use them for your most critical security boundaries, like preventing web servers from accessing password files or containers from modifying host configuration. Start with targeted, specific rules, test carefully, and keep them under version control. They are a powerful tool, and with power comes the need for discipline.

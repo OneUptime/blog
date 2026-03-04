@@ -1,10 +1,10 @@
-# How to Set Up Squid as a Caching Proxy on RHEL 9
+# How to Set Up Squid as a Caching Proxy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Squid, Caching Proxy, Linux
 
-Description: Learn how to install and configure Squid as a forward caching proxy server on RHEL 9 to speed up web access and reduce bandwidth usage.
+Description: Learn how to install and configure Squid as a forward caching proxy server on RHEL to speed up web access and reduce bandwidth usage.
 
 ---
 
@@ -12,11 +12,11 @@ Description: Learn how to install and configure Squid as a forward caching proxy
 
 If you run a network with dozens or hundreds of machines all hitting the same websites and repositories, you are burning bandwidth for no good reason. A caching proxy sits between your clients and the internet, storing frequently requested content locally so subsequent requests get served from cache instead of fetching everything fresh each time.
 
-Squid has been the go-to caching proxy for Linux environments for over two decades. It handles HTTP, HTTPS, and FTP traffic, supports access control lists, and its cache management is battle-tested. On RHEL 9, setting it up is straightforward.
+Squid has been the go-to caching proxy for Linux environments for over two decades. It handles HTTP, HTTPS, and FTP traffic, supports access control lists, and its cache management is battle-tested. On RHEL, setting it up is straightforward.
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - A valid Red Hat subscription or configured repositories
 - Firewall access to allow proxy traffic (default port 3128)
 

@@ -1,16 +1,16 @@
-# How to Troubleshoot Boot Failures After a Kernel Update on RHEL 9
+# How to Troubleshoot Boot Failures After a Kernel Update on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Boot Failure, Kernel, Troubleshooting, Linux
 
-Description: A systematic guide to diagnosing and fixing boot failures that occur after a kernel update on RHEL 9, covering GRUB fallback, initramfs issues, driver problems, and recovery procedures.
+Description: A systematic guide to diagnosing and fixing boot failures that occur after a kernel update on RHEL, covering GRUB fallback, initramfs issues, driver problems, and recovery procedures.
 
 ---
 
 ## Why Kernel Updates Can Break Boot
 
-Most kernel updates on RHEL 9 are uneventful. But occasionally, a new kernel introduces a problem: a driver regression, a missing module in the initramfs, an incompatibility with your hardware, or a conflict with third-party kernel modules like NVIDIA drivers. When this happens, the system either fails to boot entirely or boots into a degraded state.
+Most kernel updates on RHEL are uneventful. But occasionally, a new kernel introduces a problem: a driver regression, a missing module in the initramfs, an incompatibility with your hardware, or a conflict with third-party kernel modules like NVIDIA drivers. When this happens, the system either fails to boot entirely or boots into a degraded state.
 
 The good news is that RHEL keeps the previous kernel installed, so you always have a fallback.
 

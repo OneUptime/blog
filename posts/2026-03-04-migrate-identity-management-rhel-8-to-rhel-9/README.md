@@ -1,33 +1,33 @@
-# How to Migrate Identity Management from RHEL 8 to RHEL 9
+# How to Migrate Identity Management from RHEL 8 to RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Migration, FreeIPA, Linux
 
-Description: A practical guide to migrating your Identity Management (IdM/FreeIPA) deployment from RHEL 8 to RHEL 9, covering replica promotion, data verification, and rollback planning.
+Description: A practical guide to migrating your Identity Management (IdM/FreeIPA) deployment from RHEL 8 to RHEL, covering replica promotion, data verification, and rollback planning.
 
 ---
 
-Migrating IdM from RHEL 8 to RHEL 9 is not an in-place upgrade. The supported path is to stand up new RHEL 9 replicas, replicate data to them, and then decommission the old RHEL 8 servers. This approach gives you a fallback if something goes sideways and keeps the directory service available throughout the process.
+Migrating IdM from RHEL 8 to RHEL is not an in-place upgrade. The supported path is to stand up new RHEL replicas, replicate data to them, and then decommission the old RHEL 8 servers. This approach gives you a fallback if something goes sideways and keeps the directory service available throughout the process.
 
 ## Migration Strategy Overview
 
 ```mermaid
 flowchart LR
-    A[RHEL 8 IdM Master] -->|Replication| B[RHEL 9 IdM Replica]
-    B -->|Verify Data| C[Promote RHEL 9 to Master]
+    A[RHEL 8 IdM Master] -->|Replication| B[RHEL IdM Replica]
+    B -->|Verify Data| C[Promote RHEL to Master]
     C -->|Decommission| D[Remove RHEL 8 Server]
 ```
 
-The general plan is straightforward: install a RHEL 9 replica into the existing topology, confirm everything replicated properly, move the CA renewal master and CRL generation roles to the new server, then retire the old ones.
+The general plan is straightforward: install a RHEL replica into the existing topology, confirm everything replicated properly, move the CA renewal master and CRL generation roles to the new server, then retire the old ones.
 
 ## Prerequisites
 
 Before you start, make sure you have:
 
 - A fully functional IdM deployment on RHEL 8 (FreeIPA 4.9.x)
-- A fresh RHEL 9 system with a static IP and proper DNS entries
-- The RHEL 9 system registered and subscribed with access to the idm:DL1 module (or the idm packages in BaseOS/AppStream)
+- A fresh RHEL system with a static IP and proper DNS entries
+- The RHEL system registered and subscribed with access to the idm:DL1 module (or the idm packages in BaseOS/AppStream)
 - Network connectivity between old and new servers on ports 389, 636, 88, 464, and 443
 - A current backup of your RHEL 8 IdM server
 
@@ -45,9 +45,9 @@ ls -la /var/lib/ipa/backup/
 
 The backup includes the Directory Server database, Kerberos data, CA data, and configuration files.
 
-## Step 2 - Prepare the RHEL 9 System
+## Step 2 - Prepare the RHEL System
 
-On the new RHEL 9 system, set the hostname and configure DNS to point to the existing IdM server.
+On the new RHEL system, set the hostname and configure DNS to point to the existing IdM server.
 
 ```bash
 # Set the FQDN hostname
@@ -67,9 +67,9 @@ If your RHEL 8 IdM deployment uses an integrated CA, also install the CA package
 sudo dnf install ipa-server-ca -y
 ```
 
-## Step 3 - Enroll the RHEL 9 System as an IdM Client
+## Step 3 - Enroll the RHEL System as an IdM Client
 
-Before promoting the RHEL 9 box to a replica, enroll it as a client first. This validates connectivity and authentication.
+Before promoting the RHEL box to a replica, enroll it as a client first. This validates connectivity and authentication.
 
 ```bash
 # Enroll as an IdM client pointing to the RHEL 8 master
@@ -89,9 +89,9 @@ kinit admin
 ipa user-find --sizelimit=5
 ```
 
-## Step 4 - Install the RHEL 9 Replica
+## Step 4 - Install the RHEL Replica
 
-Now promote the RHEL 9 client to a full replica:
+Now promote the RHEL client to a full replica:
 
 ```bash
 # Install the replica with DNS and CA
@@ -119,7 +119,7 @@ After the replica install completes, check that data is replicating properly.
 # Check replication topology
 ipa topologysegment-find suffix
 
-# Check replication status from the RHEL 9 replica
+# Check replication status from the RHEL replica
 ipa-replica-manage list
 
 # Verify user data exists on the new replica
@@ -136,20 +136,20 @@ sudo dsconf -D "cn=Directory Manager" ldap://replica.example.com \
 
 ## Step 6 - Migrate CA Renewal Master and CRL Generation
 
-If you are running an integrated CA, move the renewal master role to the RHEL 9 replica before decommissioning the RHEL 8 server.
+If you are running an integrated CA, move the renewal master role to the RHEL replica before decommissioning the RHEL 8 server.
 
 ```bash
 # Check the current CA renewal master
 ipa config-show | grep "CA renewal"
 
-# Move the CA renewal master to the RHEL 9 replica
+# Move the CA renewal master to the RHEL replica
 ipa config-mod --ca-renewal-master-server=replica.example.com
 ```
 
 Move CRL generation as well:
 
 ```bash
-# On the RHEL 9 replica, enable CRL generation
+# On the RHEL replica, enable CRL generation
 sudo ipa-crlgen-manage enable
 
 # On the old RHEL 8 server, disable CRL generation
@@ -171,10 +171,10 @@ sudo systemctl restart sssd
 
 ## Step 8 - Decommission the RHEL 8 Server
 
-Once you have confirmed that everything works on the RHEL 9 replica, remove the old server from the topology.
+Once you have confirmed that everything works on the RHEL replica, remove the old server from the topology.
 
 ```bash
-# From the RHEL 9 replica, remove the old server
+# From the RHEL replica, remove the old server
 ipa server-del master.example.com
 
 # On the RHEL 8 server, uninstall IdM
@@ -186,7 +186,7 @@ sudo ipa-server-install --uninstall
 Run these checks after the migration is complete:
 
 ```bash
-# Confirm the RHEL 9 server is the only server (or the primary)
+# Confirm the RHEL server is the only server (or the primary)
 ipa server-find
 
 # Verify CA certificate chain
@@ -204,8 +204,8 @@ ssh testuser@client.example.com
 
 If you run into problems during migration:
 
-1. Do not decommission the RHEL 8 server until you have fully tested the RHEL 9 replica
-2. If replication is broken, remove the RHEL 9 replica and start over
+1. Do not decommission the RHEL 8 server until you have fully tested the RHEL replica
+2. If replication is broken, remove the RHEL replica and start over
 3. If you already decommissioned the RHEL 8 server, restore from the backup taken in Step 1
 
 ```bash

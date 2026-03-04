@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, AIDE, System Roles, Ansible, Linux
 
-Description: Use the AIDE RHEL System Role to deploy and manage file integrity monitoring across your entire RHEL 9 fleet with Ansible automation.
+Description: Use the AIDE RHEL System Role to deploy and manage file integrity monitoring across your entire RHEL fleet with Ansible automation.
 
 ---
 
-Managing AIDE on one server is straightforward. Managing it across dozens or hundreds of RHEL 9 systems gets tedious fast. The RHEL System Roles provide an Ansible-based way to deploy and configure AIDE consistently across your entire infrastructure. This guide covers using the AIDE system role to automate intrusion detection deployment.
+Managing AIDE on one server is straightforward. Managing it across dozens or hundreds of RHEL systems gets tedious fast. The RHEL System Roles provide an Ansible-based way to deploy and configure AIDE consistently across your entire infrastructure. This guide covers using the AIDE system role to automate intrusion detection deployment.
 
 ## What Are RHEL System Roles
 
@@ -16,7 +16,7 @@ RHEL System Roles are a collection of Ansible roles officially supported by Red 
 
 ## Prerequisites
 
-You need an Ansible control node with access to your RHEL 9 managed hosts. Install the system roles package:
+You need an Ansible control node with access to your RHEL managed hosts. Install the system roles package:
 
 ```bash
 # Install RHEL System Roles on the control node
@@ -251,4 +251,4 @@ ansible servers -m command -a "crontab -l"
 4. Collect AIDE reports centrally using a log aggregation system.
 5. Test playbook changes on a staging group before rolling out to production.
 
-The AIDE system role takes the manual work out of fleet-wide file integrity monitoring, making it practical to maintain consistent security monitoring across large RHEL 9 environments.
+The AIDE system role takes the manual work out of fleet-wide file integrity monitoring, making it practical to maintain consistent security monitoring across large RHEL environments.

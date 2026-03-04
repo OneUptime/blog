@@ -1,21 +1,21 @@
-# How to Install and Configure SAP HANA on RHEL 9
+# How to Install and Configure SAP HANA on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP HANA, SAP, Database, Enterprise, Linux
 
-Description: A complete guide to installing and configuring SAP HANA database on RHEL 9, covering system preparation, HANA installation, and post-install validation.
+Description: A complete guide to installing and configuring SAP HANA database on RHEL, covering system preparation, HANA installation, and post-install validation.
 
 ---
 
-SAP HANA is one of the most demanding enterprise workloads, and RHEL 9 is a certified platform for running it. This guide walks you through the entire process, from preparing your RHEL 9 system to completing a working SAP HANA installation.
+SAP HANA is one of the most demanding enterprise workloads, and RHEL is a certified platform for running it. This guide walks you through the entire process, from preparing your RHEL system to completing a working SAP HANA installation.
 
 ## Architecture Overview
 
 ```mermaid
 graph TB
-    subgraph "RHEL 9 Server"
-        OS[RHEL 9 OS Layer]
+    subgraph "RHEL Server"
+        OS[RHEL OS Layer]
         OS --> Kernel[Tuned Kernel Parameters]
         OS --> FS[XFS Filesystems]
         OS --> Packages[Required Packages]
@@ -30,7 +30,7 @@ graph TB
 
 ## Prerequisites
 
-- RHEL 9.x with an active subscription (SAP Solutions subscription recommended)
+- RHEL.x with an active subscription (SAP Solutions subscription recommended)
 - Minimum 64 GB RAM (128 GB or more for production)
 - At least 4 CPU cores
 - Separate disks for /hana/data, /hana/log, and /hana/shared
@@ -65,7 +65,7 @@ sudo dnf install -y rhel-system-roles-sap
 # Create an Ansible playbook for SAP HANA preparation
 cat <<'EOF' > /tmp/sap-hana-prepare.yml
 ---
-- name: Prepare RHEL 9 for SAP HANA
+- name: Prepare RHEL for SAP HANA
   hosts: localhost
   become: true
   roles:
@@ -276,4 +276,4 @@ After completing the installation, make sure to:
 
 ## Conclusion
 
-You now have SAP HANA installed and running on RHEL 9. The combination of RHEL system roles for preconfiguration and the hdblcm installer makes the process repeatable and consistent. For production environments, always refer to the latest SAP Notes and the SAP HANA Installation Guide for your specific HANA version.
+You now have SAP HANA installed and running on RHEL. The combination of RHEL system roles for preconfiguration and the hdblcm installer makes the process repeatable and consistent. For production environments, always refer to the latest SAP Notes and the SAP HANA Installation Guide for your specific HANA version.

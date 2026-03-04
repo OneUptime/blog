@@ -1,14 +1,14 @@
-# How to Search, Install, and Remove Packages with DNF on RHEL 9
+# How to Search, Install, and Remove Packages with DNF on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNF, Package Management, Linux
 
-Description: A practical guide to searching, installing, and removing packages with DNF on RHEL 9, covering everyday commands that every sysadmin should have in their toolkit.
+Description: A practical guide to searching, installing, and removing packages with DNF on RHEL, covering everyday commands that every sysadmin should have in their toolkit.
 
 ---
 
-If you manage RHEL 9 systems, you will spend a good chunk of your time working with DNF. It replaced YUM as the default package manager starting with RHEL 8, and in RHEL 9 it is the only game in town. This guide walks through the commands you will use most often, from searching for packages to cleaning up after yourself.
+If you manage RHEL systems, you will spend a good chunk of your time working with DNF. It replaced YUM as the default package manager starting with RHEL 8, and in RHEL it is the only game in town. This guide walks through the commands you will use most often, from searching for packages to cleaning up after yourself.
 
 ## Understanding DNF Basics
 

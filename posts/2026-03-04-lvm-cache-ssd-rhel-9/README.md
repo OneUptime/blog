@@ -1,10 +1,10 @@
-# How to Configure LVM Cache with SSD on RHEL 9
+# How to Configure LVM Cache with SSD on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Cache, SSD, Storage, Linux
 
-Description: Learn how to use LVM caching to accelerate HDD storage with an SSD cache layer on RHEL 9.
+Description: Learn how to use LVM caching to accelerate HDD storage with an SSD cache layer on RHEL.
 
 ---
 
@@ -122,5 +122,5 @@ sudo lvconvert --uncache cachevg/datalv
 
 ## Summary
 
-LVM cache on RHEL 9 provides a transparent way to accelerate HDD storage with an SSD. Choose write-through mode for safety or write-back for maximum performance. Monitor cache hit rates to ensure the cache is sized appropriately for your workload.
+LVM cache on RHEL provides a transparent way to accelerate HDD storage with an SSD. Choose write-through mode for safety or write-back for maximum performance. Monitor cache hit rates to ensure the cache is sized appropriately for your workload.
 

@@ -1,16 +1,16 @@
-# How to Write and Load XDP Programs for Fast Packet Filtering on RHEL 9
+# How to Write and Load XDP Programs for Fast Packet Filtering on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, XDP, eBPF, Networking, Packet Filtering, Linux
 
-Description: Learn how to write, compile, and load XDP (eXpress Data Path) programs on RHEL 9 for ultra-fast packet filtering at the network driver level.
+Description: Learn how to write, compile, and load XDP (eXpress Data Path) programs on RHEL for ultra-fast packet filtering at the network driver level.
 
 ---
 
 XDP (eXpress Data Path) lets you run eBPF programs directly inside the network driver, processing packets before they even reach the kernel network stack. This makes XDP one of the fastest packet filtering technologies available on Linux.
 
-In this guide, you will write a simple XDP program, compile it, and load it onto a network interface on RHEL 9.
+In this guide, you will write a simple XDP program, compile it, and load it onto a network interface on RHEL.
 
 ## How XDP Works
 
@@ -25,7 +25,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 with kernel 5.14 or later
+- RHEL with kernel 5.14 or later
 - Root or sudo access
 - A network interface that supports XDP native mode
 
@@ -115,7 +115,7 @@ sudo bpftool prog list
 ## Step 5: Test the XDP Filter
 
 ```bash
-# From another machine, try pinging the RHEL 9 host
+# From another machine, try pinging the RHEL host
 ping 192.168.1.100
 # You should see 100% packet loss because ICMP is dropped
 
@@ -214,4 +214,4 @@ sudo bpftool map dump name pkt_count
 
 ## Summary
 
-You have written and loaded XDP programs on RHEL 9 for ultra-fast packet filtering. XDP processes packets at the earliest possible point in the network stack, making it ideal for DDoS mitigation, load balancing, and high-speed firewalling. For production use, consider using libbpf for program loading and BPF maps for dynamic configuration.
+You have written and loaded XDP programs on RHEL for ultra-fast packet filtering. XDP processes packets at the earliest possible point in the network stack, making it ideal for DDoS mitigation, load balancing, and high-speed firewalling. For production use, consider using libbpf for program loading and BPF maps for dynamic configuration.

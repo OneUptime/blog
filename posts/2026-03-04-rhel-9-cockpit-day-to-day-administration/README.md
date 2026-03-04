@@ -1,22 +1,22 @@
-# How to Use the RHEL 9 Web Console (Cockpit) for Day-to-Day System Administration
+# How to Use the RHEL Web Console (Cockpit) for Day-to-Day System Administration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Web Console, System Administration, Linux
 
-Description: A hands-on guide to using the RHEL 9 Web Console (Cockpit) for everyday system administration tasks including service management, user accounts, storage, networking, and the built-in terminal.
+Description: A hands-on guide to using the RHEL Web Console (Cockpit) for everyday system administration tasks including service management, user accounts, storage, networking, and the built-in terminal.
 
 ---
 
 ## What Is Cockpit and Why Use It
 
-Cockpit is a web-based system administration interface that ships with RHEL 9. It gives you a browser-based dashboard for managing your server without needing to remember every command-line flag. That said, it is not a replacement for the terminal. It is a complement, especially useful for quick checks, visual overviews, and tasks you do not perform often enough to memorize the syntax.
+Cockpit is a web-based system administration interface that ships with RHEL. It gives you a browser-based dashboard for managing your server without needing to remember every command-line flag. That said, it is not a replacement for the terminal. It is a complement, especially useful for quick checks, visual overviews, and tasks you do not perform often enough to memorize the syntax.
 
 I have found it particularly handy when handing off basic server management to team members who are comfortable with Linux but not fluent in it. It also works well for managing multiple servers from a single browser tab.
 
 ## Installing and Enabling Cockpit
 
-On RHEL 9 minimal installations, Cockpit may not be installed by default. Here is how to get it running.
+On RHEL minimal installations, Cockpit may not be installed by default. Here is how to get it running.
 
 ```bash
 # Install the Cockpit web console
@@ -260,4 +260,4 @@ sudo dnf install cockpit-machines cockpit-podman
 
 ## Summary
 
-Cockpit is a solid tool for everyday RHEL 9 administration. It covers services, users, storage, networking, logs, and software updates through a clean browser interface. It does not try to replace the command line, and that is its strength. Use it for visual overviews, quick tasks, and situations where the GUI is genuinely faster than typing commands. For automation and scripting, the CLI remains king. The two approaches complement each other well, and having both available makes you a more effective sysadmin.
+Cockpit is a solid tool for everyday RHEL administration. It covers services, users, storage, networking, logs, and software updates through a clean browser interface. It does not try to replace the command line, and that is its strength. Use it for visual overviews, quick tasks, and situations where the GUI is genuinely faster than typing commands. For automation and scripting, the CLI remains king. The two approaches complement each other well, and having both available makes you a more effective sysadmin.

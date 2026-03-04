@@ -1,14 +1,14 @@
-# How to Register a RHEL 9 System Using an Activation Key
+# How to Register a RHEL System Using an Activation Key
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Activation Key, Registration, Red Hat, Linux
 
-Description: Learn how to create and use activation keys to register RHEL 9 systems without exposing credentials, ideal for automated and large-scale deployments.
+Description: Learn how to create and use activation keys to register RHEL systems without exposing credentials, ideal for automated and large-scale deployments.
 
 ---
 
-If you manage more than a handful of RHEL systems, typing in your Red Hat username and password on each one gets old fast. Activation keys solve this problem. They let you register systems without exposing credentials, and you can bundle subscription settings, system purpose, and repository choices into a single key. This guide covers creating activation keys and using them to register RHEL 9 systems.
+If you manage more than a handful of RHEL systems, typing in your Red Hat username and password on each one gets old fast. Activation keys solve this problem. They let you register systems without exposing credentials, and you can bundle subscription settings, system purpose, and repository choices into a single key. This guide covers creating activation keys and using them to register RHEL systems.
 
 ## What Is an Activation Key?
 
@@ -52,7 +52,7 @@ You can also find it using the Red Hat API or on the activation key page itself.
 
 ## Registering with an Activation Key
 
-On your RHEL 9 system, run:
+On your RHEL system, run:
 
 ```bash
 # Register using an activation key and organization ID
@@ -89,7 +89,7 @@ This registers the system automatically during the installation process, so it c
 
 ## Activation Keys with Cloud-Init
 
-If you deploy RHEL 9 in a cloud environment, you can register during first boot using cloud-init. Add the following to your user-data:
+If you deploy RHEL in a cloud environment, you can register during first boot using cloud-init. Add the following to your user-data:
 
 ```yaml
 # cloud-init user-data for RHEL registration
@@ -103,7 +103,7 @@ For Ansible-managed environments, use the `community.general.redhat_subscription
 
 ```yaml
 # Ansible task to register with an activation key
-- name: Register RHEL 9 system with activation key
+- name: Register RHEL system with activation key
   community.general.redhat_subscription:
     activationkey: rhel9-webservers
     org_id: "12345678"
@@ -164,4 +164,4 @@ You can list, modify, or delete activation keys in the Customer Portal at any ti
 
 ## Summary
 
-Activation keys are the preferred way to register RHEL 9 systems at scale. They remove the need for interactive credential entry, keep passwords out of scripts and automation playbooks, and let you standardize subscription and system purpose settings across your infrastructure. Whether you are deploying via Kickstart, cloud-init, or Ansible, activation keys make registration clean and repeatable.
+Activation keys are the preferred way to register RHEL systems at scale. They remove the need for interactive credential entry, keep passwords out of scripts and automation playbooks, and let you standardize subscription and system purpose settings across your infrastructure. Whether you are deploying via Kickstart, cloud-init, or Ansible, activation keys make registration clean and repeatable.

@@ -1,10 +1,10 @@
-# How to Set Up Dynamic DNS with BIND and DHCP on RHEL 9
+# How to Set Up Dynamic DNS with BIND and DHCP on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Dynamic DNS, BIND, DHCP, Linux
 
-Description: Configure BIND and ISC DHCP to work together on RHEL 9 so that DHCP clients automatically get DNS records created and updated when they receive an IP address.
+Description: Configure BIND and ISC DHCP to work together on RHEL so that DHCP clients automatically get DNS records created and updated when they receive an IP address.
 
 ---
 

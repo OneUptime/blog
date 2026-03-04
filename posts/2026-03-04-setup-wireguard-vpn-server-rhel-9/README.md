@@ -1,25 +1,25 @@
-# How to Set Up a WireGuard VPN Server on RHEL 9
+# How to Set Up a WireGuard VPN Server on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, WireGuard, VPN, Server, Linux
 
-Description: A complete walkthrough for setting up a WireGuard VPN server on RHEL 9, from installation and key generation to peer configuration, firewall rules, and persistent connections.
+Description: A complete walkthrough for setting up a WireGuard VPN server on RHEL, from installation and key generation to peer configuration, firewall rules, and persistent connections.
 
 ---
 
-WireGuard has become the go-to VPN for Linux. It's fast, the codebase is small enough to actually audit, and the configuration is refreshingly simple compared to IPsec or OpenVPN. On RHEL 9, WireGuard is supported in the kernel, so there's no need for DKMS or third-party kernel modules.
+WireGuard has become the go-to VPN for Linux. It's fast, the codebase is small enough to actually audit, and the configuration is refreshingly simple compared to IPsec or OpenVPN. On RHEL, WireGuard is supported in the kernel, so there's no need for DKMS or third-party kernel modules.
 
 ## Prerequisites
 
-- RHEL 9 server with a public IP address (or at least reachable from your clients)
+- RHEL server with a public IP address (or at least reachable from your clients)
 - Root or sudo access
 - EPEL repository enabled (for WireGuard tools)
 - A UDP port available for WireGuard (default is 51820)
 
 ## Installing WireGuard
 
-WireGuard kernel support is built into the RHEL 9 kernel. You just need the userspace tools.
+WireGuard kernel support is built into the RHEL kernel. You just need the userspace tools.
 
 ```bash
 # Enable EPEL if not already done
@@ -176,7 +176,7 @@ PersistentKeepalive = 25
 
 ```mermaid
 graph LR
-    C1[Client 1<br>10.0.0.2] -->|UDP 51820| S[RHEL 9 Server<br>10.0.0.1<br>Public IP]
+    C1[Client 1<br>10.0.0.2] -->|UDP 51820| S[RHEL Server<br>10.0.0.1<br>Public IP]
     C2[Client 2<br>10.0.0.3] -->|UDP 51820| S
     S -->|NAT/Masquerade| I[Internet]
 ```
@@ -249,4 +249,4 @@ ip route show
 
 ## Wrapping Up
 
-WireGuard on RHEL 9 gives you a fast, modern VPN with minimal configuration overhead. The server setup boils down to: install tools, generate keys, write a config file, open a port, enable forwarding. Each client is just a public key and an allowed IP. Keep your private keys secure, and you've got yourself a solid VPN.
+WireGuard on RHEL gives you a fast, modern VPN with minimal configuration overhead. The server setup boils down to: install tools, generate keys, write a config file, open a port, enable forwarding. Each client is just a public key and an allowed IP. Keep your private keys secure, and you've got yourself a solid VPN.

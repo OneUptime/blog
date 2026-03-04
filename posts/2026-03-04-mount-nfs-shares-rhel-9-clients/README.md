@@ -1,20 +1,20 @@
-# How to Mount NFS Shares on RHEL 9 Clients
+# How to Mount NFS Shares on RHEL Clients
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NFS, Client, Mounting, Linux
 
-Description: Learn how to mount NFS shares on RHEL 9 client machines, covering manual mounts, mount options, and troubleshooting common connection issues.
+Description: Learn how to mount NFS shares on RHEL client machines, covering manual mounts, mount options, and troubleshooting common connection issues.
 
 ---
 
 ## Client-Side NFS Setup
 
-Mounting an NFS share on a RHEL 9 client is simple once the server is configured. The client side requires the nfs-utils package and a mount command, or an fstab entry for persistent mounts.
+Mounting an NFS share on a RHEL client is simple once the server is configured. The client side requires the nfs-utils package and a mount command, or an fstab entry for persistent mounts.
 
 ## Prerequisites
 
-- RHEL 9 client with root access
+- RHEL client with root access
 - Network connectivity to the NFS server
 - The NFS server has exports configured and firewall open
 
@@ -96,7 +96,7 @@ sudo mount -t nfs -o vers=4 192.168.1.10:/srv/nfs/shared /mnt/nfs-shared
 sudo mount -t nfs -o vers=3 192.168.1.10:/srv/nfs/shared /mnt/nfs-shared
 ```
 
-NFSv4 is the default on RHEL 9 and is recommended. It uses a single TCP port (2049) and supports better security features.
+NFSv4 is the default on RHEL and is recommended. It uses a single TCP port (2049) and supports better security features.
 
 ## Verifying the Mount
 
@@ -163,7 +163,7 @@ rpcinfo -p 192.168.1.10
 
 ```mermaid
 graph TD
-    C[RHEL 9 Client] -->|mount -t nfs| P[Port 2049/TCP]
+    C[RHEL Client] -->|mount -t nfs| P[Port 2049/TCP]
     P --> S[NFS Server]
     S --> E[/srv/nfs/shared]
     E --> C
@@ -171,4 +171,4 @@ graph TD
 
 ## Wrap-Up
 
-Mounting NFS shares on RHEL 9 clients is a matter of installing nfs-utils, running a mount command, and choosing appropriate options. Use `hard` mounts for reliability, tune rsize and wsize for performance, and always verify the mount with `df` or `findmnt` after connecting. For persistent mounts, see the companion post on fstab configuration.
+Mounting NFS shares on RHEL clients is a matter of installing nfs-utils, running a mount command, and choosing appropriate options. Use `hard` mounts for reliability, tune rsize and wsize for performance, and always verify the mount with `df` or `findmnt` after connecting. For persistent mounts, see the companion post on fstab configuration.

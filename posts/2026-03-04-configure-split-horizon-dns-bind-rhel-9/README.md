@@ -1,10 +1,10 @@
-# How to Configure Split-Horizon DNS with BIND on RHEL 9
+# How to Configure Split-Horizon DNS with BIND on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BIND, Split-Horizon DNS, Linux
 
-Description: Learn how to configure BIND on RHEL 9 to serve different DNS answers to internal and external clients using split-horizon DNS views.
+Description: Learn how to configure BIND on RHEL to serve different DNS answers to internal and external clients using split-horizon DNS views.
 
 ---
 

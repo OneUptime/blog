@@ -1,10 +1,10 @@
-# How to Manage Firewalld Rules with Ansible on RHEL 9
+# How to Manage Firewalld Rules with Ansible on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, Firewalld, Security, Automation, Linux
 
-Description: Use Ansible to manage firewalld zones, services, ports, and rich rules across your RHEL 9 servers for consistent network security.
+Description: Use Ansible to manage firewalld zones, services, ports, and rich rules across your RHEL servers for consistent network security.
 
 ---
 
@@ -29,7 +29,7 @@ graph TD
 
 ```yaml
 # playbook-firewall.yml
-# Configure firewalld on RHEL 9 servers
+# Configure firewalld on RHEL servers
 ---
 - name: Configure firewall rules
   hosts: all

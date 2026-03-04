@@ -1,14 +1,14 @@
-# How to Verify NTP Synchronization Using chronyc Commands on RHEL 9
+# How to Verify NTP Synchronization Using chronyc Commands on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, chronyc, NTP, Verification, Linux
 
-Description: A comprehensive reference for using chronyc commands on RHEL 9 to verify, monitor, and analyze NTP time synchronization status.
+Description: A comprehensive reference for using chronyc commands on RHEL to verify, monitor, and analyze NTP time synchronization status.
 
 ---
 
-chronyc is the command-line interface for interacting with the chronyd daemon. If you manage time synchronization on RHEL 9, you will use chronyc regularly to verify that everything is working, investigate problems, and gather statistics. This post covers all the chronyc commands you need for day-to-day NTP management.
+chronyc is the command-line interface for interacting with the chronyd daemon. If you manage time synchronization on RHEL, you will use chronyc regularly to verify that everything is working, investigate problems, and gather statistics. This post covers all the chronyc commands you need for day-to-day NTP management.
 
 ## Getting Started with chronyc
 

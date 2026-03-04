@@ -1,14 +1,14 @@
-# How to Enable IP Forwarding and NAT for OpenVPN on RHEL 9
+# How to Enable IP Forwarding and NAT for OpenVPN on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenVPN, IP Forwarding, NAT, Linux
 
-Description: Learn how to configure IP forwarding and NAT masquerading on RHEL 9 so that OpenVPN clients can access the internet and internal networks through the VPN server.
+Description: Learn how to configure IP forwarding and NAT masquerading on RHEL so that OpenVPN clients can access the internet and internal networks through the VPN server.
 
 ---
 
-Setting up OpenVPN is only half the battle. Without IP forwarding and NAT, your clients can connect to the VPN server but can't reach anything beyond it. The server needs to act as a router, forwarding packets between the VPN tunnel and the rest of the network. Here's how to set that up properly on RHEL 9.
+Setting up OpenVPN is only half the battle. Without IP forwarding and NAT, your clients can connect to the VPN server but can't reach anything beyond it. The server needs to act as a router, forwarding packets between the VPN tunnel and the rest of the network. Here's how to set that up properly on RHEL.
 
 ## Why You Need Both Forwarding and NAT
 
@@ -62,7 +62,7 @@ echo "net.ipv6.conf.all.forwarding = 1" | sudo tee -a /etc/sysctl.d/99-openvpn-f
 
 ## Step 2: Configure NAT with firewalld
 
-RHEL 9 uses firewalld by default. Enable masquerading to handle NAT.
+RHEL uses firewalld by default. Enable masquerading to handle NAT.
 
 ```bash
 # Enable masquerading on the default zone

@@ -1,14 +1,14 @@
-# How to Understand the BaseOS and AppStream Repository Structure on RHEL 9
+# How to Understand the BaseOS and AppStream Repository Structure on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BaseOS, AppStream, Repositories, Linux
 
-Description: Learn how RHEL 9 splits its content between BaseOS and AppStream repositories, what goes where, and why this structure matters for system administration.
+Description: Learn how RHEL splits its content between BaseOS and AppStream repositories, what goes where, and why this structure matters for system administration.
 
 ---
 
-RHEL 9 ships its packages across two main repositories: BaseOS and AppStream. If you have worked with RHEL 7 or earlier, this split might feel unfamiliar. It was introduced in RHEL 8 and carries forward into RHEL 9 with the same logic. Understanding the difference between these two repos is not just academic, it affects how you plan updates, manage application lifecycles, and troubleshoot package availability.
+RHEL ships its packages across two main repositories: BaseOS and AppStream. If you have worked with RHEL 7 or earlier, this split might feel unfamiliar. It was introduced in RHEL 8 and carries forward into RHEL with the same logic. Understanding the difference between these two repos is not just academic, it affects how you plan updates, manage application lifecycles, and troubleshoot package availability.
 
 ## Why Two Repositories?
 
@@ -87,7 +87,7 @@ Here is how the two repositories relate to each other:
 
 ```mermaid
 graph TD
-    A[RHEL 9 Content] --> B[BaseOS Repository]
+    A[RHEL Content] --> B[BaseOS Repository]
     A --> C[AppStream Repository]
     B --> D[Kernel]
     B --> E[Core Libraries]
@@ -125,7 +125,7 @@ dnf module info nodejs:20
 
 ### Default vs Enabled Streams
 
-When you first install RHEL 9, each module has a default stream marked with `[d]`. If you install a module package without specifying a stream, you get the default.
+When you first install RHEL, each module has a default stream marked with `[d]`. If you install a module package without specifying a stream, you get the default.
 
 ```bash
 # Show which streams are default, enabled, or disabled
@@ -139,7 +139,7 @@ This is where the BaseOS/AppStream split really matters for planning.
 
 ### BaseOS Updates
 
-BaseOS packages follow a strict maintenance model. You get bug fixes and security patches within the same minor version. A package in BaseOS will never jump major versions during the RHEL 9 lifecycle.
+BaseOS packages follow a strict maintenance model. You get bug fixes and security patches within the same minor version. A package in BaseOS will never jump major versions during the RHEL lifecycle.
 
 ### AppStream Updates
 
@@ -196,7 +196,7 @@ You should see both `rhel-9-for-x86_64-baseos-rpms` and `rhel-9-for-x86_64-appst
 
 ## Repository Configuration Files
 
-The repo definitions live in `/etc/yum.repos.d/`. On a registered RHEL 9 system:
+The repo definitions live in `/etc/yum.repos.d/`. On a registered RHEL system:
 
 ```bash
 # View the BaseOS repo configuration
@@ -218,6 +218,6 @@ Key takeaways:
 
 - BaseOS is for core OS components with a full 10-year lifecycle
 - AppStream is for applications and tools, with support for multiple versions via module streams
-- Both repos must be enabled for a functional RHEL 9 system
+- Both repos must be enabled for a functional RHEL system
 - Module streams in AppStream let you pick between different versions of software
 - Different streams can have different support lifecycles, so plan accordingly

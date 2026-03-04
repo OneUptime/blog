@@ -1,18 +1,18 @@
-# How to Configure Apache Virtual Hosts on RHEL 9
+# How to Configure Apache Virtual Hosts on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, Virtual Hosts, Web Server, Linux
 
-Description: Step-by-step instructions for configuring name-based and IP-based Apache virtual hosts on RHEL 9 to host multiple websites on a single server.
+Description: Step-by-step instructions for configuring name-based and IP-based Apache virtual hosts on RHEL to host multiple websites on a single server.
 
 ---
 
-Virtual hosts let you run multiple websites on a single Apache server. Each site gets its own configuration, document root, and log files. RHEL 9 makes this straightforward with Apache's drop-in configuration directory. This guide covers both name-based virtual hosts (most common) and IP-based virtual hosts.
+Virtual hosts let you run multiple websites on a single Apache server. Each site gets its own configuration, document root, and log files. RHEL makes this straightforward with Apache's drop-in configuration directory. This guide covers both name-based virtual hosts (most common) and IP-based virtual hosts.
 
 ## Prerequisites
 
-- A RHEL 9 system with Apache installed and running
+- A RHEL system with Apache installed and running
 - DNS records pointing your domains to the server (or local /etc/hosts entries for testing)
 - Root or sudo access
 
@@ -240,4 +240,4 @@ ls -lZ /var/www/site1.example.com/public_html/
 
 ## Summary
 
-You now have multiple websites running on a single Apache server on RHEL 9. Each virtual host has its own document root, log files, and configuration. Name-based virtual hosts are the preferred approach since they allow hosting many sites on one IP address. Remember to set proper SELinux contexts for any content outside the default document root.
+You now have multiple websites running on a single Apache server on RHEL. Each virtual host has its own document root, log files, and configuration. Name-based virtual hosts are the preferred approach since they allow hosting many sites on one IP address. Remember to set proper SELinux contexts for any content outside the default document root.

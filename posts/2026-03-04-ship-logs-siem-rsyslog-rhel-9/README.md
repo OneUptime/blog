@@ -1,20 +1,20 @@
-# How to Ship Logs to a SIEM with rsyslog on RHEL 9
+# How to Ship Logs to a SIEM with rsyslog on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, rsyslog, SIEM, Security, Logging, Linux
 
-Description: Learn how to configure rsyslog on RHEL 9 to forward system and application logs to a SIEM platform for security monitoring and threat detection.
+Description: Learn how to configure rsyslog on RHEL to forward system and application logs to a SIEM platform for security monitoring and threat detection.
 
 ---
 
-A SIEM (Security Information and Event Management) system is only as good as the data it receives. On RHEL 9, rsyslog is the primary tool for collecting and forwarding logs to your SIEM platform. Whether you use Splunk, Elastic SIEM, IBM QRadar, or another solution, rsyslog can format and ship your logs in the right format.
+A SIEM (Security Information and Event Management) system is only as good as the data it receives. On RHEL, rsyslog is the primary tool for collecting and forwarding logs to your SIEM platform. Whether you use Splunk, Elastic SIEM, IBM QRadar, or another solution, rsyslog can format and ship your logs in the right format.
 
 ## Architecture
 
 ```mermaid
 graph LR
-    A[RHEL 9 Server] --> B[rsyslog]
+    A[RHEL Server] --> B[rsyslog]
     B -->|JSON/CEF/Syslog| C[SIEM Platform]
     B --> D[Local Log Files]
     E[Auth Logs] --> B
@@ -25,7 +25,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 server with rsyslog installed
+- RHEL server with rsyslog installed
 - Network access from the server to your SIEM's log collection endpoint
 - Knowledge of your SIEM's required log format and port
 
@@ -305,4 +305,4 @@ This writes statistics about queue sizes, message rates, and errors every 60 sec
 
 ## Summary
 
-Shipping logs from RHEL 9 to a SIEM with rsyslog involves creating the right output templates (JSON for most modern SIEMs), configuring forwarding rules for the relevant log sources, and setting up disk-assisted queues for reliable delivery. Use the imfile module for log files that rsyslog does not capture natively (like audit logs), and always encrypt log traffic with TLS when sending across untrusted networks.
+Shipping logs from RHEL to a SIEM with rsyslog involves creating the right output templates (JSON for most modern SIEMs), configuring forwarding rules for the relevant log sources, and setting up disk-assisted queues for reliable delivery. Use the imfile module for log files that rsyslog does not capture natively (like audit logs), and always encrypt log traffic with TLS when sending across untrusted networks.

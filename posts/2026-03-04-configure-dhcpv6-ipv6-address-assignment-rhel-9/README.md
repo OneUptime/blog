@@ -1,14 +1,14 @@
-# How to Configure DHCPv6 for IPv6 Address Assignment on RHEL 9
+# How to Configure DHCPv6 for IPv6 Address Assignment on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DHCPv6, IPv6, DHCP, Linux
 
-Description: Set up DHCPv6 on RHEL 9 to assign IPv6 addresses and options to clients, covering both stateful and stateless modes.
+Description: Set up DHCPv6 on RHEL to assign IPv6 addresses and options to clients, covering both stateful and stateless modes.
 
 ---
 
-IPv6 address assignment works differently from IPv4. There are multiple methods: SLAAC (Stateless Address Autoconfiguration), stateless DHCPv6, and stateful DHCPv6. Each has its use case. This guide covers setting up the ISC DHCPv6 server on RHEL 9 for both stateful address assignment and stateless option delivery.
+IPv6 address assignment works differently from IPv4. There are multiple methods: SLAAC (Stateless Address Autoconfiguration), stateless DHCPv6, and stateful DHCPv6. Each has its use case. This guide covers setting up the ISC DHCPv6 server on RHEL for both stateful address assignment and stateless option delivery.
 
 ## IPv6 Address Assignment Methods
 

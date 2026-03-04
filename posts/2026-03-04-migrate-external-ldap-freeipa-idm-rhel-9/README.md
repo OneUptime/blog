@@ -1,10 +1,10 @@
-# How to Migrate from an External LDAP Server to FreeIPA (IdM) on RHEL 9
+# How to Migrate from an External LDAP Server to FreeIPA (IdM) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LDAP, FreeIPA, Migration, Linux
 
-Description: A guide to migrating user and group data from an external LDAP directory (OpenLDAP or 389 DS) to FreeIPA on RHEL 9, covering data export, import, and client cutover.
+Description: A guide to migrating user and group data from an external LDAP directory (OpenLDAP or 389 DS) to FreeIPA on RHEL, covering data export, import, and client cutover.
 
 ---
 
@@ -25,7 +25,7 @@ FreeIPA includes a built-in migration tool (`ipa migrate-ds`) that connects dire
 
 ## Prerequisites
 
-- A working FreeIPA server on RHEL 9
+- A working FreeIPA server on RHEL
 - Network connectivity between FreeIPA and the source LDAP server
 - Read access to the source LDAP directory (bind DN and password)
 - A list of LDAP schemas and custom attributes in use

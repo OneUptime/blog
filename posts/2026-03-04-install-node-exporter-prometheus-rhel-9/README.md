@@ -1,14 +1,14 @@
-# How to Install Node Exporter for Prometheus on RHEL 9
+# How to Install Node Exporter for Prometheus on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Prometheus, Node Exporter, Monitoring, Linux
 
-Description: Learn how to install and configure Prometheus Node Exporter on RHEL 9 to expose system-level metrics like CPU, memory, disk, and network for Prometheus scraping.
+Description: Learn how to install and configure Prometheus Node Exporter on RHEL to expose system-level metrics like CPU, memory, disk, and network for Prometheus scraping.
 
 ---
 
-Node Exporter is the standard way to expose Linux system metrics to Prometheus. It runs as a lightweight daemon on each server and provides a `/metrics` endpoint that Prometheus scrapes at regular intervals. On RHEL 9, you install it from a pre-built binary and run it as a systemd service.
+Node Exporter is the standard way to expose Linux system metrics to Prometheus. It runs as a lightweight daemon on each server and provides a `/metrics` endpoint that Prometheus scrapes at regular intervals. On RHEL, you install it from a pre-built binary and run it as a systemd service.
 
 ## What Node Exporter Monitors
 
@@ -300,4 +300,4 @@ curl -s http://target-server:9100/metrics | head -5
 
 ## Summary
 
-Node Exporter is the essential companion to Prometheus for monitoring RHEL 9 systems. Install the binary, run it as a systemd service, and add the target to your Prometheus configuration. It exposes hundreds of system metrics out of the box, covering CPU, memory, disk, network, and more. Enable additional collectors like systemd and textfile for deeper visibility into your infrastructure.
+Node Exporter is the essential companion to Prometheus for monitoring RHEL systems. Install the binary, run it as a systemd service, and add the target to your Prometheus configuration. It exposes hundreds of system metrics out of the box, covering CPU, memory, disk, network, and more. Enable additional collectors like systemd and textfile for deeper visibility into your infrastructure.

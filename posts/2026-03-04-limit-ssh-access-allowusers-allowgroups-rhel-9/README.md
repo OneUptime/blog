@@ -1,10 +1,10 @@
-# How to Limit SSH Access with AllowUsers and AllowGroups on RHEL 9
+# How to Limit SSH Access with AllowUsers and AllowGroups on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Access Control, Security, Linux
 
-Description: Restrict SSH access on RHEL 9 to specific users and groups using AllowUsers and AllowGroups directives for tighter access control.
+Description: Restrict SSH access on RHEL to specific users and groups using AllowUsers and AllowGroups directives for tighter access control.
 
 ---
 
@@ -12,7 +12,7 @@ Even with key-based authentication and root login disabled, any valid user on th
 
 ## AllowUsers vs AllowGroups
 
-RHEL 9's SSH server supports four directives for controlling access:
+RHEL's SSH server supports four directives for controlling access:
 
 | Directive | Effect |
 |---|---|

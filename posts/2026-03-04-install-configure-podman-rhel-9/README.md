@@ -1,16 +1,16 @@
-# How to Install and Configure Podman on RHEL 9
+# How to Install and Configure Podman on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Containers, Linux
 
-Description: A hands-on guide to installing Podman on RHEL 9, configuring registries, storage, and verifying your setup is ready for production container workloads.
+Description: A hands-on guide to installing Podman on RHEL, configuring registries, storage, and verifying your setup is ready for production container workloads.
 
 ---
 
-If you have been running containers with Docker for years and recently moved to RHEL 9, you will notice that Docker is not included by default. Red Hat has moved to Podman as its container engine, and honestly, after spending time with it, I think it is a better fit for most server workloads. No daemon, no root requirement, and full OCI compatibility.
+If you have been running containers with Docker for years and recently moved to RHEL, you will notice that Docker is not included by default. Red Hat has moved to Podman as its container engine, and honestly, after spending time with it, I think it is a better fit for most server workloads. No daemon, no root requirement, and full OCI compatibility.
 
-This guide walks through installing and configuring Podman on a fresh RHEL 9 system.
+This guide walks through installing and configuring Podman on a fresh RHEL system.
 
 ## Why Podman Over Docker?
 
@@ -31,13 +31,13 @@ graph LR
 
 ## Prerequisites
 
-- A RHEL 9 system with an active subscription
+- A RHEL system with an active subscription
 - Root or sudo access
 - Network connectivity for pulling packages
 
 ## Installing Podman
 
-Podman ships in the default RHEL 9 repositories, so installation is straightforward.
+Podman ships in the default RHEL repositories, so installation is straightforward.
 
 # Install the container-tools module which includes podman, buildah, and skopeo
 ```bash
@@ -63,7 +63,7 @@ You should see output showing Podman 4.x or later with the cgroups v2 configurat
 
 ## Configuring Container Registries
 
-Podman uses `/etc/containers/registries.conf` to know where to pull images from. By default, RHEL 9 configures `registry.redhat.io` and `registry.access.redhat.com`.
+Podman uses `/etc/containers/registries.conf` to know where to pull images from. By default, RHEL configures `registry.redhat.io` and `registry.access.redhat.com`.
 
 If you want to add Docker Hub or other registries, edit the config:
 
@@ -98,7 +98,7 @@ If you need to change the storage driver or location:
 sudo vi /etc/containers/storage.conf
 ```
 
-The default driver on RHEL 9 is `overlay`, which is the best choice for most setups:
+The default driver on RHEL is `overlay`, which is the best choice for most setups:
 
 ```toml
 [storage]
@@ -184,7 +184,7 @@ export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 
 ## Setting Resource Limits
 
-On RHEL 9, Podman uses cgroups v2 by default. You can set default resource limits in `/etc/containers/containers.conf`:
+On RHEL, Podman uses cgroups v2 by default. You can set default resource limits in `/etc/containers/containers.conf`:
 
 ```toml
 [containers]
@@ -238,7 +238,7 @@ sudo firewall-cmd --reload
 
 ## Wrapping Up
 
-Podman on RHEL 9 is production-ready out of the box. The key configuration files to remember are:
+Podman on RHEL is production-ready out of the box. The key configuration files to remember are:
 
 - `/etc/containers/registries.conf` for registry settings
 - `/etc/containers/storage.conf` for storage backend

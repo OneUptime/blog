@@ -1,14 +1,14 @@
-# How to Configure an IPsec VPN Using Libreswan on RHEL 9
+# How to Configure an IPsec VPN Using Libreswan on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IPsec, Libreswan, VPN, Linux
 
-Description: A complete guide to setting up an IPsec VPN using Libreswan on RHEL 9, covering site-to-site tunnels with pre-shared keys and certificate-based authentication.
+Description: A complete guide to setting up an IPsec VPN using Libreswan on RHEL, covering site-to-site tunnels with pre-shared keys and certificate-based authentication.
 
 ---
 
-Libreswan is the default IPsec implementation on RHEL 9. If you need to connect to enterprise VPN gateways, Cisco ASA, or other IPsec-speaking equipment, Libreswan is the tool. It's also what Red Hat recommends for IPsec deployments, and it's included in the base repositories.
+Libreswan is the default IPsec implementation on RHEL. If you need to connect to enterprise VPN gateways, Cisco ASA, or other IPsec-speaking equipment, Libreswan is the tool. It's also what Red Hat recommends for IPsec deployments, and it's included in the base repositories.
 
 ## When to Use IPsec vs WireGuard
 
@@ -20,14 +20,14 @@ IPsec with Libreswan makes sense when:
 
 ## Prerequisites
 
-- Two RHEL 9 systems (or one RHEL 9 and one remote gateway)
+- Two RHEL systems (or one RHEL and one remote gateway)
 - Root or sudo access
 - Network connectivity between the two endpoints
 - Non-overlapping LAN subnets on each side
 
 ## Installing Libreswan
 
-Libreswan is usually installed by default on RHEL 9.
+Libreswan is usually installed by default on RHEL.
 
 ```bash
 # Install Libreswan if it's not already present
@@ -302,4 +302,4 @@ watch -n 5 'sudo ipsec whack --trafficstatus'
 
 ## Wrapping Up
 
-Libreswan on RHEL 9 is the standard tool for IPsec VPNs, especially when you need to interoperate with enterprise equipment. The configuration can be more involved than WireGuard, but the protocol is well-understood and supported everywhere. Start with PSK for testing, move to certificates for production, and always verify with `ipsec status` and traffic tests after bringing the tunnel up.
+Libreswan on RHEL is the standard tool for IPsec VPNs, especially when you need to interoperate with enterprise equipment. The configuration can be more involved than WireGuard, but the protocol is well-understood and supported everywhere. Start with PSK for testing, move to certificates for production, and always verify with `ipsec status` and traffic tests after bringing the tunnel up.

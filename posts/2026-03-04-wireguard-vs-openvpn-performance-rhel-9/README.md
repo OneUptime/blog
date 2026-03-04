@@ -1,18 +1,18 @@
-# How to Compare WireGuard vs OpenVPN Performance on RHEL 9
+# How to Compare WireGuard vs OpenVPN Performance on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, WireGuard, OpenVPN, Performance, VPN, Linux
 
-Description: A practical comparison of WireGuard and OpenVPN performance on RHEL 9, including throughput benchmarks, latency testing, CPU usage analysis, and guidance on choosing the right VPN for your use case.
+Description: A practical comparison of WireGuard and OpenVPN performance on RHEL, including throughput benchmarks, latency testing, CPU usage analysis, and guidance on choosing the right VPN for your use case.
 
 ---
 
-The "WireGuard vs OpenVPN" debate comes up constantly, and most of the comparisons online are either outdated or synthetic benchmarks that don't reflect real workloads. Instead of theoretical arguments, let's set up both on RHEL 9 and measure them. Then we'll talk about when each makes more sense.
+The "WireGuard vs OpenVPN" debate comes up constantly, and most of the comparisons online are either outdated or synthetic benchmarks that don't reflect real workloads. Instead of theoretical arguments, let's set up both on RHEL and measure them. Then we'll talk about when each makes more sense.
 
 ## Test Setup
 
-For a fair comparison, you need identical conditions. Two RHEL 9 machines connected over the same network, with both VPNs configured using their recommended defaults.
+For a fair comparison, you need identical conditions. Two RHEL machines connected over the same network, with both VPNs configured using their recommended defaults.
 
 ```bash
 # Install both VPN solutions
@@ -218,4 +218,4 @@ WireGuard typically connects in under a second. OpenVPN can take 5-15 seconds.
 
 ## Wrapping Up
 
-WireGuard is faster than OpenVPN in almost every measurable metric on RHEL 9. That's not surprising given its kernel-space design and modern protocol. But speed isn't the only consideration. OpenVPN's flexibility with authentication, TCP transport, and per-client configuration makes it the better choice in some environments. Run your own benchmarks on your hardware, and choose based on what matters most for your specific use case.
+WireGuard is faster than OpenVPN in almost every measurable metric on RHEL. That's not surprising given its kernel-space design and modern protocol. But speed isn't the only consideration. OpenVPN's flexibility with authentication, TCP transport, and per-client configuration makes it the better choice in some environments. Run your own benchmarks on your hardware, and choose based on what matters most for your specific use case.

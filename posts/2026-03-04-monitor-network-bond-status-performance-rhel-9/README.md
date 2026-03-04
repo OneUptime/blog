@@ -1,10 +1,10 @@
-# How to Monitor Network Bond Status and Performance on RHEL 9
+# How to Monitor Network Bond Status and Performance on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Bonding, Monitoring, Performance, Linux
 
-Description: Practical techniques for monitoring bond health, tracking slave interface performance, and setting up alerts for bond degradation on RHEL 9 servers.
+Description: Practical techniques for monitoring bond health, tracking slave interface performance, and setting up alerts for bond degradation on RHEL servers.
 
 ---
 

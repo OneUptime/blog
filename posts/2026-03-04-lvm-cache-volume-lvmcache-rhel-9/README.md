@@ -1,10 +1,10 @@
-# How to Create an LVM Cache Volume with lvmcache on RHEL 9
+# How to Create an LVM Cache Volume with lvmcache on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, lvmcache, Caching, Linux
 
-Description: A step-by-step guide to creating LVM cache volumes using lvmcache on RHEL 9, combining fast and slow storage transparently.
+Description: A step-by-step guide to creating LVM cache volumes using lvmcache on RHEL, combining fast and slow storage transparently.
 
 ---
 
@@ -79,7 +79,7 @@ lvconvert --type cache \
 
 ## Method 3: Using cachevol (Simpler Alternative)
 
-RHEL 9 supports the `cachevol` method, which skips the pool concept:
+RHEL supports the `cachevol` method, which skips the pool concept:
 
 ```bash
 # Create a cache volume on the SSD
@@ -215,4 +215,4 @@ lvs -o cache_dirty_blocks vg_data/lv_data
 
 ## Summary
 
-LVM cache on RHEL 9 provides transparent SSD caching for HDD volumes through familiar LVM commands. Use the single-command method for simplicity, or the step-by-step approach for more control. Start with writethrough mode for safety, use the smq policy, and monitor hit ratios to verify the cache is actually helping your workload. The `cachevol` method is the simplest option for single-volume caching scenarios.
+LVM cache on RHEL provides transparent SSD caching for HDD volumes through familiar LVM commands. Use the single-command method for simplicity, or the step-by-step approach for more control. Start with writethrough mode for safety, use the smq policy, and monitor hit ratios to verify the cache is actually helping your workload. The `cachevol` method is the simplest option for single-volume caching scenarios.

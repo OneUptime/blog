@@ -1,10 +1,10 @@
-# How to Configure Apache mod_rewrite Rules on RHEL 9
+# How to Configure Apache mod_rewrite Rules on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, mod_rewrite, URL Rewriting, Linux
 
-Description: A hands-on guide to writing mod_rewrite rules for URL rewriting, redirects, and clean URLs on Apache httpd in RHEL 9.
+Description: A hands-on guide to writing mod_rewrite rules for URL rewriting, redirects, and clean URLs on Apache httpd in RHEL.
 
 ---
 
@@ -14,13 +14,13 @@ mod_rewrite is Apache's Swiss army knife for URL manipulation. It lets you redir
 
 ## Prerequisites
 
-- RHEL 9 with Apache httpd installed
+- RHEL with Apache httpd installed
 - Root or sudo access
 - Basic familiarity with regular expressions
 
 ## Step 1 - Verify mod_rewrite Is Loaded
 
-On RHEL 9, mod_rewrite is included with httpd and loaded by default:
+On RHEL, mod_rewrite is included with httpd and loaded by default:
 
 ```bash
 # Check if mod_rewrite is loaded

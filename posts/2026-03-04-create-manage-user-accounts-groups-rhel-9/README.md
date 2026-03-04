@@ -1,14 +1,14 @@
-# How to Create and Manage User Accounts and Groups on RHEL 9
+# How to Create and Manage User Accounts and Groups on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, User Management, Groups, Linux, System Administration
 
-Description: A complete guide to creating, modifying, and managing user accounts and groups on RHEL 9, covering the essential commands and the configuration files that drive it all.
+Description: A complete guide to creating, modifying, and managing user accounts and groups on RHEL, covering the essential commands and the configuration files that drive it all.
 
 ---
 
-User and group management is one of those fundamental sysadmin tasks that you do constantly but rarely think about deeply. Get it right, and access control just works. Get it wrong, and you'll spend hours debugging permission issues or, worse, dealing with a security incident. This guide covers the commands and files you need to manage users and groups properly on RHEL 9.
+User and group management is one of those fundamental sysadmin tasks that you do constantly but rarely think about deeply. Get it right, and access control just works. Get it wrong, and you'll spend hours debugging permission issues or, worse, dealing with a security incident. This guide covers the commands and files you need to manage users and groups properly on RHEL.
 
 ## The Key Files
 
@@ -312,4 +312,4 @@ lastlog | grep "Never logged in"
 
 ## Wrapping Up
 
-User and group management on RHEL 9 is straightforward once you know the commands and understand the underlying files. The most important habit is consistency: use groups for access control, set password policies that match your organization's requirements, and clean up accounts when people leave. Small disciplines like these prevent big security problems later.
+User and group management on RHEL is straightforward once you know the commands and understand the underlying files. The most important habit is consistency: use groups for access control, set password policies that match your organization's requirements, and clean up accounts when people leave. Small disciplines like these prevent big security problems later.

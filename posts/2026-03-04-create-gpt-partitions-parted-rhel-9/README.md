@@ -1,22 +1,22 @@
-# How to Create GPT Partitions with parted on RHEL 9
+# How to Create GPT Partitions with parted on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, parted, GPT, Partitioning, Linux
 
-Description: Learn how to use parted to create GPT partition tables and partitions on RHEL 9, supporting large disks and modern hardware requirements.
+Description: Learn how to use parted to create GPT partition tables and partitions on RHEL, supporting large disks and modern hardware requirements.
 
 ---
 
 ## Why GPT and parted?
 
-GPT (GUID Partition Table) is the modern replacement for MBR. It supports disks larger than 2 TB, allows up to 128 partitions by default, and stores a backup copy of the partition table at the end of the disk for added safety. On RHEL 9 with UEFI boot, GPT is required.
+GPT (GUID Partition Table) is the modern replacement for MBR. It supports disks larger than 2 TB, allows up to 128 partitions by default, and stores a backup copy of the partition table at the end of the disk for added safety. On RHEL with UEFI boot, GPT is required.
 
 parted is the standard tool for managing GPT partitions on RHEL. Unlike fdisk's interactive-only approach, parted can be used both interactively and with one-liner commands, making it ideal for scripting.
 
 ## Prerequisites
 
-- RHEL 9 with root access
+- RHEL with root access
 - An unused disk or a disk you are ready to repartition
 
 ## Step 1 - Identify the Disk
@@ -182,4 +182,4 @@ sudo parted /dev/sdb
 
 ## Wrap-Up
 
-parted with GPT is the recommended approach for disk partitioning on RHEL 9, especially for large disks and UEFI systems. The command-line syntax is clean, it supports both interactive and scripted usage, and GPT removes the limitations of MBR. Always use `print` to verify your work before moving on to filesystem creation and mounting.
+parted with GPT is the recommended approach for disk partitioning on RHEL, especially for large disks and UEFI systems. The command-line syntax is clean, it supports both interactive and scripted usage, and GPT removes the limitations of MBR. Always use `print` to verify your work before moving on to filesystem creation and mounting.

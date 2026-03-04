@@ -1,10 +1,10 @@
-# How to Monitor Cache Hit Ratios and Performance on RHEL 9
+# How to Monitor Cache Hit Ratios and Performance on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cache, Monitoring, Performance, Linux
 
-Description: Learn how to monitor dm-cache and LVM cache hit ratios on RHEL 9 to verify your caching layer is actually improving performance.
+Description: Learn how to monitor dm-cache and LVM cache hit ratios on RHEL to verify your caching layer is actually improving performance.
 
 ---
 
@@ -230,4 +230,4 @@ done
 
 ## Summary
 
-Monitoring cache hit ratios on RHEL 9 is essential to verify that your caching investment pays off. Use `lvs` and `dmsetup status` to check hit ratios, dirty blocks, and utilization. A read hit ratio above 80% indicates a well-configured cache. Low hit ratios mean the cache is too small, the workload is not cacheable, or the cache is still warming up. Log metrics over time to spot trends and set up alerts for sustained poor performance.
+Monitoring cache hit ratios on RHEL is essential to verify that your caching investment pays off. Use `lvs` and `dmsetup status` to check hit ratios, dirty blocks, and utilization. A read hit ratio above 80% indicates a well-configured cache. Low hit ratios mean the cache is too small, the workload is not cacheable, or the cache is still warming up. Log metrics over time to spot trends and set up alerts for sustained poor performance.

@@ -1,10 +1,10 @@
-# How to Troubleshoot SSSD and Active Directory Login Failures on RHEL 9
+# How to Troubleshoot SSSD and Active Directory Login Failures on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSSD, Active Directory, Troubleshooting, Linux
 
-Description: A hands-on troubleshooting guide for diagnosing and fixing SSSD and Active Directory login failures on RHEL 9, covering common issues with DNS, Kerberos, GPO, caching, and connectivity.
+Description: A hands-on troubleshooting guide for diagnosing and fixing SSSD and Active Directory login failures on RHEL, covering common issues with DNS, Kerberos, GPO, caching, and connectivity.
 
 ---
 
@@ -204,7 +204,7 @@ sudo realm permit -g "Linux Users@example.com"
 
 ### Check GPO Access Control
 
-SSSD enforces AD Group Policy Objects (GPO) for logon rights by default on RHEL 9.
+SSSD enforces AD Group Policy Objects (GPO) for logon rights by default on RHEL.
 
 ```bash
 # Check if GPO enforcement is blocking logins

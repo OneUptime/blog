@@ -1,14 +1,14 @@
-# How to Write nftables Rules from Scratch on RHEL 9
+# How to Write nftables Rules from Scratch on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nftables, Firewall, Security, Linux
 
-Description: A hands-on guide to writing nftables firewall rules from scratch on RHEL 9, covering tables, chains, rules, and common filtering patterns.
+Description: A hands-on guide to writing nftables firewall rules from scratch on RHEL, covering tables, chains, rules, and common filtering patterns.
 
 ---
 
-If you're starting fresh with nftables on RHEL 9 rather than migrating from iptables, you're in a good position. The nftables syntax is cleaner, more consistent, and you don't have to unlearn old habits. This guide walks through building a complete firewall ruleset from zero.
+If you're starting fresh with nftables on RHEL rather than migrating from iptables, you're in a good position. The nftables syntax is cleaner, more consistent, and you don't have to unlearn old habits. This guide walks through building a complete firewall ruleset from zero.
 
 ## Understanding the nftables Hierarchy
 

@@ -1,10 +1,10 @@
-# How to Verify FIPS Mode Is Active on RHEL 9
+# How to Verify FIPS Mode Is Active on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FIPS, Verification, Security, Linux
 
-Description: Multiple methods to verify that FIPS mode is properly enabled and functioning on RHEL 9, covering kernel, OpenSSL, SSH, and application-level checks.
+Description: Multiple methods to verify that FIPS mode is properly enabled and functioning on RHEL, covering kernel, OpenSSL, SSH, and application-level checks.
 
 ---
 

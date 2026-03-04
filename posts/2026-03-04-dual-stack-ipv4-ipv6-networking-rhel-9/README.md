@@ -1,14 +1,14 @@
-# How to Set Up Dual-Stack IPv4/IPv6 Networking on RHEL 9
+# How to Set Up Dual-Stack IPv4/IPv6 Networking on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Dual-Stack, IPv4, IPv6, Linux
 
-Description: Learn how to configure dual-stack networking on RHEL 9 so your system communicates over both IPv4 and IPv6 simultaneously, with practical examples using nmcli and verification steps.
+Description: Learn how to configure dual-stack networking on RHEL so your system communicates over both IPv4 and IPv6 simultaneously, with practical examples using nmcli and verification steps.
 
 ---
 
-Running both IPv4 and IPv6 on the same interfaces is not some future-proofing exercise anymore. It is the standard approach for any production environment that needs to talk to the modern internet. RHEL 9 handles dual-stack networking well out of the box, but getting the configuration right and understanding how the two stacks interact takes a bit of deliberate setup.
+Running both IPv4 and IPv6 on the same interfaces is not some future-proofing exercise anymore. It is the standard approach for any production environment that needs to talk to the modern internet. RHEL handles dual-stack networking well out of the box, but getting the configuration right and understanding how the two stacks interact takes a bit of deliberate setup.
 
 ## Why Dual-Stack Matters
 
@@ -16,10 +16,10 @@ Most organizations cannot do a hard cutover to IPv6-only. You have legacy servic
 
 ## Prerequisites
 
-- RHEL 9 system with root or sudo access
+- RHEL system with root or sudo access
 - Network infrastructure that supports both IPv4 and IPv6
 - Valid IPv4 and IPv6 address allocations
-- NetworkManager running (default on RHEL 9)
+- NetworkManager running (default on RHEL)
 
 ## Checking Current Network State
 
@@ -91,7 +91,7 @@ sudo nmcli connection up "ens192"
 
 ## Understanding Address Selection
 
-When your system has both IPv4 and IPv6 addresses, how does it decide which to use for outgoing connections? RHEL 9 follows RFC 6724 for address selection. You can see the current policy table:
+When your system has both IPv4 and IPv6 addresses, how does it decide which to use for outgoing connections? RHEL follows RFC 6724 for address selection. You can see the current policy table:
 
 ```bash
 # View the address selection policy
@@ -148,7 +148,7 @@ Here is how a typical dual-stack setup looks in a network:
 
 ```mermaid
 graph TD
-    A[RHEL 9 Server] -->|IPv4: 192.168.1.50| B[Default Gateway<br>192.168.1.1]
+    A[RHEL Server] -->|IPv4: 192.168.1.50| B[Default Gateway<br>192.168.1.1]
     A -->|IPv6: 2001:db8:1::50| C[Default Gateway<br>2001:db8:1::1]
     B --> D[Internet - IPv4]
     C --> E[Internet - IPv6]
@@ -158,7 +158,7 @@ graph TD
 
 ## Firewall Configuration for Dual-Stack
 
-Remember that firewalld on RHEL 9 handles both IPv4 and IPv6 by default, but you should verify your rules cover both.
+Remember that firewalld on RHEL handles both IPv4 and IPv6 by default, but you should verify your rules cover both.
 
 ```bash
 # List all rules (covers both IPv4 and IPv6)
@@ -220,4 +220,4 @@ Modern applications use Happy Eyeballs, which tries both IPv6 and IPv4 connectio
 
 ## Wrapping Up
 
-Dual-stack on RHEL 9 is the pragmatic approach to IPv6 adoption. Set both addresses, verify both paths, and make sure your firewall and DNS cover both protocols. The key is testing each stack independently. Don't assume that because IPv4 works, IPv6 is fine too, and don't assume that because you configured it, traffic is actually flowing over both paths.
+Dual-stack on RHEL is the pragmatic approach to IPv6 adoption. Set both addresses, verify both paths, and make sure your firewall and DNS cover both protocols. The key is testing each stack independently. Don't assume that because IPv4 works, IPv6 is fine too, and don't assume that because you configured it, traffic is actually flowing over both paths.

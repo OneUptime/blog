@@ -1,14 +1,14 @@
-# How to Use the ss Command to Monitor Socket Connections on RHEL 9
+# How to Use the ss Command to Monitor Socket Connections on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ss, Sockets, Networking, Linux
 
-Description: A comprehensive guide to using the ss command on RHEL 9 for monitoring TCP/UDP sockets, investigating connection states, finding listening services, and diagnosing networking issues.
+Description: A comprehensive guide to using the ss command on RHEL for monitoring TCP/UDP sockets, investigating connection states, finding listening services, and diagnosing networking issues.
 
 ---
 
-The `ss` command replaced `netstat` as the standard socket investigation tool on modern Linux. It's faster, more feature-rich, and reads directly from kernel data structures. If you're still using `netstat` out of habit, it's time to switch. On RHEL 9, `netstat` isn't even installed by default.
+The `ss` command replaced `netstat` as the standard socket investigation tool on modern Linux. It's faster, more feature-rich, and reads directly from kernel data structures. If you're still using `netstat` out of habit, it's time to switch. On RHEL, `netstat` isn't even installed by default.
 
 ## Basic Usage
 
@@ -231,4 +231,4 @@ watch -n 5 'ss -t state established | wc -l'
 
 ## Wrapping Up
 
-The `ss` command is essential for any sysadmin working on RHEL 9. It's faster than `netstat`, has better filtering, and gives you more detail. The three combinations you'll use most are `ss -tlnp` (what's listening), `ss -tnp` (what's connected), and `ss -s` (overall statistics). Learn the state filters and address filters, and you'll be able to investigate any socket-related issue quickly.
+The `ss` command is essential for any sysadmin working on RHEL. It's faster than `netstat`, has better filtering, and gives you more detail. The three combinations you'll use most are `ss -tlnp` (what's listening), `ss -tnp` (what's connected), and `ss -s` (overall statistics). Learn the state filters and address filters, and you'll be able to investigate any socket-related issue quickly.

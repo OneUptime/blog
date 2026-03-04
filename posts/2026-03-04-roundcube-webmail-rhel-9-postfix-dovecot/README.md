@@ -1,10 +1,10 @@
-# How to Set Up Roundcube Webmail on RHEL 9 with Postfix and Dovecot
+# How to Set Up Roundcube Webmail on RHEL with Postfix and Dovecot
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Roundcube, Webmail, Postfix, Dovecot, Linux
 
-Description: Install and configure Roundcube webmail on RHEL 9 to give users browser-based access to their email served by Postfix and Dovecot.
+Description: Install and configure Roundcube webmail on RHEL to give users browser-based access to their email served by Postfix and Dovecot.
 
 ---
 
@@ -25,7 +25,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 with Postfix and Dovecot configured and running
+- RHEL with Postfix and Dovecot configured and running
 - Apache or Nginx web server
 - PHP 8.x
 - MariaDB or PostgreSQL for Roundcube's database

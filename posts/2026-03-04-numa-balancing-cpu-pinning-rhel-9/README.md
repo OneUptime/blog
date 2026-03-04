@@ -1,10 +1,10 @@
-# How to Configure NUMA Balancing and CPU Pinning on RHEL 9
+# How to Configure NUMA Balancing and CPU Pinning on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NUMA, CPU Pinning, Performance, Linux
 
-Description: A practical guide to understanding NUMA topology, configuring automatic NUMA balancing, and pinning processes to specific CPUs and memory nodes on RHEL 9 for optimized performance.
+Description: A practical guide to understanding NUMA topology, configuring automatic NUMA balancing, and pinning processes to specific CPUs and memory nodes on RHEL for optimized performance.
 
 ---
 
@@ -56,7 +56,7 @@ sudo dnf install numactl -y
 
 ## Automatic NUMA Balancing
 
-RHEL 9 enables automatic NUMA balancing by default. The kernel periodically scans process memory, detects pages that are being accessed from a remote node, and migrates them closer to the CPU that uses them.
+RHEL enables automatic NUMA balancing by default. The kernel periodically scans process memory, detects pages that are being accessed from a remote node, and migrates them closer to the CPU that uses them.
 
 ```bash
 # Check if NUMA balancing is enabled (1 = on, 0 = off)
@@ -201,7 +201,7 @@ EOF
 sudo sysctl -p /etc/sysctl.d/90-numa.conf
 ```
 
-The `vm.zone_reclaim_mode` parameter controls whether the kernel will reclaim memory from the local node before allocating from remote nodes. Setting it to 0 (the default on RHEL 9) is usually best because it avoids premature eviction of cached data.
+The `vm.zone_reclaim_mode` parameter controls whether the kernel will reclaim memory from the local node before allocating from remote nodes. Setting it to 0 (the default on RHEL) is usually best because it avoids premature eviction of cached data.
 
 ## Practical Example: PostgreSQL NUMA Optimization
 

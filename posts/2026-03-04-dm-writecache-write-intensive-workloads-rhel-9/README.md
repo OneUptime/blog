@@ -1,10 +1,10 @@
-# How to Configure dm-writecache for Write-Intensive Workloads on RHEL 9
+# How to Configure dm-writecache for Write-Intensive Workloads on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, dm-writecache, Caching, Linux
 
-Description: Learn how to set up dm-writecache on RHEL 9 to accelerate write-intensive workloads by directing writes to fast SSD or persistent memory devices.
+Description: Learn how to set up dm-writecache on RHEL to accelerate write-intensive workloads by directing writes to fast SSD or persistent memory devices.
 
 ---
 
@@ -206,4 +206,4 @@ smartctl -a /dev/nvme0n1 | grep -i "wear\|written\|life"
 
 ## Summary
 
-dm-writecache on RHEL 9 is the right choice when write latency is your primary bottleneck. It is simpler than dm-cache, has lower overhead, and works especially well with NVMe devices. Size the cache to absorb your write bursts, use enterprise SSDs with power loss protection, and monitor SSD wear over time. For mixed read/write workloads, dm-cache is usually the better choice.
+dm-writecache on RHEL is the right choice when write latency is your primary bottleneck. It is simpler than dm-cache, has lower overhead, and works especially well with NVMe devices. Size the cache to absorb your write bursts, use enterprise SSDs with power loss protection, and monitor SSD wear over time. For mixed read/write workloads, dm-cache is usually the better choice.

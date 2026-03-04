@@ -1,14 +1,14 @@
-# How to Migrate from Docker to Podman on RHEL 9
+# How to Migrate from Docker to Podman on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Docker, Podman, Migration, Linux
 
-Description: A practical migration guide for moving from Docker to Podman on RHEL 9, covering command equivalents, Docker Compose migration, systemd integration, and common pitfalls.
+Description: A practical migration guide for moving from Docker to Podman on RHEL, covering command equivalents, Docker Compose migration, systemd integration, and common pitfalls.
 
 ---
 
-Docker is not shipped with RHEL 9. Red Hat has gone all-in on Podman, and if you are coming from a Docker-based workflow, the migration is less painful than you might think. Most Docker commands work identically with Podman. The real differences are architectural, and understanding them will make the transition smooth.
+Docker is not shipped with RHEL. Red Hat has gone all-in on Podman, and if you are coming from a Docker-based workflow, the migration is less painful than you might think. Most Docker commands work identically with Podman. The real differences are architectural, and understanding them will make the transition smooth.
 
 ## Key Differences Between Docker and Podman
 
@@ -37,7 +37,7 @@ graph TB
 
 ## Step 1: Remove Docker (If Installed)
 
-If you somehow have Docker installed on RHEL 9:
+If you somehow have Docker installed on RHEL:
 
 # Stop and disable Docker
 ```bash
@@ -93,7 +93,7 @@ docker save my-app:latest -o my-app.tar
 docker save my-db:latest -o my-db.tar
 ```
 
-# On the new RHEL 9 system, load them into Podman
+# On the new RHEL system, load them into Podman
 ```bash
 podman load -i my-app.tar
 podman load -i my-db.tar
@@ -119,7 +119,7 @@ docker volume inspect my-data --format '{{.Mountpoint}}'
 sudo tar czf volume-backup.tar.gz -C /var/lib/docker/volumes/my-data/_data .
 ```
 
-# On the RHEL 9 system, create a Podman volume and restore
+# On the RHEL system, create a Podman volume and restore
 ```bash
 podman volume create my-data
 sudo tar xzf volume-backup.tar.gz -C $(podman volume inspect my-data --format '{{.Mountpoint}}')
@@ -284,4 +284,4 @@ podman run --rm docker.io/library/alpine ping -c 1 google.com
 
 ## Summary
 
-Migrating from Docker to Podman on RHEL 9 is mostly about replacing the `docker` command with `podman` and switching from Docker's daemon-based service management to systemd Quadlet files. The container images, registries, and day-to-day commands are nearly identical. Take time to understand rootless containers and SELinux integration, as those are the areas where most migration issues show up.
+Migrating from Docker to Podman on RHEL is mostly about replacing the `docker` command with `podman` and switching from Docker's daemon-based service management to systemd Quadlet files. The container images, registries, and day-to-day commands are nearly identical. Take time to understand rootless containers and SELinux integration, as those are the areas where most migration issues show up.

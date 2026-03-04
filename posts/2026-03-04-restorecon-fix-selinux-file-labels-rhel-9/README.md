@@ -1,10 +1,10 @@
-# How to Use restorecon to Fix SELinux File Labels on RHEL 9
+# How to Use restorecon to Fix SELinux File Labels on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, restorecon, Security, Linux
 
-Description: Master the restorecon command on RHEL 9 to fix incorrect SELinux file labels and restore them to their policy-defined defaults.
+Description: Master the restorecon command on RHEL to fix incorrect SELinux file labels and restore them to their policy-defined defaults.
 
 ---
 

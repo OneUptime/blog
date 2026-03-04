@@ -1,10 +1,10 @@
-# How to Test Network Bond Failover Before Deploying to Production on RHEL 9
+# How to Test Network Bond Failover Before Deploying to Production on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Bonding, Failover Testing, Linux
 
-Description: A testing playbook for validating network bond failover behavior on RHEL 9, covering simulated failures, measurement techniques, and acceptance criteria.
+Description: A testing playbook for validating network bond failover behavior on RHEL, covering simulated failures, measurement techniques, and acceptance criteria.
 
 ---
 

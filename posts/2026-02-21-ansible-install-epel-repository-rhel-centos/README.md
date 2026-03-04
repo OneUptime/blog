@@ -93,7 +93,7 @@ Here is a complete Ansible role that works across RHEL 7, 8, and 9, as well as C
     - ansible_distribution == "RedHat"
 
 # On RHEL 8+, also enable CodeReady Builder / CRB (needed for some EPEL packages)
-- name: Enable CRB repository (RHEL 9 / CentOS Stream 9)
+- name: Enable CRB repository (RHEL / CentOS Stream 9)
   ansible.builtin.command:
     cmd: dnf config-manager --set-enabled crb
   when:
@@ -101,7 +101,7 @@ Here is a complete Ansible role that works across RHEL 7, 8, and 9, as well as C
     - ansible_distribution in ['CentOS', 'Rocky', 'AlmaLinux']
   changed_when: true
 
-- name: Enable CodeReady Builder (RHEL 9)
+- name: Enable CodeReady Builder (RHEL)
   ansible.builtin.command:
     cmd: subscription-manager repos --enable codeready-builder-for-rhel-9-x86_64-rpms
   when:
@@ -303,4 +303,4 @@ If you need to remove EPEL from a system (rare, but it happens).
 
 ## Wrapping Up
 
-EPEL is practically a requirement for any RHEL-based server that needs common utilities and tools. With the role and playbook patterns shown here, you can deploy EPEL consistently across your fleet, handle the differences between RHEL and CentOS, manage GPG keys properly, and customize the repository settings to fit your environment. The key takeaway is to always import the GPG key first, enable CRB/CodeReady Builder for EPEL dependencies on RHEL 9, and use repository priorities and exclusions to prevent package conflicts with other third-party repos.
+EPEL is practically a requirement for any RHEL-based server that needs common utilities and tools. With the role and playbook patterns shown here, you can deploy EPEL consistently across your fleet, handle the differences between RHEL and CentOS, manage GPG keys properly, and customize the repository settings to fit your environment. The key takeaway is to always import the GPG key first, enable CRB/CodeReady Builder for EPEL dependencies on RHEL, and use repository priorities and exclusions to prevent package conflicts with other third-party repos.

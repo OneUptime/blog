@@ -1,14 +1,14 @@
-# How to Configure faillock.conf for Account Lockout Policies on RHEL 9
+# How to Configure faillock.conf for Account Lockout Policies on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, faillock, Account Lockout, Security, Linux
 
-Description: A detailed guide to configuring /etc/security/faillock.conf on RHEL 9 for precise account lockout behavior, including all available options and compliance examples.
+Description: A detailed guide to configuring /etc/security/faillock.conf on RHEL for precise account lockout behavior, including all available options and compliance examples.
 
 ---
 
-The `/etc/security/faillock.conf` file is the central place to configure account lockout behavior on RHEL 9. Rather than scattering options across PAM files, RHEL 9 consolidates faillock settings into this single configuration file. This guide covers every option and shows how to tune lockout policies for different environments.
+The `/etc/security/faillock.conf` file is the central place to configure account lockout behavior on RHEL. Rather than scattering options across PAM files, RHEL consolidates faillock settings into this single configuration file. This guide covers every option and shows how to tune lockout policies for different environments.
 
 ## The faillock.conf File
 
@@ -313,4 +313,4 @@ admin_group = wheel
 
 ## Wrapping Up
 
-faillock.conf is the single source of truth for account lockout policy on RHEL 9. Configure it once, and it applies across all PAM services that use the system-auth and password-auth stacks. The main decisions are the lockout threshold, timeout period, and whether to lock root. Test your settings, enable audit logging, and make sure your operations team knows how to unlock accounts when users inevitably call in.
+faillock.conf is the single source of truth for account lockout policy on RHEL. Configure it once, and it applies across all PAM services that use the system-auth and password-auth stacks. The main decisions are the lockout threshold, timeout period, and whether to lock root. Test your settings, enable audit logging, and make sure your operations team knows how to unlock accounts when users inevitably call in.

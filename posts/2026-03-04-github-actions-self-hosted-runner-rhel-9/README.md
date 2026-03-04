@@ -1,14 +1,14 @@
-# How to Set Up GitHub Actions Self-Hosted Runner on RHEL 9
+# How to Set Up GitHub Actions Self-Hosted Runner on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GitHub Actions, Runner, CI/CD, Self-Hosted, Linux
 
-Description: Install and configure a GitHub Actions self-hosted runner on RHEL 9 to run workflow jobs on your own infrastructure.
+Description: Install and configure a GitHub Actions self-hosted runner on RHEL to run workflow jobs on your own infrastructure.
 
 ---
 
-GitHub Actions self-hosted runners let you execute workflow jobs on your own RHEL 9 machines. This gives you full control over the build environment, access to internal resources, and avoids the usage limits of GitHub-hosted runners.
+GitHub Actions self-hosted runners let you execute workflow jobs on your own RHEL machines. This gives you full control over the build environment, access to internal resources, and avoids the usage limits of GitHub-hosted runners.
 
 ## Prerequisites
 
@@ -97,7 +97,7 @@ sudo journalctl -u actions.runner.* -f
 
 ```yaml
 # .github/workflows/build.yml
-name: Build on RHEL 9
+name: Build on RHEL
 
 on:
   push:
@@ -181,4 +181,4 @@ sudo ./svc.sh uninstall
 sudo su - github-runner -c "cd actions-runner && ./config.sh remove --token YOUR_REMOVE_TOKEN"
 ```
 
-Self-hosted GitHub Actions runners on RHEL 9 give you the flexibility to run CI/CD jobs on your own infrastructure with full control over the environment and network access.
+Self-hosted GitHub Actions runners on RHEL give you the flexibility to run CI/CD jobs on your own infrastructure with full control over the environment and network access.

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kickstart, PXE, Network Server, DHCP, Linux
 
-Description: Learn how to set up a complete PXE boot environment on RHEL 9 to serve Kickstart files over the network, covering DHCP, TFTP, HTTP configuration, and PXE menu setup.
+Description: Learn how to set up a complete PXE boot environment on RHEL to serve Kickstart files over the network, covering DHCP, TFTP, HTTP configuration, and PXE menu setup.
 
 ---
 
@@ -37,10 +37,10 @@ You need three services working together: DHCP to direct the client, TFTP to ser
 
 ## Prerequisites
 
-You need a RHEL 9 server that will act as your deployment server. This machine needs:
+You need a RHEL server that will act as your deployment server. This machine needs:
 
 - A static IP address
-- Access to the RHEL 9 ISO or repository
+- Access to the RHEL ISO or repository
 - Network connectivity to the subnet where you are deploying machines
 
 ```bash
@@ -56,13 +56,13 @@ sudo dnf install -y \
 
 ## Setting Up the HTTP Server
 
-First, let's make the RHEL 9 installation files available over HTTP.
+First, let's make the RHEL installation files available over HTTP.
 
 ```bash
-# Create a directory for the RHEL 9 repo
+# Create a directory for the RHEL repo
 sudo mkdir -p /var/www/html/rhel9
 
-# Mount the RHEL 9 ISO
+# Mount the RHEL ISO
 sudo mount -o loop /path/to/rhel-9.4-x86_64-dvd.iso /mnt
 
 # Copy the contents to the web directory
@@ -123,7 +123,7 @@ sudo cp /tftpboot/vesamenu.c32 /var/lib/tftpboot/
 # Create the PXE config directory
 sudo mkdir -p /var/lib/tftpboot/pxelinux.cfg
 
-# Copy the kernel and initrd from the RHEL 9 repo
+# Copy the kernel and initrd from the RHEL repo
 sudo mkdir -p /var/lib/tftpboot/rhel9
 sudo cp /var/www/html/rhel9/images/pxeboot/vmlinuz /var/lib/tftpboot/rhel9/
 sudo cp /var/www/html/rhel9/images/pxeboot/initrd.img /var/lib/tftpboot/rhel9/
@@ -150,15 +150,15 @@ sudo tee /var/lib/tftpboot/pxelinux.cfg/default << 'EOF'
 DEFAULT menu.c32
 PROMPT 0
 TIMEOUT 300
-MENU TITLE RHEL 9 PXE Boot Menu
+MENU TITLE RHEL PXE Boot Menu
 
 LABEL rhel9-kickstart
-  MENU LABEL Install RHEL 9 (Kickstart - Automated)
+  MENU LABEL Install RHEL (Kickstart - Automated)
   KERNEL rhel9/vmlinuz
   APPEND initrd=rhel9/initrd.img inst.repo=http://192.168.1.50/rhel9/ inst.ks=http://192.168.1.50/kickstart/kickstart.cfg ip=dhcp
 
 LABEL rhel9-manual
-  MENU LABEL Install RHEL 9 (Manual)
+  MENU LABEL Install RHEL (Manual)
   KERNEL rhel9/vmlinuz
   APPEND initrd=rhel9/initrd.img inst.repo=http://192.168.1.50/rhel9/ ip=dhcp
 
@@ -178,12 +178,12 @@ sudo tee /var/lib/tftpboot/uefi/grub.cfg << 'EOF'
 set timeout=30
 set default=0
 
-menuentry 'Install RHEL 9 (Kickstart - Automated)' {
+menuentry 'Install RHEL (Kickstart - Automated)' {
   linuxefi rhel9/vmlinuz inst.repo=http://192.168.1.50/rhel9/ inst.ks=http://192.168.1.50/kickstart/kickstart.cfg ip=dhcp
   initrdefi rhel9/initrd.img
 }
 
-menuentry 'Install RHEL 9 (Manual)' {
+menuentry 'Install RHEL (Manual)' {
   linuxefi rhel9/vmlinuz inst.repo=http://192.168.1.50/rhel9/ ip=dhcp
   initrdefi rhel9/initrd.img
 }
@@ -311,7 +311,7 @@ After all the setup, your file layout should look like this:
 
 /var/www/html/
     rhel9/
-        (full RHEL 9 ISO contents)
+        (full RHEL ISO contents)
     kickstart/
         kickstart.cfg
 ```

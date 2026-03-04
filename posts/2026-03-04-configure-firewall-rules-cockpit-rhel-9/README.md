@@ -1,14 +1,14 @@
-# How to Configure Firewall Rules Using the Cockpit Web Console on RHEL 9
+# How to Configure Firewall Rules Using the Cockpit Web Console on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Firewall, firewalld, Linux
 
-Description: A practical guide to managing firewall zones, services, and port rules through the Cockpit web console on RHEL 9.
+Description: A practical guide to managing firewall zones, services, and port rules through the Cockpit web console on RHEL.
 
 ---
 
-Firewall management on RHEL 9 uses firewalld, which is powerful but has a lot of moving parts - zones, services, rich rules, and runtime vs permanent configurations. Cockpit's firewall page simplifies this by showing you exactly what's open on each zone and letting you make changes that stick across reboots.
+Firewall management on RHEL uses firewalld, which is powerful but has a lot of moving parts - zones, services, rich rules, and runtime vs permanent configurations. Cockpit's firewall page simplifies this by showing you exactly what's open on each zone and letting you make changes that stick across reboots.
 
 ## Accessing the Firewall Page
 

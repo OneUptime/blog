@@ -1,14 +1,14 @@
-# How to Restrict SSH Access to Specific Users or Groups on RHEL 9
+# How to Restrict SSH Access to Specific Users or Groups on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Access Control, Security, Linux
 
-Description: Multiple methods to restrict SSH access on RHEL 9, including sshd directives, PAM access controls, firewall rules, and TCP wrappers for layered security.
+Description: Multiple methods to restrict SSH access on RHEL, including sshd directives, PAM access controls, firewall rules, and TCP wrappers for layered security.
 
 ---
 
-Restricting who can SSH into a server is fundamental security hygiene. RHEL 9 gives you multiple layers to control this, from SSH configuration directives to PAM modules to firewall rules. Using more than one layer provides defense in depth.
+Restricting who can SSH into a server is fundamental security hygiene. RHEL gives you multiple layers to control this, from SSH configuration directives to PAM modules to firewall rules. Using more than one layer provides defense in depth.
 
 ## Layer 1: SSH Configuration Directives
 

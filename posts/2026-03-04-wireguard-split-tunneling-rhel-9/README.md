@@ -1,10 +1,10 @@
-# How to Set Up WireGuard with Split Tunneling on RHEL 9
+# How to Set Up WireGuard with Split Tunneling on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, WireGuard, Split Tunneling, VPN, Linux
 
-Description: Learn how to configure WireGuard with split tunneling on RHEL 9 so that only specific traffic goes through the VPN while the rest uses your regular internet connection.
+Description: Learn how to configure WireGuard with split tunneling on RHEL so that only specific traffic goes through the VPN while the rest uses your regular internet connection.
 
 ---
 
@@ -206,4 +206,4 @@ dig example.com
 
 ## Wrapping Up
 
-Split tunneling with WireGuard on RHEL 9 is all about getting AllowedIPs right. List only the subnets you want to route through the tunnel, pair it with proper split DNS configuration, and verify with routing checks. The result is efficient VPN usage where only the traffic that needs the tunnel actually uses it.
+Split tunneling with WireGuard on RHEL is all about getting AllowedIPs right. List only the subnets you want to route through the tunnel, pair it with proper split DNS configuration, and verify with routing checks. The result is efficient VPN usage where only the traffic that needs the tunnel actually uses it.

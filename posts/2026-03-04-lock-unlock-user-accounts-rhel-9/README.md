@@ -1,16 +1,16 @@
-# How to Lock and Unlock User Accounts on RHEL 9
+# How to Lock and Unlock User Accounts on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, User Management, Account Locking, Security, Linux
 
-Description: A complete guide to locking and unlocking user accounts on RHEL 9 using passwd, usermod, and chage, including how to verify lock status and handle edge cases.
+Description: A complete guide to locking and unlocking user accounts on RHEL using passwd, usermod, and chage, including how to verify lock status and handle edge cases.
 
 ---
 
 ## When to Lock an Account
 
-There are plenty of reasons to lock a user account: an employee leaves the company, a contractor's engagement ends, you suspect a compromised account, or you just need to temporarily disable access during an audit. RHEL 9 gives you several ways to do this, each with slightly different behavior. Knowing the differences matters because locking an account the wrong way can leave a backdoor open.
+There are plenty of reasons to lock a user account: an employee leaves the company, a contractor's engagement ends, you suspect a compromised account, or you just need to temporarily disable access during an audit. RHEL gives you several ways to do this, each with slightly different behavior. Knowing the differences matters because locking an account the wrong way can leave a backdoor open.
 
 ## Method 1: passwd -l (Lock the Password)
 

@@ -1,14 +1,14 @@
-# How to Configure Boot Targets and Default Runlevels in RHEL 9 with systemd
+# How to Configure Boot Targets and Default Runlevels in RHEL with systemd
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Boot Targets, Runlevels, Linux
 
-Description: Learn how systemd targets replace traditional runlevels in RHEL 9, and how to switch between multi-user, graphical, rescue, and emergency modes for day-to-day server administration.
+Description: Learn how systemd targets replace traditional runlevels in RHEL, and how to switch between multi-user, graphical, rescue, and emergency modes for day-to-day server administration.
 
 ---
 
-If you grew up on SysVinit, you think in runlevels. Runlevel 3 for multi-user text mode, runlevel 5 for graphical, and so on. RHEL 9 uses systemd, which replaces runlevels with "targets." The concept is similar, but targets are more flexible. This guide covers everything you need to know about managing boot targets in RHEL 9.
+If you grew up on SysVinit, you think in runlevels. Runlevel 3 for multi-user text mode, runlevel 5 for graphical, and so on. RHEL uses systemd, which replaces runlevels with "targets." The concept is similar, but targets are more flexible. This guide covers everything you need to know about managing boot targets in RHEL.
 
 ## Targets vs Runlevels
 
@@ -276,4 +276,4 @@ systemd-analyze plot > boot-chart.svg
 - The `systemctl isolate` command will terminate running sessions when switching away from graphical mode. Save your work first.
 - If you break something in `/etc/fstab` and the system will not boot, emergency mode with the kernel parameter is your best friend. Fix the fstab entry and reboot.
 
-Boot targets in RHEL 9 are straightforward once you get past the runlevel-to-target mental shift. The key commands are `get-default`, `set-default`, and `isolate`, and for emergencies, appending `systemd.unit=` to the kernel command line at GRUB.
+Boot targets in RHEL are straightforward once you get past the runlevel-to-target mental shift. The key commands are `get-default`, `set-default`, and `isolate`, and for emergencies, appending `systemd.unit=` to the kernel command line at GRUB.

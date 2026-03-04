@@ -1,14 +1,14 @@
-# How to Configure Jenkins with Java 17 on RHEL 9
+# How to Configure Jenkins with Java 17 on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Jenkins, Java, JDK, Configuration, Linux
 
-Description: Configure Jenkins to run with Java 17 on RHEL 9, including JDK installation, Jenkins configuration, and build tool setup.
+Description: Configure Jenkins to run with Java 17 on RHEL, including JDK installation, Jenkins configuration, and build tool setup.
 
 ---
 
-Jenkins on RHEL 9 works best with Java 17, which is the recommended LTS version. This guide covers installing Java 17, configuring Jenkins to use it, and setting up JDK configurations for build jobs.
+Jenkins on RHEL works best with Java 17, which is the recommended LTS version. This guide covers installing Java 17, configuring Jenkins to use it, and setting up JDK configurations for build jobs.
 
 ## Install Java 17
 
@@ -136,4 +136,4 @@ ps aux | grep jenkins
 sudo journalctl -u jenkins --no-pager -n 50
 ```
 
-With Java 17 properly configured, Jenkins runs efficiently on RHEL 9 and your build jobs can take advantage of the latest JDK features and performance improvements.
+With Java 17 properly configured, Jenkins runs efficiently on RHEL and your build jobs can take advantage of the latest JDK features and performance improvements.

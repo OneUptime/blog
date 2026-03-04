@@ -1,14 +1,14 @@
-# How to Configure Log Rotation with logrotate on RHEL 9
+# How to Configure Log Rotation with logrotate on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, logrotate, Logging, System Administration, Linux
 
-Description: Learn how to configure logrotate on RHEL 9 to automatically manage log file sizes through rotation, compression, and cleanup policies.
+Description: Learn how to configure logrotate on RHEL to automatically manage log file sizes through rotation, compression, and cleanup policies.
 
 ---
 
-Log files grow continuously and will eventually fill your disk if left unchecked. logrotate is the standard tool on RHEL 9 for managing this problem. It rotates, compresses, and removes old log files on a schedule, keeping your system running smoothly without manual intervention.
+Log files grow continuously and will eventually fill your disk if left unchecked. logrotate is the standard tool on RHEL for managing this problem. It rotates, compresses, and removes old log files on a schedule, keeping your system running smoothly without manual intervention.
 
 ## How logrotate Works
 
@@ -31,7 +31,7 @@ The main configuration file is `/etc/logrotate.conf`:
 cat /etc/logrotate.conf
 ```
 
-The typical defaults on RHEL 9:
+The typical defaults on RHEL:
 
 ```bash
 # Rotate log files weekly
@@ -209,7 +209,7 @@ sudo logrotate -v /etc/logrotate.d/myapp
 
 ## The logrotate Timer
 
-On RHEL 9, logrotate runs via a systemd timer:
+On RHEL, logrotate runs via a systemd timer:
 
 ```bash
 # Check the timer status
@@ -295,4 +295,4 @@ sudo vi /var/lib/logrotate/logrotate.status
 
 ## Summary
 
-logrotate on RHEL 9 prevents log files from consuming all available disk space by automatically rotating, compressing, and removing old logs. Place your custom configurations in `/etc/logrotate.d/`, test them with `logrotate -d`, and let the systemd timer handle the rest. The key decisions are how often to rotate (daily, weekly), how many copies to keep, and whether to use `copytruncate` or `postrotate` scripts for applications that need to reopen their log files.
+logrotate on RHEL prevents log files from consuming all available disk space by automatically rotating, compressing, and removing old logs. Place your custom configurations in `/etc/logrotate.d/`, test them with `logrotate -d`, and let the systemd timer handle the rest. The key decisions are how often to rotate (daily, weekly), how many copies to keep, and whether to use `copytruncate` or `postrotate` scripts for applications that need to reopen their log files.

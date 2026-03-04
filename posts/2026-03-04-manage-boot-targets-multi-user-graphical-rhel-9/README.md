@@ -1,14 +1,14 @@
-# How to Manage System Boot Targets and Switch Between Multi-User and Graphical Mode on RHEL 9
+# How to Manage System Boot Targets and Switch Between Multi-User and Graphical Mode on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Boot Targets, Linux, System Administration
 
-Description: Learn how to manage systemd boot targets on RHEL 9, including switching between multi-user and graphical mode, using rescue and emergency targets, and understanding target dependencies.
+Description: Learn how to manage systemd boot targets on RHEL, including switching between multi-user and graphical mode, using rescue and emergency targets, and understanding target dependencies.
 
 ---
 
-If you've been around Linux long enough, you remember the days of SysV runlevels. Numbers 0 through 6, each mapping to a different system state. RHEL 9 uses systemd targets instead, which are more flexible and easier to understand once you get the hang of them. This guide walks through managing boot targets, switching between modes, and using rescue and emergency targets when things go sideways.
+If you've been around Linux long enough, you remember the days of SysV runlevels. Numbers 0 through 6, each mapping to a different system state. RHEL uses systemd targets instead, which are more flexible and easier to understand once you get the hang of them. This guide walks through managing boot targets, switching between modes, and using rescue and emergency targets when things go sideways.
 
 ## Understanding Targets
 
@@ -175,7 +175,7 @@ systemctl list-dependencies graphical.target --all
 
 ### Scenario 1: Removing the GUI from a Server
 
-If a RHEL 9 system was installed with a graphical desktop but you want to run it as a headless server:
+If a RHEL system was installed with a graphical desktop but you want to run it as a headless server:
 
 ```bash
 # Switch the default target to multi-user
@@ -277,4 +277,4 @@ sudo systemctl isolate maintenance.target
 
 ## Wrapping Up
 
-Boot targets on RHEL 9 are straightforward once you understand the hierarchy. For day-to-day work, you really only need `multi-user.target` and `graphical.target`, plus `rescue.target` and `emergency.target` for when things go wrong. The commands are simple, and `systemctl isolate` lets you switch between modes without rebooting, which makes managing servers and troubleshooting boot issues much less painful.
+Boot targets on RHEL are straightforward once you understand the hierarchy. For day-to-day work, you really only need `multi-user.target` and `graphical.target`, plus `rescue.target` and `emergency.target` for when things go wrong. The commands are simple, and `systemctl isolate` lets you switch between modes without rebooting, which makes managing servers and troubleshooting boot issues much less painful.

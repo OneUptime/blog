@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, System Roles, Control Node, Managed Node, Linux
 
-Description: Step-by-step guide to preparing your Ansible control node and managed nodes on RHEL 9 for using RHEL System Roles, including SSH key setup, Python requirements, inventory configuration, and connectivity testing.
+Description: Step-by-step guide to preparing your Ansible control node and managed nodes on RHEL for using RHEL System Roles, including SSH key setup, Python requirements, inventory configuration, and connectivity testing.
 
 ---
 
@@ -29,7 +29,7 @@ The control node is where you install Ansible and the RHEL System Roles. This sh
 
 ### Installing Ansible
 
-On RHEL 9, Ansible is available from the default repositories.
+On RHEL, Ansible is available from the default repositories.
 
 ```bash
 # Install Ansible core
@@ -78,11 +78,11 @@ Each managed node needs minimal preparation. The requirements are:
 
 1. SSH server running and accessible from the control node
 2. A user account with sudo privileges
-3. Python 3 installed (included by default on RHEL 9)
+3. Python 3 installed (included by default on RHEL)
 
 ### Verifying Python
 
-RHEL 9 ships with Python 3 in the base installation.
+RHEL ships with Python 3 in the base installation.
 
 ```bash
 # Check Python 3 is available on the managed node
@@ -92,7 +92,7 @@ python3 --version
 If for some reason it is not installed:
 
 ```bash
-# Install Python 3 (should already be present on RHEL 9)
+# Install Python 3 (should already be present on RHEL)
 sudo dnf install python3
 ```
 

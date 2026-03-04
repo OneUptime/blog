@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kickstart, Unattended Installation, Automation, Linux
 
-Description: Complete guide to building a Kickstart file for fully unattended RHEL 9 installations, covering every section of the Kickstart configuration, boot options, and serving the file over the network.
+Description: Complete guide to building a Kickstart file for fully unattended RHEL installations, covering every section of the Kickstart configuration, boot options, and serving the file over the network.
 
 ---
 
@@ -32,13 +32,13 @@ A Kickstart file is a plain text file with directives organized into sections. L
 ### Complete Kickstart File
 
 ```bash
-# kickstart.cfg - Unattended RHEL 9 Server Installation
-# This file automates a full RHEL 9 minimal server setup
+# kickstart.cfg - Unattended RHEL Server Installation
+# This file automates a full RHEL minimal server setup
 
 # Use text mode installer (no GUI needed for unattended install)
 text
 
-# Installation source - use the RHEL 9 DVD/ISO
+# Installation source - use the RHEL DVD/ISO
 # For network installs, replace with: url --url="http://repo-server/rhel9/"
 cdrom
 

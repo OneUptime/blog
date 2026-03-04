@@ -1,14 +1,14 @@
-# How to Update the AIDE Database After Legitimate System Changes on RHEL 9
+# How to Update the AIDE Database After Legitimate System Changes on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, AIDE, Database Update, Linux
 
-Description: Learn the correct process for updating the AIDE database on RHEL 9 after legitimate system changes like patches, configuration updates, and software installations.
+Description: Learn the correct process for updating the AIDE database on RHEL after legitimate system changes like patches, configuration updates, and software installations.
 
 ---
 
-Every time you patch your RHEL 9 system, install software, or change configuration files, AIDE is going to flag those changes on the next check. If you do not update the database, you will drown in false positives and eventually start ignoring the reports entirely. That defeats the whole purpose of file integrity monitoring. Here is how to handle database updates properly.
+Every time you patch your RHEL system, install software, or change configuration files, AIDE is going to flag those changes on the next check. If you do not update the database, you will drown in false positives and eventually start ignoring the reports entirely. That defeats the whole purpose of file integrity monitoring. Here is how to handle database updates properly.
 
 ## The Update Process
 

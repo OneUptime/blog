@@ -1,10 +1,10 @@
-# How to Troubleshoot SELinux Denials Using sealert and ausearch on RHEL 9
+# How to Troubleshoot SELinux Denials Using sealert and ausearch on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, Troubleshooting, sealert, Linux
 
-Description: Use sealert and ausearch to diagnose and resolve SELinux denials on RHEL 9 with practical examples and a systematic troubleshooting approach.
+Description: Use sealert and ausearch to diagnose and resolve SELinux denials on RHEL with practical examples and a systematic troubleshooting approach.
 
 ---
 

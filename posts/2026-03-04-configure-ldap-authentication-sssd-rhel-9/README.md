@@ -1,14 +1,14 @@
-# How to Configure LDAP Authentication with SSSD on RHEL 9
+# How to Configure LDAP Authentication with SSSD on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LDAP, SSSD, Authentication, Linux
 
-Description: Learn how to set up LDAP-based user authentication using SSSD on RHEL 9, including configuration, testing, and troubleshooting.
+Description: Learn how to set up LDAP-based user authentication using SSSD on RHEL, including configuration, testing, and troubleshooting.
 
 ---
 
-Managing user authentication centrally is essential for any organization with more than a handful of servers. SSSD (System Security Services Daemon) on RHEL 9 provides a reliable way to connect your Linux systems to an LDAP directory for authentication and identity lookups.
+Managing user authentication centrally is essential for any organization with more than a handful of servers. SSSD (System Security Services Daemon) on RHEL provides a reliable way to connect your Linux systems to an LDAP directory for authentication and identity lookups.
 
 ## What SSSD Does
 
@@ -161,5 +161,5 @@ ldapsearch -x -H ldaps://ldap.example.com -b "dc=example,dc=com" -D "cn=admin,dc
 
 ## Summary
 
-SSSD provides a robust, caching-aware bridge between RHEL 9 and your LDAP directory. With credential caching, users can authenticate even during brief network outages, and the integration with PAM and NSS means LDAP users work seamlessly with standard Linux tools and services.
+SSSD provides a robust, caching-aware bridge between RHEL and your LDAP directory. With credential caching, users can authenticate even during brief network outages, and the integration with PAM and NSS means LDAP users work seamlessly with standard Linux tools and services.
 

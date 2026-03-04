@@ -1,14 +1,14 @@
-# How to Lock User Accounts After Failed Login Attempts on RHEL 9
+# How to Lock User Accounts After Failed Login Attempts on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Account Locking, faillock, Security, Linux
 
-Description: Configure RHEL 9 to automatically lock user accounts after a specified number of failed login attempts using faillock, with guidance on monitoring and unlocking.
+Description: Configure RHEL to automatically lock user accounts after a specified number of failed login attempts using faillock, with guidance on monitoring and unlocking.
 
 ---
 
-Automated account locking is your first line of defense against brute-force attacks. If someone hammers a user account with bad passwords, the account should lock before they get lucky. On RHEL 9, the `faillock` utility and `pam_faillock` module handle this. Here is how to set it up properly.
+Automated account locking is your first line of defense against brute-force attacks. If someone hammers a user account with bad passwords, the account should lock before they get lucky. On RHEL, the `faillock` utility and `pam_faillock` module handle this. Here is how to set it up properly.
 
 ## Quick Setup with authselect
 

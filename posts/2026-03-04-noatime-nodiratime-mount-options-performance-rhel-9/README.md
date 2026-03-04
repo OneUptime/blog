@@ -1,10 +1,10 @@
-# How to Use noatime and nodiratime Mount Options for Performance on RHEL 9
+# How to Use noatime and nodiratime Mount Options for Performance on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, noatime, Mount Options, Performance, Linux
 
-Description: Learn how to use noatime and nodiratime mount options on RHEL 9 to reduce unnecessary disk writes and improve filesystem performance.
+Description: Learn how to use noatime and nodiratime mount options on RHEL to reduce unnecessary disk writes and improve filesystem performance.
 
 ---
 
@@ -13,7 +13,7 @@ Every time you read a file on a Linux system, the kernel updates its "access tim
 ## What atime, relatime, noatime, and nodiratime Mean
 
 - **atime** - Access time is updated on every file access (the worst for performance)
-- **relatime** - Access time is updated only if it is older than the modify time, or if 24 hours have passed (RHEL 9 default)
+- **relatime** - Access time is updated only if it is older than the modify time, or if 24 hours have passed (RHEL default)
 - **noatime** - Access time is never updated (best for performance)
 - **nodiratime** - Access time is never updated for directories (but still updated for files)
 
@@ -28,9 +28,9 @@ graph TD
     B -->|nodiratime| H[Skip for directories, normal for files]
 ```
 
-## RHEL 9 Default: relatime
+## RHEL Default: relatime
 
-RHEL 9 mounts filesystems with `relatime` by default. This is a reasonable middle ground that reduces most unnecessary writes while keeping atime somewhat current.
+RHEL mounts filesystems with `relatime` by default. This is a reasonable middle ground that reduces most unnecessary writes while keeping atime somewhat current.
 
 Check your current mount options:
 
@@ -157,7 +157,7 @@ If the workload is mostly writes already (databases, logging), the atime writes 
 
 ## Impact on tmpwatch and systemd-tmpfiles
 
-The `systemd-tmpfiles` service on RHEL 9 can use atime to clean up old files in `/tmp`. If you mount `/tmp` with `noatime`, files that are still being read but not modified might get cleaned up prematurely.
+The `systemd-tmpfiles` service on RHEL can use atime to clean up old files in `/tmp`. If you mount `/tmp` with `noatime`, files that are still being read but not modified might get cleaned up prematurely.
 
 Check your tmpfiles configuration:
 
@@ -170,7 +170,7 @@ The `A` (access time) qualifier in tmpfiles rules will not work correctly with `
 
 ## Best Practice Configuration
 
-For a typical RHEL 9 server:
+For a typical RHEL server:
 
 ```
 # /etc/fstab
@@ -208,4 +208,4 @@ stat /data/testfile | grep Access
 
 ## Summary
 
-Using `noatime` is one of the simplest and most effective filesystem performance optimizations on RHEL 9. Add it to your fstab mount options for any filesystem where accurate access times are not needed. The performance gain is most noticeable on read-heavy workloads and SSDs. The only caution is to keep `relatime` on filesystems where mail software or cleanup tools rely on atime.
+Using `noatime` is one of the simplest and most effective filesystem performance optimizations on RHEL. Add it to your fstab mount options for any filesystem where accurate access times are not needed. The performance gain is most noticeable on read-heavy workloads and SSDs. The only caution is to keep `relatime` on filesystems where mail software or cleanup tools rely on atime.

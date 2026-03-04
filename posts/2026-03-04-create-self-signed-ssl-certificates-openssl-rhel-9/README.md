@@ -1,14 +1,14 @@
-# How to Create Self-Signed SSL Certificates with OpenSSL on RHEL 9
+# How to Create Self-Signed SSL Certificates with OpenSSL on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenSSL, Self-Signed, SSL, Linux
 
-Description: Step-by-step guide to generating self-signed SSL/TLS certificates using OpenSSL on RHEL 9 for development, testing, and internal services.
+Description: Step-by-step guide to generating self-signed SSL/TLS certificates using OpenSSL on RHEL for development, testing, and internal services.
 
 ---
 
-Not every service needs a publicly trusted certificate. Internal tools, development environments, lab setups, and services behind a VPN are all cases where a self-signed certificate works fine. On RHEL 9, OpenSSL is already installed, so you can generate certificates in seconds.
+Not every service needs a publicly trusted certificate. Internal tools, development environments, lab setups, and services behind a VPN are all cases where a self-signed certificate works fine. On RHEL, OpenSSL is already installed, so you can generate certificates in seconds.
 
 This post covers generating self-signed certificates, creating certificates with a local CA, and configuring services to use them.
 
@@ -53,7 +53,7 @@ openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 
   -addext "subjectAltName=DNS:myserver.internal,DNS:myserver.local,IP:192.168.1.100"
 ```
 
-The `-addext` flag (available in OpenSSL 1.1.1+, which ships with RHEL 9) lets you add extensions directly on the command line.
+The `-addext` flag (available in OpenSSL 1.1.1+, which ships with RHEL) lets you add extensions directly on the command line.
 
 ## Step-by-Step: Key, CSR, and Certificate Separately
 
@@ -208,7 +208,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ## SELinux Considerations
 
-RHEL 9 runs SELinux in enforcing mode by default. Your certificate files need the right context:
+RHEL runs SELinux in enforcing mode by default. Your certificate files need the right context:
 
 ```bash
 # Restore SELinux contexts on certificate files

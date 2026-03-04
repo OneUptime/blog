@@ -1,18 +1,18 @@
-# How to Configure Nginx Rate Limiting on RHEL 9
+# How to Configure Nginx Rate Limiting on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Rate Limiting, Security, Linux
 
-Description: Learn how to protect your Nginx web server from abuse by implementing rate limiting on RHEL 9, including per-IP limits, burst handling, and zone configuration.
+Description: Learn how to protect your Nginx web server from abuse by implementing rate limiting on RHEL, including per-IP limits, burst handling, and zone configuration.
 
 ---
 
-Rate limiting protects your web server from abuse, brute-force attacks, and excessive traffic from individual clients. Nginx provides built-in rate limiting through the limit_req module. This guide shows you how to configure it on RHEL 9.
+Rate limiting protects your web server from abuse, brute-force attacks, and excessive traffic from individual clients. Nginx provides built-in rate limiting through the limit_req module. This guide shows you how to configure it on RHEL.
 
 ## Prerequisites
 
-- A RHEL 9 system with Nginx installed and running
+- A RHEL system with Nginx installed and running
 - Root or sudo access
 
 ## How Rate Limiting Works
@@ -214,4 +214,4 @@ sudo grep "limiting" /var/log/nginx/error.log
 
 ## Summary
 
-Nginx rate limiting on RHEL 9 protects your server from abuse by controlling the request rate per client. Define zones in the http block, apply them to specific locations, and use burst with nodelay for a good balance between protection and user experience. Whitelist trusted IPs and use 429 status codes for proper HTTP semantics.
+Nginx rate limiting on RHEL protects your server from abuse by controlling the request rate per client. Define zones in the http block, apply them to specific locations, and use burst with nodelay for a good balance between protection and user experience. Whitelist trusted IPs and use 429 status codes for proper HTTP semantics.

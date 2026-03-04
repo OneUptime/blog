@@ -1,14 +1,14 @@
-# How to Automate LVM Thin Pool Extension on RHEL 9
+# How to Automate LVM Thin Pool Extension on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Thin Pool, Automation, Linux
 
-Description: Learn how to configure automatic LVM thin pool extension on RHEL 9 using dmeventd and custom scripts to prevent pool exhaustion.
+Description: Learn how to configure automatic LVM thin pool extension on RHEL using dmeventd and custom scripts to prevent pool exhaustion.
 
 ---
 
-A thin pool that fills to 100% causes every thin volume in the pool to freeze. The best defense is automation - let the system extend the pool before it runs out of space. RHEL 9 has built-in support for this through the `dmeventd` monitoring daemon and LVM configuration.
+A thin pool that fills to 100% causes every thin volume in the pool to freeze. The best defense is automation - let the system extend the pool before it runs out of space. RHEL has built-in support for this through the `dmeventd` monitoring daemon and LVM configuration.
 
 ## Built-in Auto-Extension with dmeventd
 
@@ -270,4 +270,4 @@ lvs -o lv_name,data_percent,metadata_percent --select 'lv_attr=~^t'
 
 ## Summary
 
-Automating thin pool extension on RHEL 9 prevents one of the most disruptive storage failures. Use the built-in `dmeventd` auto-extension (set `thin_pool_autoextend_threshold` and `thin_pool_autoextend_percent` in lvm.conf) for basic automation. Add a custom script for notifications and handling VG exhaustion. Always monitor that the volume group itself has room to grow, because auto-extension fails silently when there is no VG free space.
+Automating thin pool extension on RHEL prevents one of the most disruptive storage failures. Use the built-in `dmeventd` auto-extension (set `thin_pool_autoextend_threshold` and `thin_pool_autoextend_percent` in lvm.conf) for basic automation. Add a custom script for notifications and handling VG exhaustion. Always monitor that the volume group itself has room to grow, because auto-extension fails silently when there is no VG free space.

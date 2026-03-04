@@ -1,10 +1,10 @@
-# How to Store Terraform State Remotely with S3 Backend on RHEL 9
+# How to Store Terraform State Remotely with S3 Backend on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, S3, State Management, AWS, Linux
 
-Description: Configure Terraform to store its state file remotely in an AWS S3 bucket with DynamoDB locking on RHEL 9.
+Description: Configure Terraform to store its state file remotely in an AWS S3 bucket with DynamoDB locking on RHEL.
 
 ---
 
@@ -197,4 +197,4 @@ aws s3api put-bucket-policy \
   }'
 ```
 
-Remote state with S3 and DynamoDB gives your team safe, shared access to Terraform state on RHEL 9 workstations. Versioning protects against accidental corruption, and locking prevents concurrent modifications.
+Remote state with S3 and DynamoDB gives your team safe, shared access to Terraform state on RHEL workstations. Versioning protects against accidental corruption, and locking prevents concurrent modifications.

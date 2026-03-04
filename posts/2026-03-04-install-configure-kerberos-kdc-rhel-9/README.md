@@ -1,14 +1,14 @@
-# How to Install and Configure a Kerberos KDC on RHEL 9
+# How to Install and Configure a Kerberos KDC on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kerberos, KDC, Authentication, Linux
 
-Description: A step-by-step guide to installing and configuring a standalone MIT Kerberos Key Distribution Center (KDC) on RHEL 9, covering realm setup, principal management, and keytab creation.
+Description: A step-by-step guide to installing and configuring a standalone MIT Kerberos Key Distribution Center (KDC) on RHEL, covering realm setup, principal management, and keytab creation.
 
 ---
 
-A Kerberos Key Distribution Center (KDC) is the authentication server that issues tickets in a Kerberos realm. While most RHEL environments get their KDC through FreeIPA or Active Directory, there are cases where a standalone MIT Kerberos KDC makes sense, such as lab environments, legacy applications, or non-directory authentication needs. This guide walks through setting up a standalone KDC on RHEL 9 from scratch.
+A Kerberos Key Distribution Center (KDC) is the authentication server that issues tickets in a Kerberos realm. While most RHEL environments get their KDC through FreeIPA or Active Directory, there are cases where a standalone MIT Kerberos KDC makes sense, such as lab environments, legacy applications, or non-directory authentication needs. This guide walks through setting up a standalone KDC on RHEL from scratch.
 
 ## KDC Architecture
 
@@ -275,7 +275,7 @@ For more detailed logging, add to `/etc/krb5.conf`:
 
 ## Security Hardening
 
-- Use strong encryption types (AES-256 is the default on RHEL 9)
+- Use strong encryption types (AES-256 is the default on RHEL)
 - Protect the master key stash file (`/var/kerberos/krb5kdc/.k5.EXAMPLE.COM`)
 - Restrict network access to the KDC to only systems that need it
 - Back up the database regularly and test restores

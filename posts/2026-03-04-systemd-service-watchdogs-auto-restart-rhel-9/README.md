@@ -1,10 +1,10 @@
-# How to Set Up systemd Service Watchdogs and Auto-Restart Policies on RHEL 9
+# How to Set Up systemd Service Watchdogs and Auto-Restart Policies on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Watchdog, Auto-Restart, Service Management, Linux
 
-Description: Learn how to configure systemd service watchdogs and auto-restart policies on RHEL 9 to keep critical services running reliably.
+Description: Learn how to configure systemd service watchdogs and auto-restart policies on RHEL to keep critical services running reliably.
 
 ---
 
@@ -150,4 +150,4 @@ systemctl show myapp.service --property=WatchdogTimestamp
 
 ## Summary
 
-You have configured systemd service watchdogs and auto-restart policies on RHEL 9. The watchdog ensures your service is responsive, not just running, while restart policies provide automatic recovery from failures. Together, they form a robust self-healing mechanism for critical services.
+You have configured systemd service watchdogs and auto-restart policies on RHEL. The watchdog ensures your service is responsive, not just running, while restart policies provide automatic recovery from failures. Together, they form a robust self-healing mechanism for critical services.

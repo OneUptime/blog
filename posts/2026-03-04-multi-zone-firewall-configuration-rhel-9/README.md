@@ -1,10 +1,10 @@
-# How to Set Up a Multi-Zone Firewall Configuration on RHEL 9
+# How to Set Up a Multi-Zone Firewall Configuration on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Multi-Zone, Security, Linux
 
-Description: How to design and implement a multi-zone firewall configuration on RHEL 9, with separate zones for public, management, and internal traffic on different interfaces.
+Description: How to design and implement a multi-zone firewall configuration on RHEL, with separate zones for public, management, and internal traffic on different interfaces.
 
 ---
 

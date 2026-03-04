@@ -1,14 +1,14 @@
-# How to Simulate Complex Network Topologies with Namespaces on RHEL 9
+# How to Simulate Complex Network Topologies with Namespaces on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Namespaces, Network Simulation, Linux
 
-Description: Learn how to use network namespaces on RHEL 9 to simulate multi-router, multi-subnet network topologies for testing, training, and development without any additional hardware.
+Description: Learn how to use network namespaces on RHEL to simulate multi-router, multi-subnet network topologies for testing, training, and development without any additional hardware.
 
 ---
 
-You don't need a rack full of routers and switches to test complex network scenarios. Network namespaces on RHEL 9 let you build entire network topologies on a single machine. Each namespace acts as an independent host or router, complete with its own interfaces, routing table, and firewall. This is perfect for testing routing configurations, firewall rules, or training exercises.
+You don't need a rack full of routers and switches to test complex network scenarios. Network namespaces on RHEL let you build entire network topologies on a single machine. Each namespace acts as an independent host or router, complete with its own interfaces, routing table, and firewall. This is perfect for testing routing configurations, firewall rules, or training exercises.
 
 ## What We'll Build
 
@@ -252,4 +252,4 @@ done
 
 ## Wrapping Up
 
-Network namespaces on RHEL 9 give you a full network lab on a single machine. You can simulate multi-router topologies, test routing configurations, experiment with firewall rules, and add network impairments, all without any additional hardware. Script the setup for repeatability, and you have a powerful environment for testing and learning.
+Network namespaces on RHEL give you a full network lab on a single machine. You can simulate multi-router topologies, test routing configurations, experiment with firewall rules, and add network impairments, all without any additional hardware. Script the setup for repeatability, and you have a powerful environment for testing and learning.

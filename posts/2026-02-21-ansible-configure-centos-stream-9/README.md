@@ -285,4 +285,4 @@ CentOS Stream 9 ships with SELinux in enforcing mode, same as RHEL:
 
 ## Summary
 
-CentOS Stream 9 is configured similarly to RHEL 9 but without subscription management. Key differences: you get CRB (Code Ready Builder) via the `centos-release-crb` package, EPEL is available as `epel-release`, and there is no need for `rhsm_repository` calls. SELinux, firewalld, and dnf work identically to RHEL. This playbook gives you a production-ready base configuration for CentOS Stream 9.
+CentOS Stream 9 is configured similarly to RHEL but without subscription management. Key differences: you get CRB (Code Ready Builder) via the `centos-release-crb` package, EPEL is available as `epel-release`, and there is no need for `rhsm_repository` calls. SELinux, firewalld, and dnf work identically to RHEL. This playbook gives you a production-ready base configuration for CentOS Stream 9.

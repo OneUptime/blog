@@ -1,14 +1,14 @@
-# How to Install and Run OpenSCAP on RHEL 9 for Compliance Scanning
+# How to Install and Run OpenSCAP on RHEL for Compliance Scanning
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenSCAP, Compliance, Scanning, Linux
 
-Description: Get started with OpenSCAP on RHEL 9 for automated compliance scanning, from installation to running your first scan and interpreting the results.
+Description: Get started with OpenSCAP on RHEL for automated compliance scanning, from installation to running your first scan and interpreting the results.
 
 ---
 
-OpenSCAP is the open-source implementation of the SCAP (Security Content Automation Protocol) standard. It is the go-to tool for compliance scanning on RHEL 9, and it is backed by Red Hat. If you need to prove that your servers meet a specific security standard, OpenSCAP is how you do it.
+OpenSCAP is the open-source implementation of the SCAP (Security Content Automation Protocol) standard. It is the go-to tool for compliance scanning on RHEL, and it is backed by Red Hat. If you need to prove that your servers meet a specific security standard, OpenSCAP is how you do it.
 
 ## Install OpenSCAP
 
@@ -45,7 +45,7 @@ flowchart TD
 ## Explore Available Content
 
 ```bash
-# List all available RHEL 9 content files
+# List all available RHEL content files
 ls /usr/share/xml/scap/ssg/content/ssg-rhel9*
 
 # The key file is the datastream:
@@ -217,4 +217,4 @@ OSCAP_PROBE_ROOT=/ oscap xccdf eval --verbose INFO \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml 2>/tmp/oscap-debug.log
 ```
 
-OpenSCAP is the foundation of compliance scanning on RHEL 9. Install it on every server, pick the right profile for your compliance requirements, run regular scans, and use the generated remediation to fix what is broken. It is straightforward, well-documented, and backed by the same people who build the operating system.
+OpenSCAP is the foundation of compliance scanning on RHEL. Install it on every server, pick the right profile for your compliance requirements, run regular scans, and use the generated remediation to fix what is broken. It is straightforward, well-documented, and backed by the same people who build the operating system.

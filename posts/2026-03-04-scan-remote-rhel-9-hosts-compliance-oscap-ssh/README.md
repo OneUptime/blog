@@ -1,14 +1,14 @@
-# How to Scan Remote RHEL 9 Hosts for Compliance with oscap-ssh
+# How to Scan Remote RHEL Hosts for Compliance with oscap-ssh
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, oscap-ssh, Remote Scanning, Compliance, Linux
 
-Description: Use oscap-ssh to scan remote RHEL 9 servers for compliance without installing SCAP content on each target host.
+Description: Use oscap-ssh to scan remote RHEL servers for compliance without installing SCAP content on each target host.
 
 ---
 
-When you manage dozens or hundreds of RHEL 9 servers, installing and maintaining OpenSCAP content on every one of them is tedious. oscap-ssh solves this by letting you run compliance scans from a central scanning station. The SCAP content stays on your scanner, and the tool handles transferring what is needed to the target system over SSH.
+When you manage dozens or hundreds of RHEL servers, installing and maintaining OpenSCAP content on every one of them is tedious. oscap-ssh solves this by letting you run compliance scans from a central scanning station. The SCAP content stays on your scanner, and the tool handles transferring what is needed to the target system over SSH.
 
 ## How oscap-ssh Works
 

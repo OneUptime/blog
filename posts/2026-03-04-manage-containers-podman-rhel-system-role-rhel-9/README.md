@@ -1,14 +1,14 @@
-# How to Manage Containers Using the Podman RHEL System Role on RHEL 9
+# How to Manage Containers Using the Podman RHEL System Role on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Ansible, System Roles, Linux
 
-Description: Learn how to use the Podman RHEL System Role to automate container deployment and management across multiple RHEL 9 servers using Ansible.
+Description: Learn how to use the Podman RHEL System Role to automate container deployment and management across multiple RHEL servers using Ansible.
 
 ---
 
-If you are managing containers across dozens or hundreds of RHEL 9 servers, configuring each one manually is not realistic. The Podman RHEL System Role lets you define your container configuration in Ansible and push it to all your systems at once. It handles installing Podman, configuring registries, creating Quadlet service files, and managing container lifecycle.
+If you are managing containers across dozens or hundreds of RHEL servers, configuring each one manually is not realistic. The Podman RHEL System Role lets you define your container configuration in Ansible and push it to all your systems at once. It handles installing Podman, configuring registries, creating Quadlet service files, and managing container lifecycle.
 
 ## What are RHEL System Roles?
 
@@ -33,7 +33,7 @@ Here is a minimal playbook that ensures Podman is installed and runs a container
 ```bash
 cat > deploy-containers.yml << 'EOF'
 ---
-- name: Deploy containers on RHEL 9 servers
+- name: Deploy containers on RHEL servers
   hosts: webservers
   become: true
   vars:
@@ -328,4 +328,4 @@ The `serial: 1` directive updates one server at a time, keeping the rest serving
 
 ## Summary
 
-The Podman RHEL System Role makes it practical to manage containers at scale on RHEL 9. Write your container definitions as Ansible variables, run the playbook, and the role handles everything from package installation to Quadlet file creation to service management. For fleets of servers running the same container workloads, this is the way to go.
+The Podman RHEL System Role makes it practical to manage containers at scale on RHEL. Write your container definitions as Ansible variables, run the playbook, and the role handles everything from package installation to Quadlet file creation to service management. For fleets of servers running the same container workloads, this is the way to go.

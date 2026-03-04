@@ -1,14 +1,14 @@
-# How to Unregister and Re-register a RHEL 9 System with subscription-manager
+# How to Unregister and Re-register a RHEL System with subscription-manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Subscription Manager, Registration, Red Hat, Linux
 
-Description: Learn when and how to properly unregister a RHEL 9 system from Red Hat and re-register it, covering common scenarios like system cloning, migration, and troubleshooting.
+Description: Learn when and how to properly unregister a RHEL system from Red Hat and re-register it, covering common scenarios like system cloning, migration, and troubleshooting.
 
 ---
 
-There are plenty of legitimate reasons to unregister a RHEL 9 system and register it again. Maybe you cloned a VM and ended up with a duplicate system UUID. Maybe you are migrating from one Red Hat account to another. Or maybe your registration is just broken and you need to start fresh. Whatever the reason, here is how to do it correctly without leaving orphaned entries in Red Hat's systems.
+There are plenty of legitimate reasons to unregister a RHEL system and register it again. Maybe you cloned a VM and ended up with a duplicate system UUID. Maybe you are migrating from one Red Hat account to another. Or maybe your registration is just broken and you need to start fresh. Whatever the reason, here is how to do it correctly without leaving orphaned entries in Red Hat's systems.
 
 ## When to Unregister and Re-register
 
@@ -194,7 +194,7 @@ For bulk operations:
 
 ```yaml
 # Ansible playbook to unregister and re-register systems
-- name: Re-register RHEL 9 systems
+- name: Re-register RHEL systems
   hosts: rhel9_servers
   become: true
   tasks:
@@ -229,4 +229,4 @@ sudo dnf check-update
 
 ## Summary
 
-Unregistering and re-registering RHEL 9 systems is a routine task for any sysadmin managing a dynamic environment. The key points to remember: use `unregister` when possible to clean both local and remote records, use `clean` only when the system cannot reach the server, and always verify registration after re-registering. For cloned VMs, always clean and re-register to avoid UUID conflicts. And if you are doing this across many systems, Ansible makes the process painless.
+Unregistering and re-registering RHEL systems is a routine task for any sysadmin managing a dynamic environment. The key points to remember: use `unregister` when possible to clean both local and remote records, use `clean` only when the system cannot reach the server, and always verify registration after re-registering. For cloned VMs, always clean and re-register to avoid UUID conflicts. And if you are doing this across many systems, Ansible makes the process painless.

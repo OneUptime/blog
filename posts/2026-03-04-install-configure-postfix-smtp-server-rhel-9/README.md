@@ -1,26 +1,26 @@
-# How to Install and Configure a Postfix SMTP Server on RHEL 9
+# How to Install and Configure a Postfix SMTP Server on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, SMTP, Mail Server, Linux
 
-Description: A practical guide to installing Postfix on RHEL 9 and configuring it as a fully functional SMTP server for sending and receiving email.
+Description: A practical guide to installing Postfix on RHEL and configuring it as a fully functional SMTP server for sending and receiving email.
 
 ---
 
 ## Why Postfix?
 
-Postfix is the default MTA (Mail Transfer Agent) on RHEL 9 and has been the workhorse of Linux mail servers for years. It replaced Sendmail as the go-to choice because it is faster, easier to configure, and more secure by design. Whether you need a server to send system notifications or a full-blown mail server for your organization, Postfix is the right tool.
+Postfix is the default MTA (Mail Transfer Agent) on RHEL and has been the workhorse of Linux mail servers for years. It replaced Sendmail as the go-to choice because it is faster, easier to configure, and more secure by design. Whether you need a server to send system notifications or a full-blown mail server for your organization, Postfix is the right tool.
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - A valid hostname and DNS records (MX, A, PTR) pointing to your server
 - Ports 25 (SMTP), 587 (submission), and optionally 465 (SMTPS) accessible
 
 ## Installing Postfix
 
-Postfix is usually installed by default on RHEL 9. If not, install it:
+Postfix is usually installed by default on RHEL. If not, install it:
 
 ```bash
 # Install postfix
@@ -198,7 +198,7 @@ sudo postfix check
 
 ```bash
 # Send a test email from the command line
-echo "This is a test email from Postfix on RHEL 9" | mail -s "Test Email" user@example.com
+echo "This is a test email from Postfix on RHEL" | mail -s "Test Email" user@example.com
 ```
 
 ### Check the Mail Queue
@@ -282,4 +282,4 @@ Make sure the sending client IP is in `mynetworks` or the user is authenticated 
 
 ## Wrapping Up
 
-You now have a working Postfix SMTP server on RHEL 9. This covers the basics of sending and receiving mail. For a production setup, you will want to add TLS encryption, SPF/DKIM/DMARC authentication, and integrate with Dovecot for IMAP access. Those topics are covered in the other posts in this series.
+You now have a working Postfix SMTP server on RHEL. This covers the basics of sending and receiving mail. For a production setup, you will want to add TLS encryption, SPF/DKIM/DMARC authentication, and integrate with Dovecot for IMAP access. Those topics are covered in the other posts in this series.

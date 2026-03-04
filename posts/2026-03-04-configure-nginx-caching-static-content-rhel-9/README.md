@@ -1,18 +1,18 @@
-# How to Configure Nginx Caching for Static Content on RHEL 9
+# How to Configure Nginx Caching for Static Content on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Caching, Performance, Linux
 
-Description: Learn how to set up Nginx caching for static files and proxy responses on RHEL 9 to reduce backend load and improve response times.
+Description: Learn how to set up Nginx caching for static files and proxy responses on RHEL to reduce backend load and improve response times.
 
 ---
 
-Caching is one of the most effective ways to improve web performance. Nginx can cache both static files and proxied responses, reducing load on backend servers and delivering content faster to users. This guide covers both browser caching and proxy caching on RHEL 9.
+Caching is one of the most effective ways to improve web performance. Nginx can cache both static files and proxied responses, reducing load on backend servers and delivering content faster to users. This guide covers both browser caching and proxy caching on RHEL.
 
 ## Prerequisites
 
-- A RHEL 9 system with Nginx installed and running
+- A RHEL system with Nginx installed and running
 - Root or sudo access
 
 ## Caching Architecture
@@ -242,4 +242,4 @@ sudo tail -f /var/log/nginx/error.log
 
 ## Summary
 
-Nginx caching on RHEL 9 dramatically reduces backend load and improves response times. Use browser caching (expires headers) for static assets, and proxy caching for dynamic content that does not change frequently. The X-Cache-Status header helps you verify the cache is working, and the proxy_cache_use_stale directive ensures users still get content even when backends are temporarily unavailable.
+Nginx caching on RHEL dramatically reduces backend load and improves response times. Use browser caching (expires headers) for static assets, and proxy caching for dynamic content that does not change frequently. The X-Cache-Status header helps you verify the cache is working, and the proxy_cache_use_stale directive ensures users still get content even when backends are temporarily unavailable.

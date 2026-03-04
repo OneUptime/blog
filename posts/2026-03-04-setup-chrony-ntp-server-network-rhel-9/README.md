@@ -1,14 +1,14 @@
-# How to Set Up a chrony NTP Server for Your Network on RHEL 9
+# How to Set Up a chrony NTP Server for Your Network on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, chrony, NTP Server, Linux
 
-Description: How to configure a RHEL 9 system as an NTP server using chrony to provide time synchronization to your local network.
+Description: How to configure a RHEL system as an NTP server using chrony to provide time synchronization to your local network.
 
 ---
 
-Running your own NTP server is standard practice in any environment with more than a handful of servers. It reduces external network dependencies, gives you control over time accuracy, and keeps all your systems synchronized to the same source. On RHEL 9, chrony does double duty as both client and server with minimal configuration.
+Running your own NTP server is standard practice in any environment with more than a handful of servers. It reduces external network dependencies, gives you control over time accuracy, and keeps all your systems synchronized to the same source. On RHEL, chrony does double duty as both client and server with minimal configuration.
 
 ## Why Run a Local NTP Server
 
@@ -298,4 +298,4 @@ Monitor the stratum value. If it jumps to 10 (local clock), you have lost upstre
 
 ## Wrapping Up
 
-Setting up an NTP server with chrony on RHEL 9 is straightforward. The key additions to a basic client config are the `allow` directive for client access and opening UDP port 123 in the firewall. For production, always run two servers in a peering arrangement and use the `local stratum 10` fallback to maintain internal consistency during upstream outages.
+Setting up an NTP server with chrony on RHEL is straightforward. The key additions to a basic client config are the `allow` directive for client access and opening UDP port 123 in the firewall. For production, always run two servers in a peering arrangement and use the `local stratum 10` fallback to maintain internal consistency during upstream outages.

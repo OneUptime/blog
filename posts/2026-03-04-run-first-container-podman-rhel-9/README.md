@@ -1,14 +1,14 @@
-# How to Run Your First Container with Podman on RHEL 9
+# How to Run Your First Container with Podman on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Containers, Linux
 
-Description: Step-by-step tutorial on running, managing, and troubleshooting your first container with Podman on RHEL 9, covering essential commands every sysadmin should know.
+Description: Step-by-step tutorial on running, managing, and troubleshooting your first container with Podman on RHEL, covering essential commands every sysadmin should know.
 
 ---
 
-So you have Podman installed on your RHEL 9 box and want to get a container running. Good news - if you have any Docker experience, most commands translate directly. Podman was designed as a drop-in replacement, so `podman run` behaves almost identically to `docker run`.
+So you have Podman installed on your RHEL box and want to get a container running. Good news - if you have any Docker experience, most commands translate directly. Podman was designed as a drop-in replacement, so `podman run` behaves almost identically to `docker run`.
 
 Let me walk you through running your first container and the essential commands you will use daily.
 
@@ -277,4 +277,4 @@ Note that `--restart` policies require the Podman service to be running. For pro
 
 ## Summary
 
-You now have the fundamentals of running containers with Podman on RHEL 9. The workflow is straightforward: pull an image, run it, manage its lifecycle, and check logs when things go sideways. In the next posts, we will cover rootless containers, building images, and more advanced topics.
+You now have the fundamentals of running containers with Podman on RHEL. The workflow is straightforward: pull an image, run it, manage its lifecycle, and check logs when things go sideways. In the next posts, we will cover rootless containers, building images, and more advanced topics.

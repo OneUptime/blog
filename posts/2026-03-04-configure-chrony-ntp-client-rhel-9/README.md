@@ -1,18 +1,18 @@
-# How to Configure chrony as an NTP Client on RHEL 9
+# How to Configure chrony as an NTP Client on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, chrony, NTP, Time Sync, Linux
 
-Description: Step-by-step guide to configuring chrony as an NTP client on RHEL 9 to keep your system clock accurate and synchronized.
+Description: Step-by-step guide to configuring chrony as an NTP client on RHEL to keep your system clock accurate and synchronized.
 
 ---
 
-Accurate time is one of those things you never think about until it breaks. Then Kerberos authentication fails, log timestamps are meaningless, distributed database replicas start arguing with each other, and your TLS certificates look expired when they are not. On RHEL 9, chrony is the default NTP implementation, and getting it right takes about five minutes.
+Accurate time is one of those things you never think about until it breaks. Then Kerberos authentication fails, log timestamps are meaningless, distributed database replicas start arguing with each other, and your TLS certificates look expired when they are not. On RHEL, chrony is the default NTP implementation, and getting it right takes about five minutes.
 
 ## Why chrony Instead of ntpd
 
-RHEL 9 ships with chrony, not ntpd. Red Hat deprecated ntpd starting with RHEL 8, and it is not available in the default repos on RHEL 9. chrony is faster at initial synchronization, handles intermittent network connectivity better (great for laptops and VMs), and uses less memory.
+RHEL ships with chrony, not ntpd. Red Hat deprecated ntpd starting with RHEL 8, and it is not available in the default repos on RHEL. chrony is faster at initial synchronization, handles intermittent network connectivity better (great for laptops and VMs), and uses less memory.
 
 ## Checking the Current Time Configuration
 
@@ -30,7 +30,7 @@ This shows whether NTP is active, the current timezone, and whether the system c
 systemctl status chronyd
 ```
 
-On a standard RHEL 9 install, chronyd should already be running.
+On a standard RHEL install, chronyd should already be running.
 
 ## Understanding the Default Configuration
 
@@ -249,4 +249,4 @@ sudo journalctl -u chronyd --since "1 hour ago"
 
 ## Wrapping Up
 
-chrony is reliable, lightweight, and sensible about defaults. For most RHEL 9 systems, the only thing you need to change is the NTP server list to point to your organization's servers. Verify with `chronyc sources` and `chronyc tracking`, and you are done. Just make sure it is running and enabled before you move on to the next task.
+chrony is reliable, lightweight, and sensible about defaults. For most RHEL systems, the only thing you need to change is the NTP server list to point to your organization's servers. Verify with `chronyc sources` and `chronyc tracking`, and you are done. Just make sure it is running and enabled before you move on to the next task.

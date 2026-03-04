@@ -1,4 +1,4 @@
-# How to Automate Sudo Configuration with the RHEL 9 Sudo System Role
+# How to Automate Sudo Configuration with the RHEL Sudo System Role
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

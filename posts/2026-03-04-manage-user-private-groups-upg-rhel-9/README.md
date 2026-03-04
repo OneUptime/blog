@@ -1,10 +1,10 @@
-# How to Manage User Private Groups (UPG) on RHEL 9
+# How to Manage User Private Groups (UPG) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, User Private Groups, UPG, Linux, User Management
 
-Description: An explanation of the User Private Group scheme on RHEL 9, how it works with file permissions, and how to leverage it for secure team collaboration directories.
+Description: An explanation of the User Private Group scheme on RHEL, how it works with file permissions, and how to leverage it for secure team collaboration directories.
 
 ---
 
@@ -16,7 +16,7 @@ Without UPG, all new users might share a common default group (like `users`). An
 
 ## How UPG Works
 
-When you create a user on RHEL 9:
+When you create a user on RHEL:
 
 ```bash
 # Create a new user
@@ -97,7 +97,7 @@ flowchart TD
     I --> J["Group 'alice' has no other members"]
 ```
 
-RHEL 9 sets the default umask to `0022` in `/etc/profile` and `/etc/bashrc`. With UPG in place, you could safely change it to `0002` to make files group-writable by default, since the group is private anyway. This becomes useful when you set up collaboration directories.
+RHEL sets the default umask to `0022` in `/etc/profile` and `/etc/bashrc`. With UPG in place, you could safely change it to `0002` to make files group-writable by default, since the group is private anyway. This becomes useful when you set up collaboration directories.
 
 ## UPG and Collaboration Directories
 
@@ -251,4 +251,4 @@ UID_MAX         9999
 
 ## Wrapping Up
 
-The UPG scheme is one of those features that works so well you forget it is there. Every user gets their own group, so the default group ownership of files is private by design. This lets you safely use a more permissive umask, which in turn makes shared directories work smoothly with SGID. If you are setting up team collaboration on RHEL 9, the combination of UPG, SGID directories, and a `002` umask (or default ACLs) is the right approach. It has been the recommended pattern on Red Hat systems for years, and it works.
+The UPG scheme is one of those features that works so well you forget it is there. Every user gets their own group, so the default group ownership of files is private by design. This lets you safely use a more permissive umask, which in turn makes shared directories work smoothly with SGID. If you are setting up team collaboration on RHEL, the combination of UPG, SGID directories, and a `002` umask (or default ACLs) is the right approach. It has been the recommended pattern on Red Hat systems for years, and it works.

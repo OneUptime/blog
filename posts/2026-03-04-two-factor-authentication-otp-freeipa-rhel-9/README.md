@@ -1,14 +1,14 @@
-# How to Set Up Two-Factor Authentication (OTP) in FreeIPA on RHEL 9
+# How to Set Up Two-Factor Authentication (OTP) in FreeIPA on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FreeIPA, 2FA, OTP, Security, Linux
 
-Description: A step-by-step guide to enabling two-factor authentication with one-time passwords (OTP) in FreeIPA on RHEL 9, covering TOTP and HOTP token setup, user enrollment, and troubleshooting.
+Description: A step-by-step guide to enabling two-factor authentication with one-time passwords (OTP) in FreeIPA on RHEL, covering TOTP and HOTP token setup, user enrollment, and troubleshooting.
 
 ---
 
-Passwords alone are not enough. Two-factor authentication (2FA) with one-time passwords (OTP) adds a second layer that protects accounts even when passwords are compromised. FreeIPA on RHEL 9 has built-in OTP support that works with standard TOTP apps like Google Authenticator, FreeOTP, and hardware tokens. No third-party plugins needed.
+Passwords alone are not enough. Two-factor authentication (2FA) with one-time passwords (OTP) adds a second layer that protects accounts even when passwords are compromised. FreeIPA on RHEL has built-in OTP support that works with standard TOTP apps like Google Authenticator, FreeOTP, and hardware tokens. No third-party plugins needed.
 
 ## How OTP Works in FreeIPA
 

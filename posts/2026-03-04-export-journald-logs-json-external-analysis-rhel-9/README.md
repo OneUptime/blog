@@ -1,10 +1,10 @@
-# How to Export journald Logs to JSON for External Analysis on RHEL 9
+# How to Export journald Logs to JSON for External Analysis on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, journald, JSON, Logging, Data Analysis, Linux
 
-Description: Learn how to export systemd journal logs in JSON format on RHEL 9 for ingestion into external analysis tools, databases, and monitoring platforms.
+Description: Learn how to export systemd journal logs in JSON format on RHEL for ingestion into external analysis tools, databases, and monitoring platforms.
 
 ---
 
@@ -320,4 +320,4 @@ echo "0 1 * * * root /usr/local/bin/export-journal-daily.sh" | \
 
 ## Summary
 
-Exporting journald logs to JSON on RHEL 9 opens up your log data to the full ecosystem of data analysis tools. Use `journalctl -o json` for newline-delimited JSON output, filter with standard journalctl options before exporting, and process the results with Python, jq, or direct ingestion into platforms like Elasticsearch. For ongoing exports, set up a daily cron job that compresses and archives the output.
+Exporting journald logs to JSON on RHEL opens up your log data to the full ecosystem of data analysis tools. Use `journalctl -o json` for newline-delimited JSON output, filter with standard journalctl options before exporting, and process the results with Python, jq, or direct ingestion into platforms like Elasticsearch. For ongoing exports, set up a daily cron job that compresses and archives the output.

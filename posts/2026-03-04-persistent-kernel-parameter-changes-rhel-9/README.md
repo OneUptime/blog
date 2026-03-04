@@ -1,10 +1,10 @@
-# How to Make Kernel Parameter Changes Persistent Across Reboots on RHEL 9
+# How to Make Kernel Parameter Changes Persistent Across Reboots on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, sysctl, Persistent, Kernel, Linux
 
-Description: Learn how to make kernel parameter changes survive reboots on RHEL 9 using sysctl configuration files, drop-in directories, and systemd-sysctl integration.
+Description: Learn how to make kernel parameter changes survive reboots on RHEL using sysctl configuration files, drop-in directories, and systemd-sysctl integration.
 
 ---
 
@@ -12,11 +12,11 @@ Description: Learn how to make kernel parameter changes survive reboots on RHEL 
 
 When you run `sysctl -w vm.swappiness=10`, the change takes effect immediately. But the moment you reboot, it reverts to the default. This is by design. The kernel starts fresh each boot and reads its tunable values from configuration files during early userspace initialization.
 
-If you are tuning a production server, you need those changes to stick. RHEL 9 gives you several places to define persistent kernel parameters, and knowing which one to use matters.
+If you are tuning a production server, you need those changes to stick. RHEL gives you several places to define persistent kernel parameters, and knowing which one to use matters.
 
 ## Where Persistent sysctl Configuration Lives
 
-RHEL 9 uses systemd-sysctl to apply kernel parameters during boot. It reads configuration from multiple directories in a specific order.
+RHEL uses systemd-sysctl to apply kernel parameters during boot. It reads configuration from multiple directories in a specific order.
 
 ```mermaid
 flowchart TD
@@ -93,7 +93,7 @@ The `--system` flag processes all configuration directories in the correct order
 
 ## The Legacy /etc/sysctl.conf File
 
-The `/etc/sysctl.conf` file still works on RHEL 9 and is processed last after all drop-in files. Some admins prefer keeping everything in one place, and that is fine for simple setups.
+The `/etc/sysctl.conf` file still works on RHEL and is processed last after all drop-in files. Some admins prefer keeping everything in one place, and that is fine for simple setups.
 
 ```bash
 # Append a setting to the legacy config file
@@ -170,4 +170,4 @@ For fleets of servers, use Ansible's `sysctl` module to manage persistent parame
 
 ## Wrapping Up
 
-Persistent kernel parameters on RHEL 9 are straightforward once you understand the directory hierarchy and processing order. Use `/etc/sysctl.d/` with numbered, descriptive filenames. Keep related settings together. And always verify after applying. The few minutes you spend organizing your sysctl configuration files will save you hours of head-scratching when something behaves differently after a reboot.
+Persistent kernel parameters on RHEL are straightforward once you understand the directory hierarchy and processing order. Use `/etc/sysctl.d/` with numbered, descriptive filenames. Keep related settings together. And always verify after applying. The few minutes you spend organizing your sysctl configuration files will save you hours of head-scratching when something behaves differently after a reboot.

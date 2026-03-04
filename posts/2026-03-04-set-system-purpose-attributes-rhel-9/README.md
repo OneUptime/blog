@@ -1,18 +1,18 @@
-# How to Set System Purpose Attributes (Role, SLA, Usage) on RHEL 9
+# How to Set System Purpose Attributes (Role, SLA, Usage) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, System Purpose, SLA, Red Hat, Linux
 
-Description: Learn how to configure system purpose attributes on RHEL 9 including role, SLA, and usage, helping Red Hat auto-attach the correct subscriptions and track system compliance.
+Description: Learn how to configure system purpose attributes on RHEL including role, SLA, and usage, helping Red Hat auto-attach the correct subscriptions and track system compliance.
 
 ---
 
-System purpose attributes are metadata you set on each RHEL 9 system to describe what the system does and what level of support it needs. These attributes help `subscription-manager` choose the right subscription during auto-attach and help your organization track subscription usage by role, service level, and usage type. Here is how to configure them.
+System purpose attributes are metadata you set on each RHEL system to describe what the system does and what level of support it needs. These attributes help `subscription-manager` choose the right subscription during auto-attach and help your organization track subscription usage by role, service level, and usage type. Here is how to configure them.
 
 ## What Are System Purpose Attributes?
 
-RHEL 9 supports three system purpose attributes:
+RHEL supports three system purpose attributes:
 
 - **Role**: What the system does (e.g., Red Hat Enterprise Linux Server, Red Hat Enterprise Linux Workstation, Red Hat Enterprise Linux Compute Node)
 - **Service Level Agreement (SLA)**: The support level required (e.g., Premium, Standard, Self-Support)
@@ -37,7 +37,7 @@ flowchart TD
 
 ## Setting System Purpose with syspurpose
 
-RHEL 9 includes the `syspurpose` tool as part of `subscription-manager`. Set attributes individually:
+RHEL includes the `syspurpose` tool as part of `subscription-manager`. Set attributes individually:
 
 ```bash
 # Set the system role
@@ -99,7 +99,7 @@ Common values include:
 
 ## Setting System Purpose During Installation
 
-You can set system purpose attributes during RHEL 9 installation via Kickstart:
+You can set system purpose attributes during RHEL installation via Kickstart:
 
 ```bash
 # Kickstart system purpose configuration
@@ -181,7 +181,7 @@ For consistent configuration across your fleet:
 
 ```yaml
 # Ansible playbook to set system purpose
-- name: Configure system purpose on RHEL 9 systems
+- name: Configure system purpose on RHEL systems
   hosts: production_servers
   become: true
   tasks:

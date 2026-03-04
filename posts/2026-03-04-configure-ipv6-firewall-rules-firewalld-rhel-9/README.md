@@ -1,18 +1,18 @@
-# How to Configure IPv6 Firewall Rules with firewalld on RHEL 9
+# How to Configure IPv6 Firewall Rules with firewalld on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IPv6, firewalld, Security, Linux
 
-Description: A practical guide to configuring firewalld rules specifically for IPv6 traffic on RHEL 9, covering rich rules, ICMPv6 handling, zone-based policies, and security best practices.
+Description: A practical guide to configuring firewalld rules specifically for IPv6 traffic on RHEL, covering rich rules, ICMPv6 handling, zone-based policies, and security best practices.
 
 ---
 
-One of the nice things about firewalld on RHEL 9 is that it handles both IPv4 and IPv6 by default. When you open a port, it opens on both protocols. But there are situations where you need IPv6-specific rules, and there are IPv6-specific considerations around ICMPv6 that you absolutely must get right or you'll break your network stack.
+One of the nice things about firewalld on RHEL is that it handles both IPv4 and IPv6 by default. When you open a port, it opens on both protocols. But there are situations where you need IPv6-specific rules, and there are IPv6-specific considerations around ICMPv6 that you absolutely must get right or you'll break your network stack.
 
 ## How firewalld Handles IPv6
 
-firewalld uses nftables as its backend on RHEL 9. When you add a rule like `--add-service=https`, it creates entries in both the IPv4 and IPv6 tables. This dual-stack behavior is automatic.
+firewalld uses nftables as its backend on RHEL. When you add a rule like `--add-service=https`, it creates entries in both the IPv4 and IPv6 tables. This dual-stack behavior is automatic.
 
 ```bash
 # Verify firewalld is running with nftables backend
@@ -133,7 +133,7 @@ journalctl -k | grep "IPv6-"
 
 ## Allowing IPv6 Forwarding Through the Firewall
 
-If your RHEL 9 box acts as a router, you need to enable forwarding in firewalld as well as in the kernel.
+If your RHEL box acts as a router, you need to enable forwarding in firewalld as well as in the kernel.
 
 ```bash
 # Enable masquerading for a zone (IPv6 NAT, though uncommon)
@@ -143,7 +143,7 @@ If your RHEL 9 box acts as a router, you need to enable forwarding in firewalld 
 # Check if forwarding is enabled in the zone
 sudo firewall-cmd --zone=public --query-masquerade
 
-# For inter-zone forwarding, use policy objects (RHEL 9 / firewalld 1.0+)
+# For inter-zone forwarding, use policy objects (RHEL / firewalld 1.0+)
 sudo firewall-cmd --permanent --new-policy=forward-traffic
 sudo firewall-cmd --permanent --policy=forward-traffic --add-ingress-zone=internal
 sudo firewall-cmd --permanent --policy=forward-traffic --add-egress-zone=external
@@ -203,4 +203,4 @@ journalctl -kf | grep IPv6
 
 ## Wrapping Up
 
-Firewalling IPv6 on RHEL 9 with firewalld is straightforward once you internalize two things: rules apply to both protocols by default, and ICMPv6 is not optional. Use rich rules with `family="ipv6"` when you need protocol-specific filtering, keep essential ICMPv6 types open, and test your rules from both sides. The zone and policy model in firewalld gives you plenty of flexibility for even complex network architectures.
+Firewalling IPv6 on RHEL with firewalld is straightforward once you internalize two things: rules apply to both protocols by default, and ICMPv6 is not optional. Use rich rules with `family="ipv6"` when you need protocol-specific filtering, keep essential ICMPv6 types open, and test your rules from both sides. The zone and policy model in firewalld gives you plenty of flexibility for even complex network architectures.

@@ -1,14 +1,14 @@
-# How to Manage Podman Containers Using the Cockpit Web Console on RHEL 9
+# How to Manage Podman Containers Using the Cockpit Web Console on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Podman, Containers, Linux
 
-Description: Learn how to manage Podman containers through the Cockpit web console on RHEL 9, including pulling images, running containers, and managing container lifecycles.
+Description: Learn how to manage Podman containers through the Cockpit web console on RHEL, including pulling images, running containers, and managing container lifecycles.
 
 ---
 
-Podman is the default container runtime on RHEL 9, and the Cockpit integration gives you a clean interface for managing containers without memorizing all the CLI flags. It's especially handy for quick deployments and for team members who are more comfortable with a visual interface than a terminal.
+Podman is the default container runtime on RHEL, and the Cockpit integration gives you a clean interface for managing containers without memorizing all the CLI flags. It's especially handy for quick deployments and for team members who are more comfortable with a visual interface than a terminal.
 
 ## Installing the Cockpit Podman Module
 
@@ -264,4 +264,4 @@ sudo vi /etc/containers/registries.conf
 
 ## Wrapping Up
 
-The Cockpit Podman integration makes container management accessible through a browser. Pulling images, running containers, viewing logs, and accessing shells are all a click away. It doesn't replace the Podman CLI for scripting and automation, but for interactive management and monitoring, it reduces the learning curve significantly. Combined with systemd integration for production deployments, you get a solid container workflow on RHEL 9.
+The Cockpit Podman integration makes container management accessible through a browser. Pulling images, running containers, viewing logs, and accessing shells are all a click away. It doesn't replace the Podman CLI for scripting and automation, but for interactive management and monitoring, it reduces the learning curve significantly. Combined with systemd integration for production deployments, you get a solid container workflow on RHEL.

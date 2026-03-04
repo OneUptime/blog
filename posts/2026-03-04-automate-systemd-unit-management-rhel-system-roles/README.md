@@ -39,7 +39,7 @@ ls /usr/share/ansible/roles/ | grep rhel
 Before running any playbooks, you need an inventory file that lists your target hosts. Here is a simple example:
 
 ```ini
-# inventory.ini - list your RHEL 9 hosts here
+# inventory.ini - list your RHEL hosts here
 [webservers]
 web01.example.com
 web02.example.com
@@ -105,7 +105,7 @@ Run the playbook:
 ansible-playbook -i inventory.ini manage-services.yml
 ```
 
-The `systemd_service` module (available in Ansible 2.14+) is the preferred way to manage systemd units. It replaces the older `systemd` module name and works well on RHEL 9.
+The `systemd_service` module (available in Ansible 2.14+) is the preferred way to manage systemd units. It replaces the older `systemd` module name and works well on RHEL.
 
 ---
 

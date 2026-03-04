@@ -1,10 +1,10 @@
-# How to Build a RAID 10 Array with mdadm on RHEL 9
+# How to Build a RAID 10 Array with mdadm on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RAID 10, mdadm, Storage, Linux
 
-Description: Build a RAID 10 array on RHEL 9 using mdadm to combine the speed of striping with the safety of mirroring for demanding workloads.
+Description: Build a RAID 10 array on RHEL using mdadm to combine the speed of striping with the safety of mirroring for demanding workloads.
 
 ---
 
@@ -16,7 +16,7 @@ For databases, virtualization hosts, and anything with heavy mixed read/write wo
 
 ## Prerequisites
 
-- RHEL 9 with root access
+- RHEL with root access
 - At least four disks (must be an even number)
 - mdadm installed
 
@@ -158,4 +158,4 @@ More disks means more stripe width and higher throughput.
 
 ## Wrap-Up
 
-RAID 10 is the go-to for performance-sensitive workloads on RHEL 9. It combines mirroring and striping to deliver high throughput with fast rebuilds. The 50% capacity cost is the price you pay, but for databases, virtualization, and heavy I/O workloads, it is worth every gigabyte.
+RAID 10 is the go-to for performance-sensitive workloads on RHEL. It combines mirroring and striping to deliver high throughput with fast rebuilds. The 50% capacity cost is the price you pay, but for databases, virtualization, and heavy I/O workloads, it is worth every gigabyte.

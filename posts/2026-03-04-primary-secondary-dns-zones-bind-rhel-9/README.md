@@ -1,10 +1,10 @@
-# How to Set Up Primary and Secondary DNS Zones with BIND on RHEL 9
+# How to Set Up Primary and Secondary DNS Zones with BIND on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BIND, DNS Zones, Linux
 
-Description: Configure primary and secondary BIND DNS servers on RHEL 9 for redundancy and reliability with automatic zone transfers.
+Description: Configure primary and secondary BIND DNS servers on RHEL for redundancy and reliability with automatic zone transfers.
 
 ---
 

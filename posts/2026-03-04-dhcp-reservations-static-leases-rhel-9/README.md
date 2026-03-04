@@ -1,10 +1,10 @@
-# How to Set Up DHCP Reservations and Static Leases on RHEL 9
+# How to Set Up DHCP Reservations and Static Leases on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DHCP, Static Leases, Linux
 
-Description: Configure DHCP reservations on RHEL 9 to assign consistent IP addresses to specific devices based on their MAC address while still using DHCP for all other settings.
+Description: Configure DHCP reservations on RHEL to assign consistent IP addresses to specific devices based on their MAC address while still using DHCP for all other settings.
 
 ---
 

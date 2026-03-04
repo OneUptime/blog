@@ -1,14 +1,14 @@
-# How to Enforce Password Complexity with pam_pwquality on RHEL 9
+# How to Enforce Password Complexity with pam_pwquality on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, pam_pwquality, Password, Security, Linux
 
-Description: Configure pam_pwquality on RHEL 9 to enforce strong password complexity requirements including length, character classes, and dictionary checks.
+Description: Configure pam_pwquality on RHEL to enforce strong password complexity requirements including length, character classes, and dictionary checks.
 
 ---
 
-Weak passwords are still one of the top reasons systems get compromised. On RHEL 9, the `pam_pwquality` module checks new passwords against a set of configurable rules before allowing the change. It replaces the older pam_cracklib and adds dictionary-based checks through cracklib.
+Weak passwords are still one of the top reasons systems get compromised. On RHEL, the `pam_pwquality` module checks new passwords against a set of configurable rules before allowing the change. It replaces the older pam_cracklib and adds dictionary-based checks through cracklib.
 
 ## How pam_pwquality Works
 
@@ -263,4 +263,4 @@ Options specified on the PAM line override the config file.
 
 ## Wrapping Up
 
-pam_pwquality on RHEL 9 gives you solid control over password quality without needing third-party tools. Use the central configuration file at `/etc/security/pwquality.conf` for clarity, set negative credit values when you need to require specific character types, and use `pwscore` to verify your policy works as expected. The goal is to find the right balance between security and usability, because an overly strict policy just leads to passwords written on sticky notes.
+pam_pwquality on RHEL gives you solid control over password quality without needing third-party tools. Use the central configuration file at `/etc/security/pwquality.conf` for clarity, set negative credit values when you need to require specific character types, and use `pwscore` to verify your policy works as expected. The goal is to find the right balance between security and usability, because an overly strict policy just leads to passwords written on sticky notes.

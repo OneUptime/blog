@@ -1,22 +1,22 @@
-# How to Install Terraform on CentOS 9 and RHEL 9
+# How to Install Terraform on CentOS 9 and RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Terraform, CentOS, RHEL, Linux, Installation, DevOps, Infrastructure as Code
 
-Description: Step-by-step instructions for installing Terraform on CentOS 9 Stream and RHEL 9 using the official HashiCorp repository and manual binary installation.
+Description: Step-by-step instructions for installing Terraform on CentOS 9 Stream and RHEL using the official HashiCorp repository and manual binary installation.
 
 ---
 
 CentOS 9 Stream and Red Hat Enterprise Linux 9 are popular choices for enterprise servers and workstations. If you are running either of these distributions and need to get Terraform up and running, this guide covers two reliable methods: using the official HashiCorp YUM repository and installing the binary manually.
 
-Both methods work identically on CentOS 9 Stream and RHEL 9 since they share the same package management system (DNF/YUM) and the same base packages.
+Both methods work identically on CentOS 9 Stream and RHEL since they share the same package management system (DNF/YUM) and the same base packages.
 
 ## Prerequisites
 
 Before starting, make sure you have:
 
-- A CentOS 9 Stream or RHEL 9 system with root or sudo access
+- A CentOS 9 Stream or RHEL system with root or sudo access
 - An active internet connection
 - `curl` or `wget` installed (usually available by default)
 
@@ -47,7 +47,7 @@ sudo dnf install -y yum-utils
 sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
 ```
 
-This adds the HashiCorp RPM repository to your system. The repository URL uses `RHEL` which works for both RHEL and CentOS since CentOS 9 Stream is binary compatible with RHEL 9.
+This adds the HashiCorp RPM repository to your system. The repository URL uses `RHEL` which works for both RHEL and CentOS since CentOS 9 Stream is binary compatible with RHEL.
 
 ### Step 3 - Install Terraform
 
@@ -192,7 +192,7 @@ terraform {
 # A simple null resource to test Terraform works
 resource "null_resource" "test" {
   provisioner "local-exec" {
-    command = "echo 'Terraform is working on CentOS/RHEL 9!'"
+    command = "echo 'Terraform is working on CentOS/RHEL!'"
   }
 }
 EOF
@@ -221,7 +221,7 @@ In most cases, outbound HTTPS connections work by default. But if you are in a l
 
 ## SELinux Considerations
 
-Both CentOS 9 and RHEL 9 have SELinux enabled by default in enforcing mode. Terraform installed from the official RPM repository should work fine with SELinux. If you installed manually and run into permission issues:
+Both CentOS 9 and RHEL have SELinux enabled by default in enforcing mode. Terraform installed from the official RPM repository should work fine with SELinux. If you installed manually and run into permission issues:
 
 ```bash
 # Check SELinux status
@@ -288,6 +288,6 @@ sudo dnf makecache
 
 ## Next Steps
 
-With Terraform installed on your CentOS 9 or RHEL 9 system, you can start building your infrastructure configurations. Consider setting up shell autocomplete to speed up your workflow, and explore Terraform modules to keep your configurations organized and reusable.
+With Terraform installed on your CentOS 9 or RHEL system, you can start building your infrastructure configurations. Consider setting up shell autocomplete to speed up your workflow, and explore Terraform modules to keep your configurations organized and reusable.
 
 The repository-based installation is the better choice for most situations since it integrates with your package manager and makes updates simple. The manual method is useful for air-gapped environments or when you need a very specific version.

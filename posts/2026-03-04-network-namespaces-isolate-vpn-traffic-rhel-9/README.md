@@ -1,14 +1,14 @@
-# How to Use Network Namespaces to Isolate VPN Traffic on RHEL 9
+# How to Use Network Namespaces to Isolate VPN Traffic on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Namespaces, VPN, Isolation, Linux
 
-Description: Learn how to use network namespaces on RHEL 9 to run a VPN in an isolated network environment, ensuring only specific applications use the VPN while the rest of the system uses the normal network path.
+Description: Learn how to use network namespaces on RHEL to run a VPN in an isolated network environment, ensuring only specific applications use the VPN while the rest of the system uses the normal network path.
 
 ---
 
-Sometimes you need only certain applications to go through a VPN, while the rest of the system uses the normal network. Or you want to prevent VPN leaks entirely by making it physically impossible for a process to bypass the tunnel. Network namespaces solve both problems elegantly on RHEL 9.
+Sometimes you need only certain applications to go through a VPN, while the rest of the system uses the normal network. Or you want to prevent VPN leaks entirely by making it physically impossible for a process to bypass the tunnel. Network namespaces solve both problems elegantly on RHEL.
 
 ## The Problem with Traditional Split Tunneling
 
@@ -224,4 +224,4 @@ sudo ip netns exec vpn dig @10.0.0.1 example.com
 
 ## Wrapping Up
 
-Network namespaces give you bulletproof VPN isolation on RHEL 9. Applications in the namespace physically cannot communicate except through the VPN tunnel. This approach eliminates DNS leaks, route leaks, and accidental cleartext exposure. It takes more setup than traditional split tunneling, but the security guarantees are significantly stronger.
+Network namespaces give you bulletproof VPN isolation on RHEL. Applications in the namespace physically cannot communicate except through the VPN tunnel. This approach eliminates DNS leaks, route leaks, and accidental cleartext exposure. It takes more setup than traditional split tunneling, but the security guarantees are significantly stronger.

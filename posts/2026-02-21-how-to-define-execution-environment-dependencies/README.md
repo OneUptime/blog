@@ -280,7 +280,7 @@ The platform selectors in bindep map to the operating system of the base image. 
 # Common platform selectors
 # platform:centos-8 - CentOS 8
 # platform:rhel-8 - RHEL 8
-# platform:rhel-9 - RHEL 9
+# platform:rhel-9 - RHEL
 # platform:fedora - Fedora
 # platform:debian - Debian
 # platform:ubuntu - Ubuntu

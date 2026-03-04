@@ -1,20 +1,20 @@
-# How to Configure RHEL 9 for SAP BusinessObjects
+# How to Configure RHEL for SAP BusinessObjects
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP BusinessObjects, SAP BI, Enterprise, Linux
 
-Description: Prepare and configure RHEL 9 to run SAP BusinessObjects BI Platform with the required system settings and dependencies.
+Description: Prepare and configure RHEL to run SAP BusinessObjects BI Platform with the required system settings and dependencies.
 
 ---
 
-SAP BusinessObjects BI Platform provides enterprise reporting and analytics capabilities. Running it on RHEL 9 requires specific OS configuration to ensure compatibility and performance. This guide prepares your RHEL 9 system for a BusinessObjects installation.
+SAP BusinessObjects BI Platform provides enterprise reporting and analytics capabilities. Running it on RHEL requires specific OS configuration to ensure compatibility and performance. This guide prepares your RHEL system for a BusinessObjects installation.
 
 ## Component Architecture
 
 ```mermaid
 graph TB
-    subgraph "RHEL 9 Server"
+    subgraph "RHEL Server"
         CMS[Central Management Server]
         WAS[Web Application Server - Tomcat]
         FRS[File Repository Server]
@@ -28,7 +28,7 @@ graph TB
 
 ## Prerequisites
 
-- RHEL 9 with at least 16 GB RAM and 4 CPUs
+- RHEL with at least 16 GB RAM and 4 CPUs
 - 50 GB disk space for installation plus additional for data
 - SAP BusinessObjects installation media
 
@@ -169,4 +169,4 @@ sudo su - bobj -c '/opt/sap_bobj/sap_bobj/listprocesses'
 
 ## Conclusion
 
-RHEL 9 provides a solid foundation for SAP BusinessObjects BI Platform. The key steps are installing the correct 32-bit and 64-bit libraries, tuning system parameters, and configuring the CMS database before running the installer. For production environments, configure HTTPS, integrate with your LDAP/SSO provider, and set up high availability for the CMS.
+RHEL provides a solid foundation for SAP BusinessObjects BI Platform. The key steps are installing the correct 32-bit and 64-bit libraries, tuning system parameters, and configuring the CMS database before running the installer. For production environments, configure HTTPS, integrate with your LDAP/SSO provider, and set up high availability for the CMS.

@@ -1,10 +1,10 @@
-# How to Start, Stop, Restart, and Reload Services with systemctl on RHEL 9
+# How to Start, Stop, Restart, and Reload Services with systemctl on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemctl, Services, systemd, Linux
 
-Description: A practical guide to managing services with systemctl on RHEL 9, covering start, stop, restart, reload, and understanding when to use each one.
+Description: A practical guide to managing services with systemctl on RHEL, covering start, stop, restart, reload, and understanding when to use each one.
 
 ---
 
@@ -257,4 +257,4 @@ Here is a summary of the commands covered in this guide:
 
 ## Wrapping Up
 
-These are the systemctl commands you will use every single day on RHEL 9. The key takeaway is understanding the difference between restart and reload, and knowing that start/stop only affects the current session while enable/disable affects boot behavior. Master these basics and you will handle most service management tasks without breaking a sweat.
+These are the systemctl commands you will use every single day on RHEL. The key takeaway is understanding the difference between restart and reload, and knowing that start/stop only affects the current session while enable/disable affects boot behavior. Master these basics and you will handle most service management tasks without breaking a sweat.

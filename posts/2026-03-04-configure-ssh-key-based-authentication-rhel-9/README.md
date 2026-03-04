@@ -1,21 +1,21 @@
-# How to Configure SSH Key-Based Authentication on RHEL 9
+# How to Configure SSH Key-Based Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Key-Based Auth, Security, Linux
 
-Description: Step-by-step guide to setting up SSH key-based authentication on RHEL 9, covering key generation, deployment, permissions, and common pitfalls.
+Description: Step-by-step guide to setting up SSH key-based authentication on RHEL, covering key generation, deployment, permissions, and common pitfalls.
 
 ---
 
-SSH keys are the foundation of secure remote access. A key pair provides stronger authentication than any password, and it eliminates the risk of password brute-forcing entirely. Setting up key-based auth on RHEL 9 is straightforward, but the details around file permissions and SELinux matter.
+SSH keys are the foundation of secure remote access. A key pair provides stronger authentication than any password, and it eliminates the risk of password brute-forcing entirely. Setting up key-based auth on RHEL is straightforward, but the details around file permissions and SELinux matter.
 
 ## Generating an SSH Key Pair
 
 On your local workstation (not the server), generate a key pair:
 
 ```bash
-# Generate an Ed25519 key (recommended for RHEL 9)
+# Generate an Ed25519 key (recommended for RHEL)
 ssh-keygen -t ed25519 -C "jsmith@workstation"
 ```
 
@@ -111,7 +111,7 @@ chown -R $(whoami):$(whoami) ~/.ssh
 
 ## SELinux Context
 
-On RHEL 9, SELinux may prevent SSH from reading authorized_keys if the context is wrong:
+On RHEL, SELinux may prevent SSH from reading authorized_keys if the context is wrong:
 
 ```bash
 # Check the SELinux context
@@ -160,7 +160,7 @@ PubkeyAuthentication yes
 AuthorizedKeysFile .ssh/authorized_keys
 ```
 
-These are the defaults on RHEL 9, so they should already be set.
+These are the defaults on RHEL, so they should already be set.
 
 ## Managing Multiple Keys
 

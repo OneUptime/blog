@@ -1,10 +1,10 @@
-# How to Use Anacron for Running Missed Scheduled Tasks on RHEL 9
+# How to Use Anacron for Running Missed Scheduled Tasks on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Anacron, Scheduling, Linux, System Administration
 
-Description: Learn how anacron handles missed scheduled tasks on RHEL 9, how it differs from cron, and how to configure /etc/anacrontab for reliable periodic job execution on systems that are not always running.
+Description: Learn how anacron handles missed scheduled tasks on RHEL, how it differs from cron, and how to configure /etc/anacrontab for reliable periodic job execution on systems that are not always running.
 
 ---
 
@@ -42,9 +42,9 @@ flowchart TD
 | Suitable for | Always-on servers | Systems with downtime |
 | User crontabs | Yes | No, system-wide only |
 
-On RHEL 9, anacron and cron work together. The hourly cron job at `/etc/cron.d/0hourly` triggers anacron, which then handles the daily, weekly, and monthly jobs.
+On RHEL, anacron and cron work together. The hourly cron job at `/etc/cron.d/0hourly` triggers anacron, which then handles the daily, weekly, and monthly jobs.
 
-## How Anacron Works on RHEL 9
+## How Anacron Works on RHEL
 
 Here is the chain of events:
 
@@ -255,7 +255,7 @@ The flags:
 
 ## Combining Cron and Anacron
 
-On RHEL 9, the recommended approach is:
+On RHEL, the recommended approach is:
 
 - Use **cron** for jobs that must run at exact times (database snapshots at midnight, report generation at 6 AM)
 - Use **anacron** for periodic maintenance that just needs to happen regularly (log cleanup, backup verification, security scans)
@@ -317,4 +317,4 @@ cat /var/spool/anacron/cron.daily
 
 ## Summary
 
-Anacron fills an important gap in task scheduling on RHEL 9. While cron handles precise, time-based scheduling, anacron ensures that periodic tasks actually run even if the system was not available at the originally scheduled time. On RHEL 9, the two work together seamlessly through the hourly trigger mechanism. For any system that experiences downtime, whether planned or not, anacron is essential for reliable maintenance task execution.
+Anacron fills an important gap in task scheduling on RHEL. While cron handles precise, time-based scheduling, anacron ensures that periodic tasks actually run even if the system was not available at the originally scheduled time. On RHEL, the two work together seamlessly through the hourly trigger mechanism. For any system that experiences downtime, whether planned or not, anacron is essential for reliable maintenance task execution.

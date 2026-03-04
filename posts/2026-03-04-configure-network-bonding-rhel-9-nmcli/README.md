@@ -1,22 +1,22 @@
-# How to Configure Network Bonding on RHEL 9 Using nmcli
+# How to Configure Network Bonding on RHEL Using nmcli
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Bonding, nmcli, High Availability, Linux
 
-Description: A hands-on guide to setting up network bonding on RHEL 9 with nmcli, covering bond creation, slave interfaces, and verification steps for production environments.
+Description: A hands-on guide to setting up network bonding on RHEL with nmcli, covering bond creation, slave interfaces, and verification steps for production environments.
 
 ---
 
-Network bonding combines two or more physical network interfaces into a single logical interface. This gives you either redundancy, increased throughput, or both, depending on the bonding mode you pick. On RHEL 9, the recommended way to manage this is through nmcli, the NetworkManager command-line tool.
+Network bonding combines two or more physical network interfaces into a single logical interface. This gives you either redundancy, increased throughput, or both, depending on the bonding mode you pick. On RHEL, the recommended way to manage this is through nmcli, the NetworkManager command-line tool.
 
-I have been running bonded interfaces on production servers for years, and the process on RHEL 9 is straightforward once you understand the moving parts. Let me walk you through it.
+I have been running bonded interfaces on production servers for years, and the process on RHEL is straightforward once you understand the moving parts. Let me walk you through it.
 
 ## Prerequisites
 
 Before you start, make sure you have:
 
-- RHEL 9 installed with at least two physical network interfaces
+- RHEL installed with at least two physical network interfaces
 - Root or sudo access
 - NetworkManager running (it should be by default)
 
@@ -188,4 +188,4 @@ nmcli connection delete "Wired connection 1"
 
 ## Summary
 
-Setting up network bonding on RHEL 9 with nmcli boils down to: create the bond, add slaves, assign an IP, and bring it up. The active-backup mode is a solid default for redundancy, and you can explore other modes (balance-rr, 802.3ad, etc.) depending on your needs. The key thing is to test failover before putting the server into production, which I cover in a separate post.
+Setting up network bonding on RHEL with nmcli boils down to: create the bond, add slaves, assign an IP, and bring it up. The active-backup mode is a solid default for redundancy, and you can explore other modes (balance-rr, 802.3ad, etc.) depending on your needs. The key thing is to test failover before putting the server into production, which I cover in a separate post.

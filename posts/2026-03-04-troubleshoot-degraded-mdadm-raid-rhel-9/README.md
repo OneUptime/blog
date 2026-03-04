@@ -1,10 +1,10 @@
-# How to Troubleshoot Degraded mdadm RAID Arrays on RHEL 9
+# How to Troubleshoot Degraded mdadm RAID Arrays on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RAID, mdadm, Troubleshooting, Linux
 
-Description: A systematic approach to diagnosing and fixing degraded mdadm RAID arrays on RHEL 9, covering common failure scenarios and recovery steps.
+Description: A systematic approach to diagnosing and fixing degraded mdadm RAID arrays on RHEL, covering common failure scenarios and recovery steps.
 
 ---
 
@@ -182,4 +182,4 @@ Reduce the I/O priority of other workloads if possible. The longer a rebuild tak
 
 ## Wrap-Up
 
-Troubleshooting a degraded RAID array on RHEL 9 follows a logical sequence: assess the damage, identify the cause, and take corrective action. The most important things are to act quickly, understand what type of failure occurred, and have a replacement process ready. Regular monitoring prevents most surprises, but when something does go wrong, the steps above will get you back to a healthy state.
+Troubleshooting a degraded RAID array on RHEL follows a logical sequence: assess the damage, identify the cause, and take corrective action. The most important things are to act quickly, understand what type of failure occurred, and have a replacement process ready. Regular monitoring prevents most surprises, but when something does go wrong, the steps above will get you back to a healthy state.

@@ -1,10 +1,10 @@
-# How to Troubleshoot No Space Left on Device Errors on RHEL 9
+# How to Troubleshoot No Space Left on Device Errors on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Disk Space, Troubleshooting, Linux, System Administration
 
-Description: A systematic guide to diagnosing and resolving "No space left on device" errors on RHEL 9, covering disk space exhaustion, inode depletion, large file hunting, journal cleanup, and preventive measures.
+Description: A systematic guide to diagnosing and resolving 'No space left on device' errors on RHEL, covering disk space exhaustion, inode depletion, large file hunting, journal cleanup, and preventive measures.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A systematic guide to diagnosing and resolving "No space left on de
 
 "No space left on device" is one of those errors that can bring services to their knees. Applications crash, databases refuse to write, logs stop recording, and deployments fail. The tricky part is that this error does not always mean you are out of disk space. It could be inode exhaustion, a filled-up /tmp partition, or even a deleted file still held open by a process.
 
-Let me walk through how I diagnose this systematically on RHEL 9 systems.
+Let me walk through how I diagnose this systematically on RHEL systems.
 
 ## Step 1: Check Disk Space Usage
 
@@ -153,7 +153,7 @@ sudo systemctl restart systemd-journald
 
 ### Old Kernels
 
-RHEL 9 keeps old kernel packages around for rollback. These take up space in `/boot` and `/usr/lib/modules/`.
+RHEL keeps old kernel packages around for rollback. These take up space in `/boot` and `/usr/lib/modules/`.
 
 ```bash
 # List installed kernel packages
@@ -185,7 +185,7 @@ sudo dnf autoremove
 # Check /tmp usage
 du -sh /tmp
 
-# RHEL 9 uses systemd-tmpfiles for /tmp cleanup
+# RHEL uses systemd-tmpfiles for /tmp cleanup
 # Check the configuration
 cat /usr/lib/tmpfiles.d/tmp.conf
 

@@ -1,14 +1,14 @@
-# How to Configure Quality of Service (QoS) with Traffic Control on RHEL 9
+# How to Configure Quality of Service (QoS) with Traffic Control on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, QoS, Traffic Control, tc, Linux
 
-Description: A comprehensive guide to setting up Quality of Service on RHEL 9 using tc, including traffic classification, priority queuing, bandwidth guarantees, and practical QoS policies for common scenarios.
+Description: A comprehensive guide to setting up Quality of Service on RHEL using tc, including traffic classification, priority queuing, bandwidth guarantees, and practical QoS policies for common scenarios.
 
 ---
 
-Quality of Service (QoS) ensures that critical traffic gets the bandwidth and low latency it needs, even when the network is congested. Without QoS, a large file transfer can starve your SSH sessions, and a backup job can make your VoIP calls unusable. On RHEL 9, tc (traffic control) provides the building blocks for sophisticated QoS policies.
+Quality of Service (QoS) ensures that critical traffic gets the bandwidth and low latency it needs, even when the network is congested. Without QoS, a large file transfer can starve your SSH sessions, and a backup job can make your VoIP calls unusable. On RHEL, tc (traffic control) provides the building blocks for sophisticated QoS policies.
 
 ## QoS Concepts
 
@@ -162,7 +162,7 @@ Look for:
 
 ```bash
 #!/bin/bash
-# qos-setup.sh - Complete QoS configuration for RHEL 9
+# qos-setup.sh - Complete QoS configuration for RHEL
 # Run with: sudo bash qos-setup.sh
 
 IFACE="ens192"
@@ -202,4 +202,4 @@ tc -s class show dev $IFACE
 
 ## Wrapping Up
 
-QoS with tc on RHEL 9 is about three things: defining classes with bandwidth guarantees, classifying traffic into those classes, and using fair queueing within each class. HTB handles the bandwidth allocation, u32 filters handle the classification, and fq_codel prevents bufferbloat at each level. Plan your classes around your actual traffic patterns, monitor with `tc -s class show`, and adjust rates based on what you observe.
+QoS with tc on RHEL is about three things: defining classes with bandwidth guarantees, classifying traffic into those classes, and using fair queueing within each class. HTB handles the bandwidth allocation, u32 filters handle the classification, and fq_codel prevents bufferbloat at each level. Plan your classes around your actual traffic patterns, monitor with `tc -s class show`, and adjust rates based on what you observe.

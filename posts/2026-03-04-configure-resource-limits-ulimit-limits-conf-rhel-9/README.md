@@ -1,10 +1,10 @@
-# How to Configure Resource Limits with ulimit and limits.conf on RHEL 9
+# How to Configure Resource Limits with ulimit and limits.conf on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ulimit, Resource Limits, limits.conf, Linux, Performance
 
-Description: A complete guide to configuring resource limits on RHEL 9 using ulimit and /etc/security/limits.conf, covering soft and hard limits, common settings for production workloads, and troubleshooting.
+Description: A complete guide to configuring resource limits on RHEL using ulimit and /etc/security/limits.conf, covering soft and hard limits, common settings for production workloads, and troubleshooting.
 
 ---
 
@@ -115,7 +115,7 @@ Where:
 
 ### Common Production Settings
 
-Here are the settings I typically configure on production RHEL 9 servers.
+Here are the settings I typically configure on production RHEL servers.
 
 ```bash
 # Edit limits.conf
@@ -187,7 +187,7 @@ EOF
 Files in `limits.d/` are processed in alphabetical order, and they override settings in `limits.conf`. Use a numeric prefix to control the order.
 
 ```bash
-# RHEL 9 ships with this default file for nproc
+# RHEL ships with this default file for nproc
 cat /etc/security/limits.d/20-nproc.conf
 ```
 
@@ -362,4 +362,4 @@ EOF
 
 ## Summary
 
-Resource limits on RHEL 9 are a critical part of system hardening and stability. Use `ulimit` for quick checks and temporary adjustments, `limits.conf` and `limits.d/` for persistent per-user limits, and systemd unit overrides for service-specific limits. Always verify that system-wide kernel limits are high enough to accommodate your per-user settings, and remember that changes require a new login session or service restart to take effect. Getting these right up front prevents a lot of late-night pages about crashed services.
+Resource limits on RHEL are a critical part of system hardening and stability. Use `ulimit` for quick checks and temporary adjustments, `limits.conf` and `limits.d/` for persistent per-user limits, and systemd unit overrides for service-specific limits. Always verify that system-wide kernel limits are high enough to accommodate your per-user settings, and remember that changes require a new login session or service restart to take effect. Getting these right up front prevents a lot of late-night pages about crashed services.

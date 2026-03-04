@@ -1,14 +1,14 @@
-# How to Switch an Existing RHEL 9 System to FIPS Mode Post-Installation
+# How to Switch an Existing RHEL System to FIPS Mode Post-Installation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FIPS, Post-Installation, Security, Linux
 
-Description: Enable FIPS mode on an already-running RHEL 9 system, including key regeneration and application compatibility checks.
+Description: Enable FIPS mode on an already-running RHEL system, including key regeneration and application compatibility checks.
 
 ---
 
-Ideally, you enable FIPS during installation. But real life does not always work that way. Sometimes you inherit a system, sometimes requirements change, and sometimes FIPS was simply missed during the build process. The good news is that RHEL 9 makes it straightforward to switch to FIPS mode post-installation. The bad news is that you need to do some extra work afterward to make sure everything is using FIPS-compliant cryptography.
+Ideally, you enable FIPS during installation. But real life does not always work that way. Sometimes you inherit a system, sometimes requirements change, and sometimes FIPS was simply missed during the build process. The good news is that RHEL makes it straightforward to switch to FIPS mode post-installation. The bad news is that you need to do some extra work afterward to make sure everything is using FIPS-compliant cryptography.
 
 ## Check Current FIPS Status
 

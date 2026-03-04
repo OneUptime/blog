@@ -1,10 +1,10 @@
-# How to Enable Logging for Dropped Packets in Firewalld on RHEL 9
+# How to Enable Logging for Dropped Packets in Firewalld on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Logging, Security, Linux
 
-Description: How to configure firewalld on RHEL 9 to log dropped and rejected packets for security auditing, troubleshooting, and intrusion detection.
+Description: How to configure firewalld on RHEL to log dropped and rejected packets for security auditing, troubleshooting, and intrusion detection.
 
 ---
 

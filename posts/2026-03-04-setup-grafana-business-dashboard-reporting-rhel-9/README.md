@@ -1,18 +1,18 @@
-# How to Set Up Grafana for Business Dashboard Reporting on RHEL 9
+# How to Set Up Grafana for Business Dashboard Reporting on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Grafana, Dashboard, Reporting, Data Visualization, Linux
 
-Description: Set up Grafana on RHEL 9 for business dashboard reporting, connecting it to multiple data sources and building production-ready visualizations.
+Description: Set up Grafana on RHEL for business dashboard reporting, connecting it to multiple data sources and building production-ready visualizations.
 
 ---
 
-Grafana is widely known for infrastructure monitoring, but it is also a powerful tool for business dashboard reporting. With support for SQL databases, APIs, and spreadsheet-like transformations, Grafana can serve as the reporting layer for your business metrics. This guide focuses on setting up Grafana specifically for business intelligence use cases on RHEL 9.
+Grafana is widely known for infrastructure monitoring, but it is also a powerful tool for business dashboard reporting. With support for SQL databases, APIs, and spreadsheet-like transformations, Grafana can serve as the reporting layer for your business metrics. This guide focuses on setting up Grafana specifically for business intelligence use cases on RHEL.
 
 ## Prerequisites
 
-- RHEL 9 with at least 2 GB RAM
+- RHEL with at least 2 GB RAM
 - PostgreSQL or MySQL as a data source
 - Root or sudo access
 
@@ -271,4 +271,4 @@ In the Grafana UI:
 
 ## Conclusion
 
-Grafana is now configured on RHEL 9 as a business reporting platform. Your dashboards can pull from multiple SQL databases, display key business metrics, and deliver scheduled reports to stakeholders. Consider organizing dashboards into folders by department (Sales, Marketing, Operations) and setting up team-based permissions so each group sees only the data relevant to them.
+Grafana is now configured on RHEL as a business reporting platform. Your dashboards can pull from multiple SQL databases, display key business metrics, and deliver scheduled reports to stakeholders. Consider organizing dashboards into folders by department (Sales, Marketing, Operations) and setting up team-based permissions so each group sees only the data relevant to them.

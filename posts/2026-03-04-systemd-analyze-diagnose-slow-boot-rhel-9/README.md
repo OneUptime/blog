@@ -1,16 +1,16 @@
-# How to Use systemd-analyze to Diagnose Slow Boot Times on RHEL 9
+# How to Use systemd-analyze to Diagnose Slow Boot Times on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Boot Performance, Diagnostics, Linux
 
-Description: A hands-on guide to using systemd-analyze on RHEL 9 to measure boot times, find bottleneck services, and generate visual boot charts for performance tuning.
+Description: A hands-on guide to using systemd-analyze on RHEL to measure boot times, find bottleneck services, and generate visual boot charts for performance tuning.
 
 ---
 
 ## When Boot Takes Too Long
 
-I have managed servers where a reboot took 15 seconds and servers where it took 4 minutes. The difference matters, especially when you are standing in front of a rack at 2 AM during an outage, waiting for a box to come back. RHEL 9 ships with `systemd-analyze`, a built-in tool that breaks down exactly where your boot time goes. Here is how to use it.
+I have managed servers where a reboot took 15 seconds and servers where it took 4 minutes. The difference matters, especially when you are standing in front of a rack at 2 AM during an outage, waiting for a box to come back. RHEL ships with `systemd-analyze`, a built-in tool that breaks down exactly where your boot time goes. Here is how to use it.
 
 ## Getting the Big Picture
 
@@ -208,7 +208,7 @@ systemd-analyze critical-chain sshd.service
 
 ## Real-World Example
 
-On one RHEL 9 server I worked on, the boot time was 47 seconds. After running through this process:
+On one RHEL server I worked on, the boot time was 47 seconds. After running through this process:
 
 1. `systemd-analyze blame` showed `NetworkManager-wait-online` at 22 seconds
 2. `multipathd.service` was taking 8 seconds scanning for non-existent SAN paths
@@ -218,4 +218,4 @@ After reducing the NM-wait-online timeout to 10 seconds, cleaning up multipath c
 
 ## Wrapping Up
 
-`systemd-analyze` is one of those tools that does not get enough attention. The `time`, `blame`, and `critical-chain` subcommands give you everything you need to figure out why a RHEL 9 box is slow to boot. The SVG plot is useful for visual thinkers and for documentation. The fix is usually one of three things: taming `NetworkManager-wait-online`, cleaning up storage configs, or disabling services that do not need to run at boot.
+`systemd-analyze` is one of those tools that does not get enough attention. The `time`, `blame`, and `critical-chain` subcommands give you everything you need to figure out why a RHEL box is slow to boot. The SVG plot is useful for visual thinkers and for documentation. The fix is usually one of three things: taming `NetworkManager-wait-online`, cleaning up storage configs, or disabling services that do not need to run at boot.

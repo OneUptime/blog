@@ -1,10 +1,10 @@
-# How to Remediate OpenSCAP Findings with Ansible Playbooks on RHEL 9
+# How to Remediate OpenSCAP Findings with Ansible Playbooks on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenSCAP, Ansible, Remediation, Linux
 
-Description: Turn OpenSCAP scan results into Ansible playbooks that automatically fix compliance failures on RHEL 9, creating a closed-loop remediation workflow.
+Description: Turn OpenSCAP scan results into Ansible playbooks that automatically fix compliance failures on RHEL, creating a closed-loop remediation workflow.
 
 ---
 
@@ -220,4 +220,4 @@ oscap xccdf eval \
 
 Document these remaining items as exceptions with justifications and timelines for resolution.
 
-The scan-remediate-verify cycle with OpenSCAP and Ansible is the most efficient way to achieve and maintain compliance on RHEL 9. Automate it, run it regularly, and keep your reports for audit evidence.
+The scan-remediate-verify cycle with OpenSCAP and Ansible is the most efficient way to achieve and maintain compliance on RHEL. Automate it, run it regularly, and keep your reports for audit evidence.

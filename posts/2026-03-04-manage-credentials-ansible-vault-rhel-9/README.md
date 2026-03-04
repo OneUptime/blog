@@ -1,10 +1,10 @@
-# How to Manage Sensitive Credentials with Ansible Vault on RHEL 9
+# How to Manage Sensitive Credentials with Ansible Vault on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible Vault, Security, Credentials, Linux, Automation
 
-Description: A practical guide to using Ansible Vault on RHEL 9 to encrypt, manage, and use sensitive credentials like passwords, API keys, and certificates in your Ansible playbooks.
+Description: A practical guide to using Ansible Vault on RHEL to encrypt, manage, and use sensitive credentials like passwords, API keys, and certificates in your Ansible playbooks.
 
 ---
 

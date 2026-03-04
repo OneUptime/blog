@@ -1,10 +1,10 @@
-# How to Configure OpenVPN with LDAP Authentication on RHEL 9
+# How to Configure OpenVPN with LDAP Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenVPN, LDAP, Authentication, Linux
 
-Description: Step-by-step instructions for integrating OpenVPN with LDAP directory services on RHEL 9, allowing VPN users to authenticate with their existing directory credentials.
+Description: Step-by-step instructions for integrating OpenVPN with LDAP directory services on RHEL, allowing VPN users to authenticate with their existing directory credentials.
 
 ---
 
@@ -27,7 +27,7 @@ sequenceDiagram
 
 ## Prerequisites
 
-- OpenVPN installed and running on RHEL 9
+- OpenVPN installed and running on RHEL
 - An LDAP server (Active Directory, FreeIPA, or OpenLDAP)
 - LDAP service account with search permissions
 - EPEL repository enabled

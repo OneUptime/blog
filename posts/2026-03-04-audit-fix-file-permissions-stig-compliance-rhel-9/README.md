@@ -1,14 +1,14 @@
-# How to Audit and Fix File Permissions for STIG Compliance on RHEL 9
+# How to Audit and Fix File Permissions for STIG Compliance on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, File Permissions, STIG, Compliance, Linux
 
-Description: Audit and remediate file permissions on RHEL 9 to meet DISA STIG requirements, covering critical system files, directories, and ownership standards.
+Description: Audit and remediate file permissions on RHEL to meet DISA STIG requirements, covering critical system files, directories, and ownership standards.
 
 ---
 
-The DISA STIGs (Security Technical Implementation Guides) have specific requirements for file permissions on RHEL 9. Failing a STIG scan because of wrong permissions on system files is one of the most common compliance issues I see. This guide covers the key permission requirements and how to find and fix violations.
+The DISA STIGs (Security Technical Implementation Guides) have specific requirements for file permissions on RHEL. Failing a STIG scan because of wrong permissions on system files is one of the most common compliance issues I see. This guide covers the key permission requirements and how to find and fix violations.
 
 ## Understanding STIG Permission Requirements
 
@@ -127,7 +127,7 @@ sudo find / -xdev -type f -perm -4000 2>/dev/null
 sudo find / -xdev -type f -perm -2000 2>/dev/null
 ```
 
-Compare against the expected list. On a clean RHEL 9 install, the legitimate SUID files include `passwd`, `sudo`, `su`, `mount`, `umount`, and a few others.
+Compare against the expected list. On a clean RHEL install, the legitimate SUID files include `passwd`, `sudo`, `su`, `mount`, `umount`, and a few others.
 
 ## Automated Remediation Script
 

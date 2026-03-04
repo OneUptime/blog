@@ -1,10 +1,10 @@
-# How to Troubleshoot Firewalld Rules Not Working on RHEL 9
+# How to Troubleshoot Firewalld Rules Not Working on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Troubleshooting, Linux
 
-Description: A systematic approach to debugging firewalld rules that are not working as expected on RHEL 9, covering common mistakes, zone issues, and diagnostic techniques.
+Description: A systematic approach to debugging firewalld rules that are not working as expected on RHEL, covering common mistakes, zone issues, and diagnostic techniques.
 
 ---
 

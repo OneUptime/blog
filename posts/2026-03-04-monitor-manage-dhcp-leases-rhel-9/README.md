@@ -1,14 +1,14 @@
-# How to Monitor and Manage DHCP Leases on RHEL 9
+# How to Monitor and Manage DHCP Leases on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DHCP, Lease Management, Linux
 
-Description: Learn how to monitor, manage, and troubleshoot DHCP leases on RHEL 9, including tracking active leases, identifying pool utilization, and cleaning up stale entries.
+Description: Learn how to monitor, manage, and troubleshoot DHCP leases on RHEL, including tracking active leases, identifying pool utilization, and cleaning up stale entries.
 
 ---
 
-Once your DHCP server is running, you need to keep an eye on it. How many leases are active? Is the pool running low? Are there stale or abandoned leases wasting addresses? This guide covers the practical side of managing DHCP leases on RHEL 9.
+Once your DHCP server is running, you need to keep an eye on it. How many leases are active? Is the pool running low? Are there stale or abandoned leases wasting addresses? This guide covers the practical side of managing DHCP leases on RHEL.
 
 ## Understanding the Lease File
 

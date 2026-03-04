@@ -1,14 +1,14 @@
-# How to Use the ip Command for Network Interface Management on RHEL 9
+# How to Use the ip Command for Network Interface Management on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ip Command, Networking, Linux
 
-Description: A thorough guide to using the ip command on RHEL 9 for managing network interfaces, addresses, routes, and neighbors, replacing the legacy ifconfig and route commands.
+Description: A thorough guide to using the ip command on RHEL for managing network interfaces, addresses, routes, and neighbors, replacing the legacy ifconfig and route commands.
 
 ---
 
-The `ip` command from the iproute2 package is the standard tool for network configuration on RHEL 9. It replaced `ifconfig`, `route`, and `arp` years ago, and knowing it well is essential. It's more powerful, more consistent, and it's what every modern tutorial and documentation uses.
+The `ip` command from the iproute2 package is the standard tool for network configuration on RHEL. It replaced `ifconfig`, `route`, and `arp` years ago, and knowing it well is essential. It's more powerful, more consistent, and it's what every modern tutorial and documentation uses.
 
 ## The ip Command Structure
 
@@ -256,4 +256,4 @@ ip -s link show dev ens192
 
 ## Wrapping Up
 
-The `ip` command is the single most important networking tool on RHEL 9. It covers interfaces, addresses, routes, neighbors, and more in a consistent syntax. Remember that changes made with `ip` are ephemeral - use `nmcli` when you need persistence. And get into the habit of using `-br` for quick status checks and `-j` for scriptable JSON output.
+The `ip` command is the single most important networking tool on RHEL. It covers interfaces, addresses, routes, neighbors, and more in a consistent syntax. Remember that changes made with `ip` are ephemeral - use `nmcli` when you need persistence. And get into the habit of using `-br` for quick status checks and `-j` for scriptable JSON output.

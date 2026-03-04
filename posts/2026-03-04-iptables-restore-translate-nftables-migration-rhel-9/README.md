@@ -1,10 +1,10 @@
-# How to Use iptables-restore-translate for nftables Migration on RHEL 9
+# How to Use iptables-restore-translate for nftables Migration on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nftables, iptables, Migration, Linux
 
-Description: Learn how to use iptables-restore-translate to bulk-convert your existing iptables rulesets into nftables format on RHEL 9, with tips for handling edge cases.
+Description: Learn how to use iptables-restore-translate to bulk-convert your existing iptables rulesets into nftables format on RHEL, with tips for handling edge cases.
 
 ---
 

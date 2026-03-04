@@ -1,14 +1,14 @@
-# How to Validate RHEL 9 Configuration for SAP with sap_preconfigure Role
+# How to Validate RHEL Configuration for SAP with sap_preconfigure Role
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP, Ansible, Validation, Linux
 
-Description: Use the RHEL sap_preconfigure Ansible role in check mode to validate that your RHEL 9 system meets all SAP requirements.
+Description: Use the RHEL sap_preconfigure Ansible role in check mode to validate that your RHEL system meets all SAP requirements.
 
 ---
 
-Before installing any SAP software, you need to verify that your RHEL 9 system meets all the requirements specified in SAP Notes. The sap_general_preconfigure and sap_hana_preconfigure Ansible roles can run in check mode to validate your system without making changes.
+Before installing any SAP software, you need to verify that your RHEL system meets all the requirements specified in SAP Notes. The sap_general_preconfigure and sap_hana_preconfigure Ansible roles can run in check mode to validate your system without making changes.
 
 ## Validation Workflow
 
@@ -23,7 +23,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 system targeted for SAP
+- RHEL system targeted for SAP
 - Ansible installed on a control node or locally
 
 ## Step 1: Install the Validation Roles
@@ -38,7 +38,7 @@ sudo dnf install -y rhel-system-roles-sap ansible-core
 ```bash
 cat <<'PLAY' > /tmp/validate-sap.yml
 ---
-- name: Validate RHEL 9 for SAP HANA
+- name: Validate RHEL for SAP HANA
   hosts: localhost
   become: true
   vars:
@@ -104,7 +104,7 @@ ansible-playbook /tmp/validate-sap.yml --check --diff
 # Create a simple compliance report
 cat <<'SCRIPT' > /tmp/sap-compliance-check.sh
 #!/bin/bash
-echo "=== SAP RHEL 9 Compliance Report ==="
+echo "=== SAP RHEL Compliance Report ==="
 echo "Date: $(date)"
 echo "Hostname: $(hostname)"
 echo ""
@@ -136,4 +136,4 @@ sudo /tmp/sap-compliance-check.sh
 
 ## Conclusion
 
-Running the SAP preconfigure roles in check/assert mode is the most reliable way to validate RHEL 9 systems before SAP installation. It catches misconfigurations early, and the same roles can then be used to automatically fix any issues found. Make this validation part of your standard SAP deployment pipeline.
+Running the SAP preconfigure roles in check/assert mode is the most reliable way to validate RHEL systems before SAP installation. It catches misconfigurations early, and the same roles can then be used to automatically fix any issues found. Make this validation part of your standard SAP deployment pipeline.

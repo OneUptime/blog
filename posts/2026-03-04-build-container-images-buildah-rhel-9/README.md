@@ -1,10 +1,10 @@
-# How to Build Container Images with Buildah on RHEL 9
+# How to Build Container Images with Buildah on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Buildah, Container Images, Linux
 
-Description: A practical guide to building OCI-compliant container images using Buildah on RHEL 9, covering scripted builds, layer management, and image optimization.
+Description: A practical guide to building OCI-compliant container images using Buildah on RHEL, covering scripted builds, layer management, and image optimization.
 
 ---
 
@@ -269,4 +269,4 @@ The only limitation is that building from `scratch` with `--installroot` require
 
 ## Summary
 
-Buildah gives you full control over the container image build process on RHEL 9. Whether you prefer scripted builds or Containerfiles, Buildah produces standard OCI images that run anywhere. Pair it with Podman for running and Skopeo for moving images between registries, and you have a complete container toolkit without Docker.
+Buildah gives you full control over the container image build process on RHEL. Whether you prefer scripted builds or Containerfiles, Buildah produces standard OCI images that run anywhere. Pair it with Podman for running and Skopeo for moving images between registries, and you have a complete container toolkit without Docker.

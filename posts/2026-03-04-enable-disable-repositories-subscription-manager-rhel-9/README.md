@@ -1,18 +1,18 @@
-# How to Enable and Disable Software Repositories with subscription-manager on RHEL 9
+# How to Enable and Disable Software Repositories with subscription-manager on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Repositories, subscription-manager, Red Hat, Linux
 
-Description: Learn how to list, enable, and disable Red Hat software repositories on RHEL 9 using subscription-manager, giving you control over what packages are available on your system.
+Description: Learn how to list, enable, and disable Red Hat software repositories on RHEL using subscription-manager, giving you control over what packages are available on your system.
 
 ---
 
-After registering your RHEL 9 system and attaching a subscription, you get access to a set of default repositories. But not every repository is enabled out of the box, and sometimes you need more than the defaults. The `subscription-manager repos` command gives you full control over which Red Hat repositories are active on your system. This guide covers everything from listing repos to enabling specialized channels.
+After registering your RHEL system and attaching a subscription, you get access to a set of default repositories. But not every repository is enabled out of the box, and sometimes you need more than the defaults. The `subscription-manager repos` command gives you full control over which Red Hat repositories are active on your system. This guide covers everything from listing repos to enabling specialized channels.
 
-## Default Repositories on RHEL 9
+## Default Repositories on RHEL
 
-A freshly registered RHEL 9 system typically has two repositories enabled:
+A freshly registered RHEL system typically has two repositories enabled:
 
 - `rhel-9-for-x86_64-baseos-rpms` - Core OS packages
 - `rhel-9-for-x86_64-appstream-rpms` - Application stream packages
@@ -99,7 +99,7 @@ Here is how the repository system fits together:
 
 ```mermaid
 flowchart TD
-    A[RHEL 9 System] --> B[subscription-manager]
+    A[RHEL System] --> B[subscription-manager]
     B --> C[Red Hat CDN]
     C --> D[BaseOS Repository]
     C --> E[AppStream Repository]
@@ -112,7 +112,7 @@ flowchart TD
 
 ## Common Repositories You Might Need
 
-Here is a quick reference of commonly used RHEL 9 repositories and when to enable them:
+Here is a quick reference of commonly used RHEL repositories and when to enable them:
 
 **CodeReady Linux Builder** - Needed for development headers and libraries not in AppStream:
 
@@ -198,7 +198,7 @@ For consistent configuration across many systems:
 
 ```yaml
 # Ansible task to enable specific repositories
-- name: Enable required RHEL 9 repositories
+- name: Enable required RHEL repositories
   community.general.rhsm_repository:
     name:
       - codeready-builder-for-rhel-9-x86_64-rpms
@@ -231,4 +231,4 @@ sudo subscription-manager refresh
 
 ## Summary
 
-Repository management with `subscription-manager` is one of those tasks that seems simple but makes a big difference in how well your RHEL 9 systems are configured. Keep only the repos you need enabled to reduce package conflicts, speed up dnf operations, and maintain a cleaner system. For automation, pair `subscription-manager repos` with Ansible to enforce consistent repo configurations across your fleet.
+Repository management with `subscription-manager` is one of those tasks that seems simple but makes a big difference in how well your RHEL systems are configured. Keep only the repos you need enabled to reduce package conflicts, speed up dnf operations, and maintain a cleaner system. For automation, pair `subscription-manager repos` with Ansible to enforce consistent repo configurations across your fleet.

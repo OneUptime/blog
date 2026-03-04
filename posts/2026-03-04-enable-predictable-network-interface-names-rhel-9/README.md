@@ -1,16 +1,16 @@
-# How to Enable Predictable Network Interface Names on RHEL 9
+# How to Enable Predictable Network Interface Names on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Interfaces, Naming, Linux, Networking
 
-Description: A guide to understanding and configuring predictable network interface naming on RHEL 9, including naming schemes, biosdevname, udev rules, and troubleshooting.
+Description: A guide to understanding and configuring predictable network interface naming on RHEL, including naming schemes, biosdevname, udev rules, and troubleshooting.
 
 ---
 
 Remember the days of `eth0`, `eth1`, `eth2`? Simple, easy to remember, and completely unreliable. Reboot a server with multiple NICs, and suddenly `eth0` and `eth1` might swap. Add a new card, and all your interface assignments shuffle around. That was a real problem, especially on servers with bonded interfaces or complex network configurations.
 
-Predictable network interface naming was introduced to fix this. RHEL 9 enables it by default, and the interfaces you see now have names like `ens3`, `enp0s25`, or `eno1`. These names are based on the physical location or firmware assignment of the network card, so they stay consistent across reboots. Here is how it all works and how to manage it.
+Predictable network interface naming was introduced to fix this. RHEL enables it by default, and the interfaces you see now have names like `ens3`, `enp0s25`, or `eno1`. These names are based on the physical location or firmware assignment of the network card, so they stay consistent across reboots. Here is how it all works and how to manage it.
 
 ## How Predictable Naming Works
 
@@ -78,13 +78,13 @@ rpm -q biosdevname
 biosdevname -d
 ```
 
-On RHEL 9, systemd's built-in naming takes precedence over biosdevname in most cases. The two systems can coexist, but if you want consistent behavior, it is best to stick with one approach.
+On RHEL, systemd's built-in naming takes precedence over biosdevname in most cases. The two systems can coexist, but if you want consistent behavior, it is best to stick with one approach.
 
 ## The net.ifnames and biosdevname Kernel Parameters
 
 Two kernel parameters control the naming behavior:
 
-- `net.ifnames=1` - Enable systemd predictable naming (default on RHEL 9)
+- `net.ifnames=1` - Enable systemd predictable naming (default on RHEL)
 - `net.ifnames=0` - Disable systemd predictable naming
 - `biosdevname=1` - Enable biosdevname naming
 - `biosdevname=0` - Disable biosdevname naming
@@ -264,4 +264,4 @@ ethtool -i enp1s0 | grep driver
 
 ## Summary
 
-Predictable network interface naming eliminates the old problem of interface names shuffling across reboots. On RHEL 9, it is enabled by default and works well out of the box. The names encode information about where the NIC sits in the system, which makes it easier to manage servers with multiple interfaces. If you need custom names, udev rules give you full control. And if you absolutely must go back to `eth0` naming, the kernel parameters let you do that, though I would recommend against it unless you have a very specific reason.
+Predictable network interface naming eliminates the old problem of interface names shuffling across reboots. On RHEL, it is enabled by default and works well out of the box. The names encode information about where the NIC sits in the system, which makes it easier to manage servers with multiple interfaces. If you need custom names, udev rules give you full control. And if you absolutely must go back to `eth0` naming, the kernel parameters let you do that, though I would recommend against it unless you have a very specific reason.

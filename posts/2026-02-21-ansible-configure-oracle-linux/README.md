@@ -173,7 +173,7 @@ ansible_python_interpreter=/usr/bin/python3
 
 ## Summary
 
-Oracle Linux 9 is configured nearly identically to RHEL 9 with the addition of UEK kernel options and Oracle-specific repositories. Use `ansible_distribution == "OracleLinux"` for distribution-specific conditionals, or `ansible_os_family == "RedHat"` for broader RHEL-family compatibility. The UEK kernel is recommended for Oracle database workloads and provides performance optimizations not found in the RHCK. This playbook provides a complete base configuration for Oracle Linux 9 servers.
+Oracle Linux 9 is configured nearly identically to RHEL with the addition of UEK kernel options and Oracle-specific repositories. Use `ansible_distribution == "OracleLinux"` for distribution-specific conditionals, or `ansible_os_family == "RedHat"` for broader RHEL-family compatibility. The UEK kernel is recommended for Oracle database workloads and provides performance optimizations not found in the RHCK. This playbook provides a complete base configuration for Oracle Linux 9 servers.
 
 ## Common Use Cases
 

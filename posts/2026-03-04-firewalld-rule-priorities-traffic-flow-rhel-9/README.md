@@ -1,10 +1,10 @@
-# How to Use Firewalld Rule Priorities to Control Traffic Flow on RHEL 9
+# How to Use Firewalld Rule Priorities to Control Traffic Flow on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Rule Priorities, Security, Linux
 
-Description: Understanding and using firewalld rule priorities on RHEL 9 to control the order in which rich rules are evaluated, enabling deny-before-allow and other complex patterns.
+Description: Understanding and using firewalld rule priorities on RHEL to control the order in which rich rules are evaluated, enabling deny-before-allow and other complex patterns.
 
 ---
 

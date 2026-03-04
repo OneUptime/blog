@@ -1,14 +1,14 @@
-# How to Configure DNS-over-TLS (DoT) on RHEL 9
+# How to Configure DNS-over-TLS (DoT) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNS-over-TLS, DoT, DNS Security, Linux
 
-Description: Set up DNS-over-TLS on RHEL 9 using Unbound or systemd-resolved to encrypt DNS queries and prevent eavesdropping on your DNS traffic.
+Description: Set up DNS-over-TLS on RHEL using Unbound or systemd-resolved to encrypt DNS queries and prevent eavesdropping on your DNS traffic.
 
 ---
 
-Standard DNS sends queries in plain text. Anyone on the network path, your ISP, a rogue wifi hotspot, a compromised router, can see every domain you look up. DNS-over-TLS (DoT) encrypts the DNS conversation between your client and the resolver, running DNS inside a TLS session on port 853. RHEL 9 supports this through both systemd-resolved and Unbound.
+Standard DNS sends queries in plain text. Anyone on the network path, your ISP, a rogue wifi hotspot, a compromised router, can see every domain you look up. DNS-over-TLS (DoT) encrypts the DNS conversation between your client and the resolver, running DNS inside a TLS session on port 853. RHEL supports this through both systemd-resolved and Unbound.
 
 ## How DNS-over-TLS Works
 
@@ -30,7 +30,7 @@ The encryption is between the client and the resolver. The resolver still makes 
 
 ## Option 1: Configure systemd-resolved for DoT
 
-systemd-resolved on RHEL 9 supports DoT natively. This is the simplest approach for individual machines.
+systemd-resolved on RHEL supports DoT natively. This is the simplest approach for individual machines.
 
 Enable systemd-resolved if not already running:
 

@@ -1,10 +1,10 @@
-# How to Create systemd Path Units for File System Monitoring on RHEL 9
+# How to Create systemd Path Units for File System Monitoring on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Path Units, File Monitoring, Linux
 
-Description: Learn how to use systemd path units on RHEL 9 to trigger services automatically when files or directories change.
+Description: Learn how to use systemd path units on RHEL to trigger services automatically when files or directories change.
 
 ---
 
@@ -136,4 +136,4 @@ sudo systemctl enable --now reload-config.path
 
 ## Summary
 
-You have created systemd path units on RHEL 9 for automatic file system monitoring. Path units provide a clean, systemd-native way to trigger actions when files change, without external tools or polling scripts. They integrate with journald for logging and can be managed with standard systemctl commands.
+You have created systemd path units on RHEL for automatic file system monitoring. Path units provide a clean, systemd-native way to trigger actions when files change, without external tools or polling scripts. They integrate with journald for logging and can be managed with standard systemctl commands.

@@ -135,9 +135,9 @@ Ubuntu 22.04+ ships with Python 3 as the default. The binary is at `/usr/bin/pyt
 ansible_python_interpreter=/usr/bin/python3
 ```
 
-### Scenario 2: CentOS/RHEL 9
+### Scenario 2: CentOS/RHEL
 
-RHEL 9 has Python 3.9 as the system Python:
+RHEL has Python 3.9 as the system Python:
 
 ```ini
 [rhel9:vars]

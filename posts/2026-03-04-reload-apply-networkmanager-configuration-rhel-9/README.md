@@ -1,10 +1,10 @@
-# How to Reload and Apply NetworkManager Configuration Changes on RHEL 9
+# How to Reload and Apply NetworkManager Configuration Changes on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NetworkManager, Configuration, Linux
 
-Description: Understand the different ways to reload and apply NetworkManager configuration changes on RHEL 9, from individual connection updates to full daemon reloads.
+Description: Understand the different ways to reload and apply NetworkManager configuration changes on RHEL, from individual connection updates to full daemon reloads.
 
 ---
 

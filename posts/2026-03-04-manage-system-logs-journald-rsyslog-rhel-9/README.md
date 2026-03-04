@@ -1,16 +1,16 @@
-# How to Manage System Logs with journald and rsyslog on RHEL 9
+# How to Manage System Logs with journald and rsyslog on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, journald, rsyslog, Logging, Linux, System Administration
 
-Description: A practical guide to managing system logs on RHEL 9 using journalctl for querying systemd journal entries and rsyslog for traditional log file management, rotation, and remote logging.
+Description: A practical guide to managing system logs on RHEL using journalctl for querying systemd journal entries and rsyslog for traditional log file management, rotation, and remote logging.
 
 ---
 
-## The Two Logging Systems on RHEL 9
+## The Two Logging Systems on RHEL
 
-RHEL 9 ships with two logging systems running side by side: systemd-journald and rsyslog. This is not redundant, they serve complementary purposes.
+RHEL ships with two logging systems running side by side: systemd-journald and rsyslog. This is not redundant, they serve complementary purposes.
 
 **journald** collects log data from the kernel, early boot messages, stdout and stderr from systemd services, and syslog messages. It stores everything in a structured, binary format that is fast to query.
 
@@ -166,7 +166,7 @@ cat /var/log/myapp.log
 
 ## Log Rotation
 
-Without rotation, log files will grow until they fill up the disk. RHEL 9 uses `logrotate` to manage this, configured via `/etc/logrotate.conf` and files in `/etc/logrotate.d/`.
+Without rotation, log files will grow until they fill up the disk. RHEL uses `logrotate` to manage this, configured via `/etc/logrotate.conf` and files in `/etc/logrotate.d/`.
 
 ```bash
 # View the main logrotate configuration
@@ -338,4 +338,4 @@ Here is a summary of the most common log management tasks:
 
 ## Wrapping Up
 
-On RHEL 9, journald and rsyslog work together to give you flexible, powerful logging. Use `journalctl` for quick, structured queries, especially when troubleshooting a specific service or time window. Use rsyslog when you need traditional text log files, custom routing rules, or centralized logging across your infrastructure. Keep an eye on disk usage, set up proper rotation policies, and consider forwarding logs to a central server early in your deployment. You will thank yourself the first time something breaks at 2 AM and you need to trace what happened.
+On RHEL, journald and rsyslog work together to give you flexible, powerful logging. Use `journalctl` for quick, structured queries, especially when troubleshooting a specific service or time window. Use rsyslog when you need traditional text log files, custom routing rules, or centralized logging across your infrastructure. Keep an eye on disk usage, set up proper rotation policies, and consider forwarding logs to a central server early in your deployment. You will thank yourself the first time something breaks at 2 AM and you need to trace what happened.

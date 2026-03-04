@@ -1,10 +1,10 @@
-# How to Configure Soft and Hard Quota Limits with Grace Periods on RHEL 9
+# How to Configure Soft and Hard Quota Limits with Grace Periods on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Quotas, Grace Periods, Linux
 
-Description: Understand and configure soft limits, hard limits, and grace periods for disk quotas on RHEL 9 to give users breathing room while keeping storage under control.
+Description: Understand and configure soft limits, hard limits, and grace periods for disk quotas on RHEL to give users breathing room while keeping storage under control.
 
 ---
 

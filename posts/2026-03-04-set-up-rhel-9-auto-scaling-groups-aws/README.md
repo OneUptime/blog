@@ -1,14 +1,14 @@
-# How to Set Up RHEL 9 Auto-Scaling Groups on AWS
+# How to Set Up RHEL Auto-Scaling Groups on AWS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, AWS, Auto Scaling, EC2, Cloud, Linux
 
-Description: Configure AWS Auto Scaling Groups with RHEL 9 instances for automatic horizontal scaling based on demand.
+Description: Configure AWS Auto Scaling Groups with RHEL instances for automatic horizontal scaling based on demand.
 
 ---
 
-Auto Scaling Groups (ASGs) on AWS automatically adjust the number of RHEL 9 instances based on demand. This guide covers creating a launch template with a properly configured RHEL 9 AMI and setting up scaling policies.
+Auto Scaling Groups (ASGs) on AWS automatically adjust the number of RHEL instances based on demand. This guide covers creating a launch template with a properly configured RHEL AMI and setting up scaling policies.
 
 ## Auto Scaling Architecture
 
@@ -17,9 +17,9 @@ graph TB
     subgraph "AWS Auto Scaling"
         ALB[Application Load Balancer]
         subgraph "Auto Scaling Group"
-            I1[RHEL 9 Instance 1]
-            I2[RHEL 9 Instance 2]
-            I3[RHEL 9 Instance 3 - scaled]
+            I1[RHEL Instance 1]
+            I2[RHEL Instance 2]
+            I3[RHEL Instance 3 - scaled]
         end
         CW[CloudWatch Alarms]
         SP[Scaling Policies]
@@ -34,10 +34,10 @@ graph TB
 ## Step 1: Create a Launch Template
 
 ```bash
-# Create a launch template for RHEL 9 instances
+# Create a launch template for RHEL instances
 aws ec2 create-launch-template \
   --launch-template-name rhel9-web-template \
-  --version-description "RHEL 9 web server v1" \
+  --version-description "RHEL web server v1" \
   --launch-template-data '{
     "ImageId": "ami-rhel9-id",
     "InstanceType": "m6i.large",
@@ -146,4 +146,4 @@ aws autoscaling describe-scaling-activities \
 
 ## Conclusion
 
-Auto Scaling Groups with RHEL 9 on AWS give you automatic horizontal scaling that responds to real-time demand. The key is creating a well-configured launch template with cloud-init user data that bootstraps each new instance identically. Use target tracking scaling policies for the simplest and most effective auto-scaling behavior.
+Auto Scaling Groups with RHEL on AWS give you automatic horizontal scaling that responds to real-time demand. The key is creating a well-configured launch template with cloud-init user data that bootstraps each new instance identically. Use target tracking scaling policies for the simplest and most effective auto-scaling behavior.

@@ -1,10 +1,10 @@
-# How to Set Up IMAP and POP3 with Dovecot on RHEL 9
+# How to Set Up IMAP and POP3 with Dovecot on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Dovecot, IMAP, POP3, Linux
 
-Description: Install and configure Dovecot on RHEL 9 to provide both IMAP and POP3 access to user mailboxes with TLS encryption.
+Description: Install and configure Dovecot on RHEL to provide both IMAP and POP3 access to user mailboxes with TLS encryption.
 
 ---
 
@@ -35,7 +35,7 @@ graph TD
 
 ## Prerequisites
 
-- RHEL 9 with Postfix configured for local delivery
+- RHEL with Postfix configured for local delivery
 - TLS certificate for your mail server
 - Firewall access to ports 993 (IMAPS) and 995 (POP3S)
 
@@ -341,4 +341,4 @@ sudo postconf home_mailbox
 
 ## Wrapping Up
 
-Dovecot provides solid IMAP and POP3 access on RHEL 9. For most deployments, stick with IMAP only unless you have specific requirements for POP3. Always use TLS-encrypted ports, disable plain-text listeners, and test thoroughly with `doveadm` before pointing clients at the server.
+Dovecot provides solid IMAP and POP3 access on RHEL. For most deployments, stick with IMAP only unless you have specific requirements for POP3. Always use TLS-encrypted ports, disable plain-text listeners, and test thoroughly with `doveadm` before pointing clients at the server.

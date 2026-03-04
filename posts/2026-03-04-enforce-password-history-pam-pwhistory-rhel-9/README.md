@@ -1,14 +1,14 @@
-# How to Enforce Password History with pam_pwhistory on RHEL 9
+# How to Enforce Password History with pam_pwhistory on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, pam_pwhistory, Password Policy, Linux
 
-Description: Configure pam_pwhistory on RHEL 9 to prevent users from reusing old passwords, meeting compliance requirements and improving overall security posture.
+Description: Configure pam_pwhistory on RHEL to prevent users from reusing old passwords, meeting compliance requirements and improving overall security posture.
 
 ---
 
-We have all seen it, the user who alternates between two passwords forever because the system only remembers the last one. The pam_pwhistory module on RHEL 9 solves this by keeping a record of previous password hashes and rejecting any attempt to reuse them.
+We have all seen it, the user who alternates between two passwords forever because the system only remembers the last one. The pam_pwhistory module on RHEL solves this by keeping a record of previous password hashes and rejecting any attempt to reuse them.
 
 ## How pam_pwhistory Works
 
@@ -25,7 +25,7 @@ graph TD
 
 ## Enabling pam_pwhistory
 
-On RHEL 9, the cleanest way to add pam_pwhistory is through the PAM configuration. If you are using authselect, you can create a custom profile or add it to the existing one.
+On RHEL, the cleanest way to add pam_pwhistory is through the PAM configuration. If you are using authselect, you can create a custom profile or add it to the existing one.
 
 ### Check the current password stack
 

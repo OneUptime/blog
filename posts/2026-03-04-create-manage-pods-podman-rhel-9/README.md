@@ -1,10 +1,10 @@
-# How to Create and Manage Pods with Podman on RHEL 9
+# How to Create and Manage Pods with Podman on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Pods, Linux
 
-Description: A practical guide to creating and managing Podman pods on RHEL 9, grouping containers that share network namespaces, storage, and lifecycle management.
+Description: A practical guide to creating and managing Podman pods on RHEL, grouping containers that share network namespaces, storage, and lifecycle management.
 
 ---
 

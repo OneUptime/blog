@@ -1,10 +1,10 @@
-# How to Recover a Deleted Partition on RHEL 9
+# How to Recover a Deleted Partition on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Partition Recovery, Data Recovery, Linux
 
-Description: Learn techniques for recovering accidentally deleted partitions on RHEL 9 using testdisk and other recovery methods before data is permanently lost.
+Description: Learn techniques for recovering accidentally deleted partitions on RHEL using testdisk and other recovery methods before data is permanently lost.
 
 ---
 
@@ -16,7 +16,7 @@ The most important rule: **stop writing to the disk immediately**. Do not create
 
 ## Prerequisites
 
-- RHEL 9 (boot from a live USB if the affected disk is the boot drive)
+- RHEL (boot from a live USB if the affected disk is the boot drive)
 - testdisk package (from EPEL repository)
 - Root access
 
@@ -192,4 +192,4 @@ sudo sgdisk -b /root/sdb-gpt-backup.bin /dev/sdb
 
 ## Wrap-Up
 
-Recovering a deleted partition on RHEL 9 is entirely possible if you act quickly and avoid writing to the disk. testdisk handles most recovery scenarios, and having a prior partition table backup makes recovery trivial. The lesson here is to always back up your partition tables alongside your data, because a quick `sfdisk -d` can save hours of recovery work.
+Recovering a deleted partition on RHEL is entirely possible if you act quickly and avoid writing to the disk. testdisk handles most recovery scenarios, and having a prior partition table backup makes recovery trivial. The lesson here is to always back up your partition tables alongside your data, because a quick `sfdisk -d` can save hours of recovery work.

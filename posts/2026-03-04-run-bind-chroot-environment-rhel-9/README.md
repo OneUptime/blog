@@ -1,14 +1,14 @@
-# How to Run BIND in a chroot Environment on RHEL 9
+# How to Run BIND in a chroot Environment on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BIND, chroot, DNS Security, Linux
 
-Description: Secure your BIND DNS server on RHEL 9 by running it in a chroot jail, limiting the damage if the service is ever compromised.
+Description: Secure your BIND DNS server on RHEL by running it in a chroot jail, limiting the damage if the service is ever compromised.
 
 ---
 
-Running BIND in a chroot environment means the named process sees a restricted view of the filesystem. If someone exploits a vulnerability in BIND, they're trapped in the chroot directory and can't access the rest of the system. It's not bulletproof security, but it adds a meaningful layer of defense. RHEL 9 makes this pretty easy with the `bind-chroot` package.
+Running BIND in a chroot environment means the named process sees a restricted view of the filesystem. If someone exploits a vulnerability in BIND, they're trapped in the chroot directory and can't access the rest of the system. It's not bulletproof security, but it adds a meaningful layer of defense. RHEL makes this pretty easy with the `bind-chroot` package.
 
 ## What chroot Does
 

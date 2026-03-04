@@ -1,10 +1,10 @@
-# How to Resize Partitions with parted on RHEL 9 Without Data Loss
+# How to Resize Partitions with parted on RHEL Without Data Loss
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, parted, Resize, Partitioning, Linux
 
-Description: Learn how to safely resize partitions using parted on RHEL 9, covering both growing and shrinking operations while preserving your data.
+Description: Learn how to safely resize partitions using parted on RHEL, covering both growing and shrinking operations while preserving your data.
 
 ---
 
@@ -19,7 +19,7 @@ XFS does not support shrinking, so if you need to shrink an XFS partition, you m
 
 ## Prerequisites
 
-- RHEL 9 with root access
+- RHEL with root access
 - A backup of the partition you are resizing
 - The partition must not be the currently running root filesystem (unless you are only growing)
 
@@ -183,4 +183,4 @@ This is trickier because you cannot extend a partition into space occupied by th
 
 ## Wrap-Up
 
-Resizing partitions with parted on RHEL 9 is straightforward for growing operations. Shrinking is more involved and only works with ext4 (not XFS). The golden rule is: when growing, resize the partition first then the filesystem. When shrinking, resize the filesystem first then the partition. And always have a backup before you start.
+Resizing partitions with parted on RHEL is straightforward for growing operations. Shrinking is more involved and only works with ext4 (not XFS). The golden rule is: when growing, resize the partition first then the filesystem. When shrinking, resize the filesystem first then the partition. And always have a backup before you start.

@@ -1,14 +1,14 @@
-# How to Automate CIS Benchmark Compliance for RHEL 9 with scap-security-guide
+# How to Automate CIS Benchmark Compliance for RHEL with scap-security-guide
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CIS, scap-security-guide, Automation, Linux
 
-Description: Automate CIS benchmark compliance on RHEL 9 using the scap-security-guide project, including pre-built Ansible playbooks, bash scripts, and Kickstart integration.
+Description: Automate CIS benchmark compliance on RHEL using the scap-security-guide project, including pre-built Ansible playbooks, bash scripts, and Kickstart integration.
 
 ---
 
-The scap-security-guide (SSG) project is a community-driven effort that provides ready-to-use security content for SCAP scanners. On RHEL 9, it ships as an RPM and includes everything you need to automate CIS compliance: SCAP datastreams, Ansible playbooks, bash remediation scripts, and Kickstart snippets. Instead of writing all your hardening automation from scratch, you can lean heavily on what SSG already provides.
+The scap-security-guide (SSG) project is a community-driven effort that provides ready-to-use security content for SCAP scanners. On RHEL, it ships as an RPM and includes everything you need to automate CIS compliance: SCAP datastreams, Ansible playbooks, bash remediation scripts, and Kickstart snippets. Instead of writing all your hardening automation from scratch, you can lean heavily on what SSG already provides.
 
 ## Install scap-security-guide
 
@@ -254,4 +254,4 @@ EOF
 systemctl enable --now compliance-scan.timer
 ```
 
-The scap-security-guide is one of the best tools in the RHEL 9 security toolkit. It saves you from reinventing the wheel on compliance automation and gives you content that is maintained by people who think about security policy all day. Use it, customize it for your environment, and build it into your server lifecycle.
+The scap-security-guide is one of the best tools in the RHEL security toolkit. It saves you from reinventing the wheel on compliance automation and gives you content that is maintained by people who think about security policy all day. Use it, customize it for your environment, and build it into your server lifecycle.

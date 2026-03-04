@@ -1,14 +1,14 @@
-# How to Enable FIPS Mode on RHEL 9 During Installation
+# How to Enable FIPS Mode on RHEL During Installation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FIPS, Installation, Security, Linux
 
-Description: Enable FIPS 140-3 compliant cryptography on RHEL 9 during the installation process, ensuring the system uses validated cryptographic modules from the very first boot.
+Description: Enable FIPS 140-3 compliant cryptography on RHEL during the installation process, ensuring the system uses validated cryptographic modules from the very first boot.
 
 ---
 
-FIPS (Federal Information Processing Standards) mode ensures that your RHEL 9 system only uses NIST-validated cryptographic algorithms. Enabling it during installation is the cleanest approach because it configures the kernel, libraries, and all cryptographic subsystems before any data hits the disk. Enabling FIPS post-installation works too, but during installation is the recommended path per Red Hat documentation.
+FIPS (Federal Information Processing Standards) mode ensures that your RHEL system only uses NIST-validated cryptographic algorithms. Enabling it during installation is the cleanest approach because it configures the kernel, libraries, and all cryptographic subsystems before any data hits the disk. Enabling FIPS post-installation works too, but during installation is the recommended path per Red Hat documentation.
 
 ## Why Enable FIPS During Installation
 
@@ -26,7 +26,7 @@ flowchart LR
 The simplest way to enable FIPS during installation is to add a kernel parameter at the boot menu:
 
 ```bash
-# At the RHEL 9 installation boot menu:
+# At the RHEL installation boot menu:
 # 1. Highlight the installation option
 # 2. Press Tab to edit boot parameters
 # 3. Append: fips=1

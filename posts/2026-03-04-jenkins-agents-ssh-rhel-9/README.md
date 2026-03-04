@@ -1,22 +1,22 @@
-# How to Configure Jenkins Agents with SSH on RHEL 9
+# How to Configure Jenkins Agents with SSH on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Jenkins, Agents, SSH, CI/CD, Linux
 
-Description: Set up Jenkins SSH agents on RHEL 9 to distribute build jobs across multiple machines for parallel execution.
+Description: Set up Jenkins SSH agents on RHEL to distribute build jobs across multiple machines for parallel execution.
 
 ---
 
-A single Jenkins server can only handle so many builds. SSH agents let you distribute build jobs to dedicated RHEL 9 machines, spreading the load and providing different build environments.
+A single Jenkins server can only handle so many builds. SSH agents let you distribute build jobs to dedicated RHEL machines, spreading the load and providing different build environments.
 
 ## Architecture
 
 ```mermaid
 graph TD
-    A[Jenkins Controller] -->|SSH| B[Agent: RHEL 9 Build Server 1]
-    A -->|SSH| C[Agent: RHEL 9 Build Server 2]
-    A -->|SSH| D[Agent: RHEL 9 Test Server]
+    A[Jenkins Controller] -->|SSH| B[Agent: RHEL Build Server 1]
+    A -->|SSH| C[Agent: RHEL Build Server 2]
+    A -->|SSH| D[Agent: RHEL Test Server]
     B --> E[Build Jobs]
     C --> F[Build Jobs]
     D --> G[Test Jobs]
@@ -24,7 +24,7 @@ graph TD
 
 ## Prepare the Agent Machine
 
-On each RHEL 9 machine that will be a Jenkins agent:
+On each RHEL machine that will be a Jenkins agent:
 
 ```bash
 # Create a jenkins user
@@ -160,4 +160,4 @@ sudo -u jenkins ssh -v jenkins@agent-hostname
 # Go to Manage Jenkins > Nodes > rhel9-agent-01 > Log
 ```
 
-Jenkins SSH agents on RHEL 9 let you scale your CI/CD infrastructure horizontally. Each agent can have different tools installed, letting you build and test across different configurations from a single Jenkins controller.
+Jenkins SSH agents on RHEL let you scale your CI/CD infrastructure horizontally. Each agent can have different tools installed, letting you build and test across different configurations from a single Jenkins controller.

@@ -1,10 +1,10 @@
-# How to Troubleshoot Network Bridge Connectivity Issues on RHEL 9
+# How to Troubleshoot Network Bridge Connectivity Issues on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Bridge, Troubleshooting, Linux
 
-Description: A systematic troubleshooting guide for diagnosing and fixing network bridge connectivity problems on RHEL 9, covering common issues with STP, firewall, and configuration errors.
+Description: A systematic troubleshooting guide for diagnosing and fixing network bridge connectivity problems on RHEL, covering common issues with STP, firewall, and configuration errors.
 
 ---
 

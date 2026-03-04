@@ -1,14 +1,14 @@
-# How to Use systemd-resolved Alongside BIND on RHEL 9
+# How to Use systemd-resolved Alongside BIND on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd-resolved, BIND, DNS, Linux
 
-Description: Learn how to configure systemd-resolved and BIND to coexist on RHEL 9, handling local and external DNS resolution without conflicts.
+Description: Learn how to configure systemd-resolved and BIND to coexist on RHEL, handling local and external DNS resolution without conflicts.
 
 ---
 
-RHEL 9 includes systemd-resolved as an optional local DNS stub resolver, and many administrators run into confusion when it's active alongside BIND. Both want to listen on port 53, both manage DNS resolution, and they step on each other if not configured properly. This post explains how to make them work together, or how to choose between them.
+RHEL includes systemd-resolved as an optional local DNS stub resolver, and many administrators run into confusion when it's active alongside BIND. Both want to listen on port 53, both manage DNS resolution, and they step on each other if not configured properly. This post explains how to make them work together, or how to choose between them.
 
 ## Understanding the Components
 

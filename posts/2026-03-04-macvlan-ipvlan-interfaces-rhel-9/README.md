@@ -1,10 +1,10 @@
-# How to Configure MACVLAN and IPVLAN Interfaces on RHEL 9
+# How to Configure MACVLAN and IPVLAN Interfaces on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MACVLAN, IPVLAN, Networking, Virtual Interfaces, Linux
 
-Description: Learn how to create MACVLAN and IPVLAN virtual network interfaces on RHEL 9 for assigning multiple IP or MAC addresses to a single physical interface.
+Description: Learn how to create MACVLAN and IPVLAN virtual network interfaces on RHEL for assigning multiple IP or MAC addresses to a single physical interface.
 
 ---
 
@@ -26,7 +26,7 @@ graph TD
 
 ## Prerequisites
 
-- RHEL 9 with a working network interface
+- RHEL with a working network interface
 - Root or sudo access
 
 ## Step 1: Create a MACVLAN Interface
@@ -156,4 +156,4 @@ ping -I macvlan0 192.168.1.1
 
 ## Summary
 
-You have configured MACVLAN and IPVLAN interfaces on RHEL 9. MACVLAN provides unique MAC addresses for each virtual interface, making it ideal for containers and VMs that need direct network access. IPVLAN shares the parent MAC and is better suited for environments with MAC address limitations. Both types can be made persistent with NetworkManager.
+You have configured MACVLAN and IPVLAN interfaces on RHEL. MACVLAN provides unique MAC addresses for each virtual interface, making it ideal for containers and VMs that need direct network access. IPVLAN shares the parent MAC and is better suited for environments with MAC address limitations. Both types can be made persistent with NetworkManager.

@@ -1,14 +1,14 @@
-# How to Set Up journald Rate Limiting and Storage Quotas on RHEL 9
+# How to Set Up journald Rate Limiting and Storage Quotas on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, journald, systemd, Logging, Linux
 
-Description: Learn how to configure journald rate limiting and storage quotas on RHEL 9 to prevent log flooding from consuming system resources while keeping important logs available.
+Description: Learn how to configure journald rate limiting and storage quotas on RHEL to prevent log flooding from consuming system resources while keeping important logs available.
 
 ---
 
-A misbehaving service can flood your journal with thousands of messages per second, consuming CPU, disk I/O, and storage. journald on RHEL 9 includes built-in rate limiting and storage quota features that protect your system from this kind of log abuse while making sure important messages still get through.
+A misbehaving service can flood your journal with thousands of messages per second, consuming CPU, disk I/O, and storage. journald on RHEL includes built-in rate limiting and storage quota features that protect your system from this kind of log abuse while making sure important messages still get through.
 
 ## How Rate Limiting Works
 
@@ -233,7 +233,7 @@ journalctl --grep="Suppressed.*ratetest" --no-pager
 
 ## Per-Service Storage Quotas with LogNamespace
 
-RHEL 9 supports log namespaces, which provide isolated journal storage for specific services:
+RHEL supports log namespaces, which provide isolated journal storage for specific services:
 
 ```bash
 # Create a namespace configuration
@@ -328,4 +328,4 @@ journalctl --grep="Suppressed" -n 50 --no-pager
 
 ## Summary
 
-Rate limiting and storage quotas in journald on RHEL 9 protect your system from log flooding and disk exhaustion. Set `RateLimitBurst` and `RateLimitIntervalSec` to control per-service log rates, use `SystemMaxUse` and `SystemKeepFree` to manage disk consumption, and override settings per-service when needed. Regular use of `journalctl --vacuum-time` and `journalctl --vacuum-size` helps with manual cleanup.
+Rate limiting and storage quotas in journald on RHEL protect your system from log flooding and disk exhaustion. Set `RateLimitBurst` and `RateLimitIntervalSec` to control per-service log rates, use `SystemMaxUse` and `SystemKeepFree` to manage disk consumption, and override settings per-service when needed. Regular use of `journalctl --vacuum-time` and `journalctl --vacuum-size` helps with manual cleanup.

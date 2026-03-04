@@ -1,14 +1,14 @@
-# How to Configure Port Forwarding with Firewalld on RHEL 9
+# How to Configure Port Forwarding with Firewalld on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Port Forwarding, Networking, Linux
 
-Description: How to set up port forwarding with firewalld on RHEL 9, covering local port redirection, forwarding to other hosts, and common use cases like NAT and load balancing.
+Description: How to set up port forwarding with firewalld on RHEL, covering local port redirection, forwarding to other hosts, and common use cases like NAT and load balancing.
 
 ---
 
-Port forwarding redirects traffic arriving on one port to a different port or a different host. On RHEL 9, firewalld handles this through its port forwarding rules, which translate to NAT rules in the underlying nftables framework. Common use cases include redirecting port 80 to 8080 for a non-root web server, or forwarding traffic to a backend server on a private network.
+Port forwarding redirects traffic arriving on one port to a different port or a different host. On RHEL, firewalld handles this through its port forwarding rules, which translate to NAT rules in the underlying nftables framework. Common use cases include redirecting port 80 to 8080 for a non-root web server, or forwarding traffic to a backend server on a private network.
 
 ## Types of Port Forwarding
 

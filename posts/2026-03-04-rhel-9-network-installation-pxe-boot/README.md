@@ -1,10 +1,10 @@
-# How to Perform a Network-Based Installation of RHEL 9 Using PXE Boot
+# How to Perform a Network-Based Installation of RHEL Using PXE Boot
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, PXE Boot, Network Installation, Linux, DHCP, TFTP
 
-Description: Set up a PXE boot server for network-based RHEL 9 installations, covering DHCP, TFTP, and HTTP server configuration along with client boot setup.
+Description: Set up a PXE boot server for network-based RHEL installations, covering DHCP, TFTP, and HTTP server configuration along with client boot setup.
 
 ---
 
@@ -37,9 +37,9 @@ In short: DHCP tells the client where to find the boot loader, TFTP serves the b
 
 ## Prerequisites
 
-You need a server on the same network (or with routing configured) as the machines you want to install. This guide uses a single RHEL 9 server running all three services. You will also need:
+You need a server on the same network (or with routing configured) as the machines you want to install. This guide uses a single RHEL server running all three services. You will also need:
 
-- The RHEL 9 DVD ISO
+- The RHEL DVD ISO
 - A server with a static IP (we will use 192.168.1.10 in this guide)
 - Root access on the PXE server
 
@@ -55,7 +55,7 @@ sudo dnf install -y httpd
 Mount the ISO and copy its contents to the web server directory:
 
 ```bash
-# Create a directory for the RHEL 9 installation tree
+# Create a directory for the RHEL installation tree
 sudo mkdir -p /var/www/html/rhel9
 
 # Mount the ISO (loop mount)
@@ -177,7 +177,7 @@ For UEFI clients, create a GRUB configuration:
 # Create the GRUB config for UEFI PXE clients
 sudo tee /var/lib/tftpboot/uefi/grub.cfg << 'EOF'
 set timeout=10
-menuentry 'Install RHEL 9' {
+menuentry 'Install RHEL' {
   linuxefi rhel9/vmlinuz inst.repo=http://192.168.1.10/rhel9/ ip=dhcp
   initrdefi rhel9/initrd.img
 }

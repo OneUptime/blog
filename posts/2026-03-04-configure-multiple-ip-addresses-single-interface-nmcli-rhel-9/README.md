@@ -1,14 +1,14 @@
-# How to Configure Multiple IP Addresses on a Single Interface Using nmcli on RHEL 9
+# How to Configure Multiple IP Addresses on a Single Interface Using nmcli on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nmcli, Multiple IPs, Networking, Linux
 
-Description: Learn how to assign multiple IP addresses to a single network interface on RHEL 9 using nmcli, with practical use cases and configuration examples.
+Description: Learn how to assign multiple IP addresses to a single network interface on RHEL using nmcli, with practical use cases and configuration examples.
 
 ---
 
-There are plenty of legitimate reasons to put multiple IP addresses on one network interface. Maybe you are hosting several SSL websites that each need their own IP. Maybe you are migrating services between IPs and need both active during the transition. Or maybe you are setting up a cluster with a floating VIP alongside the node's real address. Whatever the reason, RHEL 9 makes it straightforward with nmcli.
+There are plenty of legitimate reasons to put multiple IP addresses on one network interface. Maybe you are hosting several SSL websites that each need their own IP. Maybe you are migrating services between IPs and need both active during the transition. Or maybe you are setting up a cluster with a floating VIP alongside the node's real address. Whatever the reason, RHEL makes it straightforward with nmcli.
 
 ## How Multiple IPs Work on Linux
 
@@ -225,4 +225,4 @@ Having multiple IPs on an interface has negligible performance impact for a reas
 
 ## Wrapping Up
 
-Adding multiple IP addresses to a single interface on RHEL 9 is a straightforward operation with nmcli. The `+` and `-` prefixes for appending and removing addresses make it easy to manage the address list without disrupting existing configurations. Just remember to reactivate the connection after making changes, and verify with `ip addr show` that all addresses are properly assigned.
+Adding multiple IP addresses to a single interface on RHEL is a straightforward operation with nmcli. The `+` and `-` prefixes for appending and removing addresses make it easy to manage the address list without disrupting existing configurations. Just remember to reactivate the connection after making changes, and verify with `ip addr show` that all addresses are properly assigned.

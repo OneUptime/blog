@@ -1,10 +1,10 @@
-# How to Use Terraform Workspaces for Multi-Environment Deployment on RHEL 9
+# How to Use Terraform Workspaces for Multi-Environment Deployment on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, Workspaces, Multi-Environment, IaC, Linux
 
-Description: Use Terraform workspaces to manage multiple environments like dev, staging, and production from a single configuration on RHEL 9.
+Description: Use Terraform workspaces to manage multiple environments like dev, staging, and production from a single configuration on RHEL.
 
 ---
 
@@ -189,4 +189,4 @@ echo "Deployment to $ENV complete."
 terraform output
 ```
 
-Workspaces provide a clean way to manage multiple environments from a single Terraform codebase on RHEL 9. Each workspace gets its own isolated state, so dev changes never accidentally affect production.
+Workspaces provide a clean way to manage multiple environments from a single Terraform codebase on RHEL. Each workspace gets its own isolated state, so dev changes never accidentally affect production.

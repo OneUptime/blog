@@ -1,14 +1,14 @@
-# How to Create a Minimal Rescue Image with dracut on RHEL 9
+# How to Create a Minimal Rescue Image with dracut on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, dracut, Rescue, Initramfs, Boot, Linux
 
-Description: Learn how to create a minimal, self-contained rescue initramfs image with dracut on RHEL 9 that can boot into a usable emergency environment.
+Description: Learn how to create a minimal, self-contained rescue initramfs image with dracut on RHEL that can boot into a usable emergency environment.
 
 ---
 
-A rescue initramfs is a self-contained boot image that gives you a working environment even when the root filesystem is completely destroyed. RHEL 9 generates one automatically during installation, but you can build custom rescue images tailored to your hardware and needs using dracut. A minimal image boots faster and fits on smaller media.
+A rescue initramfs is a self-contained boot image that gives you a working environment even when the root filesystem is completely destroyed. RHEL generates one automatically during installation, but you can build custom rescue images tailored to your hardware and needs using dracut. A minimal image boots faster and fits on smaller media.
 
 ## Standard vs Minimal Rescue Image
 
@@ -100,7 +100,7 @@ sudo dracut --force \
 # Create a GRUB menu entry for the rescue image
 sudo grubby --add-kernel=/boot/vmlinuz-$(uname -r) \
     --initrd=/boot/initramfs-rescue-custom.img \
-    --title="RHEL 9 Custom Rescue" \
+    --title="RHEL Custom Rescue" \
     --args="rd.break emergency" \
     --copy-default
 
@@ -152,4 +152,4 @@ ls -lh /boot/initramfs-rescue-custom.img
 
 ## Conclusion
 
-A custom minimal rescue image is valuable insurance for RHEL 9 systems. By tailoring the image to your specific hardware and including only the tools you actually need, you get a fast-booting rescue environment that fits on minimal media. The key decisions are whether to use hostonly mode (smaller but hardware-specific) or a generic build (larger but works on any similar hardware), and which tools to include. Keep the rescue image updated when you change hardware or update kernels.
+A custom minimal rescue image is valuable insurance for RHEL systems. By tailoring the image to your specific hardware and including only the tools you actually need, you get a fast-booting rescue environment that fits on minimal media. The key decisions are whether to use hostonly mode (smaller but hardware-specific) or a generic build (larger but works on any similar hardware), and which tools to include. Keep the rescue image updated when you change hardware or update kernels.

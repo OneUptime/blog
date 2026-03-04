@@ -1,4 +1,4 @@
-# How to Install and Configure Nginx on RHEL 9
+# How to Install and Configure Nginx on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,17 +10,17 @@ Description: A complete guide to installing, configuring, and running Nginx as a
 
 ## Why Nginx?
 
-Nginx handles concurrent connections efficiently using an event-driven architecture. It uses far less memory per connection than traditional process-based servers. Whether you need a static file server, a reverse proxy, or a load balancer, Nginx is a solid choice on RHEL 9.
+Nginx handles concurrent connections efficiently using an event-driven architecture. It uses far less memory per connection than traditional process-based servers. Whether you need a static file server, a reverse proxy, or a load balancer, Nginx is a solid choice on RHEL.
 
 ## Prerequisites
 
-- RHEL 9 with active subscription or configured repositories
+- RHEL with active subscription or configured repositories
 - Root or sudo access
 - Firewall access to ports 80 and 443
 
 ## Step 1 - Install Nginx
 
-Nginx is available in the RHEL 9 AppStream repository:
+Nginx is available in the RHEL AppStream repository:
 
 ```bash
 # Install Nginx
@@ -79,7 +79,7 @@ sudo tee /usr/share/nginx/html/index.html > /dev/null <<'EOF'
 <html>
 <head><title>Hello</title></head>
 <body>
-<h1>Hello from Nginx on RHEL 9</h1>
+<h1>Hello from Nginx on RHEL</h1>
 </body>
 </html>
 EOF
@@ -214,4 +214,4 @@ flowchart TD
 
 ## Wrap-Up
 
-Nginx on RHEL 9 is straightforward to install and configure. Keep your server blocks in separate files under `/etc/nginx/conf.d/`, always test with `nginx -t` before reloading, and set SELinux contexts correctly for custom document roots. From here you can add TLS, set up reverse proxying, or configure load balancing.
+Nginx on RHEL is straightforward to install and configure. Keep your server blocks in separate files under `/etc/nginx/conf.d/`, always test with `nginx -t` before reloading, and set SELinux contexts correctly for custom document roots. From here you can add TLS, set up reverse proxying, or configure load balancing.

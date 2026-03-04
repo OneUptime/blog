@@ -1,18 +1,18 @@
-# How to Configure Apache with mod_security WAF on RHEL 9
+# How to Configure Apache with mod_security WAF on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, ModSecurity, WAF, Security, Linux
 
-Description: Learn how to install and configure ModSecurity as a web application firewall for Apache on RHEL 9, including OWASP Core Rule Set integration.
+Description: Learn how to install and configure ModSecurity as a web application firewall for Apache on RHEL, including OWASP Core Rule Set integration.
 
 ---
 
-ModSecurity is an open-source web application firewall (WAF) that protects Apache against common attacks like SQL injection, cross-site scripting (XSS), and other OWASP Top 10 threats. On RHEL 9, you can pair ModSecurity with the OWASP Core Rule Set (CRS) for a solid baseline defense. This guide walks through installation, configuration, and rule tuning.
+ModSecurity is an open-source web application firewall (WAF) that protects Apache against common attacks like SQL injection, cross-site scripting (XSS), and other OWASP Top 10 threats. On RHEL, you can pair ModSecurity with the OWASP Core Rule Set (CRS) for a solid baseline defense. This guide walks through installation, configuration, and rule tuning.
 
 ## Prerequisites
 
-- A RHEL 9 system with Apache installed and running
+- A RHEL system with Apache installed and running
 - EPEL repository enabled
 - Root or sudo access
 
@@ -210,4 +210,4 @@ sudo ausearch -m avc -ts recent | grep modsec
 
 ## Summary
 
-ModSecurity with the OWASP Core Rule Set provides strong baseline protection for Apache on RHEL 9. Start in DetectionOnly mode, review the audit logs to identify false positives, create exclusion rules for your application, and then switch to enforcement mode. Regular log review helps you keep the rules tuned and your applications protected.
+ModSecurity with the OWASP Core Rule Set provides strong baseline protection for Apache on RHEL. Start in DetectionOnly mode, review the audit logs to identify false positives, create exclusion rules for your application, and then switch to enforcement mode. Regular log review helps you keep the rules tuned and your applications protected.

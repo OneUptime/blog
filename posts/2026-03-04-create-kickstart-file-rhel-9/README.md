@@ -1,10 +1,10 @@
-# How to Create a Kickstart File for Automated RHEL 9 Installations
+# How to Create a Kickstart File for Automated RHEL Installations
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, Kickstart, Automation, Linux, Installation
 
-Description: Learn how to write Kickstart files for automating RHEL 9 installations, including syntax, common directives, package selection, and pre/post scripts with validation using ksvalidator.
+Description: Learn how to write Kickstart files for automating RHEL installations, including syntax, common directives, package selection, and pre/post scripts with validation using ksvalidator.
 
 ---
 
@@ -35,10 +35,10 @@ flowchart TD
 
 ## A Complete Kickstart Example
 
-Here is a practical Kickstart file for a RHEL 9 server with custom partitioning, network configuration, and post-install setup:
+Here is a practical Kickstart file for a RHEL server with custom partitioning, network configuration, and post-install setup:
 
 ```bash
-# RHEL 9 Kickstart configuration file
+# RHEL Kickstart configuration file
 
 # Use graphical or text mode installer
 text
@@ -121,7 +121,7 @@ A few things to note:
 
 - `@^minimal-environment` is a package group environment (the `^` prefix indicates an environment rather than a group).
 - Lines starting with `-` exclude packages. Here we remove firmware packages for wireless cards (not needed on a server) and Plymouth boot splash.
-- `%end` closes the section. This is required in RHEL 9.
+- `%end` closes the section. This is required in RHEL.
 
 ## The %pre Section
 
@@ -239,7 +239,7 @@ If the file is clean, there will be no output. Errors show the line number and a
 You can also use `ksverdiff` to check compatibility between different RHEL versions:
 
 ```bash
-# Compare kickstart syntax differences between RHEL 8 and RHEL 9
+# Compare kickstart syntax differences between RHEL 8 and RHEL
 ksverdiff --from RHEL8 --to RHEL9
 ```
 

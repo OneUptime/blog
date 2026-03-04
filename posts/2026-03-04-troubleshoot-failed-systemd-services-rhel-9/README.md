@@ -1,10 +1,10 @@
-# How to Troubleshoot Failed systemd Services on RHEL 9
+# How to Troubleshoot Failed systemd Services on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Troubleshooting, Services, Linux
 
-Description: A practical guide to diagnosing and fixing failed systemd services on RHEL 9, covering common failure patterns, journal inspection, and real-world fixes.
+Description: A practical guide to diagnosing and fixing failed systemd services on RHEL, covering common failure patterns, journal inspection, and real-world fixes.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A practical guide to diagnosing and fixing failed systemd services 
 
 If you have spent any time managing RHEL servers, you have seen it. You reboot a box, or you push a config change, and something that was working five minutes ago is now dead. The service is "failed" and your monitoring is lighting up.
 
-systemd gives you solid tools to figure out what went wrong. The trick is knowing where to look and what the error messages actually mean. This post walks through a systematic approach to troubleshooting failed services on RHEL 9.
+systemd gives you solid tools to figure out what went wrong. The trick is knowing where to look and what the error messages actually mean. This post walks through a systematic approach to troubleshooting failed services on RHEL.
 
 ## Step 1: Find What is Broken
 
@@ -262,6 +262,6 @@ systemctl reset-failed myservice.service    # Clear the failure flag
 
 ## Wrapping Up
 
-Most failed services on RHEL 9 come down to one of a few things: wrong paths, missing users, bad permissions, or SELinux denials. The pattern is always the same. Check `systemctl --failed`, read the status, dig into the journal, and look at the exit code. Once you know the exit code, you know where to look.
+Most failed services on RHEL come down to one of a few things: wrong paths, missing users, bad permissions, or SELinux denials. The pattern is always the same. Check `systemctl --failed`, read the status, dig into the journal, and look at the exit code. Once you know the exit code, you know where to look.
 
 Do not skip SELinux. It is the most common "it works on my dev box but not in production" issue on RHEL. And always check `ExecStartPre` - it is easy to overlook when the real error happened before the main process even tried to start.

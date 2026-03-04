@@ -1,10 +1,10 @@
-# How to Configure Firewalld for Docker and Podman Containers on RHEL 9
+# How to Configure Firewalld for Docker and Podman Containers on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Docker, Podman, Containers, Linux
 
-Description: How to make firewalld work correctly with Docker and Podman on RHEL 9, covering port publishing, network conflicts, and zone configurations for container workloads.
+Description: How to make firewalld work correctly with Docker and Podman on RHEL, covering port publishing, network conflicts, and zone configurations for container workloads.
 
 ---
 
@@ -29,7 +29,7 @@ The result: firewalld rules might not actually block traffic to published contai
 
 ### The Default Conflict
 
-Docker modifies iptables directly. On RHEL 9, Docker can add its own chains that bypass firewalld. A published port like `-p 8080:80` might be accessible from anywhere, regardless of your firewalld rules.
+Docker modifies iptables directly. On RHEL, Docker can add its own chains that bypass firewalld. A published port like `-p 8080:80` might be accessible from anywhere, regardless of your firewalld rules.
 
 ### Option 1: Let Docker Manage Its Own Rules
 
@@ -88,7 +88,7 @@ firewall-cmd --reload
 
 ## Podman and Firewalld
 
-Podman on RHEL 9 works differently from Docker in significant ways:
+Podman on RHEL works differently from Docker in significant ways:
 
 ### Rootless Podman
 
@@ -219,4 +219,4 @@ sysctl net.ipv4.ip_forward
 
 ## Summary
 
-Podman on RHEL 9, especially rootless Podman, works well with firewalld because it does not bypass firewall rules. Docker is more problematic because it modifies iptables directly. For Docker, either accept its rule management and control access through which ports you publish, or create a dedicated firewalld zone for the Docker bridge. For Podman, standard firewalld port rules work as expected. Always test from an external machine to verify that only the intended ports are reachable.
+Podman on RHEL, especially rootless Podman, works well with firewalld because it does not bypass firewall rules. Docker is more problematic because it modifies iptables directly. For Docker, either accept its rule management and control access through which ports you publish, or create a dedicated firewalld zone for the Docker bridge. For Podman, standard firewalld port rules work as expected. Always test from an external machine to verify that only the intended ports are reachable.

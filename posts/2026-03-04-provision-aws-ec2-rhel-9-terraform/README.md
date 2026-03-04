@@ -1,14 +1,14 @@
-# How to Provision AWS EC2 Instances Running RHEL 9 with Terraform
+# How to Provision AWS EC2 Instances Running RHEL with Terraform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, AWS, EC2, Cloud, Linux
 
-Description: A step-by-step guide to provisioning RHEL 9 EC2 instances on AWS using Terraform, including VPC setup, security groups, and SSH access.
+Description: A step-by-step guide to provisioning RHEL EC2 instances on AWS using Terraform, including VPC setup, security groups, and SSH access.
 
 ---
 
-Spinning up RHEL 9 instances on AWS through the console is fine for one-off tasks, but it does not scale. Terraform lets you define your entire AWS infrastructure as code, making deployments repeatable and version-controlled.
+Spinning up RHEL instances on AWS through the console is fine for one-off tasks, but it does not scale. Terraform lets you define your entire AWS infrastructure as code, making deployments repeatable and version-controlled.
 
 ## What You Will Build
 
@@ -19,13 +19,13 @@ graph TD
     C --> D[Public Subnet]
     D --> E[Internet Gateway]
     D --> F[Security Group]
-    F --> G[RHEL 9 EC2 Instance]
+    F --> G[RHEL EC2 Instance]
     G --> H[Elastic IP]
 ```
 
 ## Prerequisites
 
-Install Terraform on your RHEL 9 workstation:
+Install Terraform on your RHEL workstation:
 
 ```bash
 # Add HashiCorp repo and install Terraform
@@ -92,10 +92,10 @@ variable "allowed_ssh_cidr" {
 }
 ```
 
-## Find the Latest RHEL 9 AMI
+## Find the Latest RHEL AMI
 
 ```hcl
-# ami.tf - Look up the latest official RHEL 9 AMI
+# ami.tf - Look up the latest official RHEL AMI
 
 data "aws_ami" "rhel9" {
   most_recent = true
@@ -183,7 +183,7 @@ resource "aws_route_table_association" "rhel_public_rta" {
 
 resource "aws_security_group" "rhel_sg" {
   name        = "rhel9-sg"
-  description = "Allow SSH and HTTP traffic to RHEL 9 instances"
+  description = "Allow SSH and HTTP traffic to RHEL instances"
   vpc_id      = aws_vpc.rhel_vpc.id
 
   # Allow SSH from specified CIDR
@@ -221,7 +221,7 @@ resource "aws_security_group" "rhel_sg" {
 ## EC2 Instance
 
 ```hcl
-# instance.tf - RHEL 9 EC2 instance
+# instance.tf - RHEL EC2 instance
 
 resource "aws_instance" "rhel9" {
   ami                    = data.aws_ami.rhel9.id
@@ -246,7 +246,7 @@ resource "aws_instance" "rhel9" {
 
   tags = {
     Name = "rhel9-server"
-    OS   = "RHEL 9"
+    OS   = "RHEL"
   }
 }
 
@@ -272,7 +272,7 @@ output "instance_id" {
 }
 
 output "public_ip" {
-  description = "Public IP address of the RHEL 9 instance"
+  description = "Public IP address of the RHEL instance"
   value       = aws_eip.rhel9_eip.public_ip
 }
 
@@ -282,7 +282,7 @@ output "ssh_command" {
 }
 
 output "ami_id" {
-  description = "RHEL 9 AMI ID used"
+  description = "RHEL AMI ID used"
   value       = data.aws_ami.rhel9.id
 }
 ```
@@ -302,7 +302,7 @@ TFVARS
 # Preview the infrastructure
 terraform plan
 
-# Deploy the RHEL 9 instance
+# Deploy the RHEL instance
 terraform apply -auto-approve
 
 # Connect via SSH
@@ -316,4 +316,4 @@ ssh ec2-user@$(terraform output -raw public_ip)
 terraform destroy -auto-approve
 ```
 
-Terraform makes it straightforward to provision RHEL 9 instances on AWS. You get a reproducible setup that you can commit to version control, share with your team, and extend as your infrastructure grows.
+Terraform makes it straightforward to provision RHEL instances on AWS. You get a reproducible setup that you can commit to version control, share with your team, and extend as your infrastructure grows.

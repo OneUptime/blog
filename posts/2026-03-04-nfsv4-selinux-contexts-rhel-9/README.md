@@ -1,10 +1,10 @@
-# How to Configure NFSv4 with SELinux Contexts on RHEL 9
+# How to Configure NFSv4 with SELinux Contexts on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NFS, SELinux, Security, Linux
 
-Description: Configure SELinux correctly for NFSv4 on RHEL 9, covering file contexts, booleans, and troubleshooting common SELinux denials with NFS.
+Description: Configure SELinux correctly for NFSv4 on RHEL, covering file contexts, booleans, and troubleshooting common SELinux denials with NFS.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Configure SELinux correctly for NFSv4 on RHEL 9, covering file cont
 
 SELinux enforces mandatory access controls that go beyond traditional Unix permissions. When NFS is involved, SELinux can block access even when file permissions look correct. Understanding how SELinux interacts with NFS saves hours of frustrating troubleshooting.
 
-On RHEL 9, SELinux is enforcing by default, and NFS works with it, but you need to set the right booleans and contexts.
+On RHEL, SELinux is enforcing by default, and NFS works with it, but you need to set the right booleans and contexts.
 
 ## How SELinux Handles NFS Files
 
@@ -31,7 +31,7 @@ system_u:object_r:nfs_t:s0 somefile.txt
 
 ## Step 1 - Set SELinux Booleans
 
-RHEL 9 provides several SELinux booleans that control NFS behavior:
+RHEL provides several SELinux booleans that control NFS behavior:
 
 ```bash
 # Allow NFS to export read-write shares
@@ -192,4 +192,4 @@ Never leave production systems in permissive mode. Use this only for troubleshoo
 
 ## Wrap-Up
 
-SELinux and NFS work well together on RHEL 9 once you configure the right booleans and contexts. The key steps are: enable the appropriate booleans with `setsebool -P`, set correct file contexts on exported directories, and use `ausearch` and `sealert` to diagnose any denials. Getting SELinux right from the start is much easier than troubleshooting mysterious access failures later.
+SELinux and NFS work well together on RHEL once you configure the right booleans and contexts. The key steps are: enable the appropriate booleans with `setsebool -P`, set correct file contexts on exported directories, and use `ausearch` and `sealert` to diagnose any denials. Getting SELinux right from the start is much easier than troubleshooting mysterious access failures later.

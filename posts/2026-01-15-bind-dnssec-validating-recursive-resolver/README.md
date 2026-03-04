@@ -46,7 +46,7 @@ With DNSSEC validation:
 
 Before you begin, ensure you have:
 
-- A Linux server (Ubuntu 22.04/24.04, Debian 12, RHEL 9, or similar)
+- A Linux server (Ubuntu 22.04/24.04, Debian 12, RHEL, or similar)
 - Root or sudo access
 - BIND 9.16 or later (9.18+ recommended)
 - Network connectivity to root DNS servers

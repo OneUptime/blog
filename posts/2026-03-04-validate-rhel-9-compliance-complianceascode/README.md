@@ -1,10 +1,10 @@
-# How to Validate RHEL 9 Compliance Using the ComplianceAsCode Project
+# How to Validate RHEL Compliance Using the ComplianceAsCode Project
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ComplianceAsCode, Compliance, Security, Linux
 
-Description: Use the ComplianceAsCode project to validate RHEL 9 against multiple security frameworks including CIS, STIG, PCI-DSS, and NIST 800-53.
+Description: Use the ComplianceAsCode project to validate RHEL against multiple security frameworks including CIS, STIG, PCI-DSS, and NIST 800-53.
 
 ---
 
@@ -55,7 +55,7 @@ cd /opt/complianceascode
 dnf install -y cmake make openscap-utils python3-pyyaml python3-jinja2 \
   python3-setuptools libxml2 python3-lxml
 
-# Build RHEL 9 content
+# Build RHEL content
 mkdir build && cd build
 cmake ..
 make rhel9
@@ -221,7 +221,7 @@ If you find a rule that is incorrect or missing, you can contribute:
 # The project structure:
 # /opt/complianceascode/
 #   linux_os/guide/       - Rule definitions
-#   products/rhel9/       - RHEL 9 specific content
+#   products/rhel9/       - RHEL specific content
 #   tests/                - Test suites
 
 # Rules are defined in YAML files

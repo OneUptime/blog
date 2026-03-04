@@ -1,10 +1,10 @@
-# How to Reduce an ext4 Logical Volume Safely on RHEL 9
+# How to Reduce an ext4 Logical Volume Safely on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, ext4, Reduce, Linux
 
-Description: Safely reduce an ext4 logical volume on RHEL 9 by shrinking the filesystem first, then reducing the LV, without data loss.
+Description: Safely reduce an ext4 logical volume on RHEL by shrinking the filesystem first, then reducing the LV, without data loss.
 
 ---
 

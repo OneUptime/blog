@@ -1,18 +1,18 @@
-# How to Install GCC and Development Tools on RHEL 9
+# How to Install GCC and Development Tools on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GCC, Development Tools, C, C++, Linux
 
-Description: A complete guide to installing GCC, G++, and the essential development toolchain on RHEL 9 for compiling C and C++ programs.
+Description: A complete guide to installing GCC, G++, and the essential development toolchain on RHEL for compiling C and C++ programs.
 
 ---
 
-GCC (GNU Compiler Collection) is the foundation of software development on Linux. Whether you are building C programs, compiling kernel modules, or installing software from source, you need GCC on your RHEL 9 system.
+GCC (GNU Compiler Collection) is the foundation of software development on Linux. Whether you are building C programs, compiling kernel modules, or installing software from source, you need GCC on your RHEL system.
 
 ## Installing the Development Tools Group
 
-RHEL 9 bundles essential build tools into a convenient group package.
+RHEL bundles essential build tools into a convenient group package.
 
 ```bash
 # Install the complete development toolchain
@@ -73,7 +73,7 @@ cat > hello.c << 'CFILE'
 
 /* A simple program to verify GCC works */
 int main(void) {
-    printf("Hello from GCC on RHEL 9!\n");
+    printf("Hello from GCC on RHEL!\n");
     return 0;
 }
 CFILE
@@ -83,7 +83,7 @@ gcc -o hello hello.c
 
 # Run it
 ./hello
-# Output: Hello from GCC on RHEL 9!
+# Output: Hello from GCC on RHEL!
 ```
 
 ## Compiling a C++ Program
@@ -96,7 +96,7 @@ cat > hello.cpp << 'CPPFILE'
 
 // Test modern C++ features
 int main() {
-    std::string message = "Hello from G++ on RHEL 9!";
+    std::string message = "Hello from G++ on RHEL!";
     std::cout << message << std::endl;
 
     // Test C++17 features
@@ -156,7 +156,7 @@ graph LR
 
 ## Installing GCC Toolset for Newer Versions
 
-RHEL 9 provides GCC Toolset packages that include newer GCC versions.
+RHEL provides GCC Toolset packages that include newer GCC versions.
 
 ```bash
 # List available GCC toolsets
@@ -178,4 +178,4 @@ scl enable gcc-toolset-13 -- gcc -o myapp myapp.c
 
 ## Summary
 
-Installing GCC on RHEL 9 is as simple as installing the "Development Tools" group. For newer compiler versions, use GCC Toolset packages. With GCC installed, you can compile C/C++ programs, build software from source, and set up a complete development environment on your RHEL system.
+Installing GCC on RHEL is as simple as installing the "Development Tools" group. For newer compiler versions, use GCC Toolset packages. With GCC installed, you can compile C/C++ programs, build software from source, and set up a complete development environment on your RHEL system.

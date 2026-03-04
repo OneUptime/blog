@@ -1,10 +1,10 @@
-# How to Manage System Services Using the RHEL 9 Web Console
+# How to Manage System Services Using the RHEL Web Console
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Services, systemd, Linux
 
-Description: A practical guide to managing systemd services through the Cockpit web console on RHEL 9, including starting, stopping, enabling, and troubleshooting services.
+Description: A practical guide to managing systemd services through the Cockpit web console on RHEL, including starting, stopping, enabling, and troubleshooting services.
 
 ---
 

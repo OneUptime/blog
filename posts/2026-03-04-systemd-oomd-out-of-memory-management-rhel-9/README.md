@@ -1,10 +1,10 @@
-# How to Configure systemd-oomd for Proactive Out-of-Memory Management on RHEL 9
+# How to Configure systemd-oomd for Proactive Out-of-Memory Management on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, OOM, Memory Management, Linux
 
-Description: Learn how to configure systemd-oomd on RHEL 9 for proactive out-of-memory killing before the kernel OOM killer intervenes.
+Description: Learn how to configure systemd-oomd on RHEL for proactive out-of-memory killing before the kernel OOM killer intervenes.
 
 ---
 
@@ -25,7 +25,7 @@ graph TD
 ## Step 1: Enable systemd-oomd
 
 ```bash
-# systemd-oomd is included in RHEL 9 by default
+# systemd-oomd is included in RHEL by default
 # Enable and start the service
 sudo systemctl enable --now systemd-oomd
 
@@ -119,4 +119,4 @@ journalctl -u systemd-oomd --follow
 
 ## Summary
 
-You have configured systemd-oomd on RHEL 9 for proactive memory management. Unlike the kernel OOM killer, systemd-oomd uses memory pressure signals to detect problems early and kills the most appropriate cgroup. This keeps the system responsive and prevents cascading failures during memory pressure events.
+You have configured systemd-oomd on RHEL for proactive memory management. Unlike the kernel OOM killer, systemd-oomd uses memory pressure signals to detect problems early and kills the most appropriate cgroup. This keeps the system responsive and prevents cascading failures during memory pressure events.

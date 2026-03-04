@@ -1,18 +1,18 @@
-# How to Deploy Apache Flink for Stream Processing on RHEL 9
+# How to Deploy Apache Flink for Stream Processing on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache Flink, Stream Processing, Big Data, Real-Time Analytics, Linux
 
-Description: Deploy Apache Flink on RHEL 9 to process data streams in real time with support for event-time processing, exactly-once semantics, and stateful computations.
+Description: Deploy Apache Flink on RHEL to process data streams in real time with support for event-time processing, exactly-once semantics, and stateful computations.
 
 ---
 
-Apache Flink is a distributed stream processing framework designed for high-throughput, low-latency data pipelines. Unlike batch-first frameworks, Flink treats streams as the primary abstraction and can handle both bounded and unbounded data. This guide covers deploying Flink on RHEL 9.
+Apache Flink is a distributed stream processing framework designed for high-throughput, low-latency data pipelines. Unlike batch-first frameworks, Flink treats streams as the primary abstraction and can handle both bounded and unbounded data. This guide covers deploying Flink on RHEL.
 
 ## Prerequisites
 
-- RHEL 9 with at least 4 GB RAM and 2 CPU cores
+- RHEL with at least 4 GB RAM and 2 CPU cores
 - Java 11 or later
 - Root or sudo access
 
@@ -282,4 +282,4 @@ curl -s http://localhost:8081/jobs | python3 -m json.tool
 
 ## Conclusion
 
-Apache Flink is now running on your RHEL 9 system, ready to process data streams with exactly-once semantics and stateful computations. The framework handles fault tolerance through checkpointing and can scale by adding more TaskManagers. For production clusters, enable high availability with ZooKeeper, use RocksDB as the state backend for large state, and connect to your Kafka or other messaging systems for real-time data pipelines.
+Apache Flink is now running on your RHEL system, ready to process data streams with exactly-once semantics and stateful computations. The framework handles fault tolerance through checkpointing and can scale by adding more TaskManagers. For production clusters, enable high availability with ZooKeeper, use RocksDB as the state backend for large state, and connect to your Kafka or other messaging systems for real-time data pipelines.

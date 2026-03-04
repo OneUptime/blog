@@ -1,10 +1,10 @@
-# How to Set Up Fail2Ban to Protect SSH on RHEL 9
+# How to Set Up Fail2Ban to Protect SSH on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Fail2Ban, SSH, Security, Linux
 
-Description: Install and configure Fail2Ban on RHEL 9 to automatically ban IP addresses that show malicious SSH behavior, with custom jail configurations and monitoring.
+Description: Install and configure Fail2Ban on RHEL to automatically ban IP addresses that show malicious SSH behavior, with custom jail configurations and monitoring.
 
 ---
 
@@ -22,7 +22,7 @@ sudo dnf install epel-release -y
 sudo dnf install fail2ban fail2ban-firewalld -y
 ```
 
-The `fail2ban-firewalld` package provides integration with firewalld, which is the default firewall on RHEL 9.
+The `fail2ban-firewalld` package provides integration with firewalld, which is the default firewall on RHEL.
 
 ## Basic Configuration
 
@@ -269,4 +269,4 @@ Lower the maxretry or increase findtime. Also check `ignoreip` to make sure your
 
 ## Wrapping Up
 
-Fail2Ban is the standard tool for protecting SSH from brute-force attacks on RHEL 9. Install it, configure a jail for SSH with sensible thresholds, whitelist your management IPs, and let it run. Check the status periodically to see how much garbage traffic it is blocking. Combined with key-based authentication and proper access controls, Fail2Ban adds a strong network-level defense against persistent attackers.
+Fail2Ban is the standard tool for protecting SSH from brute-force attacks on RHEL. Install it, configure a jail for SSH with sensible thresholds, whitelist your management IPs, and let it run. Check the status periodically to see how much garbage traffic it is blocking. Combined with key-based authentication and proper access controls, Fail2Ban adds a strong network-level defense against persistent attackers.

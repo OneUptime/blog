@@ -1,10 +1,10 @@
-# How to Create and Manage systemd User Services on RHEL 9
+# How to Create and Manage systemd User Services on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, User Services, Linux, Process Management
 
-Description: Learn how to create and manage systemd user services on RHEL 9 that run in your user session without requiring root privileges.
+Description: Learn how to create and manage systemd user services on RHEL that run in your user session without requiring root privileges.
 
 ---
 
@@ -144,4 +144,4 @@ systemctl --user status
 
 ## Summary
 
-You have created and managed systemd user services on RHEL 9. User services run without root privileges, making them ideal for personal development tools, sync daemons, and background tasks. With lingering enabled, they persist even after you log out, behaving like system services but scoped to your user account.
+You have created and managed systemd user services on RHEL. User services run without root privileges, making them ideal for personal development tools, sync daemons, and background tasks. With lingering enabled, they persist even after you log out, behaving like system services but scoped to your user account.

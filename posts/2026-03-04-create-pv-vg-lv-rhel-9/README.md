@@ -1,14 +1,14 @@
-# How to Create Physical Volumes, Volume Groups, and Logical Volumes on RHEL 9
+# How to Create Physical Volumes, Volume Groups, and Logical Volumes on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, PV, VG, LV, Linux
 
-Description: Step-by-step guide to creating and managing LVM physical volumes, volume groups, and logical volumes on RHEL 9 with practical examples.
+Description: Step-by-step guide to creating and managing LVM physical volumes, volume groups, and logical volumes on RHEL with practical examples.
 
 ---
 
-LVM has three layers of abstraction: Physical Volumes (PVs), Volume Groups (VGs), and Logical Volumes (LVs). Understanding how these layers interact is fundamental to managing storage on RHEL 9. This guide covers the creation and management of each layer with real commands and practical scenarios.
+LVM has three layers of abstraction: Physical Volumes (PVs), Volume Groups (VGs), and Logical Volumes (LVs). Understanding how these layers interact is fundamental to managing storage on RHEL. This guide covers the creation and management of each layer with real commands and practical scenarios.
 
 ## The Three LVM Layers
 

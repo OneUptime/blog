@@ -1,10 +1,10 @@
-# How to Configure TPM 2.0 for Measured Boot on RHEL 9
+# How to Configure TPM 2.0 for Measured Boot on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, TPM, Measured Boot, Security, Linux
 
-Description: Configure TPM 2.0 measured boot on RHEL 9 to create a cryptographic record of the boot process that can detect tampering with boot components.
+Description: Configure TPM 2.0 measured boot on RHEL to create a cryptographic record of the boot process that can detect tampering with boot components.
 
 ---
 

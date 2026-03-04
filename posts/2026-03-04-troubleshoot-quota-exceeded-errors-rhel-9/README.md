@@ -1,10 +1,10 @@
-# How to Troubleshoot Quota Exceeded Errors on RHEL 9
+# How to Troubleshoot Quota Exceeded Errors on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Quotas, Troubleshooting, Linux
 
-Description: A practical troubleshooting guide for resolving disk quota exceeded errors on RHEL 9, covering common causes, diagnostic steps, and solutions for both XFS and ext4.
+Description: A practical troubleshooting guide for resolving disk quota exceeded errors on RHEL, covering common causes, diagnostic steps, and solutions for both XFS and ext4.
 
 ---
 

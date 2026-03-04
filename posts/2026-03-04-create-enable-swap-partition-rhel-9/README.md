@@ -1,14 +1,14 @@
-# How to Create and Enable a Swap Partition on RHEL 9
+# How to Create and Enable a Swap Partition on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Swap, Partition, Memory, Linux
 
-Description: Step-by-step guide to creating and enabling a dedicated swap partition on RHEL 9, including partitioning, formatting, and making it persistent across reboots.
+Description: Step-by-step guide to creating and enabling a dedicated swap partition on RHEL, including partitioning, formatting, and making it persistent across reboots.
 
 ---
 
-Swap space is your safety net when physical RAM runs out. Without it, the OOM killer starts terminating processes, and that is never a good day. A dedicated swap partition is the most common and performant way to add swap on RHEL 9.
+Swap space is your safety net when physical RAM runs out. Without it, the OOM killer starts terminating processes, and that is never a good day. A dedicated swap partition is the most common and performant way to add swap on RHEL.
 
 ## When You Need Swap
 
@@ -198,4 +198,4 @@ For most production RHEL systems, a swap partition (especially on LVM) is the pr
 
 ## Summary
 
-Creating a swap partition on RHEL 9 is straightforward: create the partition or LVM volume, format it with `mkswap`, activate it with `swapon`, and add it to `/etc/fstab` for persistence. Use LVM when possible for flexibility, and set priorities if you have multiple swap devices. Always verify with `swapon --show` and `free -h` after setup.
+Creating a swap partition on RHEL is straightforward: create the partition or LVM volume, format it with `mkswap`, activate it with `swapon`, and add it to `/etc/fstab` for persistence. Use LVM when possible for flexibility, and set priorities if you have multiple swap devices. Always verify with `swapon --show` and `free -h` after setup.

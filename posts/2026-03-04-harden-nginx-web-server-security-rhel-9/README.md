@@ -1,10 +1,10 @@
-# How to Harden Nginx Web Server Security on RHEL 9
+# How to Harden Nginx Web Server Security on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Security, Hardening, Linux
 
-Description: Practical security hardening steps for Nginx on RHEL 9, covering server information hiding, security headers, TLS configuration, and access restrictions.
+Description: Practical security hardening steps for Nginx on RHEL, covering server information hiding, security headers, TLS configuration, and access restrictions.
 
 ---
 
@@ -14,7 +14,7 @@ A default Nginx installation is functional but leaves room for improvement on th
 
 ## Prerequisites
 
-- RHEL 9 with Nginx installed
+- RHEL with Nginx installed
 - Root or sudo access
 - TLS configured for HTTPS
 
@@ -249,4 +249,4 @@ curl -I https://your-server.example.com
 
 ## Wrap-Up
 
-Nginx hardening on RHEL 9 follows a straightforward checklist: hide version info, add security headers, restrict methods, block common attack paths, limit request sizes, harden TLS, and add rate limiting. Combined with SELinux in enforcing mode and a properly configured firewall, these steps give you a strong security posture. Review your configuration periodically and keep Nginx updated to stay protected against newly discovered vulnerabilities.
+Nginx hardening on RHEL follows a straightforward checklist: hide version info, add security headers, restrict methods, block common attack paths, limit request sizes, harden TLS, and add rate limiting. Combined with SELinux in enforcing mode and a properly configured firewall, these steps give you a strong security posture. Review your configuration periodically and keep Nginx updated to stay protected against newly discovered vulnerabilities.

@@ -1,10 +1,10 @@
-# How to Set Default ACLs on Directories for Shared Access on RHEL 9
+# How to Set Default ACLs on Directories for Shared Access on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ACLs, Default ACLs, Shared Access, Linux
 
-Description: Configure default ACLs on directories in RHEL 9 so that new files and subdirectories automatically inherit the correct permissions for shared team access.
+Description: Configure default ACLs on directories in RHEL so that new files and subdirectories automatically inherit the correct permissions for shared team access.
 
 ---
 

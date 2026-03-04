@@ -1,10 +1,10 @@
-# How to Configure Apache with PHP-FPM on RHEL 9
+# How to Configure Apache with PHP-FPM on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, PHP-FPM, Linux
 
-Description: How to set up Apache httpd with PHP-FPM on RHEL 9 for better PHP performance compared to mod_php.
+Description: How to set up Apache httpd with PHP-FPM on RHEL for better PHP performance compared to mod_php.
 
 ---
 
@@ -14,7 +14,7 @@ mod_php embeds the PHP interpreter into every Apache process, which means every 
 
 ## Prerequisites
 
-- RHEL 9 with Apache httpd installed
+- RHEL with Apache httpd installed
 - Root or sudo access
 
 ## Step 1 - Install PHP and PHP-FPM
@@ -67,7 +67,7 @@ The `pm = dynamic` setting creates processes on demand. For high-traffic sites, 
 
 ## Step 3 - Configure Apache to Use PHP-FPM
 
-RHEL 9 usually creates `/etc/httpd/conf.d/php.conf` automatically. If it does not exist or needs adjustment:
+RHEL usually creates `/etc/httpd/conf.d/php.conf` automatically. If it does not exist or needs adjustment:
 
 ```bash
 # Create or update the PHP-FPM configuration for Apache
@@ -213,4 +213,4 @@ curl http://localhost/fpm-status
 
 ## Wrap-Up
 
-PHP-FPM with Apache on RHEL 9 is the recommended setup for PHP applications. It is faster and more memory-efficient than mod_php, and it lets you use the event MPM. Size the pool based on your memory and traffic, use Unix sockets when PHP-FPM and Apache are on the same box, and always remove the phpinfo test page after verifying the setup.
+PHP-FPM with Apache on RHEL is the recommended setup for PHP applications. It is faster and more memory-efficient than mod_php, and it lets you use the event MPM. Size the pool based on your memory and traffic, use Unix sockets when PHP-FPM and Apache are on the same box, and always remove the phpinfo test page after verifying the setup.

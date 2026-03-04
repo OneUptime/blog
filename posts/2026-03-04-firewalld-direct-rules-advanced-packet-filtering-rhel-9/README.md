@@ -1,16 +1,16 @@
-# How to Use Firewalld Direct Rules for Advanced Packet Filtering on RHEL 9
+# How to Use Firewalld Direct Rules for Advanced Packet Filtering on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Direct Rules, Packet Filtering, Linux
 
-Description: How to use firewalld direct rules on RHEL 9 for advanced packet filtering scenarios that go beyond what zones and rich rules can handle.
+Description: How to use firewalld direct rules on RHEL for advanced packet filtering scenarios that go beyond what zones and rich rules can handle.
 
 ---
 
 Firewalld's zones, services, and rich rules cover most use cases. But sometimes you need to drop down to raw iptables-style rules for advanced filtering. That is where direct rules come in. They let you insert rules directly into the underlying packet filter chains, giving you the same power as raw iptables but within the firewalld framework.
 
-**Important note**: Direct rules using iptables syntax are deprecated in RHEL 9 in favor of policies and rich rules. However, they still work and are sometimes the only way to achieve certain filtering goals. Consider using rich rules or firewalld policies first.
+**Important note**: Direct rules using iptables syntax are deprecated in RHEL in favor of policies and rich rules. However, they still work and are sometimes the only way to achieve certain filtering goals. Consider using rich rules or firewalld policies first.
 
 ## When to Use Direct Rules
 
@@ -202,4 +202,4 @@ But if you need connection limiting, string matching, or packet marking, direct 
 
 ## Summary
 
-Direct rules give you raw iptables power within the firewalld framework. Use them for advanced scenarios like connection limiting, string matching, packet marking, and custom chain management. They are deprecated in favor of rich rules and policies, but they still work on RHEL 9 and remain necessary for certain advanced filtering tasks. Always use `--permanent` and `--reload`, and be aware that direct rules interact with zone rules in specific ways.
+Direct rules give you raw iptables power within the firewalld framework. Use them for advanced scenarios like connection limiting, string matching, packet marking, and custom chain management. They are deprecated in favor of rich rules and policies, but they still work on RHEL and remain necessary for certain advanced filtering tasks. Always use `--permanent` and `--reload`, and be aware that direct rules interact with zone rules in specific ways.

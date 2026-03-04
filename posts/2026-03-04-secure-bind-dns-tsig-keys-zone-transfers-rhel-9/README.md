@@ -1,10 +1,10 @@
-# How to Secure BIND DNS with TSIG Keys for Zone Transfers on RHEL 9
+# How to Secure BIND DNS with TSIG Keys for Zone Transfers on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BIND, TSIG, DNS Security, Linux
 
-Description: Protect your BIND zone transfers on RHEL 9 using TSIG (Transaction SIGnature) keys to authenticate and encrypt DNS communications between primary and secondary servers.
+Description: Protect your BIND zone transfers on RHEL using TSIG (Transaction SIGnature) keys to authenticate and encrypt DNS communications between primary and secondary servers.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Use IdM Vaults for Storing Secrets on RHEL 9
+# How to Use IdM Vaults for Storing Secrets on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Vaults, Secrets, Linux
 
-Description: A hands-on guide to using IdM vaults on RHEL 9 to securely store and retrieve secrets like passwords, keys, and certificates, including vault types, access control, and practical examples.
+Description: A hands-on guide to using IdM vaults on RHEL to securely store and retrieve secrets like passwords, keys, and certificates, including vault types, access control, and practical examples.
 
 ---
 

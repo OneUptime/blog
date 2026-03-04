@@ -1,10 +1,10 @@
-# How to Configure Postfix with LMTP Delivery to Dovecot on RHEL 9
+# How to Configure Postfix with LMTP Delivery to Dovecot on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, LMTP, Dovecot, Linux
 
-Description: Use LMTP to deliver mail from Postfix directly to Dovecot on RHEL 9, enabling server-side filtering, quotas, and better mailbox management.
+Description: Use LMTP to deliver mail from Postfix directly to Dovecot on RHEL, enabling server-side filtering, quotas, and better mailbox management.
 
 ---
 
@@ -34,7 +34,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 with Postfix and Dovecot installed
+- RHEL with Postfix and Dovecot installed
 - Virtual mailbox setup (or local user delivery)
 
 ## Installing Required Packages

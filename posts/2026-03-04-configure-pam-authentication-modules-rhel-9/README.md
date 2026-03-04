@@ -1,14 +1,14 @@
-# How to Configure PAM Authentication Modules on RHEL 9
+# How to Configure PAM Authentication Modules on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, PAM, Authentication, Security, Linux
 
-Description: A practical guide to understanding and configuring PAM (Pluggable Authentication Modules) on RHEL 9, covering module types, stacking order, and common configurations.
+Description: A practical guide to understanding and configuring PAM (Pluggable Authentication Modules) on RHEL, covering module types, stacking order, and common configurations.
 
 ---
 
-PAM (Pluggable Authentication Modules) is the framework that controls how authentication works on RHEL 9. Every time a user logs in via SSH, the console, or even runs sudo, PAM decides whether to let them in. Understanding PAM is essential if you want to enforce password policies, enable multi-factor auth, or integrate with external identity systems.
+PAM (Pluggable Authentication Modules) is the framework that controls how authentication works on RHEL. Every time a user logs in via SSH, the console, or even runs sudo, PAM decides whether to let them in. Understanding PAM is essential if you want to enforce password policies, enable multi-factor auth, or integrate with external identity systems.
 
 ## How PAM Works
 
@@ -46,7 +46,7 @@ Each rule has a control flag that determines what happens if the module succeeds
 
 ## Examining the Default PAM Configuration
 
-RHEL 9 uses authselect to manage PAM profiles. Look at a typical service file:
+RHEL uses authselect to manage PAM profiles. Look at a typical service file:
 
 ```bash
 # View the PAM configuration for the SSH service
@@ -78,7 +78,7 @@ The `password-auth` file referenced above is the central configuration that most
 cat /etc/pam.d/password-auth
 ```
 
-## Common PAM Modules on RHEL 9
+## Common PAM Modules on RHEL
 
 Here are the modules you will work with most often:
 
@@ -167,7 +167,7 @@ grep pam_access /etc/pam.d/sshd
 
 ## Using authselect to Safely Modify PAM
 
-RHEL 9 strongly recommends using authselect rather than editing PAM files directly. Direct edits can be overwritten by authselect operations.
+RHEL strongly recommends using authselect rather than editing PAM files directly. Direct edits can be overwritten by authselect operations.
 
 ```bash
 # View the current authselect profile

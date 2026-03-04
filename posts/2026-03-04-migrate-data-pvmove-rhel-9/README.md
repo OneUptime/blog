@@ -1,10 +1,10 @@
-# How to Migrate Data Between Physical Volumes Using pvmove on RHEL 9
+# How to Migrate Data Between Physical Volumes Using pvmove on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, pvmove, Data Migration, Linux
 
-Description: Use pvmove to live-migrate data between physical volumes in LVM on RHEL 9, enabling disk replacement and storage rebalancing without downtime.
+Description: Use pvmove to live-migrate data between physical volumes in LVM on RHEL, enabling disk replacement and storage rebalancing without downtime.
 
 ---
 

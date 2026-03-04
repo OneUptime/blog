@@ -1,16 +1,16 @@
-# How to Manage SELinux Confined and Unconfined Users on RHEL 9
+# How to Manage SELinux Confined and Unconfined Users on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, Users, Security, Linux
 
-Description: Understand the difference between confined and unconfined SELinux users on RHEL 9 and learn how to manage user confinement for better security.
+Description: Understand the difference between confined and unconfined SELinux users on RHEL and learn how to manage user confinement for better security.
 
 ---
 
 ## Confined vs Unconfined
 
-On a default RHEL 9 installation, most users and processes run as `unconfined_u` in the `unconfined_t` domain. This means SELinux is enforcing, but these users are essentially exempt from most restrictions. They can run any program, access the network, and perform administrative tasks (if they have the right Unix permissions).
+On a default RHEL installation, most users and processes run as `unconfined_u` in the `unconfined_t` domain. This means SELinux is enforcing, but these users are essentially exempt from most restrictions. They can run any program, access the network, and perform administrative tasks (if they have the right Unix permissions).
 
 Confined users and processes, on the other hand, are restricted by SELinux to specific actions. A confined web server can only serve web content. A confined user can only access their home directory and run basic programs.
 

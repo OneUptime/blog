@@ -1,18 +1,18 @@
-# How to Apply the FIPS:STIG Combined Cryptographic Policy on RHEL 9
+# How to Apply the FIPS:STIG Combined Cryptographic Policy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FIPS, STIG, Crypto Policy, Linux
 
-Description: Configure the combined FIPS and STIG cryptographic policy on RHEL 9 to meet both FIPS 140-3 and DISA STIG requirements simultaneously.
+Description: Configure the combined FIPS and STIG cryptographic policy on RHEL to meet both FIPS 140-3 and DISA STIG requirements simultaneously.
 
 ---
 
-RHEL 9 introduced a system-wide cryptographic policy framework that makes it possible to apply a single policy across all crypto libraries at once. When you need to meet both FIPS and STIG requirements, the FIPS:OSPP subpolicy gives you the strictest configuration that satisfies both standards. This guide walks through how to apply it and what it changes.
+RHEL introduced a system-wide cryptographic policy framework that makes it possible to apply a single policy across all crypto libraries at once. When you need to meet both FIPS and STIG requirements, the FIPS:OSPP subpolicy gives you the strictest configuration that satisfies both standards. This guide walks through how to apply it and what it changes.
 
-## Understanding Crypto Policies on RHEL 9
+## Understanding Crypto Policies on RHEL
 
-RHEL 9 ships with several predefined crypto policies:
+RHEL ships with several predefined crypto policies:
 
 ```bash
 # List available policies
@@ -247,4 +247,4 @@ update-crypto-policies --set FIPS
 systemctl restart sshd
 ```
 
-The FIPS:OSPP policy on RHEL 9 gives you a single command to apply both FIPS and STIG cryptographic requirements. It is the most straightforward way to handle crypto compliance, and the system-wide approach means you do not have to configure each application individually. Set it once, verify it works, and the crypto policy framework handles the rest.
+The FIPS:OSPP policy on RHEL gives you a single command to apply both FIPS and STIG cryptographic requirements. It is the most straightforward way to handle crypto compliance, and the system-wide approach means you do not have to configure each application individually. Set it once, verify it works, and the crypto policy framework handles the rest.

@@ -1,14 +1,14 @@
-# How to Monitor SAP HANA on RHEL 9 with Prometheus
+# How to Monitor SAP HANA on RHEL with Prometheus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP HANA, Prometheus, Monitoring, Grafana, Linux
 
-Description: Set up Prometheus-based monitoring for SAP HANA on RHEL 9 using the HANA SQL exporter to track database performance metrics and alerting.
+Description: Set up Prometheus-based monitoring for SAP HANA on RHEL using the HANA SQL exporter to track database performance metrics and alerting.
 
 ---
 
-Monitoring SAP HANA with Prometheus gives you flexible, time-series-based observability that integrates with Grafana dashboards and Alertmanager. This guide sets up the SAP HANA SQL exporter for Prometheus on RHEL 9.
+Monitoring SAP HANA with Prometheus gives you flexible, time-series-based observability that integrates with Grafana dashboards and Alertmanager. This guide sets up the SAP HANA SQL exporter for Prometheus on RHEL.
 
 ## Monitoring Architecture
 
@@ -24,7 +24,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 running SAP HANA
+- RHEL running SAP HANA
 - Prometheus installed (or a separate monitoring server)
 - Network connectivity between Prometheus and the HANA host
 
@@ -218,4 +218,4 @@ sudo firewall-cmd --reload
 
 ## Conclusion
 
-Prometheus-based monitoring for SAP HANA on RHEL 9 gives you detailed visibility into database performance without relying on SAP-specific tools. The custom SQL queries in the exporter can be extended to cover any HANA system view, making it flexible for your specific monitoring needs. Pair it with Grafana for visualization and Alertmanager for notifications.
+Prometheus-based monitoring for SAP HANA on RHEL gives you detailed visibility into database performance without relying on SAP-specific tools. The custom SQL queries in the exporter can be extended to cover any HANA system view, making it flexible for your specific monitoring needs. Pair it with Grafana for visualization and Alertmanager for notifications.

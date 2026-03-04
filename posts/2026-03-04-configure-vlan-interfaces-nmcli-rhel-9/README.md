@@ -1,18 +1,18 @@
-# How to Configure VLAN Interfaces with nmcli on RHEL 9
+# How to Configure VLAN Interfaces with nmcli on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VLAN, nmcli, Networking, Linux
 
-Description: Learn how to create, configure, and manage VLAN interfaces on RHEL 9 using nmcli, with practical examples for network segmentation in production environments.
+Description: Learn how to create, configure, and manage VLAN interfaces on RHEL using nmcli, with practical examples for network segmentation in production environments.
 
 ---
 
-VLANs let you segment your network at Layer 2 without adding physical switches or cabling. On RHEL 9, nmcli makes it simple to create VLAN interfaces on top of physical NICs, bonds, or bridges. If you have ever managed a server that needs to sit on multiple networks, VLANs are how you do it cleanly.
+VLANs let you segment your network at Layer 2 without adding physical switches or cabling. On RHEL, nmcli makes it simple to create VLAN interfaces on top of physical NICs, bonds, or bridges. If you have ever managed a server that needs to sit on multiple networks, VLANs are how you do it cleanly.
 
 ## Prerequisites
 
-- RHEL 9 with NetworkManager running
+- RHEL with NetworkManager running
 - A physical interface connected to a switch trunk port
 - The switch port must be configured to carry the VLAN IDs you plan to use
 - Root or sudo access
@@ -210,4 +210,4 @@ nmcli connection delete vlan10
 
 ## Summary
 
-VLAN interfaces on RHEL 9 are straightforward with nmcli. Create them with a parent interface and VLAN ID, assign IPs, and bring them up. The key things to get right are: the switch must trunk the VLANs to your port, only set one default gateway (or use policy routing), and make sure MTU settings are consistent between the parent and VLAN interfaces. VLANs are persistent through reboots since NetworkManager saves them as connection profiles.
+VLAN interfaces on RHEL are straightforward with nmcli. Create them with a parent interface and VLAN ID, assign IPs, and bring them up. The key things to get right are: the switch must trunk the VLANs to your port, only set one default gateway (or use policy routing), and make sure MTU settings are consistent between the parent and VLAN interfaces. VLANs are persistent through reboots since NetworkManager saves them as connection profiles.

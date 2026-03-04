@@ -1,14 +1,14 @@
-# How to Understand the fq_codel Default Queueing Discipline on RHEL 9
+# How to Understand the fq_codel Default Queueing Discipline on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, fq_codel, QoS, Networking, Linux
 
-Description: An in-depth look at fq_codel, the default queueing discipline on RHEL 9, explaining how it fights bufferbloat, ensures fairness between flows, and why it's a good default for most workloads.
+Description: An in-depth look at fq_codel, the default queueing discipline on RHEL, explaining how it fights bufferbloat, ensures fairness between flows, and why it's a good default for most workloads.
 
 ---
 
-RHEL 9 uses fq_codel as the default queueing discipline on network interfaces. This is a significant improvement over the old pfifo_fast default. If you've ever wondered what fq_codel does, why it matters, or whether you should change it, this article breaks it all down.
+RHEL uses fq_codel as the default queueing discipline on network interfaces. This is a significant improvement over the old pfifo_fast default. If you've ever wondered what fq_codel does, why it matters, or whether you should change it, this article breaks it all down.
 
 ## What Is a Queueing Discipline?
 
@@ -17,7 +17,7 @@ Every network interface has a queue where outgoing packets wait before being tra
 ```bash
 # Check what qdisc your interface uses
 tc qdisc show dev ens192
-# On RHEL 9, you'll likely see: fq_codel
+# On RHEL, you'll likely see: fq_codel
 ```
 
 ## The Problem: Bufferbloat
@@ -69,7 +69,7 @@ Each flow gets equal access to the link. A flow that's flooding the interface do
 tc -s -d qdisc show dev ens192
 ```
 
-The default parameters on RHEL 9:
+The default parameters on RHEL:
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
@@ -142,7 +142,7 @@ sudo tc qdisc replace dev ens192 root fq_codel noecn
 
 ## When NOT to Change fq_codel
 
-For most RHEL 9 servers, fq_codel is the right choice. Don't change it unless:
+For most RHEL servers, fq_codel is the right choice. Don't change it unless:
 
 - You need explicit bandwidth allocation between services (use HTB)
 - You need to simulate network impairments (use netem)
@@ -191,4 +191,4 @@ sysctl net.core.default_qdisc
 
 ## Wrapping Up
 
-fq_codel on RHEL 9 is one of those things that just works. It fights bufferbloat, ensures fairness between flows, and requires zero configuration for the vast majority of workloads. The combination of per-flow fair queuing and CoDel's intelligent drop strategy means your interactive traffic stays responsive even when the link is saturated. Unless you have a specific reason to change it, leave it as the default and enjoy the benefits.
+fq_codel on RHEL is one of those things that just works. It fights bufferbloat, ensures fairness between flows, and requires zero configuration for the vast majority of workloads. The combination of per-flow fair queuing and CoDel's intelligent drop strategy means your interactive traffic stays responsive even when the link is saturated. Unless you have a specific reason to change it, leave it as the default and enjoy the benefits.

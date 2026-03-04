@@ -1,10 +1,10 @@
-# How to Configure HAProxy Load Balancing Algorithms on RHEL 9
+# How to Configure HAProxy Load Balancing Algorithms on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, Load Balancing, Algorithms, Linux
 
-Description: A detailed guide to HAProxy load balancing algorithms on RHEL 9, including when to use each one.
+Description: A detailed guide to HAProxy load balancing algorithms on RHEL, including when to use each one.
 
 ---
 
@@ -14,7 +14,7 @@ HAProxy supports several load balancing algorithms. The right choice depends on 
 
 ## Prerequisites
 
-- RHEL 9 with HAProxy installed
+- RHEL with HAProxy installed
 - Root or sudo access
 
 ## Round Robin

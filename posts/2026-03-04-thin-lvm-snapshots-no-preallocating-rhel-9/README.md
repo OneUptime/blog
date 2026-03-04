@@ -1,10 +1,10 @@
-# How to Create Thin LVM Snapshots Without Preallocating Space on RHEL 9
+# How to Create Thin LVM Snapshots Without Preallocating Space on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Thin Snapshots, Linux
 
-Description: Learn how to create thin LVM snapshots on RHEL 9 that share pool space instead of requiring preallocated storage, enabling efficient point-in-time copies.
+Description: Learn how to create thin LVM snapshots on RHEL that share pool space instead of requiring preallocated storage, enabling efficient point-in-time copies.
 
 ---
 
@@ -228,4 +228,4 @@ The pool space used by the snapshot is immediately returned.
 
 ## Summary
 
-Thin LVM snapshots on RHEL 9 are a major improvement over traditional snapshots. They require no space prealocation, share pool storage, and support recursive snapshots. Create them before risky changes, use them for daily backup points, and remove them when no longer needed. The critical requirement is monitoring your thin pool - when the pool is full, everything stops.
+Thin LVM snapshots on RHEL are a major improvement over traditional snapshots. They require no space prealocation, share pool storage, and support recursive snapshots. Create them before risky changes, use them for daily backup points, and remove them when no longer needed. The critical requirement is monitoring your thin pool - when the pool is full, everything stops.

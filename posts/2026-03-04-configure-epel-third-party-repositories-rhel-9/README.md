@@ -1,14 +1,14 @@
-# How to Configure Third-Party Repositories (EPEL) on RHEL 9
+# How to Configure Third-Party Repositories (EPEL) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, EPEL, Third-Party Repositories, DNF, Linux
 
-Description: Learn how to safely enable EPEL and other third-party repositories on RHEL 9, including GPG key management, repository priorities, and enabling CodeReady Builder for build dependencies.
+Description: Learn how to safely enable EPEL and other third-party repositories on RHEL, including GPG key management, repository priorities, and enabling CodeReady Builder for build dependencies.
 
 ---
 
-The default RHEL 9 repositories cover a lot of ground, but sooner or later you will need a package that Red Hat does not ship. That is where third-party repositories come in, and EPEL (Extra Packages for Enterprise Linux) is the most widely used one. This guide covers how to set up EPEL and other third-party repos safely, without turning your system into a dependency mess.
+The default RHEL repositories cover a lot of ground, but sooner or later you will need a package that Red Hat does not ship. That is where third-party repositories come in, and EPEL (Extra Packages for Enterprise Linux) is the most widely used one. This guide covers how to set up EPEL and other third-party repos safely, without turning your system into a dependency mess.
 
 ## What Is EPEL?
 
@@ -23,7 +23,7 @@ Key points about EPEL:
 
 ## Prerequisites: Enable CodeReady Builder
 
-Many EPEL packages depend on build libraries that live in the CodeReady Builder (CRB) repository. This repo is disabled by default on RHEL 9, but EPEL needs it. Enable it first:
+Many EPEL packages depend on build libraries that live in the CodeReady Builder (CRB) repository. This repo is disabled by default on RHEL, but EPEL needs it. Enable it first:
 
 ```bash
 # Enable the CodeReady Builder repository
@@ -44,7 +44,7 @@ Verify it is enabled:
 dnf repolist | grep -i crb
 ```
 
-## Installing EPEL on RHEL 9
+## Installing EPEL on RHEL
 
 The cleanest way to install EPEL is from the official Fedora package:
 
@@ -127,7 +127,7 @@ Setting `gpgcheck=0` is tempting when you just want something installed quickly.
 
 ## Setting Repository Priorities
 
-When multiple repos provide the same package, you want to control which one wins. The `priority` plugin is built into DNF on RHEL 9.
+When multiple repos provide the same package, you want to control which one wins. The `priority` plugin is built into DNF on RHEL.
 
 ### How Priority Works
 

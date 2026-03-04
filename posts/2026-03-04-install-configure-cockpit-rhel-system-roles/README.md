@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Ansible, System Roles, Linux
 
-Description: Learn how to automate Cockpit installation and configuration across multiple RHEL 9 servers using RHEL System Roles and Ansible.
+Description: Learn how to automate Cockpit installation and configuration across multiple RHEL servers using RHEL System Roles and Ansible.
 
 ---
 
@@ -28,7 +28,7 @@ graph TD
 You need:
 
 - A control node with Ansible installed (can be your workstation or a dedicated management server)
-- SSH access to target RHEL 9 servers with sudo privileges
+- SSH access to target RHEL servers with sudo privileges
 - The RHEL System Roles package installed on the control node
 
 Install the required packages on the control node:

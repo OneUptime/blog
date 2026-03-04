@@ -1,14 +1,14 @@
-# How to Configure Network Interfaces Using the Cockpit Web Console on RHEL 9
+# How to Configure Network Interfaces Using the Cockpit Web Console on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Networking, Linux
 
-Description: A practical guide to configuring network interfaces, bonds, VLANs, and bridges using the Cockpit web console on RHEL 9.
+Description: A practical guide to configuring network interfaces, bonds, VLANs, and bridges using the Cockpit web console on RHEL.
 
 ---
 
-Network configuration on RHEL 9 lives under NetworkManager, and while nmcli is a perfectly good tool, it has a learning curve. Cockpit's networking page gives you a visual overview of every interface, its IP addresses, and traffic stats. More importantly, it lets you make changes without memorizing nmcli syntax.
+Network configuration on RHEL lives under NetworkManager, and while nmcli is a perfectly good tool, it has a learning curve. Cockpit's networking page gives you a visual overview of every interface, its IP addresses, and traffic stats. More importantly, it lets you make changes without memorizing nmcli syntax.
 
 ## The Networking Page
 
@@ -274,4 +274,4 @@ firewall-cmd --get-active-zones
 
 ## Wrapping Up
 
-Cockpit makes network configuration visual and straightforward. For simple tasks like setting a static IP or adding a DNS server, it saves time. For more involved setups like bonds, VLANs, and bridges, the guided forms prevent the common mistakes that come from typing long nmcli commands. All changes are made through NetworkManager, so they're persistent and consistent with how RHEL 9 manages networking natively.
+Cockpit makes network configuration visual and straightforward. For simple tasks like setting a static IP or adding a DNS server, it saves time. For more involved setups like bonds, VLANs, and bridges, the guided forms prevent the common mistakes that come from typing long nmcli commands. All changes are made through NetworkManager, so they're persistent and consistent with how RHEL manages networking natively.

@@ -1,10 +1,10 @@
-# How to Configure Postfix Milters for Email Security on RHEL 9
+# How to Configure Postfix Milters for Email Security on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, Milters, Email Security, Linux
 
-Description: Learn how to use Postfix milters (mail filters) on RHEL 9 to add DKIM signing, spam filtering, virus scanning, and other email security features.
+Description: Learn how to use Postfix milters (mail filters) on RHEL to add DKIM signing, spam filtering, virus scanning, and other email security features.
 
 ---
 
@@ -37,7 +37,7 @@ Messages pass through milters in the order they are listed. Each milter can:
 
 ## Prerequisites
 
-- RHEL 9 with Postfix installed
+- RHEL with Postfix installed
 - Milter packages installed for each filter you want to use
 
 ## Postfix Milter Configuration

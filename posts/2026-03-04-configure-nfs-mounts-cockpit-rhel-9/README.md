@@ -1,10 +1,10 @@
-# How to Configure NFS Mounts Using the Cockpit Web Console on RHEL 9
+# How to Configure NFS Mounts Using the Cockpit Web Console on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, NFS, Storage, Linux
 
-Description: Learn how to configure NFS client mounts through the Cockpit web console on RHEL 9, including persistent mounts, mount options, and troubleshooting.
+Description: Learn how to configure NFS client mounts through the Cockpit web console on RHEL, including persistent mounts, mount options, and troubleshooting.
 
 ---
 
@@ -12,7 +12,7 @@ NFS is still one of the most common ways to share storage across Linux servers. 
 
 ## Prerequisites
 
-Make sure the NFS client utilities are installed on your RHEL 9 system:
+Make sure the NFS client utilities are installed on your RHEL system:
 
 ```bash
 # Install NFS client packages
@@ -37,7 +37,7 @@ Navigate to Storage in the Cockpit sidebar. Look for the "NFS mounts" section. C
 ```mermaid
 graph LR
     A[NFS Server] -->|Export: /shared| B[Network]
-    B -->|NFS Protocol| C[RHEL 9 Client]
+    B -->|NFS Protocol| C[RHEL Client]
     C -->|Mount: /mnt/shared| D[Local Access]
 ```
 

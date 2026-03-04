@@ -1,14 +1,14 @@
-# How to Use eBPF for Security Monitoring with Tetragon on RHEL 9
+# How to Use eBPF for Security Monitoring with Tetragon on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, eBPF, Tetragon, Security, Monitoring, Linux
 
-Description: Learn how to deploy Cilium Tetragon on RHEL 9 to monitor process execution, file access, and network connections using eBPF-based security observability.
+Description: Learn how to deploy Cilium Tetragon on RHEL to monitor process execution, file access, and network connections using eBPF-based security observability.
 
 ---
 
-Tetragon is an eBPF-based security observability tool from the Cilium project. It hooks into the Linux kernel to monitor process execution, file access, network connections, and privilege escalation in real time with minimal overhead. On RHEL 9, it runs natively and provides the kind of deep visibility that traditional audit tools cannot match.
+Tetragon is an eBPF-based security observability tool from the Cilium project. It hooks into the Linux kernel to monitor process execution, file access, network connections, and privilege escalation in real time with minimal overhead. On RHEL, it runs natively and provides the kind of deep visibility that traditional audit tools cannot match.
 
 ## Why Tetragon Over Traditional Audit
 
@@ -27,7 +27,7 @@ graph LR
 
 Traditional auditd captures syscalls but generates massive log volumes and cannot take enforcement actions. Tetragon filters and processes events inside the kernel, only sending relevant events to userspace.
 
-## Installing Tetragon on RHEL 9
+## Installing Tetragon on RHEL
 
 ```bash
 # Add the Cilium Tetragon repository
@@ -255,4 +255,4 @@ Typical overhead is less than 1% CPU on moderately active systems, since eBPF pr
 
 ## Conclusion
 
-Tetragon gives RHEL 9 administrators a powerful, low-overhead security monitoring tool that goes far beyond what auditd or file integrity monitoring can provide. The combination of deep kernel visibility, flexible policy rules, and enforcement capabilities makes it suitable for production security monitoring. Start with process and file access monitoring, then add network and privilege escalation policies as you become comfortable with the event volume and policy syntax.
+Tetragon gives RHEL administrators a powerful, low-overhead security monitoring tool that goes far beyond what auditd or file integrity monitoring can provide. The combination of deep kernel visibility, flexible policy rules, and enforcement capabilities makes it suitable for production security monitoring. Start with process and file access monitoring, then add network and privilege escalation policies as you become comfortable with the event volume and policy syntax.

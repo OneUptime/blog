@@ -1,10 +1,10 @@
-# How to Extend Swap Space Using LVM on RHEL 9
+# How to Extend Swap Space Using LVM on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Swap, LVM, Linux
 
-Description: Learn how to extend swap space using LVM on RHEL 9, whether by growing an existing swap volume or adding a new one.
+Description: Learn how to extend swap space using LVM on RHEL, whether by growing an existing swap volume or adding a new one.
 
 ---
 
@@ -228,4 +228,4 @@ restorecon -v /dev/rhel/swap2
 
 ## Summary
 
-Extending swap with LVM on RHEL 9 is one of the easier storage tasks. If you have VG free space, it is a five-command operation: swapoff, lvextend, mkswap, swapon, update fstab. If you need more VG space, add a disk with pvcreate and vgextend first. Always verify with `swapon --show` and test your fstab entries before walking away.
+Extending swap with LVM on RHEL is one of the easier storage tasks. If you have VG free space, it is a five-command operation: swapoff, lvextend, mkswap, swapon, update fstab. If you need more VG space, add a disk with pvcreate and vgextend first. Always verify with `swapon --show` and test your fstab entries before walking away.

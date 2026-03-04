@@ -1,14 +1,14 @@
-# How to Create a Custom systemd Service Unit File on RHEL 9
+# How to Create a Custom systemd Service Unit File on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Unit Files, Custom Service, Linux
 
-Description: Step-by-step guide to writing custom systemd service unit files on RHEL 9, covering all the essential sections, directives, and best practices.
+Description: Step-by-step guide to writing custom systemd service unit files on RHEL, covering all the essential sections, directives, and best practices.
 
 ---
 
-Every sysadmin eventually needs to run something that did not come from a package. Maybe it is a Go binary your dev team built, a Python script that needs to run as a daemon, or a Java application that needs proper process management. On RHEL 9, the right way to do this is with a custom systemd unit file.
+Every sysadmin eventually needs to run something that did not come from a package. Maybe it is a Go binary your dev team built, a Python script that needs to run as a daemon, or a Java application that needs proper process management. On RHEL, the right way to do this is with a custom systemd unit file.
 
 I have written dozens of these over the years, and the process is straightforward once you understand the structure. This guide walks you through creating a unit file from scratch, explains every important directive, and covers the gotchas that waste people's time.
 

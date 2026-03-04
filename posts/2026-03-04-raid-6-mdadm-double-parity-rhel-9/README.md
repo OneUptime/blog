@@ -1,10 +1,10 @@
-# How to Configure RAID 6 with mdadm for Double-Parity Redundancy on RHEL 9
+# How to Configure RAID 6 with mdadm for Double-Parity Redundancy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RAID 6, mdadm, Storage, Linux
 
-Description: Configure a RAID 6 array with mdadm on RHEL 9 to achieve double-parity redundancy, allowing your storage to survive two simultaneous disk failures.
+Description: Configure a RAID 6 array with mdadm on RHEL to achieve double-parity redundancy, allowing your storage to survive two simultaneous disk failures.
 
 ---
 
@@ -16,7 +16,7 @@ The cost is that you lose two disks worth of capacity to parity. With four 1 TB 
 
 ## Prerequisites
 
-- RHEL 9 with root access
+- RHEL with root access
 - At least four unused disks
 - mdadm installed
 
@@ -157,4 +157,4 @@ sudo blockdev --setra 8192 /dev/md6
 
 ## Wrap-Up
 
-RAID 6 with mdadm on RHEL 9 provides the peace of mind that comes from surviving two disk failures. The setup is nearly identical to RAID 5 but requires one extra disk. The trade-offs in write performance and capacity are worth it for arrays where rebuild risk is a concern. Combine it with regular backups and monitoring for a solid storage foundation.
+RAID 6 with mdadm on RHEL provides the peace of mind that comes from surviving two disk failures. The setup is nearly identical to RAID 5 but requires one extra disk. The trade-offs in write performance and capacity are worth it for arrays where rebuild risk is a concern. Combine it with regular backups and monitoring for a solid storage foundation.

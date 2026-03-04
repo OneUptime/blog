@@ -1,10 +1,10 @@
-# How to Install and Set Up LVM on RHEL 9 from Scratch
+# How to Install and Set Up LVM on RHEL from Scratch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Storage, Linux
 
-Description: A complete guide to installing and setting up Logical Volume Manager (LVM) on RHEL 9, from preparing disks to creating your first logical volumes.
+Description: A complete guide to installing and setting up Logical Volume Manager (LVM) on RHEL, from preparing disks to creating your first logical volumes.
 
 ---
 
@@ -51,7 +51,7 @@ For this guide, we will use `/dev/sdb` and `/dev/sdc` as our example disks.
 
 ## Step 1: Install LVM Tools
 
-LVM tools are included in the base RHEL 9 installation, but verify:
+LVM tools are included in the base RHEL installation, but verify:
 
 ```bash
 # Ensure LVM packages are installed

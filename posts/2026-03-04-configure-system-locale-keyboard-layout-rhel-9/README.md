@@ -1,4 +1,4 @@
-# How to Configure the System Locale and Keyboard Layout on RHEL 9
+# How to Configure the System Locale and Keyboard Layout on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Learn how to view, set, and manage the system locale and keyboard l
 
 ## Why Locale and Keyboard Settings Matter
 
-If you have ever SSH'd into a server and found garbled characters in log files or misinterpreted special characters in scripts, you have probably been bitten by a misconfigured locale. On RHEL 9, the locale determines how the system handles language, character encoding, date formats, currency symbols, and more. The keyboard layout, meanwhile, controls what characters are produced when keys are pressed, which matters if you are working on a physical console or through a KVM.
+If you have ever SSH'd into a server and found garbled characters in log files or misinterpreted special characters in scripts, you have probably been bitten by a misconfigured locale. On RHEL, the locale determines how the system handles language, character encoding, date formats, currency symbols, and more. The keyboard layout, meanwhile, controls what characters are produced when keys are pressed, which matters if you are working on a physical console or through a KVM.
 
 Getting these settings right from the start saves a lot of headaches, especially on multi-language environments or when you are deploying servers across different regions.
 
@@ -42,7 +42,7 @@ This outputs every locale category individually, such as `LC_TIME`, `LC_NUMERIC`
 
 ## Understanding Locale Configuration
 
-On RHEL 9, the system locale is stored in `/etc/locale.conf`. This file is read at boot and sets the default locale for all users unless they override it in their own shell profiles.
+On RHEL, the system locale is stored in `/etc/locale.conf`. This file is read at boot and sets the default locale for all users unless they override it in their own shell profiles.
 
 ```bash
 # View the current locale configuration file
@@ -78,7 +78,7 @@ This can produce a long list. Filter it down if you are looking for something sp
 localectl list-locales | grep fr_
 ```
 
-If the locale you need is not listed, you may need to install the appropriate langpack. RHEL 9 uses glibc-langpack packages.
+If the locale you need is not listed, you may need to install the appropriate langpack. RHEL uses glibc-langpack packages.
 
 ```bash
 # Install the German langpack
@@ -180,7 +180,7 @@ localectl status
 
 ## Workflow Overview
 
-Here is how the locale and keyboard configuration fits together on RHEL 9:
+Here is how the locale and keyboard configuration fits together on RHEL:
 
 ```mermaid
 flowchart TD
@@ -223,7 +223,7 @@ Host myserver
 
 ### Resetting to Default
 
-If things go sideways, you can always reset to the RHEL 9 default:
+If things go sideways, you can always reset to the RHEL default:
 
 ```bash
 # Reset to default US English locale and US keyboard
@@ -258,8 +258,8 @@ cat /etc/vconsole.conf
 - Always use UTF-8 encoding. There is almost never a reason to use legacy encodings like ISO-8859-1 on modern RHEL systems.
 - If you are automating server deployments with Kickstart, set the locale in the Kickstart file using the `lang` and `keyboard` directives so you do not have to fix it post-install.
 - The `loadkeys` command can temporarily change the console keymap for testing, but it does not persist across reboots. Always use `localectl` for permanent changes.
-- When running containers on RHEL 9, the container inherits the host locale unless you explicitly set one inside the container. Keep this in mind for applications that are locale-sensitive.
+- When running containers on RHEL, the container inherits the host locale unless you explicitly set one inside the container. Keep this in mind for applications that are locale-sensitive.
 
 ## Summary
 
-Managing locale and keyboard settings on RHEL 9 is straightforward with `localectl`. The key files are `/etc/locale.conf` for locale settings and `/etc/vconsole.conf` for the console keymap. Install missing langpacks with `dnf install glibc-langpack-*`, and always verify your changes with `localectl status`. Getting these basics right early in your server setup process prevents encoding issues and input problems down the road.
+Managing locale and keyboard settings on RHEL is straightforward with `localectl`. The key files are `/etc/locale.conf` for locale settings and `/etc/vconsole.conf` for the console keymap. Install missing langpacks with `dnf install glibc-langpack-*`, and always verify your changes with `localectl status`. Getting these basics right early in your server setup process prevents encoding issues and input problems down the road.

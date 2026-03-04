@@ -1,14 +1,14 @@
-# How to Plan IdM Disaster Recovery and Backup Strategies on RHEL 9
+# How to Plan IdM Disaster Recovery and Backup Strategies on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Disaster Recovery, Backup, Linux
 
-Description: A comprehensive guide to backing up and restoring Red Hat Identity Management on RHEL 9, including disaster recovery planning, backup types, and recovery procedures.
+Description: A comprehensive guide to backing up and restoring Red Hat Identity Management on RHEL, including disaster recovery planning, backup types, and recovery procedures.
 
 ---
 
-Losing your IdM infrastructure means users cannot log in, services cannot authenticate, and everything that depends on centralized identity falls apart. Having a tested backup and recovery plan is not optional. This guide covers the tools and procedures for protecting your IdM deployment on RHEL 9.
+Losing your IdM infrastructure means users cannot log in, services cannot authenticate, and everything that depends on centralized identity falls apart. Having a tested backup and recovery plan is not optional. This guide covers the tools and procedures for protecting your IdM deployment on RHEL.
 
 ## Backup and Recovery Overview
 
@@ -105,7 +105,7 @@ sudo scp -r /var/lib/ipa/backup/ipa-full-2026-03-04-02-30-00 \
 
 ## Step 5 - Restore from a Full Backup
 
-If you lose a server completely, restore from a full backup on a fresh RHEL 9 install.
+If you lose a server completely, restore from a full backup on a fresh RHEL install.
 
 ```bash
 # Install IdM server packages first (do NOT run ipa-server-install)
@@ -179,7 +179,7 @@ sudo ipa-crlgen-manage enable
 If all IdM servers are lost, you must restore from backup.
 
 ```bash
-# On a fresh RHEL 9 system with the same hostname and IP as the original master
+# On a fresh RHEL system with the same hostname and IP as the original master
 sudo dnf install ipa-server ipa-server-dns ipa-server-ca -y
 
 # Restore from the most recent full backup

@@ -1,14 +1,14 @@
-# How to Run Rootless Containers with Podman on RHEL 9
+# How to Run Rootless Containers with Podman on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Rootless, Security, Linux
 
-Description: Learn how to run containers as a regular user without root privileges on RHEL 9 using Podman's rootless mode, improving security and reducing attack surface.
+Description: Learn how to run containers as a regular user without root privileges on RHEL using Podman's rootless mode, improving security and reducing attack surface.
 
 ---
 
-Running containers as root has always been a security concern. If a container escape happens and you are running as root, the attacker gets root on your host. Podman on RHEL 9 solves this by letting you run containers as a regular, unprivileged user. No daemon, no root, no sweat.
+Running containers as root has always been a security concern. If a container escape happens and you are running as root, the attacker gets root on your host. Podman on RHEL solves this by letting you run containers as a regular, unprivileged user. No daemon, no root, no sweat.
 
 I have been running rootless containers in production for a while now, and the only time I miss rootful mode is when I need to bind to ports below 1024. Even that is fixable.
 
@@ -179,7 +179,7 @@ Rootless containers use `slirp4netns` or `pasta` for networking instead of the C
 podman info --format '{{.Host.NetworkBackend}}'
 ```
 
-On RHEL 9, `pasta` is the default rootless network handler. It provides better performance than `slirp4netns`:
+On RHEL, `pasta` is the default rootless network handler. It provides better performance than `slirp4netns`:
 
 # Run a container with the default pasta network
 ```bash
@@ -207,7 +207,7 @@ podman unshare chown 1000:1000 ~/container-data
 
 ## Rootless Container Resource Limits
 
-With cgroups v2 on RHEL 9, rootless containers can set resource limits:
+With cgroups v2 on RHEL, rootless containers can set resource limits:
 
 # Run with memory and CPU limits as a regular user
 ```bash
@@ -258,4 +258,4 @@ Common problems and fixes:
 
 ## Summary
 
-Rootless containers on RHEL 9 with Podman give you solid container isolation without running anything as root. The setup takes a few minutes, and the security benefits are significant. For most workloads, rootless mode should be your default. Save rootful mode for the edge cases where you truly need it.
+Rootless containers on RHEL with Podman give you solid container isolation without running anything as root. The setup takes a few minutes, and the security benefits are significant. For most workloads, rootless mode should be your default. Save rootful mode for the edge cases where you truly need it.

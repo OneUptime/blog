@@ -1,14 +1,14 @@
-# How to Use SFTP and SCP for Secure File Transfers on RHEL 9
+# How to Use SFTP and SCP for Secure File Transfers on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SFTP, SCP, File Transfer, Linux
 
-Description: Learn how to use SFTP and SCP on RHEL 9 for secure file transfers, including chroot jails, SFTP-only users, and batch operations.
+Description: Learn how to use SFTP and SCP on RHEL for secure file transfers, including chroot jails, SFTP-only users, and batch operations.
 
 ---
 
-SFTP and SCP use the SSH protocol for encrypted file transfers. No extra services to install, no extra ports to open. If you have SSH running, you already have SFTP and SCP available. This guide covers both tools and how to set up restricted SFTP-only access on RHEL 9.
+SFTP and SCP use the SSH protocol for encrypted file transfers. No extra services to install, no extra ports to open. If you have SSH running, you already have SFTP and SCP available. This guide covers both tools and how to set up restricted SFTP-only access on RHEL.
 
 ## SCP - Quick File Transfers
 
@@ -252,4 +252,4 @@ This logs file operations (open, close, read, write) to syslog.
 
 ## Wrapping Up
 
-SFTP and SCP cover most file transfer needs on RHEL 9 without requiring additional services. Use SCP for quick one-off transfers and SFTP for interactive sessions or scripted batch jobs. For users who only need file transfer access, set up SFTP-only accounts with chroot jails to restrict them to their own directories. The fact that it all runs over SSH means you get encryption and authentication for free.
+SFTP and SCP cover most file transfer needs on RHEL without requiring additional services. Use SCP for quick one-off transfers and SFTP for interactive sessions or scripted batch jobs. For users who only need file transfer access, set up SFTP-only accounts with chroot jails to restrict them to their own directories. The fact that it all runs over SSH means you get encryption and authentication for free.

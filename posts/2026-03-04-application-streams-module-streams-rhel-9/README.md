@@ -1,20 +1,20 @@
-# How to Use Application Streams and Module Streams on RHEL 9
+# How to Use Application Streams and Module Streams on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Application Streams, Module Streams, DNF, Linux
 
-Description: Learn how to use RHEL 9 Application Streams and module streams to install and manage multiple versions of languages, databases, and tools on the same system.
+Description: Learn how to use RHEL Application Streams and module streams to install and manage multiple versions of languages, databases, and tools on the same system.
 
 ---
 
-One of the biggest challenges with traditional Linux package management is that you get one version of each software package, and that is it. If the repo ships Python 3.9 and you need Python 3.11, tough luck. RHEL 9 solves this with Application Streams, which let you choose between different versions of software through a concept called module streams.
+One of the biggest challenges with traditional Linux package management is that you get one version of each software package, and that is it. If the repo ships Python 3.9 and you need Python 3.11, tough luck. RHEL solves this with Application Streams, which let you choose between different versions of software through a concept called module streams.
 
 I have been using this extensively in environments where different applications need different runtime versions, and it works well once you understand how the pieces fit together.
 
 ## What Are Application Streams?
 
-RHEL 9 splits its content into two main repositories:
+RHEL splits its content into two main repositories:
 
 - **BaseOS** - Core operating system packages (kernel, systemd, glibc, etc.) that follow the standard RHEL lifecycle
 - **AppStream** - User-space applications, languages, databases, and tools that can be delivered in multiple versions
@@ -23,7 +23,7 @@ The AppStream repository is where module streams come into play. It lets Red Hat
 
 ```mermaid
 flowchart TD
-    A[RHEL 9 Content] --> B[BaseOS Repository]
+    A[RHEL Content] --> B[BaseOS Repository]
     A --> C[AppStream Repository]
     B --> D[Core OS Packages<br>Single Version<br>10-year Lifecycle]
     C --> E[Regular RPM Packages]
@@ -234,7 +234,7 @@ psql --version
 
 ### Setting Up Multiple Python Versions
 
-RHEL 9 ships Python 3.9 as part of BaseOS (not a module), but additional versions are available:
+RHEL ships Python 3.9 as part of BaseOS (not a module), but additional versions are available:
 
 ```bash
 # Check available Python versions
@@ -311,4 +311,4 @@ dnf module list --installed
 
 ## Summary
 
-Application Streams and module streams give RHEL 9 the flexibility to offer multiple versions of software without the complexity of third-party repositories. The workflow is straightforward: list available streams, enable the one you need, install it, and go. When you need to switch versions, reset the module, enable the new stream, and run distro-sync. It is a clean system that works well once you understand the module, stream, and profile hierarchy.
+Application Streams and module streams give RHEL the flexibility to offer multiple versions of software without the complexity of third-party repositories. The workflow is straightforward: list available streams, enable the one you need, install it, and go. When you need to switch versions, reset the module, enable the new stream, and run distro-sync. It is a clean system that works well once you understand the module, stream, and profile hierarchy.

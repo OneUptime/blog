@@ -1,10 +1,10 @@
-# How to Configure Postfix Rate Limiting and Anti-Spam on RHEL 9
+# How to Configure Postfix Rate Limiting and Anti-Spam on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, Rate Limiting, Anti-Spam, Linux
 
-Description: Protect your Postfix mail server on RHEL 9 from spam and abuse by configuring rate limiting, client restrictions, and anti-spam measures.
+Description: Protect your Postfix mail server on RHEL from spam and abuse by configuring rate limiting, client restrictions, and anti-spam measures.
 
 ---
 

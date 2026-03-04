@@ -1,18 +1,18 @@
-# How to Integrate AIDE Alerts with Email Notifications on RHEL 9
+# How to Integrate AIDE Alerts with Email Notifications on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, AIDE, Email Alerts, Linux
 
-Description: Configure email notifications for AIDE file integrity alerts on RHEL 9 so your team gets immediate notice when unauthorized filesystem changes are detected.
+Description: Configure email notifications for AIDE file integrity alerts on RHEL so your team gets immediate notice when unauthorized filesystem changes are detected.
 
 ---
 
-Running AIDE checks on a schedule is only half the battle. If the results sit in a log file that nobody reads, you might as well not be running checks at all. Email notifications ensure that someone actually sees the results, especially when changes are detected. This guide walks through setting up email alerts for AIDE on RHEL 9.
+Running AIDE checks on a schedule is only half the battle. If the results sit in a log file that nobody reads, you might as well not be running checks at all. Email notifications ensure that someone actually sees the results, especially when changes are detected. This guide walks through setting up email alerts for AIDE on RHEL.
 
 ## Prerequisites
 
-You need a working mail setup on your RHEL 9 system. The simplest approach is using the `mailx` command with either a local MTA or an external SMTP relay.
+You need a working mail setup on your RHEL system. The simplest approach is using the `mailx` command with either a local MTA or an external SMTP relay.
 
 ```bash
 # Install mailx if not already present

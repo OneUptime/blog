@@ -1,14 +1,14 @@
-# How to Manage Container Registries and Image Pull Policies on RHEL 9
+# How to Manage Container Registries and Image Pull Policies on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Registries, Image Pull, Linux
 
-Description: A comprehensive guide to configuring container registries, authentication, mirror registries, and image pull policies for Podman on RHEL 9.
+Description: A comprehensive guide to configuring container registries, authentication, mirror registries, and image pull policies for Podman on RHEL.
 
 ---
 
-When you type `podman pull nginx`, how does Podman know where to look? The answer is in your registry configuration. On RHEL 9, this configuration controls which registries are searched, which are blocked, where mirrors live, and how images are resolved. Getting this right is especially important in enterprise environments where you need to control exactly which images your systems can pull.
+When you type `podman pull nginx`, how does Podman know where to look? The answer is in your registry configuration. On RHEL, this configuration controls which registries are searched, which are blocked, where mirrors live, and how images are resolved. Getting this right is especially important in enterprise environments where you need to control exactly which images your systems can pull.
 
 ## Registry Configuration File
 
@@ -19,7 +19,7 @@ The main configuration file is `/etc/containers/registries.conf`:
 cat /etc/containers/registries.conf
 ```
 
-On a default RHEL 9 installation, you will see something like:
+On a default RHEL installation, you will see something like:
 
 ```toml
 unqualified-search-registries = ["registry.access.redhat.com", "registry.redhat.io", "docker.io"]
@@ -31,7 +31,7 @@ short-name-mode = "enforcing"
 
 When you pull `nginx` instead of `docker.io/library/nginx`, Podman needs to resolve the short name. The `short-name-mode` setting controls this:
 
-- `enforcing` - Prompts you to choose a registry (default on RHEL 9)
+- `enforcing` - Prompts you to choose a registry (default on RHEL)
 - `permissive` - Prompts but allows pulling without confirmation
 - `disabled` - Searches registries in order without prompting
 
@@ -265,4 +265,4 @@ podman login --get-login registry.example.com
 
 ## Summary
 
-Registry configuration on RHEL 9 gives you fine-grained control over where images come from. Set up mirrors for faster pulls in your network, block untrusted registries, configure authentication for private registries, and use pull policies to control caching behavior. The configuration is flexible enough to handle everything from a developer workstation to a locked-down production environment.
+Registry configuration on RHEL gives you fine-grained control over where images come from. Set up mirrors for faster pulls in your network, block untrusted registries, configure authentication for private registries, and use pull policies to control caching behavior. The configuration is flexible enough to handle everything from a developer workstation to a locked-down production environment.

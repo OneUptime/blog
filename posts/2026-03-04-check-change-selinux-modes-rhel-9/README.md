@@ -1,10 +1,10 @@
-# How to Check and Change SELinux Modes (Enforcing, Permissive, Disabled) on RHEL 9
+# How to Check and Change SELinux Modes (Enforcing, Permissive, Disabled) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, Modes, Security, Linux
 
-Description: Understand the three SELinux modes on RHEL 9 and learn how to check, switch between, and permanently configure them.
+Description: Understand the three SELinux modes on RHEL and learn how to check, switch between, and permanently configure them.
 
 ---
 
@@ -12,9 +12,9 @@ Description: Understand the three SELinux modes on RHEL 9 and learn how to check
 
 SELinux operates in three modes, and understanding the difference is essential for every RHEL admin:
 
-- **Enforcing** - SELinux actively enforces its security policy. Denied actions are blocked and logged. This is the default on RHEL 9 and where you want to be in production.
+- **Enforcing** - SELinux actively enforces its security policy. Denied actions are blocked and logged. This is the default on RHEL and where you want to be in production.
 - **Permissive** - SELinux logs policy violations but does not block them. Useful for troubleshooting and testing new policies.
-- **Disabled** - SELinux is completely off. No policy enforcement, no logging. Strongly discouraged on RHEL 9.
+- **Disabled** - SELinux is completely off. No policy enforcement, no logging. Strongly discouraged on RHEL.
 
 ```mermaid
 graph TD

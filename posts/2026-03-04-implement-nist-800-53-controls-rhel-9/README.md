@@ -1,14 +1,14 @@
-# How to Implement NIST 800-53 Controls on RHEL 9
+# How to Implement NIST 800-53 Controls on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NIST 800-53, Compliance, Security, Linux
 
-Description: Implement NIST 800-53 security controls on RHEL 9, mapping technical requirements to practical configurations for federal and high-security environments.
+Description: Implement NIST 800-53 security controls on RHEL, mapping technical requirements to practical configurations for federal and high-security environments.
 
 ---
 
-NIST Special Publication 800-53 defines the security and privacy controls that federal information systems must implement. It is the foundation that FISMA compliance is built on, and many private sector organizations adopt it as their security framework. RHEL 9 provides solid tooling for implementing these controls, including an OpenSCAP profile that maps directly to NIST 800-53.
+NIST Special Publication 800-53 defines the security and privacy controls that federal information systems must implement. It is the foundation that FISMA compliance is built on, and many private sector organizations adopt it as their security framework. RHEL provides solid tooling for implementing these controls, including an OpenSCAP profile that maps directly to NIST 800-53.
 
 ## Understanding NIST 800-53 Control Families
 
@@ -27,7 +27,7 @@ flowchart TD
 
 ## Scan Against the NIST 800-53 Profile
 
-RHEL 9 includes an OSPP (Operating System Protection Profile) that maps to many NIST 800-53 controls:
+RHEL includes an OSPP (Operating System Protection Profile) that maps to many NIST 800-53 controls:
 
 ```bash
 # Install OpenSCAP
@@ -261,4 +261,4 @@ echo "Pass: $(grep -c 'result="pass"' /var/log/compliance/nist-final.xml)"
 echo "Fail: $(grep -c 'result="fail"' /var/log/compliance/nist-final.xml)"
 ```
 
-NIST 800-53 is a comprehensive framework, and not every control maps to an OS configuration. Focus on what you can implement at the RHEL 9 level, document compensating controls for everything else, and use OpenSCAP to continuously validate your compliance posture.
+NIST 800-53 is a comprehensive framework, and not every control maps to an OS configuration. Focus on what you can implement at the RHEL level, document compensating controls for everything else, and use OpenSCAP to continuously validate your compliance posture.

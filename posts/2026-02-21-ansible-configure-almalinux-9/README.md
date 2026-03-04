@@ -8,7 +8,7 @@ Description: Complete Ansible playbook for configuring AlmaLinux 9 servers with 
 
 ---
 
-AlmaLinux 9 is another community-driven RHEL 9 rebuild, created by the CloudLinux team. Like Rocky Linux, it is binary-compatible with RHEL 9 and free to use without a subscription. This guide provides a production-ready Ansible playbook for AlmaLinux 9 configuration.
+AlmaLinux 9 is another community-driven RHEL rebuild, created by the CloudLinux team. Like Rocky Linux, it is binary-compatible with RHEL and free to use without a subscription. This guide provides a production-ready Ansible playbook for AlmaLinux 9 configuration.
 
 ## AlmaLinux vs RHEL Differences for Ansible
 
@@ -102,7 +102,7 @@ ansible_python_interpreter=/usr/bin/python3
 
 ## SELinux Configuration
 
-AlmaLinux 9 has SELinux enforcing by default, identical to RHEL 9:
+AlmaLinux 9 has SELinux enforcing by default, identical to RHEL:
 
 ```yaml
     - name: Ensure SELinux is enforcing
@@ -244,7 +244,7 @@ This condition matches RHEL, CentOS Stream, Rocky Linux, AlmaLinux, and Oracle L
 
 ## Summary
 
-AlmaLinux 9 is configured identically to RHEL 9 through Ansible, with the exception of repository management and distribution detection. Use `ansible_os_family == "RedHat"` for conditions that should apply to all RHEL-compatible distributions. This playbook provides the base configuration: package management, SELinux, firewall, SSH hardening, NTP, and automatic security updates. Any RHEL 9 role works on AlmaLinux 9 without modification.
+AlmaLinux 9 is configured identically to RHEL through Ansible, with the exception of repository management and distribution detection. Use `ansible_os_family == "RedHat"` for conditions that should apply to all RHEL-compatible distributions. This playbook provides the base configuration: package management, SELinux, firewall, SSH hardening, NTP, and automatic security updates. Any RHEL role works on AlmaLinux 9 without modification.
 
 ## Common Use Cases
 

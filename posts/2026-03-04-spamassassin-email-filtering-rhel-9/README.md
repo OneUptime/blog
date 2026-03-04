@@ -1,10 +1,10 @@
-# How to Set Up SpamAssassin for Email Filtering on RHEL 9
+# How to Set Up SpamAssassin for Email Filtering on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SpamAssassin, Email, Anti-Spam, Linux
 
-Description: Install and configure SpamAssassin with Postfix on RHEL 9 to automatically score and filter incoming spam email.
+Description: Install and configure SpamAssassin with Postfix on RHEL to automatically score and filter incoming spam email.
 
 ---
 
@@ -27,7 +27,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 with Postfix installed and running
+- RHEL with Postfix installed and running
 - Sufficient RAM (SpamAssassin uses about 50-100 MB per spamd child process)
 
 ## Installing SpamAssassin

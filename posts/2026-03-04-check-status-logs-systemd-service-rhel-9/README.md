@@ -1,10 +1,10 @@
-# How to Check the Status and Logs of a systemd Service on RHEL 9
+# How to Check the Status and Logs of a systemd Service on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Logs, journalctl, Linux, Troubleshooting
 
-Description: Learn how to check service status and read logs using systemctl and journalctl on RHEL 9, including filtering, following live logs, and exporting output.
+Description: Learn how to check service status and read logs using systemctl and journalctl on RHEL, including filtering, following live logs, and exporting output.
 
 ---
 
@@ -319,4 +319,4 @@ sudo systemctl restart systemd-journald
 
 ## Wrapping Up
 
-Between `systemctl status` and `journalctl`, you have everything you need to diagnose service issues on RHEL 9. Build the habit of checking status first, then diving into logs with appropriate filters. The time-based and priority-based filters in journalctl are your best friends during incident response. Learn them well and you will resolve issues faster than anyone who is still grepping through flat log files.
+Between `systemctl status` and `journalctl`, you have everything you need to diagnose service issues on RHEL. Build the habit of checking status first, then diving into logs with appropriate filters. The time-based and priority-based filters in journalctl are your best friends during incident response. Learn them well and you will resolve issues faster than anyone who is still grepping through flat log files.

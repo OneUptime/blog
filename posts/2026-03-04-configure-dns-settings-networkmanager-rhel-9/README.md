@@ -1,18 +1,18 @@
-# How to Configure DNS Settings with NetworkManager on RHEL 9
+# How to Configure DNS Settings with NetworkManager on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNS, NetworkManager, Networking, Linux
 
-Description: A complete guide to managing DNS configuration through NetworkManager on RHEL 9, covering per-connection DNS, global settings, split DNS, and resolv.conf management.
+Description: A complete guide to managing DNS configuration through NetworkManager on RHEL, covering per-connection DNS, global settings, split DNS, and resolv.conf management.
 
 ---
 
-DNS configuration on RHEL 9 is tightly integrated with NetworkManager. Gone are the days of just editing `/etc/resolv.conf` by hand - NetworkManager manages that file and will overwrite your changes. Understanding how to properly configure DNS through NetworkManager is essential for keeping your name resolution working correctly.
+DNS configuration on RHEL is tightly integrated with NetworkManager. Gone are the days of just editing `/etc/resolv.conf` by hand - NetworkManager manages that file and will overwrite your changes. Understanding how to properly configure DNS through NetworkManager is essential for keeping your name resolution working correctly.
 
 ## How DNS Works with NetworkManager
 
-On RHEL 9, NetworkManager is responsible for generating `/etc/resolv.conf`. Each network connection can specify its own DNS servers and search domains, and NetworkManager merges them based on priority rules.
+On RHEL, NetworkManager is responsible for generating `/etc/resolv.conf`. Each network connection can specify its own DNS servers and search domains, and NetworkManager merges them based on priority rules.
 
 ```mermaid
 flowchart TD
@@ -247,4 +247,4 @@ journalctl -u NetworkManager | grep -i dns
 
 ## Wrapping Up
 
-DNS management on RHEL 9 goes through NetworkManager, and that is actually a good thing once you understand how it works. Per-connection DNS settings, priority-based ordering, and split DNS support give you fine-grained control over name resolution. The key is to stop fighting NetworkManager by editing resolv.conf directly, and instead configure DNS through connection profiles and global settings. This way, your DNS configuration stays consistent and survives network changes, reboots, and connection switches.
+DNS management on RHEL goes through NetworkManager, and that is actually a good thing once you understand how it works. Per-connection DNS settings, priority-based ordering, and split DNS support give you fine-grained control over name resolution. The key is to stop fighting NetworkManager by editing resolv.conf directly, and instead configure DNS through connection profiles and global settings. This way, your DNS configuration stays consistent and survives network changes, reboots, and connection switches.

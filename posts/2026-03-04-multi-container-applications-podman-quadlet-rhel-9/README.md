@@ -1,14 +1,14 @@
-# How to Deploy Multi-Container Applications with Podman and Quadlet on RHEL 9
+# How to Deploy Multi-Container Applications with Podman and Quadlet on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Quadlet, Multi-Container, Linux
 
-Description: Learn how to deploy multi-container applications on RHEL 9 using Podman Quadlet, including service dependencies, shared networks, and coordinated lifecycle management.
+Description: Learn how to deploy multi-container applications on RHEL using Podman Quadlet, including service dependencies, shared networks, and coordinated lifecycle management.
 
 ---
 
-Most real-world applications are not a single container. You have a web frontend, an API backend, a database, maybe a cache layer and a reverse proxy. On RHEL 9, Podman's Quadlet system lets you define each piece as a separate `.container` file with shared networks and proper startup ordering. No Docker Compose needed.
+Most real-world applications are not a single container. You have a web frontend, an API backend, a database, maybe a cache layer and a reverse proxy. On RHEL, Podman's Quadlet system lets you define each piece as a separate `.container` file with shared networks and proper startup ordering. No Docker Compose needed.
 
 ## Architecture Overview
 
@@ -303,4 +303,4 @@ systemctl --user cat database.service
 
 ## Summary
 
-Deploying multi-container applications with Quadlet on RHEL 9 gives you the reliability of systemd with the simplicity of declarative container definitions. Define your network, volumes, and containers in separate files, set up dependencies with standard systemd directives, and let systemd handle the startup ordering and lifecycle management. It is simpler than Docker Compose for many use cases and integrates naturally with the rest of the system.
+Deploying multi-container applications with Quadlet on RHEL gives you the reliability of systemd with the simplicity of declarative container definitions. Define your network, volumes, and containers in separate files, set up dependencies with standard systemd directives, and let systemd handle the startup ordering and lifecycle management. It is simpler than Docker Compose for many use cases and integrates naturally with the rest of the system.

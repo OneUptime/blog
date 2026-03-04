@@ -1,10 +1,10 @@
-# How to Optimize Nginx for High-Traffic Sites on RHEL 9
+# How to Optimize Nginx for High-Traffic Sites on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Performance, Optimization, Linux
 
-Description: Performance tuning techniques for Nginx on RHEL 9 to handle high traffic loads efficiently, covering worker tuning, kernel parameters, and caching.
+Description: Performance tuning techniques for Nginx on RHEL to handle high traffic loads efficiently, covering worker tuning, kernel parameters, and caching.
 
 ---
 
@@ -14,7 +14,7 @@ Nginx is fast out of the box, but the default configuration is conservative. Whe
 
 ## Prerequisites
 
-- RHEL 9 with Nginx installed
+- RHEL with Nginx installed
 - Root or sudo access
 - An understanding of your traffic patterns and server resources
 

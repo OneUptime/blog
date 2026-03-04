@@ -1,14 +1,14 @@
-# How to Generate Certificates and Keys for OpenVPN Using Easy-RSA on RHEL 9
+# How to Generate Certificates and Keys for OpenVPN Using Easy-RSA on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenVPN, Easy-RSA, Certificates, Linux
 
-Description: A detailed walkthrough of using Easy-RSA 3 on RHEL 9 to build a complete PKI for OpenVPN, including CA creation, server and client certificates, CRL management, and certificate renewal.
+Description: A detailed walkthrough of using Easy-RSA 3 on RHEL to build a complete PKI for OpenVPN, including CA creation, server and client certificates, CRL management, and certificate renewal.
 
 ---
 
-Every OpenVPN deployment needs a PKI (Public Key Infrastructure). Easy-RSA is the tool that ships alongside OpenVPN for this purpose. It handles the CA, server certificates, client certificates, and revocation - basically everything you need to manage trust in your VPN. Here's how to do it properly on RHEL 9.
+Every OpenVPN deployment needs a PKI (Public Key Infrastructure). Easy-RSA is the tool that ships alongside OpenVPN for this purpose. It handles the CA, server certificates, client certificates, and revocation - basically everything you need to manage trust in your VPN. Here's how to do it properly on RHEL.
 
 ## How the PKI Fits Together
 
@@ -270,4 +270,4 @@ openssl x509 -in pki/issued/client1.crt -noout -dates
 
 ## Wrapping Up
 
-Easy-RSA on RHEL 9 gives you a functional PKI without the complexity of a full CA solution. The workflow is always: init PKI, build CA, generate requests, sign them. Keep your CA key secure, revoke certificates promptly when needed, and monitor expiration dates. The unified .ovpn file format with inline certificates makes client distribution much simpler.
+Easy-RSA on RHEL gives you a functional PKI without the complexity of a full CA solution. The workflow is always: init PKI, build CA, generate requests, sign them. Keep your CA key secure, revoke certificates promptly when needed, and monitor expiration dates. The unified .ovpn file format with inline certificates makes client distribution much simpler.

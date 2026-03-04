@@ -1,10 +1,10 @@
-# How to Set Up Open vSwitch (OVS) for Software-Defined Networking on RHEL 9
+# How to Set Up Open vSwitch (OVS) for Software-Defined Networking on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Open vSwitch, OVS, SDN, Networking, Linux
 
-Description: Learn how to install and configure Open vSwitch on RHEL 9 for software-defined networking with programmable flow rules and VLAN support.
+Description: Learn how to install and configure Open vSwitch on RHEL for software-defined networking with programmable flow rules and VLAN support.
 
 ---
 
@@ -134,4 +134,4 @@ sudo nmcli connection up br0-iface
 
 ## Summary
 
-You have installed and configured Open vSwitch on RHEL 9. OVS provides a programmable virtual switch with support for VLANs, VXLAN tunnels, and OpenFlow rules. This makes it a foundation for software-defined networking in virtualization environments, container platforms, and multi-tenant data centers.
+You have installed and configured Open vSwitch on RHEL. OVS provides a programmable virtual switch with support for VLANs, VXLAN tunnels, and OpenFlow rules. This makes it a foundation for software-defined networking in virtualization environments, container platforms, and multi-tenant data centers.

@@ -1,4 +1,4 @@
-# How to Obtain Free SSL Certificates with Let's Encrypt on RHEL 9
+# How to Obtain Free SSL Certificates with Let's Encrypt on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: A practical guide to obtaining and installing free SSL/TLS certific
 
 ---
 
-If you run any public-facing web service on RHEL 9, you need TLS certificates. Period. Let's Encrypt makes this free and straightforward. I have been using it across dozens of production servers for years now, and it just works.
+If you run any public-facing web service on RHEL, you need TLS certificates. Period. Let's Encrypt makes this free and straightforward. I have been using it across dozens of production servers for years now, and it just works.
 
 This post walks through the entire process, from installing Certbot to getting your first certificate issued and configured with Apache or Nginx.
 
@@ -16,19 +16,19 @@ This post walks through the entire process, from installing Certbot to getting y
 
 Before you start, make sure you have:
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - A registered domain name pointing to your server's public IP
 - Port 80 open in your firewall (Let's Encrypt uses HTTP-01 challenges by default)
 - Either Apache (httpd) or Nginx installed
 
 ## Installing Certbot
 
-Certbot is the official Let's Encrypt client. On RHEL 9, the easiest path is through EPEL.
+Certbot is the official Let's Encrypt client. On RHEL, the easiest path is through EPEL.
 
 Enable the EPEL repository first:
 
 ```bash
-# Install the EPEL release package for RHEL 9
+# Install the EPEL release package for RHEL
 sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 ```
 
@@ -201,4 +201,4 @@ The file should show `-rw-------` with root ownership.
 
 ## Wrapping Up
 
-Let's Encrypt removed every excuse for not running HTTPS. On RHEL 9, the combination of EPEL and Certbot makes the whole process take about five minutes. Get your certificates, set up auto-renewal, and move on to more interesting problems.
+Let's Encrypt removed every excuse for not running HTTPS. On RHEL, the combination of EPEL and Certbot makes the whole process take about five minutes. Get your certificates, set up auto-renewal, and move on to more interesting problems.

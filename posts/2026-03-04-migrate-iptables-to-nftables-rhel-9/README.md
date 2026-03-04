@@ -1,14 +1,14 @@
-# How to Migrate from iptables to nftables on RHEL 9
+# How to Migrate from iptables to nftables on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nftables, iptables, Migration, Linux
 
-Description: A practical guide to migrating your firewall rules from the legacy iptables framework to nftables on RHEL 9, covering tool usage, rule translation, and validation.
+Description: A practical guide to migrating your firewall rules from the legacy iptables framework to nftables on RHEL, covering tool usage, rule translation, and validation.
 
 ---
 
-If you've been running iptables for years, you probably have a solid set of rules that just work. But RHEL 9 has moved on, and nftables is now the default packet filtering framework. The good news is that migration doesn't have to be painful. Red Hat ships translation tools that make the process straightforward, and this post walks through the whole thing step by step.
+If you've been running iptables for years, you probably have a solid set of rules that just work. But RHEL has moved on, and nftables is now the default packet filtering framework. The good news is that migration doesn't have to be painful. Red Hat ships translation tools that make the process straightforward, and this post walks through the whole thing step by step.
 
 ## Why Move to nftables?
 
@@ -44,7 +44,7 @@ iptables -L -n -v --line-numbers
 
 ## Step 2: Install the Translation Tools
 
-RHEL 9 includes the iptables-nft package which provides translation utilities. Make sure it's installed:
+RHEL includes the iptables-nft package which provides translation utilities. Make sure it's installed:
 
 ```bash
 dnf install iptables-nft -y
@@ -175,7 +175,7 @@ journalctl -k | grep nft
 
 **Don't mix iptables and nftables.** Once you migrate, stick with nft commands. Running iptables commands on a system using nftables can create confusion because the iptables-nft compatibility layer translates them silently.
 
-**firewalld uses nftables by default on RHEL 9.** If you're running firewalld, it's already using nftables as its backend. In that case, you might not need a manual migration at all, just let firewalld manage things.
+**firewalld uses nftables by default on RHEL.** If you're running firewalld, it's already using nftables as its backend. In that case, you might not need a manual migration at all, just let firewalld manage things.
 
 ## Quick Reference: iptables vs nftables Commands
 
@@ -190,4 +190,4 @@ journalctl -k | grep nft
 
 ## Wrapping Up
 
-Migrating from iptables to nftables on RHEL 9 is less work than most people expect. The translation tools handle the heavy lifting, and the new syntax is actually easier to read once you spend a few minutes with it. Take the time to test thoroughly after migration, and keep your old iptables backup around until you're confident everything is solid.
+Migrating from iptables to nftables on RHEL is less work than most people expect. The translation tools handle the heavy lifting, and the new syntax is actually easier to read once you spend a few minutes with it. Take the time to test thoroughly after migration, and keep your old iptables backup around until you're confident everything is solid.

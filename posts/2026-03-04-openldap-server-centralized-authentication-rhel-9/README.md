@@ -1,16 +1,16 @@
-# How to Set Up OpenLDAP Server on RHEL 9 for Centralized Authentication
+# How to Set Up OpenLDAP Server on RHEL for Centralized Authentication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenLDAP, Authentication, Linux
 
-Description: A hands-on guide to deploying an OpenLDAP server on RHEL 9 for centralized user authentication, covering installation, schema configuration, TLS setup, and client integration.
+Description: A hands-on guide to deploying an OpenLDAP server on RHEL for centralized user authentication, covering installation, schema configuration, TLS setup, and client integration.
 
 ---
 
-OpenLDAP is no longer shipped with RHEL 9 as a server package. Red Hat removed the OpenLDAP server (slapd) starting with RHEL 9 and recommends using 389 Directory Server instead. However, the OpenLDAP client libraries and tools are still available. This guide covers setting up 389 Directory Server as a standalone LDAP server on RHEL 9, since it fills the same role and is the supported replacement.
+OpenLDAP is no longer shipped with RHEL as a server package. Red Hat removed the OpenLDAP server (slapd) starting with RHEL and recommends using 389 Directory Server instead. However, the OpenLDAP client libraries and tools are still available. This guide covers setting up 389 Directory Server as a standalone LDAP server on RHEL, since it fills the same role and is the supported replacement.
 
-If you specifically need OpenLDAP slapd, you would need to build it from source or use a container, which is not covered here. For production environments on RHEL 9, 389 Directory Server is the right choice.
+If you specifically need OpenLDAP slapd, you would need to build it from source or use a container, which is not covered here. For production environments on RHEL, 389 Directory Server is the right choice.
 
 ## Why 389 Directory Server
 
@@ -204,7 +204,7 @@ dsconf localhost aci create \
 
 ## Step 8 - Configure RHEL Clients
 
-On each RHEL 9 client, configure SSSD to authenticate against the 389 DS server.
+On each RHEL client, configure SSSD to authenticate against the 389 DS server.
 
 ```bash
 # Install SSSD
@@ -267,4 +267,4 @@ sudo dsconf localhost monitor server
 sudo dsconf localhost monitor backend
 ```
 
-389 Directory Server is a capable, production-ready LDAP server that replaces OpenLDAP on RHEL 9. The tooling is modern and well-documented, and it integrates cleanly with SSSD on the client side.
+389 Directory Server is a capable, production-ready LDAP server that replaces OpenLDAP on RHEL. The tooling is modern and well-documented, and it integrates cleanly with SSSD on the client side.

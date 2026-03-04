@@ -1,14 +1,14 @@
-# How to Set Up a BIND DNS Server on RHEL 9
+# How to Set Up a BIND DNS Server on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BIND, DNS, Server, Linux
 
-Description: Step-by-step guide to installing and configuring a BIND DNS server on RHEL 9, from package installation to zone configuration and testing.
+Description: Step-by-step guide to installing and configuring a BIND DNS server on RHEL, from package installation to zone configuration and testing.
 
 ---
 
-Running your own DNS server gives you full control over name resolution in your environment. BIND (Berkeley Internet Name Domain) has been the standard DNS server on Linux for decades, and RHEL 9 ships version 9.16 in its repositories. This guide walks through setting up an authoritative DNS server from scratch.
+Running your own DNS server gives you full control over name resolution in your environment. BIND (Berkeley Internet Name Domain) has been the standard DNS server on Linux for decades, and RHEL ships version 9.16 in its repositories. This guide walks through setting up an authoritative DNS server from scratch.
 
 ## Installing BIND
 
@@ -22,7 +22,7 @@ The `bind` package provides the named daemon, and `bind-utils` gives you tools l
 
 ## Understanding the File Layout
 
-BIND on RHEL 9 uses these key files and directories:
+BIND on RHEL uses these key files and directories:
 
 | Path | Purpose |
 |------|---------|
@@ -43,7 +43,7 @@ Edit the main configuration file:
 
 ```bash
 cat > /etc/named.conf << 'NAMEDCONF'
-// BIND configuration for RHEL 9
+// BIND configuration for RHEL
 options {
     listen-on port 53 { any; };
     listen-on-v6 port 53 { any; };

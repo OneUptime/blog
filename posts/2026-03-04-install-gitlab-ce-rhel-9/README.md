@@ -1,14 +1,14 @@
-# How to Install GitLab CE on RHEL 9
+# How to Install GitLab CE on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GitLab, Git, CI/CD, DevOps, Linux
 
-Description: Install GitLab Community Edition on RHEL 9 with all dependencies, initial configuration, and basic hardening.
+Description: Install GitLab Community Edition on RHEL with all dependencies, initial configuration, and basic hardening.
 
 ---
 
-GitLab CE is a full DevOps platform that includes Git hosting, CI/CD pipelines, issue tracking, and container registry. Installing it on RHEL 9 is straightforward using the official Omnibus package.
+GitLab CE is a full DevOps platform that includes Git hosting, CI/CD pipelines, issue tracking, and container registry. Installing it on RHEL is straightforward using the official Omnibus package.
 
 ## Prerequisites
 
@@ -143,4 +143,4 @@ sudo cp /etc/gitlab/gitlab.rb /safe/location/
 sudo cp /etc/gitlab/gitlab-secrets.json /safe/location/
 ```
 
-GitLab CE on RHEL 9 gives you a complete DevOps platform with Git hosting, CI/CD, and project management, all running on your own infrastructure.
+GitLab CE on RHEL gives you a complete DevOps platform with Git hosting, CI/CD, and project management, all running on your own infrastructure.

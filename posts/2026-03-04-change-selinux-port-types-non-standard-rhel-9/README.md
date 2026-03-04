@@ -1,10 +1,10 @@
-# How to Change SELinux Port Types for Non-Standard Service Ports on RHEL 9
+# How to Change SELinux Port Types for Non-Standard Service Ports on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, Port Types, Security, Linux
 
-Description: Configure SELinux port labels on RHEL 9 to allow services to listen on non-standard ports without disabling SELinux enforcement.
+Description: Configure SELinux port labels on RHEL to allow services to listen on non-standard ports without disabling SELinux enforcement.
 
 ---
 

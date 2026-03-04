@@ -1,10 +1,10 @@
-# How to Troubleshoot OpenVPN Client Connection Failures on RHEL 9
+# How to Troubleshoot OpenVPN Client Connection Failures on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenVPN, Troubleshooting, Linux
 
-Description: A systematic troubleshooting guide for diagnosing and fixing OpenVPN client connection failures on RHEL 9, covering TLS errors, certificate problems, routing issues, and firewall conflicts.
+Description: A systematic troubleshooting guide for diagnosing and fixing OpenVPN client connection failures on RHEL, covering TLS errors, certificate problems, routing issues, and firewall conflicts.
 
 ---
 
@@ -197,7 +197,7 @@ dig @1.1.1.1 example.com
 grep "dhcp-option" /etc/openvpn/server/server.conf
 ```
 
-On RHEL 9 with NetworkManager, the DNS push might not work automatically. You may need:
+On RHEL with NetworkManager, the DNS push might not work automatically. You may need:
 
 ```bash
 # Install the OpenVPN NetworkManager plugin
@@ -229,7 +229,7 @@ sudo grep "Connection reset" /var/log/openvpn/openvpn.log | tail -20
 
 ## Problem 8: SELinux Blocking OpenVPN
 
-RHEL 9's SELinux can interfere with OpenVPN, especially with custom paths.
+RHEL's SELinux can interfere with OpenVPN, especially with custom paths.
 
 ```bash
 # Check for SELinux denials
@@ -279,4 +279,4 @@ sudo ausearch -m avc -ts recent 2>/dev/null | grep openvpn | tail -5
 
 ## Wrapping Up
 
-OpenVPN troubleshooting on RHEL 9 follows the connection lifecycle: network reachability, TLS handshake, certificate verification, authentication, tunnel setup, and routing. The logs are your best friend here. Increase verbosity, check both server and client logs, and work through each stage systematically. Most issues come down to certificate mismatches, firewall rules, or missing IP forwarding.
+OpenVPN troubleshooting on RHEL follows the connection lifecycle: network reachability, TLS handshake, certificate verification, authentication, tunnel setup, and routing. The logs are your best friend here. Increase verbosity, check both server and client logs, and work through each stage systematically. Most issues come down to certificate mismatches, firewall rules, or missing IP forwarding.

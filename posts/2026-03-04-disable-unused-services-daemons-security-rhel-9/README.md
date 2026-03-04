@@ -1,14 +1,14 @@
-# How to Disable Unused Services and Daemons on RHEL 9 for Better Security
+# How to Disable Unused Services and Daemons on RHEL for Better Security
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Security, Services, Hardening, Linux
 
-Description: A practical guide to identifying and disabling unnecessary services and daemons on RHEL 9 to reduce the attack surface and improve system security.
+Description: A practical guide to identifying and disabling unnecessary services and daemons on RHEL to reduce the attack surface and improve system security.
 
 ---
 
-Services that you do not need but leave running are open doors for attackers. Every listening daemon is a potential entry point, and every background process that runs with elevated privileges is an opportunity for exploitation. On RHEL 9, systemd makes it straightforward to audit and disable what you do not need.
+Services that you do not need but leave running are open doors for attackers. Every listening daemon is a potential entry point, and every background process that runs with elevated privileges is an opportunity for exploitation. On RHEL, systemd makes it straightforward to audit and disable what you do not need.
 
 ## Audit Running Services
 
@@ -149,7 +149,7 @@ systemctl disable --now cockpit.socket
 
 ## Create a Baseline of Essential Services
 
-For a typical RHEL 9 server, these are the services you generally want to keep:
+For a typical RHEL server, these are the services you generally want to keep:
 
 ```bash
 # Essential services for most servers

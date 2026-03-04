@@ -1,10 +1,10 @@
-# How to Implement NBDE with Tang and Clevis for Headless RHEL 9 Servers
+# How to Implement NBDE with Tang and Clevis for Headless RHEL Servers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NBDE, Tang, Clevis, Headless, Linux
 
-Description: Deploy Network-Bound Disk Encryption with Tang and Clevis for headless RHEL 9 servers that need automatic LUKS unlocking without console access.
+Description: Deploy Network-Bound Disk Encryption with Tang and Clevis for headless RHEL servers that need automatic LUKS unlocking without console access.
 
 ---
 
@@ -44,7 +44,7 @@ flowchart TD
 Before starting, make sure:
 
 - Tang server is deployed and accessible (see the Tang setup guide)
-- RHEL 9 is installed with LUKS encryption on the target servers
+- RHEL is installed with LUKS encryption on the target servers
 - Network is configured and working between clients and the Tang server
 - You have console access for the initial setup (IPMI, iLO, or physical)
 

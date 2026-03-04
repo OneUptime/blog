@@ -1,10 +1,10 @@
-# How to Handle Samba and FreeIPA Compatibility in FIPS Mode on RHEL 9
+# How to Handle Samba and FreeIPA Compatibility in FIPS Mode on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FIPS, Samba, FreeIPA, Linux
 
-Description: Navigate the compatibility challenges of running Samba and FreeIPA on RHEL 9 with FIPS mode enabled, including workarounds for NTLM and AD trust limitations.
+Description: Navigate the compatibility challenges of running Samba and FreeIPA on RHEL with FIPS mode enabled, including workarounds for NTLM and AD trust limitations.
 
 ---
 

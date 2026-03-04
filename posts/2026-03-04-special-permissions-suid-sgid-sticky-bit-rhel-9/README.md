@@ -1,16 +1,16 @@
-# How to Use Special Permissions (SUID, SGID, Sticky Bit) on RHEL 9
+# How to Use Special Permissions (SUID, SGID, Sticky Bit) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Permissions, SUID, SGID, Sticky Bit, Security, Linux
 
-Description: A practical guide to understanding and using SUID, SGID, and the sticky bit on RHEL 9, covering both their legitimate uses and the security risks they introduce.
+Description: A practical guide to understanding and using SUID, SGID, and the sticky bit on RHEL, covering both their legitimate uses and the security risks they introduce.
 
 ---
 
 ## Beyond the Basic rwx
 
-Most Linux users know about read, write, and execute permissions. But there are three additional permission bits that change how files and directories behave: SUID (Set User ID), SGID (Set Group ID), and the sticky bit. These bits solve real problems, but they also introduce security risks if misused. Here is how they work on RHEL 9.
+Most Linux users know about read, write, and execute permissions. But there are three additional permission bits that change how files and directories behave: SUID (Set User ID), SGID (Set Group ID), and the sticky bit. These bits solve real problems, but they also introduce security risks if misused. Here is how they work on RHEL.
 
 ## SUID - Set User ID
 
@@ -226,7 +226,7 @@ Any new entries in the diff deserve investigation.
 
 ## SUID and SELinux
 
-On RHEL 9, SELinux adds another layer of protection. Even if a file has SUID set, SELinux policies can prevent it from executing in an unintended context. This is one reason you should never disable SELinux - it limits the damage from misconfigured SUID binaries.
+On RHEL, SELinux adds another layer of protection. Even if a file has SUID set, SELinux policies can prevent it from executing in an unintended context. This is one reason you should never disable SELinux - it limits the damage from misconfigured SUID binaries.
 
 ```bash
 # Check the SELinux context of a SUID binary
@@ -263,4 +263,4 @@ Or in `/etc/fstab`:
 
 ## Wrapping Up
 
-SUID, SGID, and the sticky bit are old Unix features that still matter on RHEL 9. SGID on directories is genuinely useful for team collaboration. The sticky bit protects shared directories from accidental deletions. SUID is necessary for a handful of system binaries but should never be added to new files without a very good reason. Audit your SUID files regularly, use the `nosuid` mount option on data filesystems, and prefer capabilities over SUID when building new applications.
+SUID, SGID, and the sticky bit are old Unix features that still matter on RHEL. SGID on directories is genuinely useful for team collaboration. The sticky bit protects shared directories from accidental deletions. SUID is necessary for a handful of system binaries but should never be added to new files without a very good reason. Audit your SUID files regularly, use the `nosuid` mount option on data filesystems, and prefer capabilities over SUID when building new applications.

@@ -1,20 +1,20 @@
-# How to Manage Package Groups and Environment Groups with DNF on RHEL 9
+# How to Manage Package Groups and Environment Groups with DNF on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNF, Package Groups, Linux, System Administration
 
-Description: Learn how to work with DNF package groups and environment groups on RHEL 9 to install, manage, and remove collections of related packages efficiently.
+Description: Learn how to work with DNF package groups and environment groups on RHEL to install, manage, and remove collections of related packages efficiently.
 
 ---
 
-Installing packages one at a time is fine when you need a single tool, but when you are setting up a server for a specific role, you often need a whole set of related packages. That is what package groups are for. RHEL 9 ships with groups for common workloads like web servers, development tools, and graphical desktops. This guide covers how to find, install, and manage them.
+Installing packages one at a time is fine when you need a single tool, but when you are setting up a server for a specific role, you often need a whole set of related packages. That is what package groups are for. RHEL ships with groups for common workloads like web servers, development tools, and graphical desktops. This guide covers how to find, install, and manage them.
 
 ## What Are Package Groups?
 
 A package group is a named collection of RPM packages that serve a common purpose. Instead of remembering every individual package you need for C development, you install the "Development Tools" group and get gcc, make, gdb, and everything else in one shot.
 
-RHEL 9 has two levels of grouping:
+RHEL has two levels of grouping:
 
 - **Package Groups** - Collections of packages for a specific task (e.g., "Development Tools," "System Tools")
 - **Environment Groups** - Larger collections that define an entire system role (e.g., "Server with GUI," "Minimal Install"), which can include multiple package groups
@@ -166,7 +166,7 @@ Environment groups are bigger collections that define a full system role. They a
 dnf group list --ids | head -20
 ```
 
-Common environment groups in RHEL 9:
+Common environment groups in RHEL:
 
 - `server-product-environment` - Server
 - `graphical-server-environment` - Server with GUI

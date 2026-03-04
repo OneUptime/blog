@@ -1,14 +1,14 @@
-# How to Provision Kubernetes Clusters on RHEL 9 with Terraform
+# How to Provision Kubernetes Clusters on RHEL with Terraform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, Kubernetes, IaC, Containers, Linux
 
-Description: Use Terraform to provision Kubernetes clusters on RHEL 9, covering both cloud-managed clusters and self-hosted deployments with kubeadm.
+Description: Use Terraform to provision Kubernetes clusters on RHEL, covering both cloud-managed clusters and self-hosted deployments with kubeadm.
 
 ---
 
-Setting up Kubernetes clusters manually is error-prone and hard to reproduce. Terraform lets you define your cluster infrastructure as code, whether you are deploying a managed EKS cluster or provisioning bare RHEL 9 nodes for kubeadm.
+Setting up Kubernetes clusters manually is error-prone and hard to reproduce. Terraform lets you define your cluster infrastructure as code, whether you are deploying a managed EKS cluster or provisioning bare RHEL nodes for kubeadm.
 
 ## Two Approaches
 
@@ -16,7 +16,7 @@ Setting up Kubernetes clusters manually is error-prone and hard to reproduce. Te
 graph TD
     A[Terraform] --> B{Deployment Target}
     B -->|Cloud Managed| C[AWS EKS]
-    B -->|Self-Hosted| D[RHEL 9 VMs]
+    B -->|Self-Hosted| D[RHEL VMs]
     C --> E[Managed Control Plane]
     C --> F[Worker Node Group]
     D --> G[kubeadm init]
@@ -86,7 +86,7 @@ module "eks" {
       max_size       = 5
       desired_size   = 3
 
-      # Use a custom RHEL 9 AMI if available
+      # Use a custom RHEL AMI if available
       # ami_id = "ami-0123456789abcdef0"
     }
   }
@@ -101,10 +101,10 @@ output "kubeconfig_command" {
 }
 ```
 
-## Approach 2: Provision RHEL 9 Nodes for kubeadm
+## Approach 2: Provision RHEL Nodes for kubeadm
 
 ```hcl
-# kubeadm-nodes.tf - Create RHEL 9 VMs for a self-hosted cluster
+# kubeadm-nodes.tf - Create RHEL VMs for a self-hosted cluster
 
 variable "control_plane_count" {
   default = 1
@@ -276,4 +276,4 @@ ssh ec2-user@$(terraform output -json control_plane_ips | jq -r '.[0]')
 sudo kubeadm init --pod-network-cidr=10.244.0.0/16
 ```
 
-Terraform handles the infrastructure layer, giving you a reproducible foundation for Kubernetes on RHEL 9 regardless of whether you choose managed or self-hosted clusters.
+Terraform handles the infrastructure layer, giving you a reproducible foundation for Kubernetes on RHEL regardless of whether you choose managed or self-hosted clusters.

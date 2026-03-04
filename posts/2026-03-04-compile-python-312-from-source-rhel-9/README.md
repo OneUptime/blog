@@ -1,14 +1,14 @@
-# How to Compile Python 3.12 from Source on RHEL 9
+# How to Compile Python 3.12 from Source on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Python, Compilation, Source Build, Linux, Development
 
-Description: Step-by-step instructions for compiling and installing Python 3.12 from source on RHEL 9, with optimizations enabled and without affecting the system Python.
+Description: Step-by-step instructions for compiling and installing Python 3.12 from source on RHEL, with optimizations enabled and without affecting the system Python.
 
 ---
 
-Sometimes you need a Python version or build configuration that is not available in the RHEL 9 repositories. Compiling from source gives you full control over the build, including optimizations like PGO (Profile-Guided Optimization) and LTO (Link-Time Optimization).
+Sometimes you need a Python version or build configuration that is not available in the RHEL repositories. Compiling from source gives you full control over the build, including optimizations like PGO (Profile-Guided Optimization) and LTO (Link-Time Optimization).
 
 ## Installing Build Dependencies
 
@@ -186,4 +186,4 @@ sudo ldconfig
 
 ## Summary
 
-Compiling Python from source on RHEL 9 gives you access to any version with customized build options. Always use `altinstall` to avoid overwriting the system Python, install to a dedicated prefix, and configure the shared library path. The result is a fully functional Python installation that coexists peacefully with the system version.
+Compiling Python from source on RHEL gives you access to any version with customized build options. Always use `altinstall` to avoid overwriting the system Python, install to a dedicated prefix, and configure the shared library path. The result is a fully functional Python installation that coexists peacefully with the system version.

@@ -1,10 +1,10 @@
-# How to Troubleshoot nftables Rules Not Working on RHEL 9
+# How to Troubleshoot nftables Rules Not Working on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nftables, Troubleshooting, Linux
 
-Description: Practical troubleshooting steps for when your nftables rules aren't behaving as expected on RHEL 9, covering common mistakes and debugging techniques.
+Description: Practical troubleshooting steps for when your nftables rules aren't behaving as expected on RHEL, covering common mistakes and debugging techniques.
 
 ---
 
@@ -34,7 +34,7 @@ journalctl -u nftables --no-pager -n 50
 
 ## Step 2: Check for firewalld Conflicts
 
-On RHEL 9, firewalld is enabled by default and it uses nftables as its backend. If firewalld is running alongside your custom nftables rules, they'll conflict.
+On RHEL, firewalld is enabled by default and it uses nftables as its backend. If firewalld is running alongside your custom nftables rules, they'll conflict.
 
 ```mermaid
 flowchart TD

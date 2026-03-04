@@ -1,16 +1,16 @@
-# How to Change the Default Boot Kernel on RHEL 9
+# How to Change the Default Boot Kernel on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kernel, Boot, GRUB2, Linux
 
-Description: Learn how to change the default boot kernel on RHEL 9 using grubby and GRUB2, including listing available kernels, setting the default, and handling rollback scenarios.
+Description: Learn how to change the default boot kernel on RHEL using grubby and GRUB2, including listing available kernels, setting the default, and handling rollback scenarios.
 
 ---
 
 ## Why Change the Default Kernel?
 
-RHEL 9 installs new kernels alongside existing ones and automatically sets the newest kernel as the default. Most of the time this is what you want. But sometimes a kernel update introduces a regression, a driver issue, or an incompatibility with your hardware or application. In those cases, you need to switch back to a previous kernel and keep it as the default until the issue is resolved.
+RHEL installs new kernels alongside existing ones and automatically sets the newest kernel as the default. Most of the time this is what you want. But sometimes a kernel update introduces a regression, a driver issue, or an incompatibility with your hardware or application. In those cases, you need to switch back to a previous kernel and keep it as the default until the issue is resolved.
 
 ## Listing Installed Kernels
 
@@ -134,4 +134,4 @@ sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 
 ## Wrapping Up
 
-Changing the default boot kernel on RHEL 9 is a single `grubby` command. The important thing is to know what kernels are available, verify the change before rebooting, and always keep at least one known-good kernel installed. Use `grub2-reboot` for one-time tests and `grubby --set-default` for permanent changes. It is a simple operation, but getting it wrong on a remote server with no console access can turn into a long day.
+Changing the default boot kernel on RHEL is a single `grubby` command. The important thing is to know what kernels are available, verify the change before rebooting, and always keep at least one known-good kernel installed. Use `grub2-reboot` for one-time tests and `grubby --set-default` for permanent changes. It is a simple operation, but getting it wrong on a remote server with no console access can turn into a long day.

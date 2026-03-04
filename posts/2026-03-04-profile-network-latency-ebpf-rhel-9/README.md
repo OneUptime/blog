@@ -1,14 +1,14 @@
-# How to Profile Network Latency with eBPF on RHEL 9
+# How to Profile Network Latency with eBPF on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, eBPF, Networking, Performance, Latency, Linux
 
-Description: Learn how to use eBPF tools and custom programs to profile and analyze network latency on RHEL 9, identifying bottlenecks at the kernel level.
+Description: Learn how to use eBPF tools and custom programs to profile and analyze network latency on RHEL, identifying bottlenecks at the kernel level.
 
 ---
 
-Network latency issues can be notoriously hard to track down. Traditional tools like ping and traceroute show you the surface, but eBPF lets you look inside the kernel itself to see exactly where packets are spending their time. On RHEL 9, the eBPF ecosystem is mature enough that you can get production-grade latency profiling without writing a single line of C if you use the right tools.
+Network latency issues can be notoriously hard to track down. Traditional tools like ping and traceroute show you the surface, but eBPF lets you look inside the kernel itself to see exactly where packets are spending their time. On RHEL, the eBPF ecosystem is mature enough that you can get production-grade latency profiling without writing a single line of C if you use the right tools.
 
 ## What eBPF Brings to Latency Profiling
 
@@ -37,7 +37,7 @@ sudo dnf install -y bcc-tools bpftrace
 
 # Verify the kernel supports BTF (BPF Type Format) - needed for CO-RE programs
 ls /sys/kernel/btf/vmlinux
-# Should exist on RHEL 9 with stock kernels
+# Should exist on RHEL with stock kernels
 
 # Install kernel development headers if you plan to write custom programs
 sudo dnf install -y kernel-devel kernel-headers
@@ -208,4 +208,4 @@ sudo bpftrace -l 'tracepoint:sock:*'
 
 ## Conclusion
 
-eBPF gives you a level of network latency visibility that was previously only available through kernel patching or invasive packet captures. On RHEL 9, the tooling is solid and production-ready. Start with the BCC tools for quick wins, then move to bpftrace for custom analysis, and only write full libbpf programs when you need persistent, production monitoring. The key is to measure at the right layer -- often the latency you are looking for is not where you expect it.
+eBPF gives you a level of network latency visibility that was previously only available through kernel patching or invasive packet captures. On RHEL, the tooling is solid and production-ready. Start with the BCC tools for quick wins, then move to bpftrace for custom analysis, and only write full libbpf programs when you need persistent, production monitoring. The key is to measure at the right layer -- often the latency you are looking for is not where you expect it.

@@ -1,10 +1,10 @@
-# How to Import Existing Infrastructure into Terraform on RHEL 9
+# How to Import Existing Infrastructure into Terraform on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, Import, Infrastructure, Migration, Linux
 
-Description: Learn how to bring existing manually-created infrastructure under Terraform management on RHEL 9 using terraform import and import blocks.
+Description: Learn how to bring existing manually-created infrastructure under Terraform management on RHEL using terraform import and import blocks.
 
 ---
 
@@ -114,7 +114,7 @@ terraform plan
 
 ## Import a Complete Setup
 
-Here is a practical example of importing a manually-created RHEL 9 server setup:
+Here is a practical example of importing a manually-created RHEL server setup:
 
 ```hcl
 # imports.tf - Import all components of an existing deployment
@@ -202,4 +202,4 @@ terraform state show aws_instance.existing_server
 terraform plan
 ```
 
-Importing existing infrastructure into Terraform is an essential skill for teams adopting infrastructure as code. Once imported, your RHEL 9 resources gain all the benefits of Terraform: version control, planning, and collaborative management.
+Importing existing infrastructure into Terraform is an essential skill for teams adopting infrastructure as code. Once imported, your RHEL resources gain all the benefits of Terraform: version control, planning, and collaborative management.

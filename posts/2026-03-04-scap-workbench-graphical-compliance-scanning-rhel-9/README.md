@@ -1,10 +1,10 @@
-# How to Use SCAP Workbench for Graphical Compliance Scanning on RHEL 9
+# How to Use SCAP Workbench for Graphical Compliance Scanning on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SCAP Workbench, Compliance, GUI, Linux
 
-Description: Use SCAP Workbench to perform graphical compliance scanning on RHEL 9, create tailoring files, and customize security profiles without writing XML.
+Description: Use SCAP Workbench to perform graphical compliance scanning on RHEL, create tailoring files, and customize security profiles without writing XML.
 
 ---
 
@@ -166,7 +166,7 @@ The remote system must have `openscap-scanner` installed.
 cd /etc/scap/tailoring/
 git init
 git add *.xml
-git commit -m "Initial tailoring files for RHEL 9"
+git commit -m "Initial tailoring files for RHEL"
 ```
 
 ### Document your exceptions

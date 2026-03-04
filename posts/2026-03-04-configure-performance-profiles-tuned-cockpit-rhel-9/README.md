@@ -1,14 +1,14 @@
-# How to Configure Performance Profiles with TuneD Using the RHEL 9 Web Console
+# How to Configure Performance Profiles with TuneD Using the RHEL Web Console
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, TuneD, Performance, Linux
 
-Description: Learn how to select and manage TuneD performance profiles through the Cockpit web console on RHEL 9 to optimize your system for different workloads.
+Description: Learn how to select and manage TuneD performance profiles through the Cockpit web console on RHEL to optimize your system for different workloads.
 
 ---
 
-Every RHEL 9 system ships with TuneD, a daemon that automatically adjusts system settings like CPU frequency scaling, disk I/O schedulers, and kernel parameters based on predefined profiles. Picking the right profile for your workload can make a noticeable difference in performance. Cockpit lets you switch profiles with a single click.
+Every RHEL system ships with TuneD, a daemon that automatically adjusts system settings like CPU frequency scaling, disk I/O schedulers, and kernel parameters based on predefined profiles. Picking the right profile for your workload can make a noticeable difference in performance. Cockpit lets you switch profiles with a single click.
 
 ## What TuneD Does
 
@@ -44,7 +44,7 @@ systemctl status tuned
 
 ## Available Profiles
 
-RHEL 9 includes several profiles out of the box:
+RHEL includes several profiles out of the box:
 
 | Profile | Best For |
 |---------|----------|

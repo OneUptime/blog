@@ -1,10 +1,10 @@
-# How to Install and Configure a Samba File Server on RHEL 9
+# How to Install and Configure a Samba File Server on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Samba, File Server, Linux
 
-Description: Set up a Samba file server on RHEL 9 from scratch, covering installation, share configuration, user management, and basic security settings.
+Description: Set up a Samba file server on RHEL from scratch, covering installation, share configuration, user management, and basic security settings.
 
 ---
 
@@ -14,7 +14,7 @@ Samba implements the SMB/CIFS protocol on Linux, allowing RHEL servers to share 
 
 ## Prerequisites
 
-- RHEL 9 with root access
+- RHEL with root access
 - Network connectivity to client machines
 
 ## Step 1 - Install Samba
@@ -49,7 +49,7 @@ Edit /etc/samba/smb.conf:
 ```ini
 [global]
     workgroup = WORKGROUP
-    server string = RHEL 9 Samba Server
+    server string = RHEL Samba Server
     security = user
     map to guest = Bad User
     dns proxy = no
@@ -197,4 +197,4 @@ ls /var/log/samba/
 
 ## Wrap-Up
 
-Setting up a Samba file server on RHEL 9 involves installing the packages, configuring shares in smb.conf, managing Samba users, and handling SELinux and firewall settings. The process is well-documented and works reliably for sharing files between Linux and Windows systems. For more advanced setups like Active Directory integration, multi-channel performance, or print serving, see the other posts in this series.
+Setting up a Samba file server on RHEL involves installing the packages, configuring shares in smb.conf, managing Samba users, and handling SELinux and firewall settings. The process is well-documented and works reliably for sharing files between Linux and Windows systems. For more advanced setups like Active Directory integration, multi-channel performance, or print serving, see the other posts in this series.

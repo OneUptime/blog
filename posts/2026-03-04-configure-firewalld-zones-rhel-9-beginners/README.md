@@ -1,14 +1,14 @@
-# How to Configure Firewalld Zones on RHEL 9 for Beginners
+# How to Configure Firewalld Zones on RHEL for Beginners
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Zones, Security, Linux
 
-Description: A beginner-friendly guide to understanding and configuring firewalld zones on RHEL 9, covering zone concepts, interface assignment, and basic service management.
+Description: A beginner-friendly guide to understanding and configuring firewalld zones on RHEL, covering zone concepts, interface assignment, and basic service management.
 
 ---
 
-Firewalld is the default firewall management tool on RHEL 9. If you have worked with raw iptables before, firewalld feels different because it is organized around the concept of zones. Instead of writing individual packet filter rules, you assign network interfaces to zones, and each zone defines what traffic is allowed.
+Firewalld is the default firewall management tool on RHEL. If you have worked with raw iptables before, firewalld feels different because it is organized around the concept of zones. Instead of writing individual packet filter rules, you assign network interfaces to zones, and each zone defines what traffic is allowed.
 
 ## What Are Zones?
 
@@ -26,7 +26,7 @@ graph TD
 
 ## Default Zones
 
-RHEL 9 ships with several predefined zones:
+RHEL ships with several predefined zones:
 
 | Zone | Default Behavior |
 |---|---|

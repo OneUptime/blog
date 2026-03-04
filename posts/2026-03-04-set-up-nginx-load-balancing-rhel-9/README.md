@@ -1,18 +1,18 @@
-# How to Set Up Nginx Load Balancing on RHEL 9
+# How to Set Up Nginx Load Balancing on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Load Balancing, High Availability, Linux
 
-Description: Learn how to configure Nginx as a load balancer on RHEL 9 with round-robin, least connections, and IP hash algorithms plus health checks.
+Description: Learn how to configure Nginx as a load balancer on RHEL with round-robin, least connections, and IP hash algorithms plus health checks.
 
 ---
 
-Nginx provides efficient layer 7 load balancing with multiple distribution algorithms, health checks, and session persistence. This guide covers configuring Nginx as a load balancer on RHEL 9 for both HTTP and HTTPS traffic.
+Nginx provides efficient layer 7 load balancing with multiple distribution algorithms, health checks, and session persistence. This guide covers configuring Nginx as a load balancer on RHEL for both HTTP and HTTPS traffic.
 
 ## Prerequisites
 
-- A RHEL 9 system with Nginx installed
+- A RHEL system with Nginx installed
 - Two or more backend servers running your application
 - Root or sudo access
 
@@ -211,4 +211,4 @@ sudo ausearch -m avc -ts recent | grep nginx
 
 ## Summary
 
-Nginx load balancing on RHEL 9 distributes traffic efficiently across your backend servers. Choose round-robin for even distribution, least_conn for variable request processing times, or ip_hash when you need session persistence. Health checks automatically remove failing backends and re-add them when they recover.
+Nginx load balancing on RHEL distributes traffic efficiently across your backend servers. Choose round-robin for even distribution, least_conn for variable request processing times, or ip_hash when you need session persistence. Health checks automatically remove failing backends and re-add them when they recover.

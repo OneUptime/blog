@@ -1,10 +1,10 @@
-# How to Use visudo Safely to Edit Sudoers Configuration on RHEL 9
+# How to Use visudo Safely to Edit Sudoers Configuration on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, visudo, sudo, Security, Linux
 
-Description: Learn the correct way to edit sudoers files on RHEL 9 using visudo, with safety checks, syntax validation, and recovery procedures for when things go wrong.
+Description: Learn the correct way to edit sudoers files on RHEL using visudo, with safety checks, syntax validation, and recovery procedures for when things go wrong.
 
 ---
 
@@ -243,4 +243,4 @@ rm -f /tmp/new-sudoers-rule
 
 ## Wrapping Up
 
-visudo is not optional. It is the only safe way to edit sudoers files on RHEL 9. Use `visudo -f` for drop-in files in `/etc/sudoers.d/`, run `visudo -c` after any automated changes, and never choose `Q` when visudo reports an error. Keep the root password available as a recovery mechanism, and consider using `pkexec` as an alternative path to root when sudo is broken.
+visudo is not optional. It is the only safe way to edit sudoers files on RHEL. Use `visudo -f` for drop-in files in `/etc/sudoers.d/`, run `visudo -c` after any automated changes, and never choose `Q` when visudo reports an error. Keep the root password available as a recovery mechanism, and consider using `pkexec` as an alternative path to root when sudo is broken.

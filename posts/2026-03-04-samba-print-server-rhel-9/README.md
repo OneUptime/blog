@@ -1,10 +1,10 @@
-# How to Set Up Samba as a Print Server on RHEL 9
+# How to Set Up Samba as a Print Server on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Samba, Print Server, Linux
 
-Description: Configure Samba as a print server on RHEL 9 to share CUPS printers with Windows clients over the SMB protocol.
+Description: Configure Samba as a print server on RHEL to share CUPS printers with Windows clients over the SMB protocol.
 
 ---
 
@@ -14,7 +14,7 @@ Samba can act as a print server, making CUPS-managed printers available to Windo
 
 ## Prerequisites
 
-- RHEL 9 with root access
+- RHEL with root access
 - CUPS installed and configured with at least one printer
 - Samba installed
 
@@ -191,4 +191,4 @@ sudo tail -f /var/log/samba/log.smbd
 
 ## Wrap-Up
 
-Samba print serving on RHEL 9 bridges Linux CUPS printers and Windows clients. The setup involves configuring both CUPS and Samba, creating the spool and driver directories, and handling SELinux contexts. For modern environments, direct IP printing (where Windows prints directly to the printer) is often simpler, but Samba print serving remains useful for centralized print management and accounting.
+Samba print serving on RHEL bridges Linux CUPS printers and Windows clients. The setup involves configuring both CUPS and Samba, creating the spool and driver directories, and handling SELinux contexts. For modern environments, direct IP printing (where Windows prints directly to the printer) is often simpler, but Samba print serving remains useful for centralized print management and accounting.

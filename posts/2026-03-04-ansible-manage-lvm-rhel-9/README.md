@@ -1,10 +1,10 @@
-# How to Use Ansible to Manage LVM on RHEL 9
+# How to Use Ansible to Manage LVM on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, LVM, Storage, Automation, Linux
 
-Description: Automate LVM volume group and logical volume management on RHEL 9 using Ansible for consistent storage provisioning.
+Description: Automate LVM volume group and logical volume management on RHEL using Ansible for consistent storage provisioning.
 
 ---
 
@@ -28,7 +28,7 @@ graph TD
 
 ```yaml
 # playbook-lvm-create.yml
-# Set up LVM storage on RHEL 9 servers
+# Set up LVM storage on RHEL servers
 ---
 - name: Configure LVM storage
   hosts: storage_hosts

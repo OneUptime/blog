@@ -1,14 +1,14 @@
-# How to Set Up Site-to-Site VPN with WireGuard on RHEL 9
+# How to Set Up Site-to-Site VPN with WireGuard on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, WireGuard, Site-to-Site VPN, Linux
 
-Description: A complete guide to building a site-to-site VPN between two RHEL 9 gateways using WireGuard, connecting two remote LANs securely without client software on individual machines.
+Description: A complete guide to building a site-to-site VPN between two RHEL gateways using WireGuard, connecting two remote LANs securely without client software on individual machines.
 
 ---
 
-A site-to-site VPN connects two entire networks through a tunnel between their gateways. Every machine on Site A can reach machines on Site B transparently, without needing VPN client software. WireGuard makes this setup surprisingly clean on RHEL 9.
+A site-to-site VPN connects two entire networks through a tunnel between their gateways. Every machine on Site A can reach machines on Site B transparently, without needing VPN client software. WireGuard makes this setup surprisingly clean on RHEL.
 
 ## Architecture Overview
 
@@ -33,7 +33,7 @@ graph LR
 
 ## Prerequisites
 
-On both RHEL 9 gateways:
+On both RHEL gateways:
 - Root or sudo access
 - Public IP address (or at least one side needs to be reachable)
 - WireGuard tools installed
@@ -246,4 +246,4 @@ To connect a third site, add a new `[Peer]` section on each gateway that needs t
 
 ## Wrapping Up
 
-Site-to-site VPN with WireGuard on RHEL 9 is one of those setups that, once running, you barely think about. The configuration is minimal, the performance is excellent, and it just works. The key things to get right are: non-overlapping subnets, correct AllowedIPs that include the remote LAN, IP forwarding enabled, and proper firewall rules on both gateways.
+Site-to-site VPN with WireGuard on RHEL is one of those setups that, once running, you barely think about. The configuration is minimal, the performance is excellent, and it just works. The key things to get right are: non-overlapping subnets, correct AllowedIPs that include the remote LAN, IP forwarding enabled, and proper firewall rules on both gateways.

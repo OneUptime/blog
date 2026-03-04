@@ -1,10 +1,10 @@
-# How to Install and Configure Git Server with Gitea on RHEL 9
+# How to Install and Configure Git Server with Gitea on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Gitea, Git, Version Control, Self-Hosted, Linux
 
-Description: Set up a self-hosted Git server using Gitea on RHEL 9, complete with web interface, repository management, and SSH access.
+Description: Set up a self-hosted Git server using Gitea on RHEL, complete with web interface, repository management, and SSH access.
 
 ---
 
@@ -200,4 +200,4 @@ git clone http://git.example.com/username/my-repo.git
 git clone git@git.example.com:username/my-repo.git
 ```
 
-Gitea gives you a full-featured Git hosting solution on RHEL 9 with minimal resource usage. It supports pull requests, issue tracking, webhooks, and CI/CD integration, making it a practical choice for teams that want to self-host their code.
+Gitea gives you a full-featured Git hosting solution on RHEL with minimal resource usage. It supports pull requests, issue tracking, webhooks, and CI/CD integration, making it a practical choice for teams that want to self-host their code.

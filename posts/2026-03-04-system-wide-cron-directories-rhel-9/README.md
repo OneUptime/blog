@@ -1,20 +1,20 @@
-# How to Use System-Wide Cron Directories on RHEL 9
+# How to Use System-Wide Cron Directories on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, cron, System-Wide, Scheduling, Linux
 
-Description: A practical guide to using system-wide cron directories on RHEL 9, including /etc/cron.d/, /etc/cron.daily/, hourly, weekly, and monthly directories, and how run-parts ties it all together.
+Description: A practical guide to using system-wide cron directories on RHEL, including /etc/cron.d/, /etc/cron.daily/, hourly, weekly, and monthly directories, and how run-parts ties it all together.
 
 ---
 
 ## Beyond User Crontabs
 
-Most sysadmins start with `crontab -e` and never look back. But RHEL 9 provides a set of system-wide cron directories that are better suited for system maintenance scripts, package-managed tasks, and anything that needs to survive user account changes. Understanding these directories is essential for managing a RHEL system properly.
+Most sysadmins start with `crontab -e` and never look back. But RHEL provides a set of system-wide cron directories that are better suited for system maintenance scripts, package-managed tasks, and anything that needs to survive user account changes. Understanding these directories is essential for managing a RHEL system properly.
 
 ## The System-Wide Cron Directory Layout
 
-RHEL 9 provides several directories for different scheduling needs.
+RHEL provides several directories for different scheduling needs.
 
 ```mermaid
 graph TD
@@ -80,7 +80,7 @@ These four directories hold executable scripts (not cron-format files). The key 
 
 ### /etc/cron.hourly/
 
-Scripts here run once per hour. On RHEL 9, the `/etc/cron.d/0hourly` file triggers the hourly run via crond.
+Scripts here run once per hour. On RHEL, the `/etc/cron.d/0hourly` file triggers the hourly run via crond.
 
 ```bash
 # Check what triggers hourly jobs
@@ -197,7 +197,7 @@ run-parts --test /etc/cron.daily
 
 ## When Do Daily, Weekly, and Monthly Jobs Run?
 
-On RHEL 9, the timing of daily, weekly, and monthly jobs is controlled by anacron via `/etc/anacrontab`.
+On RHEL, the timing of daily, weekly, and monthly jobs is controlled by anacron via `/etc/anacrontab`.
 
 ```bash
 # Check the anacron configuration
@@ -222,7 +222,7 @@ The numbers mean: period in days, delay in minutes, job identifier, and then the
 
 ## Checking the /etc/crontab File
 
-The system-wide crontab at `/etc/crontab` is another option, though on RHEL 9 it is mostly a placeholder.
+The system-wide crontab at `/etc/crontab` is another option, though on RHEL it is mostly a placeholder.
 
 ```bash
 # View the system crontab
@@ -266,4 +266,4 @@ sudo run-parts --test /etc/cron.daily
 
 ## Summary
 
-System-wide cron directories on RHEL 9 give you a clean, organized way to manage scheduled tasks. Use `/etc/cron.d/` for jobs that need specific timing, and the periodic directories (`cron.hourly`, `cron.daily`, `cron.weekly`, `cron.monthly`) for routine maintenance tasks. Just remember the `run-parts` naming rules, keep your scripts executable, and always test before deploying.
+System-wide cron directories on RHEL give you a clean, organized way to manage scheduled tasks. Use `/etc/cron.d/` for jobs that need specific timing, and the periodic directories (`cron.hourly`, `cron.daily`, `cron.weekly`, `cron.monthly`) for routine maintenance tasks. Just remember the `run-parts` naming rules, keep your scripts executable, and always test before deploying.

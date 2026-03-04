@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Active Directory, POSIX, ID Mapping, Linux
 
-Description: A guide to mapping Active Directory users and groups to POSIX attributes on RHEL 9, covering SSSD ID mapping, AD POSIX extensions, and ID range management.
+Description: A guide to mapping Active Directory users and groups to POSIX attributes on RHEL, covering SSSD ID mapping, AD POSIX extensions, and ID range management.
 
 ---
 

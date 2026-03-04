@@ -1,10 +1,10 @@
-# How to Set Up SSHFS for Remote File Access Over SSH on RHEL 9
+# How to Set Up SSHFS for Remote File Access Over SSH on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSHFS, SSH, Remote Access, Linux
 
-Description: Learn how to mount remote directories over SSH using SSHFS on RHEL 9 for seamless file access without NFS or Samba.
+Description: Learn how to mount remote directories over SSH using SSHFS on RHEL for seamless file access without NFS or Samba.
 
 ---
 
@@ -255,4 +255,4 @@ sshfs user@remotehost:/data /mnt/remote \
 
 ## Summary
 
-SSHFS on RHEL 9 is the quickest way to mount remote filesystems when you already have SSH access. Install `fuse-sshfs`, mount with performance and reconnection options, and use key-based authentication for unattended mounts. It is not as fast as NFS, but for development access, file transfers, and ad-hoc remote work, it is hard to beat for simplicity.
+SSHFS on RHEL is the quickest way to mount remote filesystems when you already have SSH access. Install `fuse-sshfs`, mount with performance and reconnection options, and use key-based authentication for unattended mounts. It is not as fast as NFS, but for development access, file transfers, and ad-hoc remote work, it is hard to beat for simplicity.

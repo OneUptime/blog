@@ -1,10 +1,10 @@
-# How to Configure Nginx Rate Limiting and Connection Throttling on RHEL 9
+# How to Configure Nginx Rate Limiting and Connection Throttling on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Rate Limiting, Security, Linux
 
-Description: How to protect your Nginx server on RHEL 9 with rate limiting and connection throttling to prevent abuse and DDoS attacks.
+Description: How to protect your Nginx server on RHEL with rate limiting and connection throttling to prevent abuse and DDoS attacks.
 
 ---
 
@@ -14,7 +14,7 @@ Without rate limiting, a single client can hammer your server with thousands of 
 
 ## Prerequisites
 
-- RHEL 9 with Nginx installed
+- RHEL with Nginx installed
 - Root or sudo access
 
 ## Step 1 - Understand the Two Types of Limiting
@@ -26,7 +26,7 @@ Nginx provides two modules for traffic control:
 | `ngx_http_limit_req_module` | Limits the request rate per key (usually IP) |
 | `ngx_http_limit_conn_module` | Limits the number of simultaneous connections per key |
 
-Both are compiled into Nginx by default on RHEL 9.
+Both are compiled into Nginx by default on RHEL.
 
 ## Step 2 - Configure Request Rate Limiting
 

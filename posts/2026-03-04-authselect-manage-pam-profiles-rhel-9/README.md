@@ -1,14 +1,14 @@
-# How to Use authselect to Manage PAM Profiles on RHEL 9
+# How to Use authselect to Manage PAM Profiles on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, authselect, PAM, Linux
 
-Description: Learn how to use authselect on RHEL 9 to manage PAM profiles safely, enable features like faillock and fingerprint auth, and create custom profiles.
+Description: Learn how to use authselect on RHEL to manage PAM profiles safely, enable features like faillock and fingerprint auth, and create custom profiles.
 
 ---
 
-On older RHEL versions, managing PAM meant editing configuration files by hand and hoping you did not break authentication for the entire system. RHEL 9 replaces that approach with authselect, a tool that manages PAM and nsswitch.conf profiles as coherent units. This is the right way to manage authentication configuration on RHEL 9.
+On older RHEL versions, managing PAM meant editing configuration files by hand and hoping you did not break authentication for the entire system. RHEL replaces that approach with authselect, a tool that manages PAM and nsswitch.conf profiles as coherent units. This is the right way to manage authentication configuration on RHEL.
 
 ## Why authselect Exists
 
@@ -42,7 +42,7 @@ Enabled features:
 
 ## Available Profiles
 
-RHEL 9 ships with three built-in profiles:
+RHEL ships with three built-in profiles:
 
 ```bash
 # List all available profiles
@@ -263,4 +263,4 @@ sudo authselect backup-restore my-backup-20260304
 
 ## Wrapping Up
 
-authselect is the standard way to manage PAM on RHEL 9. It eliminates the risk of manually editing PAM files and gives you a repeatable, auditable configuration. Use the built-in profiles for most setups, enable features as needed, and create custom profiles only when the defaults truly do not fit. Always keep a backup before making changes, and keep a root shell open when testing new configurations.
+authselect is the standard way to manage PAM on RHEL. It eliminates the risk of manually editing PAM files and gives you a repeatable, auditable configuration. Use the built-in profiles for most setups, enable features as needed, and create custom profiles only when the defaults truly do not fit. Always keep a backup before making changes, and keep a root shell open when testing new configurations.

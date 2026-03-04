@@ -1,10 +1,10 @@
-# How to Use SSH Config Files to Manage Multiple Connections on RHEL 9
+# How to Use SSH Config Files to Manage Multiple Connections on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Config, Multiple Hosts, Linux
 
-Description: Simplify SSH connection management on RHEL 9 by configuring the SSH client config file with host aliases, jump hosts, and per-host settings.
+Description: Simplify SSH connection management on RHEL by configuring the SSH client config file with host aliases, jump hosts, and per-host settings.
 
 ---
 

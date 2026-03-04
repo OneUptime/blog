@@ -16,7 +16,7 @@ I maintain several public Ansible roles and every release used to come with a wa
 
 A test matrix defines the combinations of variables you want to test against. For an Ansible role, the typical dimensions are:
 
-- Operating system (Ubuntu 22.04, Debian 12, RHEL 9, Rocky Linux 9)
+- Operating system (Ubuntu 22.04, Debian 12, RHEL, Rocky Linux 9)
 - Ansible version (2.15, 2.16, 2.17)
 - Python version (3.10, 3.11, 3.12)
 - Role configuration variants (minimal, full, custom)

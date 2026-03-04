@@ -1,18 +1,18 @@
-# How to Set Up Nginx Reverse Proxy on RHEL 9
+# How to Set Up Nginx Reverse Proxy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Reverse Proxy, Web Server, Linux
 
-Description: A step-by-step guide to configuring Nginx as a reverse proxy on RHEL 9, including upstream configuration, WebSocket support, and caching.
+Description: A step-by-step guide to configuring Nginx as a reverse proxy on RHEL, including upstream configuration, WebSocket support, and caching.
 
 ---
 
-Nginx excels as a reverse proxy thanks to its event-driven architecture and low memory footprint. It can sit in front of application servers, handle SSL termination, serve static files, and balance load across backends. This guide covers setting up Nginx as a reverse proxy on RHEL 9.
+Nginx excels as a reverse proxy thanks to its event-driven architecture and low memory footprint. It can sit in front of application servers, handle SSL termination, serve static files, and balance load across backends. This guide covers setting up Nginx as a reverse proxy on RHEL.
 
 ## Prerequisites
 
-- A RHEL 9 system with Nginx installed
+- A RHEL system with Nginx installed
 - A backend application running on a local or remote port
 - Root or sudo access
 
@@ -245,4 +245,4 @@ sudo tail -f /var/log/nginx/error.log
 
 ## Summary
 
-Nginx makes an excellent reverse proxy on RHEL 9 with its efficient connection handling and flexible configuration. Key features include upstream groups for load balancing, WebSocket support through connection upgrades, and fine-grained control over timeouts and buffering. Remember to configure SELinux to allow network connections from Nginx to your backend services.
+Nginx makes an excellent reverse proxy on RHEL with its efficient connection handling and flexible configuration. Key features include upstream groups for load balancing, WebSocket support through connection upgrades, and fine-grained control over timeouts and buffering. Remember to configure SELinux to allow network connections from Nginx to your backend services.

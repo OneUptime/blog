@@ -1,14 +1,14 @@
-# How to Configure WireGuard Firewall Rules with firewalld on RHEL 9
+# How to Configure WireGuard Firewall Rules with firewalld on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, WireGuard, firewalld, VPN, Linux
 
-Description: Learn how to properly configure firewalld rules for WireGuard VPN on RHEL 9, including port openings, zone assignments, masquerading, and forwarding policies.
+Description: Learn how to properly configure firewalld rules for WireGuard VPN on RHEL, including port openings, zone assignments, masquerading, and forwarding policies.
 
 ---
 
-Getting WireGuard running is only half the job. The firewall configuration determines who can connect to your VPN, what traffic flows through it, and how it interacts with your other network interfaces. On RHEL 9, firewalld gives you the tools to do this cleanly with zones and policies.
+Getting WireGuard running is only half the job. The firewall configuration determines who can connect to your VPN, what traffic flows through it, and how it interacts with your other network interfaces. On RHEL, firewalld gives you the tools to do this cleanly with zones and policies.
 
 ## Basic WireGuard Port Access
 
@@ -191,4 +191,4 @@ curl -s http://internal-server.example.com
 
 ## Wrapping Up
 
-A properly configured firewall around your WireGuard VPN on RHEL 9 is what separates a functional VPN from a secure one. Use zones to isolate VPN traffic, policies to control forwarding, and rich rules for fine-grained access control. Permanent rules are better than PostUp/PostDown scripts for reliability. And always verify your rules from both sides of the tunnel.
+A properly configured firewall around your WireGuard VPN on RHEL is what separates a functional VPN from a secure one. Use zones to isolate VPN traffic, policies to control forwarding, and rich rules for fine-grained access control. Permanent rules are better than PostUp/PostDown scripts for reliability. And always verify your rules from both sides of the tunnel.

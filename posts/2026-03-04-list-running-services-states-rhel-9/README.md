@@ -1,14 +1,14 @@
-# How to List All Running Services and Their States on RHEL 9
+# How to List All Running Services and Their States on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Services, systemctl, Linux
 
-Description: Learn how to list, filter, and inspect systemd services and their states on RHEL 9 using systemctl, with practical examples for daily sysadmin work.
+Description: Learn how to list, filter, and inspect systemd services and their states on RHEL using systemctl, with practical examples for daily sysadmin work.
 
 ---
 
-Whether you are auditing a new server, troubleshooting after an incident, or just getting the lay of the land, knowing how to list services and filter by state is fundamental. On RHEL 9, `systemctl` gives you several ways to view and filter the services running on your system. Some of the options are obvious. Others are buried in the man page. Here are the ones you will actually use.
+Whether you are auditing a new server, troubleshooting after an incident, or just getting the lay of the land, knowing how to list services and filter by state is fundamental. On RHEL, `systemctl` gives you several ways to view and filter the services running on your system. Some of the options are obvious. Others are buried in the man page. Here are the ones you will actually use.
 
 ---
 
@@ -239,7 +239,7 @@ systemctl list-unit-files --type=service --state=enabled --no-legend | awk '{pri
 
 ## Practical Audit Script
 
-Here is a script that gives you a full service overview on a RHEL 9 system:
+Here is a script that gives you a full service overview on a RHEL system:
 
 ```bash
 #!/bin/bash

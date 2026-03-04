@@ -1,18 +1,18 @@
-# How to Set Up Debezium for Change Data Capture on RHEL 9
+# How to Set Up Debezium for Change Data Capture on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Debezium, CDC, Kafka, Database, Data Streaming, Linux
 
-Description: Set up Debezium on RHEL 9 to capture database changes in real time and stream them to Apache Kafka using change data capture (CDC).
+Description: Set up Debezium on RHEL to capture database changes in real time and stream them to Apache Kafka using change data capture (CDC).
 
 ---
 
-Debezium is a distributed platform for change data capture (CDC). It monitors your databases and produces an event for every row-level change, streaming those events into Apache Kafka. This makes it possible to react to data changes in real time, keep systems synchronized, and build event-driven architectures. This guide covers setting up Debezium on RHEL 9.
+Debezium is a distributed platform for change data capture (CDC). It monitors your databases and produces an event for every row-level change, streaming those events into Apache Kafka. This makes it possible to react to data changes in real time, keep systems synchronized, and build event-driven architectures. This guide covers setting up Debezium on RHEL.
 
 ## Prerequisites
 
-- RHEL 9 with at least 4 GB RAM
+- RHEL with at least 4 GB RAM
 - Apache Kafka and Kafka Connect running
 - A source database (PostgreSQL or MySQL)
 - Root or sudo access
@@ -255,4 +255,4 @@ curl -X PUT http://localhost:8083/connectors/postgres-cdc/config \
 
 ## Conclusion
 
-Debezium is now capturing real-time changes from your databases and streaming them into Kafka topics on RHEL 9. This enables a wide range of use cases including cache invalidation, search index updates, data replication across systems, and event-driven microservices. For production, consider adding Schema Registry for Avro serialization, configuring signal tables for on-demand snapshots, and monitoring connector lag metrics.
+Debezium is now capturing real-time changes from your databases and streaming them into Kafka topics on RHEL. This enables a wide range of use cases including cache invalidation, search index updates, data replication across systems, and event-driven microservices. For production, consider adding Schema Registry for Avro serialization, configuring signal tables for on-demand snapshots, and monitoring connector lag metrics.

@@ -1,14 +1,14 @@
-# How to Set Password Expiration and Aging Policies on RHEL 9
+# How to Set Password Expiration and Aging Policies on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Password Aging, chage, Security, Linux
 
-Description: Configure password expiration, aging policies, and account inactivity on RHEL 9 using chage, login.defs, and PAM for compliance and security.
+Description: Configure password expiration, aging policies, and account inactivity on RHEL using chage, login.defs, and PAM for compliance and security.
 
 ---
 
-Password aging forces users to change their passwords periodically. Whether you think this is good security practice or just annoying (there is a real debate), many compliance frameworks still require it. RHEL 9 gives you granular control over when passwords expire, how often they can be changed, and what happens when an account goes inactive.
+Password aging forces users to change their passwords periodically. Whether you think this is good security practice or just annoying (there is a real debate), many compliance frameworks still require it. RHEL gives you granular control over when passwords expire, how often they can be changed, and what happens when an account goes inactive.
 
 ## Password Aging Parameters
 
@@ -276,4 +276,4 @@ INACTIVE        35
 
 ## Wrapping Up
 
-Password aging is straightforward to configure on RHEL 9 but requires attention to both the system defaults in `/etc/login.defs` and per-user settings via `chage`. Remember that new defaults only apply to newly created users, so you need to update existing accounts separately. Exclude service accounts from aging policies, monitor for expiring passwords proactively, and align your settings with whatever compliance framework applies to your environment.
+Password aging is straightforward to configure on RHEL but requires attention to both the system defaults in `/etc/login.defs` and per-user settings via `chage`. Remember that new defaults only apply to newly created users, so you need to update existing accounts separately. Exclude service accounts from aging policies, monitor for expiring passwords proactively, and align your settings with whatever compliance framework applies to your environment.

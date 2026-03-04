@@ -1,10 +1,10 @@
-# How to Join a RHEL 9 Samba Server to an Active Directory Domain
+# How to Join a RHEL Samba Server to an Active Directory Domain
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Samba, Active Directory, Linux
 
-Description: Join a RHEL 9 Samba file server to a Windows Active Directory domain using realm and Samba's net ads commands for integrated authentication.
+Description: Join a RHEL Samba file server to a Windows Active Directory domain using realm and Samba's net ads commands for integrated authentication.
 
 ---
 
@@ -14,7 +14,7 @@ Joining your Samba server to Active Directory means users authenticate with thei
 
 ## Prerequisites
 
-- RHEL 9 server with Samba installed
+- RHEL server with Samba installed
 - A Windows Active Directory domain
 - DNS configured to resolve the AD domain (the RHEL server should use the AD DNS server)
 - Time synchronized with the AD domain controller
@@ -144,7 +144,7 @@ smbclient //localhost/shared -U 'jdoe' -W EXAMPLE
 
 ```mermaid
 sequenceDiagram
-    participant RHEL as RHEL 9 Server
+    participant RHEL as RHEL Server
     participant DNS as AD DNS
     participant DC as Domain Controller
 
@@ -207,4 +207,4 @@ Common issues:
 
 ## Wrap-Up
 
-Joining a RHEL 9 Samba server to Active Directory gives you seamless authentication for file sharing. Users log in with their domain credentials, and permissions map to AD groups. The key steps are DNS configuration, time sync, domain join, and proper ID mapping in smb.conf. Once configured, the Samba server behaves as a member server in the AD domain, just like a Windows file server would.
+Joining a RHEL Samba server to Active Directory gives you seamless authentication for file sharing. Users log in with their domain credentials, and permissions map to AD groups. The key steps are DNS configuration, time sync, domain join, and proper ID mapping in smb.conf. Once configured, the Samba server behaves as a member server in the AD domain, just like a Windows file server would.

@@ -1,16 +1,16 @@
-# How to Configure Persistent Logging with systemd-journald on RHEL 9
+# How to Configure Persistent Logging with systemd-journald on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, journald, Persistent Logging, systemd, Linux
 
-Description: Learn how to configure systemd-journald on RHEL 9 to store logs persistently across reboots, manage journal size limits, and clean up old log data with vacuum commands.
+Description: Learn how to configure systemd-journald on RHEL to store logs persistently across reboots, manage journal size limits, and clean up old log data with vacuum commands.
 
 ---
 
 ## The Problem with Default Journal Storage
 
-By default on RHEL 9, the systemd journal stores logs persistently if the directory `/var/log/journal/` exists, which it typically does on standard installations. However, this is not guaranteed on every setup, especially minimal installations or custom images. If the directory does not exist, journald falls back to storing logs in `/run/log/journal/`, which is a tmpfs filesystem. That means your logs disappear on every reboot.
+By default on RHEL, the systemd journal stores logs persistently if the directory `/var/log/journal/` exists, which it typically does on standard installations. However, this is not guaranteed on every setup, especially minimal installations or custom images. If the directory does not exist, journald falls back to storing logs in `/run/log/journal/`, which is a tmpfs filesystem. That means your logs disappear on every reboot.
 
 If you have ever rebooted a server to fix an issue, only to realize the pre-reboot logs are gone because journald was not configured for persistent storage, you know how frustrating this can be. Let me walk you through making sure that does not happen again.
 
@@ -85,7 +85,7 @@ sudo sed -i 's/^#Storage=auto/Storage=persistent/' /etc/systemd/journald.conf
 Now create the storage directory if it does not already exist and restart journald:
 
 ```bash
-# Create the persistent journal directory (usually already exists on RHEL 9)
+# Create the persistent journal directory (usually already exists on RHEL)
 sudo mkdir -p /var/log/journal
 
 # Restart journald to apply the new configuration
@@ -201,9 +201,9 @@ journalctl --list-boots
 You should see multiple entries if the system has been rebooted since enabling persistent storage:
 
 ```
--2 abc123... Wed 2026-03-02 08:00:00 UTC—Wed 2026-03-02 23:59:00 UTC
--1 def456... Thu 2026-03-03 08:00:00 UTC—Thu 2026-03-03 23:59:00 UTC
- 0 ghi789... Fri 2026-03-04 08:00:00 UTC—Fri 2026-03-04 10:30:00 UTC
+-2 abc123... Wed 2026-03-02 08:00:00 UTC-Wed 2026-03-02 23:59:00 UTC
+-1 def456... Thu 2026-03-03 08:00:00 UTC-Thu 2026-03-03 23:59:00 UTC
+ 0 ghi789... Fri 2026-03-04 08:00:00 UTC-Fri 2026-03-04 10:30:00 UTC
 ```
 
 To view logs from a previous boot:
@@ -220,7 +220,7 @@ This is incredibly valuable for troubleshooting. If a server crashed and reboote
 
 ## Forwarding to rsyslog
 
-Persistent journald storage does not replace rsyslog. Both can run simultaneously. By default on RHEL 9, journald forwards messages to rsyslog, which writes them to traditional text files in `/var/log/`.
+Persistent journald storage does not replace rsyslog. Both can run simultaneously. By default on RHEL, journald forwards messages to rsyslog, which writes them to traditional text files in `/var/log/`.
 
 Check that forwarding is enabled:
 
@@ -284,7 +284,7 @@ ls -lh /var/log/journal/$(cat /etc/machine-id)/
 
 ## Practical Tips
 
-- **Set `Storage=persistent` explicitly** on every server, even if RHEL 9 typically creates `/var/log/journal/` by default. Being explicit prevents surprises.
+- **Set `Storage=persistent` explicitly** on every server, even if RHEL typically creates `/var/log/journal/` by default. Being explicit prevents surprises.
 - **Size your journal limits based on the `/var` partition size.** On servers with a small `/var`, keep `SystemMaxUse` conservative (500MB-1GB). On servers with plenty of space, 2-4GB is reasonable.
 - **Use `--vacuum-time` rather than `--vacuum-size` for routine cleanup.** Time-based cleanup is more predictable and ensures you always have at least N days of history.
 - **Check `journalctl --disk-usage` periodically**, especially on servers running verbose applications.
@@ -292,4 +292,4 @@ ls -lh /var/log/journal/$(cat /etc/machine-id)/
 
 ## Summary
 
-Persistent logging with systemd-journald on RHEL 9 is essential for any production server. Set `Storage=persistent` in `/etc/systemd/journald.conf`, configure sensible size limits with `SystemMaxUse` and `SystemKeepFree`, and use vacuum commands to manage old data. With persistent logs, you can always look back at previous boots to understand what happened, which makes troubleshooting far more effective than trying to reproduce an issue from memory.
+Persistent logging with systemd-journald on RHEL is essential for any production server. Set `Storage=persistent` in `/etc/systemd/journald.conf`, configure sensible size limits with `SystemMaxUse` and `SystemKeepFree`, and use vacuum commands to manage old data. With persistent logs, you can always look back at previous boots to understand what happened, which makes troubleshooting far more effective than trying to reproduce an issue from memory.

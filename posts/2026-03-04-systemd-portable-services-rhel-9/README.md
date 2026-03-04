@@ -1,10 +1,10 @@
-# How to Configure systemd Portable Services on RHEL 9
+# How to Configure systemd Portable Services on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Portable Services, Containers, Linux
 
-Description: Learn how to use systemd portable services on RHEL 9 to deploy self-contained service images that combine an application with its dependencies.
+Description: Learn how to use systemd portable services on RHEL to deploy self-contained service images that combine an application with its dependencies.
 
 ---
 
@@ -126,4 +126,4 @@ portablectl is-attached myservice.raw
 
 ## Summary
 
-You have configured systemd portable services on RHEL 9. Portable services provide a lightweight way to deploy self-contained applications with full systemd integration, including journaling, resource control, and socket activation. They are simpler than containers while still providing filesystem isolation and clean deployment semantics.
+You have configured systemd portable services on RHEL. Portable services provide a lightweight way to deploy self-contained applications with full systemd integration, including journaling, resource control, and socket activation. They are simpler than containers while still providing filesystem isolation and clean deployment semantics.

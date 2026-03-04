@@ -1,18 +1,18 @@
-# How to Configure FIPS 140-3 Compliant Cryptography on RHEL 9
+# How to Configure FIPS 140-3 Compliant Cryptography on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FIPS 140-3, Cryptography, Security, Linux
 
-Description: Configure RHEL 9 for FIPS 140-3 compliant cryptography, understanding the differences from FIPS 140-2 and ensuring all cryptographic modules meet the latest standard.
+Description: Configure RHEL for FIPS 140-3 compliant cryptography, understanding the differences from FIPS 140-2 and ensuring all cryptographic modules meet the latest standard.
 
 ---
 
-RHEL 9 is the first major Red Hat release to ship with FIPS 140-3 validated cryptographic modules. This is a significant upgrade from FIPS 140-2 that was used in RHEL 8. If your organization requires FIPS compliance, understanding what changed and how to properly configure it on RHEL 9 matters.
+RHEL is the first major Red Hat release to ship with FIPS 140-3 validated cryptographic modules. This is a significant upgrade from FIPS 140-2 that was used in RHEL 8. If your organization requires FIPS compliance, understanding what changed and how to properly configure it on RHEL matters.
 
 ## FIPS 140-3 vs FIPS 140-2
 
-FIPS 140-3 replaces FIPS 140-2 and aligns with ISO/IEC 19790. The key differences that affect RHEL 9 configuration:
+FIPS 140-3 replaces FIPS 140-2 and aligns with ISO/IEC 19790. The key differences that affect RHEL configuration:
 
 ```mermaid
 flowchart LR
@@ -28,7 +28,7 @@ flowchart LR
 - **Key management**: Stricter requirements for key generation and storage
 - **Module boundaries**: Clearer definition of what constitutes the cryptographic boundary
 
-## Check RHEL 9 FIPS Module Validation Status
+## Check RHEL FIPS Module Validation Status
 
 ```bash
 # Check the OpenSSL FIPS module version
@@ -47,7 +47,7 @@ cat /proc/crypto | grep -A5 "name.*aes"
 ## Enable FIPS 140-3 Mode
 
 ```bash
-# Enable FIPS mode (this uses FIPS 140-3 modules on RHEL 9)
+# Enable FIPS mode (this uses FIPS 140-3 modules on RHEL)
 fips-mode-setup --enable
 systemctl reboot
 
@@ -172,7 +172,7 @@ openssl list -providers 2>&1 | grep -A3 "fips"
 ### GnuTLS
 
 ```bash
-# GnuTLS on RHEL 9 follows the system crypto policy
+# GnuTLS on RHEL follows the system crypto policy
 # Verify GnuTLS FIPS status
 gnutls-cli --list | grep -i fips
 ```
@@ -233,4 +233,4 @@ echo "OpenSSL: $(openssl version)" >> /var/log/compliance/fips-config.txt
 rpm -qa | grep -E "openssl|gnutls|nss|libgcrypt" >> /var/log/compliance/fips-config.txt
 ```
 
-FIPS 140-3 on RHEL 9 is more robust than FIPS 140-2 was on RHEL 8. The system-wide crypto policy does most of the heavy lifting, but you still need to verify that every application on the system is using the right algorithms. Test thoroughly, document everything, and monitor continuously.
+FIPS 140-3 on RHEL is more robust than FIPS 140-2 was on RHEL 8. The system-wide crypto policy does most of the heavy lifting, but you still need to verify that every application on the system is using the right algorithms. Test thoroughly, document everything, and monitor continuously.

@@ -1,10 +1,10 @@
-# How to Simulate Network Latency and Packet Loss with tc netem on RHEL 9
+# How to Simulate Network Latency and Packet Loss with tc netem on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, tc netem, Latency, Packet Loss, Linux
 
-Description: Learn how to use tc netem on RHEL 9 to simulate real-world network conditions like latency, jitter, packet loss, duplication, and reordering for application testing and chaos engineering.
+Description: Learn how to use tc netem on RHEL to simulate real-world network conditions like latency, jitter, packet loss, duplication, and reordering for application testing and chaos engineering.
 
 ---
 
@@ -225,4 +225,4 @@ sudo tc qdisc del dev ens192 root
 
 ## Wrapping Up
 
-tc netem on RHEL 9 is the standard tool for simulating network impairments. Start with simple latency tests, add jitter for realism, and include packet loss for resilience testing. Use the normal distribution for latency jitter, add correlation for bursty patterns, and always remove the rules when done. Combined with network namespaces, you can create isolated test environments that simulate any network condition without affecting your production traffic.
+tc netem on RHEL is the standard tool for simulating network impairments. Start with simple latency tests, add jitter for realism, and include packet loss for resilience testing. Use the normal distribution for latency jitter, add correlation for bursty patterns, and always remove the rules when done. Combined with network namespaces, you can create isolated test environments that simulate any network condition without affecting your production traffic.

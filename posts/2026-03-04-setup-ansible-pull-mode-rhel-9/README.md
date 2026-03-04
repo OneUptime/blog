@@ -1,10 +1,10 @@
-# How to Set Up Ansible Pull Mode on RHEL 9
+# How to Set Up Ansible Pull Mode on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, Pull Mode, Git, Automation, Linux
 
-Description: Configure Ansible pull mode on RHEL 9 so servers pull their own configuration from a Git repository instead of being pushed to.
+Description: Configure Ansible pull mode on RHEL so servers pull their own configuration from a Git repository instead of being pushed to.
 
 ---
 

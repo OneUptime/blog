@@ -1,10 +1,10 @@
-# How to Monitor Disk Quota Usage and Generate Reports on RHEL 9
+# How to Monitor Disk Quota Usage and Generate Reports on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Quotas, Monitoring, Reports, Linux
 
-Description: Learn how to monitor disk quota usage and generate automated reports on RHEL 9 to stay ahead of storage problems before they become emergencies.
+Description: Learn how to monitor disk quota usage and generate automated reports on RHEL to stay ahead of storage problems before they become emergencies.
 
 ---
 
@@ -194,7 +194,7 @@ rm -f "$REPORT_FILE"
 
 ## Monitoring with warnquota
 
-RHEL 9 includes `warnquota`, a built-in tool for sending quota warnings. Configure it:
+RHEL includes `warnquota`, a built-in tool for sending quota warnings. Configure it:
 
 ```bash
 # Edit the warnquota configuration
@@ -285,4 +285,4 @@ repquota -us /home | tail -n +5 | sort -k3 -rn | head -10
 
 ## Summary
 
-Quota monitoring on RHEL 9 involves a mix of built-in tools (`repquota`, `quota`, `xfs_quota`, `warnquota`) and custom scripts. The key is to be proactive: warn users before they hit hard limits, track trends over time, and give admins a daily summary. Combine these approaches and you will spend a lot less time firefighting storage emergencies.
+Quota monitoring on RHEL involves a mix of built-in tools (`repquota`, `quota`, `xfs_quota`, `warnquota`) and custom scripts. The key is to be proactive: warn users before they hit hard limits, track trends over time, and give admins a daily summary. Combine these approaches and you will spend a lot less time firefighting storage emergencies.

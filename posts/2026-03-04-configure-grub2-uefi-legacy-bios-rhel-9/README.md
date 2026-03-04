@@ -1,16 +1,16 @@
-# How to Configure GRUB2 for UEFI and Legacy BIOS Systems on RHEL 9
+# How to Configure GRUB2 for UEFI and Legacy BIOS Systems on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GRUB2, UEFI, BIOS, Linux
 
-Description: A guide to understanding and configuring GRUB2 on both UEFI and legacy BIOS systems running RHEL 9, covering the key differences, file locations, and management commands for each.
+Description: A guide to understanding and configuring GRUB2 on both UEFI and legacy BIOS systems running RHEL, covering the key differences, file locations, and management commands for each.
 
 ---
 
 ## UEFI vs Legacy BIOS Boot
 
-Modern servers support two firmware types: the older BIOS (Basic Input/Output System) and the newer UEFI (Unified Extensible Firmware Interface). RHEL 9 supports both, but the GRUB2 configuration differs significantly between them.
+Modern servers support two firmware types: the older BIOS (Basic Input/Output System) and the newer UEFI (Unified Extensible Firmware Interface). RHEL supports both, but the GRUB2 configuration differs significantly between them.
 
 ```mermaid
 flowchart TD
@@ -110,7 +110,7 @@ sudo efibootmgr -o 0001,0002,0003
 sudo efibootmgr -b 0003 -B
 
 # Create a new EFI boot entry
-sudo efibootmgr -c -d /dev/sda -p 1 -L "RHEL 9" -l '\EFI\redhat\shimx64.efi'
+sudo efibootmgr -c -d /dev/sda -p 1 -L "RHEL" -l '\EFI\redhat\shimx64.efi'
 ```
 
 ### Reinstalling GRUB2 for UEFI
@@ -125,7 +125,7 @@ sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 
 ## UEFI Secure Boot
 
-RHEL 9 supports UEFI Secure Boot through the shim boot loader, which is signed by Microsoft and in turn loads the Red Hat-signed GRUB2.
+RHEL supports UEFI Secure Boot through the shim boot loader, which is signed by Microsoft and in turn loads the Red Hat-signed GRUB2.
 
 ```bash
 # Check if Secure Boot is enabled

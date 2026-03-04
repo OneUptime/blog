@@ -1,10 +1,10 @@
-# How to Monitor and Manage Thin Pool Utilization on RHEL 9
+# How to Monitor and Manage Thin Pool Utilization on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Thin Pool, Monitoring, Linux
 
-Description: Learn how to effectively monitor and manage LVM thin pool utilization on RHEL 9 to prevent pool exhaustion and keep your storage running smoothly.
+Description: Learn how to effectively monitor and manage LVM thin pool utilization on RHEL to prevent pool exhaustion and keep your storage running smoothly.
 
 ---
 
@@ -256,4 +256,4 @@ echo "0 * * * * /usr/local/bin/thinpool-logger.sh" >> /var/spool/cron/root
 
 ## Summary
 
-Monitoring thin pool utilization on RHEL 9 is essential to prevent storage outages. Monitor both data and metadata fill percentages. Set up automated alerts at 80% for data and 70% for metadata. Configure LVM auto-extension as a safety net. Use fstrim to reclaim space from deleted files. And always have a plan for extending the pool before it hits capacity.
+Monitoring thin pool utilization on RHEL is essential to prevent storage outages. Monitor both data and metadata fill percentages. Set up automated alerts at 80% for data and 70% for metadata. Configure LVM auto-extension as a safety net. Use fstrim to reclaim space from deleted files. And always have a plan for extending the pool before it hits capacity.

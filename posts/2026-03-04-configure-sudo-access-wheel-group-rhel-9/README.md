@@ -1,14 +1,14 @@
-# How to Configure Sudo Access on RHEL 9 Using the Wheel Group
+# How to Configure Sudo Access on RHEL Using the Wheel Group
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, sudo, Wheel Group, Security, Linux
 
-Description: Learn how to grant and manage sudo privileges on RHEL 9 using the wheel group, the standard approach for delegating administrative access.
+Description: Learn how to grant and manage sudo privileges on RHEL using the wheel group, the standard approach for delegating administrative access.
 
 ---
 
-On RHEL 9, the wheel group is the default mechanism for granting sudo access. If a user is in the wheel group, they can run commands as root using sudo. It is a simple and effective way to control who gets administrative privileges.
+On RHEL, the wheel group is the default mechanism for granting sudo access. If a user is in the wheel group, they can run commands as root using sudo. It is a simple and effective way to control who gets administrative privileges.
 
 ## How It Works
 
@@ -137,7 +137,7 @@ sudo visudo -f /etc/sudoers.d/custom-roles
 
 ## PAM Integration with the Wheel Group
 
-RHEL 9 also has a PAM module that can restrict `su` access to wheel group members:
+RHEL also has a PAM module that can restrict `su` access to wheel group members:
 
 ```bash
 # Check if pam_wheel is configured for su
@@ -208,4 +208,4 @@ done
 
 ## Wrapping Up
 
-The wheel group is the simplest and most standard way to manage sudo access on RHEL 9. Add users to the group, and they get sudo access. Remove them, and they lose it. For most environments, this is all you need. When you need finer control, create additional groups with specific command restrictions. Just make sure you audit membership regularly and require password authentication for sudo.
+The wheel group is the simplest and most standard way to manage sudo access on RHEL. Add users to the group, and they get sudo access. Remove them, and they lose it. For most environments, this is all you need. When you need finer control, create additional groups with specific command restrictions. Just make sure you audit membership regularly and require password authentication for sudo.

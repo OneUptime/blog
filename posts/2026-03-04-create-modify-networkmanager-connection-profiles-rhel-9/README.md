@@ -1,14 +1,14 @@
-# How to Create and Modify NetworkManager Connection Profiles on RHEL 9
+# How to Create and Modify NetworkManager Connection Profiles on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NetworkManager, Connection Profiles, Linux
 
-Description: Learn how to create, modify, clone, and manage NetworkManager connection profiles on RHEL 9, including keyfile format details and best practices for profile management.
+Description: Learn how to create, modify, clone, and manage NetworkManager connection profiles on RHEL, including keyfile format details and best practices for profile management.
 
 ---
 
-NetworkManager on RHEL 9 uses connection profiles to define how network interfaces should be configured. Each profile is a set of properties that describe an IP configuration, DNS settings, security parameters, and more. Understanding how to create and manage these profiles is fundamental to RHEL 9 networking.
+NetworkManager on RHEL uses connection profiles to define how network interfaces should be configured. Each profile is a set of properties that describe an IP configuration, DNS settings, security parameters, and more. Understanding how to create and manage these profiles is fundamental to RHEL networking.
 
 ## What is a Connection Profile?
 
@@ -282,4 +282,4 @@ nmcli connection modify prod-network connection.zone internal
 
 ## Wrapping Up
 
-Connection profiles are the building blocks of RHEL 9 networking. Whether you create them with nmcli, write them as keyfiles, or use nmtui, the result is the same: a `.nmconnection` file that NetworkManager uses to configure your interfaces. Mastering profile management gives you the flexibility to maintain multiple configurations, switch between them easily, and keep your network settings version-controlled and reproducible.
+Connection profiles are the building blocks of RHEL networking. Whether you create them with nmcli, write them as keyfiles, or use nmtui, the result is the same: a `.nmconnection` file that NetworkManager uses to configure your interfaces. Mastering profile management gives you the flexibility to maintain multiple configurations, switch between them easily, and keep your network settings version-controlled and reproducible.

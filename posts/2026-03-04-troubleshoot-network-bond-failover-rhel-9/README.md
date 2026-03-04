@@ -1,10 +1,10 @@
-# How to Troubleshoot Network Bond Failover Issues on RHEL 9
+# How to Troubleshoot Network Bond Failover Issues on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Bonding, Failover, Troubleshooting, Linux
 
-Description: A troubleshooting guide for diagnosing and fixing common network bond failover problems on RHEL 9, from link detection failures to gratuitous ARP issues.
+Description: A troubleshooting guide for diagnosing and fixing common network bond failover problems on RHEL, from link detection failures to gratuitous ARP issues.
 
 ---
 

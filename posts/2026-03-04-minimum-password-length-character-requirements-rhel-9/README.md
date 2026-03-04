@@ -1,14 +1,14 @@
-# How to Configure Minimum Password Length and Character Requirements on RHEL 9
+# How to Configure Minimum Password Length and Character Requirements on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Password Policy, Security, Linux
 
-Description: Configure minimum password length and character class requirements on RHEL 9 using pam_pwquality and login.defs for a robust password policy.
+Description: Configure minimum password length and character class requirements on RHEL using pam_pwquality and login.defs for a robust password policy.
 
 ---
 
-Setting the right minimum password length is one of the simplest and most effective things you can do for system security. RHEL 9 gives you two places to configure this: `pam_pwquality` for quality enforcement during password changes, and `/etc/login.defs` for system-wide defaults. Getting both aligned is important.
+Setting the right minimum password length is one of the simplest and most effective things you can do for system security. RHEL gives you two places to configure this: `pam_pwquality` for quality enforcement during password changes, and `/etc/login.defs` for system-wide defaults. Getting both aligned is important.
 
 ## Where Password Length Is Configured
 

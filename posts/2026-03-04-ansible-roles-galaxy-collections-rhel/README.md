@@ -136,7 +136,7 @@ base_selinux_state: enforcing
 ---
 galaxy_info:
   author: your-name
-  description: Base configuration for RHEL 9 servers
+  description: Base configuration for RHEL servers
   license: MIT
   min_ansible_version: "2.14"
   platforms:

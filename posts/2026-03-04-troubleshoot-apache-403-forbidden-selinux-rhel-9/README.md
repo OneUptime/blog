@@ -1,16 +1,16 @@
-# How to Troubleshoot Apache 403 Forbidden Errors and SELinux on RHEL 9
+# How to Troubleshoot Apache 403 Forbidden Errors and SELinux on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, SELinux, 403, Troubleshooting, Linux
 
-Description: A troubleshooting guide for the most common causes of 403 Forbidden errors on Apache httpd in RHEL 9, with a focus on SELinux.
+Description: A troubleshooting guide for the most common causes of 403 Forbidden errors on Apache httpd in RHEL, with a focus on SELinux.
 
 ---
 
 ## The Dreaded 403
 
-You have Apache running, your files are in place, but the browser shows "403 Forbidden". This is one of the most common Apache issues on RHEL 9, and SELinux is usually the culprit people miss. Let us walk through every cause and how to fix it.
+You have Apache running, your files are in place, but the browser shows "403 Forbidden". This is one of the most common Apache issues on RHEL, and SELinux is usually the culprit people miss. Let us walk through every cause and how to fix it.
 
 ## The Usual Suspects
 
@@ -219,4 +219,4 @@ Disabling SELinux removes an entire layer of security. Take the time to find the
 
 ## Wrap-Up
 
-When you hit a 403 on RHEL 9, work through the issue systematically: permissions first, then Apache config, then SELinux contexts, then SELinux booleans. The audit log with `sealert` will usually tell you exactly what to do. Keep SELinux in enforcing mode and learn to work with it rather than fighting against it.
+When you hit a 403 on RHEL, work through the issue systematically: permissions first, then Apache config, then SELinux contexts, then SELinux booleans. The audit log with `sealert` will usually tell you exactly what to do. Keep SELinux in enforcing mode and learn to work with it rather than fighting against it.

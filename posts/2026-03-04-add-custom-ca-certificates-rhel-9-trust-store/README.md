@@ -1,16 +1,16 @@
-# How to Add Custom CA Certificates to the RHEL 9 Trust Store
+# How to Add Custom CA Certificates to the RHEL Trust Store
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CA Certificates, Trust Store, Security, Linux
 
-Description: A practical guide to adding custom and internal CA certificates to the RHEL 9 system trust store so all applications trust your internal PKI.
+Description: A practical guide to adding custom and internal CA certificates to the RHEL system trust store so all applications trust your internal PKI.
 
 ---
 
-If your organization runs an internal certificate authority, you need every RHEL 9 server to trust it. Otherwise, internal services using certificates signed by your CA will trigger verification failures. Tools like curl, wget, Python, Java, and anything that makes TLS connections will refuse to connect.
+If your organization runs an internal certificate authority, you need every RHEL server to trust it. Otherwise, internal services using certificates signed by your CA will trigger verification failures. Tools like curl, wget, Python, Java, and anything that makes TLS connections will refuse to connect.
 
-This guide shows you exactly how to add custom CA certificates to the RHEL 9 trust store and verify that everything works.
+This guide shows you exactly how to add custom CA certificates to the RHEL trust store and verify that everything works.
 
 ## Why You Need This
 
@@ -83,7 +83,7 @@ Only add CA certificates to the trust store, never add individual server certifi
 
 ## Step 3: Copy to the Anchors Directory
 
-RHEL 9 uses a specific directory for custom trusted CA certificates:
+RHEL uses a specific directory for custom trusted CA certificates:
 
 ```bash
 # Copy the CA certificate to the trust anchors directory
@@ -256,4 +256,4 @@ sudo update-ca-trust
 
 ## Wrapping Up
 
-Adding custom CA certificates to RHEL 9 is straightforward: drop the PEM file in `/etc/pki/ca-trust/source/anchors/`, run `update-ca-trust`, and verify. The centralized trust store model means one change propagates to OpenSSL, GnuTLS, Java, and all the tools that depend on them. Just remember to automate this across your fleet and plan for CA certificate rotation ahead of time.
+Adding custom CA certificates to RHEL is straightforward: drop the PEM file in `/etc/pki/ca-trust/source/anchors/`, run `update-ca-trust`, and verify. The centralized trust store model means one change propagates to OpenSSL, GnuTLS, Java, and all the tools that depend on them. Just remember to automate this across your fleet and plan for CA certificate rotation ahead of time.

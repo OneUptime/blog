@@ -1,14 +1,14 @@
-# How to Troubleshoot Time Synchronization Issues with chrony on RHEL 9
+# How to Troubleshoot Time Synchronization Issues with chrony on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, chrony, NTP, Troubleshooting, Linux
 
-Description: Diagnose and fix common time synchronization problems with chrony on RHEL 9, from unreachable servers to large clock offsets.
+Description: Diagnose and fix common time synchronization problems with chrony on RHEL, from unreachable servers to large clock offsets.
 
 ---
 
-Time synchronization problems show up in the strangest ways. Kerberos tickets expire instantly, two-factor authentication tokens fail, database replication breaks, and cron jobs fire at the wrong moment. When time is off, everything is off. Here is how to systematically track down and fix chrony sync issues on RHEL 9.
+Time synchronization problems show up in the strangest ways. Kerberos tickets expire instantly, two-factor authentication tokens fail, database replication breaks, and cron jobs fire at the wrong moment. When time is off, everything is off. Here is how to systematically track down and fix chrony sync issues on RHEL.
 
 ## Quick Health Check
 
@@ -177,7 +177,7 @@ sudo systemctl stop systemd-timesyncd
 sudo systemctl disable systemd-timesyncd
 ```
 
-RHEL 9 should only have chronyd, but custom installations or third-party repos sometimes introduce conflicts.
+RHEL should only have chronyd, but custom installations or third-party repos sometimes introduce conflicts.
 
 ## Step 8: Analyze the Drift File
 
@@ -287,4 +287,4 @@ You may need to add more sources so chrony can determine which ones are correct 
 
 ## Wrapping Up
 
-Time sync troubleshooting on RHEL 9 follows a logical path: verify the service is running, check source reachability, verify firewall rules, look at the clock offset, and check for conflicts. `chronyc sources` and `chronyc tracking` are your two best friends here. Most issues come down to DNS problems, firewall rules, or the clock being too far off for automatic correction.
+Time sync troubleshooting on RHEL follows a logical path: verify the service is running, check source reachability, verify firewall rules, look at the clock offset, and check for conflicts. `chronyc sources` and `chronyc tracking` are your two best friends here. Most issues come down to DNS problems, firewall rules, or the clock being too far off for automatic correction.

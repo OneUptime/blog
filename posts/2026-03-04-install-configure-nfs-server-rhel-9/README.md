@@ -1,22 +1,22 @@
-# How to Install and Configure an NFS Server on RHEL 9
+# How to Install and Configure an NFS Server on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NFS, Server, Storage, Linux
 
-Description: Set up an NFS server on RHEL 9 from scratch, covering package installation, export configuration, firewall rules, and basic security settings.
+Description: Set up an NFS server on RHEL from scratch, covering package installation, export configuration, firewall rules, and basic security settings.
 
 ---
 
 ## What NFS Does
 
-NFS (Network File System) lets you share directories over the network so that remote machines can mount and access them as if they were local storage. It has been a staple of Unix/Linux environments for decades, and RHEL 9 ships with full NFSv4 support.
+NFS (Network File System) lets you share directories over the network so that remote machines can mount and access them as if they were local storage. It has been a staple of Unix/Linux environments for decades, and RHEL ships with full NFSv4 support.
 
 NFS is commonly used for shared home directories, centralized log storage, application data sharing between cluster nodes, and development environments.
 
 ## Prerequisites
 
-- RHEL 9 with root access
+- RHEL with root access
 - Network connectivity between the server and intended clients
 - A directory to export
 
@@ -147,7 +147,7 @@ sudo exportfs -arv
 
 ## Checking NFS Version
 
-RHEL 9 uses NFSv4 by default. You can verify the active versions:
+RHEL uses NFSv4 by default. You can verify the active versions:
 
 ```bash
 # Check which NFS versions are enabled
@@ -193,4 +193,4 @@ sudo restorecon -Rv /srv/nfs/shared
 
 ## Wrap-Up
 
-Setting up an NFS server on RHEL 9 is a straightforward process: install the packages, define your exports, open the firewall, and start the service. The defaults are sensible for most use cases, and NFSv4 provides good security and performance out of the box. For production deployments, add Kerberos authentication and tune performance options, both of which are covered in other posts in this series.
+Setting up an NFS server on RHEL is a straightforward process: install the packages, define your exports, open the firewall, and start the service. The defaults are sensible for most use cases, and NFSv4 provides good security and performance out of the box. For production deployments, add Kerberos authentication and tune performance options, both of which are covered in other posts in this series.

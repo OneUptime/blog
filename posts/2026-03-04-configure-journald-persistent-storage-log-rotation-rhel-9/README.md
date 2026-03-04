@@ -1,14 +1,14 @@
-# How to Configure journald Persistent Storage and Log Rotation on RHEL 9
+# How to Configure journald Persistent Storage and Log Rotation on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, journald, systemd, Logging, Linux
 
-Description: Learn how to configure systemd-journald for persistent log storage and set up log rotation policies to manage disk space on RHEL 9.
+Description: Learn how to configure systemd-journald for persistent log storage and set up log rotation policies to manage disk space on RHEL.
 
 ---
 
-By default on RHEL 9, systemd-journald stores logs persistently in `/var/log/journal/`. However, understanding how to control storage behavior, set size limits, and configure rotation is important for keeping your system running smoothly. Without proper limits, journal logs can consume significant disk space over time.
+By default on RHEL, systemd-journald stores logs persistently in `/var/log/journal/`. However, understanding how to control storage behavior, set size limits, and configure rotation is important for keeping your system running smoothly. Without proper limits, journal logs can consume significant disk space over time.
 
 ## How journald Storage Works
 
@@ -33,7 +33,7 @@ journald has four storage modes:
 
 ## Step 1: Enable Persistent Storage
 
-On RHEL 9, persistent storage is the default. To verify or explicitly enable it:
+On RHEL, persistent storage is the default. To verify or explicitly enable it:
 
 ```bash
 # Check if the persistent journal directory exists
@@ -237,4 +237,4 @@ RuntimeKeepFree=100M
 
 ## Summary
 
-Configuring journald persistent storage and rotation on RHEL 9 ensures your logs survive reboots while keeping disk usage under control. The key settings are `Storage=persistent` for reliable log keeping, `SystemMaxUse` and `SystemMaxFileSize` for disk limits, and `MaxRetentionSec` for time-based retention. Regular use of `journalctl --vacuum-time` and `journalctl --vacuum-size` helps with manual cleanup when needed.
+Configuring journald persistent storage and rotation on RHEL ensures your logs survive reboots while keeping disk usage under control. The key settings are `Storage=persistent` for reliable log keeping, `SystemMaxUse` and `SystemMaxFileSize` for disk limits, and `MaxRetentionSec` for time-based retention. Regular use of `journalctl --vacuum-time` and `journalctl --vacuum-size` helps with manual cleanup when needed.

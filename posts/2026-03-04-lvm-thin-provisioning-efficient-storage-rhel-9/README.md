@@ -1,10 +1,10 @@
-# How to Set Up LVM Thin Provisioning for Efficient Storage Allocation on RHEL 9
+# How to Set Up LVM Thin Provisioning for Efficient Storage Allocation on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Thin Provisioning, Linux
 
-Description: Learn how to set up LVM thin provisioning on RHEL 9 to allocate storage efficiently and avoid wasting disk space on unused capacity.
+Description: Learn how to set up LVM thin provisioning on RHEL to allocate storage efficiently and avoid wasting disk space on unused capacity.
 
 ---
 
@@ -32,7 +32,7 @@ Make sure you have free space in your volume group:
 vgs
 ```
 
-You need the `device-mapper-persistent-data` and `lvm2` packages (installed by default on RHEL 9):
+You need the `device-mapper-persistent-data` and `lvm2` packages (installed by default on RHEL):
 
 ```bash
 # Verify packages
@@ -182,7 +182,7 @@ fstrim -v /data/db
 fstrim -v /data/app
 ```
 
-Schedule it with a systemd timer (RHEL 9 includes `fstrim.timer`):
+Schedule it with a systemd timer (RHEL includes `fstrim.timer`):
 
 ```bash
 # Enable the weekly fstrim timer
@@ -200,4 +200,4 @@ You cannot convert a thick LV to thin in place. You need to:
 
 ## Summary
 
-LVM thin provisioning on RHEL 9 lets you allocate virtual storage that exceeds physical capacity, with space consumed only as data is written. Set up a thin pool, create thin volumes from it, and monitor pool utilization closely. Enable discard support so deleted files return space to the pool. The key to success with thin provisioning is vigilant monitoring and having a plan to extend the pool before it fills up.
+LVM thin provisioning on RHEL lets you allocate virtual storage that exceeds physical capacity, with space consumed only as data is written. Set up a thin pool, create thin volumes from it, and monitor pool utilization closely. Enable discard support so deleted files return space to the pool. The key to success with thin provisioning is vigilant monitoring and having a plan to extend the pool before it fills up.

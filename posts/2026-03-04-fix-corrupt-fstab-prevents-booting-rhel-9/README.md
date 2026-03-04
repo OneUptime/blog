@@ -1,10 +1,10 @@
-# How to Fix a Corrupt /etc/fstab That Prevents Booting on RHEL 9
+# How to Fix a Corrupt /etc/fstab That Prevents Booting on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, fstab, Boot, Recovery, Linux
 
-Description: Learn how to recover a RHEL 9 system that fails to boot due to a corrupt or misconfigured /etc/fstab, using emergency mode, rescue mode, and installation media.
+Description: Learn how to recover a RHEL system that fails to boot due to a corrupt or misconfigured /etc/fstab, using emergency mode, rescue mode, and installation media.
 
 ---
 
@@ -200,7 +200,7 @@ done < /etc/fstab
 findmnt --verify
 ```
 
-The `findmnt --verify` command on RHEL 9 checks fstab entries against actual device properties and reports mismatches.
+The `findmnt --verify` command on RHEL checks fstab entries against actual device properties and reports mismatches.
 
 ## Wrapping Up
 

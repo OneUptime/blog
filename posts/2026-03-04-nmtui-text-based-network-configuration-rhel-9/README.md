@@ -1,10 +1,10 @@
-# How to Use nmtui for Text-Based Network Configuration on RHEL 9
+# How to Use nmtui for Text-Based Network Configuration on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nmtui, Network Configuration, Linux
 
-Description: Learn how to use nmtui, the text-based user interface for NetworkManager, to configure network connections on RHEL 9 without memorizing nmcli syntax.
+Description: Learn how to use nmtui, the text-based user interface for NetworkManager, to configure network connections on RHEL without memorizing nmcli syntax.
 
 ---
 
@@ -12,7 +12,7 @@ Not everyone wants to memorize nmcli syntax, and not every server has a graphica
 
 ## What is nmtui?
 
-nmtui stands for NetworkManager Text User Interface. It is included by default on RHEL 9 as part of the `NetworkManager-tui` package. It provides three main functions:
+nmtui stands for NetworkManager Text User Interface. It is included by default on RHEL as part of the `NetworkManager-tui` package. It provides three main functions:
 
 - Edit a connection
 - Activate a connection
@@ -31,7 +31,7 @@ flowchart LR
 
 ## Installing nmtui
 
-On most RHEL 9 installations, nmtui is already present. If it is missing, install it:
+On most RHEL installations, nmtui is already present. If it is missing, install it:
 
 ```bash
 # Install the NetworkManager TUI package

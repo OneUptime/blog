@@ -1,10 +1,10 @@
-# How to Configure a Bridge with VLAN Filtering on RHEL 9
+# How to Configure a Bridge with VLAN Filtering on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Bridge, VLAN Filtering, Networking, Linux
 
-Description: How to enable and configure VLAN filtering on a Linux bridge in RHEL 9, allowing you to control which VLANs pass through each bridge port.
+Description: How to enable and configure VLAN filtering on a Linux bridge in RHEL, allowing you to control which VLANs pass through each bridge port.
 
 ---
 
@@ -142,9 +142,9 @@ SCRIPT
 chmod +x /etc/NetworkManager/dispatcher.d/99-bridge-vlans
 ```
 
-### Option B: Use nmcli VLAN Options (RHEL 9.2+)
+### Option B: Use nmcli VLAN Options (RHEL.2+)
 
-On newer RHEL 9 versions, nmcli supports bridge port VLAN configuration directly:
+On newer RHEL versions, nmcli supports bridge port VLAN configuration directly:
 
 ```bash
 # Set VLANs on a bridge port via nmcli

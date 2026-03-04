@@ -1,10 +1,10 @@
-# How to Configure chrony for Isolated Networks Without Internet Access on RHEL 9
+# How to Configure chrony for Isolated Networks Without Internet Access on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, chrony, Isolated Network, NTP, Linux
 
-Description: How to configure chrony for time synchronization on air-gapped or isolated RHEL 9 networks that have no internet access.
+Description: How to configure chrony for time synchronization on air-gapped or isolated RHEL networks that have no internet access.
 
 ---
 

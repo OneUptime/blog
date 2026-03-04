@@ -1,18 +1,18 @@
-# How to Install and Configure pip on RHEL 9 Without Breaking System Python
+# How to Install and Configure pip on RHEL Without Breaking System Python
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Python, pip, Package Management, Linux
 
-Description: Learn how to safely install and configure pip on RHEL 9 while protecting the system Python installation from accidental modifications.
+Description: Learn how to safely install and configure pip on RHEL while protecting the system Python installation from accidental modifications.
 
 ---
 
-RHEL 9 takes a protective stance toward its system Python. Running `pip install` outside a virtual environment will fail by default, and that is intentional. This guide shows you how to work with pip properly on RHEL 9.
+RHEL takes a protective stance toward its system Python. Running `pip install` outside a virtual environment will fail by default, and that is intentional. This guide shows you how to work with pip properly on RHEL.
 
-## Understanding the RHEL 9 Python Policy
+## Understanding the RHEL Python Policy
 
-RHEL 9 uses Python 3.9 as the system Python. Many system tools depend on it, so Red Hat introduced PEP 668 support to prevent users from accidentally breaking system packages with pip.
+RHEL uses Python 3.9 as the system Python. Many system tools depend on it, so Red Hat introduced PEP 668 support to prevent users from accidentally breaking system packages with pip.
 
 ```mermaid
 graph TD
@@ -44,14 +44,14 @@ python3.12 -m pip --version
 
 ## The EXTERNALLY-MANAGED Error
 
-If you try to run `pip install` directly on RHEL 9, you will see this error:
+If you try to run `pip install` directly on RHEL, you will see this error:
 
 ```
 error: externally-managed-environment
 This environment is externally managed
 ```
 
-This is expected behavior. RHEL 9 marks the system Python as externally managed to protect it.
+This is expected behavior. RHEL marks the system Python as externally managed to protect it.
 
 ## Safe Way 1: Use Virtual Environments (Recommended)
 
@@ -182,4 +182,4 @@ pip-audit
 
 ## Summary
 
-On RHEL 9, pip is available but intentionally restricted outside virtual environments. Always use venvs for project work, the `--user` flag for personal tools, or pipx for CLI applications. This keeps your system Python healthy and your packages organized.
+On RHEL, pip is available but intentionally restricted outside virtual environments. Always use venvs for project work, the `--user` flag for personal tools, or pipx for CLI applications. This keeps your system Python healthy and your packages organized.

@@ -1,16 +1,16 @@
-# How to Set Up DPDK for High-Performance Packet Processing on RHEL 9
+# How to Set Up DPDK for High-Performance Packet Processing on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DPDK, Networking, High-Performance, Packet Processing, Linux
 
-Description: Learn how to install and configure the Data Plane Development Kit (DPDK) on RHEL 9 for bypassing the kernel network stack and achieving high-performance packet processing.
+Description: Learn how to install and configure the Data Plane Development Kit (DPDK) on RHEL for bypassing the kernel network stack and achieving high-performance packet processing.
 
 ---
 
 The Data Plane Development Kit (DPDK) is a set of libraries and drivers that enables fast packet processing by bypassing the kernel network stack entirely. This is critical for telecom, NFV, and high-frequency networking workloads where every microsecond matters.
 
-In this guide, you will install DPDK on RHEL 9, bind network interfaces to DPDK-compatible drivers, configure hugepages for optimal memory performance, and run a basic test application.
+In this guide, you will install DPDK on RHEL, bind network interfaces to DPDK-compatible drivers, configure hugepages for optimal memory performance, and run a basic test application.
 
 ## Architecture Overview
 
@@ -28,7 +28,7 @@ graph TD
 
 Before starting, make sure you have:
 
-- A RHEL 9 system with a subscription or access to repositories
+- A RHEL system with a subscription or access to repositories
 - At least two network interfaces (one for management, one for DPDK)
 - Root or sudo access
 - A CPU that supports SSE4.2 or higher
@@ -217,4 +217,4 @@ sudo dpdk-testpmd -l 0,1 -n 4 -- -i 2>&1 | tee dpdk_output.log
 
 ## Summary
 
-You have configured DPDK on RHEL 9 for high-performance packet processing. You set up hugepages for memory efficiency, bound a network interface to the VFIO-PCI driver, ran the testpmd verification tool, and built a simple DPDK application. For production workloads, consider tuning NUMA affinity, using 1GB hugepages, and enabling CPU isolation for the best possible throughput.
+You have configured DPDK on RHEL for high-performance packet processing. You set up hugepages for memory efficiency, bound a network interface to the VFIO-PCI driver, ran the testpmd verification tool, and built a simple DPDK application. For production workloads, consider tuning NUMA affinity, using 1GB hugepages, and enabling CPU isolation for the best possible throughput.

@@ -1,16 +1,16 @@
-# How to Build and Install a Custom Kernel on RHEL 9
+# How to Build and Install a Custom Kernel on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Custom Kernel, Build, Linux
 
-Description: A step-by-step guide to downloading, configuring, building, and installing a custom Linux kernel on RHEL 9, including tips on kernel configuration, building RPM packages, and managing custom kernels.
+Description: A step-by-step guide to downloading, configuring, building, and installing a custom Linux kernel on RHEL, including tips on kernel configuration, building RPM packages, and managing custom kernels.
 
 ---
 
 ## When You Need a Custom Kernel
 
-The stock RHEL 9 kernel works for the vast majority of workloads. But there are situations where you need to build your own:
+The stock RHEL kernel works for the vast majority of workloads. But there are situations where you need to build your own:
 
 - You need a kernel feature that is disabled in the default configuration
 - You need a specific upstream kernel version for hardware support
@@ -265,4 +265,4 @@ systemctl --failed
 
 ## Wrapping Up
 
-Building a custom kernel on RHEL 9 is a power-user task that follows a predictable workflow: get the source, configure it, build it, install it, and test it. The RPM-based build approach is strongly recommended because it makes installation and cleanup much cleaner. Always keep a stock RHEL kernel around as your safety net, and test your custom kernel thoroughly before putting it anywhere near production. If you only need to change a few kernel parameters, consider sysctl or kernel command-line arguments first, as they are much simpler than maintaining a custom kernel.
+Building a custom kernel on RHEL is a power-user task that follows a predictable workflow: get the source, configure it, build it, install it, and test it. The RPM-based build approach is strongly recommended because it makes installation and cleanup much cleaner. Always keep a stock RHEL kernel around as your safety net, and test your custom kernel thoroughly before putting it anywhere near production. If you only need to change a few kernel parameters, consider sysctl or kernel command-line arguments first, as they are much simpler than maintaining a custom kernel.

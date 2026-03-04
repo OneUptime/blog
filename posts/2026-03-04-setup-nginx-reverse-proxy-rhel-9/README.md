@@ -1,10 +1,10 @@
-# How to Set Up Nginx as a Reverse Proxy on RHEL 9
+# How to Set Up Nginx as a Reverse Proxy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Reverse Proxy, Linux
 
-Description: How to configure Nginx as a reverse proxy on RHEL 9 to forward client requests to backend application servers.
+Description: How to configure Nginx as a reverse proxy on RHEL to forward client requests to backend application servers.
 
 ---
 
@@ -14,7 +14,7 @@ Nginx excels at handling thousands of simultaneous connections with minimal memo
 
 ## Prerequisites
 
-- RHEL 9 with Nginx installed
+- RHEL with Nginx installed
 - A backend application running (e.g., on port 3000 or 8080)
 - Root or sudo access
 

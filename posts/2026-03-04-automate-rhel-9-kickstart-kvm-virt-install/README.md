@@ -1,16 +1,16 @@
-# How to Automate RHEL 9 Deployments Using Kickstart on KVM with virt-install
+# How to Automate RHEL Deployments Using Kickstart on KVM with virt-install
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, KVM, Kickstart, Virtualization, virt-install, Automation
 
-Description: Automate RHEL 9 virtual machine creation on KVM using virt-install and Kickstart files, covering hypervisor setup, VM provisioning, and scripting batch deployments.
+Description: Automate RHEL virtual machine creation on KVM using virt-install and Kickstart files, covering hypervisor setup, VM provisioning, and scripting batch deployments.
 
 ---
 
-KVM is the go-to hypervisor for Linux virtualization. It is built into the kernel, performs well, and does not cost you a licensing fee. Combine it with `virt-install` and a Kickstart file, and you can spin up fully configured RHEL 9 VMs with a single command. No clicking through installers, no manual configuration.
+KVM is the go-to hypervisor for Linux virtualization. It is built into the kernel, performs well, and does not cost you a licensing fee. Combine it with `virt-install` and a Kickstart file, and you can spin up fully configured RHEL VMs with a single command. No clicking through installers, no manual configuration.
 
-This guide covers setting up KVM on RHEL 9, creating VMs with `virt-install`, and automating the whole process with Kickstart.
+This guide covers setting up KVM on RHEL, creating VMs with `virt-install`, and automating the whole process with Kickstart.
 
 ## Setting Up the KVM Hypervisor
 
@@ -51,12 +51,12 @@ sudo virsh list --all
 
 ## Preparing the Kickstart File
 
-Before creating VMs, you need a Kickstart file and the RHEL 9 ISO. Place them where the hypervisor can reach them.
+Before creating VMs, you need a Kickstart file and the RHEL ISO. Place them where the hypervisor can reach them.
 
 Here is a minimal Kickstart file for VM provisioning:
 
 ```bash
-# Kickstart file for automated RHEL 9 VM installation
+# Kickstart file for automated RHEL VM installation
 # Save as /var/lib/libvirt/kickstarts/rhel9-base.cfg
 
 text
@@ -117,7 +117,7 @@ sudo mkdir -p /var/lib/libvirt/kickstarts
 sudo vim /var/lib/libvirt/kickstarts/rhel9-base.cfg
 ```
 
-Also, place your RHEL 9 ISO in a convenient location:
+Also, place your RHEL ISO in a convenient location:
 
 ```bash
 # Create a directory for ISOs
@@ -132,7 +132,7 @@ sudo cp rhel-9.4-x86_64-dvd.iso /var/lib/libvirt/isos/
 The `virt-install` command creates a VM, attaches the ISO, passes the Kickstart file, and starts the installation in one go.
 
 ```bash
-# Create a RHEL 9 VM with virt-install and Kickstart
+# Create a RHEL VM with virt-install and Kickstart
 sudo virt-install \
   --name rhel9-web01 \
   --ram 4096 \
@@ -216,7 +216,7 @@ The real power comes when you script the creation of multiple VMs. Here is a she
 
 ```bash
 #!/bin/bash
-# batch-create-vms.sh - Create multiple RHEL 9 VMs using Kickstart
+# batch-create-vms.sh - Create multiple RHEL VMs using Kickstart
 # Usage: ./batch-create-vms.sh
 
 ISO="/var/lib/libvirt/isos/rhel-9.4-x86_64-dvd.iso"

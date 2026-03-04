@@ -1,16 +1,16 @@
-# How to Install and Use OpenTofu on RHEL 9
+# How to Install and Use OpenTofu on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenTofu, IaC, Infrastructure, Open Source, Linux
 
-Description: Install OpenTofu, the open-source Terraform fork, on RHEL 9 and learn how to use it for infrastructure as code.
+Description: Install OpenTofu, the open-source Terraform fork, on RHEL and learn how to use it for infrastructure as code.
 
 ---
 
 OpenTofu is a community-driven, open-source fork of Terraform that maintains compatibility with existing Terraform configurations while remaining under a truly open license. If you want an alternative to Terraform that keeps the same workflow, OpenTofu is a solid choice.
 
-## Install OpenTofu on RHEL 9
+## Install OpenTofu on RHEL
 
 ```bash
 # Install the OpenTofu repository
@@ -95,7 +95,7 @@ terraform {
 
 # Create a local file as a simple test
 resource "local_file" "hello" {
-  content  = "Hello from OpenTofu on RHEL 9!\n"
+  content  = "Hello from OpenTofu on RHEL!\n"
   filename = "${path.module}/hello.txt"
 }
 
@@ -141,7 +141,7 @@ tofu plan
 ## Use OpenTofu with the Libvirt Provider
 
 ```hcl
-# libvirt-example.tf - Create a RHEL 9 VM with OpenTofu
+# libvirt-example.tf - Create a RHEL VM with OpenTofu
 
 terraform {
   required_providers {
@@ -189,4 +189,4 @@ echo 'alias tf="tofu"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-OpenTofu provides the same infrastructure-as-code experience as Terraform with the confidence of an open-source license. Your existing HCL files, providers, and modules work without modification on RHEL 9.
+OpenTofu provides the same infrastructure-as-code experience as Terraform with the confidence of an open-source license. Your existing HCL files, providers, and modules work without modification on RHEL.

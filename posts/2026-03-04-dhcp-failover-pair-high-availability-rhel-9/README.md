@@ -1,10 +1,10 @@
-# How to Configure a DHCP Failover Pair for High Availability on RHEL 9
+# How to Configure a DHCP Failover Pair for High Availability on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DHCP, Failover, High Availability, Linux
 
-Description: Set up ISC DHCP failover on RHEL 9 so two DHCP servers share the address pool and provide redundancy if one goes down.
+Description: Set up ISC DHCP failover on RHEL so two DHCP servers share the address pool and provide redundancy if one goes down.
 
 ---
 
@@ -25,7 +25,7 @@ The two servers communicate over TCP (default port 647) to synchronize lease sta
 
 ## Prerequisites
 
-You need two RHEL 9 servers with ISC DHCP installed:
+You need two RHEL servers with ISC DHCP installed:
 
 On both servers:
 

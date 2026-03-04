@@ -1,10 +1,10 @@
-# How to Set Up Logwatch for Daily Log Summaries on RHEL 9
+# How to Set Up Logwatch for Daily Log Summaries on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Logwatch, Logging, Monitoring, Linux
 
-Description: Learn how to install and configure Logwatch on RHEL 9 to generate daily summaries of system logs and receive them by email or save them to files.
+Description: Learn how to install and configure Logwatch on RHEL to generate daily summaries of system logs and receive them by email or save them to files.
 
 ---
 
@@ -295,4 +295,4 @@ sudo journalctl -u crond --no-pager -n 20
 
 ## Summary
 
-Logwatch on RHEL 9 provides automated daily log summaries that save you from manually reviewing raw logs. Install it from EPEL, configure the detail level and output method (email or file), and let the daily cron job handle the rest. Customize which services are reported and at what detail level to get exactly the information you need each morning.
+Logwatch on RHEL provides automated daily log summaries that save you from manually reviewing raw logs. Install it from EPEL, configure the detail level and output method (email or file), and let the daily cron job handle the rest. Customize which services are reported and at what detail level to get exactly the information you need each morning.

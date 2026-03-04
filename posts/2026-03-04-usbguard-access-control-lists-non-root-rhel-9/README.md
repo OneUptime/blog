@@ -1,10 +1,10 @@
-# How to Configure USBGuard Access Control Lists for Non-Root Users on RHEL 9
+# How to Configure USBGuard Access Control Lists for Non-Root Users on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, USBGuard, ACLs, Linux
 
-Description: Configure USBGuard IPC access control lists on RHEL 9 to allow non-root users and groups to manage USB device authorization without full root access.
+Description: Configure USBGuard IPC access control lists on RHEL to allow non-root users and groups to manage USB device authorization without full root access.
 
 ---
 

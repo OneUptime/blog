@@ -1,14 +1,14 @@
-# How to Align File Systems to Underlying Storage Geometry on RHEL 9
+# How to Align File Systems to Underlying Storage Geometry on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Filesystem, Alignment, Performance, Linux
 
-Description: Learn how to properly align partitions and filesystems to underlying storage geometry on RHEL 9 to avoid performance penalties on SSDs and RAID arrays.
+Description: Learn how to properly align partitions and filesystems to underlying storage geometry on RHEL to avoid performance penalties on SSDs and RAID arrays.
 
 ---
 
-Partition and filesystem alignment is one of those things that, when done right, nobody notices. When done wrong, you get a consistent 10-40% I/O performance penalty on every single operation. Modern tools on RHEL 9 usually handle alignment automatically, but understanding it helps you verify setups and troubleshoot performance issues.
+Partition and filesystem alignment is one of those things that, when done right, nobody notices. When done wrong, you get a consistent 10-40% I/O performance penalty on every single operation. Modern tools on RHEL usually handle alignment automatically, but understanding it helps you verify setups and troubleshoot performance issues.
 
 ## Why Alignment Matters
 
@@ -61,13 +61,13 @@ Look for `sunit` and `swidth` values. If these are 0, the filesystem was not ali
 pvs -o pv_name,pe_start
 ```
 
-The PE start should be at 1 MiB (the default for LVM on RHEL 9).
+The PE start should be at 1 MiB (the default for LVM on RHEL).
 
 ## Aligning Partitions
 
 ### Using parted (Recommended)
 
-parted on RHEL 9 aligns to optimal boundaries by default:
+parted on RHEL aligns to optimal boundaries by default:
 
 ```bash
 # Create an aligned partition with parted
@@ -79,7 +79,7 @@ Using percentages (`0%` to `100%`) ensures parted uses optimal alignment automat
 
 ### Using fdisk
 
-fdisk on RHEL 9 also aligns to 2048-sector (1 MiB) boundaries by default:
+fdisk on RHEL also aligns to 2048-sector (1 MiB) boundaries by default:
 
 ```bash
 # Create a partition with fdisk (alignment is automatic)
@@ -141,7 +141,7 @@ dumpe2fs -h /dev/md0 | grep -i stride
 
 ## Aligning for SSDs
 
-SSDs perform best when aligned to their erase block size. The 1 MiB partition alignment that RHEL 9 uses by default is sufficient for virtually all SSDs.
+SSDs perform best when aligned to their erase block size. The 1 MiB partition alignment that RHEL uses by default is sufficient for virtually all SSDs.
 
 To verify:
 
@@ -171,7 +171,7 @@ If the physical sector size is 4096, partitions must start on 4096-byte boundari
 
 ## LVM and Device-Mapper Alignment
 
-LVM on RHEL 9 starts physical extents at 1 MiB by default, which provides good alignment:
+LVM on RHEL starts physical extents at 1 MiB by default, which provides good alignment:
 
 ```bash
 # Create a physical volume (alignment is automatic)
@@ -224,4 +224,4 @@ done
 
 ## Summary
 
-Filesystem alignment on RHEL 9 is usually handled automatically by modern partitioning tools, but it is worth verifying, especially on RAID arrays and SSDs. Use 1 MiB partition alignment (the default), specify RAID geometry when formatting with mkfs, and check alignment with `parted align-check`. Getting alignment right from the start prevents a persistent performance penalty that is difficult to fix without reformatting.
+Filesystem alignment on RHEL is usually handled automatically by modern partitioning tools, but it is worth verifying, especially on RAID arrays and SSDs. Use 1 MiB partition alignment (the default), specify RAID geometry when formatting with mkfs, and check alignment with `parted align-check`. Getting alignment right from the start prevents a persistent performance penalty that is difficult to fix without reformatting.

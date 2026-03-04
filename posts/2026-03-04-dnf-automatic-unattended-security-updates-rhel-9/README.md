@@ -1,20 +1,20 @@
-# How to Use DNF Automatic for Unattended Security Updates on RHEL 9
+# How to Use DNF Automatic for Unattended Security Updates on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNF, Automatic Updates, Security, Linux
 
-Description: Learn how to set up DNF Automatic on RHEL 9 to keep your systems patched with security updates without manual intervention, including configuration, timers, and notification options.
+Description: Learn how to set up DNF Automatic on RHEL to keep your systems patched with security updates without manual intervention, including configuration, timers, and notification options.
 
 ---
 
 If you manage more than a handful of RHEL servers, you already know the pain of keeping them all patched. Logging into each box, running `dnf update`, waiting around - it gets old fast. That is where DNF Automatic comes in. It handles unattended updates for you, and you can scope it to security patches only, which is usually what matters most in production.
 
-I have been running this on dozens of RHEL 9 servers for a while now, and it works well once you get the configuration right. Let me walk you through the whole setup.
+I have been running this on dozens of RHEL servers for a while now, and it works well once you get the configuration right. Let me walk you through the whole setup.
 
 ## Installing DNF Automatic
 
-The package is available in the base RHEL 9 repositories. Nothing special needed here.
+The package is available in the base RHEL repositories. Nothing special needed here.
 
 ```bash
 # Install the dnf-automatic package
@@ -283,4 +283,4 @@ A few things I have learned running this across many servers:
 
 ## Wrapping Up
 
-DNF Automatic is one of those tools that earns its keep quietly. Set it up once, tune the configuration to your needs, and it keeps your RHEL 9 systems patched against known security vulnerabilities without you having to lift a finger. Just remember to monitor the results and handle reboots when kernel patches land.
+DNF Automatic is one of those tools that earns its keep quietly. Set it up once, tune the configuration to your needs, and it keeps your RHEL systems patched against known security vulnerabilities without you having to lift a finger. Just remember to monitor the results and handle reboots when kernel patches land.

@@ -1,14 +1,14 @@
-# How to Migrate from Network Teaming to Bonding on RHEL 9
+# How to Migrate from Network Teaming to Bonding on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Teaming, Bonding, Migration, Linux
 
-Description: A practical migration guide for moving from deprecated network teaming to bonding on RHEL 9, with step-by-step instructions and a mapping of team runners to bond modes.
+Description: A practical migration guide for moving from deprecated network teaming to bonding on RHEL, with step-by-step instructions and a mapping of team runners to bond modes.
 
 ---
 
-Red Hat deprecated network teaming starting with RHEL 9. If you have been running team interfaces, it is time to migrate to bonding. The teamd package is still available in RHEL 9 but is not getting new features, and it will likely be removed entirely in a future release.
+Red Hat deprecated network teaming starting with RHEL. If you have been running team interfaces, it is time to migrate to bonding. The teamd package is still available in RHEL but is not getting new features, and it will likely be removed entirely in a future release.
 
 I recently migrated a fleet of servers from teaming to bonding, and the process is not complicated if you plan it right. Here is how to do it with minimal downtime.
 
@@ -192,4 +192,4 @@ nmcli connection up team0
 
 ## Summary
 
-Migrating from teaming to bonding on RHEL 9 is a matter of mapping your team runner to the equivalent bond mode, documenting your current config, tearing down the team, and building a bond with the same IP settings. Plan for brief downtime, have console access ready, and script the whole process so you can execute it quickly. The sooner you migrate, the less likely you are to hit issues when teaming is eventually removed from RHEL.
+Migrating from teaming to bonding on RHEL is a matter of mapping your team runner to the equivalent bond mode, documenting your current config, tearing down the team, and building a bond with the same IP settings. Plan for brief downtime, have console access ready, and script the whole process so you can execute it quickly. The sooner you migrate, the less likely you are to hit issues when teaming is eventually removed from RHEL.

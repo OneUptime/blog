@@ -1,10 +1,10 @@
-# How to Set Up GRE and IPIP Tunnels on RHEL 9
+# How to Set Up GRE and IPIP Tunnels on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GRE, IPIP, Tunneling, Networking, Linux
 
-Description: Learn how to create GRE and IPIP tunnels on RHEL 9 for encapsulating network traffic and connecting remote networks across the internet.
+Description: Learn how to create GRE and IPIP tunnels on RHEL for encapsulating network traffic and connecting remote networks across the internet.
 
 ---
 
@@ -24,7 +24,7 @@ graph LR
 
 ## Prerequisites
 
-- Two RHEL 9 hosts with public or routable IP addresses
+- Two RHEL hosts with public or routable IP addresses
 - Root or sudo access on both hosts
 
 ## Step 1: Create an IPIP Tunnel
@@ -200,4 +200,4 @@ sudo ip link set tun0 mtu 1480
 
 ## Summary
 
-You have set up both GRE and IPIP tunnels on RHEL 9. IPIP tunnels are simpler and have less overhead but only support IPv4 unicast. GRE tunnels support multicast, multiple protocols, and can use keys to differentiate between multiple tunnels. Both types are useful for connecting remote networks across the internet without a full VPN solution.
+You have set up both GRE and IPIP tunnels on RHEL. IPIP tunnels are simpler and have less overhead but only support IPv4 unicast. GRE tunnels support multicast, multiple protocols, and can use keys to differentiate between multiple tunnels. Both types are useful for connecting remote networks across the internet without a full VPN solution.

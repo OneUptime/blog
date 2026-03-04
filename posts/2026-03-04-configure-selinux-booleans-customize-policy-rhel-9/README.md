@@ -1,10 +1,10 @@
-# How to Configure SELinux Booleans to Customize Policy on RHEL 9
+# How to Configure SELinux Booleans to Customize Policy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, Booleans, Security, Linux
 
-Description: Use SELinux booleans on RHEL 9 to toggle specific policy features without writing custom modules, enabling or restricting service capabilities.
+Description: Use SELinux booleans on RHEL to toggle specific policy features without writing custom modules, enabling or restricting service capabilities.
 
 ---
 
@@ -26,7 +26,7 @@ sudo getsebool -a
 sudo getsebool -a | wc -l
 ```
 
-There are hundreds of booleans on a typical RHEL 9 system.
+There are hundreds of booleans on a typical RHEL system.
 
 ### Search for Specific Booleans
 
@@ -251,4 +251,4 @@ This shows you exactly which booleans have been changed from their defaults, whi
 
 ## Wrapping Up
 
-SELinux booleans are the simplest way to customize policy on RHEL 9. Before reaching for `audit2allow` or writing custom modules, check if there is a boolean for what you need. The `sealert` tool usually tells you exactly which boolean to enable. Use `-P` to make changes permanent, and document your changes by checking `semanage boolean -l -C` regularly.
+SELinux booleans are the simplest way to customize policy on RHEL. Before reaching for `audit2allow` or writing custom modules, check if there is a boolean for what you need. The `sealert` tool usually tells you exactly which boolean to enable. Use `-P` to make changes permanent, and document your changes by checking `semanage boolean -l -C` regularly.

@@ -1,10 +1,10 @@
-# How to Configure Terraform Variables and Outputs on RHEL 9
+# How to Configure Terraform Variables and Outputs on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, Variables, Outputs, IaC, Linux
 
-Description: Master Terraform variables and outputs on RHEL 9, including input variables, local values, output values, and variable validation.
+Description: Master Terraform variables and outputs on RHEL, including input variables, local values, output values, and variable validation.
 
 ---
 
@@ -39,7 +39,7 @@ variable "environment" {
 
 # Number variable
 variable "instance_count" {
-  description = "Number of RHEL 9 instances to create"
+  description = "Number of RHEL instances to create"
   type        = number
   default     = 2
 }
@@ -247,4 +247,4 @@ terraform output -raw instance_ids
 terraform output -json server_info
 ```
 
-Variables and outputs form the contract between your Terraform modules and the outside world. Well-defined variables with validation make your configurations safer, and clear outputs make them easier to integrate with other tools and scripts on RHEL 9.
+Variables and outputs form the contract between your Terraform modules and the outside world. Well-defined variables with validation make your configurations safer, and clear outputs make them easier to integrate with other tools and scripts on RHEL.

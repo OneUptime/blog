@@ -1,10 +1,10 @@
-# How to Implement CIS Level 2 Server Hardening on RHEL 9
+# How to Implement CIS Level 2 Server Hardening on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CIS Level 2, Hardening, Compliance, Linux
 
-Description: Go beyond CIS Level 1 with Level 2 server hardening on RHEL 9, implementing stricter controls for environments that require enhanced security.
+Description: Go beyond CIS Level 1 with Level 2 server hardening on RHEL, implementing stricter controls for environments that require enhanced security.
 
 ---
 

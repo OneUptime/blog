@@ -1,10 +1,10 @@
-# How to Automate User and Group Management with Ansible on RHEL 9
+# How to Automate User and Group Management with Ansible on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, User Management, Groups, Automation, Linux
 
-Description: Manage user accounts, groups, SSH keys, and access policies across RHEL 9 servers using Ansible for consistent identity management.
+Description: Manage user accounts, groups, SSH keys, and access policies across RHEL servers using Ansible for consistent identity management.
 
 ---
 

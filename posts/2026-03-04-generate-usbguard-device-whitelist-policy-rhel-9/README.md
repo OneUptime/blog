@@ -1,14 +1,14 @@
-# How to Generate a USBGuard Device Whitelist Policy on RHEL 9
+# How to Generate a USBGuard Device Whitelist Policy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, USBGuard, Whitelist, Security, Linux
 
-Description: Generate and manage a USBGuard whitelist policy on RHEL 9 that allows only approved USB devices while blocking unauthorized peripherals.
+Description: Generate and manage a USBGuard whitelist policy on RHEL that allows only approved USB devices while blocking unauthorized peripherals.
 
 ---
 
-A well-crafted USBGuard whitelist is the foundation of USB security on RHEL 9. The idea is simple: allow specific, known devices and block everything else. Getting the initial whitelist right prevents both security incidents and user frustration from blocked legitimate devices.
+A well-crafted USBGuard whitelist is the foundation of USB security on RHEL. The idea is simple: allow specific, known devices and block everything else. Getting the initial whitelist right prevents both security incidents and user frustration from blocked legitimate devices.
 
 ## Starting with Auto-Generated Policy
 

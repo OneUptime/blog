@@ -1,10 +1,10 @@
-# How to Monitor and Tune Kernel Memory Management on RHEL 9
+# How to Monitor and Tune Kernel Memory Management on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kernel, Memory, Tuning, Linux
 
-Description: A comprehensive guide to monitoring and tuning the Linux kernel's memory management subsystem on RHEL 9, covering swappiness, dirty pages, OOM killer behavior, page cache, and memory pressure indicators.
+Description: A comprehensive guide to monitoring and tuning the Linux kernel's memory management subsystem on RHEL, covering swappiness, dirty pages, OOM killer behavior, page cache, and memory pressure indicators.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A comprehensive guide to monitoring and tuning the Linux kernel's m
 
 The Linux kernel does not just hand out RAM and forget about it. It actively manages memory through page caching, swap, reclamation, and the OOM killer. Understanding these mechanisms is key to tuning memory behavior for your workload.
 
-On RHEL 9, the kernel's memory management defaults work well for general-purpose servers. But if you are running database servers, in-memory caches, container hosts, or other memory-intensive workloads, tuning can make a significant difference.
+On RHEL, the kernel's memory management defaults work well for general-purpose servers. But if you are running database servers, in-memory caches, container hosts, or other memory-intensive workloads, tuning can make a significant difference.
 
 ## Monitoring Memory Usage
 
@@ -263,4 +263,4 @@ sudo sysctl --system
 
 ## Wrapping Up
 
-Memory tuning on RHEL 9 is about matching kernel behavior to your workload pattern. Monitor first with `free`, `vmstat`, and PSI metrics. Identify whether you are swap-bound, cache-bound, or facing OOM pressure. Then adjust the relevant parameters. The biggest wins usually come from getting swappiness and dirty page ratios right. Test under realistic load, not just idle conditions, and always keep your sysctl configuration files documented and version-controlled.
+Memory tuning on RHEL is about matching kernel behavior to your workload pattern. Monitor first with `free`, `vmstat`, and PSI metrics. Identify whether you are swap-bound, cache-bound, or facing OOM pressure. Then adjust the relevant parameters. The biggest wins usually come from getting swappiness and dirty page ratios right. Test under realistic load, not just idle conditions, and always keep your sysctl configuration files documented and version-controlled.

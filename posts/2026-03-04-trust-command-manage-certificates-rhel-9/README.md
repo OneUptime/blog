@@ -1,14 +1,14 @@
-# How to Use the trust Command to Manage Certificates on RHEL 9
+# How to Use the trust Command to Manage Certificates on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, trust Command, Certificates, Security, Linux
 
-Description: A practical guide to using the p11-kit trust command on RHEL 9 for listing, adding, removing, and modifying certificate trust settings.
+Description: A practical guide to using the p11-kit trust command on RHEL for listing, adding, removing, and modifying certificate trust settings.
 
 ---
 
-RHEL 9 includes the `trust` command (part of the p11-kit package) as a higher-level interface for managing the system certificate trust store. While `update-ca-trust` handles the bundle regeneration, `trust` gives you finer control over individual certificates, including the ability to set specific trust purposes and inspect what is actually in your store.
+RHEL includes the `trust` command (part of the p11-kit package) as a higher-level interface for managing the system certificate trust store. While `update-ca-trust` handles the bundle regeneration, `trust` gives you finer control over individual certificates, including the ability to set specific trust purposes and inspect what is actually in your store.
 
 ## What is the trust Command?
 
@@ -280,4 +280,4 @@ graph LR
 
 ## Wrapping Up
 
-The `trust` command is the modern way to interact with RHEL 9's certificate trust store. For quick operations like adding or removing a CA, `trust anchor` saves you a step over the manual copy-and-update workflow. For auditing and extraction, `trust list` and `trust extract` give you exactly the information you need in the format you need it. Make it part of your standard toolkit.
+The `trust` command is the modern way to interact with RHEL's certificate trust store. For quick operations like adding or removing a CA, `trust anchor` saves you a step over the manual copy-and-update workflow. For auditing and extraction, `trust list` and `trust extract` give you exactly the information you need in the format you need it. Make it part of your standard toolkit.

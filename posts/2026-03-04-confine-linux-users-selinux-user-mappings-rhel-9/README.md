@@ -1,10 +1,10 @@
-# How to Confine Linux Users with SELinux User Mappings on RHEL 9
+# How to Confine Linux Users with SELinux User Mappings on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, User Mappings, Security, Linux
 
-Description: Map Linux users to SELinux user identities on RHEL 9 to restrict what they can do on the system, even if they have shell access.
+Description: Map Linux users to SELinux user identities on RHEL to restrict what they can do on the system, even if they have shell access.
 
 ---
 
@@ -14,7 +14,7 @@ Standard Linux permissions control which files a user can access. SELinux user m
 
 ## SELinux Users
 
-RHEL 9 comes with several predefined SELinux users:
+RHEL comes with several predefined SELinux users:
 
 | SELinux User | Purpose | Capabilities |
 |---|---|---|

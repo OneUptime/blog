@@ -76,7 +76,7 @@ The `guest_id` parameter tells vSphere what operating system the VM will run. Th
 # Common guest_id values for reference
 # Red Hat Enterprise Linux
 # rhel8_64Guest - RHEL 8 64-bit
-# rhel9_64Guest - RHEL 9 64-bit
+# rhel9_64Guest - RHEL 64-bit
 
 # CentOS
 # centos8_64Guest - CentOS 8 64-bit

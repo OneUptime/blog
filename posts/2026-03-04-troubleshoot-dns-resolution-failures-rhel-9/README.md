@@ -1,10 +1,10 @@
-# How to Troubleshoot DNS Resolution Failures on RHEL 9
+# How to Troubleshoot DNS Resolution Failures on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNS, Troubleshooting, Linux
 
-Description: A systematic approach to diagnosing and fixing DNS resolution failures on RHEL 9, from client-side configuration to server-side issues.
+Description: A systematic approach to diagnosing and fixing DNS resolution failures on RHEL, from client-side configuration to server-side issues.
 
 ---
 
@@ -35,7 +35,7 @@ First, find out which DNS server your system is querying:
 cat /etc/resolv.conf
 ```
 
-On RHEL 9 with NetworkManager, this file is often managed automatically. Check the actual configuration:
+On RHEL with NetworkManager, this file is often managed automatically. Check the actual configuration:
 
 ```bash
 nmcli device show | grep DNS
@@ -142,7 +142,7 @@ dig @8.8.4.4 example.com +timeout=5
 
 ## Step 7: Check /etc/nsswitch.conf
 
-On RHEL 9, the name service switch controls the order of resolution methods:
+On RHEL, the name service switch controls the order of resolution methods:
 
 ```bash
 grep hosts /etc/nsswitch.conf
@@ -166,7 +166,7 @@ grep your-hostname /etc/hosts
 
 ## Step 9: NetworkManager DNS Issues
 
-NetworkManager manages DNS configuration on RHEL 9. If DNS settings are wrong:
+NetworkManager manages DNS configuration on RHEL. If DNS settings are wrong:
 
 Check the active connection's DNS:
 

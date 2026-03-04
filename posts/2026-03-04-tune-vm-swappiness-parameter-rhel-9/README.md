@@ -1,10 +1,10 @@
-# How to Tune the vm.swappiness Parameter on RHEL 9
+# How to Tune the vm.swappiness Parameter on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, swappiness, Memory, Tuning, Linux
 
-Description: Understand and tune the vm.swappiness kernel parameter on RHEL 9 to control how aggressively the system uses swap space.
+Description: Understand and tune the vm.swappiness kernel parameter on RHEL to control how aggressively the system uses swap space.
 
 ---
 
@@ -31,7 +31,7 @@ graph LR
     B -->|0| E[Avoid swapping, drop cache aggressively]
 ```
 
-The default on RHEL 9 is 60.
+The default on RHEL is 60.
 
 ## Check the Current Value
 

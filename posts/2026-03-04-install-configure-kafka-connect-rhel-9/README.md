@@ -1,18 +1,18 @@
-# How to Install and Configure Apache Kafka Connect on RHEL 9
+# How to Install and Configure Apache Kafka Connect on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache Kafka, Kafka Connect, Data Streaming, ETL, Linux
 
-Description: Install and configure Apache Kafka Connect on RHEL 9 to build scalable data pipelines that stream data between Kafka and external systems.
+Description: Install and configure Apache Kafka Connect on RHEL to build scalable data pipelines that stream data between Kafka and external systems.
 
 ---
 
-Kafka Connect is a framework for connecting Apache Kafka with external systems like databases, search indexes, and file systems. It provides a standardized way to move data in and out of Kafka without writing custom code. This guide covers installing and configuring Kafka Connect on RHEL 9.
+Kafka Connect is a framework for connecting Apache Kafka with external systems like databases, search indexes, and file systems. It provides a standardized way to move data in and out of Kafka without writing custom code. This guide covers installing and configuring Kafka Connect on RHEL.
 
 ## Prerequisites
 
-- RHEL 9 with at least 4 GB RAM
+- RHEL with at least 4 GB RAM
 - Apache Kafka cluster (or a single broker for testing)
 - Java 11 or later
 - Root or sudo access
@@ -255,4 +255,4 @@ sudo firewall-cmd --reload
 
 ## Conclusion
 
-Kafka Connect is now running on your RHEL 9 system in distributed mode, ready to move data between Kafka and your external systems. The REST API makes it straightforward to create, monitor, and manage connectors without writing any code. For production environments, run multiple Kafka Connect workers for high availability and use Avro with Schema Registry instead of JSON for better schema management.
+Kafka Connect is now running on your RHEL system in distributed mode, ready to move data between Kafka and your external systems. The REST API makes it straightforward to create, monitor, and manage connectors without writing any code. For production environments, run multiple Kafka Connect workers for high availability and use Avro with Schema Registry instead of JSON for better schema management.

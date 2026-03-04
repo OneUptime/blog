@@ -1,14 +1,14 @@
-# How to Configure LVM (Logical Volume Manager) on RHEL 9
+# How to Configure LVM (Logical Volume Manager) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Storage, Filesystem, Linux
 
-Description: A comprehensive guide to setting up and managing LVM on RHEL 9, covering physical volumes, volume groups, and logical volumes.
+Description: A comprehensive guide to setting up and managing LVM on RHEL, covering physical volumes, volume groups, and logical volumes.
 
 ---
 
-LVM gives you flexible disk management that plain partitions can not provide. You can resize volumes on the fly, span multiple disks, and create snapshots. On RHEL 9, LVM is the default storage layout, so understanding it is essential.
+LVM gives you flexible disk management that plain partitions can not provide. You can resize volumes on the fly, span multiple disks, and create snapshots. On RHEL, LVM is the default storage layout, so understanding it is essential.
 
 ## LVM Architecture
 
@@ -31,7 +31,7 @@ LVM has three layers:
 
 ## Installing LVM Tools
 
-LVM tools come pre-installed on RHEL 9, but verify:
+LVM tools come pre-installed on RHEL, but verify:
 
 ```bash
 # Check if LVM is installed
@@ -167,5 +167,5 @@ sudo pvremove /dev/sdb /dev/sdc
 
 ## Summary
 
-LVM on RHEL 9 provides the flexibility to manage storage without being constrained by physical disk boundaries. The layered architecture of PVs, VGs, and LVs lets you resize, move, and snapshot your storage as your needs change. This foundation is the starting point for more advanced features like snapshots, thin provisioning, and caching covered in subsequent guides.
+LVM on RHEL provides the flexibility to manage storage without being constrained by physical disk boundaries. The layered architecture of PVs, VGs, and LVs lets you resize, move, and snapshot your storage as your needs change. This foundation is the starting point for more advanced features like snapshots, thin provisioning, and caching covered in subsequent guides.
 

@@ -1,10 +1,10 @@
-# How to Set Up VXLAN Overlay Networks on RHEL 9
+# How to Set Up VXLAN Overlay Networks on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VXLAN, Networking, Overlay Networks, Linux
 
-Description: Learn how to create VXLAN overlay networks on RHEL 9 for extending Layer 2 segments across Layer 3 boundaries, enabling flexible network architectures.
+Description: Learn how to create VXLAN overlay networks on RHEL for extending Layer 2 segments across Layer 3 boundaries, enabling flexible network architectures.
 
 ---
 
@@ -26,7 +26,7 @@ graph TD
 
 ## Prerequisites
 
-- Two or more RHEL 9 hosts with IP connectivity between them
+- Two or more RHEL hosts with IP connectivity between them
 - Root or sudo access on all hosts
 
 ## Step 1: Create a VXLAN Interface on Host A
@@ -164,4 +164,4 @@ bridge fdb show dev vxlan42
 
 ## Summary
 
-You have set up VXLAN overlay networks on RHEL 9, connecting hosts across Layer 3 boundaries with a virtual Layer 2 segment. You created point-to-point and multicast VXLAN tunnels, made them persistent with NetworkManager, and bridged them with local virtual machines. VXLAN is a foundational technology for software-defined networking and container orchestration platforms.
+You have set up VXLAN overlay networks on RHEL, connecting hosts across Layer 3 boundaries with a virtual Layer 2 segment. You created point-to-point and multicast VXLAN tunnels, made them persistent with NetworkManager, and bridged them with local virtual machines. VXLAN is a foundational technology for software-defined networking and container orchestration platforms.

@@ -1,10 +1,10 @@
-# How to Fix Failed to Download Metadata for Repo Errors on RHEL 9
+# How to Fix Failed to Download Metadata for Repo Errors on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNF, Repository Errors, Troubleshooting, Linux
 
-Description: A troubleshooting guide for fixing "Failed to download metadata for repo" errors on RHEL 9, covering subscription issues, certificate problems, DNS resolution, proxy settings, and cache corruption.
+Description: A troubleshooting guide for fixing 'Failed to download metadata for repo' errors on RHEL, covering subscription issues, certificate problems, DNS resolution, proxy settings, and cache corruption.
 
 ---
 

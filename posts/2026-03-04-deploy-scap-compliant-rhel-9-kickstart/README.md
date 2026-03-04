@@ -1,14 +1,14 @@
-# How to Deploy SCAP-Compliant RHEL 9 Systems with Kickstart
+# How to Deploy SCAP-Compliant RHEL Systems with Kickstart
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SCAP, Kickstart, Compliance, Linux
 
-Description: Deploy RHEL 9 systems that are SCAP-compliant from the first boot using Kickstart automation with the OpenSCAP Anaconda addon.
+Description: Deploy RHEL systems that are SCAP-compliant from the first boot using Kickstart automation with the OpenSCAP Anaconda addon.
 
 ---
 
-The best time to apply security compliance is during installation. The RHEL 9 installer includes an OpenSCAP addon for Anaconda that can apply a complete security profile during the installation process. This means your server is compliant before it even boots for the first time, no post-installation hardening needed.
+The best time to apply security compliance is during installation. The RHEL installer includes an OpenSCAP addon for Anaconda that can apply a complete security profile during the installation process. This means your server is compliant before it even boots for the first time, no post-installation hardening needed.
 
 ## How the OpenSCAP Anaconda Addon Works
 
@@ -41,7 +41,7 @@ This is all you need to apply the STIG profile during installation. The addon us
 ## Complete Kickstart File with SCAP Compliance
 
 ```bash
-# RHEL 9 SCAP-Compliant Kickstart
+# RHEL SCAP-Compliant Kickstart
 text
 lang en_US.UTF-8
 keyboard us

@@ -1,14 +1,14 @@
-# How to Register a RHEL 9 System to Red Hat Satellite Server
+# How to Register a RHEL System to Red Hat Satellite Server
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Satellite Server, Registration, Red Hat, Linux
 
-Description: Step-by-step guide to registering RHEL 9 systems with a Red Hat Satellite Server for centralized subscription and content management in enterprise environments.
+Description: Step-by-step guide to registering RHEL systems with a Red Hat Satellite Server for centralized subscription and content management in enterprise environments.
 
 ---
 
-In enterprise environments, managing subscriptions and content for hundreds or thousands of RHEL systems through the Red Hat Customer Portal is not practical. Red Hat Satellite Server provides a centralized platform for system registration, subscription management, content delivery, and configuration management. This guide walks through registering a RHEL 9 system to a Satellite Server.
+In enterprise environments, managing subscriptions and content for hundreds or thousands of RHEL systems through the Red Hat Customer Portal is not practical. Red Hat Satellite Server provides a centralized platform for system registration, subscription management, content delivery, and configuration management. This guide walks through registering a RHEL system to a Satellite Server.
 
 ## Why Use Satellite Instead of Direct Registration?
 
@@ -26,14 +26,14 @@ Before registering, make sure you have:
 
 - A running Red Hat Satellite Server (version 6.x)
 - An activation key or credentials configured in Satellite
-- Network access from the RHEL 9 system to the Satellite Server (ports 443, 5647, 8000, 8140, 8443, 9090)
+- Network access from the RHEL system to the Satellite Server (ports 443, 5647, 8000, 8140, 8443, 9090)
 - The Satellite Server's FQDN
 
 ## Registration Architecture
 
 ```mermaid
 flowchart TD
-    A[RHEL 9 Client] -->|Register| B[Satellite Server]
+    A[RHEL Client] -->|Register| B[Satellite Server]
     B --> C[Content Views]
     B --> D[Lifecycle Environments]
     B --> E[Subscription Allocation]
@@ -44,7 +44,7 @@ flowchart TD
 
 ## Step 1 - Install the Satellite CA Certificate
 
-The RHEL 9 system needs to trust the Satellite Server's SSL certificate. Download and install the CA certificate RPM:
+The RHEL system needs to trust the Satellite Server's SSL certificate. Download and install the CA certificate RPM:
 
 ```bash
 # Download and install the Satellite CA certificate
@@ -122,7 +122,7 @@ sudo subscription-manager repos --list-enabled
 
 ## Using the Satellite Global Registration Template
 
-Satellite 6.9 and later support a simplified global registration method. In the Satellite web UI, go to Hosts, then Register Host. This generates a curl command you can run on the RHEL 9 system:
+Satellite 6.9 and later support a simplified global registration method. In the Satellite web UI, go to Hosts, then Register Host. This generates a curl command you can run on the RHEL system:
 
 ```bash
 # Example generated registration command from Satellite
@@ -162,7 +162,7 @@ For registering many systems, use an Ansible playbook:
 
 ```yaml
 # Ansible playbook for Satellite registration
-- name: Register RHEL 9 systems to Satellite
+- name: Register RHEL systems to Satellite
   hosts: rhel9_servers
   become: true
   tasks:
@@ -205,4 +205,4 @@ sudo subscription-manager environments --org=MyOrganization
 
 ## Summary
 
-Registering RHEL 9 systems with Satellite Server is the standard approach for enterprise environments. It gives you centralized control over subscriptions, packages, and configuration while reducing bandwidth through local content mirrors. Use activation keys for automated, credential-free registration, and consider Capsule Servers for geographically distributed environments. Once registered, your systems pull content from Satellite, giving you full control over what packages are available in each lifecycle stage.
+Registering RHEL systems with Satellite Server is the standard approach for enterprise environments. It gives you centralized control over subscriptions, packages, and configuration while reducing bandwidth through local content mirrors. Use activation keys for automated, credential-free registration, and consider Capsule Servers for geographically distributed environments. Once registered, your systems pull content from Satellite, giving you full control over what packages are available in each lifecycle stage.

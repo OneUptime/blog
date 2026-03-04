@@ -1,14 +1,14 @@
-# How to Migrate from ntpd to Chrony on RHEL 9
+# How to Migrate from ntpd to Chrony on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ntpd, chrony, Migration, NTP, Linux
 
-Description: A step-by-step guide for migrating from ntpd (ntp) to chrony on RHEL 9, including configuration translation and validation.
+Description: A step-by-step guide for migrating from ntpd (ntp) to chrony on RHEL, including configuration translation and validation.
 
 ---
 
-If you are upgrading older RHEL systems (6 or 7) to RHEL 9, one of the changes you will hit is that ntpd is gone. Red Hat replaced it with chrony starting in RHEL 8, and on RHEL 9 the ntp package is simply not available in the default repositories. The good news is that chrony handles the same job and the migration is straightforward once you know how the configuration maps.
+If you are upgrading older RHEL systems (6 or 7) to RHEL, one of the changes you will hit is that ntpd is gone. Red Hat replaced it with chrony starting in RHEL 8, and on RHEL the ntp package is simply not available in the default repositories. The good news is that chrony handles the same job and the migration is straightforward once you know how the configuration maps.
 
 ## Why the Switch Happened
 
@@ -250,9 +250,9 @@ log tracking measurements statistics
 logdir /var/log/chrony
 ```
 
-## Step 4: Install chrony on RHEL 9
+## Step 4: Install chrony on RHEL
 
-chrony should already be installed on RHEL 9. Verify:
+chrony should already be installed on RHEL. Verify:
 
 ```bash
 # Check if chrony is installed
@@ -278,7 +278,7 @@ sudo vi /etc/chrony.conf
 
 ## Step 6: Disable ntpd (if present)
 
-On RHEL 9, ntpd should not be installed, but if it is (from a third-party repo or leftover from an upgrade):
+On RHEL, ntpd should not be installed, but if it is (from a third-party repo or leftover from an upgrade):
 
 ```bash
 # Stop and disable ntpd
@@ -362,7 +362,7 @@ chronyc tracking | grep -q "Leap status.*Normal" && echo "NTP OK" || echo "NTP F
 
 ## Rollback Plan
 
-If something goes wrong and you absolutely need ntpd back (on older RHEL versions, not RHEL 9):
+If something goes wrong and you absolutely need ntpd back (on older RHEL versions, not RHEL):
 
 ```bash
 # On RHEL 7 - roll back to ntpd
@@ -371,7 +371,7 @@ sudo systemctl disable chronyd
 sudo systemctl enable --now ntpd
 ```
 
-On RHEL 9, there is no rolling back to ntpd since it is not in the repos. Get chrony working - it will.
+On RHEL, there is no rolling back to ntpd since it is not in the repos. Get chrony working - it will.
 
 ## Wrapping Up
 

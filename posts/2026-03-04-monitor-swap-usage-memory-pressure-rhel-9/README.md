@@ -1,10 +1,10 @@
-# How to Monitor Swap Usage and Diagnose Memory Pressure on RHEL 9
+# How to Monitor Swap Usage and Diagnose Memory Pressure on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Swap, Memory, Monitoring, Linux
 
-Description: Learn how to monitor swap usage and diagnose memory pressure on RHEL 9 using built-in tools to catch problems before the OOM killer steps in.
+Description: Learn how to monitor swap usage and diagnose memory pressure on RHEL using built-in tools to catch problems before the OOM killer steps in.
 
 ---
 
@@ -135,7 +135,7 @@ graph TD
 
 ### Pressure Stall Information (PSI)
 
-RHEL 9 supports PSI, which gives direct pressure measurements:
+RHEL supports PSI, which gives direct pressure measurements:
 
 ```bash
 # Memory pressure metrics
@@ -250,4 +250,4 @@ If `si` and `so` are both consistently above 100-200 pages/sec, the system is th
 
 ## Summary
 
-Monitoring swap on RHEL 9 requires looking at multiple metrics: swap usage from `free`, I/O rates from `vmstat` and `sar`, per-process usage from `/proc`, and pressure from PSI. Swap usage alone is not alarming, but growing swap combined with high swap I/O and elevated PSI pressure means you need to either add RAM, reduce workload, or find a memory leak. Set up automated alerts at 80% swap usage so you catch problems early.
+Monitoring swap on RHEL requires looking at multiple metrics: swap usage from `free`, I/O rates from `vmstat` and `sar`, per-process usage from `/proc`, and pressure from PSI. Swap usage alone is not alarming, but growing swap combined with high swap I/O and elevated PSI pressure means you need to either add RAM, reduce workload, or find a memory leak. Set up automated alerts at 80% swap usage so you catch problems early.

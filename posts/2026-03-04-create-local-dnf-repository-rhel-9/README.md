@@ -1,10 +1,10 @@
-# How to Create a Local DNF Repository on RHEL 9
+# How to Create a Local DNF Repository on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNF, Local Repository, Linux, Package Management
 
-Description: Step-by-step instructions for creating a local DNF repository on RHEL 9, including generating metadata with createrepo, serving packages over HTTP, and mirroring remote repositories with reposync.
+Description: Step-by-step instructions for creating a local DNF repository on RHEL, including generating metadata with createrepo, serving packages over HTTP, and mirroring remote repositories with reposync.
 
 ---
 
@@ -131,7 +131,7 @@ On each client system, create a `.repo` file that points to your local repositor
 # Create the repo configuration file on client machines
 sudo tee /etc/yum.repos.d/custom-local.repo << 'EOF'
 [custom-el9]
-name=Custom Local Repository for RHEL 9
+name=Custom Local Repository for RHEL
 baseurl=http://repo-server.example.com/repos/custom-el9/
 enabled=1
 gpgcheck=0
@@ -208,7 +208,7 @@ EOF
 
 ## Using the RHEL Installation ISO as a Local Repo
 
-If you have the RHEL 9 installation ISO, you can use it directly as a local repository:
+If you have the RHEL installation ISO, you can use it directly as a local repository:
 
 ```bash
 # Mount the ISO
@@ -218,14 +218,14 @@ sudo mount -o loop /path/to/rhel-9.x-x86_64-dvd.iso /mnt/rhel9-iso
 # Create repo file pointing to the mount
 sudo tee /etc/yum.repos.d/rhel9-iso.repo << 'EOF'
 [rhel9-iso-baseos]
-name=RHEL 9 ISO BaseOS
+name=RHEL ISO BaseOS
 baseurl=file:///mnt/rhel9-iso/BaseOS/
 enabled=1
 gpgcheck=1
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
 [rhel9-iso-appstream]
-name=RHEL 9 ISO AppStream
+name=RHEL ISO AppStream
 baseurl=file:///mnt/rhel9-iso/AppStream/
 enabled=1
 gpgcheck=1

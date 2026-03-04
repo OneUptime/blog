@@ -1,10 +1,10 @@
-# How to Review and Filter System Logs Using the RHEL 9 Web Console
+# How to Review and Filter System Logs Using the RHEL Web Console
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Logs, journald, Linux
 
-Description: Learn how to browse, filter, and analyze system logs through the Cockpit web console on RHEL 9, using severity levels, time ranges, and service-based filtering.
+Description: Learn how to browse, filter, and analyze system logs through the Cockpit web console on RHEL, using severity levels, time ranges, and service-based filtering.
 
 ---
 
@@ -200,7 +200,7 @@ journalctl -p err --since "24 hours ago" -o json --no-pager > /tmp/errors.json
 
 ## Configuring Journal Persistence
 
-By default, RHEL 9 stores journals persistently in `/var/log/journal/`. If journals are only in `/run/log/journal/`, they're volatile and lost on reboot.
+By default, RHEL stores journals persistently in `/var/log/journal/`. If journals are only in `/run/log/journal/`, they're volatile and lost on reboot.
 
 Ensure persistent storage is configured:
 

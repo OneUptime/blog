@@ -1,14 +1,14 @@
-# How to Join a RHEL 9 System to an Active Directory Domain Using SSSD and realmd
+# How to Join a RHEL System to an Active Directory Domain Using SSSD and realmd
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Active Directory, SSSD, realmd, Linux
 
-Description: A step-by-step guide to joining a RHEL 9 system to an Active Directory domain using realmd and SSSD, including prerequisites, domain discovery, join process, and login configuration.
+Description: A step-by-step guide to joining a RHEL system to an Active Directory domain using realmd and SSSD, including prerequisites, domain discovery, join process, and login configuration.
 
 ---
 
-Joining RHEL 9 to Active Directory is one of the most common tasks in mixed Linux/Windows environments. The combination of realmd for domain discovery and joining, plus SSSD for ongoing authentication and user lookups, makes this process reliable and maintainable. This guide covers the full workflow from preparation through verification.
+Joining RHEL to Active Directory is one of the most common tasks in mixed Linux/Windows environments. The combination of realmd for domain discovery and joining, plus SSSD for ongoing authentication and user lookups, makes this process reliable and maintainable. This guide covers the full workflow from preparation through verification.
 
 ## How the Components Fit Together
 
@@ -234,4 +234,4 @@ sudo chronyc makestep
 timedatectl
 ```
 
-The realmd/SSSD combination is the recommended approach for AD integration on RHEL 9. It handles the complexity of Kerberos and LDAP behind clean, manageable interfaces. Get DNS and time sync right, and the rest follows smoothly.
+The realmd/SSSD combination is the recommended approach for AD integration on RHEL. It handles the complexity of Kerberos and LDAP behind clean, manageable interfaces. Get DNS and time sync right, and the rest follows smoothly.

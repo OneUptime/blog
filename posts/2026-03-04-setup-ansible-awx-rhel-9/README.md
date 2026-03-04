@@ -1,14 +1,14 @@
-# How to Set Up Ansible AWX on RHEL 9
+# How to Set Up Ansible AWX on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, AWX, Automation, Kubernetes, Linux
 
-Description: Install and configure Ansible AWX on RHEL 9 using the AWX Operator on a single-node Kubernetes cluster for a web-based automation platform.
+Description: Install and configure Ansible AWX on RHEL using the AWX Operator on a single-node Kubernetes cluster for a web-based automation platform.
 
 ---
 
-AWX is the open-source upstream project for Red Hat Ansible Automation Platform. It gives you a web UI, REST API, role-based access control, and job scheduling for your Ansible playbooks. On RHEL 9, the recommended way to deploy AWX is using the AWX Operator on Kubernetes.
+AWX is the open-source upstream project for Red Hat Ansible Automation Platform. It gives you a web UI, REST API, role-based access control, and job scheduling for your Ansible playbooks. On RHEL, the recommended way to deploy AWX is using the AWX Operator on Kubernetes.
 
 ## Architecture
 
@@ -30,7 +30,7 @@ graph TD
 
 ## Prerequisites
 
-You need a RHEL 9 system with at least:
+You need a RHEL system with at least:
 - 4 CPU cores
 - 8 GB RAM
 - 40 GB disk space
@@ -247,4 +247,4 @@ kubectl -n awx exec deployment/awx-web -- awx-manage version
 
 ## Wrapping Up
 
-AWX on RHEL 9 gives you a proper automation platform with a web interface, RBAC, audit logging, and job scheduling. The Kubernetes-based deployment with the AWX Operator is the supported path, and Minikube makes it practical on a single server. For production use, consider using a proper Kubernetes cluster or OpenShift instead of Minikube. The initial setup takes some effort, but once running, AWX makes it much easier for teams to collaborate on Ansible automation without everyone needing command-line access.
+AWX on RHEL gives you a proper automation platform with a web interface, RBAC, audit logging, and job scheduling. The Kubernetes-based deployment with the AWX Operator is the supported path, and Minikube makes it practical on a single server. For production use, consider using a proper Kubernetes cluster or OpenShift instead of Minikube. The initial setup takes some effort, but once running, AWX makes it much easier for teams to collaborate on Ansible automation without everyone needing command-line access.

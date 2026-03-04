@@ -1,10 +1,10 @@
-# How to Configure Read-Ahead Settings for Sequential Workloads on RHEL 9
+# How to Configure Read-Ahead Settings for Sequential Workloads on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Read-Ahead, Performance, Storage, Linux
 
-Description: Learn how to tune read-ahead settings on RHEL 9 to boost performance for sequential workloads like backups, media streaming, and large data processing.
+Description: Learn how to tune read-ahead settings on RHEL to boost performance for sequential workloads like backups, media streaming, and large data processing.
 
 ---
 
@@ -22,7 +22,7 @@ graph LR
     D --> E[Zero wait time, higher throughput]
 ```
 
-The default read-ahead on RHEL 9 is typically 128 KB (256 sectors of 512 bytes each).
+The default read-ahead on RHEL is typically 128 KB (256 sectors of 512 bytes each).
 
 ## Check Current Read-Ahead
 
@@ -72,7 +72,7 @@ udevadm trigger
 
 ### Persistent via tuned
 
-If you are using the `tuned` daemon (which you should be on RHEL 9), add read-ahead to a custom profile:
+If you are using the `tuned` daemon (which you should be on RHEL), add read-ahead to a custom profile:
 
 ```bash
 # Create a custom tuned profile
@@ -216,4 +216,4 @@ Lower major faults with higher throughput indicates read-ahead is helping.
 
 ## Summary
 
-Read-ahead tuning on RHEL 9 is most effective for sequential workloads like backups, media streaming, and log processing. The default 128 KB is conservative. For sequential workloads, try 2048-4096 KB and measure the impact with `fio` or `dd`. Make changes persistent with udev rules or tuned profiles. Keep read-ahead low for random I/O workloads where pre-fetching wastes bandwidth.
+Read-ahead tuning on RHEL is most effective for sequential workloads like backups, media streaming, and log processing. The default 128 KB is conservative. For sequential workloads, try 2048-4096 KB and measure the impact with `fio` or `dd`. Make changes persistent with udev rules or tuned profiles. Keep read-ahead low for random I/O workloads where pre-fetching wastes bandwidth.

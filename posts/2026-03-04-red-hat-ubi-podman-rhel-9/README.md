@@ -1,14 +1,14 @@
-# How to Use Red Hat Universal Base Images (UBI) with Podman on RHEL 9
+# How to Use Red Hat Universal Base Images (UBI) with Podman on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, UBI, Podman, Container Images, Linux
 
-Description: Learn how to use Red Hat Universal Base Images (UBI) with Podman on RHEL 9 for building enterprise-grade containers with RHEL packages, security updates, and Red Hat support.
+Description: Learn how to use Red Hat Universal Base Images (UBI) with Podman on RHEL for building enterprise-grade containers with RHEL packages, security updates, and Red Hat support.
 
 ---
 
-Red Hat Universal Base Images (UBI) are freely redistributable container base images built from RHEL. You can use them without a Red Hat subscription, distribute containers built on them freely, and when running on a subscribed RHEL host, you get access to the full RHEL package set. They are the best starting point for building production containers on RHEL 9.
+Red Hat Universal Base Images (UBI) are freely redistributable container base images built from RHEL. You can use them without a Red Hat subscription, distribute containers built on them freely, and when running on a subscribed RHEL host, you get access to the full RHEL package set. They are the best starting point for building production containers on RHEL.
 
 ## UBI Image Variants
 
@@ -16,7 +16,7 @@ Red Hat provides several UBI variants:
 
 | Image | Size | Use Case |
 |-------|------|----------|
-| ubi9/ubi | ~215MB | Full RHEL 9 userspace |
+| ubi9/ubi | ~215MB | Full RHEL userspace |
 | ubi9/ubi-minimal | ~90MB | Minimal image with microdnf |
 | ubi9/ubi-micro | ~35MB | Ultra-minimal, no package manager |
 | ubi9/ubi-init | ~235MB | systemd-enabled for multi-service |
@@ -236,4 +236,4 @@ graph LR
 
 ## Summary
 
-UBI images are the foundation for building production containers on RHEL 9. They are free to use and redistribute, receive regular security updates from Red Hat, and give you access to RHEL packages. Start with ubi-micro or ubi-minimal for the smallest images, use the standard ubi when you need full dnf, and use ubi-init only when you genuinely need systemd inside your container.
+UBI images are the foundation for building production containers on RHEL. They are free to use and redistribute, receive regular security updates from Red Hat, and give you access to RHEL packages. Start with ubi-micro or ubi-minimal for the smallest images, use the standard ubi when you need full dnf, and use ubi-init only when you genuinely need systemd inside your container.

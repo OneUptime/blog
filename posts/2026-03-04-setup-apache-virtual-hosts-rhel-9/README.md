@@ -1,10 +1,10 @@
-# How to Set Up Apache Virtual Hosts on RHEL 9
+# How to Set Up Apache Virtual Hosts on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, Virtual Hosts, Linux
 
-Description: Learn how to serve multiple websites from a single Apache server on RHEL 9 using name-based virtual hosts.
+Description: Learn how to serve multiple websites from a single Apache server on RHEL using name-based virtual hosts.
 
 ---
 
@@ -16,7 +16,7 @@ This is the standard way to host multiple domains on one box, and it works well 
 
 ## Prerequisites
 
-- RHEL 9 with Apache httpd installed and running
+- RHEL with Apache httpd installed and running
 - DNS records (or /etc/hosts entries) pointing your domains to the server IP
 - Root or sudo access
 
@@ -54,7 +54,7 @@ sudo chown -R apache:apache /var/www/site-b.example.com
 
 ## Step 2 - Create Virtual Host Configuration Files
 
-RHEL 9 uses `/etc/httpd/conf.d/` for drop-in config files. Create one file per site.
+RHEL uses `/etc/httpd/conf.d/` for drop-in config files. Create one file per site.
 
 Configuration for site-a:
 
@@ -194,4 +194,4 @@ The `httpd -S` output is particularly helpful when you cannot figure out why a r
 
 ## Wrap-Up
 
-Name-based virtual hosts are straightforward on RHEL 9. One config file per site in `/etc/httpd/conf.d/`, a matching document root, and you are good to go. Keep your log files separate per site so troubleshooting stays manageable, and remember that the first virtual host acts as the default catch-all.
+Name-based virtual hosts are straightforward on RHEL. One config file per site in `/etc/httpd/conf.d/`, a matching document root, and you are good to go. Keep your log files separate per site so troubleshooting stays manageable, and remember that the first virtual host acts as the default catch-all.

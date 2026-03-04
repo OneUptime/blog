@@ -1,14 +1,14 @@
-# How to Configure PAM for LDAP Authentication on RHEL 9
+# How to Configure PAM for LDAP Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, PAM, LDAP, Authentication, Linux
 
-Description: Set up RHEL 9 to authenticate users against an LDAP directory using SSSD and PAM, including TLS configuration and home directory creation.
+Description: Set up RHEL to authenticate users against an LDAP directory using SSSD and PAM, including TLS configuration and home directory creation.
 
 ---
 
-If you manage more than a handful of Linux servers, local user management does not scale. LDAP gives you centralized authentication so users can log in to any server with the same credentials. On RHEL 9, the standard approach is to use SSSD as the broker between PAM and your LDAP directory.
+If you manage more than a handful of Linux servers, local user management does not scale. LDAP gives you centralized authentication so users can log in to any server with the same credentials. On RHEL, the standard approach is to use SSSD as the broker between PAM and your LDAP directory.
 
 ## Architecture Overview
 
@@ -28,7 +28,7 @@ SSSD handles the actual LDAP communication, caching, and credential management. 
 You need:
 - A working LDAP server (OpenLDAP, 389 Directory Server, or similar)
 - The LDAP server's CA certificate (for TLS)
-- Network access from the RHEL 9 client to the LDAP server on port 636 (LDAPS) or 389 (LDAP + STARTTLS)
+- Network access from the RHEL client to the LDAP server on port 636 (LDAPS) or 389 (LDAP + STARTTLS)
 
 ## Installing Required Packages
 
@@ -297,4 +297,4 @@ sudo sssctl domain-status ldap.example.com
 
 ## Wrapping Up
 
-LDAP authentication via SSSD on RHEL 9 is solid and well-tested. The combination of SSSD for LDAP communication, authselect for PAM management, and oddjobd for home directory creation handles the most common requirements. Make sure TLS is working before anything else, keep debug logging handy for troubleshooting, and always test new configurations with a non-root user while keeping a root session open as a safety net.
+LDAP authentication via SSSD on RHEL is solid and well-tested. The combination of SSSD for LDAP communication, authselect for PAM management, and oddjobd for home directory creation handles the most common requirements. Make sure TLS is working before anything else, keep debug logging handy for troubleshooting, and always test new configurations with a non-root user while keeping a root session open as a safety net.

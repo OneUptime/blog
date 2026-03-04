@@ -32,7 +32,7 @@ Before configuring content management, ensure you have:
 - A running Satellite Server (6.x) installed and configured
 - A valid Satellite subscription manifest uploaded
 - Network access to cdn.redhat.com for content syncing
-- Sufficient disk space (plan for at least 300 GB for a basic RHEL 9 sync)
+- Sufficient disk space (plan for at least 300 GB for a basic RHEL sync)
 
 ## Step 1 - Upload a Subscription Manifest
 
@@ -56,10 +56,10 @@ Or through the web UI: Content, then Subscriptions, then "Manage Manifest", then
 
 ## Step 2 - Enable Red Hat Repositories
 
-After uploading the manifest, enable the repositories you want to sync. For a basic RHEL 9 setup:
+After uploading the manifest, enable the repositories you want to sync. For a basic RHEL setup:
 
 ```bash
-# Enable RHEL 9 BaseOS repository
+# Enable RHEL BaseOS repository
 sudo hammer repository-set enable \
     --organization "MyOrganization" \
     --product "Red Hat Enterprise Linux for x86_64" \
@@ -67,7 +67,7 @@ sudo hammer repository-set enable \
     --releasever "9" \
     --basearch "x86_64"
 
-# Enable RHEL 9 AppStream repository
+# Enable RHEL AppStream repository
 sudo hammer repository-set enable \
     --organization "MyOrganization" \
     --product "Red Hat Enterprise Linux for x86_64" \
@@ -79,11 +79,11 @@ sudo hammer repository-set enable \
 For additional repositories like Satellite Client tools:
 
 ```bash
-# Enable Satellite Client repository for RHEL 9
+# Enable Satellite Client repository for RHEL
 sudo hammer repository-set enable \
     --organization "MyOrganization" \
     --product "Red Hat Enterprise Linux for x86_64" \
-    --name "Red Hat Satellite Client 6 for RHEL 9 x86_64 (RPMs)" \
+    --name "Red Hat Satellite Client 6 for RHEL x86_64 (RPMs)" \
     --basearch "x86_64"
 ```
 
@@ -101,7 +101,7 @@ sudo hammer product synchronize \
 
 The `--async` flag starts the sync in the background. Monitor progress in the Satellite web UI under Monitor, then Tasks.
 
-Initial syncs take a long time depending on your bandwidth. The RHEL 9 BaseOS and AppStream repos together are around 30-40 GB.
+Initial syncs take a long time depending on your bandwidth. The RHEL BaseOS and AppStream repos together are around 30-40 GB.
 
 ## Step 4 - Set Up Sync Plans
 
@@ -163,11 +163,11 @@ flowchart LR
 Content views define which repositories and packages are available to systems:
 
 ```bash
-# Create a content view for RHEL 9 servers
+# Create a content view for RHEL servers
 sudo hammer content-view create \
     --organization "MyOrganization" \
     --name "RHEL9-Server" \
-    --description "Content view for RHEL 9 servers"
+    --description "Content view for RHEL servers"
 ```
 
 Add repositories to the content view:

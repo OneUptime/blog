@@ -1,20 +1,20 @@
-# How to Choose Between XFS, ext4, and Btrfs on RHEL 9
+# How to Choose Between XFS, ext4, and Btrfs on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, XFS, ext4, Btrfs, Comparison, Linux
 
-Description: A practical comparison of XFS, ext4, and Btrfs on RHEL 9 to help you pick the right filesystem for your workload.
+Description: A practical comparison of XFS, ext4, and Btrfs on RHEL to help you pick the right filesystem for your workload.
 
 ---
 
-RHEL 9 gives you three filesystem options: XFS (the default), ext4 (the veteran), and Btrfs (available as a technology preview). Each has strengths and tradeoffs. After years of running all three in production, here is my take on when to use each one.
+RHEL gives you three filesystem options: XFS (the default), ext4 (the veteran), and Btrfs (available as a technology preview). Each has strengths and tradeoffs. After years of running all three in production, here is my take on when to use each one.
 
 ## Quick Comparison
 
 | Feature | XFS | ext4 | Btrfs |
 |---------|-----|------|-------|
-| RHEL 9 default | Yes | No | No |
+| RHEL default | Yes | No | No |
 | Max filesystem size | 1 EB | 1 EB | 16 EB |
 | Max file size | 8 EB | 16 TB | 16 EB |
 | Online grow | Yes | Yes | Yes |
@@ -26,7 +26,7 @@ RHEL 9 gives you three filesystem options: XFS (the default), ext4 (the veteran)
 
 ## XFS - The Default Choice
 
-XFS is the default filesystem on RHEL 9 for good reasons. It handles large files and high-throughput workloads extremely well.
+XFS is the default filesystem on RHEL for good reasons. It handles large files and high-throughput workloads extremely well.
 
 ### When to Use XFS
 
@@ -99,7 +99,7 @@ resize2fs /dev/vg_data/lv_data 50G
 
 ## Btrfs - The Feature-Rich Newcomer
 
-Btrfs brings modern features like built-in snapshots, checksums, and compression. On RHEL 9, it is available as a technology preview, meaning Red Hat does not provide full production support.
+Btrfs brings modern features like built-in snapshots, checksums, and compression. On RHEL, it is available as a technology preview, meaning Red Hat does not provide full production support.
 
 ### When to Consider Btrfs
 
@@ -127,7 +127,7 @@ mount -o compress=zstd /dev/vg_data/lv_data /data
 - Online shrink and grow
 - Send/receive for incremental backups
 
-### Btrfs Limitations on RHEL 9
+### Btrfs Limitations on RHEL
 
 - Technology preview, not fully supported
 - RAID 5/6 support is still considered unstable
@@ -152,7 +152,7 @@ graph TD
 
 ## Performance Comparison
 
-Based on typical benchmarks on RHEL 9:
+Based on typical benchmarks on RHEL:
 
 ### Sequential Read/Write (Large Files)
 
@@ -186,7 +186,7 @@ Same process - backup, reformat, restore. There is no conversion tool.
 
 ## My Recommendations
 
-For most RHEL 9 deployments, stick with **XFS**. It is the default, best tested, and handles the widest range of workloads well.
+For most RHEL deployments, stick with **XFS**. It is the default, best tested, and handles the widest range of workloads well.
 
 Use **ext4** when you have a specific reason: you need filesystem shrink capability, you have a workload with millions of tiny files, or you are running older software that was tested against ext4.
 
@@ -194,4 +194,4 @@ Use **Btrfs** only in non-production environments or when you have a specific ne
 
 ## Summary
 
-XFS is the right choice for most RHEL 9 systems - it is the default, well-supported, and performs great for general and large-file workloads. ext4 is better for small-file workloads and when you need shrink capability. Btrfs brings powerful features like snapshots and checksums but is only a technology preview on RHEL 9. Pick based on your workload, not hype.
+XFS is the right choice for most RHEL systems - it is the default, well-supported, and performs great for general and large-file workloads. ext4 is better for small-file workloads and when you need shrink capability. Btrfs brings powerful features like snapshots and checksums but is only a technology preview on RHEL. Pick based on your workload, not hype.

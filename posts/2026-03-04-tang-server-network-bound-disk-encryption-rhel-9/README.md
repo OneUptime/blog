@@ -1,10 +1,10 @@
-# How to Set Up a Tang Server for Network-Bound Disk Encryption on RHEL 9
+# How to Set Up a Tang Server for Network-Bound Disk Encryption on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Tang, NBDE, Encryption, Linux
 
-Description: Learn how to deploy a Tang server on RHEL 9 to provide Network-Bound Disk Encryption, enabling automatic LUKS volume unlocking when servers are on the trusted network.
+Description: Learn how to deploy a Tang server on RHEL to provide Network-Bound Disk Encryption, enabling automatic LUKS volume unlocking when servers are on the trusted network.
 
 ---
 
@@ -106,7 +106,7 @@ After hiding old keys, clients bound to those keys will need to re-bind. Plan ke
 
 ## Testing Tang from a Remote Client
 
-From another RHEL 9 system, verify Tang is reachable:
+From another RHEL system, verify Tang is reachable:
 
 ```bash
 # Test Tang from a client machine

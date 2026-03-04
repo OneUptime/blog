@@ -1,10 +1,10 @@
-# How to Configure Kerberos Keytab Files on RHEL 9
+# How to Configure Kerberos Keytab Files on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kerberos, Keytab, Authentication, Linux
 
-Description: Learn how to create, manage, and use Kerberos keytab files on RHEL 9 for service authentication without interactive password prompts.
+Description: Learn how to create, manage, and use Kerberos keytab files on RHEL for service authentication without interactive password prompts.
 
 ---
 
@@ -174,5 +174,5 @@ kdestroy
 
 ## Summary
 
-Keytab files are the standard way to enable passwordless Kerberos authentication for services and automated processes on RHEL 9. Keep them properly secured with restrictive file permissions, rotate keys periodically, and always test after making changes.
+Keytab files are the standard way to enable passwordless Kerberos authentication for services and automated processes on RHEL. Keep them properly secured with restrictive file permissions, rotate keys periodically, and always test after making changes.
 

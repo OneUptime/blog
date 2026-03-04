@@ -1,14 +1,14 @@
-# How to Troubleshoot Subscription and Entitlement Issues on RHEL 9
+# How to Troubleshoot Subscription and Entitlement Issues on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Subscription, Troubleshooting, Red Hat, Linux
 
-Description: A practical troubleshooting guide for common RHEL 9 subscription and entitlement problems, covering registration failures, certificate errors, repo access issues, and more.
+Description: A practical troubleshooting guide for common RHEL subscription and entitlement problems, covering registration failures, certificate errors, repo access issues, and more.
 
 ---
 
-Subscription issues on RHEL 9 can range from mildly annoying (a repo not showing up) to blocking (unable to install any packages). I have dealt with these problems across hundreds of systems over the years, and the root cause is almost always one of a handful of common issues. This guide walks through diagnosing and fixing the most frequent subscription and entitlement problems.
+Subscription issues on RHEL can range from mildly annoying (a repo not showing up) to blocking (unable to install any packages). I have dealt with these problems across hundreds of systems over the years, and the root cause is almost always one of a handful of common issues. This guide walks through diagnosing and fixing the most frequent subscription and entitlement problems.
 
 ## Quick Diagnostic Commands
 
@@ -323,4 +323,4 @@ Only use this as a last resort, as it removes all subscription state from the sy
 
 ## Summary
 
-Most subscription issues on RHEL 9 come down to four things: the system is not registered, subscriptions are not attached (in non-SCA environments), the network cannot reach Red Hat, or certificates are corrupted. Start your diagnosis with `subscription-manager identity`, `status`, and the RHSM log. Nine times out of ten, a clean and re-register fixes everything.
+Most subscription issues on RHEL come down to four things: the system is not registered, subscriptions are not attached (in non-SCA environments), the network cannot reach Red Hat, or certificates are corrupted. Start your diagnosis with `subscription-manager identity`, `status`, and the RHSM log. Nine times out of ten, a clean and re-register fixes everything.

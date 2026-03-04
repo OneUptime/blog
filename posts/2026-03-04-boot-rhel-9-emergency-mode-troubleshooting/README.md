@@ -1,10 +1,10 @@
-# How to Boot RHEL 9 into Emergency Mode for Advanced Troubleshooting
+# How to Boot RHEL into Emergency Mode for Advanced Troubleshooting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Emergency Mode, Troubleshooting, Linux
 
-Description: Learn how to boot RHEL 9 into emergency mode for advanced troubleshooting when rescue mode is not enough, covering root filesystem repair, broken mounts, and recovery from severe system damage.
+Description: Learn how to boot RHEL into emergency mode for advanced troubleshooting when rescue mode is not enough, covering root filesystem repair, broken mounts, and recovery from severe system damage.
 
 ---
 
@@ -75,7 +75,7 @@ mount -o remount,rw /
 If the root filesystem has errors, you may need to run fsck. Since the filesystem is mounted read-only in emergency mode, you need to unmount it first or run fsck on it while read-only.
 
 ```bash
-# For XFS (default on RHEL 9), check and repair
+# For XFS (default on RHEL), check and repair
 xfs_repair /dev/mapper/rhel-root
 
 # If the filesystem is mounted, you may need to boot from

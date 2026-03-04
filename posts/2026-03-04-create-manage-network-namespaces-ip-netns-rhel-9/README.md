@@ -1,10 +1,10 @@
-# How to Create and Manage Network Namespaces with ip netns on RHEL 9
+# How to Create and Manage Network Namespaces with ip netns on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Namespaces, ip netns, Linux
 
-Description: A hands-on guide to creating and managing network namespaces on RHEL 9 using ip netns, providing isolated network environments for testing, security, and understanding container networking.
+Description: A hands-on guide to creating and managing network namespaces on RHEL using ip netns, providing isolated network environments for testing, security, and understanding container networking.
 
 ---
 
@@ -208,4 +208,4 @@ sudo ip netns exec testenv curl -s ifconfig.me
 
 ## Wrapping Up
 
-Network namespaces on RHEL 9 are a fundamental building block for network isolation. They're how containers get their own network stacks, but they're also useful on their own for testing, security isolation, and learning. The workflow is: create the namespace, create veth pairs to connect it, configure addresses and routes, and optionally enable NAT for internet access. Everything inside a namespace is completely isolated from the rest of the system.
+Network namespaces on RHEL are a fundamental building block for network isolation. They're how containers get their own network stacks, but they're also useful on their own for testing, security isolation, and learning. The workflow is: create the namespace, create veth pairs to connect it, configure addresses and routes, and optionally enable NAT for internet access. Everything inside a namespace is completely isolated from the rest of the system.

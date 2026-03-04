@@ -1,16 +1,16 @@
-# How to Use Pulumi for Infrastructure as Code on RHEL 9
+# How to Use Pulumi for Infrastructure as Code on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Pulumi, IaC, Infrastructure, Python, Linux
 
-Description: Install Pulumi on RHEL 9 and use real programming languages like Python to define and deploy cloud infrastructure.
+Description: Install Pulumi on RHEL and use real programming languages like Python to define and deploy cloud infrastructure.
 
 ---
 
 Pulumi takes a different approach to infrastructure as code. Instead of a domain-specific language like HCL, you write infrastructure definitions in real programming languages like Python, TypeScript, or Go. This means you get loops, conditionals, functions, and type checking out of the box.
 
-## Install Pulumi on RHEL 9
+## Install Pulumi on RHEL
 
 ```bash
 # Install Pulumi using the official installer
@@ -54,7 +54,7 @@ pulumi new aws-python --name rhel-infrastructure --yes
 ## Write Infrastructure Code in Python
 
 ```python
-# __main__.py - Deploy RHEL 9 infrastructure on AWS
+# __main__.py - Deploy RHEL infrastructure on AWS
 
 import pulumi
 import pulumi_aws as aws
@@ -63,7 +63,7 @@ import pulumi_aws as aws
 config = pulumi.Config()
 instance_type = config.get("instanceType") or "t3.medium"
 
-# Find the latest RHEL 9 AMI
+# Find the latest RHEL AMI
 rhel9_ami = aws.ec2.get_ami(
     most_recent=True,
     owners=["309956199498"],  # Red Hat
@@ -141,7 +141,7 @@ sg = aws.ec2.SecurityGroup(
     ],
 )
 
-# Create multiple RHEL 9 instances using a loop
+# Create multiple RHEL instances using a loop
 server_count = 3
 servers = []
 
@@ -217,4 +217,4 @@ pulumi stack rm dev --yes
 | Testing | Standard test frameworks | terraform test |
 | State | Pulumi Cloud or self-managed | Local or remote backends |
 
-Pulumi lets you use the full power of programming languages to manage RHEL 9 infrastructure. If your team already writes Python or TypeScript, Pulumi reduces the learning curve compared to picking up a new DSL.
+Pulumi lets you use the full power of programming languages to manage RHEL infrastructure. If your team already writes Python or TypeScript, Pulumi reduces the learning curve compared to picking up a new DSL.

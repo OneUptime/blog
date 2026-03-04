@@ -1,10 +1,10 @@
-# How to Configure Automatic System Updates with dnf-automatic on RHEL 9
+# How to Configure Automatic System Updates with dnf-automatic on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, dnf-automatic, Automatic Updates, Security, Linux, Package Management
 
-Description: A complete guide to setting up automatic system updates on RHEL 9 using dnf-automatic, covering configuration options, security-only updates, email notifications, and timer scheduling.
+Description: A complete guide to setting up automatic system updates on RHEL using dnf-automatic, covering configuration options, security-only updates, email notifications, and timer scheduling.
 
 ---
 
@@ -16,7 +16,7 @@ dnf-automatic solves this by handling updates automatically. You configure it on
 
 ## Installing dnf-automatic
 
-On RHEL 9, dnf-automatic is provided by the `dnf-automatic` package.
+On RHEL, dnf-automatic is provided by the `dnf-automatic` package.
 
 ```bash
 # Install dnf-automatic
@@ -412,4 +412,4 @@ sudo dnf history undo 42
 
 ## Summary
 
-dnf-automatic on RHEL 9 takes the manual effort out of keeping your system patched. Start conservatively with notifications or download-only mode, limit to security updates on production systems, exclude packages that need careful handling, and always monitor the results. Combined with a good rollback strategy, automatic updates significantly reduce your exposure to known vulnerabilities without introducing unacceptable risk.
+dnf-automatic on RHEL takes the manual effort out of keeping your system patched. Start conservatively with notifications or download-only mode, limit to security updates on production systems, exclude packages that need careful handling, and always monitor the results. Combined with a good rollback strategy, automatic updates significantly reduce your exposure to known vulnerabilities without introducing unacceptable risk.

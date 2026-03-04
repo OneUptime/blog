@@ -1,14 +1,14 @@
-# How to Implement Least-Privilege Sudo Policies on RHEL 9
+# How to Implement Least-Privilege Sudo Policies on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, sudo, Least Privilege, Security, Linux
 
-Description: Design and implement least-privilege sudo policies on RHEL 9 that give users only the specific commands they need, reducing the attack surface.
+Description: Design and implement least-privilege sudo policies on RHEL that give users only the specific commands they need, reducing the attack surface.
 
 ---
 
-Giving everyone full sudo access is the path of least resistance, and the path to your next security incident. The principle of least privilege means each user gets the minimum access needed to do their job. On RHEL 9, sudo's granular rule system makes this achievable without making everyone's life miserable.
+Giving everyone full sudo access is the path of least resistance, and the path to your next security incident. The principle of least privilege means each user gets the minimum access needed to do their job. On RHEL, sudo's granular rule system makes this achievable without making everyone's life miserable.
 
 ## The Problem with Full Sudo
 

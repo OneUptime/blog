@@ -1,10 +1,10 @@
-# How to Use Ansible Vault for Secret Management on RHEL 9
+# How to Use Ansible Vault for Secret Management on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, Vault, Secrets, Security, Linux
 
-Description: Securely manage passwords, API keys, and sensitive data in your Ansible playbooks using Ansible Vault encryption on RHEL 9.
+Description: Securely manage passwords, API keys, and sensitive data in your Ansible playbooks using Ansible Vault encryption on RHEL.
 
 ---
 

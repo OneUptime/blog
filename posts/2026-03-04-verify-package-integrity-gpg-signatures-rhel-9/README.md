@@ -1,14 +1,14 @@
-# How to Verify Package Integrity and GPG Signatures on RHEL 9
+# How to Verify Package Integrity and GPG Signatures on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RPM, GPG, Package Integrity, Security, Linux
 
-Description: Learn how to verify RPM package integrity and GPG signatures on RHEL 9 to ensure your packages have not been tampered with and come from trusted sources.
+Description: Learn how to verify RPM package integrity and GPG signatures on RHEL to ensure your packages have not been tampered with and come from trusted sources.
 
 ---
 
-Every RPM package you install runs scripts and drops files onto your system. If someone tampered with a package between the build server and your machine, you could be installing malware without knowing it. GPG signatures and integrity verification are your defense against this. RHEL 9 has solid tooling for this, and you should be using it.
+Every RPM package you install runs scripts and drops files onto your system. If someone tampered with a package between the build server and your machine, you could be installing malware without knowing it. GPG signatures and integrity verification are your defense against this. RHEL has solid tooling for this, and you should be using it.
 
 ## How RPM Package Signing Works
 
@@ -32,7 +32,7 @@ The process relies on asymmetric cryptography:
 
 ## Checking Imported GPG Keys
 
-RHEL 9 ships with Red Hat's GPG key pre-installed. Check what keys are on your system:
+RHEL ships with Red Hat's GPG key pre-installed. Check what keys are on your system:
 
 ```bash
 # List all imported RPM GPG keys
@@ -50,7 +50,7 @@ This shows the key's name (usually the organization), creation date, and fingerp
 
 ### Where Keys Are Stored
 
-RPM GPG keys on RHEL 9 are typically stored in:
+RPM GPG keys on RHEL are typically stored in:
 
 ```bash
 # List the GPG keys shipped with RHEL

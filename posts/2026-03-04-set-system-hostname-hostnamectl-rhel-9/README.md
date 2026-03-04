@@ -1,18 +1,18 @@
-# How to Set the System Hostname with hostnamectl on RHEL 9
+# How to Set the System Hostname with hostnamectl on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, hostnamectl, Hostname, Linux
 
-Description: Learn how to properly set and manage the system hostname on RHEL 9 using hostnamectl, including static, transient, and pretty hostnames.
+Description: Learn how to properly set and manage the system hostname on RHEL using hostnamectl, including static, transient, and pretty hostnames.
 
 ---
 
-Setting the hostname on a Linux server seems like it should be simple, and on RHEL 9 it mostly is, thanks to `hostnamectl`. But there are some nuances that matter, especially in production environments where the hostname affects logging, monitoring, cluster membership, and authentication. This post covers everything you need to know about hostname management on RHEL 9.
+Setting the hostname on a Linux server seems like it should be simple, and on RHEL it mostly is, thanks to `hostnamectl`. But there are some nuances that matter, especially in production environments where the hostname affects logging, monitoring, cluster membership, and authentication. This post covers everything you need to know about hostname management on RHEL.
 
 ## The Three Types of Hostnames
 
-RHEL 9 actually maintains three different hostnames, each serving a different purpose:
+RHEL actually maintains three different hostnames, each serving a different purpose:
 
 1. **Static hostname** - The persistent hostname stored on disk. This is the "real" hostname that survives reboots. Stored in `/etc/hostname`.
 
@@ -289,4 +289,4 @@ EOF
 
 ## Wrapping Up
 
-Setting the hostname on RHEL 9 is a straightforward operation with `hostnamectl`, but getting it right means more than just running one command. You need to update `/etc/hosts`, verify that the hostname resolves to the correct IP, and consider the downstream effects on logging, monitoring, and cluster membership. Take the time to set it up properly during provisioning and you will avoid a surprising number of hard-to-diagnose issues down the road.
+Setting the hostname on RHEL is a straightforward operation with `hostnamectl`, but getting it right means more than just running one command. You need to update `/etc/hosts`, verify that the hostname resolves to the correct IP, and consider the downstream effects on logging, monitoring, and cluster membership. Take the time to set it up properly during provisioning and you will avoid a surprising number of hard-to-diagnose issues down the road.

@@ -1,10 +1,10 @@
-# How to Configure SELinux for Custom Application Directories on RHEL 9
+# How to Configure SELinux for Custom Application Directories on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, Custom Directories, Security, Linux
 
-Description: Set up SELinux file contexts for custom application directories on RHEL 9 so services can access files stored outside their default locations.
+Description: Set up SELinux file contexts for custom application directories on RHEL so services can access files stored outside their default locations.
 
 ---
 

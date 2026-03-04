@@ -1,14 +1,14 @@
-# How to Join RHEL 9 to Active Directory Using Samba Winbind
+# How to Join RHEL to Active Directory Using Samba Winbind
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Active Directory, Samba, Winbind, Linux
 
-Description: A practical guide to joining RHEL 9 to Active Directory using Samba Winbind instead of SSSD, covering configuration, ID mapping, and use cases where Winbind is the better choice.
+Description: A practical guide to joining RHEL to Active Directory using Samba Winbind instead of SSSD, covering configuration, ID mapping, and use cases where Winbind is the better choice.
 
 ---
 
-SSSD is the default and recommended approach for AD integration on RHEL 9, but there are situations where Samba Winbind is the better fit. If you need to run Samba file shares that integrate with AD permissions, or if you have a specific requirement for RID-based ID mapping that works differently from SSSD, Winbind is the way to go. This guide walks through the complete setup.
+SSSD is the default and recommended approach for AD integration on RHEL, but there are situations where Samba Winbind is the better fit. If you need to run Samba file shares that integrate with AD permissions, or if you have a specific requirement for RID-based ID mapping that works differently from SSSD, Winbind is the way to go. This guide walks through the complete setup.
 
 ## When to Use Winbind Instead of SSSD
 

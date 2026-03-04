@@ -1,10 +1,10 @@
-# How to Use the sosreport Tool for Red Hat Support Cases on RHEL 9
+# How to Use the sosreport Tool for Red Hat Support Cases on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, sosreport, Red Hat Support, Troubleshooting, Linux
 
-Description: Learn how to use the sos report tool on RHEL 9 to collect system diagnostic data for Red Hat support cases, including plugin selection, sensitive data filtering, and uploading to Red Hat.
+Description: Learn how to use the sos report tool on RHEL to collect system diagnostic data for Red Hat support cases, including plugin selection, sensitive data filtering, and uploading to Red Hat.
 
 ---
 
@@ -16,7 +16,7 @@ I have worked with Red Hat support on dozens of cases over the years, and having
 
 ## Installing sos
 
-On RHEL 9, the sos package should be installed by default. If it is not, install it.
+On RHEL, the sos package should be installed by default. If it is not, install it.
 
 ```bash
 # Install the sos package
@@ -26,7 +26,7 @@ sudo dnf install sos -y
 rpm -q sos
 ```
 
-Note that the command changed from `sosreport` (the old name) to `sos report` (with a space) in newer versions. On RHEL 9, both work, but `sos report` is the current syntax.
+Note that the command changed from `sosreport` (the old name) to `sos report` (with a space) in newer versions. On RHEL, both work, but `sos report` is the current syntax.
 
 ## Running a Basic sos report
 
@@ -282,4 +282,4 @@ ls -lh /var/tmp/sosreport-*.tar.xz
 
 ## Summary
 
-The sos report tool is indispensable when working with Red Hat support on RHEL 9. It collects comprehensive system diagnostic data in a standardized format that support engineers know how to analyze. Use plugins to target specific subsystems, clean sensitive data before uploading, and always have a report ready when you open a case. It is one of those tools that turns a multi-day support interaction into something that gets resolved much faster.
+The sos report tool is indispensable when working with Red Hat support on RHEL. It collects comprehensive system diagnostic data in a standardized format that support engineers know how to analyze. Use plugins to target specific subsystems, clean sensitive data before uploading, and always have a report ready when you open a case. It is one of those tools that turns a multi-day support interaction into something that gets resolved much faster.

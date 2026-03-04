@@ -1,10 +1,10 @@
-# How to Add a Swap File to RHEL 9 for Additional Virtual Memory
+# How to Add a Swap File to RHEL for Additional Virtual Memory
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Swap File, Memory, Linux
 
-Description: Learn how to create and configure a swap file on RHEL 9 when you need additional virtual memory without repartitioning disks.
+Description: Learn how to create and configure a swap file on RHEL when you need additional virtual memory without repartitioning disks.
 
 ---
 
@@ -216,4 +216,4 @@ If you see many extents, the file is fragmented. On ext4, you can defragment wit
 
 ## Summary
 
-Adding a swap file on RHEL 9 is one of the fastest ways to add virtual memory without any downtime. The process is simple: create the file with `dd`, set permissions, format with `mkswap`, enable with `swapon`, and persist in fstab. It is especially useful for cloud instances and situations where repartitioning is impractical.
+Adding a swap file on RHEL is one of the fastest ways to add virtual memory without any downtime. The process is simple: create the file with `dd`, set permissions, format with `mkswap`, enable with `swapon`, and persist in fstab. It is especially useful for cloud instances and situations where repartitioning is impractical.

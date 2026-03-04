@@ -1,14 +1,14 @@
-# How to Migrate from Yum to DNF on RHEL 9
+# How to Migrate from Yum to DNF on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNF, Yum, Migration, Package Management, Linux
 
-Description: A practical guide for sysadmins migrating from yum to dnf on RHEL 9, covering command differences, new features, configuration changes, and backward compatibility.
+Description: A practical guide for sysadmins migrating from yum to dnf on RHEL, covering command differences, new features, configuration changes, and backward compatibility.
 
 ---
 
-If you have been managing RHEL systems for any length of time, yum is burned into your muscle memory. `yum install`, `yum update`, `yum search` - it is second nature. But RHEL 9 has fully moved to DNF as the default package manager, and while Red Hat kept backward compatibility through a `yum` symlink, there are real differences worth understanding.
+If you have been managing RHEL systems for any length of time, yum is burned into your muscle memory. `yum install`, `yum update`, `yum search` - it is second nature. But RHEL has fully moved to DNF as the default package manager, and while Red Hat kept backward compatibility through a `yum` symlink, there are real differences worth understanding.
 
 I went through this transition myself across a fleet of servers, and honestly, it is not painful at all. DNF does everything yum did, plus a lot more. Here is what you need to know.
 
@@ -19,10 +19,10 @@ Yum (Yellowdog Updater, Modified) served us well for many years, but its Python 
 Here is the timeline:
 - RHEL 7: yum was the default
 - RHEL 8: dnf was the default, yum was a symlink to dnf
-- RHEL 9: dnf is the only option, yum is still a symlink for compatibility
+- RHEL: dnf is the only option, yum is still a symlink for compatibility
 
 ```bash
-# Check what yum actually points to on RHEL 9
+# Check what yum actually points to on RHEL
 ls -la /usr/bin/yum
 ```
 
@@ -32,7 +32,7 @@ You will see it is a symlink:
 /usr/bin/yum -> dnf-3
 ```
 
-So when you type `yum install httpd` on RHEL 9, you are actually running `dnf install httpd`. Your old scripts will not break immediately, but there are differences in behavior and configuration that matter.
+So when you type `yum install httpd` on RHEL, you are actually running `dnf install httpd`. Your old scripts will not break immediately, but there are differences in behavior and configuration that matter.
 
 ## Command Comparison
 
@@ -122,7 +122,7 @@ sudo dnf install dnf-plugin-system-upgrade
 
 ### DNF Configuration File
 
-The main config file moved from `/etc/yum.conf` to `/etc/dnf/dnf.conf`. On RHEL 9, `/etc/yum.conf` is a symlink to `/etc/dnf/dnf.conf`.
+The main config file moved from `/etc/yum.conf` to `/etc/dnf/dnf.conf`. On RHEL, `/etc/yum.conf` is a symlink to `/etc/dnf/dnf.conf`.
 
 ```bash
 # Check the symlink
@@ -208,7 +208,7 @@ dnf upgrade -y
 
 ### Ansible Playbooks
 
-If you use Ansible, the `yum` module still works on RHEL 9, but you should switch to the `dnf` module:
+If you use Ansible, the `yum` module still works on RHEL, but you should switch to the `dnf` module:
 
 ```yaml
 # Old
@@ -281,7 +281,7 @@ metadata_expire=3600
 
 ## Common Gotchas During Migration
 
-1. **check-update vs check-upgrade**: The yum command was `check-update`, DNF uses `check-upgrade`. Both work on RHEL 9 because of compatibility, but `check-upgrade` is the correct DNF command.
+1. **check-update vs check-upgrade**: The yum command was `check-update`, DNF uses `check-upgrade`. Both work on RHEL because of compatibility, but `check-upgrade` is the correct DNF command.
 
 2. **Group commands**: Yum used `groupinstall`, `groupremove`, etc. DNF uses `group install`, `group remove` (with a space). The old syntax still works.
 
@@ -307,4 +307,4 @@ yum --version
 
 ## Summary
 
-Migrating from yum to DNF on RHEL 9 is mostly painless because Red Hat maintained backward compatibility through symlinks and command aliases. The core workflow is the same: search, install, update, remove. But DNF brings real improvements in dependency resolution, modularity support, and transaction management. Take the time to update your scripts to use `dnf` commands directly, adjust your configs in `/etc/dnf/dnf.conf`, and learn the new features. Your future self will appreciate it.
+Migrating from yum to DNF on RHEL is mostly painless because Red Hat maintained backward compatibility through symlinks and command aliases. The core workflow is the same: search, install, update, remove. But DNF brings real improvements in dependency resolution, modularity support, and transaction management. Take the time to update your scripts to use `dnf` commands directly, adjust your configs in `/etc/dnf/dnf.conf`, and learn the new features. Your future self will appreciate it.

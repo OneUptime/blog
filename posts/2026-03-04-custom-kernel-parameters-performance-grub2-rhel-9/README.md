@@ -1,10 +1,10 @@
-# How to Add Custom Kernel Parameters for Performance Tuning via GRUB2 on RHEL 9
+# How to Add Custom Kernel Parameters for Performance Tuning via GRUB2 on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kernel, GRUB2, Performance, Linux
 
-Description: A practical guide to adding performance-oriented kernel command-line parameters via GRUB2 on RHEL 9, covering CPU, memory, NUMA, I/O, and network optimizations.
+Description: A practical guide to adding performance-oriented kernel command-line parameters via GRUB2 on RHEL, covering CPU, memory, NUMA, I/O, and network optimizations.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A practical guide to adding performance-oriented kernel command-lin
 
 Some kernel tuning parameters can only be set at boot time through the kernel command line. Unlike sysctl parameters that you can change at runtime, these options affect how the kernel initializes hardware, allocates memory, and sets up core subsystems. Setting them right from the start is the only option.
 
-On RHEL 9, you add these parameters through GRUB2 using the `grubby` command.
+On RHEL, you add these parameters through GRUB2 using the `grubby` command.
 
 ## How to Add and Remove Parameters
 
@@ -190,4 +190,4 @@ cat /proc/sys/kernel/numa_balancing
 
 ## Wrapping Up
 
-Kernel command-line parameters are the first layer of performance tuning on RHEL 9. They handle things that cannot be changed after boot: huge page allocation, CPU isolation, IOMMU setup, and hardware mitigation controls. Use `grubby` for immediate changes and `/etc/default/grub` for persistence across kernel updates. Always benchmark before and after, and document every parameter you set and the reason behind it. A server with unexplained custom parameters is a maintenance nightmare for whoever comes after you.
+Kernel command-line parameters are the first layer of performance tuning on RHEL. They handle things that cannot be changed after boot: huge page allocation, CPU isolation, IOMMU setup, and hardware mitigation controls. Use `grubby` for immediate changes and `/etc/default/grub` for persistence across kernel updates. Always benchmark before and after, and document every parameter you set and the reason behind it. A server with unexplained custom parameters is a maintenance nightmare for whoever comes after you.

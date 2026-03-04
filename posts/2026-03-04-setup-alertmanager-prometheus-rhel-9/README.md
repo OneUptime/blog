@@ -1,10 +1,10 @@
-# How to Set Up Alertmanager for Prometheus on RHEL 9
+# How to Set Up Alertmanager for Prometheus on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Prometheus, Alertmanager, Monitoring, Alerting, Linux
 
-Description: Learn how to install and configure Prometheus Alertmanager on RHEL 9 to handle alert routing, grouping, silencing, and notifications via email, Slack, and webhooks.
+Description: Learn how to install and configure Prometheus Alertmanager on RHEL to handle alert routing, grouping, silencing, and notifications via email, Slack, and webhooks.
 
 ---
 
@@ -366,4 +366,4 @@ curl -s http://localhost:9090/api/v1/rules | python3 -m json.tool | head -50
 
 ## Summary
 
-Alertmanager on RHEL 9 handles the notification side of Prometheus monitoring. It groups related alerts, routes them based on severity labels, supports silences for maintenance windows, and sends notifications through email, Slack, PagerDuty, and webhooks. The key to a good alerting setup is well-tuned routing rules with appropriate group intervals and repeat intervals to avoid notification fatigue.
+Alertmanager on RHEL handles the notification side of Prometheus monitoring. It groups related alerts, routes them based on severity labels, supports silences for maintenance windows, and sends notifications through email, Slack, PagerDuty, and webhooks. The key to a good alerting setup is well-tuned routing rules with appropriate group intervals and repeat intervals to avoid notification fatigue.

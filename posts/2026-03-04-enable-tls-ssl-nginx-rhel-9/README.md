@@ -1,10 +1,10 @@
-# How to Enable TLS/SSL on Nginx in RHEL 9
+# How to Enable TLS/SSL on Nginx in RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, TLS, SSL, Linux
 
-Description: How to configure TLS certificates on Nginx in RHEL 9, including Let's Encrypt automation and manual certificate setup.
+Description: How to configure TLS certificates on Nginx in RHEL, including Let's Encrypt automation and manual certificate setup.
 
 ---
 
@@ -14,7 +14,7 @@ Serving your site over plain HTTP means everything travels unencrypted. Password
 
 ## Prerequisites
 
-- RHEL 9 with Nginx installed and running
+- RHEL with Nginx installed and running
 - A domain name pointing to your server (for Let's Encrypt)
 - Port 443 open in the firewall
 - Root or sudo access
@@ -189,4 +189,4 @@ This does not work with self-signed certificates. It requires a certificate from
 
 ## Wrap-Up
 
-Enabling TLS on Nginx in RHEL 9 is essential for any production site. Use Let's Encrypt and certbot for the easiest setup with automatic renewal. For the TLS configuration itself, stick with TLS 1.2 and 1.3, enable HSTS, and set up session caching. Always redirect HTTP to HTTPS so no traffic is served unencrypted.
+Enabling TLS on Nginx in RHEL is essential for any production site. Use Let's Encrypt and certbot for the easiest setup with automatic renewal. For the TLS configuration itself, stick with TLS 1.2 and 1.3, enable HSTS, and set up session caching. Always redirect HTTP to HTTPS so no traffic is served unencrypted.

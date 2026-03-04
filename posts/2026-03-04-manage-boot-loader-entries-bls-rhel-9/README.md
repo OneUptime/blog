@@ -1,16 +1,16 @@
-# How to Manage Boot Loader Entries (BLS) on RHEL 9
+# How to Manage Boot Loader Entries (BLS) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BLS, Boot Loader, GRUB2, Linux
 
-Description: Learn how to manage Boot Loader Specification (BLS) entries on RHEL 9, including viewing, creating, editing, and removing boot entries for kernel management.
+Description: Learn how to manage Boot Loader Specification (BLS) entries on RHEL, including viewing, creating, editing, and removing boot entries for kernel management.
 
 ---
 
 ## What Is BLS?
 
-The Boot Loader Specification (BLS) is the method RHEL 9 uses to manage boot entries. Instead of embedding every kernel entry directly in `grub.cfg`, each kernel gets its own small configuration file in `/boot/loader/entries/`. GRUB2 reads these snippet files at boot time and builds the menu dynamically.
+The Boot Loader Specification (BLS) is the method RHEL uses to manage boot entries. Instead of embedding every kernel entry directly in `grub.cfg`, each kernel gets its own small configuration file in `/boot/loader/entries/`. GRUB2 reads these snippet files at boot time and builds the menu dynamically.
 
 This approach makes kernel management cleaner. Adding a kernel means dropping a file into a directory. Removing a kernel means deleting its entry file. No more manually editing a monolithic `grub.cfg`.
 
@@ -49,7 +49,7 @@ grub_class rhel
 
 ## Managing Entries with grubby
 
-The `grubby` command is the official tool for managing BLS entries on RHEL 9.
+The `grubby` command is the official tool for managing BLS entries on RHEL.
 
 ```bash
 # List all entries
@@ -118,7 +118,7 @@ sudo vi /boot/loader/entries/custom-debug.conf
 Modify it to include your custom parameters:
 
 ```
-title RHEL 9 Debug Mode (5.14.0-362.el9.x86_64)
+title RHEL Debug Mode (5.14.0-362.el9.x86_64)
 version 5.14.0-362.el9.x86_64
 linux /vmlinuz-5.14.0-362.el9.x86_64
 initrd /initramfs-5.14.0-362.el9.x86_64.img
@@ -137,7 +137,7 @@ sudo dnf remove kernel-core-5.14.0-xxx.el9.x86_64
 
 ## BLS and grub2-mkconfig
 
-On RHEL 9, `grub2-mkconfig` respects the BLS configuration. The generated `grub.cfg` contains logic to read and display BLS entries rather than hardcoding them.
+On RHEL, `grub2-mkconfig` respects the BLS configuration. The generated `grub.cfg` contains logic to read and display BLS entries rather than hardcoding them.
 
 ```bash
 # Check if BLS is enabled
@@ -181,4 +181,4 @@ sudo dnf reinstall kernel-core-$(uname -r)
 
 ## Wrapping Up
 
-BLS on RHEL 9 simplifies boot loader management by treating each kernel as an independent file-based entry. Use `grubby` for day-to-day management, and only edit BLS files directly when you need custom entries or troubleshooting. The biggest advantage of BLS is that you never need to worry about `grub.cfg` getting out of sync with your installed kernels, since each entry is self-contained and read dynamically at boot.
+BLS on RHEL simplifies boot loader management by treating each kernel as an independent file-based entry. Use `grubby` for day-to-day management, and only edit BLS files directly when you need custom entries or troubleshooting. The biggest advantage of BLS is that you never need to worry about `grub.cfg` getting out of sync with your installed kernels, since each entry is self-contained and read dynamically at boot.

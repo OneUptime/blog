@@ -1,18 +1,18 @@
-# How to Configure nftables Connection Tracking on RHEL 9
+# How to Configure nftables Connection Tracking on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nftables, Connection Tracking, Conntrack, Firewall, Linux
 
-Description: Learn how to use nftables connection tracking (conntrack) on RHEL 9 to build stateful firewall rules that intelligently handle established, related, and new connections.
+Description: Learn how to use nftables connection tracking (conntrack) on RHEL to build stateful firewall rules that intelligently handle established, related, and new connections.
 
 ---
 
-Connection tracking, often called conntrack, is the mechanism that allows nftables to keep track of network connections and their states. This makes it possible to build stateful firewalls that can distinguish between new connections, established sessions, and related traffic. On RHEL 9, nftables provides powerful connection tracking capabilities out of the box.
+Connection tracking, often called conntrack, is the mechanism that allows nftables to keep track of network connections and their states. This makes it possible to build stateful firewalls that can distinguish between new connections, established sessions, and related traffic. On RHEL, nftables provides powerful connection tracking capabilities out of the box.
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - The nftables service installed and running
 - Basic understanding of TCP/IP networking
 
@@ -284,4 +284,4 @@ sudo conntrack -L -p tcp --dport 443 -o extended
 
 ## Summary
 
-Connection tracking is the foundation of stateful firewalling with nftables on RHEL 9. By understanding connection states and tuning the conntrack subsystem, you can build efficient and secure firewall rules. Key takeaways include always allowing established and related traffic first, dropping invalid packets, tuning timeouts and table sizes for your workload, and using notrack for high-throughput traffic that does not need stateful inspection.
+Connection tracking is the foundation of stateful firewalling with nftables on RHEL. By understanding connection states and tuning the conntrack subsystem, you can build efficient and secure firewall rules. Key takeaways include always allowing established and related traffic first, dropping invalid packets, tuning timeouts and table sizes for your workload, and using notrack for high-throughput traffic that does not need stateful inspection.

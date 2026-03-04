@@ -1,14 +1,14 @@
-# How to Scan RHEL 9 Systems Against the CIS Benchmark with OpenSCAP
+# How to Scan RHEL Systems Against the CIS Benchmark with OpenSCAP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CIS, OpenSCAP, Compliance, Linux
 
-Description: Learn how to use OpenSCAP to scan your RHEL 9 systems against the CIS benchmark, interpret the results, and generate compliance reports.
+Description: Learn how to use OpenSCAP to scan your RHEL systems against the CIS benchmark, interpret the results, and generate compliance reports.
 
 ---
 
-The Center for Internet Security (CIS) benchmarks are the gold standard for system hardening. They provide a detailed set of configuration recommendations that have been reviewed by security professionals worldwide. On RHEL 9, you can check your systems against the CIS benchmark using OpenSCAP, which comes with the SCAP Security Guide that includes CIS profiles out of the box.
+The Center for Internet Security (CIS) benchmarks are the gold standard for system hardening. They provide a detailed set of configuration recommendations that have been reviewed by security professionals worldwide. On RHEL, you can check your systems against the CIS benchmark using OpenSCAP, which comes with the SCAP Security Guide that includes CIS profiles out of the box.
 
 ## Install OpenSCAP and the SCAP Security Guide
 
@@ -19,7 +19,7 @@ dnf install -y openscap-scanner scap-security-guide
 # Verify the installation
 oscap --version
 
-# List available RHEL 9 content
+# List available RHEL content
 ls /usr/share/xml/scap/ssg/content/ssg-rhel9-*
 ```
 
@@ -28,7 +28,7 @@ ls /usr/share/xml/scap/ssg/content/ssg-rhel9-*
 The SCAP Security Guide ships with multiple CIS profiles:
 
 ```bash
-# List all available profiles for RHEL 9
+# List all available profiles for RHEL
 oscap info /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml | grep -A1 "Profile"
 ```
 
@@ -206,4 +206,4 @@ oscap info --profile xccdf_org.ssgproject.content_profile_cis_server_l1 \
 
 For more complex tailoring, use SCAP Workbench (a graphical tool) to create a tailoring file that disables rules that do not apply to your environment.
 
-Running CIS scans with OpenSCAP is one of the most straightforward ways to validate your RHEL 9 hardening. Do it regularly, track the results, and work toward 100% compliance on the rules that matter for your environment.
+Running CIS scans with OpenSCAP is one of the most straightforward ways to validate your RHEL hardening. Do it regularly, track the results, and work toward 100% compliance on the rules that matter for your environment.

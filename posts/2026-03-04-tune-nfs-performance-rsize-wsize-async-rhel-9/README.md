@@ -1,10 +1,10 @@
-# How to Tune NFS Performance with rsize, wsize, and async Options on RHEL 9
+# How to Tune NFS Performance with rsize, wsize, and async Options on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NFS, Performance, Tuning, Linux
 
-Description: Optimize NFS throughput on RHEL 9 by tuning read/write buffer sizes, sync/async behavior, and other performance-critical mount and server options.
+Description: Optimize NFS throughput on RHEL by tuning read/write buffer sizes, sync/async behavior, and other performance-critical mount and server options.
 
 ---
 
@@ -18,7 +18,7 @@ Out-of-the-box NFS settings are conservative. They work for general use, but if 
 
 These control the maximum read and write buffer sizes in bytes. Larger values mean fewer network round trips for large file operations.
 
-- Default on RHEL 9: 1,048,576 (1 MB) when negotiated
+- Default on RHEL: 1,048,576 (1 MB) when negotiated
 - Useful range: 8192 to 1048576
 - Best for large files: 65536 to 1048576
 
@@ -184,4 +184,4 @@ sudo sysctl -p
 
 ## Wrap-Up
 
-NFS performance tuning on RHEL 9 involves client mount options, server configuration, and network optimization. Start with rsize/wsize at 65536 or higher, increase server threads to match your client count, and add noatime for read-heavy workloads. Benchmark before and after each change to measure the impact. The biggest gains usually come from increasing rsize/wsize and adding more server threads, so start there.
+NFS performance tuning on RHEL involves client mount options, server configuration, and network optimization. Start with rsize/wsize at 65536 or higher, increase server threads to match your client count, and add noatime for read-heavy workloads. Benchmark before and after each change to measure the impact. The biggest gains usually come from increasing rsize/wsize and adding more server threads, so start there.

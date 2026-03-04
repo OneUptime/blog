@@ -1,14 +1,14 @@
-# How to Set Up the RHEL 9 Web Console (Cockpit) After a Fresh Installation
+# How to Set Up the RHEL Web Console (Cockpit) After a Fresh Installation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Web Console, System Administration, Linux
 
-Description: A hands-on guide to installing and configuring the Cockpit web console on RHEL 9, covering installation, firewall rules, SSL certificates, and initial login.
+Description: A hands-on guide to installing and configuring the Cockpit web console on RHEL, covering installation, firewall rules, SSL certificates, and initial login.
 
 ---
 
-Cockpit is one of those tools that seems too simple to be useful until you actually use it. It is a web-based management interface for Linux servers that lets you monitor system health, manage storage, inspect logs, control services, and do basic networking configuration from a browser. Red Hat ships it with RHEL 9, and on some installation profiles it is already installed. Here is how to get it running from scratch after a fresh install.
+Cockpit is one of those tools that seems too simple to be useful until you actually use it. It is a web-based management interface for Linux servers that lets you monitor system health, manage storage, inspect logs, control services, and do basic networking configuration from a browser. Red Hat ships it with RHEL, and on some installation profiles it is already installed. Here is how to get it running from scratch after a fresh install.
 
 ## What Cockpit Gives You
 
@@ -28,7 +28,7 @@ You can also install additional modules for managing containers (Podman), virtua
 
 ## Installing Cockpit
 
-On a minimal RHEL 9 installation, Cockpit is not installed by default. Let's fix that.
+On a minimal RHEL installation, Cockpit is not installed by default. Let's fix that.
 
 ```bash
 # Install the cockpit package and common modules
@@ -292,4 +292,4 @@ ls -la /etc/cockpit/ws-certs.d/
 
 ## Final Notes
 
-Cockpit is not a replacement for the command line, and it is not trying to be. It is a quick way to check system health, manage routine tasks, and give less-experienced team members a safe way to interact with servers. The built-in terminal means you can always drop to a shell when the GUI does not cover what you need. For RHEL 9 servers, it is worth the five minutes to install and enable.
+Cockpit is not a replacement for the command line, and it is not trying to be. It is a quick way to check system health, manage routine tasks, and give less-experienced team members a safe way to interact with servers. The built-in terminal means you can always drop to a shell when the GUI does not cover what you need. For RHEL servers, it is worth the five minutes to install and enable.

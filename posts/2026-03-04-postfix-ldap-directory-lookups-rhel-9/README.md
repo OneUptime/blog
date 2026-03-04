@@ -1,10 +1,10 @@
-# How to Set Up Postfix with LDAP Directory Lookups on RHEL 9
+# How to Set Up Postfix with LDAP Directory Lookups on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, LDAP, Mail, Linux
 
-Description: Configure Postfix to query an LDAP directory for email routing, alias resolution, and recipient validation on RHEL 9.
+Description: Configure Postfix to query an LDAP directory for email routing, alias resolution, and recipient validation on RHEL.
 
 ---
 
@@ -14,7 +14,7 @@ If your organization uses LDAP (or Active Directory) for user management, duplic
 
 ## Prerequisites
 
-- RHEL 9 with Postfix installed
+- RHEL with Postfix installed
 - An LDAP server (OpenLDAP, 389 Directory Server, or Active Directory)
 - A service account with read access to the LDAP directory
 - The `postfix-ldap` package

@@ -1,14 +1,14 @@
-# How to Implement a Deny-All Firewall Policy on RHEL 9
+# How to Implement a Deny-All Firewall Policy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, Deny-All, Security, Linux
 
-Description: How to implement a deny-all (default deny) firewall policy on RHEL 9 using firewalld, where all traffic is blocked unless explicitly allowed.
+Description: How to implement a deny-all (default deny) firewall policy on RHEL using firewalld, where all traffic is blocked unless explicitly allowed.
 
 ---
 
-A deny-all firewall policy means all incoming traffic is blocked unless you have created an explicit rule to allow it. This is the gold standard for server security and a common compliance requirement (PCI DSS, CIS benchmarks, etc.). On RHEL 9 with firewalld, you can achieve this through zone targets and careful rule management.
+A deny-all firewall policy means all incoming traffic is blocked unless you have created an explicit rule to allow it. This is the gold standard for server security and a common compliance requirement (PCI DSS, CIS benchmarks, etc.). On RHEL with firewalld, you can achieve this through zone targets and careful rule management.
 
 ## Why Deny-All?
 
@@ -245,4 +245,4 @@ firewall-cmd --zone=public --list-all | grep target
 
 ## Summary
 
-A deny-all policy is the foundation of server security. On RHEL 9, implement it by setting your zone target to DROP, removing all default services, and explicitly adding only what is needed. Use rich rules for source-based restrictions on sensitive services. Always have out-of-band access, test changes in runtime first, and audit your configuration regularly. The goal is simple: if you did not explicitly allow it, it gets dropped.
+A deny-all policy is the foundation of server security. On RHEL, implement it by setting your zone target to DROP, removing all default services, and explicitly adding only what is needed. Use rich rules for source-based restrictions on sensitive services. Always have out-of-band access, test changes in runtime first, and audit your configuration regularly. The goal is simple: if you did not explicitly allow it, it gets dropped.

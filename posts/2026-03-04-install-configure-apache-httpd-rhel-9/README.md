@@ -1,4 +1,4 @@
-# How to Install and Configure Apache httpd on RHEL 9
+# How to Install and Configure Apache httpd on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,13 +10,13 @@ Description: A practical guide to installing, configuring, and running the Apach
 
 ## Why Apache httpd?
 
-Apache has been the backbone of the web for decades. It is stable, well-documented, and supported by every major Linux distribution. On RHEL 9, Apache httpd ships via the standard AppStream repository, so there is no need to hunt for third-party packages.
+Apache has been the backbone of the web for decades. It is stable, well-documented, and supported by every major Linux distribution. On RHEL, Apache httpd ships via the standard AppStream repository, so there is no need to hunt for third-party packages.
 
 In this guide we will install Apache, walk through the key configuration files, serve a basic site, and make sure everything survives a reboot.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Firewall access to ports 80 and 443
 
@@ -56,7 +56,7 @@ sudo systemctl status httpd
 
 ## Step 3 - Open the Firewall
 
-RHEL 9 uses firewalld by default. Open HTTP and HTTPS ports:
+RHEL uses firewalld by default. Open HTTP and HTTPS ports:
 
 ```bash
 # Allow HTTP and HTTPS traffic through the firewall
@@ -69,7 +69,7 @@ At this point, browsing to `http://<your-server-ip>` should show the default RHE
 
 ## Step 4 - Understand the Directory Layout
 
-Here is how Apache organizes its files on RHEL 9:
+Here is how Apache organizes its files on RHEL:
 
 | Path | Purpose |
 |------|---------|
@@ -90,7 +90,7 @@ sudo tee /var/www/html/index.html > /dev/null <<'EOF'
 <html>
 <head><title>Welcome</title></head>
 <body>
-<h1>Hello from RHEL 9 and Apache httpd</h1>
+<h1>Hello from RHEL and Apache httpd</h1>
 </body>
 </html>
 EOF
@@ -150,7 +150,7 @@ sudo systemctl reload httpd
 
 ## Step 7 - SELinux Considerations
 
-RHEL 9 ships with SELinux in enforcing mode. Apache expects files in the document root to carry the `httpd_sys_content_t` label. If you move files from another location, fix the labels:
+RHEL ships with SELinux in enforcing mode. Apache expects files in the document root to carry the `httpd_sys_content_t` label. If you move files from another location, fix the labels:
 
 ```bash
 # Restore default SELinux labels on the web root
@@ -211,4 +211,4 @@ flowchart TD
 
 ## Wrap-Up
 
-That covers the basics of getting Apache httpd up and running on RHEL 9. From here you can add virtual hosts, enable TLS, or tune the MPM settings for your workload. The key takeaway is to always validate your config before reloading and keep SELinux in enforcing mode rather than disabling it.
+That covers the basics of getting Apache httpd up and running on RHEL. From here you can add virtual hosts, enable TLS, or tune the MPM settings for your workload. The key takeaway is to always validate your config before reloading and keep SELinux in enforcing mode rather than disabling it.

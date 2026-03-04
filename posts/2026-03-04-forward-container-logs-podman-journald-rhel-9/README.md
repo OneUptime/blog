@@ -1,14 +1,14 @@
-# How to Forward Container Logs from Podman to journald on RHEL 9
+# How to Forward Container Logs from Podman to journald on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, journald, Containers, Logging, Linux
 
-Description: Learn how to configure Podman containers on RHEL 9 to send their logs to journald for centralized container log management using standard systemd tools.
+Description: Learn how to configure Podman containers on RHEL to send their logs to journald for centralized container log management using standard systemd tools.
 
 ---
 
-Podman on RHEL 9 supports multiple logging drivers, and journald is the recommended one for production environments. When container logs go to journald, you can use all the standard journalctl filtering and searching capabilities to manage container logs alongside your system logs.
+Podman on RHEL supports multiple logging drivers, and journald is the recommended one for production environments. When container logs go to journald, you can use all the standard journalctl filtering and searching capabilities to manage container logs alongside your system logs.
 
 ## Why Use journald for Container Logs
 
@@ -41,7 +41,7 @@ podman info --format '{{.Host.LogDriver}}'
 podman info --format '{{.Host.LogDriver}}'
 ```
 
-On RHEL 9, the default log driver is typically `journald`.
+On RHEL, the default log driver is typically `journald`.
 
 ## Step 2: Configure journald as the Default Log Driver
 
@@ -211,7 +211,7 @@ journalctl -u container-mywebapp.service
 journalctl -u container-mywebapp.service -f
 ```
 
-### Using Quadlet (Recommended on RHEL 9)
+### Using Quadlet (Recommended on RHEL)
 
 Create a Quadlet container file:
 
@@ -314,4 +314,4 @@ journalctl --grep="Suppressed" --no-pager -n 20
 
 ## Summary
 
-Forwarding Podman container logs to journald on RHEL 9 unifies your container and system logging into a single, queryable journal. Set `log_driver = "journald"` in your containers.conf, use custom tags for easy identification, and query logs with standard journalctl commands. For production setups, use Quadlet service definitions and forward container logs to your central log server via rsyslog.
+Forwarding Podman container logs to journald on RHEL unifies your container and system logging into a single, queryable journal. Set `log_driver = "journald"` in your containers.conf, use custom tags for easy identification, and query logs with standard journalctl commands. For production setups, use Quadlet service definitions and forward container logs to your central log server via rsyslog.

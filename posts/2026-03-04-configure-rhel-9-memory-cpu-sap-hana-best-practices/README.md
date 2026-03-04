@@ -1,20 +1,20 @@
-# How to Configure RHEL 9 Memory and CPU for SAP HANA Best Practices
+# How to Configure RHEL Memory and CPU for SAP HANA Best Practices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP HANA, Memory, CPU, Performance, Linux
 
-Description: Optimize RHEL 9 memory and CPU settings for SAP HANA following SAP and Red Hat best practices for maximum database performance.
+Description: Optimize RHEL memory and CPU settings for SAP HANA following SAP and Red Hat best practices for maximum database performance.
 
 ---
 
-SAP HANA is an in-memory database that demands careful memory and CPU configuration at the OS level. Getting these settings right on RHEL 9 directly impacts HANA performance, stability, and the ability to handle large workloads. This guide covers the essential memory and CPU tuning parameters.
+SAP HANA is an in-memory database that demands careful memory and CPU configuration at the OS level. Getting these settings right on RHEL directly impacts HANA performance, stability, and the ability to handle large workloads. This guide covers the essential memory and CPU tuning parameters.
 
 ## Memory Architecture for SAP HANA
 
 ```mermaid
 graph TB
-    subgraph "RHEL 9 Memory Layout for HANA"
+    subgraph "RHEL Memory Layout for HANA"
         Total[Total Physical RAM]
         Total --> HANA_Alloc[HANA Memory Allocation - 90%]
         Total --> OS_Reserve[OS Reserved - 10%]
@@ -28,7 +28,7 @@ graph TB
 
 ## Prerequisites
 
-- RHEL 9 with SAP HANA installed or planned
+- RHEL with SAP HANA installed or planned
 - Minimum 64 GB RAM (128 GB+ recommended for production)
 - Root or sudo access
 
@@ -177,4 +177,4 @@ sysctl vm.overcommit_memory vm.swappiness vm.max_map_count
 
 ## Conclusion
 
-Proper memory and CPU configuration on RHEL 9 is fundamental to SAP HANA performance. The key settings are disabling THP, configuring appropriate swap and overcommit settings, ensuring NUMA awareness, and using the performance CPU governor. Always validate your configuration with the SAP HANA hardware check tool before going into production.
+Proper memory and CPU configuration on RHEL is fundamental to SAP HANA performance. The key settings are disabling THP, configuring appropriate swap and overcommit settings, ensuring NUMA awareness, and using the performance CPU governor. Always validate your configuration with the SAP HANA hardware check tool before going into production.

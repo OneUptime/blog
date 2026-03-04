@@ -1,14 +1,14 @@
-# How to Configure GitLab Runner on RHEL 9
+# How to Configure GitLab Runner on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GitLab, Runner, CI/CD, Automation, Linux
 
-Description: Install and configure GitLab Runner on RHEL 9 to execute CI/CD pipeline jobs for your GitLab instance.
+Description: Install and configure GitLab Runner on RHEL to execute CI/CD pipeline jobs for your GitLab instance.
 
 ---
 
-GitLab Runner is the agent that executes CI/CD jobs defined in your `.gitlab-ci.yml` files. You can install it on a separate RHEL 9 machine from your GitLab server to keep builds isolated from the main instance.
+GitLab Runner is the agent that executes CI/CD jobs defined in your `.gitlab-ci.yml` files. You can install it on a separate RHEL machine from your GitLab server to keep builds isolated from the main instance.
 
 ## Install GitLab Runner
 
@@ -131,7 +131,7 @@ sudo gitlab-runner verify
 ## Sample .gitlab-ci.yml
 
 ```yaml
-# .gitlab-ci.yml - Test pipeline for the RHEL 9 runner
+# .gitlab-ci.yml - Test pipeline for the RHEL runner
 
 stages:
   - build
@@ -142,7 +142,7 @@ build-job:
   tags:
     - rhel9
   script:
-    - echo "Building on RHEL 9..."
+    - echo "Building on RHEL..."
     - cat /etc/redhat-release
     - gcc --version || echo "No gcc installed"
 
@@ -151,7 +151,7 @@ test-job:
   tags:
     - rhel9
   script:
-    - echo "Running tests on RHEL 9..."
+    - echo "Running tests on RHEL..."
     - uname -r
 ```
 
@@ -165,4 +165,4 @@ sudo gitlab-runner unregister --name "rhel9-docker-runner"
 sudo gitlab-runner unregister --all-runners
 ```
 
-GitLab Runner on RHEL 9 connects your GitLab instance to dedicated build machines. Whether you use the shell executor for direct access or the Docker executor for isolation, the runner handles job execution automatically.
+GitLab Runner on RHEL connects your GitLab instance to dedicated build machines. Whether you use the shell executor for direct access or the Docker executor for isolation, the runner handles job execution automatically.

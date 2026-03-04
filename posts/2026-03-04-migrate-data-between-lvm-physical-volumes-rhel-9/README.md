@@ -1,10 +1,10 @@
-# How to Migrate Data Between LVM Physical Volumes on RHEL 9
+# How to Migrate Data Between LVM Physical Volumes on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Storage, Migration, Linux
 
-Description: Learn how to move data between LVM physical volumes on RHEL 9 for disk replacement or storage tier migration.
+Description: Learn how to move data between LVM physical volumes on RHEL for disk replacement or storage tier migration.
 
 ---
 
@@ -136,5 +136,5 @@ sudo pvremove /dev/sdb
 
 ## Summary
 
-LVM data migration with `pvmove` is one of the most powerful features of LVM on RHEL 9. It allows you to move data between physical volumes transparently while volumes remain mounted and accessible. This makes disk replacements, storage upgrades, and tier migrations seamless operations.
+LVM data migration with `pvmove` is one of the most powerful features of LVM on RHEL. It allows you to move data between physical volumes transparently while volumes remain mounted and accessible. This makes disk replacements, storage upgrades, and tier migrations seamless operations.
 

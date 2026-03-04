@@ -1,14 +1,14 @@
-# How to Restrict PAM Services to Specific SSSD Domains on RHEL 9
+# How to Restrict PAM Services to Specific SSSD Domains on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, PAM, SSSD, Security, Linux
 
-Description: Configure RHEL 9 to restrict specific PAM services to authenticate against particular SSSD domains, allowing fine-grained control over which identity sources are used for each service.
+Description: Configure RHEL to restrict specific PAM services to authenticate against particular SSSD domains, allowing fine-grained control over which identity sources are used for each service.
 
 ---
 
-When you have multiple identity sources configured in SSSD, say a local LDAP directory and Active Directory, you might not want every service to authenticate against every domain. Maybe SSH should only allow AD users, while a local application should only use the LDAP directory. SSSD on RHEL 9 lets you map PAM services to specific domains.
+When you have multiple identity sources configured in SSSD, say a local LDAP directory and Active Directory, you might not want every service to authenticate against every domain. Maybe SSH should only allow AD users, while a local application should only use the LDAP directory. SSSD on RHEL lets you map PAM services to specific domains.
 
 ## The Problem
 

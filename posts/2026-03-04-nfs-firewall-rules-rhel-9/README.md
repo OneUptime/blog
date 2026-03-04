@@ -1,10 +1,10 @@
-# How to Set Up NFS Firewall Rules on RHEL 9
+# How to Set Up NFS Firewall Rules on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NFS, Firewall, Security, Linux
 
-Description: Configure firewalld rules for NFS on RHEL 9, covering the required ports for NFSv3 and NFSv4, zone configuration, and restricting access by source IP.
+Description: Configure firewalld rules for NFS on RHEL, covering the required ports for NFSv3 and NFSv4, zone configuration, and restricting access by source IP.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Configure firewalld rules for NFS on RHEL 9, covering the required 
 
 NFS needs specific ports open in the firewall to function. NFSv4 simplified things greatly by requiring only port 2049/TCP, but if you also need NFSv3 compatibility, additional ports must be configured.
 
-RHEL 9 uses firewalld as its default firewall manager, and it includes predefined NFS service definitions that make configuration straightforward.
+RHEL uses firewalld as its default firewall manager, and it includes predefined NFS service definitions that make configuration straightforward.
 
 ## NFSv4 Firewall Setup (Recommended)
 
@@ -206,4 +206,4 @@ sudo firewall-cmd --reload
 
 ## Wrap-Up
 
-Firewall configuration for NFS on RHEL 9 is simple when using NFSv4, requiring only port 2049. NFSv3 adds complexity with multiple daemon ports that need to be fixed and opened. Use rich rules or dedicated zones to restrict NFS access to trusted networks. And if you can, drop NFSv3 entirely to keep your firewall rules clean and your attack surface small.
+Firewall configuration for NFS on RHEL is simple when using NFSv4, requiring only port 2049. NFSv3 adds complexity with multiple daemon ports that need to be fixed and opened. Use rich rules or dedicated zones to restrict NFS access to trusted networks. And if you can, drop NFSv3 entirely to keep your firewall rules clean and your attack surface small.

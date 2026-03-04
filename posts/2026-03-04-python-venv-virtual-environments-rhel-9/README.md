@@ -1,14 +1,14 @@
-# How to Set Up Python Virtual Environments with venv on RHEL 9
+# How to Set Up Python Virtual Environments with venv on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Python, venv, Virtual Environments, Linux, Development
 
-Description: A practical guide to creating and managing Python virtual environments on RHEL 9 using the built-in venv module, keeping your projects isolated and your system Python clean.
+Description: A practical guide to creating and managing Python virtual environments on RHEL using the built-in venv module, keeping your projects isolated and your system Python clean.
 
 ---
 
-Python virtual environments solve one of the most common headaches in Python development: dependency conflicts between projects. On RHEL 9, the `venv` module is the recommended way to create lightweight, isolated Python environments.
+Python virtual environments solve one of the most common headaches in Python development: dependency conflicts between projects. On RHEL, the `venv` module is the recommended way to create lightweight, isolated Python environments.
 
 ## Why Virtual Environments Matter
 
@@ -25,7 +25,7 @@ graph LR
 
 ## Installing the venv Module
 
-On RHEL 9, the venv module may not be installed by default. Install it first.
+On RHEL, the venv module may not be installed by default. Install it first.
 
 ```bash
 # Install venv for the default Python 3.9
@@ -209,8 +209,8 @@ pip install -r requirements.txt
 1. Always add `venv/` to your `.gitignore` file so virtual environments are not committed to version control.
 2. Keep a `requirements.txt` or `pyproject.toml` in your repository to document dependencies.
 3. Name your virtual environment `venv` or `.venv` by convention so tools recognize it automatically.
-4. Never install project packages with `sudo pip install` on RHEL 9 -- use virtual environments instead.
+4. Never install project packages with `sudo pip install` on RHEL -- use virtual environments instead.
 
 ## Summary
 
-The `venv` module is the standard, lightweight tool for Python environment isolation on RHEL 9. Create a venv per project, activate it before working, and use `pip freeze` to lock your dependencies. This keeps your system Python untouched and your projects conflict-free.
+The `venv` module is the standard, lightweight tool for Python environment isolation on RHEL. Create a venv per project, activate it before working, and use `pip freeze` to lock your dependencies. This keeps your system Python untouched and your projects conflict-free.

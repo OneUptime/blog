@@ -1,10 +1,10 @@
-# How to Test and Troubleshoot USBGuard Policies on RHEL 9
+# How to Test and Troubleshoot USBGuard Policies on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, USBGuard, Troubleshooting, Linux
 
-Description: Learn how to test USBGuard policies, diagnose device blocking issues, and troubleshoot common problems on RHEL 9 to keep your USB security working correctly.
+Description: Learn how to test USBGuard policies, diagnose device blocking issues, and troubleshoot common problems on RHEL to keep your USB security working correctly.
 
 ---
 

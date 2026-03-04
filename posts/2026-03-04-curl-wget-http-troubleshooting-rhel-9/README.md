@@ -1,10 +1,10 @@
-# How to Use curl and wget for HTTP Troubleshooting on RHEL 9
+# How to Use curl and wget for HTTP Troubleshooting on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, curl, wget, HTTP, Troubleshooting, Linux
 
-Description: A practical guide to using curl and wget on RHEL 9 for troubleshooting HTTP and HTTPS services, including connection debugging, TLS inspection, header analysis, and performance measurement.
+Description: A practical guide to using curl and wget on RHEL for troubleshooting HTTP and HTTPS services, including connection debugging, TLS inspection, header analysis, and performance measurement.
 
 ---
 
@@ -229,4 +229,4 @@ curl -v --http2 https://example.com 2>&1 | grep "< HTTP/"
 
 ## Wrapping Up
 
-curl and wget are complementary tools on RHEL 9. For HTTP troubleshooting, curl is the more powerful option with its timing output, TLS debugging, and flexible request methods. wget excels at downloading files and mirroring sites. Learn curl's `-w` format strings for timing analysis and `-v` for connection debugging. These two tools will cover most of your HTTP troubleshooting needs without ever opening a browser.
+curl and wget are complementary tools on RHEL. For HTTP troubleshooting, curl is the more powerful option with its timing output, TLS debugging, and flexible request methods. wget excels at downloading files and mirroring sites. Learn curl's `-w` format strings for timing analysis and `-v` for connection debugging. These two tools will cover most of your HTTP troubleshooting needs without ever opening a browser.

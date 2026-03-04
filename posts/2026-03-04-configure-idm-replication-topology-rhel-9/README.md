@@ -1,10 +1,10 @@
-# How to Configure IdM Replication Topology on RHEL 9
+# How to Configure IdM Replication Topology on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Replication, FreeIPA, Linux
 
-Description: A guide to designing and managing IdM replication topology on RHEL 9, covering multi-master replication, topology segments, and best practices for high availability.
+Description: A guide to designing and managing IdM replication topology on RHEL, covering multi-master replication, topology segments, and best practices for high availability.
 
 ---
 
@@ -35,7 +35,7 @@ Red Hat recommends these guidelines:
 Start by installing a new IdM replica to add to the topology.
 
 ```bash
-# On the new RHEL 9 system, install required packages
+# On the new RHEL system, install required packages
 sudo dnf install ipa-server ipa-server-dns ipa-server-ca -y
 
 # Install the replica (connects to an existing server automatically)

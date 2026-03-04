@@ -1,10 +1,10 @@
-# How to Configure Active-Backup Bonding for High Availability on RHEL 9
+# How to Configure Active-Backup Bonding for High Availability on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Active-Backup, Bonding, High Availability, Linux
 
-Description: A detailed walkthrough of setting up active-backup bonding on RHEL 9, including primary slave selection, failover tuning, and monitoring for production HA environments.
+Description: A detailed walkthrough of setting up active-backup bonding on RHEL, including primary slave selection, failover tuning, and monitoring for production HA environments.
 
 ---
 

@@ -1,14 +1,14 @@
-# How to Build a Security Hardening Checklist for RHEL 9 Servers
+# How to Build a Security Hardening Checklist for RHEL Servers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Security Hardening, Checklist, Linux
 
-Description: A comprehensive security hardening checklist for RHEL 9 servers covering everything from initial installation to ongoing maintenance, with actionable steps you can follow in order.
+Description: A comprehensive security hardening checklist for RHEL servers covering everything from initial installation to ongoing maintenance, with actionable steps you can follow in order.
 
 ---
 
-Every time I build a new RHEL 9 server, I run through the same hardening routine. After years of doing this, I have distilled it into a checklist that covers the essentials without being so long that you give up halfway through. This is not a theoretical exercise. These are the things that actually matter when an auditor shows up or when you are trying to keep attackers out.
+Every time I build a new RHEL server, I run through the same hardening routine. After years of doing this, I have distilled it into a checklist that covers the essentials without being so long that you give up halfway through. This is not a theoretical exercise. These are the things that actually matter when an auditor shows up or when you are trying to keep attackers out.
 
 ## Why You Need a Checklist
 
@@ -16,7 +16,7 @@ Security hardening is not a one-time activity. It is a process that starts durin
 
 ```mermaid
 flowchart TD
-    A[New RHEL 9 Server] --> B[Installation Hardening]
+    A[New RHEL Server] --> B[Installation Hardening]
     B --> C[OS Configuration]
     C --> D[Network Hardening]
     D --> E[Access Controls]

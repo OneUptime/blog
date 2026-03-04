@@ -1,10 +1,10 @@
-# How to Set Up SPF, DKIM, and DMARC with Postfix on RHEL 9
+# How to Set Up SPF, DKIM, and DMARC with Postfix on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, SPF, DKIM, DMARC, Email Security, Linux
 
-Description: Implement SPF, DKIM, and DMARC email authentication mechanisms with Postfix on RHEL 9 to improve deliverability and prevent spoofing.
+Description: Implement SPF, DKIM, and DMARC email authentication mechanisms with Postfix on RHEL to improve deliverability and prevent spoofing.
 
 ---
 

@@ -1,18 +1,18 @@
-# How to Use the RHEL 9 STIG Ansible Role from ComplianceAsCode
+# How to Use the RHEL STIG Ansible Role from ComplianceAsCode
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, STIG, Ansible, ComplianceAsCode, Linux
 
-Description: Use the ComplianceAsCode project's STIG Ansible role to apply and maintain DISA STIG compliance on RHEL 9 servers at scale.
+Description: Use the ComplianceAsCode project's STIG Ansible role to apply and maintain DISA STIG compliance on RHEL servers at scale.
 
 ---
 
-The ComplianceAsCode project (formerly known as SCAP Security Guide) is a community effort that produces security content for automated compliance. It includes Ansible roles that can be used directly to apply STIG controls to RHEL 9 systems. Unlike standalone playbooks, roles are modular and easier to integrate into your existing Ansible infrastructure.
+The ComplianceAsCode project (formerly known as SCAP Security Guide) is a community effort that produces security content for automated compliance. It includes Ansible roles that can be used directly to apply STIG controls to RHEL systems. Unlike standalone playbooks, roles are modular and easier to integrate into your existing Ansible infrastructure.
 
 ## What Is ComplianceAsCode
 
-ComplianceAsCode is the upstream project behind the scap-security-guide RPM. It produces SCAP content, Ansible playbooks, Ansible roles, bash scripts, and Kickstart files for multiple compliance profiles. The STIG role it produces is specifically designed to apply all DISA STIG controls to RHEL 9.
+ComplianceAsCode is the upstream project behind the scap-security-guide RPM. It produces SCAP content, Ansible playbooks, Ansible roles, bash scripts, and Kickstart files for multiple compliance profiles. The STIG role it produces is specifically designed to apply all DISA STIG controls to RHEL.
 
 ```mermaid
 flowchart TD
@@ -24,14 +24,14 @@ flowchart TD
     C --> G[STIG Role]
     C --> H[CIS Role]
     C --> I[Other Profiles]
-    G --> J[Apply to RHEL 9]
+    G --> J[Apply to RHEL]
 ```
 
 ## Install the STIG Ansible Role
 
 ### From the RPM package
 
-The easiest method on RHEL 9:
+The easiest method on RHEL:
 
 ```bash
 # Install scap-security-guide which includes the Ansible content
@@ -56,7 +56,7 @@ git clone https://github.com/ComplianceAsCode/content.git /opt/complianceascode
 cd /opt/complianceascode
 dnf install -y cmake openscap-utils python3-pyyaml python3-jinja2
 
-# Build the RHEL 9 content
+# Build the RHEL content
 mkdir build && cd build
 cmake ..
 make rhel9
@@ -69,7 +69,7 @@ make rhel9
 ```yaml
 ---
 # Apply STIG controls using the ComplianceAsCode role
-- name: Apply DISA STIG to RHEL 9
+- name: Apply DISA STIG to RHEL
   hosts: rhel9_servers
   become: yes
 
@@ -136,7 +136,7 @@ Add the STIG role to your server provisioning workflow:
 ```yaml
 ---
 # site.yml - Main playbook for server provisioning
-- name: Provision and harden RHEL 9 servers
+- name: Provision and harden RHEL servers
   hosts: rhel9_servers
   become: yes
 
@@ -227,4 +227,4 @@ ansible-playbook -i inventory.ini \
 
 Some STIG settings may conflict with your application requirements. Identify these early by running in check mode and reviewing the diff output. Document any exceptions and create compensating controls.
 
-The ComplianceAsCode STIG role is the most efficient way to get STIG compliance on RHEL 9 at scale. It is maintained by a large community that includes Red Hat engineers, government security professionals, and independent contributors. Use it as your foundation, customize it for your environment, and keep it updated.
+The ComplianceAsCode STIG role is the most efficient way to get STIG compliance on RHEL at scale. It is maintained by a large community that includes Red Hat engineers, government security professionals, and independent contributors. Use it as your foundation, customize it for your environment, and keep it updated.

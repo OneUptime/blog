@@ -1,14 +1,14 @@
-# How to Configure a Network Bridge with nmcli on RHEL 9
+# How to Configure a Network Bridge with nmcli on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Bridge, nmcli, Linux
 
-Description: A focused guide on creating and managing network bridges using nmcli on RHEL 9, covering bridge options, STP settings, and common configurations.
+Description: A focused guide on creating and managing network bridges using nmcli on RHEL, covering bridge options, STP settings, and common configurations.
 
 ---
 
-Network bridges connect two or more network segments at Layer 2, making them appear as one. On RHEL 9, bridges are commonly used for KVM virtualization, container networking, and connecting VLANs or physical segments. nmcli is the cleanest way to manage bridge configuration, and all settings persist across reboots.
+Network bridges connect two or more network segments at Layer 2, making them appear as one. On RHEL, bridges are commonly used for KVM virtualization, container networking, and connecting VLANs or physical segments. nmcli is the cleanest way to manage bridge configuration, and all settings persist across reboots.
 
 ## Creating a Basic Bridge
 
@@ -214,4 +214,4 @@ cat /etc/NetworkManager/system-connections/br0.nmconnection
 
 ## Summary
 
-nmcli makes bridge management on RHEL 9 straightforward. The key steps are: create the bridge, add ports, configure the IP on the bridge (not the physical NIC), and tune STP settings based on your topology. For simple single-NIC server bridges, disable STP to avoid forwarding delays. For multi-port bridges or complex topologies, leave STP enabled to prevent loops. All configurations are persistent and survive reboots.
+nmcli makes bridge management on RHEL straightforward. The key steps are: create the bridge, add ports, configure the IP on the bridge (not the physical NIC), and tune STP settings based on your topology. For simple single-NIC server bridges, disable STP to avoid forwarding delays. For multi-port bridges or complex topologies, leave STP enabled to prevent loops. All configurations are persistent and survive reboots.

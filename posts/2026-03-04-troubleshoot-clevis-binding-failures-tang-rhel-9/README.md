@@ -1,10 +1,10 @@
-# How to Troubleshoot Clevis Binding Failures with Tang on RHEL 9
+# How to Troubleshoot Clevis Binding Failures with Tang on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Clevis, Tang, Troubleshooting, Linux
 
-Description: Diagnose and fix common Clevis binding failures with Tang servers on RHEL 9, from network issues to key mismatches and early boot problems.
+Description: Diagnose and fix common Clevis binding failures with Tang servers on RHEL, from network issues to key mismatches and early boot problems.
 
 ---
 

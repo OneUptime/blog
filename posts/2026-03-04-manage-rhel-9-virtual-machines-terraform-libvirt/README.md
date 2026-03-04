@@ -1,10 +1,10 @@
-# How to Manage RHEL 9 Virtual Machines with Terraform and Libvirt
+# How to Manage RHEL Virtual Machines with Terraform and Libvirt
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, Libvirt, KVM, Virtualization, Linux
 
-Description: Learn how to use Terraform with the libvirt provider to create and manage RHEL 9 virtual machines on KVM hypervisors.
+Description: Learn how to use Terraform with the libvirt provider to create and manage RHEL virtual machines on KVM hypervisors.
 
 ---
 
@@ -17,16 +17,16 @@ graph TD
     A[Terraform Configuration] --> B[Terraform Libvirt Provider]
     B --> C[libvirtd Daemon]
     C --> D[QEMU/KVM Hypervisor]
-    D --> E[RHEL 9 VM 1]
-    D --> F[RHEL 9 VM 2]
-    D --> G[RHEL 9 VM N]
+    D --> E[RHEL VM 1]
+    D --> F[RHEL VM 2]
+    D --> G[RHEL VM N]
     C --> H[Storage Pool]
     C --> I[Virtual Network]
 ```
 
 ## Prerequisites
 
-Install the required packages on your RHEL 9 hypervisor:
+Install the required packages on your RHEL hypervisor:
 
 ```bash
 # Install KVM and libvirt
@@ -93,7 +93,7 @@ resource "libvirt_pool" "rhel_pool" {
   path = "/var/lib/libvirt/rhel_pool"
 }
 
-# Create a base volume from the RHEL 9 cloud image
+# Create a base volume from the RHEL cloud image
 resource "libvirt_volume" "rhel9_base" {
   name   = "rhel9-base.qcow2"
   pool   = libvirt_pool.rhel_pool.name
@@ -157,7 +157,7 @@ resource "libvirt_cloudinit_disk" "vm_init" {
 ## Define the Virtual Machine
 
 ```hcl
-# vm.tf - Define the RHEL 9 virtual machine
+# vm.tf - Define the RHEL virtual machine
 
 resource "libvirt_domain" "rhel9_vm" {
   name   = "rhel9-vm1"
@@ -220,7 +220,7 @@ terraform output vm_ip
 Use a `count` parameter or `for_each` to create multiple VMs:
 
 ```hcl
-# multi-vm.tf - Create multiple RHEL 9 VMs
+# multi-vm.tf - Create multiple RHEL VMs
 
 variable "vm_count" {
   description = "Number of VMs to create"
@@ -283,4 +283,4 @@ sudo usermod -aG libvirt $USER
 newgrp libvirt
 ```
 
-With Terraform and the libvirt provider, you can version-control your VM infrastructure and recreate it reliably. This approach works well for development labs, CI/CD test environments, and any scenario where you need reproducible KVM-based virtual machines on RHEL 9.
+With Terraform and the libvirt provider, you can version-control your VM infrastructure and recreate it reliably. This approach works well for development labs, CI/CD test environments, and any scenario where you need reproducible KVM-based virtual machines on RHEL.

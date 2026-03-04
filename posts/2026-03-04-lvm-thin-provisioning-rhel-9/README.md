@@ -1,10 +1,10 @@
-# How to Set Up LVM Thin Provisioning on RHEL 9
+# How to Set Up LVM Thin Provisioning on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Thin Provisioning, Storage, Linux
 
-Description: A guide to configuring LVM thin provisioning on RHEL 9 for efficient storage allocation and overcommitment.
+Description: A guide to configuring LVM thin provisioning on RHEL for efficient storage allocation and overcommitment.
 
 ---
 
@@ -134,5 +134,5 @@ sudo lvextend -L +100G thinvg/thinpool
 
 ## Summary
 
-LVM thin provisioning on RHEL 9 provides storage efficiency by allocating physical space on demand rather than upfront. It is ideal for virtual machine storage, development environments, and any scenario where actual usage is much less than allocated capacity. The key requirement is monitoring pool usage closely to prevent out-of-space conditions.
+LVM thin provisioning on RHEL provides storage efficiency by allocating physical space on demand rather than upfront. It is ideal for virtual machine storage, development environments, and any scenario where actual usage is much less than allocated capacity. The key requirement is monitoring pool usage closely to prevent out-of-space conditions.
 

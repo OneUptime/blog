@@ -1,4 +1,4 @@
-# How to Configure Static IP Addresses on RHEL 9 Using nmcli
+# How to Configure Static IP Addresses on RHEL Using nmcli
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,9 +8,9 @@ Description: Learn how to set up static IP addresses on Red Hat Enterprise Linux
 
 ---
 
-If you have ever managed a fleet of RHEL servers, you know that DHCP is fine for development boxes, but production systems need static IPs. On RHEL 9, NetworkManager is the only game in town for network configuration, and nmcli is the CLI tool that lets you do everything without ever touching a GUI.
+If you have ever managed a fleet of RHEL servers, you know that DHCP is fine for development boxes, but production systems need static IPs. On RHEL, NetworkManager is the only game in town for network configuration, and nmcli is the CLI tool that lets you do everything without ever touching a GUI.
 
-This post walks through configuring static IP addresses on RHEL 9 using nmcli, from basic single-interface setups to more nuanced configurations.
+This post walks through configuring static IP addresses on RHEL using nmcli, from basic single-interface setups to more nuanced configurations.
 
 ## Why Static IPs Matter in Production
 
@@ -20,8 +20,8 @@ Servers that run databases, web applications, or monitoring stacks need predicta
 
 Before you start, make sure you have:
 
-- Root or sudo access to the RHEL 9 system
-- NetworkManager running (it is by default on RHEL 9)
+- Root or sudo access to the RHEL system
+- NetworkManager running (it is by default on RHEL)
 - Knowledge of your network details: IP address, subnet mask, gateway, DNS servers
 
 Check that NetworkManager is active:
@@ -61,7 +61,7 @@ There are two approaches: modifying an existing connection or creating a new one
 
 ### Modifying an Existing Connection
 
-If you already have a connection profile (most RHEL 9 installs create one during setup), you can modify it directly:
+If you already have a connection profile (most RHEL installs create one during setup), you can modify it directly:
 
 ```bash
 # Set the IP addressing method to manual (static)
@@ -156,7 +156,7 @@ nmcli connection show ens192 | grep ipv4
 
 ## Understanding the Keyfile Backend
 
-On RHEL 9, NetworkManager stores connection profiles as keyfiles in `/etc/NetworkManager/system-connections/`. After setting a static IP, you can inspect the generated file:
+On RHEL, NetworkManager stores connection profiles as keyfiles in `/etc/NetworkManager/system-connections/`. After setting a static IP, you can inspect the generated file:
 
 ```bash
 # View the connection profile file
@@ -228,4 +228,4 @@ flowchart TD
 
 ## Wrapping Up
 
-Configuring static IPs on RHEL 9 with nmcli is straightforward once you understand the pattern: modify the connection properties, then bring the connection up. The keyfile format makes it easy to review and version-control your network configurations, and nmcli's scriptable interface fits naturally into automation workflows. For anything beyond a handful of servers, consider wrapping these commands into Ansible playbooks or shell scripts that your team can reuse consistently.
+Configuring static IPs on RHEL with nmcli is straightforward once you understand the pattern: modify the connection properties, then bring the connection up. The keyfile format makes it easy to review and version-control your network configurations, and nmcli's scriptable interface fits naturally into automation workflows. For anything beyond a handful of servers, consider wrapping these commands into Ansible playbooks or shell scripts that your team can reuse consistently.

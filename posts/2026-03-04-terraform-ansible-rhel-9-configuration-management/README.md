@@ -1,23 +1,23 @@
-# How to Use Terraform with Ansible for RHEL 9 Configuration Management
+# How to Use Terraform with Ansible for RHEL Configuration Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Terraform, Ansible, Configuration Management, IaC, Linux
 
-Description: Combine Terraform for infrastructure provisioning with Ansible for configuration management to fully automate RHEL 9 deployments.
+Description: Combine Terraform for infrastructure provisioning with Ansible for configuration management to fully automate RHEL deployments.
 
 ---
 
-Terraform excels at creating infrastructure, and Ansible excels at configuring it. Together, they form a powerful combination: Terraform provisions the servers, and Ansible configures them. This guide shows how to wire them together on RHEL 9.
+Terraform excels at creating infrastructure, and Ansible excels at configuring it. Together, they form a powerful combination: Terraform provisions the servers, and Ansible configures them. This guide shows how to wire them together on RHEL.
 
 ## The Two-Phase Approach
 
 ```mermaid
 graph LR
-    A[Terraform] -->|Phase 1: Provision| B[RHEL 9 Servers Created]
+    A[Terraform] -->|Phase 1: Provision| B[RHEL Servers Created]
     B -->|Generate Inventory| C[Ansible Inventory File]
     C -->|Phase 2: Configure| D[Ansible Playbooks]
-    D --> E[Configured RHEL 9 Servers]
+    D --> E[Configured RHEL Servers]
 ```
 
 ## Install Both Tools
@@ -34,7 +34,7 @@ sudo dnf install -y ansible-core
 ## Terraform: Provision Infrastructure
 
 ```hcl
-# main.tf - Create RHEL 9 servers on AWS
+# main.tf - Create RHEL servers on AWS
 
 terraform {
   required_providers {
@@ -116,10 +116,10 @@ ansible_python_interpreter=/usr/bin/python3
 ## Ansible: Configure the Servers
 
 ```yaml
-# ansible/playbook.yml - Configure the provisioned RHEL 9 servers
+# ansible/playbook.yml - Configure the provisioned RHEL servers
 
 ---
-- name: Configure all RHEL 9 servers
+- name: Configure all RHEL servers
   hosts: all
   become: true
   tasks:
@@ -251,4 +251,4 @@ echo "Deployment complete!"
 terraform output
 ```
 
-Using Terraform and Ansible together gives you the best of both worlds: declarative infrastructure provisioning and powerful configuration management for your RHEL 9 servers.
+Using Terraform and Ansible together gives you the best of both worlds: declarative infrastructure provisioning and powerful configuration management for your RHEL servers.

@@ -1,14 +1,14 @@
-# How to Install and Configure Prometheus on RHEL 9
+# How to Install and Configure Prometheus on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Prometheus, Monitoring, Metrics, Linux
 
-Description: Learn how to install, configure, and run Prometheus as a systemd service on RHEL 9 for collecting and querying time-series metrics from your infrastructure.
+Description: Learn how to install, configure, and run Prometheus as a systemd service on RHEL for collecting and querying time-series metrics from your infrastructure.
 
 ---
 
-Prometheus is an open-source monitoring system that collects metrics from targets by scraping HTTP endpoints. It stores data as time series and provides a powerful query language called PromQL. On RHEL 9, you can install Prometheus from pre-built binaries and run it as a systemd service.
+Prometheus is an open-source monitoring system that collects metrics from targets by scraping HTTP endpoints. It stores data as time series and provides a powerful query language called PromQL. On RHEL, you can install Prometheus from pre-built binaries and run it as a systemd service.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ graph TD
 
 ## Prerequisites
 
-- RHEL 9 server with root or sudo access
+- RHEL server with root or sudo access
 - At least 2GB RAM and 20GB disk space for a small deployment
 - Port 9090 available for the Prometheus web UI
 
@@ -307,4 +307,4 @@ prometheus --version
 
 ## Summary
 
-Installing Prometheus on RHEL 9 involves downloading the binary, creating a dedicated user and directories, writing a configuration file that defines your scrape targets, and running it as a systemd service. The web UI at port 9090 lets you query metrics with PromQL, and adding new targets is as simple as editing the YAML configuration and reloading.
+Installing Prometheus on RHEL involves downloading the binary, creating a dedicated user and directories, writing a configuration file that defines your scrape targets, and running it as a systemd service. The web UI at port 9090 lets you query metrics with PromQL, and adding new targets is as simple as editing the YAML configuration and reloading.

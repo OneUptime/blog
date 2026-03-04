@@ -1,14 +1,14 @@
-# How to Track User Login and Authentication Events with auditd on RHEL 9
+# How to Track User Login and Authentication Events with auditd on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, auditd, Authentication, Monitoring, Linux
 
-Description: Set up auditd rules on RHEL 9 to monitor user logins, failed authentication attempts, and privilege escalation for security auditing.
+Description: Set up auditd rules on RHEL to monitor user logins, failed authentication attempts, and privilege escalation for security auditing.
 
 ---
 
-Knowing who logged into your systems and when is fundamental to security. On RHEL 9, auditd gives you fine-grained control over what authentication events get recorded. Unlike basic utmp/wtmp logs, auditd captures the full context around each event, including the exact syscalls, processes, and user IDs involved.
+Knowing who logged into your systems and when is fundamental to security. On RHEL, auditd gives you fine-grained control over what authentication events get recorded. Unlike basic utmp/wtmp logs, auditd captures the full context around each event, including the exact syscalls, processes, and user IDs involved.
 
 This guide covers setting up audit rules specifically for login and authentication tracking.
 
@@ -27,7 +27,7 @@ sudo systemctl enable --now auditd
 
 ## Key Authentication Files to Monitor
 
-Authentication on RHEL 9 touches several critical files. Monitoring changes to these files catches both legitimate and unauthorized modifications.
+Authentication on RHEL touches several critical files. Monitoring changes to these files catches both legitimate and unauthorized modifications.
 
 ```mermaid
 graph TD
@@ -288,4 +288,4 @@ With immutable rules (`-e 2`), nobody can modify or disable audit rules without 
 
 ## Wrapping Up
 
-Tracking authentication events with auditd on RHEL 9 gives you a solid foundation for security monitoring. The combination of file watches on critical auth files, syscall tracking for login-related binaries, and regular reporting with aureport covers most compliance requirements. The key is to review these logs regularly, whether manually or through automated SIEM integration, so you catch suspicious activity before it becomes a breach.
+Tracking authentication events with auditd on RHEL gives you a solid foundation for security monitoring. The combination of file watches on critical auth files, syscall tracking for login-related binaries, and regular reporting with aureport covers most compliance requirements. The key is to review these logs regularly, whether manually or through automated SIEM integration, so you catch suspicious activity before it becomes a breach.

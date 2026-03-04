@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kickstart Generator, Installation Profiles, Automation, Linux
 
-Description: Learn how to use Anaconda's generated Kickstart files and available tools to build and customize installation profiles for repeatable RHEL 9 deployments.
+Description: Learn how to use Anaconda's generated Kickstart files and available tools to build and customize installation profiles for repeatable RHEL deployments.
 
 ---
 
@@ -15,7 +15,7 @@ Writing Kickstart files from scratch is fine when you know every directive by he
 Every time you install RHEL through the graphical or text installer, Anaconda saves a Kickstart file that captures all the choices you made. This file lives at `/root/anaconda-ks.cfg` on the newly installed system.
 
 ```bash
-# After a fresh RHEL 9 install, check for the generated file
+# After a fresh RHEL install, check for the generated file
 ls -la /root/anaconda-ks.cfg
 
 # View its contents
@@ -260,7 +260,7 @@ sudo dnf install -y pykickstart
 Always validate your Kickstart files before using them:
 
 ```bash
-# Validate a Kickstart file against RHEL 9 syntax
+# Validate a Kickstart file against RHEL syntax
 ksvalidator --version RHEL9 kickstart.cfg
 ```
 
@@ -271,7 +271,7 @@ If there are no errors, the command produces no output. Errors are printed to st
 If you are migrating Kickstart files from an older RHEL version, `ksverdiff` shows what changed:
 
 ```bash
-# See what changed between RHEL 8 and RHEL 9 Kickstart syntax
+# See what changed between RHEL 8 and RHEL Kickstart syntax
 ksverdiff --from RHEL8 --to RHEL9
 ```
 
@@ -376,7 +376,7 @@ mkdir -p roles/{base,webserver,database,appserver}
 **Document your profiles.** Add comments at the top of each file explaining what the profile is for and when it was last tested.
 
 ```bash
-# Kickstart Profile: Web Server (RHEL 9.3)
+# Kickstart Profile: Web Server (RHEL.3)
 # Last tested: 2026-03-01
 # Author: sysadmin team
 # Purpose: Standard web server with Apache, PHP, and SSL

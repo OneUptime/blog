@@ -1,10 +1,10 @@
-# How to Troubleshoot Nginx 502 Bad Gateway Errors on RHEL 9
+# How to Troubleshoot Nginx 502 Bad Gateway Errors on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, 502, Troubleshooting, Linux
 
-Description: A systematic approach to diagnosing and fixing 502 Bad Gateway errors when using Nginx as a reverse proxy on RHEL 9.
+Description: A systematic approach to diagnosing and fixing 502 Bad Gateway errors when using Nginx as a reverse proxy on RHEL.
 
 ---
 
@@ -225,4 +225,4 @@ Check each backend individually to find the failed one.
 
 ## Wrap-Up
 
-502 errors always come down to the connection between Nginx and the backend. Start with the error log, which tells you exactly what is happening. On RHEL 9, SELinux is the most commonly overlooked cause. After that, check if the backend is running, verify connectivity, and adjust timeouts and buffers as needed. A systematic approach saves you from chasing the wrong problem.
+502 errors always come down to the connection between Nginx and the backend. Start with the error log, which tells you exactly what is happening. On RHEL, SELinux is the most commonly overlooked cause. After that, check if the backend is running, verify connectivity, and adjust timeouts and buffers as needed. A systematic approach saves you from chasing the wrong problem.

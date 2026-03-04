@@ -1,10 +1,10 @@
-# How to Use systemd Credentials for Secure Secret Injection on RHEL 9
+# How to Use systemd Credentials for Secure Secret Injection on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Credentials, Secrets, Security, Linux
 
-Description: Learn how to use the systemd credentials framework on RHEL 9 to securely inject secrets into services without exposing them in unit files or environment variables.
+Description: Learn how to use the systemd credentials framework on RHEL to securely inject secrets into services without exposing them in unit files or environment variables.
 
 ---
 
@@ -128,4 +128,4 @@ echo "tpm-bound-secret" | sudo systemd-creds encrypt --with-key=tpm2 - /etc/cred
 
 ## Summary
 
-You have configured systemd credentials on RHEL 9 for secure secret injection. Credentials are encrypted at rest, decrypted only at service runtime, and automatically cleaned up when the service stops. This approach eliminates the need for secrets in environment variables, configuration files, or unit files.
+You have configured systemd credentials on RHEL for secure secret injection. Credentials are encrypted at rest, decrypted only at service runtime, and automatically cleaned up when the service stops. This approach eliminates the need for secrets in environment variables, configuration files, or unit files.

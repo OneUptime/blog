@@ -1,10 +1,10 @@
-# How to Monitor HAProxy Statistics and Performance on RHEL 9
+# How to Monitor HAProxy Statistics and Performance on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, Monitoring, Statistics, Linux
 
-Description: How to enable and use HAProxy's built-in statistics dashboard and runtime API to monitor load balancer performance on RHEL 9.
+Description: How to enable and use HAProxy's built-in statistics dashboard and runtime API to monitor load balancer performance on RHEL.
 
 ---
 
@@ -14,7 +14,7 @@ Running a load balancer without monitoring is flying blind. You need to know how
 
 ## Prerequisites
 
-- RHEL 9 with HAProxy installed
+- RHEL with HAProxy installed
 - Root or sudo access
 
 ## Step 1 - Enable the Statistics Dashboard

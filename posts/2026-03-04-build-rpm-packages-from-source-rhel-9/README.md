@@ -1,10 +1,10 @@
-# How to Build RPM Packages from Source on RHEL 9
+# How to Build RPM Packages from Source on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RPM, rpmbuild, Package Building, Linux
 
-Description: A practical walkthrough of building RPM packages from source on RHEL 9, covering spec files, rpmbuild, source RPMs, and using mock for clean build environments.
+Description: A practical walkthrough of building RPM packages from source on RHEL, covering spec files, rpmbuild, source RPMs, and using mock for clean build environments.
 
 ---
 
@@ -67,7 +67,7 @@ BuildRequires:  make
 
 %description
 A simple hello world application used to demonstrate
-RPM package building on RHEL 9.
+RPM package building on RHEL.
 
 %prep
 %setup -q
@@ -207,7 +207,7 @@ sudo usermod -aG mock $(whoami)
 ### Build with Mock
 
 ```bash
-# Build a source RPM in a clean RHEL 9 chroot
+# Build a source RPM in a clean RHEL chroot
 mock -r rhel-9-x86_64 --rebuild ~/rpmbuild/SRPMS/hello-1.0.0-1.el9.src.rpm
 ```
 
@@ -262,7 +262,7 @@ grep BuildRequires ~/rpmbuild/SPECS/some-package.spec
 
 ## Common Spec File Macros
 
-RHEL 9 defines many useful macros that keep your spec files portable:
+RHEL defines many useful macros that keep your spec files portable:
 
 | Macro | Expands To | Example |
 |-------|-----------|---------|

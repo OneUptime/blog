@@ -1,14 +1,14 @@
-# How to Create Custom nftables Tables and Chains on RHEL 9
+# How to Create Custom nftables Tables and Chains on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nftables, Tables, Chains, Linux
 
-Description: A guide to creating and organizing custom nftables tables and chains on RHEL 9 for clean, maintainable firewall configurations.
+Description: A guide to creating and organizing custom nftables tables and chains on RHEL for clean, maintainable firewall configurations.
 
 ---
 
-The default nftables setup on RHEL 9 gives you a basic structure, but real-world firewall configurations need more organization. Custom tables and chains let you separate concerns, reuse logic, and keep your ruleset manageable as it grows. This post covers how to build a well-structured nftables configuration from scratch.
+The default nftables setup on RHEL gives you a basic structure, but real-world firewall configurations need more organization. Custom tables and chains let you separate concerns, reuse logic, and keep your ruleset manageable as it grows. This post covers how to build a well-structured nftables configuration from scratch.
 
 ## Tables: The Top-Level Containers
 

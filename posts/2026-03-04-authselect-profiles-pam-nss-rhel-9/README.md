@@ -1,14 +1,14 @@
-# How to Configure authselect Profiles for PAM and NSS on RHEL 9
+# How to Configure authselect Profiles for PAM and NSS on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, authselect, PAM, NSS, Linux
 
-Description: A practical guide to using authselect on RHEL 9 to manage PAM and NSS configurations, covering built-in profiles, features, custom profiles, and migration from authconfig.
+Description: A practical guide to using authselect on RHEL to manage PAM and NSS configurations, covering built-in profiles, features, custom profiles, and migration from authconfig.
 
 ---
 
-authselect is the tool RHEL 9 uses to manage PAM (Pluggable Authentication Modules) and NSS (Name Service Switch) configurations. It replaced authconfig starting with RHEL 8. Instead of manually editing PAM files (which is error-prone and hard to maintain), authselect lets you select a profile and enable features. It generates the correct PAM and NSS configuration files for you.
+authselect is the tool RHEL uses to manage PAM (Pluggable Authentication Modules) and NSS (Name Service Switch) configurations. It replaced authconfig starting with RHEL 8. Instead of manually editing PAM files (which is error-prone and hard to maintain), authselect lets you select a profile and enable features. It generates the correct PAM and NSS configuration files for you.
 
 ## Why authselect Exists
 
@@ -26,7 +26,7 @@ Manually editing PAM files is risky. One typo can lock everyone out of the syste
 
 ## Built-in Profiles
 
-RHEL 9 ships with three built-in profiles:
+RHEL ships with three built-in profiles:
 
 ```bash
 # List available profiles

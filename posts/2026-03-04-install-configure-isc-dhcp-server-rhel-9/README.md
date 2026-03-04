@@ -1,10 +1,10 @@
-# How to Install and Configure an ISC DHCP Server on RHEL 9
+# How to Install and Configure an ISC DHCP Server on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DHCP, ISC, Server, Linux
 
-Description: Install and configure the ISC DHCP server on RHEL 9 to automatically assign IP addresses, gateways, and DNS servers to clients on your network.
+Description: Install and configure the ISC DHCP server on RHEL to automatically assign IP addresses, gateways, and DNS servers to clients on your network.
 
 ---
 

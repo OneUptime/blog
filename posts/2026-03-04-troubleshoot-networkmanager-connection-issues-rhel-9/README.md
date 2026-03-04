@@ -1,14 +1,14 @@
-# How to Troubleshoot NetworkManager Connection Issues on RHEL 9
+# How to Troubleshoot NetworkManager Connection Issues on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NetworkManager, Troubleshooting, Linux
 
-Description: A practical troubleshooting guide for diagnosing and resolving NetworkManager connection problems on RHEL 9, with real-world scenarios and debugging techniques.
+Description: A practical troubleshooting guide for diagnosing and resolving NetworkManager connection problems on RHEL, with real-world scenarios and debugging techniques.
 
 ---
 
-When networking breaks on a RHEL 9 server, the pressure is on. You need to find the problem and fix it fast. NetworkManager handles all the network configuration on RHEL 9, so knowing how to extract useful diagnostic information from it is a critical skill. This post covers the tools and techniques I use when things go wrong.
+When networking breaks on a RHEL server, the pressure is on. You need to find the problem and fix it fast. NetworkManager handles all the network configuration on RHEL, so knowing how to extract useful diagnostic information from it is a critical skill. This post covers the tools and techniques I use when things go wrong.
 
 ## Start with the Basics
 
@@ -151,7 +151,7 @@ dig @8.8.8.8 google.com
 systemctl status systemd-resolved
 ```
 
-On RHEL 9, `/etc/resolv.conf` is managed by NetworkManager. If you see unexpected content, check whether another service is overwriting it.
+On RHEL, `/etc/resolv.conf` is managed by NetworkManager. If you see unexpected content, check whether another service is overwriting it.
 
 ### Problem: Connection Drops Intermittently
 

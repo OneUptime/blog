@@ -1,10 +1,10 @@
-# How to Manage Software Subscriptions and Repositories with subscription-manager on RHEL 9
+# How to Manage Software Subscriptions and Repositories with subscription-manager on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Subscription Manager, Repositories, Red Hat, Linux
 
-Description: A practical guide to managing RHEL 9 subscriptions, attaching entitlements, enabling repositories, and troubleshooting common subscription-manager issues.
+Description: A practical guide to managing RHEL subscriptions, attaching entitlements, enabling repositories, and troubleshooting common subscription-manager issues.
 
 ---
 
@@ -120,7 +120,7 @@ sudo subscription-manager repos \
   --enable=codeready-builder-for-rhel-9-x86_64-rpms
 ```
 
-### Common RHEL 9 Repositories
+### Common RHEL Repositories
 
 Here are the repos you will use most often:
 
@@ -133,10 +133,10 @@ Here are the repos you will use most often:
 
 ## Setting a Release Version
 
-Sometimes you need to lock your system to a specific RHEL minor release. This is common in environments where you need to stay on, say, RHEL 9.2 and not jump to 9.3.
+Sometimes you need to lock your system to a specific RHEL minor release. This is common in environments where you need to stay on, say, RHEL.2 and not jump to 9.3.
 
 ```bash
-# Lock the system to RHEL 9.2
+# Lock the system to RHEL.2
 sudo subscription-manager release --set=9.2
 
 # Check the current release setting

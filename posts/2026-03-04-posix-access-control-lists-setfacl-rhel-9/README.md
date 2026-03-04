@@ -1,10 +1,10 @@
-# How to Configure POSIX Access Control Lists with setfacl on RHEL 9
+# How to Configure POSIX Access Control Lists with setfacl on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ACLs, setfacl, Permissions, Linux
 
-Description: Learn how to use setfacl and getfacl on RHEL 9 to configure POSIX Access Control Lists for fine-grained file permission management beyond traditional Unix permissions.
+Description: Learn how to use setfacl and getfacl on RHEL to configure POSIX Access Control Lists for fine-grained file permission management beyond traditional Unix permissions.
 
 ---
 
@@ -12,13 +12,13 @@ Standard Unix file permissions (owner, group, others) are too coarse for many re
 
 ## Checking ACL Support
 
-RHEL 9 filesystems (XFS and ext4) support ACLs by default:
+RHEL filesystems (XFS and ext4) support ACLs by default:
 
 ```bash
 # Verify ACL support on a filesystem
 mount | grep acl
 
-# For XFS (default on RHEL 9), ACLs are always supported
+# For XFS (default on RHEL), ACLs are always supported
 # For ext4, check mount options
 tune2fs -l /dev/sda3 | grep "Default mount options"
 ```

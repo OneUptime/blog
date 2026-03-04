@@ -1,10 +1,10 @@
-# How to Set Default Umask Values for New Files and Directories on RHEL 9
+# How to Set Default Umask Values for New Files and Directories on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, umask, File Permissions, Security, Linux
 
-Description: A complete guide to understanding and configuring the default umask on RHEL 9, including system-wide settings, per-user overrides, and the pam_umask module.
+Description: A complete guide to understanding and configuring the default umask on RHEL, including system-wide settings, per-user overrides, and the pam_umask module.
 
 ---
 
@@ -17,7 +17,7 @@ The umask is a permission filter. When a process creates a new file or directory
 umask
 ```
 
-With the RHEL 9 default umask of `0022`:
+With the RHEL default umask of `0022`:
 - Files: `666 - 022 = 644` (rw-r--r--)
 - Directories: `777 - 022 = 755` (rwxr-xr-x)
 
@@ -55,9 +55,9 @@ u=rwx,g=rx,o=rx
 u=rwx,g=,o=
 ```
 
-## Where the Umask Gets Set on RHEL 9
+## Where the Umask Gets Set on RHEL
 
-The umask value on RHEL 9 comes from multiple places, applied in order. Later settings override earlier ones.
+The umask value on RHEL comes from multiple places, applied in order. Later settings override earlier ones.
 
 1. `/etc/login.defs` - Read by `pam_umask` during PAM authentication
 2. `/etc/profile` and `/etc/profile.d/*.sh` - Executed during login shell startup
@@ -86,7 +86,7 @@ This is read by `pam_umask` during login. If `pam_umask` is configured in `/etc/
 grep -A5 umask /etc/profile
 ```
 
-On RHEL 9, `/etc/profile` typically contains logic like:
+On RHEL, `/etc/profile` typically contains logic like:
 
 ```bash
 if [ $UID -gt 199 ] && [ "$(id -gn)" = "$(id -un)" ]; then
@@ -187,7 +187,7 @@ grep pam_umask /etc/pam.d/system-auth
 grep pam_umask /etc/pam.d/password-auth
 ```
 
-If it is not there, you can add it. But on RHEL 9, it is usually present. The PAM module reads the `UMASK` value from `/etc/login.defs`:
+If it is not there, you can add it. But on RHEL, it is usually present. The PAM module reads the `UMASK` value from `/etc/login.defs`:
 
 ```bash
 # Set the umask in login.defs
@@ -306,4 +306,4 @@ Some applications set their own umask internally, overriding the system default.
 
 ## Wrapping Up
 
-The umask is a simple concept that is easy to get wrong because it is set in multiple places. On RHEL 9, the most reliable approach is to use `/etc/profile.d/` for shell-based sessions and ensure `pam_umask` is reading from `/etc/login.defs` for non-shell logins. For most servers, a umask of `027` strikes the right balance between security and usability. Remember that systemd services have their own umask setting, and changing the system umask does not affect existing files.
+The umask is a simple concept that is easy to get wrong because it is set in multiple places. On RHEL, the most reliable approach is to use `/etc/profile.d/` for shell-based sessions and ensure `pam_umask` is reading from `/etc/login.defs` for non-shell logins. For most servers, a umask of `027` strikes the right balance between security and usability. Remember that systemd services have their own umask setting, and changing the system umask does not affect existing files.

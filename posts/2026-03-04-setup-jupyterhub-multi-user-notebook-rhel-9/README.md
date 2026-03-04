@@ -1,18 +1,18 @@
-# How to Set Up JupyterHub Multi-User Notebook Server on RHEL 9
+# How to Set Up JupyterHub Multi-User Notebook Server on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, JupyterHub, Jupyter, Data Science, Python, Linux
 
-Description: Set up JupyterHub on RHEL 9 to provide multi-user Jupyter notebook environments for teams of data scientists and developers.
+Description: Set up JupyterHub on RHEL to provide multi-user Jupyter notebook environments for teams of data scientists and developers.
 
 ---
 
-JupyterHub lets you serve Jupyter notebooks to multiple users from a single server. Instead of each person running their own notebook instance, JupyterHub manages user authentication, spawns individual notebook servers, and handles resource allocation. This guide covers installing and configuring JupyterHub on RHEL 9.
+JupyterHub lets you serve Jupyter notebooks to multiple users from a single server. Instead of each person running their own notebook instance, JupyterHub manages user authentication, spawns individual notebook servers, and handles resource allocation. This guide covers installing and configuring JupyterHub on RHEL.
 
 ## Prerequisites
 
-- RHEL 9 with at least 4 GB RAM and 2 CPU cores
+- RHEL with at least 4 GB RAM and 2 CPU cores
 - Python 3.9 or later installed
 - Root or sudo access
 - A domain name (optional, for SSL)
@@ -300,4 +300,4 @@ which configurable-http-proxy
 
 ## Conclusion
 
-You now have JupyterHub running on RHEL 9, providing each user with their own isolated Jupyter notebook environment. The setup includes PAM authentication, resource limits per user, idle server culling, and an Nginx reverse proxy with SSL. For larger deployments, consider using the Docker or Kubernetes spawner to provide better isolation and scalability.
+You now have JupyterHub running on RHEL, providing each user with their own isolated Jupyter notebook environment. The setup includes PAM authentication, resource limits per user, idle server culling, and an Nginx reverse proxy with SSL. For larger deployments, consider using the Docker or Kubernetes spawner to provide better isolation and scalability.

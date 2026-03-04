@@ -1,4 +1,4 @@
-# How to Use nmcli Offline Mode to Generate Network Configuration Files on RHEL 9
+# How to Use nmcli Offline Mode to Generate Network Configuration Files on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -12,7 +12,7 @@ There are situations where you need to create NetworkManager configuration files
 
 ## What is Offline Mode?
 
-Starting with NetworkManager 1.40 (included in RHEL 9), nmcli can generate keyfile-format connection profiles without needing a running NetworkManager daemon. It writes valid `.nmconnection` files to a directory you specify, using the same syntax you would use with regular nmcli commands.
+Starting with NetworkManager 1.40 (included in RHEL), nmcli can generate keyfile-format connection profiles without needing a running NetworkManager daemon. It writes valid `.nmconnection` files to a directory you specify, using the same syntax you would use with regular nmcli commands.
 
 The key difference is that offline mode does not activate anything, does not talk to the NetworkManager daemon, and does not require root privileges (unless you are writing to a protected directory).
 
@@ -232,4 +232,4 @@ There are a few things to be aware of:
 
 ## Wrapping Up
 
-nmcli's offline mode fills an important gap in the RHEL 9 provisioning story. It lets you generate valid NetworkManager keyfiles anywhere, anytime, without needing a running NetworkManager instance. Whether you are building disk images, writing kickstart scripts, or preparing configurations for air-gapped deployments, offline mode ensures your network configuration files are correctly formatted and ready to go when the system boots for the first time.
+nmcli's offline mode fills an important gap in the RHEL provisioning story. It lets you generate valid NetworkManager keyfiles anywhere, anytime, without needing a running NetworkManager instance. Whether you are building disk images, writing kickstart scripts, or preparing configurations for air-gapped deployments, offline mode ensures your network configuration files are correctly formatted and ready to go when the system boots for the first time.

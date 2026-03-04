@@ -1,14 +1,14 @@
-# How to Build eBPF Programs with libbpf and CO-RE on RHEL 9
+# How to Build eBPF Programs with libbpf and CO-RE on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, eBPF, libbpf, CO-RE, Kernel, Linux
 
-Description: A hands-on guide to building portable eBPF programs using libbpf and CO-RE (Compile Once, Run Everywhere) on RHEL 9, from setup to deployment.
+Description: A hands-on guide to building portable eBPF programs using libbpf and CO-RE (Compile Once, Run Everywhere) on RHEL, from setup to deployment.
 
 ---
 
-Building eBPF programs used to mean compiling them on every target machine because kernel data structures change between versions. CO-RE (Compile Once, Run Everywhere) fixes this by using BTF (BPF Type Format) information to automatically adjust your program to the running kernel. On RHEL 9, CO-RE works out of the box because the kernel ships with BTF enabled.
+Building eBPF programs used to mean compiling them on every target machine because kernel data structures change between versions. CO-RE (Compile Once, Run Everywhere) fixes this by using BTF (BPF Type Format) information to automatically adjust your program to the running kernel. On RHEL, CO-RE works out of the box because the kernel ships with BTF enabled.
 
 ## How CO-RE Works
 
@@ -310,4 +310,4 @@ sudo bpftool prog show id <PROG_ID> --pretty
 
 ## Conclusion
 
-Building eBPF programs with libbpf and CO-RE on RHEL 9 gives you the best of both worlds: the power of kernel-level instrumentation with the portability of compiling once and running on any RHEL 9 kernel version. The workflow of BPF C code, skeleton generation, and userspace loader is the standard pattern used by all modern eBPF projects. Start with simple tracepoint programs and work your way up to more advanced kprobe and XDP programs as your needs grow.
+Building eBPF programs with libbpf and CO-RE on RHEL gives you the best of both worlds: the power of kernel-level instrumentation with the portability of compiling once and running on any RHEL kernel version. The workflow of BPF C code, skeleton generation, and userspace loader is the standard pattern used by all modern eBPF projects. Start with simple tracepoint programs and work your way up to more advanced kprobe and XDP programs as your needs grow.

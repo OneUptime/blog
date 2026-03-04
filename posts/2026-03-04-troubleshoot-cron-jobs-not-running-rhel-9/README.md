@@ -1,10 +1,10 @@
-# How to Troubleshoot Cron Jobs That Are Not Running on RHEL 9
+# How to Troubleshoot Cron Jobs That Are Not Running on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, cron, Troubleshooting, Linux, System Administration
 
-Description: A systematic approach to diagnosing and fixing cron jobs that refuse to run on RHEL 9, covering the most common causes from service issues to SELinux denials.
+Description: A systematic approach to diagnosing and fixing cron jobs that refuse to run on RHEL, covering the most common causes from service issues to SELinux denials.
 
 ---
 
@@ -39,7 +39,7 @@ sudo journalctl -u crond --since "1 hour ago"
 
 ## Step 2: Check the Cron Log
 
-RHEL 9 logs cron activity to `/var/log/cron`. This is your best friend when debugging.
+RHEL logs cron activity to `/var/log/cron`. This is your best friend when debugging.
 
 ```bash
 # Look at recent cron log entries
@@ -148,7 +148,7 @@ sudo chmod +x /usr/local/bin/backup.sh
 Also check the crontab file permissions themselves.
 
 ```bash
-# User crontabs are stored here on RHEL 9
+# User crontabs are stored here on RHEL
 ls -la /var/spool/cron/
 
 # They should be owned by the respective user, mode 600
@@ -156,7 +156,7 @@ ls -la /var/spool/cron/
 
 ## Step 6: Check for User Restrictions
 
-RHEL 9 uses `/etc/cron.allow` and `/etc/cron.deny` to control who can use cron.
+RHEL uses `/etc/cron.allow` and `/etc/cron.deny` to control who can use cron.
 
 ```bash
 # Check if cron.allow exists (if it does, only listed users can use cron)
@@ -173,7 +173,7 @@ If `/etc/cron.allow` exists and your user is not listed, cron will silently refu
 
 ## Step 7: SELinux Denials
 
-SELinux is often the hidden culprit on RHEL 9. Your script might work perfectly when run manually but fail under cron because SELinux restricts what the cron context can do.
+SELinux is often the hidden culprit on RHEL. Your script might work perfectly when run manually but fail under cron because SELinux restricts what the cron context can do.
 
 ```bash
 # Check for recent SELinux denials related to cron
@@ -310,4 +310,4 @@ sudo ausearch -m AVC -ts recent 2>/dev/null | grep -c cron
 
 ## Summary
 
-When a cron job is not running on RHEL 9, work through the problem systematically. Start with the basics (is crond running?), check the logs, verify syntax and PATH, look at permissions and SELinux, and test the script in an environment that mimics cron's restricted setup. Nine times out of ten, it is either a PATH issue or SELinux. The tenth time, it is a missing newline at the end of the crontab.
+When a cron job is not running on RHEL, work through the problem systematically. Start with the basics (is crond running?), check the logs, verify syntax and PATH, look at permissions and SELinux, and test the script in an environment that mimics cron's restricted setup. Nine times out of ten, it is either a PATH issue or SELinux. The tenth time, it is a missing newline at the end of the crontab.

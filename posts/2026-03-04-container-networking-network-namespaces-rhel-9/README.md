@@ -1,14 +1,14 @@
-# How to Understand Container Networking Through Network Namespaces on RHEL 9
+# How to Understand Container Networking Through Network Namespaces on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Containers, Network Namespaces, Linux
 
-Description: Demystify container networking on RHEL 9 by understanding the network namespace fundamentals that Podman and Docker use under the hood, with hands-on examples building container-style networking from scratch.
+Description: Demystify container networking on RHEL by understanding the network namespace fundamentals that Podman and Docker use under the hood, with hands-on examples building container-style networking from scratch.
 
 ---
 
-Container networking isn't magic. When Podman or Docker creates a container with its own network, it's using the same network namespaces, veth pairs, and bridges that you can create with `ip` commands. Understanding these building blocks makes troubleshooting container networking far easier. Let's build container-style networking from scratch on RHEL 9.
+Container networking isn't magic. When Podman or Docker creates a container with its own network, it's using the same network namespaces, veth pairs, and bridges that you can create with `ip` commands. Understanding these building blocks makes troubleshooting container networking far easier. Let's build container-style networking from scratch on RHEL.
 
 ## How Container Networking Actually Works
 
@@ -231,4 +231,4 @@ sudo iptables -F FORWARD
 
 ## Wrapping Up
 
-Container networking on RHEL 9 is built on network namespaces, veth pairs, bridges, and iptables NAT. There's nothing proprietary or mysterious about it. Building it by hand helps you understand exactly what Podman or Docker does when you run a container, and that understanding makes troubleshooting container networking issues much more straightforward. When a container can't connect, you now know exactly which layer to check.
+Container networking on RHEL is built on network namespaces, veth pairs, bridges, and iptables NAT. There's nothing proprietary or mysterious about it. Building it by hand helps you understand exactly what Podman or Docker does when you run a container, and that understanding makes troubleshooting container networking issues much more straightforward. When a container can't connect, you now know exactly which layer to check.

@@ -1,10 +1,10 @@
-# How to Configure Apache Access Control and Authentication on RHEL 9
+# How to Configure Apache Access Control and Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, Access Control, Authentication, Linux
 
-Description: Learn how to restrict access to directories and set up password-based authentication in Apache httpd on RHEL 9.
+Description: Learn how to restrict access to directories and set up password-based authentication in Apache httpd on RHEL.
 
 ---
 
@@ -14,7 +14,7 @@ Not every page on your server should be public. Admin panels, staging sites, int
 
 ## Prerequisites
 
-- RHEL 9 with Apache httpd installed
+- RHEL with Apache httpd installed
 - Root or sudo access
 
 ## IP-Based Access Control

@@ -1,18 +1,18 @@
-# How to Manage /etc/hosts and Hostname Resolution on RHEL 9
+# How to Manage /etc/hosts and Hostname Resolution on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, /etc/hosts, DNS, Hostname, Linux
 
-Description: A practical guide to managing the /etc/hosts file and controlling hostname resolution order on RHEL 9, including best practices for production environments.
+Description: A practical guide to managing the /etc/hosts file and controlling hostname resolution order on RHEL, including best practices for production environments.
 
 ---
 
-The `/etc/hosts` file is one of the oldest configuration files in Unix history, and it is still relevant on modern RHEL 9 systems. While DNS handles the heavy lifting for name resolution, `/etc/hosts` provides fast, local overrides that work even when DNS is down. Knowing how to manage it properly, along with understanding how RHEL 9 decides where to look for hostname resolution, is fundamental sysadmin knowledge.
+The `/etc/hosts` file is one of the oldest configuration files in Unix history, and it is still relevant on modern RHEL systems. While DNS handles the heavy lifting for name resolution, `/etc/hosts` provides fast, local overrides that work even when DNS is down. Knowing how to manage it properly, along with understanding how RHEL decides where to look for hostname resolution, is fundamental sysadmin knowledge.
 
-## How Name Resolution Works on RHEL 9
+## How Name Resolution Works on RHEL
 
-When an application tries to resolve a hostname, the system follows a resolution order defined in `/etc/nsswitch.conf`. On RHEL 9, the default configuration looks at `/etc/hosts` first, then DNS:
+When an application tries to resolve a hostname, the system follows a resolution order defined in `/etc/nsswitch.conf`. On RHEL, the default configuration looks at `/etc/hosts` first, then DNS:
 
 ```bash
 # Check the current name resolution order
@@ -50,7 +50,7 @@ The format is simple: IP address followed by one or more hostnames.
 cat /etc/hosts
 ```
 
-Default RHEL 9 `/etc/hosts`:
+Default RHEL `/etc/hosts`:
 
 ```
 127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
@@ -274,4 +274,4 @@ grep db-primary /etc/hosts
 
 ## Wrapping Up
 
-The `/etc/hosts` file remains a valuable tool for local name resolution on RHEL 9. It provides fast, reliable, DNS-independent hostname lookups that work in any situation. The key is to use it for what it is good at - small, static mappings that need to work reliably - and use DNS for everything else. Keep the file clean, documented, and managed through automation when possible, and it will serve you well.
+The `/etc/hosts` file remains a valuable tool for local name resolution on RHEL. It provides fast, reliable, DNS-independent hostname lookups that work in any situation. The key is to use it for what it is good at - small, static mappings that need to work reliably - and use DNS for everything else. Keep the file clean, documented, and managed through automation when possible, and it will serve you well.

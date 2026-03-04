@@ -1,14 +1,14 @@
-# How to Schedule Automated AIDE Integrity Checks with cron on RHEL 9
+# How to Schedule Automated AIDE Integrity Checks with cron on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, AIDE, cron, Automation, Linux
 
-Description: Set up automated AIDE file integrity checks using cron on RHEL 9 to continuously monitor your system for unauthorized changes without manual intervention.
+Description: Set up automated AIDE file integrity checks using cron on RHEL to continuously monitor your system for unauthorized changes without manual intervention.
 
 ---
 
-Running AIDE manually is fine for one-off checks, but real security monitoring requires automation. You need AIDE running on a schedule, catching changes before they become incidents. On RHEL 9, cron is the most straightforward way to schedule these checks. This guide covers setting up automated AIDE scans with proper logging and output handling.
+Running AIDE manually is fine for one-off checks, but real security monitoring requires automation. You need AIDE running on a schedule, catching changes before they become incidents. On RHEL, cron is the most straightforward way to schedule these checks. This guide covers setting up automated AIDE scans with proper logging and output handling.
 
 ## Why Automate AIDE Checks
 

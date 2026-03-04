@@ -1,10 +1,10 @@
-# How to Troubleshoot Samba Connection and Permission Issues on RHEL 9
+# How to Troubleshoot Samba Connection and Permission Issues on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Samba, Troubleshooting, Linux
 
-Description: Systematically diagnose and fix Samba connection failures and permission problems on RHEL 9 with practical debugging commands and common solutions.
+Description: Systematically diagnose and fix Samba connection failures and permission problems on RHEL with practical debugging commands and common solutions.
 
 ---
 
@@ -241,4 +241,4 @@ dd if=/dev/zero of=/mnt/smb-share/speedtest bs=1M count=100
 
 ## Wrap-Up
 
-Samba troubleshooting on RHEL 9 is methodical: check the service, check the firewall, check the configuration, check authentication, check filesystem permissions, check SELinux. Work through each layer in order, and you will find the problem. Keep testparm, smbclient, and ausearch in your toolkit, and increase the log level when you need more detail.
+Samba troubleshooting on RHEL is methodical: check the service, check the firewall, check the configuration, check authentication, check filesystem permissions, check SELinux. Work through each layer in order, and you will find the problem. Keep testparm, smbclient, and ausearch in your toolkit, and increase the log level when you need more detail.

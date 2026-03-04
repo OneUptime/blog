@@ -34,7 +34,7 @@ The simplest deployment uses the `community.vmware.vmware_guest` module with the
     vcenter_password: "{{ vault_vcenter_password }}"
 
   tasks:
-    - name: Deploy VM from RHEL 9 template
+    - name: Deploy VM from RHEL template
       community.vmware.vmware_guest:
         name: "web-server-01"
         template: "golden-rhel9-base"

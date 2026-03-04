@@ -1,14 +1,14 @@
-# How to Configure SSH with Two-Factor Authentication on RHEL 9
+# How to Configure SSH with Two-Factor Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, 2FA, Security, Linux
 
-Description: Add two-factor authentication to SSH on RHEL 9 using TOTP with the Google Authenticator PAM module, requiring both a key/password and a one-time code.
+Description: Add two-factor authentication to SSH on RHEL using TOTP with the Google Authenticator PAM module, requiring both a key/password and a one-time code.
 
 ---
 
-Two-factor authentication (2FA) for SSH means even if an attacker steals a user's password or SSH key, they still cannot get in without the second factor. On RHEL 9, the most common approach uses TOTP (Time-based One-Time Passwords) through the Google Authenticator PAM module.
+Two-factor authentication (2FA) for SSH means even if an attacker steals a user's password or SSH key, they still cannot get in without the second factor. On RHEL, the most common approach uses TOTP (Time-based One-Time Passwords) through the Google Authenticator PAM module.
 
 ## Choosing Your 2FA Method
 
@@ -210,4 +210,4 @@ sudo grep -E "google_authenticator|pam_" /var/log/secure | tail -20
 
 ## Wrapping Up
 
-SSH 2FA on RHEL 9 with Google Authenticator is production-ready and handles most use cases well. The SSH key + TOTP combination is the strongest option for interactive logins. Use `nullok` during the rollout phase, exempt service accounts with PAM rules, and keep emergency scratch codes stored securely. Always test from a separate terminal and keep your current session open until you confirm 2FA is working correctly.
+SSH 2FA on RHEL with Google Authenticator is production-ready and handles most use cases well. The SSH key + TOTP combination is the strongest option for interactive logins. Use `nullok` during the rollout phase, exempt service accounts with PAM rules, and keep emergency scratch codes stored securely. Always test from a separate terminal and keep your current session open until you confirm 2FA is working correctly.

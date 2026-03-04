@@ -1,14 +1,14 @@
-# How to Remove and Disable Swap on RHEL 9
+# How to Remove and Disable Swap on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Swap, Disable, Linux
 
-Description: Learn how to safely remove and disable swap on RHEL 9, whether you are setting up Kubernetes nodes, reducing disk usage, or reclaiming storage.
+Description: Learn how to safely remove and disable swap on RHEL, whether you are setting up Kubernetes nodes, reducing disk usage, or reclaiming storage.
 
 ---
 
-There are legitimate reasons to disable swap. Kubernetes requires swap to be off on worker nodes. Some database administrators prefer no swap for predictable performance. Or maybe you are reclaiming the space for something else. Whatever the reason, here is how to do it properly on RHEL 9.
+There are legitimate reasons to disable swap. Kubernetes requires swap to be off on worker nodes. Some database administrators prefer no swap for predictable performance. Or maybe you are reclaiming the space for something else. Whatever the reason, here is how to do it properly on RHEL.
 
 ## Before You Disable Swap
 
@@ -210,4 +210,4 @@ systemctl list-units --type=swap --state=active
 
 ## Summary
 
-Disabling swap on RHEL 9 involves four steps: turn it off with `swapoff -a`, remove fstab entries, optionally remove the swap device, and mask the systemd swap target. The most common reason is Kubernetes node preparation. Always make sure you have enough physical RAM before removing swap, and keep the procedure documented so you can reverse it if needed.
+Disabling swap on RHEL involves four steps: turn it off with `swapoff -a`, remove fstab entries, optionally remove the swap device, and mask the systemd swap target. The most common reason is Kubernetes node preparation. Always make sure you have enough physical RAM before removing swap, and keep the procedure documented so you can reverse it if needed.

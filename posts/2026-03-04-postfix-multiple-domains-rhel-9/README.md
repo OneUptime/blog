@@ -1,16 +1,16 @@
-# How to Configure Postfix for Multiple Domains on RHEL 9
+# How to Configure Postfix for Multiple Domains on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, Multiple Domains, Mail, Linux
 
-Description: Set up a single Postfix server on RHEL 9 to handle email for multiple domains using virtual alias domains and virtual mailbox domains.
+Description: Set up a single Postfix server on RHEL to handle email for multiple domains using virtual alias domains and virtual mailbox domains.
 
 ---
 
 ## The Problem
 
-You have one RHEL 9 server and need it to handle mail for several domains, say example.com, example.org, and example.net. Each domain has its own set of users, and some users might have addresses in multiple domains. Postfix handles this through virtual domains, and there are two approaches depending on your needs.
+You have one RHEL server and need it to handle mail for several domains, say example.com, example.org, and example.net. Each domain has its own set of users, and some users might have addresses in multiple domains. Postfix handles this through virtual domains, and there are two approaches depending on your needs.
 
 ## Two Approaches to Multi-Domain Mail
 

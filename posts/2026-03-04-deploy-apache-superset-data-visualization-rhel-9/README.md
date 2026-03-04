@@ -1,18 +1,18 @@
-# How to Deploy Apache Superset for Data Visualization on RHEL 9
+# How to Deploy Apache Superset for Data Visualization on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache Superset, Data Visualization, Business Intelligence, Python, Linux
 
-Description: Deploy Apache Superset on RHEL 9 to create interactive dashboards and explore data through a powerful web-based visualization platform.
+Description: Deploy Apache Superset on RHEL to create interactive dashboards and explore data through a powerful web-based visualization platform.
 
 ---
 
-Apache Superset is an open-source data exploration and visualization platform that connects to a wide range of databases and lets you build rich, interactive dashboards. This guide walks through deploying Superset on RHEL 9 with production-ready settings.
+Apache Superset is an open-source data exploration and visualization platform that connects to a wide range of databases and lets you build rich, interactive dashboards. This guide walks through deploying Superset on RHEL with production-ready settings.
 
 ## Prerequisites
 
-- RHEL 9 with at least 4 GB RAM and 2 CPU cores
+- RHEL with at least 4 GB RAM and 2 CPU cores
 - Python 3.9 or later
 - A database backend (PostgreSQL recommended)
 - Root or sudo access
@@ -339,4 +339,4 @@ superset run -h 0.0.0.0 -p 8088 --with-threads --debugger
 
 ## Conclusion
 
-Apache Superset is now running on your RHEL 9 server with PostgreSQL as the metadata backend, Redis for caching, and Celery for asynchronous query execution. You can start connecting your data sources and building interactive dashboards. For enhanced security, add SSL certificates with certbot and restrict database connection permissions to only the tables your analysts need.
+Apache Superset is now running on your RHEL server with PostgreSQL as the metadata backend, Redis for caching, and Celery for asynchronous query execution. You can start connecting your data sources and building interactive dashboards. For enhanced security, add SSL certificates with certbot and restrict database connection permissions to only the tables your analysts need.

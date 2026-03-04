@@ -1,14 +1,14 @@
-# How to Run Ansible Playbooks on Schedule with systemd Timers on RHEL 9
+# How to Run Ansible Playbooks on Schedule with systemd Timers on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, systemd, Timers, Automation, Scheduling, Linux
 
-Description: Schedule Ansible playbooks to run automatically using systemd timers on RHEL 9 for reliable, logged automation.
+Description: Schedule Ansible playbooks to run automatically using systemd timers on RHEL for reliable, logged automation.
 
 ---
 
-Cron works, but systemd timers give you better logging, dependency management, and more flexible scheduling. If you need Ansible playbooks to run on a schedule (patching, compliance checks, backups), systemd timers are the right tool on RHEL 9.
+Cron works, but systemd timers give you better logging, dependency management, and more flexible scheduling. If you need Ansible playbooks to run on a schedule (patching, compliance checks, backups), systemd timers are the right tool on RHEL.
 
 ## Why systemd Timers Over Cron
 
@@ -266,4 +266,4 @@ Create a monitoring playbook for timer health:
 
 ## Wrapping Up
 
-systemd timers are the modern replacement for cron on RHEL 9. They give you structured logging through journald, the ability to catch up on missed runs, and randomized delays to prevent load spikes. For Ansible playbooks that need to run on a schedule, timers provide a reliable, observable scheduling mechanism. The `Persistent=true` option is especially valuable for patching and backup jobs because it ensures the job runs even if the server was down during the scheduled time.
+systemd timers are the modern replacement for cron on RHEL. They give you structured logging through journald, the ability to catch up on missed runs, and randomized delays to prevent load spikes. For Ansible playbooks that need to run on a schedule, timers provide a reliable, observable scheduling mechanism. The `Persistent=true` option is especially valuable for patching and backup jobs because it ensures the job runs even if the server was down during the scheduled time.

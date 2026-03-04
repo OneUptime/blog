@@ -112,7 +112,7 @@ This works when the package name is the same across distributions. For different
     - ansible_distribution == "Ubuntu"
     - ansible_distribution_version == "24.04"
 
-- name: RHEL 9+ specific config
+- name: RHEL+ specific config
   ansible.builtin.command: update-crypto-policies --set DEFAULT:NO-SHA1
   when:
     - ansible_os_family == "RedHat"

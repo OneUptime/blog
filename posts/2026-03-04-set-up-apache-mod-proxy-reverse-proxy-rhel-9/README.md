@@ -1,24 +1,24 @@
-# How to Set Up Apache mod_proxy for Reverse Proxy on RHEL 9
+# How to Set Up Apache mod_proxy for Reverse Proxy on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, mod_proxy, Reverse Proxy, Linux
 
-Description: A practical guide to configuring Apache as a reverse proxy using mod_proxy on RHEL 9, covering HTTP, WebSocket, and load balancing setups.
+Description: A practical guide to configuring Apache as a reverse proxy using mod_proxy on RHEL, covering HTTP, WebSocket, and load balancing setups.
 
 ---
 
-Apache's mod_proxy module turns your web server into a reverse proxy, forwarding client requests to backend application servers. This is useful for load balancing, SSL termination, and serving multiple applications behind a single public-facing server. This guide covers setting up mod_proxy on RHEL 9.
+Apache's mod_proxy module turns your web server into a reverse proxy, forwarding client requests to backend application servers. This is useful for load balancing, SSL termination, and serving multiple applications behind a single public-facing server. This guide covers setting up mod_proxy on RHEL.
 
 ## Prerequisites
 
-- A RHEL 9 system with Apache installed and running
+- A RHEL system with Apache installed and running
 - A backend application running on a local or remote port
 - Root or sudo access
 
 ## Step 1: Enable Required Modules
 
-Apache on RHEL 9 includes the proxy modules, but verify they are loaded:
+Apache on RHEL includes the proxy modules, but verify they are loaded:
 
 ```bash
 # Check which proxy modules are loaded
@@ -221,4 +221,4 @@ LogLevel proxy:debug
 
 ## Summary
 
-Apache mod_proxy on RHEL 9 lets you route traffic to backend applications, balance load across multiple servers, and handle WebSocket connections. The key configuration items are ProxyPass/ProxyPassReverse directives, the SELinux httpd_can_network_connect boolean, and proper timeout tuning for your backend applications.
+Apache mod_proxy on RHEL lets you route traffic to backend applications, balance load across multiple servers, and handle WebSocket connections. The key configuration items are ProxyPass/ProxyPassReverse directives, the SELinux httpd_can_network_connect boolean, and proper timeout tuning for your backend applications.

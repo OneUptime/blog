@@ -1,14 +1,14 @@
-# How to Set Up Jenkins Pipelines for RHEL 9 RPM Builds
+# How to Set Up Jenkins Pipelines for RHEL RPM Builds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Jenkins, Pipelines, RPM, CI/CD, Linux
 
-Description: Create Jenkins pipelines that automatically build RPM packages for RHEL 9, including spec file management and repository publishing.
+Description: Create Jenkins pipelines that automatically build RPM packages for RHEL, including spec file management and repository publishing.
 
 ---
 
-Building RPM packages by hand is slow and inconsistent. A Jenkins pipeline automates the entire process: pull the source, build the RPM, run tests, and publish to your repository. This guide walks through setting up that pipeline on RHEL 9.
+Building RPM packages by hand is slow and inconsistent. A Jenkins pipeline automates the entire process: pull the source, build the RPM, run tests, and publish to your repository. This guide walks through setting up that pipeline on RHEL.
 
 ## Pipeline Overview
 
@@ -43,7 +43,7 @@ sudo systemctl restart jenkins
 Name:           myapp
 Version:        1.0.0
 Release:        1%{?dist}
-Summary:        My sample application for RHEL 9
+Summary:        My sample application for RHEL
 
 License:        MIT
 URL:            https://github.com/example/myapp
@@ -53,7 +53,7 @@ BuildRequires:  gcc, make
 Requires:       glibc
 
 %description
-A sample application packaged as an RPM for RHEL 9.
+A sample application packaged as an RPM for RHEL.
 
 %prep
 %setup -q
@@ -77,7 +77,7 @@ make install DESTDIR=%{buildroot}
 ## Jenkins Pipeline (Jenkinsfile)
 
 ```groovy
-// Jenkinsfile - RPM build pipeline for RHEL 9
+// Jenkinsfile - RPM build pipeline for RHEL
 pipeline {
     agent any
 
@@ -237,4 +237,4 @@ EOF
 sudo dnf install myapp
 ```
 
-With this pipeline in place, every push to your repository triggers an automated RPM build on RHEL 9. Packages are tested and published consistently every time.
+With this pipeline in place, every push to your repository triggers an automated RPM build on RHEL. Packages are tested and published consistently every time.

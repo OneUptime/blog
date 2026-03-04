@@ -1,26 +1,26 @@
-# How to Optimize Apache httpd Performance on RHEL 9
+# How to Optimize Apache httpd Performance on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, Performance, Tuning, Linux
 
-Description: Practical performance tuning techniques for Apache httpd on RHEL 9, including MPM configuration, keepalive settings, and caching.
+Description: Practical performance tuning techniques for Apache httpd on RHEL, including MPM configuration, keepalive settings, and caching.
 
 ---
 
 ## Why Tune Apache?
 
-The default Apache configuration on RHEL 9 is designed to work out of the box on modest hardware. If you are handling serious traffic or running on a beefy server, you are leaving performance on the table. Tuning Apache is about matching the server's resources to the expected workload.
+The default Apache configuration on RHEL is designed to work out of the box on modest hardware. If you are handling serious traffic or running on a beefy server, you are leaving performance on the table. Tuning Apache is about matching the server's resources to the expected workload.
 
 ## Prerequisites
 
-- RHEL 9 with Apache httpd installed
+- RHEL with Apache httpd installed
 - Root or sudo access
 - Some understanding of your traffic patterns
 
 ## Step 1 - Choose the Right MPM
 
-Apache on RHEL 9 ships with three Multi-Processing Modules. Check which one is active:
+Apache on RHEL ships with three Multi-Processing Modules. Check which one is active:
 
 ```bash
 # Check the current MPM
@@ -31,7 +31,7 @@ The three options:
 
 | MPM | Description | Best For |
 |-----|-------------|----------|
-| `event` | Async, handles keep-alive efficiently | Most workloads (default in RHEL 9) |
+| `event` | Async, handles keep-alive efficiently | Most workloads (default in RHEL) |
 | `worker` | Threaded, good concurrency | Thread-safe applications |
 | `prefork` | Process-based, no threads | mod_php or non-thread-safe modules |
 

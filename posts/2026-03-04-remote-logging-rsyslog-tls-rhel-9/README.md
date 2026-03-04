@@ -1,14 +1,14 @@
-# How to Set Up Remote Logging with rsyslog Over TLS on RHEL 9
+# How to Set Up Remote Logging with rsyslog Over TLS on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, rsyslog, TLS, Security, Logging, Linux
 
-Description: Learn how to secure your centralized logging infrastructure by configuring rsyslog to forward and receive logs over TLS-encrypted connections on RHEL 9.
+Description: Learn how to secure your centralized logging infrastructure by configuring rsyslog to forward and receive logs over TLS-encrypted connections on RHEL.
 
 ---
 
-Sending logs over the network in plaintext means anyone with network access can read sensitive information like authentication events, application errors, and system details. TLS encryption for rsyslog solves this by encrypting log traffic between clients and the central log server. On RHEL 9, rsyslog supports TLS natively through the GnuTLS library.
+Sending logs over the network in plaintext means anyone with network access can read sensitive information like authentication events, application errors, and system details. TLS encryption for rsyslog solves this by encrypting log traffic between clients and the central log server. On RHEL, rsyslog supports TLS natively through the GnuTLS library.
 
 ## Architecture
 
@@ -23,7 +23,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 servers with rsyslog installed
+- RHEL servers with rsyslog installed
 - The rsyslog GnuTLS module package
 - Root or sudo access on all servers
 - A working centralized rsyslog setup (plain TCP) is helpful but not required
@@ -338,4 +338,4 @@ openssl s_client -connect logserver.example.com:6514 \
 
 ## Summary
 
-Securing rsyslog with TLS on RHEL 9 protects your log data in transit using certificate-based encryption. The setup involves generating a CA and certificates, distributing them to servers and clients, and configuring both sides to use the GnuTLS stream driver. For production environments, always use mutual TLS authentication with proper certificate management and rotation.
+Securing rsyslog with TLS on RHEL protects your log data in transit using certificate-based encryption. The setup involves generating a CA and certificates, distributing them to servers and clients, and configuring both sides to use the GnuTLS stream driver. For production environments, always use mutual TLS authentication with proper certificate management and rotation.

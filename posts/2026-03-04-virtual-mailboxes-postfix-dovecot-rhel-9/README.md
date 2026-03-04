@@ -1,10 +1,10 @@
-# How to Set Up Virtual Mailboxes with Postfix and Dovecot on RHEL 9
+# How to Set Up Virtual Mailboxes with Postfix and Dovecot on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, Dovecot, Virtual Mailboxes, Linux
 
-Description: Configure Postfix and Dovecot to serve virtual mailboxes on RHEL 9, allowing you to host email accounts without creating system users.
+Description: Configure Postfix and Dovecot to serve virtual mailboxes on RHEL, allowing you to host email accounts without creating system users.
 
 ---
 
@@ -26,7 +26,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 with Postfix and Dovecot installed
+- RHEL with Postfix and Dovecot installed
 - TLS certificate for your mail server
 - DNS MX records pointing to your server
 

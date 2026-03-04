@@ -1,20 +1,20 @@
-# How to Configure Basic System Settings on RHEL 9
+# How to Configure Basic System Settings on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, System Settings, Linux, System Administration
 
-Description: A practical walkthrough of the essential system settings you should configure on every fresh RHEL 9 installation, from hostname and timezone to locale and network basics.
+Description: A practical walkthrough of the essential system settings you should configure on every fresh RHEL installation, from hostname and timezone to locale and network basics.
 
 ---
 
-Every time I spin up a fresh RHEL 9 box, the first thing I do is run through a quick checklist of basic system settings. Getting these right from the start saves headaches down the road, especially when you're managing dozens of servers and need consistent configurations across the fleet. This guide covers the settings I touch on every single deployment.
+Every time I spin up a fresh RHEL box, the first thing I do is run through a quick checklist of basic system settings. Getting these right from the start saves headaches down the road, especially when you're managing dozens of servers and need consistent configurations across the fleet. This guide covers the settings I touch on every single deployment.
 
 ## Setting the Hostname
 
 The hostname is one of those things that seems trivial until you're staring at 40 terminal tabs and can't tell which server you're on.
 
-RHEL 9 uses `hostnamectl` to manage the hostname. There are three types: static (stored on disk), transient (assigned by the kernel at boot), and pretty (a free-form description for humans).
+RHEL uses `hostnamectl` to manage the hostname. There are three types: static (stored on disk), transient (assigned by the kernel at boot), and pretty (a free-form description for humans).
 
 Set a static hostname that persists across reboots:
 
@@ -103,7 +103,7 @@ sudo localectl set-x11-keymap us
 
 ## Configuring NTP Time Synchronization
 
-Accurate time is critical. Kerberos authentication, TLS certificates, log timestamps, distributed databases - they all depend on clocks being in sync. RHEL 9 uses Chrony as its default NTP client.
+Accurate time is critical. Kerberos authentication, TLS certificates, log timestamps, distributed databases - they all depend on clocks being in sync. RHEL uses Chrony as its default NTP client.
 
 ```bash
 # Make sure chrony is installed and running
@@ -124,7 +124,7 @@ The default Chrony configuration in `/etc/chrony.conf` points to Red Hat's NTP p
 
 ## Basic Network Settings
 
-RHEL 9 uses NetworkManager for all network configuration. The `nmcli` command is your primary tool for managing connections from the terminal.
+RHEL uses NetworkManager for all network configuration. The `nmcli` command is your primary tool for managing connections from the terminal.
 
 Check the current network status:
 
@@ -178,7 +178,7 @@ Here's a visual overview of the settings and the tools used to configure each on
 
 ```mermaid
 flowchart TD
-    A[Fresh RHEL 9 Install] --> B[Set Hostname]
+    A[Fresh RHEL Install] --> B[Set Hostname]
     A --> C[Set Timezone]
     A --> D[Set Locale]
     A --> E[Set Keyboard]
@@ -219,4 +219,4 @@ echo "=== Network ===" && nmcli device status
 
 ## Wrapping Up
 
-These basic settings form the foundation of a well-configured RHEL 9 system. None of them are complicated on their own, but skipping any of them on a fresh install will come back to bite you eventually. Build a checklist, automate what you can, and always verify your changes took effect before moving on to more complex configuration tasks.
+These basic settings form the foundation of a well-configured RHEL system. None of them are complicated on their own, but skipping any of them on a fresh install will come back to bite you eventually. Build a checklist, automate what you can, and always verify your changes took effect before moving on to more complex configuration tasks.

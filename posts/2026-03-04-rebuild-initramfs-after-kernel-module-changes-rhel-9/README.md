@@ -1,14 +1,14 @@
-# How to Rebuild the Initramfs After Kernel Module Changes on RHEL 9
+# How to Rebuild the Initramfs After Kernel Module Changes on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, dracut, Initramfs, Kernel Modules, Boot, Linux
 
-Description: Learn when and how to rebuild the initramfs on RHEL 9 after installing, removing, or updating kernel modules to ensure bootability.
+Description: Learn when and how to rebuild the initramfs on RHEL after installing, removing, or updating kernel modules to ensure bootability.
 
 ---
 
-Every time you install a new kernel module that is needed during early boot, update a storage driver, or change DKMS-managed modules, you need to rebuild the initramfs. Forgetting this step is one of the most common causes of boot failures on RHEL 9. This guide covers when rebuilding is necessary and how to do it safely.
+Every time you install a new kernel module that is needed during early boot, update a storage driver, or change DKMS-managed modules, you need to rebuild the initramfs. Forgetting this step is one of the most common causes of boot failures on RHEL. This guide covers when rebuilding is necessary and how to do it safely.
 
 ## When to Rebuild the Initramfs
 
@@ -176,4 +176,4 @@ sudo chmod +x /usr/local/bin/safe-dracut-rebuild.sh
 
 ## Conclusion
 
-Rebuilding the initramfs is a critical maintenance task on RHEL 9 that should never be skipped after kernel module changes that affect boot. The process itself is simple, but the consequences of getting it wrong -- a system that will not boot -- are severe. Always back up the current initramfs before rebuilding, verify the new image contains the expected modules, and keep a rescue image or rescue media available as a safety net.
+Rebuilding the initramfs is a critical maintenance task on RHEL that should never be skipped after kernel module changes that affect boot. The process itself is simple, but the consequences of getting it wrong -- a system that will not boot -- are severe. Always back up the current initramfs before rebuilding, verify the new image contains the expected modules, and keep a rescue image or rescue media available as a safety net.

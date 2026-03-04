@@ -1,14 +1,14 @@
-# How to Use tc to Limit Network Bandwidth on RHEL 9
+# How to Use tc to Limit Network Bandwidth on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, tc, Bandwidth, Traffic Control, Linux
 
-Description: A practical guide to using the tc (traffic control) command on RHEL 9 to limit and manage network bandwidth on specific interfaces, for specific applications, or for specific traffic types.
+Description: A practical guide to using the tc (traffic control) command on RHEL to limit and manage network bandwidth on specific interfaces, for specific applications, or for specific traffic types.
 
 ---
 
-Bandwidth limiting is one of the most common traffic control tasks. Maybe you need to prevent a backup job from saturating your link, or you need to simulate a slow connection for testing, or you want to guarantee bandwidth for critical services. The `tc` command handles all of this on RHEL 9.
+Bandwidth limiting is one of the most common traffic control tasks. Maybe you need to prevent a backup job from saturating your link, or you need to simulate a slow connection for testing, or you want to guarantee bandwidth for critical services. The `tc` command handles all of this on RHEL.
 
 ## Understanding tc Basics
 
@@ -220,4 +220,4 @@ tc qdisc show dev ens192
 
 ## Wrapping Up
 
-Bandwidth limiting with tc on RHEL 9 ranges from dead simple (tbf for a flat cap) to quite flexible (HTB for per-application limits). Start with tbf for basic needs, move to HTB when you need different limits for different traffic types. Always test with iperf3 to verify your limits work as expected, and make the configuration persistent with a systemd service.
+Bandwidth limiting with tc on RHEL ranges from dead simple (tbf for a flat cap) to quite flexible (HTB for per-application limits). Start with tbf for basic needs, move to HTB when you need different limits for different traffic types. Always test with iperf3 to verify your limits work as expected, and make the configuration persistent with a systemd service.

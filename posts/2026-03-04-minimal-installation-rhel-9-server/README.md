@@ -1,18 +1,18 @@
-# How to Perform a Minimal Installation of RHEL 9 for Server Use
+# How to Perform a Minimal Installation of RHEL for Server Use
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Minimal Install, Server, Linux, Security
 
-Description: Step-by-step guide to performing a minimal RHEL 9 installation and hardening it for server use, covering the installer options, essential post-install packages, and baseline security configuration.
+Description: Step-by-step guide to performing a minimal RHEL installation and hardening it for server use, covering the installer options, essential post-install packages, and baseline security configuration.
 
 ---
 
-When I set up a new server, I always start with a minimal install. There is no reason to have a GUI, LibreOffice, or a pile of desktop utilities on a machine that will sit in a rack or a VM farm serving traffic. A minimal install gives you a clean, small footprint system with fewer packages to patch and fewer potential attack vectors. Here is how to do it properly on RHEL 9.
+When I set up a new server, I always start with a minimal install. There is no reason to have a GUI, LibreOffice, or a pile of desktop utilities on a machine that will sit in a rack or a VM farm serving traffic. A minimal install gives you a clean, small footprint system with fewer packages to patch and fewer potential attack vectors. Here is how to do it properly on RHEL.
 
 ## Why Minimal?
 
-A full RHEL 9 "Server with GUI" installation pulls in over 1,400 packages. A minimal install brings that down to around 350-400 packages. That means:
+A full RHEL "Server with GUI" installation pulls in over 1,400 packages. A minimal install brings that down to around 350-400 packages. That means:
 
 - Smaller disk footprint (under 2 GB vs 5+ GB)
 - Fewer services running by default
@@ -24,7 +24,7 @@ For any production server, minimal is the way to go. You add what you need, noth
 
 ## Starting the Installation
 
-Boot from the RHEL 9 ISO (either physical media or mounted to a VM). When the Anaconda installer loads, you will go through the standard setup screens.
+Boot from the RHEL ISO (either physical media or mounted to a VM). When the Anaconda installer loads, you will go through the standard setup screens.
 
 ### Installation Source and Software Selection
 
@@ -68,7 +68,7 @@ Configure your network interface during installation. For servers, set a static 
 
 ### Root Password and User Account
 
-Set a strong root password. Also create a regular user account and add it to the `wheel` group so it can use `sudo`. In RHEL 9, direct root SSH login is disabled by default in the installer if you create a regular user, which is a good security practice.
+Set a strong root password. Also create a regular user account and add it to the `wheel` group so it can use `sudo`. In RHEL, direct root SSH login is disabled by default in the installer if you create a regular user, which is a good security practice.
 
 ## Post-Install Essentials
 
@@ -141,7 +141,7 @@ A minimal install is already a good starting point for security, but you need to
 
 ### Configure the Firewall
 
-RHEL 9 minimal installs `firewalld` but it may not be enabled. Fix that.
+RHEL minimal installs `firewalld` but it may not be enabled. Fix that.
 
 ```bash
 # Enable and start firewalld
@@ -204,7 +204,7 @@ ssh-copy-id user@server-ip
 
 ### SELinux - Keep It Enforcing
 
-RHEL 9 has SELinux in enforcing mode by default. Do not disable it. Check its status:
+RHEL has SELinux in enforcing mode by default. Do not disable it. Check its status:
 
 ```bash
 # Check SELinux status
@@ -242,7 +242,7 @@ sudo systemctl status dnf-automatic-install.timer
 
 ### Configure Time Synchronization
 
-RHEL 9 uses `chronyd` by default, and it is usually already enabled on a minimal install.
+RHEL uses `chronyd` by default, and it is usually already enabled on a minimal install.
 
 ```bash
 # Verify chrony is running
@@ -310,4 +310,4 @@ A few common mistakes I see with minimal installs:
 
 ## Final Thoughts
 
-A minimal RHEL 9 install is the cleanest foundation you can start with. It takes maybe 15 minutes to go from a bare install to a hardened, registered, and updated server. From there, you layer on only what the server actually needs, whether that is a web server, database, container runtime, or whatever the workload demands. Every package you do not install is a package you do not have to patch, monitor, or worry about.
+A minimal RHEL install is the cleanest foundation you can start with. It takes maybe 15 minutes to go from a bare install to a hardened, registered, and updated server. From there, you layer on only what the server actually needs, whether that is a web server, database, container runtime, or whatever the workload demands. Every package you do not install is a package you do not have to patch, monitor, or worry about.

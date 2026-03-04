@@ -1,18 +1,18 @@
-# How to Set Up Apache HTTP Server on RHEL 9
+# How to Set Up Apache HTTP Server on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, httpd, Web Server, Linux
 
-Description: A complete guide to installing, configuring, and running Apache HTTP Server on RHEL 9, from initial setup to serving your first website.
+Description: A complete guide to installing, configuring, and running Apache HTTP Server on RHEL, from initial setup to serving your first website.
 
 ---
 
-Apache HTTP Server (httpd) remains one of the most widely used web servers in the world. On RHEL 9, Apache is available directly from the default repositories and integrates well with SELinux and firewalld. This guide covers everything from installation to serving your first site.
+Apache HTTP Server (httpd) remains one of the most widely used web servers in the world. On RHEL, Apache is available directly from the default repositories and integrates well with SELinux and firewalld. This guide covers everything from installation to serving your first site.
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - A registered domain name (optional, but helpful for testing)
 - Network access to install packages
 
@@ -57,7 +57,7 @@ sudo firewall-cmd --list-services
 
 ## Step 4: Understand the Directory Layout
 
-Apache on RHEL 9 follows a specific directory structure:
+Apache on RHEL follows a specific directory structure:
 
 ```mermaid
 graph TD
@@ -86,10 +86,10 @@ cat <<'EOF' | sudo tee /var/www/html/index.html
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Welcome to RHEL 9</title>
+    <title>Welcome to RHEL</title>
 </head>
 <body>
-    <h1>Apache is running on RHEL 9</h1>
+    <h1>Apache is running on RHEL</h1>
     <p>If you see this page, your web server is working correctly.</p>
 </body>
 </html>
@@ -154,7 +154,7 @@ sudo systemctl reload httpd
 
 ## Step 8: Configure SELinux for Apache
 
-RHEL 9 runs SELinux in enforcing mode by default. Apache has specific SELinux contexts and booleans.
+RHEL runs SELinux in enforcing mode by default. Apache has specific SELinux contexts and booleans.
 
 ```bash
 # Check the SELinux context for web content
@@ -192,7 +192,7 @@ CustomLog "logs/access_log" combined
 
 ## Step 10: Set Up Log Rotation
 
-Apache logs are rotated automatically by logrotate on RHEL 9:
+Apache logs are rotated automatically by logrotate on RHEL:
 
 ```bash
 # View the logrotate configuration for httpd
@@ -222,4 +222,4 @@ sudo systemctl restart httpd
 
 ## Summary
 
-You now have Apache HTTP Server installed and running on RHEL 9. The server is configured with proper firewall rules, SELinux contexts, and a basic web page. From here, you can set up virtual hosts, enable SSL, or configure Apache as a reverse proxy for your applications.
+You now have Apache HTTP Server installed and running on RHEL. The server is configured with proper firewall rules, SELinux contexts, and a basic web page. From here, you can set up virtual hosts, enable SSL, or configure Apache as a reverse proxy for your applications.

@@ -1,14 +1,14 @@
-# How to Manage RPM Packages Directly with the rpm Command on RHEL 9
+# How to Manage RPM Packages Directly with the rpm Command on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RPM, Package Management, Linux
 
-Description: A hands-on guide to using the rpm command on RHEL 9 for installing, querying, verifying, and removing RPM packages directly, with practical examples and best practices.
+Description: A hands-on guide to using the rpm command on RHEL for installing, querying, verifying, and removing RPM packages directly, with practical examples and best practices.
 
 ---
 
-Most of the time you will use `dnf` to manage packages on RHEL 9. It handles dependencies, pulls from repositories, and makes life easy. But there are plenty of situations where you need to work with RPM files directly. Maybe you have a vendor-supplied `.rpm` file, you need to query what is installed on a system without network access, or you want to verify file integrity. That is where the `rpm` command comes in.
+Most of the time you will use `dnf` to manage packages on RHEL. It handles dependencies, pulls from repositories, and makes life easy. But there are plenty of situations where you need to work with RPM files directly. Maybe you have a vendor-supplied `.rpm` file, you need to query what is installed on a system without network access, or you want to verify file integrity. That is where the `rpm` command comes in.
 
 I still reach for `rpm` regularly, especially when troubleshooting or working on systems that are not fully connected. Here is everything you need to know.
 

@@ -1,10 +1,10 @@
-# How to Create a Software RAID 0 (Stripe) Array with mdadm on RHEL 9
+# How to Create a Software RAID 0 (Stripe) Array with mdadm on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RAID 0, mdadm, Storage, Linux
 
-Description: Learn how to set up a software RAID 0 striped array using mdadm on RHEL 9 for maximum disk throughput when redundancy is not required.
+Description: Learn how to set up a software RAID 0 striped array using mdadm on RHEL for maximum disk throughput when redundancy is not required.
 
 ---
 
@@ -12,11 +12,11 @@ Description: Learn how to set up a software RAID 0 striped array using mdadm on 
 
 RAID 0 stripes data across multiple disks without any redundancy. Every read and write gets spread across all drives in the array, which gives you roughly linear performance scaling. The catch is obvious: if any single disk fails, you lose everything. I use RAID 0 for scratch space, temporary build directories, and workloads where the data can be regenerated easily.
 
-On RHEL 9, mdadm is still the go-to tool for software RAID. It ships in the base repositories and integrates well with systemd and the initramfs tooling.
+On RHEL, mdadm is still the go-to tool for software RAID. It ships in the base repositories and integrates well with systemd and the initramfs tooling.
 
 ## Prerequisites
 
-- RHEL 9 with a valid subscription or local repo configured
+- RHEL with a valid subscription or local repo configured
 - At least two unused block devices (e.g., /dev/sdb, /dev/sdc)
 - Root or sudo access
 
@@ -25,7 +25,7 @@ On RHEL 9, mdadm is still the go-to tool for software RAID. It ships in the base
 Install the mdadm package if it is not already present.
 
 ```bash
-# Install mdadm from the base RHEL 9 repos
+# Install mdadm from the base RHEL repos
 sudo dnf install -y mdadm
 ```
 
@@ -82,7 +82,7 @@ md0 : active raid0 sdc[1] sdb[0]
 
 ## Step 5 - Create a Filesystem
 
-The array is now a single block device at /dev/md0. Format it with xfs, which is the default filesystem on RHEL 9.
+The array is now a single block device at /dev/md0. Format it with xfs, which is the default filesystem on RHEL.
 
 ```bash
 # Create an XFS filesystem on the RAID 0 array
@@ -203,4 +203,4 @@ Remember to also remove the corresponding entries from /etc/mdadm.conf and /etc/
 
 ## Wrap-Up
 
-RAID 0 with mdadm on RHEL 9 is straightforward. Create the array, format it, save the config, and add it to fstab. Just remember that you are trading all redundancy for speed, so keep backups of anything important. For production data, look at RAID 1, RAID 5, or RAID 10 instead.
+RAID 0 with mdadm on RHEL is straightforward. Create the array, format it, save the config, and add it to fstab. Just remember that you are trading all redundancy for speed, so keep backups of anything important. For production data, look at RAID 1, RAID 5, or RAID 10 instead.

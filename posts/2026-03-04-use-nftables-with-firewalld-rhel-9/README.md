@@ -1,18 +1,18 @@
-# How to Use nftables with firewalld on RHEL 9
+# How to Use nftables with firewalld on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nftables, firewalld, Linux
 
-Description: Understand how firewalld and nftables work together on RHEL 9, and learn how to configure firewall rules using both tools without conflicts.
+Description: Understand how firewalld and nftables work together on RHEL, and learn how to configure firewall rules using both tools without conflicts.
 
 ---
 
-RHEL 9 ships with both firewalld and nftables, and this confuses a lot of people. The short version: firewalld is a frontend, nftables is the backend. firewalld generates nftables rules for you. But if you need to add custom nftables rules alongside firewalld, things get interesting. This post explains how the two interact and how to make them work together.
+RHEL ships with both firewalld and nftables, and this confuses a lot of people. The short version: firewalld is a frontend, nftables is the backend. firewalld generates nftables rules for you. But if you need to add custom nftables rules alongside firewalld, things get interesting. This post explains how the two interact and how to make them work together.
 
 ## How firewalld Uses nftables
 
-On RHEL 9, firewalld uses nftables as its default backend. When you run `firewall-cmd` commands, firewalld translates them into nftables rules and applies them to the kernel.
+On RHEL, firewalld uses nftables as its default backend. When you run `firewall-cmd` commands, firewalld translates them into nftables rules and applies them to the kernel.
 
 ```mermaid
 flowchart TD

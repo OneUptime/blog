@@ -1,10 +1,10 @@
-# How to Monitor System Resource Usage from the Cockpit Web Console on RHEL 9
+# How to Monitor System Resource Usage from the Cockpit Web Console on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Monitoring, System Resources, Linux
 
-Description: Learn how to use the RHEL 9 Cockpit Web Console to monitor CPU, memory, disk I/O, and network usage with real-time graphs and historical performance data.
+Description: Learn how to use the RHEL Cockpit Web Console to monitor CPU, memory, disk I/O, and network usage with real-time graphs and historical performance data.
 
 ---
 
@@ -258,4 +258,4 @@ flowchart TD
 
 ## Summary
 
-Cockpit's resource monitoring on RHEL 9 gives you real-time and historical visibility into CPU, memory, disk, and network usage through a clean browser interface. Combined with PCP for data retention, it becomes a useful tool for daily health checks, troubleshooting, and capacity planning. Install it as part of your standard server build and you will always have a quick way to see what your system is doing.
+Cockpit's resource monitoring on RHEL gives you real-time and historical visibility into CPU, memory, disk, and network usage through a clean browser interface. Combined with PCP for data retention, it becomes a useful tool for daily health checks, troubleshooting, and capacity planning. Install it as part of your standard server build and you will always have a quick way to see what your system is doing.

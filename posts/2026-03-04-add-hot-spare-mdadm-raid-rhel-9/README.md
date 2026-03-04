@@ -1,10 +1,10 @@
-# How to Add a Hot Spare Disk to an mdadm RAID Array on RHEL 9
+# How to Add a Hot Spare Disk to an mdadm RAID Array on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RAID, Hot Spare, mdadm, Linux
 
-Description: Learn how to add hot spare disks to mdadm RAID arrays on RHEL 9 so that automatic rebuilds start the moment a disk fails.
+Description: Learn how to add hot spare disks to mdadm RAID arrays on RHEL so that automatic rebuilds start the moment a disk fails.
 
 ---
 
@@ -16,7 +16,7 @@ For any production RAID array, having at least one hot spare is a cheap insuranc
 
 ## Prerequisites
 
-- A working mdadm RAID array on RHEL 9 (RAID 1, 5, 6, or 10)
+- A working mdadm RAID array on RHEL (RAID 1, 5, 6, or 10)
 - An additional unused disk of equal or greater size than the existing members
 
 ## Step 1 - Identify the Spare Disk
@@ -168,4 +168,4 @@ The spare disk must be at least as large as the smallest member of the array. If
 
 ## Wrap-Up
 
-Hot spares are one of the simplest ways to improve RAID reliability on RHEL 9. Adding one takes a single command, and the automatic rebuild behavior means your array self-heals without manual intervention. For production systems, always budget for at least one spare per array, and test the failover before you need it.
+Hot spares are one of the simplest ways to improve RAID reliability on RHEL. Adding one takes a single command, and the automatic rebuild behavior means your array self-heals without manual intervention. For production systems, always budget for at least one spare per array, and test the failover before you need it.

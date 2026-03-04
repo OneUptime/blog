@@ -1,23 +1,23 @@
-# How to Set Up RHEL 9 on Azure Virtual Machines
+# How to Set Up RHEL on Azure Virtual Machines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Azure, Cloud, Virtual Machines, Linux
 
-Description: Deploy and configure RHEL 9 on Azure Virtual Machines with proper disk setup, networking, and integration with Azure services.
+Description: Deploy and configure RHEL on Azure Virtual Machines with proper disk setup, networking, and integration with Azure services.
 
 ---
 
-Azure provides first-class support for RHEL 9 with on-demand and BYOS (Bring Your Own Subscription) options. This guide covers creating, configuring, and optimizing RHEL 9 virtual machines in Azure.
+Azure provides first-class support for RHEL with on-demand and BYOS (Bring Your Own Subscription) options. This guide covers creating, configuring, and optimizing RHEL virtual machines in Azure.
 
-## Azure RHEL 9 Architecture
+## Azure RHEL Architecture
 
 ```mermaid
 graph TB
     subgraph "Azure Resource Group"
         subgraph "Virtual Network"
             NSG[Network Security Group]
-            VM[RHEL 9 VM]
+            VM[RHEL VM]
             NIC[Network Interface]
             NSG --> NIC --> VM
         end
@@ -36,7 +36,7 @@ graph TB
 # Create a resource group
 az group create --name rg-rhel9 --location eastus
 
-# Create the VM with RHEL 9
+# Create the VM with RHEL
 az vm create \
   --resource-group rg-rhel9 \
   --name rhel9-vm \
@@ -152,4 +152,4 @@ az vm start --resource-group rg-rhel9 --name rhel9-vm
 
 ## Conclusion
 
-RHEL 9 on Azure integrates well with Azure services through managed identities, Azure Monitor, and accelerated networking. Using Premium SSD storage, proper NSG configuration, and the Azure Monitor Agent gives you a production-ready setup that is secure and observable from the Azure portal.
+RHEL on Azure integrates well with Azure services through managed identities, Azure Monitor, and accelerated networking. Using Premium SSD storage, proper NSG configuration, and the Azure Monitor Agent gives you a production-ready setup that is secure and observable from the Azure portal.

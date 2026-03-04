@@ -1,20 +1,20 @@
-# How to Configure Partitioning and Disk Layout During RHEL 9 Installation
+# How to Configure Partitioning and Disk Layout During RHEL Installation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Partitioning, Disk Layout, LVM, Installation, Linux
 
-Description: A hands-on guide to planning and configuring disk partitioning during RHEL 9 installation, covering standard partitions, LVM, recommended mount point layouts, and best practices for production servers.
+Description: A hands-on guide to planning and configuring disk partitioning during RHEL installation, covering standard partitions, LVM, recommended mount point layouts, and best practices for production servers.
 
 ---
 
-Disk partitioning is one of those things that is easy to get wrong during installation and painful to fix later. RHEL 9's Anaconda installer gives you automatic partitioning, but blindly accepting the defaults on a production server is asking for trouble. A full /var partition will take down your logging, a missing swap partition will hurt under memory pressure, and an undersized /boot will block future kernel updates.
+Disk partitioning is one of those things that is easy to get wrong during installation and painful to fix later. RHEL's Anaconda installer gives you automatic partitioning, but blindly accepting the defaults on a production server is asking for trouble. A full /var partition will take down your logging, a missing swap partition will hurt under memory pressure, and an undersized /boot will block future kernel updates.
 
-This guide covers how to think about partitioning and how to configure it properly during the RHEL 9 installation process.
+This guide covers how to think about partitioning and how to configure it properly during the RHEL installation process.
 
 ## Standard Partitions vs LVM
 
-Before diving into layouts, you need to understand the two main approaches RHEL 9 offers.
+Before diving into layouts, you need to understand the two main approaches RHEL offers.
 
 ### Standard Partitions
 
@@ -40,7 +40,7 @@ For production servers, LVM is the standard. Use it unless you have a specific r
 
 ## Recommended Partition Layout
 
-Here is a layout that works well for most RHEL 9 servers. Adjust sizes based on your workload.
+Here is a layout that works well for most RHEL servers. Adjust sizes based on your workload.
 
 ### UEFI Systems
 
@@ -74,7 +74,7 @@ For servers with large amounts of RAM (128 GB+), many sysadmins still allocate 4
 
 ## Configuring Partitions in Anaconda
 
-During the RHEL 9 installation, click on "Installation Destination" to access disk configuration. You have two main choices.
+During the RHEL installation, click on "Installation Destination" to access disk configuration. You have two main choices.
 
 ### Option 1: Automatic Partitioning
 
@@ -92,7 +92,7 @@ In the manual interface:
 2. Enter the mount point (e.g., `/boot`)
 3. Set the desired capacity (e.g., `1 GiB`)
 4. Choose the device type (Standard Partition or LVM)
-5. Choose the filesystem (xfs is the default and recommended for RHEL 9)
+5. Choose the filesystem (xfs is the default and recommended for RHEL)
 6. Repeat for each partition
 
 ## Creating the Layout from the Command Line (Kickstart)
@@ -126,7 +126,7 @@ logvol swap  --fstype="swap" --vgname=rhel --name=swap --size=4096
 
 ## Verifying the Layout After Installation
 
-Once RHEL 9 is installed and booted, verify your partition layout:
+Once RHEL is installed and booted, verify your partition layout:
 
 ```bash
 # Show all mounted filesystems with usage
@@ -192,7 +192,7 @@ The /var directory holds system logs (/var/log), package caches (/var/cache), an
 
 ### Keep /boot Outside LVM
 
-The /boot partition must be a standard partition, not an LVM logical volume. GRUB needs to read kernels and initramfs images at boot time before LVM is available. RHEL 9 expects /boot to be XFS or ext4 on a standard partition.
+The /boot partition must be a standard partition, not an LVM logical volume. GRUB needs to read kernels and initramfs images at boot time before LVM is available. RHEL expects /boot to be XFS or ext4 on a standard partition.
 
 ### Leave Free Space in the Volume Group
 
@@ -200,7 +200,7 @@ Do not allocate every last gigabyte during installation. Leave 10-20% of your vo
 
 ### Use XFS as the Default Filesystem
 
-RHEL 9 defaults to XFS and it is the recommended choice. XFS handles large files and high-throughput workloads well, supports online growth (no unmount needed), and is heavily tested by Red Hat. Only choose ext4 if you specifically need online shrink capability.
+RHEL defaults to XFS and it is the recommended choice. XFS handles large files and high-throughput workloads well, supports online growth (no unmount needed), and is heavily tested by Red Hat. Only choose ext4 if you specifically need online shrink capability.
 
 ## Handling Multiple Disks
 

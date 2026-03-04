@@ -1,18 +1,18 @@
-# How to Remove Unnecessary Packages to Reduce the Attack Surface on RHEL 9
+# How to Remove Unnecessary Packages to Reduce the Attack Surface on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Security, Packages, Attack Surface, Linux
 
-Description: Learn how to identify and remove unnecessary packages on RHEL 9 to minimize the attack surface, following the principle of least functionality.
+Description: Learn how to identify and remove unnecessary packages on RHEL to minimize the attack surface, following the principle of least functionality.
 
 ---
 
-Every package installed on your server is a potential attack vector. Each one brings its own set of binaries, libraries, configuration files, and possible vulnerabilities. The principle of least functionality says that a system should only have the software it needs to do its job, nothing more. On RHEL 9, following this principle is straightforward but requires some careful thought.
+Every package installed on your server is a potential attack vector. Each one brings its own set of binaries, libraries, configuration files, and possible vulnerabilities. The principle of least functionality says that a system should only have the software it needs to do its job, nothing more. On RHEL, following this principle is straightforward but requires some careful thought.
 
 ## Start with a Minimal Install
 
-The easiest way to reduce your attack surface is to start small. During RHEL 9 installation, always pick the "Minimal Install" base environment. This gives you a functional system with about 300-400 packages, compared to over 1,500 with a "Server with GUI" installation.
+The easiest way to reduce your attack surface is to start small. During RHEL installation, always pick the "Minimal Install" base environment. This gives you a functional system with about 300-400 packages, compared to over 1,500 with a "Server with GUI" installation.
 
 ```bash
 # Check how many packages are installed
@@ -85,7 +85,7 @@ dnf remove -y telnet
 
 ## Using dnf to Find Weak Dependencies
 
-RHEL 9's dnf has a concept of weak dependencies. These are packages that were pulled in as recommendations but are not strictly required:
+RHEL's dnf has a concept of weak dependencies. These are packages that were pulled in as recommendations but are not strictly required:
 
 ```bash
 # Show packages installed as weak dependencies

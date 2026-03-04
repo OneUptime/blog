@@ -1,10 +1,10 @@
-# How to Set Up Podman Auto-Updates for Containers on RHEL 9
+# How to Set Up Podman Auto-Updates for Containers on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Auto-Updates, Containers, Linux
 
-Description: Learn how to configure Podman auto-updates on RHEL 9 to automatically check for new container images and restart services with the latest versions.
+Description: Learn how to configure Podman auto-updates on RHEL to automatically check for new container images and restart services with the latest versions.
 
 ---
 
@@ -265,4 +265,4 @@ Or update the Quadlet file to remove `AutoUpdate=registry`.
 
 ## Summary
 
-Podman auto-updates on RHEL 9 automate the tedious process of keeping container images current. Enable it with a label or Quadlet directive, schedule the timer, and add health checks for automatic rollback. It is not a replacement for a proper deployment pipeline in large environments, but for smaller setups and edge deployments, it keeps things updated with minimal effort.
+Podman auto-updates on RHEL automate the tedious process of keeping container images current. Enable it with a label or Quadlet directive, schedule the timer, and add health checks for automatic rollback. It is not a replacement for a proper deployment pipeline in large environments, but for smaller setups and edge deployments, it keeps things updated with minimal effort.

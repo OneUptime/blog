@@ -1,16 +1,16 @@
-# How to Generate systemd Unit Files for Podman Containers on RHEL 9
+# How to Generate systemd Unit Files for Podman Containers on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, systemd, Unit Files, Linux
 
-Description: Learn how to generate systemd unit files from running Podman containers on RHEL 9 for automatic service management, startup on boot, and proper lifecycle handling.
+Description: Learn how to generate systemd unit files from running Podman containers on RHEL for automatic service management, startup on boot, and proper lifecycle handling.
 
 ---
 
 While Quadlet is the newer and recommended approach, `podman generate systemd` is still widely used and remains a valid way to create systemd unit files for your containers. This is especially handy when you already have a running container configured exactly how you want it and need to turn it into a service quickly.
 
-Note that `podman generate systemd` has been deprecated in favor of Quadlet, but it still works on RHEL 9 and many production environments rely on it.
+Note that `podman generate systemd` has been deprecated in favor of Quadlet, but it still works on RHEL and many production environments rely on it.
 
 ## Creating a Container to Generate From
 
@@ -259,4 +259,4 @@ The Quadlet version is shorter, easier to read, and does not hardcode the podman
 
 ## Summary
 
-`podman generate systemd` is a quick way to turn a running container into a systemd service. Use the `--new` flag so the container is recreated each time for reproducibility. While this approach still works fine on RHEL 9, new deployments should consider using Quadlet instead, as it is the direction Red Hat is heading.
+`podman generate systemd` is a quick way to turn a running container into a systemd service. Use the `--new` flag so the container is recreated each time for reproducibility. While this approach still works fine on RHEL, new deployments should consider using Quadlet instead, as it is the direction Red Hat is heading.

@@ -8,7 +8,7 @@ Description: Complete guide to installing Docker Engine on Rocky Linux 9 with re
 
 ---
 
-Rocky Linux 9 was created as a community-driven replacement for CentOS after Red Hat shifted CentOS to the Stream model. It provides binary compatibility with RHEL 9, making it a popular choice for enterprise workloads. Docker runs well on Rocky Linux 9, but the installation requires a few extra steps because the distribution ships with Podman instead.
+Rocky Linux 9 was created as a community-driven replacement for CentOS after Red Hat shifted CentOS to the Stream model. It provides binary compatibility with RHEL, making it a popular choice for enterprise workloads. Docker runs well on Rocky Linux 9, but the installation requires a few extra steps because the distribution ships with Podman instead.
 
 ## Prerequisites
 

@@ -1,10 +1,10 @@
-# How to Set Up Policy-Based Routing with Multiple Routing Tables on RHEL 9
+# How to Set Up Policy-Based Routing with Multiple Routing Tables on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Policy-Based Routing, Networking, Routing Tables, Linux
 
-Description: Learn how to configure policy-based routing with multiple routing tables on RHEL 9 to route traffic based on source address, protocol, or other criteria.
+Description: Learn how to configure policy-based routing with multiple routing tables on RHEL to route traffic based on source address, protocol, or other criteria.
 
 ---
 
@@ -22,7 +22,7 @@ graph TD
 
 ## Prerequisites
 
-- RHEL 9 with multiple network interfaces or gateways
+- RHEL with multiple network interfaces or gateways
 - Root or sudo access
 
 ## Step 1: Create Custom Routing Tables
@@ -133,4 +133,4 @@ ip route get 8.8.8.8 from 10.0.1.5 iif ens3
 
 ## Summary
 
-You have configured policy-based routing on RHEL 9 with multiple routing tables. Traffic from different subnets now routes through different gateways, and you can also route based on packet marks for protocol-specific routing. This setup is commonly used for multi-homed servers, ISP failover, and VPN split tunneling scenarios.
+You have configured policy-based routing on RHEL with multiple routing tables. Traffic from different subnets now routes through different gateways, and you can also route based on packet marks for protocol-specific routing. This setup is commonly used for multi-homed servers, ISP failover, and VPN split tunneling scenarios.

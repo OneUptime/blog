@@ -1,10 +1,10 @@
-# How to Configure HAProxy ACLs for Content-Based Routing on RHEL 9
+# How to Configure HAProxy ACLs for Content-Based Routing on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, ACLs, Routing, Linux
 
-Description: How to use HAProxy ACLs on RHEL 9 to route traffic based on URL paths, headers, cookies, and other request properties.
+Description: How to use HAProxy ACLs on RHEL to route traffic based on URL paths, headers, cookies, and other request properties.
 
 ---
 
@@ -14,7 +14,7 @@ ACLs (Access Control Lists) in HAProxy are rules that match request properties. 
 
 ## Prerequisites
 
-- RHEL 9 with HAProxy installed and running
+- RHEL with HAProxy installed and running
 - Multiple backend services to route between
 - Root or sudo access
 

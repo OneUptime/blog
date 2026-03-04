@@ -1,18 +1,18 @@
-# How to Configure Network Routing Tables and Static Routes on RHEL 9
+# How to Configure Network Routing Tables and Static Routes on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Routing, Static Routes, Networking, Linux
 
-Description: Learn how to configure static routes, policy-based routing, and multiple routing tables on RHEL 9 using NetworkManager and nmcli.
+Description: Learn how to configure static routes, policy-based routing, and multiple routing tables on RHEL using NetworkManager and nmcli.
 
 ---
 
-Most servers get by with a single default gateway, but real-world networks are rarely that simple. You might need traffic to a specific subnet to go through a different gateway, or you might have multiple uplinks with traffic that needs to be routed based on source address. RHEL 9 handles all of this through NetworkManager, and once you understand how static routes and routing tables work, you can build surprisingly sophisticated routing setups.
+Most servers get by with a single default gateway, but real-world networks are rarely that simple. You might need traffic to a specific subnet to go through a different gateway, or you might have multiple uplinks with traffic that needs to be routed based on source address. RHEL handles all of this through NetworkManager, and once you understand how static routes and routing tables work, you can build surprisingly sophisticated routing setups.
 
 ## Understanding the Default Routing Table
 
-Every RHEL 9 system has a main routing table that gets populated automatically:
+Every RHEL system has a main routing table that gets populated automatically:
 
 ```bash
 # View the current routing table
@@ -281,4 +281,4 @@ nmcli connection up secondary-uplink
 
 ## Wrapping Up
 
-Static routes and policy-based routing on RHEL 9 are managed through NetworkManager connection profiles, which means they are persistent, well-organized, and easy to manage with nmcli. For most servers, a few static routes beyond the default gateway are all you need. For more complex setups with multiple uplinks or source-based routing, the combination of custom routing tables and routing rules gives you the flexibility to handle nearly any network topology. Just remember to verify your routes after applying changes, and be especially careful with remote servers where a routing mistake can cut off your SSH access.
+Static routes and policy-based routing on RHEL are managed through NetworkManager connection profiles, which means they are persistent, well-organized, and easy to manage with nmcli. For most servers, a few static routes beyond the default gateway are all you need. For more complex setups with multiple uplinks or source-based routing, the combination of custom routing tables and routing rules gives you the flexibility to handle nearly any network topology. Just remember to verify your routes after applying changes, and be especially careful with remote servers where a routing mistake can cut off your SSH access.

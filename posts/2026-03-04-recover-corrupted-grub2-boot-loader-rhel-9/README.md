@@ -1,10 +1,10 @@
-# How to Recover a Corrupted GRUB2 Boot Loader on RHEL 9
+# How to Recover a Corrupted GRUB2 Boot Loader on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GRUB2, Recovery, Boot, Linux
 
-Description: A step-by-step guide to recovering a corrupted or broken GRUB2 boot loader on RHEL 9, covering both BIOS and UEFI systems, using the RHEL installation media rescue environment.
+Description: A step-by-step guide to recovering a corrupted or broken GRUB2 boot loader on RHEL, covering both BIOS and UEFI systems, using the RHEL installation media rescue environment.
 
 ---
 
@@ -37,7 +37,7 @@ flowchart TD
 
 ## Booting from RHEL Installation Media
 
-1. Insert the RHEL 9 installation DVD or USB, or mount the ISO via your server's management console (iLO, iDRAC, IPMI)
+1. Insert the RHEL installation DVD or USB, or mount the ISO via your server's management console (iLO, iDRAC, IPMI)
 2. Boot from the media
 3. At the boot menu, select **Troubleshooting**
 4. Select **Rescue a Red Hat Enterprise Linux system**
@@ -194,4 +194,4 @@ sudo grub2-script-check /boot/grub2/grub.cfg
 
 ## Wrapping Up
 
-GRUB2 recovery on RHEL 9 follows a predictable pattern: boot from installation media, chroot into the installed system, reinstall GRUB, regenerate the configuration, and reboot. The specific commands differ between BIOS and UEFI systems, so know which one you are working with before you start. Having RHEL installation media readily available (or a remote console that can mount ISOs) is essential for any production environment, because a GRUB failure on a remote server without console access is a very bad day.
+GRUB2 recovery on RHEL follows a predictable pattern: boot from installation media, chroot into the installed system, reinstall GRUB, regenerate the configuration, and reboot. The specific commands differ between BIOS and UEFI systems, so know which one you are working with before you start. Having RHEL installation media readily available (or a remote console that can mount ISOs) is essential for any production environment, because a GRUB failure on a remote server without console access is a very bad day.

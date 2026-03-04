@@ -1,10 +1,10 @@
-# How to Configure WireGuard VPN Clients with nmcli on RHEL 9
+# How to Configure WireGuard VPN Clients with nmcli on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, WireGuard, VPN, nmcli, Linux
 
-Description: Learn how to configure WireGuard VPN client connections using NetworkManager and nmcli on RHEL 9, providing seamless integration with the system's network management stack.
+Description: Learn how to configure WireGuard VPN client connections using NetworkManager and nmcli on RHEL, providing seamless integration with the system's network management stack.
 
 ---
 
@@ -21,7 +21,7 @@ NetworkManager integration means:
 
 ## Prerequisites
 
-- RHEL 9 client system with NetworkManager running
+- RHEL client system with NetworkManager running
 - WireGuard tools installed
 - Server's public key and endpoint information
 - A pre-shared key (optional but recommended)
@@ -248,4 +248,4 @@ sudo nmcli connection down "wg-vpn" && sudo nmcli connection up "wg-vpn"
 
 ## Wrapping Up
 
-Managing WireGuard through NetworkManager on RHEL 9 keeps your VPN configuration consistent with the rest of your network stack. The import method from an existing wg-quick config is the fastest path, but building the connection from scratch with nmcli gives you fine-grained control. Either way, you end up with a WireGuard tunnel that behaves like any other managed network connection.
+Managing WireGuard through NetworkManager on RHEL keeps your VPN configuration consistent with the rest of your network stack. The import method from an existing wg-quick config is the fastest path, but building the connection from scratch with nmcli gives you fine-grained control. Either way, you end up with a WireGuard tunnel that behaves like any other managed network connection.

@@ -8,7 +8,7 @@ Description: Learn how to use RHEL System Roles to manage configurations consist
 
 ---
 
-Most organizations do not run a single RHEL version everywhere. You probably have RHEL 7 machines that refuse to die, RHEL 8 servers in production, and RHEL 9 for new deployments. RHEL System Roles are designed to work across multiple versions, abstracting away the differences so you can write one playbook that works on all of them.
+Most organizations do not run a single RHEL version everywhere. You probably have RHEL 7 machines that refuse to die, RHEL 8 servers in production, and RHEL for new deployments. RHEL System Roles are designed to work across multiple versions, abstracting away the differences so you can write one playbook that works on all of them.
 
 ## How Cross-Version Support Works
 
@@ -20,7 +20,7 @@ graph TD
     B --> C{Detect RHEL Version}
     C -->|RHEL 7| D[Use ntp, ifcfg, etc.]
     C -->|RHEL 8| E[Use chrony, NetworkManager, etc.]
-    C -->|RHEL 9| F[Use chrony, NetworkManager, etc.]
+    C -->|RHEL| F[Use chrony, NetworkManager, etc.]
     D --> G[Consistent Outcome]
     E --> G
     F --> G
@@ -40,7 +40,7 @@ sudo dnf install rhel-system-roles
 ls /usr/share/ansible/roles/ | grep rhel-system-roles
 ```
 
-If you manage RHEL 7 hosts from a RHEL 9 control node, you can also install roles via Ansible Galaxy:
+If you manage RHEL 7 hosts from a RHEL control node, you can also install roles via Ansible Galaxy:
 
 ```bash
 # Alternative: install from Ansible Galaxy
@@ -96,7 +96,7 @@ Note the `ansible_python_interpreter` setting for RHEL 7 hosts, which default to
 This single playbook will:
 - On RHEL 7: configure ntpd with these servers
 - On RHEL 8: configure chrony with these servers
-- On RHEL 9: configure chrony with these servers
+- On RHEL: configure chrony with these servers
 
 ## Example: Network Configuration Across Versions
 
@@ -228,7 +228,7 @@ ansible-playbook -i inventory-test playbook-timesync.yml
 
 ## Available System Roles and Version Support
 
-| Role | RHEL 7 | RHEL 8 | RHEL 9 |
+| Role | RHEL 7 | RHEL 8 | RHEL |
 |------|--------|--------|--------|
 | timesync | Yes (ntpd) | Yes (chrony) | Yes (chrony) |
 | network | Yes | Yes | Yes |

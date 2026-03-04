@@ -1,10 +1,10 @@
-# How to Analyze Network Performance with iperf3 on RHEL 9
+# How to Analyze Network Performance with iperf3 on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, iperf3, Network Performance, Linux
 
-Description: Learn how to use iperf3 on RHEL 9 to measure network throughput, latency, and performance between two hosts, including TCP and UDP testing, bidirectional tests, and interpreting results.
+Description: Learn how to use iperf3 on RHEL to measure network throughput, latency, and performance between two hosts, including TCP and UDP testing, bidirectional tests, and interpreting results.
 
 ---
 
@@ -209,4 +209,4 @@ ethtool -S ens192 | grep -i drop
 
 ## Wrapping Up
 
-iperf3 is the definitive tool for measuring network performance on RHEL 9. Run it as a server on one end, connect as a client from the other, and you get hard numbers. Test with TCP for throughput, UDP for jitter and packet loss, and always test in both directions. The JSON output makes it easy to automate periodic performance testing and track changes over time.
+iperf3 is the definitive tool for measuring network performance on RHEL. Run it as a server on one end, connect as a client from the other, and you get hard numbers. Test with TCP for throughput, UDP for jitter and packet loss, and always test in both directions. The JSON output makes it easy to automate periodic performance testing and track changes over time.

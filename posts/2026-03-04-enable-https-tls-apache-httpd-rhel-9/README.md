@@ -1,20 +1,20 @@
-# How to Enable HTTPS with TLS on Apache httpd in RHEL 9
+# How to Enable HTTPS with TLS on Apache httpd in RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, HTTPS, TLS, Linux
 
-Description: Step-by-step guide to enabling HTTPS on Apache httpd using mod_ssl and TLS certificates on RHEL 9.
+Description: Step-by-step guide to enabling HTTPS on Apache httpd using mod_ssl and TLS certificates on RHEL.
 
 ---
 
 ## Why HTTPS Matters
 
-Running a website over plain HTTP means every request and response travels in clear text. Anyone sitting on the network can read it. HTTPS fixes that by encrypting the connection with TLS. On RHEL 9, enabling HTTPS on Apache is quick - install mod_ssl, drop in your certificates, and reload.
+Running a website over plain HTTP means every request and response travels in clear text. Anyone sitting on the network can read it. HTTPS fixes that by encrypting the connection with TLS. On RHEL, enabling HTTPS on Apache is quick - install mod_ssl, drop in your certificates, and reload.
 
 ## Prerequisites
 
-- RHEL 9 with Apache httpd installed and running
+- RHEL with Apache httpd installed and running
 - A domain name pointing to your server (for Let's Encrypt) or a self-signed certificate for testing
 - Root or sudo access
 - Firewall port 443 open
@@ -113,7 +113,7 @@ EOF
 
 ## Step 7 - Harden TLS Settings
 
-The defaults in RHEL 9 are already reasonable, but you can tighten them further:
+The defaults in RHEL are already reasonable, but you can tighten them further:
 
 ```apache
 # Strong TLS settings - add these inside your VirtualHost or ssl.conf
@@ -166,4 +166,4 @@ sequenceDiagram
 
 ## Wrap-Up
 
-Enabling HTTPS on Apache in RHEL 9 boils down to installing mod_ssl, placing your certificates, and configuring the virtual host. For production, Let's Encrypt with certbot is the easiest path. Always disable old TLS versions and set up an HTTP-to-HTTPS redirect so visitors never hit the unencrypted site.
+Enabling HTTPS on Apache in RHEL boils down to installing mod_ssl, placing your certificates, and configuring the virtual host. For production, Let's Encrypt with certbot is the easiest path. Always disable old TLS versions and set up an HTTP-to-HTTPS redirect so visitors never hit the unencrypted site.

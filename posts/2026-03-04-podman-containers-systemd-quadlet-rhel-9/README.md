@@ -1,14 +1,14 @@
-# How to Run Podman Containers as systemd Services Using Quadlet on RHEL 9
+# How to Run Podman Containers as systemd Services Using Quadlet on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Quadlet, systemd, Linux
 
-Description: Learn how to use Quadlet on RHEL 9 to run Podman containers as native systemd services with automatic startup, restart policies, and full service management.
+Description: Learn how to use Quadlet on RHEL to run Podman containers as native systemd services with automatic startup, restart policies, and full service management.
 
 ---
 
-Quadlet is the modern way to run Podman containers as systemd services on RHEL 9. Instead of the older `podman generate systemd` approach, Quadlet lets you write simple declarative unit files that systemd's generator turns into full service units. It is cleaner, easier to maintain, and the recommended approach going forward.
+Quadlet is the modern way to run Podman containers as systemd services on RHEL. Instead of the older `podman generate systemd` approach, Quadlet lets you write simple declarative unit files that systemd's generator turns into full service units. It is cleaner, easier to maintain, and the recommended approach going forward.
 
 ## What is Quadlet?
 
@@ -328,4 +328,4 @@ The `AutoUpdate=registry` option works with `podman auto-update` to check for an
 
 ## Summary
 
-Quadlet is the right way to run Podman containers as services on RHEL 9. Write a `.container` file, reload systemd, and you have a managed service with restart policies, logging, and dependency management. No scripts, no manual `podman generate systemd` steps. It just works with the systemd tools you already know.
+Quadlet is the right way to run Podman containers as services on RHEL. Write a `.container` file, reload systemd, and you have a managed service with restart policies, logging, and dependency management. No scripts, no manual `podman generate systemd` steps. It just works with the systemd tools you already know.

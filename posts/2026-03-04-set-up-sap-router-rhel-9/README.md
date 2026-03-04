@@ -1,27 +1,27 @@
-# How to Set Up SAP Router on RHEL 9
+# How to Set Up SAP Router on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP Router, SAP, Network Security, Linux
 
-Description: Step-by-step guide to installing and configuring SAP Router on RHEL 9 for secure communication between your SAP landscape and SAP support.
+Description: Step-by-step guide to installing and configuring SAP Router on RHEL for secure communication between your SAP landscape and SAP support.
 
 ---
 
-SAP Router acts as a network gateway between your internal SAP systems and the SAP support network. It provides an additional layer of security by controlling which connections are allowed. This guide walks you through setting up SAP Router on RHEL 9.
+SAP Router acts as a network gateway between your internal SAP systems and the SAP support network. It provides an additional layer of security by controlling which connections are allowed. This guide walks you through setting up SAP Router on RHEL.
 
 ## Network Flow
 
 ```mermaid
 graph LR
-    SAP_Support[SAP Support Network] -->|Port 3299| Router[SAP Router on RHEL 9]
+    SAP_Support[SAP Support Network] -->|Port 3299| Router[SAP Router on RHEL]
     Router -->|Port 3200-3299| Internal[Internal SAP Systems]
     Router -->|Filtered| Blocked[Unauthorized Access]
 ```
 
 ## Prerequisites
 
-- RHEL 9 server (can be minimal, 2 GB RAM is sufficient)
+- RHEL server (can be minimal, 2 GB RAM is sufficient)
 - SAP Router software from SAP Software Download Center
 - SAP Crypto Library for SNC encryption
 - Firewall access to port 3299
@@ -169,4 +169,4 @@ tail -50 /opt/saprouter/log/saprouter.log
 
 ## Conclusion
 
-SAP Router on RHEL 9 provides a secure gateway between your SAP landscape and external networks, including SAP support. The route permission table gives you granular control over which connections are allowed, and SNC encryption ensures that all traffic is protected in transit. Review and update your saprouttab regularly as your SAP landscape changes.
+SAP Router on RHEL provides a secure gateway between your SAP landscape and external networks, including SAP support. The route permission table gives you granular control over which connections are allowed, and SNC encryption ensures that all traffic is protected in transit. Review and update your saprouttab regularly as your SAP landscape changes.

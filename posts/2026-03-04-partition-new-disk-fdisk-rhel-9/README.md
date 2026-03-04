@@ -1,20 +1,20 @@
-# How to Partition a New Disk Using fdisk on RHEL 9
+# How to Partition a New Disk Using fdisk on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, fdisk, Partitioning, Storage, Linux
 
-Description: A practical guide to partitioning new disks using fdisk on RHEL 9, covering MBR partition tables, primary and extended partitions, and filesystem creation.
+Description: A practical guide to partitioning new disks using fdisk on RHEL, covering MBR partition tables, primary and extended partitions, and filesystem creation.
 
 ---
 
 ## When to Use fdisk
 
-fdisk is one of the oldest disk partitioning tools on Linux and it still works perfectly well for basic partitioning tasks. On RHEL 9, fdisk supports both MBR and GPT partition tables, though for GPT you might prefer parted or gdisk. Use fdisk when you need quick MBR partitioning or when you are comfortable with its interactive menu.
+fdisk is one of the oldest disk partitioning tools on Linux and it still works perfectly well for basic partitioning tasks. On RHEL, fdisk supports both MBR and GPT partition tables, though for GPT you might prefer parted or gdisk. Use fdisk when you need quick MBR partitioning or when you are comfortable with its interactive menu.
 
 ## Prerequisites
 
-- RHEL 9 with root or sudo access
+- RHEL with root or sudo access
 - A new or unused disk attached to the system
 
 ## Step 1 - Identify the New Disk
@@ -192,4 +192,4 @@ For disks over 2 TB or when you need more than four partitions, use GPT with par
 
 ## Wrap-Up
 
-fdisk is a reliable tool for basic disk partitioning on RHEL 9. It handles MBR tables well and can also work with GPT. For new installations with modern hardware, consider using GPT and parted, but fdisk remains perfectly valid for smaller disks and simple partition layouts. Always verify your work with lsblk before and after, and use UUIDs in fstab for reliable mounting.
+fdisk is a reliable tool for basic disk partitioning on RHEL. It handles MBR tables well and can also work with GPT. For new installations with modern hardware, consider using GPT and parted, but fdisk remains perfectly valid for smaller disks and simple partition layouts. Always verify your work with lsblk before and after, and use UUIDs in fstab for reliable mounting.

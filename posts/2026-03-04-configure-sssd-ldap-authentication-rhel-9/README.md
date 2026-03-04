@@ -1,20 +1,20 @@
-# How to Configure SSSD for LDAP Authentication on RHEL 9
+# How to Configure SSSD for LDAP Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSSD, LDAP, Authentication, Linux
 
-Description: A step-by-step guide to configuring SSSD for LDAP-based authentication on RHEL 9, covering connection setup, TLS encryption, user/group mapping, and troubleshooting.
+Description: A step-by-step guide to configuring SSSD for LDAP-based authentication on RHEL, covering connection setup, TLS encryption, user/group mapping, and troubleshooting.
 
 ---
 
-Not every environment runs FreeIPA or Active Directory. If you have an existing LDAP directory (389 Directory Server, OpenLDAP, or another LDAPv3-compliant server), SSSD can authenticate RHEL 9 clients against it. SSSD handles the LDAP queries, caches credentials for offline access, and integrates with PAM and NSS so Linux sees LDAP users as native accounts.
+Not every environment runs FreeIPA or Active Directory. If you have an existing LDAP directory (389 Directory Server, OpenLDAP, or another LDAPv3-compliant server), SSSD can authenticate RHEL clients against it. SSSD handles the LDAP queries, caches credentials for offline access, and integrates with PAM and NSS so Linux sees LDAP users as native accounts.
 
 ## Architecture Overview
 
 ```mermaid
 flowchart LR
-    A[RHEL 9 Client] -->|SSSD| B[LDAP Server]
+    A[RHEL Client] -->|SSSD| B[LDAP Server]
     B -->|User/Group Data| A
     A -->|PAM Auth| C[User Login]
     A -->|NSS Lookup| D[id / getent]

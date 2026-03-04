@@ -1,18 +1,18 @@
-# How to Manage the System-Wide CA Trust Store on RHEL 9
+# How to Manage the System-Wide CA Trust Store on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CA Trust Store, Certificates, Security, Linux
 
-Description: Learn how the system-wide CA trust store works on RHEL 9 and how to manage trusted and distrusted certificate authorities.
+Description: Learn how the system-wide CA trust store works on RHEL and how to manage trusted and distrusted certificate authorities.
 
 ---
 
-Every time your RHEL 9 system makes a TLS connection, it needs to decide whether to trust the remote certificate. That decision comes down to the system-wide CA trust store, a collection of root CA certificates that the system considers trustworthy. Understanding how this store works and how to manage it is essential for any sysadmin.
+Every time your RHEL system makes a TLS connection, it needs to decide whether to trust the remote certificate. That decision comes down to the system-wide CA trust store, a collection of root CA certificates that the system considers trustworthy. Understanding how this store works and how to manage it is essential for any sysadmin.
 
-## How the Trust Store Works on RHEL 9
+## How the Trust Store Works on RHEL
 
-RHEL 9 uses a consolidated trust store managed by the `ca-certificates` package and the `update-ca-trust` tool. Rather than individual applications maintaining their own certificate stores (like older systems did), RHEL funnels everything through a single source of truth.
+RHEL uses a consolidated trust store managed by the `ca-certificates` package and the `update-ca-trust` tool. Rather than individual applications maintaining their own certificate stores (like older systems did), RHEL funnels everything through a single source of truth.
 
 ```mermaid
 graph TD
@@ -78,7 +78,7 @@ trust list --filter=ca-anchors
 
 ## Checking Which Bundle Your Application Uses
 
-Most applications on RHEL 9 use the system bundle, but it is good to verify:
+Most applications on RHEL use the system bundle, but it is good to verify:
 
 ```bash
 # Check what CA file curl uses
@@ -165,7 +165,7 @@ awk '/DigiCert Global Root G2/,/END CERTIFICATE/' /etc/pki/tls/certs/ca-bundle.c
 
 ## Trust Store and Containers
 
-If you run containers on RHEL 9, they get their own copy of the CA bundle at build time. Changes to the host trust store do not automatically propagate to running containers. You need to either:
+If you run containers on RHEL, they get their own copy of the CA bundle at build time. Changes to the host trust store do not automatically propagate to running containers. You need to either:
 
 - Rebuild containers after trust store changes
 - Mount the host's CA bundle into the container
@@ -177,7 +177,7 @@ podman run -v /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem:/etc/pki/tls/cer
 
 ## Trust Store and Java
 
-Java applications use a keystore format. RHEL 9's `update-ca-trust` generates this automatically:
+Java applications use a keystore format. RHEL's `update-ca-trust` generates this automatically:
 
 ```bash
 # Verify the Java trust store exists
@@ -226,4 +226,4 @@ Compare this periodically. If it changes unexpectedly, investigate.
 
 ## Wrapping Up
 
-The system-wide CA trust store on RHEL 9 is well-designed. The single-source-of-truth model through `update-ca-trust` means you make changes in one place and every application picks them up. Keep the `ca-certificates` package updated, use the anchors and blocklist directories for customization, and always run `update-ca-trust` after making changes.
+The system-wide CA trust store on RHEL is well-designed. The single-source-of-truth model through `update-ca-trust` means you make changes in one place and every application picks them up. Keep the `ca-certificates` package updated, use the anchors and blocklist directories for customization, and always run `update-ca-trust` after making changes.

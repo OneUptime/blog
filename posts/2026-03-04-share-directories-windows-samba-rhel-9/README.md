@@ -1,10 +1,10 @@
-# How to Share Directories with Windows Clients Using Samba on RHEL 9
+# How to Share Directories with Windows Clients Using Samba on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Samba, Windows, File Sharing, Linux
 
-Description: Configure Samba on RHEL 9 to share directories with Windows clients, covering share types, permissions mapping, and Windows-specific considerations.
+Description: Configure Samba on RHEL to share directories with Windows clients, covering share types, permissions mapping, and Windows-specific considerations.
 
 ---
 
@@ -211,4 +211,4 @@ cmdkey /delete:192.168.1.10
 
 ## Wrap-Up
 
-Sharing directories from RHEL 9 to Windows clients via Samba works well once you get the permission mapping, SELinux context, and firewall configuration right. Use `create mask` and `directory mask` to control how Windows operations translate to Linux permissions, and consider Windows ACL support via `vfs_acl_xattr` for environments that need fine-grained access control.
+Sharing directories from RHEL to Windows clients via Samba works well once you get the permission mapping, SELinux context, and firewall configuration right. Use `create mask` and `directory mask` to control how Windows operations translate to Linux permissions, and consider Windows ACL support via `vfs_acl_xattr` for environments that need fine-grained access control.

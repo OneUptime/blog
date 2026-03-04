@@ -1,10 +1,10 @@
-# How to Set Up 802.3ad LACP Link Aggregation on RHEL 9
+# How to Set Up 802.3ad LACP Link Aggregation on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LACP, Link Aggregation, 802.3ad, Linux
 
-Description: Step-by-step guide to configuring 802.3ad LACP link aggregation on RHEL 9, including switch-side requirements, hash policies, and performance optimization.
+Description: Step-by-step guide to configuring 802.3ad LACP link aggregation on RHEL, including switch-side requirements, hash policies, and performance optimization.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Step-by-step guide to configuring 802.3ad LACP link aggregation on 
 
 ## Prerequisites
 
-- RHEL 9 with at least two NICs connected to the same switch
+- RHEL with at least two NICs connected to the same switch
 - Switch ports configured for LACP (this is mandatory)
 - Root or sudo access
 

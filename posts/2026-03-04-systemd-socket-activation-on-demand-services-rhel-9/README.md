@@ -1,10 +1,10 @@
-# How to Set Up systemd Socket Activation for On-Demand Services on RHEL 9
+# How to Set Up systemd Socket Activation for On-Demand Services on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Socket Activation, Linux, Services
 
-Description: Learn how to configure systemd socket activation on RHEL 9 to start services on-demand when connections arrive, reducing resource usage and boot time.
+Description: Learn how to configure systemd socket activation on RHEL to start services on-demand when connections arrive, reducing resource usage and boot time.
 
 ---
 
@@ -203,4 +203,4 @@ journalctl -u myapp.socket -u myapp.service --follow
 
 ## Summary
 
-You have configured systemd socket activation on RHEL 9. Services now start on-demand when clients connect, saving system resources and reducing boot time. This pattern is ideal for infrequently accessed services, development environments, and systems with many optional services.
+You have configured systemd socket activation on RHEL. Services now start on-demand when clients connect, saving system resources and reducing boot time. This pattern is ideal for infrequently accessed services, development environments, and systems with many optional services.

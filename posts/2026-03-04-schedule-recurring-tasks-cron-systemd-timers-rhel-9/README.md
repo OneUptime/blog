@@ -1,14 +1,14 @@
-# How to Schedule Recurring Tasks with cron and systemd Timers on RHEL 9
+# How to Schedule Recurring Tasks with cron and systemd Timers on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, cron, systemd Timers, Scheduling, Linux, Automation
 
-Description: A practical comparison of cron and systemd timers on RHEL 9, with examples of both approaches for scheduling recurring tasks, plus guidance on when to use each.
+Description: A practical comparison of cron and systemd timers on RHEL, with examples of both approaches for scheduling recurring tasks, plus guidance on when to use each.
 
 ---
 
-Every Linux server has recurring tasks: backups, log rotation, certificate renewal, cleanup scripts, health checks. On RHEL 9, you have two solid options for scheduling these: the traditional cron daemon and the newer systemd timers. Both get the job done, but they have different strengths. This guide covers how to use each one and when to pick one over the other.
+Every Linux server has recurring tasks: backups, log rotation, certificate renewal, cleanup scripts, health checks. On RHEL, you have two solid options for scheduling these: the traditional cron daemon and the newer systemd timers. Both get the job done, but they have different strengths. This guide covers how to use each one and when to pick one over the other.
 
 ## Part 1: Scheduling with cron
 
@@ -103,7 +103,7 @@ The `MAILTO` variable sends the job's output as email. If you don't want email, 
 
 ### System-Wide cron Directories
 
-Besides user crontabs, RHEL 9 has system-wide cron directories:
+Besides user crontabs, RHEL has system-wide cron directories:
 
 | Location | Purpose |
 |----------|---------|
@@ -145,7 +145,7 @@ sudo chmod 755 /etc/cron.daily/cleanup-logs
 
 ### Controlling cron Access
 
-RHEL 9 uses `/etc/cron.allow` and `/etc/cron.deny` to control who can use cron:
+RHEL uses `/etc/cron.allow` and `/etc/cron.deny` to control who can use cron:
 
 ```bash
 # Only allow specific users to use cron
@@ -430,4 +430,4 @@ journalctl -u backup.service -f
 
 ## Wrapping Up
 
-Both cron and systemd timers are reliable scheduling tools on RHEL 9. Cron wins on simplicity - one line and you're done. systemd timers win on features - logging, dependencies, resource control, and catch-up runs. For most teams, the practical answer is to use both: cron for simple scripts and user-level tasks, and systemd timers for anything that needs the extra capabilities. Whatever you choose, always test your scheduled tasks manually first, monitor that they're actually running, and keep your scripts idempotent so a missed or duplicate run doesn't cause problems.
+Both cron and systemd timers are reliable scheduling tools on RHEL. Cron wins on simplicity - one line and you're done. systemd timers win on features - logging, dependencies, resource control, and catch-up runs. For most teams, the practical answer is to use both: cron for simple scripts and user-level tasks, and systemd timers for anything that needs the extra capabilities. Whatever you choose, always test your scheduled tasks manually first, monitor that they're actually running, and keep your scripts idempotent so a missed or duplicate run doesn't cause problems.

@@ -1,10 +1,10 @@
-# How to Harden Apache httpd Security on RHEL 9
+# How to Harden Apache httpd Security on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, Security Hardening, Linux
 
-Description: Practical security hardening steps for Apache httpd on RHEL 9, covering everything from hiding version info to security headers and file permissions.
+Description: Practical security hardening steps for Apache httpd on RHEL, covering everything from hiding version info to security headers and file permissions.
 
 ---
 
@@ -14,7 +14,7 @@ A default Apache installation works, but it exposes more information than it sho
 
 ## Prerequisites
 
-- RHEL 9 with Apache httpd installed and running
+- RHEL with Apache httpd installed and running
 - Root or sudo access
 - mod_ssl and mod_headers available
 

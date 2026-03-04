@@ -1,14 +1,14 @@
-# How to Configure sudo Access and Privilege Escalation on RHEL 9
+# How to Configure sudo Access and Privilege Escalation on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, sudo, Security, Privilege Escalation, Linux
 
-Description: Learn how to configure sudo access on RHEL 9, including visudo, the sudoers file, drop-in configurations, NOPASSWD rules, and command restrictions for secure privilege escalation.
+Description: Learn how to configure sudo access on RHEL, including visudo, the sudoers file, drop-in configurations, NOPASSWD rules, and command restrictions for secure privilege escalation.
 
 ---
 
-Running everything as root is a recipe for disaster. One typo in an `rm` command and you're restoring from backups. sudo gives you granular control over who can run what commands with elevated privileges, and it logs everything. On RHEL 9, configuring sudo properly is one of the most important security tasks you'll handle.
+Running everything as root is a recipe for disaster. One typo in an `rm` command and you're restoring from backups. sudo gives you granular control over who can run what commands with elevated privileges, and it logs everything. On RHEL, configuring sudo properly is one of the most important security tasks you'll handle.
 
 ## How sudo Works
 
@@ -32,7 +32,7 @@ sudo checks `/etc/sudoers` and files in `/etc/sudoers.d/` to determine whether t
 
 ## The wheel Group
 
-On RHEL 9, the simplest way to grant a user full sudo access is to add them to the `wheel` group. This group is preconfigured in the default sudoers file.
+On RHEL, the simplest way to grant a user full sudo access is to add them to the `wheel` group. This group is preconfigured in the default sudoers file.
 
 ```bash
 # Add a user to the wheel group for full sudo access
@@ -42,7 +42,7 @@ sudo usermod -aG wheel jsmith
 groups jsmith
 ```
 
-The default `/etc/sudoers` file on RHEL 9 includes this line:
+The default `/etc/sudoers` file on RHEL includes this line:
 
 ```
 %wheel  ALL=(ALL)       ALL
@@ -90,7 +90,7 @@ jsmith    ALL=(appuser)    ALL
 
 Instead of cramming everything into `/etc/sudoers`, use drop-in files in `/etc/sudoers.d/`. This keeps things organized and avoids merge conflicts when system updates touch the main sudoers file.
 
-First, make sure the include directive exists in `/etc/sudoers` (it's there by default on RHEL 9):
+First, make sure the include directive exists in `/etc/sudoers` (it's there by default on RHEL):
 
 ```bash
 # Check that the include directive is present
@@ -223,7 +223,7 @@ sudo -v
 
 ## sudo Logging
 
-Every sudo invocation gets logged. On RHEL 9, sudo logs to `/var/log/secure` by default.
+Every sudo invocation gets logged. On RHEL, sudo logs to `/var/log/secure` by default.
 
 ```bash
 # View recent sudo activity
@@ -259,4 +259,4 @@ Defaults    timestamp_timeout=15
 
 ## Wrapping Up
 
-sudo is your primary tool for controlled privilege escalation on RHEL 9. The combination of the wheel group for full admins and targeted drop-in files for everyone else gives you a clean, auditable access control system. Take the time to set it up properly, and you'll avoid both the security risks of shared root access and the operational friction of overly restrictive permissions.
+sudo is your primary tool for controlled privilege escalation on RHEL. The combination of the wheel group for full admins and targeted drop-in files for everyone else gives you a clean, auditable access control system. Take the time to set it up properly, and you'll avoid both the security risks of shared root access and the operational friction of overly restrictive permissions.

@@ -1,10 +1,10 @@
-# How to Configure Persistent NFS Mounts in /etc/fstab on RHEL 9
+# How to Configure Persistent NFS Mounts in /etc/fstab on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NFS, fstab, Persistent, Linux
 
-Description: Configure NFS shares to mount automatically at boot using /etc/fstab on RHEL 9, with proper options for reliability and performance.
+Description: Configure NFS shares to mount automatically at boot using /etc/fstab on RHEL, with proper options for reliability and performance.
 
 ---
 
@@ -85,7 +85,7 @@ With `nofail`, the system continues booting even if the mount fails. The mount c
 
 ## Alternative: systemd Mount Units
 
-On RHEL 9, fstab entries are converted to systemd mount units automatically. You can also create mount units directly:
+On RHEL, fstab entries are converted to systemd mount units automatically. You can also create mount units directly:
 
 ```bash
 # /etc/systemd/system/mnt-nfs\x2dshared.mount
@@ -173,4 +173,4 @@ journalctl -b | grep -i nfs
 
 ## Wrap-Up
 
-Persistent NFS mounts in /etc/fstab on RHEL 9 are essential for production systems. Use `_netdev` to ensure proper boot ordering, `nofail` to prevent boot hangs when the server is down, and `hard` for data safety. Always test with `mount -a` before rebooting, and include performance options like `rsize`, `wsize`, and `noatime` for better throughput.
+Persistent NFS mounts in /etc/fstab on RHEL are essential for production systems. Use `_netdev` to ensure proper boot ordering, `nofail` to prevent boot hangs when the server is down, and `hard` for data safety. Always test with `mount -a` before rebooting, and include performance options like `rsize`, `wsize`, and `noatime` for better throughput.

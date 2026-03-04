@@ -1,14 +1,14 @@
-# How to Configure SSSD for IdM Client Authentication on RHEL 9
+# How to Configure SSSD for IdM Client Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSSD, IdM, Authentication, Linux
 
-Description: A hands-on guide to configuring SSSD on RHEL 9 clients for authentication against an IdM (FreeIPA) server, including caching, failover, and troubleshooting tips.
+Description: A hands-on guide to configuring SSSD on RHEL clients for authentication against an IdM (FreeIPA) server, including caching, failover, and troubleshooting tips.
 
 ---
 
-SSSD (System Security Services Daemon) is the glue that connects your RHEL 9 clients to an IdM server. It handles user lookups, authentication, caching credentials for offline access, and managing Kerberos tickets. When you run `ipa-client-install`, SSSD gets configured automatically, but understanding how to tune and troubleshoot it is what separates a smooth deployment from one that generates midnight pages.
+SSSD (System Security Services Daemon) is the glue that connects your RHEL clients to an IdM server. It handles user lookups, authentication, caching credentials for offline access, and managing Kerberos tickets. When you run `ipa-client-install`, SSSD gets configured automatically, but understanding how to tune and troubleshoot it is what separates a smooth deployment from one that generates midnight pages.
 
 ## How SSSD Fits in the Authentication Flow
 
@@ -26,7 +26,7 @@ When a user logs in, PAM talks to SSSD, which contacts the IdM server over LDAP 
 
 ## Step 1 - Install and Enroll the IdM Client
 
-Start by enrolling the RHEL 9 system as an IdM client. This configures SSSD automatically.
+Start by enrolling the RHEL system as an IdM client. This configures SSSD automatically.
 
 ```bash
 # Install the IdM client package

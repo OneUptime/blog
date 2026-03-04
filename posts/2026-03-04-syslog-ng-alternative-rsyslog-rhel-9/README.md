@@ -1,14 +1,14 @@
-# How to Set Up Syslog-ng as an Alternative to rsyslog on RHEL 9
+# How to Set Up Syslog-ng as an Alternative to rsyslog on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Syslog-ng, Logging, rsyslog, Linux
 
-Description: Learn how to install and configure syslog-ng on RHEL 9 as an alternative to rsyslog, with structured logging, flexible filtering, and advanced message routing.
+Description: Learn how to install and configure syslog-ng on RHEL as an alternative to rsyslog, with structured logging, flexible filtering, and advanced message routing.
 
 ---
 
-While rsyslog is the default syslog daemon on RHEL 9, syslog-ng offers a different approach with its own configuration language, built-in structured data support, and powerful message routing. Some administrators prefer syslog-ng for its cleaner configuration syntax and native support for output formats like JSON.
+While rsyslog is the default syslog daemon on RHEL, syslog-ng offers a different approach with its own configuration language, built-in structured data support, and powerful message routing. Some administrators prefer syslog-ng for its cleaner configuration syntax and native support for output formats like JSON.
 
 ## Why Consider Syslog-ng
 
@@ -70,7 +70,7 @@ sudo cp /etc/syslog-ng/syslog-ng.conf /etc/syslog-ng/syslog-ng.conf.bak
 sudo vi /etc/syslog-ng/syslog-ng.conf
 ```
 
-Here is a complete configuration for a RHEL 9 server:
+Here is a complete configuration for a RHEL server:
 
 ```bash
 @version: 4.0
@@ -112,7 +112,7 @@ options {
 # Sources
 # =====================
 
-# System log source - reads from journald on RHEL 9
+# System log source - reads from journald on RHEL
 source s_sys {
     system();
     internal();
@@ -400,4 +400,4 @@ sudo systemctl start rsyslog
 
 ## Summary
 
-Syslog-ng on RHEL 9 provides an alternative to rsyslog with a cleaner configuration syntax and built-in structured logging support. Install it from EPEL, disable rsyslog, and configure sources, filters, destinations, and log paths in a single configuration file. Its native JSON support, message rewriting, and pattern matching make it particularly well-suited for environments that need advanced log processing.
+Syslog-ng on RHEL provides an alternative to rsyslog with a cleaner configuration syntax and built-in structured logging support. Install it from EPEL, disable rsyslog, and configure sources, filters, destinations, and log paths in a single configuration file. Its native JSON support, message rewriting, and pattern matching make it particularly well-suited for environments that need advanced log processing.

@@ -1,10 +1,10 @@
-# How to Manage Container Storage Volumes with Podman on RHEL 9
+# How to Manage Container Storage Volumes with Podman on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Volumes, Storage, Linux
 
-Description: Learn how to manage persistent data for Podman containers on RHEL 9 using volumes, bind mounts, and tmpfs mounts, including SELinux considerations.
+Description: Learn how to manage persistent data for Podman containers on RHEL using volumes, bind mounts, and tmpfs mounts, including SELinux considerations.
 
 ---
 
@@ -65,7 +65,7 @@ Bind mounts map a specific host directory into the container:
 # Create a directory on the host
 ```bash
 mkdir -p /srv/webdata
-echo "<h1>Hello from RHEL 9</h1>" > /srv/webdata/index.html
+echo "<h1>Hello from RHEL</h1>" > /srv/webdata/index.html
 ```
 
 # Mount the host directory into the container
@@ -91,7 +91,7 @@ graph LR
 
 ## SELinux and Volume Mounts
 
-On RHEL 9 with SELinux enabled, you need to tell Podman how to label mounted directories:
+On RHEL with SELinux enabled, you need to tell Podman how to label mounted directories:
 
 # Use :Z for private unshared label (most common)
 ```bash
@@ -247,4 +247,4 @@ podman system df -v
 
 ## Summary
 
-Persistent storage on Podman comes down to three choices: named volumes for application data, bind mounts when you need to control the exact host path, and tmpfs for temporary in-memory storage. On RHEL 9, always remember the SELinux labels (`:Z` or `:z`) on bind mounts, or you will spend hours debugging permission errors. For rootless containers, `--userns=keep-id` is your friend for avoiding UID mapping headaches.
+Persistent storage on Podman comes down to three choices: named volumes for application data, bind mounts when you need to control the exact host path, and tmpfs for temporary in-memory storage. On RHEL, always remember the SELinux labels (`:Z` or `:z`) on bind mounts, or you will spend hours debugging permission errors. For rootless containers, `--userns=keep-id` is your friend for avoiding UID mapping headaches.

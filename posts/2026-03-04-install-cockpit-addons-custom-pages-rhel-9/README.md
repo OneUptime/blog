@@ -1,10 +1,10 @@
-# How to Install Cockpit Web Console Add-ons and Create Custom Pages on RHEL 9
+# How to Install Cockpit Web Console Add-ons and Create Custom Pages on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, Add-ons, Customization, Linux
 
-Description: Learn how to extend the Cockpit web console on RHEL 9 with official add-on packages and how to create your own custom dashboard pages.
+Description: Learn how to extend the Cockpit web console on RHEL with official add-on packages and how to create your own custom dashboard pages.
 
 ---
 
@@ -12,7 +12,7 @@ The base Cockpit installation covers the essentials, but the real power comes fr
 
 ## Available Cockpit Add-on Packages
 
-RHEL 9 ships several Cockpit add-on packages in its repositories. Here's what's available:
+RHEL ships several Cockpit add-on packages in its repositories. Here's what's available:
 
 ```bash
 # Search for all Cockpit packages

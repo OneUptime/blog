@@ -42,7 +42,7 @@ terraform-rhel/
 
 ## Create a RHEL Server Module
 
-Start with a module that creates a standardized RHEL 9 server:
+Start with a module that creates a standardized RHEL server:
 
 ```hcl
 # modules/rhel-server/variables.tf - Module inputs
@@ -71,7 +71,7 @@ variable "disk_size" {
 }
 
 variable "base_volume_id" {
-  description = "ID of the base RHEL 9 volume"
+  description = "ID of the base RHEL volume"
   type        = string
 }
 

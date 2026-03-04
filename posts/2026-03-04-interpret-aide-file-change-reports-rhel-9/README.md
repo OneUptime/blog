@@ -1,10 +1,10 @@
-# How to Interpret and Act on AIDE File Change Reports on RHEL 9
+# How to Interpret and Act on AIDE File Change Reports on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, AIDE, Reports, Security, Linux
 
-Description: Learn how to read and interpret AIDE file change reports on RHEL 9, understand the different change types, and take appropriate action when changes are detected.
+Description: Learn how to read and interpret AIDE file change reports on RHEL, understand the different change types, and take appropriate action when changes are detected.
 
 ---
 

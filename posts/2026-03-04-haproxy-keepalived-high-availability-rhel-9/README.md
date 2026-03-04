@@ -1,10 +1,10 @@
-# How to Set Up HAProxy with Keepalived for High Availability on RHEL 9
+# How to Set Up HAProxy with Keepalived for High Availability on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, Keepalived, High Availability, Linux
 
-Description: How to create a highly available load balancer setup using HAProxy and Keepalived with a virtual IP on RHEL 9.
+Description: How to create a highly available load balancer setup using HAProxy and Keepalived with a virtual IP on RHEL.
 
 ---
 
@@ -28,7 +28,7 @@ flowchart TD
 
 ## Prerequisites
 
-- Two RHEL 9 servers for HAProxy (primary and secondary)
+- Two RHEL servers for HAProxy (primary and secondary)
 - Backend servers running your application
 - An available IP address for the VIP
 - Root or sudo access on both HAProxy servers
@@ -294,4 +294,4 @@ sequenceDiagram
 
 ## Wrap-Up
 
-HAProxy with Keepalived gives you a production-grade high-availability load balancer on RHEL 9. The health check script is crucial because it ties the VIP to the health of HAProxy, not just the health of the server. If HAProxy crashes, Keepalived drops the priority and the secondary takes over. Remember to use the same `virtual_router_id` and `auth_pass` on both servers, and test failover before going to production.
+HAProxy with Keepalived gives you a production-grade high-availability load balancer on RHEL. The health check script is crucial because it ties the VIP to the health of HAProxy, not just the health of the server. If HAProxy crashes, Keepalived drops the priority and the secondary takes over. Remember to use the same `virtual_router_id` and `auth_pass` on both servers, and test failover before going to production.

@@ -1,14 +1,14 @@
-# How to Manage Network Interfaces Using Nmstate (nmstatectl) on RHEL 9
+# How to Manage Network Interfaces Using Nmstate (nmstatectl) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nmstate, nmstatectl, Networking, Linux
 
-Description: Learn how to use Nmstate and nmstatectl for declarative network configuration on RHEL 9, using YAML-based state definitions for reproducible network setups.
+Description: Learn how to use Nmstate and nmstatectl for declarative network configuration on RHEL, using YAML-based state definitions for reproducible network setups.
 
 ---
 
-If you have ever wished you could describe your desired network state in a YAML file and just apply it, Nmstate is exactly what you are looking for. It is a declarative network management library that comes with RHEL 9 and provides a higher-level abstraction over NetworkManager. Instead of running a sequence of nmcli commands, you define what you want the network to look like, and Nmstate figures out how to get there.
+If you have ever wished you could describe your desired network state in a YAML file and just apply it, Nmstate is exactly what you are looking for. It is a declarative network management library that comes with RHEL and provides a higher-level abstraction over NetworkManager. Instead of running a sequence of nmcli commands, you define what you want the network to look like, and Nmstate figures out how to get there.
 
 ## What is Nmstate?
 
@@ -33,7 +33,7 @@ flowchart TD
 
 ## Installing Nmstate
 
-Nmstate is available in the default RHEL 9 repositories:
+Nmstate is available in the default RHEL repositories:
 
 ```bash
 # Install nmstate
@@ -366,4 +366,4 @@ Setting `state: absent` tells Nmstate to remove the interface configuration.
 
 ## Wrapping Up
 
-Nmstate brings a declarative, state-based approach to network configuration on RHEL 9. It is particularly valuable for complex setups involving bonds, bridges, and VLANs where a single YAML file is much clearer than a sequence of nmcli commands. The built-in rollback feature makes it safe to use on remote servers, and the YAML format makes your network configurations easy to version control and review. If you are managing more than a handful of servers, Nmstate is worth adding to your toolkit.
+Nmstate brings a declarative, state-based approach to network configuration on RHEL. It is particularly valuable for complex setups involving bonds, bridges, and VLANs where a single YAML file is much clearer than a sequence of nmcli commands. The built-in rollback feature makes it safe to use on remote servers, and the YAML format makes your network configurations easy to version control and review. If you are managing more than a handful of servers, Nmstate is worth adding to your toolkit.

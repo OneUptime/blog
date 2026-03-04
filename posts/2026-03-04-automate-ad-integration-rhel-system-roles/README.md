@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Active Directory, Ansible, System Roles, Linux
 
-Description: A practical guide to automating Active Directory domain joins and configuration on RHEL 9 using RHEL System Roles and Ansible, covering the ad_integration and sssd roles.
+Description: A practical guide to automating Active Directory domain joins and configuration on RHEL using RHEL System Roles and Ansible, covering the ad_integration and sssd roles.
 
 ---
 
@@ -16,9 +16,9 @@ RHEL System Roles are a collection of officially supported Ansible roles that sh
 
 ```mermaid
 flowchart LR
-    A[Ansible Control Node] -->|System Roles Playbook| B[RHEL 9 Target 1]
-    A --> C[RHEL 9 Target 2]
-    A --> D[RHEL 9 Target N]
+    A[Ansible Control Node] -->|System Roles Playbook| B[RHEL Target 1]
+    A --> C[RHEL Target 2]
+    A --> D[RHEL Target N]
     B --> E[AD Domain Join]
     C --> E
     D --> E

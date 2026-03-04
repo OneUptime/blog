@@ -1,16 +1,16 @@
-# How to Troubleshoot TLS Handshake Failures on RHEL 9
+# How to Troubleshoot TLS Handshake Failures on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, TLS, Troubleshooting, SSL, Linux
 
-Description: Practical techniques for diagnosing and fixing TLS handshake failures on RHEL 9, covering common causes like protocol mismatches, expired certificates, and crypto policy conflicts.
+Description: Practical techniques for diagnosing and fixing TLS handshake failures on RHEL, covering common causes like protocol mismatches, expired certificates, and crypto policy conflicts.
 
 ---
 
 TLS handshake failures are one of those problems where the error messages are almost never helpful. You get "connection reset," "handshake failure," or the ever-informative "unknown error," and you are left staring at the screen. After debugging hundreds of these issues across production systems, I have a reliable process that finds the problem fast.
 
-This guide walks through the most common causes and the tools you need on RHEL 9.
+This guide walks through the most common causes and the tools you need on RHEL.
 
 ## The TLS Handshake Process
 
@@ -72,7 +72,7 @@ The `-vvv` flag shows the TLS handshake details mixed with the HTTP conversation
 
 ## Common Cause #1: Protocol Version Mismatch
 
-RHEL 9's DEFAULT crypto policy requires TLS 1.2 minimum. If a client only supports TLS 1.0 or 1.1, the handshake fails immediately.
+RHEL's DEFAULT crypto policy requires TLS 1.2 minimum. If a client only supports TLS 1.0 or 1.1, the handshake fails immediately.
 
 Diagnose it:
 
@@ -233,4 +233,4 @@ sudo restorecon -Rv /etc/pki/tls/
 
 ## Wrapping Up
 
-TLS handshake debugging follows a pattern: check the protocol version, check the cipher overlap, check the certificate chain, check the names, and check the network. Use `openssl s_client` as your starting point and work through each layer. On RHEL 9, always consider the system crypto policy as a potential source of mismatches, especially after upgrades or when connecting to older systems.
+TLS handshake debugging follows a pattern: check the protocol version, check the cipher overlap, check the certificate chain, check the names, and check the network. Use `openssl s_client` as your starting point and work through each layer. On RHEL, always consider the system crypto policy as a potential source of mismatches, especially after upgrades or when connecting to older systems.

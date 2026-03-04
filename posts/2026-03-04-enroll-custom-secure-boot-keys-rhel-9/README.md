@@ -1,14 +1,14 @@
-# How to Enroll Custom Secure Boot Keys on RHEL 9
+# How to Enroll Custom Secure Boot Keys on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Secure Boot, Custom Keys, Linux
 
-Description: Enroll custom Secure Boot keys on RHEL 9 using the Machine Owner Key (MOK) system to trust your own signing certificates for bootloaders and kernel modules.
+Description: Enroll custom Secure Boot keys on RHEL using the Machine Owner Key (MOK) system to trust your own signing certificates for bootloaders and kernel modules.
 
 ---
 
-The default Secure Boot trust chain on RHEL 9 uses Microsoft's UEFI CA to verify the shim bootloader, and Red Hat's key to verify GRUB and the kernel. If you need to boot custom kernels, load third-party modules, or run your own signed bootloader, you need to enroll custom keys. The MOK (Machine Owner Key) system makes this possible without modifying the UEFI firmware key database directly.
+The default Secure Boot trust chain on RHEL uses Microsoft's UEFI CA to verify the shim bootloader, and Red Hat's key to verify GRUB and the kernel. If you need to boot custom kernels, load third-party modules, or run your own signed bootloader, you need to enroll custom keys. The MOK (Machine Owner Key) system makes this possible without modifying the UEFI firmware key database directly.
 
 ## Understanding the Key Hierarchy
 

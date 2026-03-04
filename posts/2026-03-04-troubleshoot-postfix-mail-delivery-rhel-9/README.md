@@ -1,10 +1,10 @@
-# How to Troubleshoot Postfix Mail Delivery Issues on RHEL 9
+# How to Troubleshoot Postfix Mail Delivery Issues on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, Troubleshooting, Mail, Linux
 
-Description: A systematic approach to diagnosing and fixing common Postfix mail delivery problems on RHEL 9, covering logs, queues, DNS, and connectivity.
+Description: A systematic approach to diagnosing and fixing common Postfix mail delivery problems on RHEL, covering logs, queues, DNS, and connectivity.
 
 ---
 
@@ -14,7 +14,7 @@ When mail is not getting delivered, resist the urge to start changing random con
 
 ## Where Postfix Logs Live
 
-On RHEL 9, Postfix logs go to the systemd journal and `/var/log/maillog`:
+On RHEL, Postfix logs go to the systemd journal and `/var/log/maillog`:
 
 ```bash
 # View recent Postfix log entries via journalctl

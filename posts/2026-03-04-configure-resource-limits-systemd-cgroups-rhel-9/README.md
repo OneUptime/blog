@@ -1,20 +1,20 @@
-# How to Configure Resource Limits (CPU, Memory) for Services Using systemd Cgroups on RHEL 9
+# How to Configure Resource Limits (CPU, Memory) for Services Using systemd Cgroups on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Cgroups, Resource Limits, Linux, Performance
 
-Description: A practical guide to using systemd cgroup directives on RHEL 9 to limit CPU, memory, and I/O for services, preventing runaway processes from taking down your server.
+Description: A practical guide to using systemd cgroup directives on RHEL to limit CPU, memory, and I/O for services, preventing runaway processes from taking down your server.
 
 ---
 
 ## Why Resource Limits Matter
 
-Every sysadmin has a war story about a process eating all the RAM on a production server and triggering the OOM killer, which then killed something important. Or a CPU-hungry batch job starving a web application of cycles. systemd on RHEL 9 uses cgroups v2 to let you put hard limits on what each service can consume. Once you set these up, a misbehaving service can only hurt itself.
+Every sysadmin has a war story about a process eating all the RAM on a production server and triggering the OOM killer, which then killed something important. Or a CPU-hungry batch job starving a web application of cycles. systemd on RHEL uses cgroups v2 to let you put hard limits on what each service can consume. Once you set these up, a misbehaving service can only hurt itself.
 
-## Cgroups v2 on RHEL 9
+## Cgroups v2 on RHEL
 
-RHEL 9 uses cgroups v2 by default. This is a change from RHEL 7 and 8 where cgroups v1 was the norm. The unified cgroup hierarchy in v2 is cleaner and gives you better control.
+RHEL uses cgroups v2 by default. This is a change from RHEL 7 and 8 where cgroups v1 was the norm. The unified cgroup hierarchy in v2 is cleaner and gives you better control.
 
 Verify that your system is using cgroups v2:
 
@@ -285,4 +285,4 @@ systemctl show httpd.service -p CPUQuota -p MemoryMax -p MemoryHigh -p IOWeight
 
 ## Wrapping Up
 
-Resource limits through systemd cgroups are one of the most underused features on RHEL 9. They are straightforward to set up, they survive reboots, and they prevent the kind of cascading failures that happen when one service goes rogue. Start with `MemoryMax` on your most memory-hungry services, add `CPUQuota` on CPU-intensive batch jobs, and use slices when you want to limit a group of related services together. Keep `systemd-cgtop` in your toolkit for monitoring. It takes minutes to configure and can save you from a middle-of-the-night outage.
+Resource limits through systemd cgroups are one of the most underused features on RHEL. They are straightforward to set up, they survive reboots, and they prevent the kind of cascading failures that happen when one service goes rogue. Start with `MemoryMax` on your most memory-hungry services, add `CPUQuota` on CPU-intensive batch jobs, and use slices when you want to limit a group of related services together. Keep `systemd-cgtop` in your toolkit for monitoring. It takes minutes to configure and can save you from a middle-of-the-night outage.

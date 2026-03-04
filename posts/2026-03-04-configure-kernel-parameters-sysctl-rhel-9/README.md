@@ -1,16 +1,16 @@
-# How to Configure Kernel Parameters with sysctl on RHEL 9
+# How to Configure Kernel Parameters with sysctl on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, sysctl, Kernel, Tuning, Linux
 
-Description: A hands-on guide to viewing, modifying, and managing kernel parameters using sysctl on RHEL 9, covering runtime changes, common tunable parameters, and practical use cases.
+Description: A hands-on guide to viewing, modifying, and managing kernel parameters using sysctl on RHEL, covering runtime changes, common tunable parameters, and practical use cases.
 
 ---
 
 ## What Is sysctl?
 
-The sysctl interface lets you read and modify kernel parameters at runtime without rebooting. These parameters control everything from network stack behavior to memory management, file system limits, and process scheduling. On RHEL 9, the parameters live under the `/proc/sys/` virtual filesystem, and sysctl provides a clean way to interact with them.
+The sysctl interface lets you read and modify kernel parameters at runtime without rebooting. These parameters control everything from network stack behavior to memory management, file system limits, and process scheduling. On RHEL, the parameters live under the `/proc/sys/` virtual filesystem, and sysctl provides a clean way to interact with them.
 
 If you have ever needed to bump the max number of open files, adjust swappiness, or enable IP forwarding on the fly, sysctl is the tool you reached for.
 
@@ -100,7 +100,7 @@ EOF
 sudo sysctl -p /etc/sysctl.d/99-custom.conf
 ```
 
-The naming convention matters. Files are processed in lexicographic order, so `99-custom.conf` loads after distribution defaults. The main configuration file `/etc/sysctl.conf` still works but the drop-in directory approach is preferred on RHEL 9.
+The naming convention matters. Files are processed in lexicographic order, so `99-custom.conf` loads after distribution defaults. The main configuration file `/etc/sysctl.conf` still works but the drop-in directory approach is preferred on RHEL.
 
 ## Common Tuning Scenarios
 
@@ -172,7 +172,7 @@ grep -r "swappiness" /etc/sysctl.d/ /usr/lib/sysctl.d/ /etc/sysctl.conf
 
 ## A Word About SELinux
 
-On RHEL 9, SELinux is enforcing by default and generally does not interfere with sysctl changes. However, if you are writing scripts that modify `/proc/sys/` directly rather than using the sysctl command, you might run into permission issues. Stick with the sysctl command and configuration files to avoid surprises.
+On RHEL, SELinux is enforcing by default and generally does not interfere with sysctl changes. However, if you are writing scripts that modify `/proc/sys/` directly rather than using the sysctl command, you might run into permission issues. Stick with the sysctl command and configuration files to avoid surprises.
 
 ## Wrapping Up
 

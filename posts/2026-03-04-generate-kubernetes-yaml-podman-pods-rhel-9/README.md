@@ -1,14 +1,14 @@
-# How to Generate Kubernetes YAML from Podman Pods on RHEL 9
+# How to Generate Kubernetes YAML from Podman Pods on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman, Kubernetes, YAML, Linux
 
-Description: Learn how to use podman kube generate to export running Podman pods and containers as Kubernetes-compatible YAML manifests on RHEL 9.
+Description: Learn how to use podman kube generate to export running Podman pods and containers as Kubernetes-compatible YAML manifests on RHEL.
 
 ---
 
-One of the best development workflows with Podman is prototyping locally and then exporting to Kubernetes. You get your containers running exactly right on your RHEL 9 workstation, then run `podman kube generate` to produce Kubernetes YAML that you can deploy to a cluster. It saves a lot of manual YAML writing.
+One of the best development workflows with Podman is prototyping locally and then exporting to Kubernetes. You get your containers running exactly right on your RHEL workstation, then run `podman kube generate` to produce Kubernetes YAML that you can deploy to a cluster. It saves a lot of manual YAML writing.
 
 ## Basic YAML Generation from a Container
 
@@ -285,4 +285,4 @@ podman ps
 
 ## Summary
 
-`podman kube generate` bridges the gap between local Podman development and Kubernetes deployment on RHEL 9. Build and test your containers locally, generate the YAML, refine it for production with proper resource limits and health checks, then deploy to your cluster. It is not a replacement for writing Kubernetes manifests from scratch for complex deployments, but it is an excellent starting point that saves time and reduces errors.
+`podman kube generate` bridges the gap between local Podman development and Kubernetes deployment on RHEL. Build and test your containers locally, generate the YAML, refine it for production with proper resource limits and health checks, then deploy to your cluster. It is not a replacement for writing Kubernetes manifests from scratch for complex deployments, but it is an excellent starting point that saves time and reduces errors.

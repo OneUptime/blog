@@ -1,10 +1,10 @@
-# How to Configure Postfix TLS Encryption for Secure Email on RHEL 9
+# How to Configure Postfix TLS Encryption for Secure Email on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, TLS, Email Security, Linux
 
-Description: Set up TLS encryption on Postfix for both inbound and outbound email connections on RHEL 9 to protect mail in transit.
+Description: Set up TLS encryption on Postfix for both inbound and outbound email connections on RHEL to protect mail in transit.
 
 ---
 
@@ -12,11 +12,11 @@ Description: Set up TLS encryption on Postfix for both inbound and outbound emai
 
 Email was designed in an era when nobody worried about eavesdropping. By default, SMTP sends everything in plain text, including credentials if you use authentication. TLS encryption wraps those connections in a secure layer, preventing anyone between sender and receiver from reading the traffic.
 
-On a modern RHEL 9 mail server, there is no excuse to skip TLS. Let's Encrypt gives you free certificates, and the configuration takes maybe ten minutes.
+On a modern RHEL mail server, there is no excuse to skip TLS. Let's Encrypt gives you free certificates, and the configuration takes maybe ten minutes.
 
 ## Prerequisites
 
-- RHEL 9 with Postfix installed and running
+- RHEL with Postfix installed and running
 - A valid TLS certificate and private key (from Let's Encrypt or your CA)
 - DNS records pointing to your mail server
 

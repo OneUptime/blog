@@ -1,14 +1,14 @@
-# How to Register and Subscribe a RHEL 9 System with Red Hat Subscription Manager
+# How to Register and Subscribe a RHEL System with Red Hat Subscription Manager
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Subscription Manager, Registration, Red Hat, Linux
 
-Description: A practical walkthrough of registering RHEL 9 systems with Red Hat Subscription Manager, attaching subscriptions, enabling repositories, and using activation keys for automated deployments.
+Description: A practical walkthrough of registering RHEL systems with Red Hat Subscription Manager, attaching subscriptions, enabling repositories, and using activation keys for automated deployments.
 
 ---
 
-A freshly installed RHEL 9 system cannot install or update packages until it is registered with Red Hat and has a subscription attached. The tool that handles this is `subscription-manager`, and it connects your system to either Red Hat's CDN (Customer Delivery Network) or a local Satellite/Capsule server. Without registration, you are stuck with whatever packages were on the installation media and nothing more.
+A freshly installed RHEL system cannot install or update packages until it is registered with Red Hat and has a subscription attached. The tool that handles this is `subscription-manager`, and it connects your system to either Red Hat's CDN (Customer Delivery Network) or a local Satellite/Capsule server. Without registration, you are stuck with whatever packages were on the installation media and nothing more.
 
 This guide covers the registration process from start to finish, including manual registration, auto-attach, activation keys, and repository management.
 
@@ -16,7 +16,7 @@ This guide covers the registration process from start to finish, including manua
 
 ```mermaid
 flowchart LR
-    A[RHEL 9 System] -->|1. Register| B[Red Hat CDN / Satellite]
+    A[RHEL System] -->|1. Register| B[Red Hat CDN / Satellite]
     B -->|2. Authentication| C[Subscription Entitlements]
     C -->|3. Attach| A
     A -->|4. Enable Repos| D[Package Repositories]
@@ -144,7 +144,7 @@ sudo subscription-manager repos --enable=rhel-9-for-x86_64-appstream-rpms
 sudo subscription-manager repos --disable=rhel-9-for-x86_64-supplementary-rpms
 ```
 
-### Default Repositories for RHEL 9
+### Default Repositories for RHEL
 
 After registration, these repos are typically enabled by default:
 
@@ -207,7 +207,7 @@ sudo subscription-manager refresh
 
 ### Set the System Purpose
 
-RHEL 9 supports "system purpose" attributes that help auto-attach pick the right subscription:
+RHEL supports "system purpose" attributes that help auto-attach pick the right subscription:
 
 ```bash
 # Set the system role
@@ -296,4 +296,4 @@ sudo subscription-manager config --server.proxy_hostname=proxy.example.com --ser
 
 ## Wrapping Up
 
-Registration is the first thing you should do after installing RHEL 9. Without it, your system cannot receive security updates, bug fixes, or new packages. For single systems, username/password registration with auto-attach is fine. For anything beyond a handful of machines, set up activation keys and automate the process through Kickstart. And when you decommission a server, always unregister it so you are not wasting subscription entitlements on machines that no longer exist.
+Registration is the first thing you should do after installing RHEL. Without it, your system cannot receive security updates, bug fixes, or new packages. For single systems, username/password registration with auto-attach is fine. For anything beyond a handful of machines, set up activation keys and automate the process through Kickstart. And when you decommission a server, always unregister it so you are not wasting subscription entitlements on machines that no longer exist.

@@ -1,16 +1,16 @@
-# How to Enable and Configure XFS Disk Quotas on RHEL 9
+# How to Enable and Configure XFS Disk Quotas on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, XFS, Quotas, Storage, Linux
 
-Description: Learn how to enable and configure XFS disk quotas on RHEL 9 to control disk usage per user and group, keeping your storage consumption predictable and fair.
+Description: Learn how to enable and configure XFS disk quotas on RHEL to control disk usage per user and group, keeping your storage consumption predictable and fair.
 
 ---
 
 If you have been managing Linux servers for any length of time, you know that disk space has a way of disappearing faster than anyone expects. One developer uploads a few database dumps, another leaves log rotation off, and suddenly your 500 GB partition is at 98%. XFS quotas are your first line of defense.
 
-RHEL 9 uses XFS as the default filesystem, and XFS has its own quota implementation that differs from the older ext4/quota tools. This guide walks through enabling and configuring XFS quotas from scratch.
+RHEL uses XFS as the default filesystem, and XFS has its own quota implementation that differs from the older ext4/quota tools. This guide walks through enabling and configuring XFS quotas from scratch.
 
 ## How XFS Quotas Work
 
@@ -39,7 +39,7 @@ graph TD
 
 Before you begin, make sure you have:
 
-- A RHEL 9 system with root access
+- A RHEL system with root access
 - An XFS filesystem on a dedicated partition or logical volume
 - The `xfsprogs` package installed (it should be by default)
 
@@ -231,4 +231,4 @@ If quotas are not enforcing, check these common issues:
 
 ## Summary
 
-XFS quotas on RHEL 9 are straightforward once you understand the workflow: enable at mount time, set limits with `xfs_quota`, and monitor with reports. The built-in accounting in XFS makes this faster and more reliable than the older quota tools used with ext4. Start with soft limits and grace periods so users get warnings before they hit a wall, and automate your monitoring so you are never surprised by a full disk.
+XFS quotas on RHEL are straightforward once you understand the workflow: enable at mount time, set limits with `xfs_quota`, and monitor with reports. The built-in accounting in XFS makes this faster and more reliable than the older quota tools used with ext4. Start with soft limits and grace periods so users get warnings before they hit a wall, and automate your monitoring so you are never surprised by a full disk.

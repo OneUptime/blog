@@ -1,16 +1,16 @@
-# How to Configure Samba with SELinux and Firewalld on RHEL 9
+# How to Configure Samba with SELinux and Firewalld on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Samba, SELinux, Firewalld, Linux
 
-Description: Get Samba working correctly with SELinux enforcing and firewalld active on RHEL 9, covering file contexts, booleans, ports, and troubleshooting.
+Description: Get Samba working correctly with SELinux enforcing and firewalld active on RHEL, covering file contexts, booleans, ports, and troubleshooting.
 
 ---
 
 ## The Two Gatekeepers
 
-On RHEL 9, Samba must satisfy both SELinux and firewalld to function correctly. SELinux controls what processes can access which files. Firewalld controls which network traffic reaches those processes. Getting both right is essential.
+On RHEL, Samba must satisfy both SELinux and firewalld to function correctly. SELinux controls what processes can access which files. Firewalld controls which network traffic reaches those processes. Getting both right is essential.
 
 ## Firewalld Configuration
 
@@ -207,4 +207,4 @@ sudo -u smbuser touch /srv/samba/shared/test
 
 ## Wrap-Up
 
-Getting Samba to work with both SELinux and firewalld on RHEL 9 requires attention to three layers: network access (firewalld), mandatory access control (SELinux), and traditional filesystem permissions. Configure each layer methodically, test after each change, and use the diagnostic tools (ausearch, sealert, testparm) to identify issues quickly. Once everything is aligned, the system is both functional and secure.
+Getting Samba to work with both SELinux and firewalld on RHEL requires attention to three layers: network access (firewalld), mandatory access control (SELinux), and traditional filesystem permissions. Configure each layer methodically, test after each change, and use the diagnostic tools (ausearch, sealert, testparm) to identify issues quickly. Once everything is aligned, the system is both functional and secure.

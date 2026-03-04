@@ -1,10 +1,10 @@
-# How to Load and Unload Kernel Modules on RHEL 9
+# How to Load and Unload Kernel Modules on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kernel Modules, modprobe, Linux
 
-Description: A practical guide to managing kernel modules on RHEL 9, covering how to list, load, unload, and configure modules using modprobe, lsmod, and modinfo.
+Description: A practical guide to managing kernel modules on RHEL, covering how to list, load, unload, and configure modules using modprobe, lsmod, and modinfo.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A practical guide to managing kernel modules on RHEL 9, covering ho
 
 Kernel modules are pieces of code that can be loaded into the running kernel on demand without rebooting. They extend the kernel's functionality, adding support for hardware drivers, filesystems, network protocols, and more. Instead of compiling everything into a monolithic kernel, Linux keeps most functionality in modules that load only when needed.
 
-On RHEL 9, kernel modules live in `/lib/modules/$(uname -r)/` and have the `.ko` (kernel object) or `.ko.xz` (compressed) extension.
+On RHEL, kernel modules live in `/lib/modules/$(uname -r)/` and have the `.ko` (kernel object) or `.ko.xz` (compressed) extension.
 
 ## Listing Loaded Modules
 
@@ -227,4 +227,4 @@ sudo dkms autoinstall
 
 ## Wrapping Up
 
-Kernel module management on RHEL 9 is mostly about knowing four tools: `lsmod` to see what is loaded, `modinfo` to learn about a module, `modprobe` to load and unload, and the configuration directories under `/etc/modules-load.d/` and `/etc/modprobe.d/` for persistent settings. Use `modprobe` instead of `insmod`, always check dependencies before unloading, and keep your persistent module configurations in clearly named files.
+Kernel module management on RHEL is mostly about knowing four tools: `lsmod` to see what is loaded, `modinfo` to learn about a module, `modprobe` to load and unload, and the configuration directories under `/etc/modules-load.d/` and `/etc/modprobe.d/` for persistent settings. Use `modprobe` instead of `insmod`, always check dependencies before unloading, and keep your persistent module configurations in clearly named files.

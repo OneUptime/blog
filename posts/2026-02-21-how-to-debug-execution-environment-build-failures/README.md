@@ -129,7 +129,7 @@ podman run --rm quay.io/ansible/ansible-runner:latest \
   dnf provides "*/libxml2.so"
 ```
 
-A common gotcha: RHEL 8 and RHEL 9 sometimes have different package names. Check which OS your base image uses:
+A common gotcha: RHEL 8 and RHEL sometimes have different package names. Check which OS your base image uses:
 
 ```bash
 # Check the base image OS

@@ -1,10 +1,10 @@
-# How to Grow and Reshape an Existing mdadm RAID Array on RHEL 9
+# How to Grow and Reshape an Existing mdadm RAID Array on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RAID, mdadm, Reshape, Linux
 
-Description: Learn how to grow an mdadm RAID array by adding disks, changing RAID levels, or modifying chunk sizes on RHEL 9 without losing data.
+Description: Learn how to grow an mdadm RAID array by adding disks, changing RAID levels, or modifying chunk sizes on RHEL without losing data.
 
 ---
 
@@ -16,7 +16,7 @@ Not every transformation is possible, and some come with risks, but the capabili
 
 ## Prerequisites
 
-- An existing mdadm RAID array on RHEL 9
+- An existing mdadm RAID array on RHEL
 - Sufficient free space for the reshape operation (mdadm uses a backup file)
 - A backup of your data (always back up before reshaping)
 
@@ -147,4 +147,4 @@ sudo dracut --regenerate-all --force
 
 ## Wrap-Up
 
-mdadm's reshape capability on RHEL 9 lets you adapt your storage without starting over. Whether you are adding disks, changing RAID levels, or tuning chunk sizes, the process is straightforward. The key is to always use the backup file, always have real backups, and give the reshape time to complete. Rushing or interrupting a reshape is the fastest way to turn a routine operation into a disaster recovery exercise.
+mdadm's reshape capability on RHEL lets you adapt your storage without starting over. Whether you are adding disks, changing RAID levels, or tuning chunk sizes, the process is straightforward. The key is to always use the backup file, always have real backups, and give the reshape time to complete. Rushing or interrupting a reshape is the fastest way to turn a routine operation into a disaster recovery exercise.

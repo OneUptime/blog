@@ -1,14 +1,14 @@
-# How to Register a RHEL 9 System with Red Hat Insights
+# How to Register a RHEL System with Red Hat Insights
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Red Hat Insights, Registration, Monitoring, Linux
 
-Description: Learn how to register your RHEL 9 system with Red Hat Insights for proactive security analysis, compliance checking, and system health monitoring.
+Description: Learn how to register your RHEL system with Red Hat Insights for proactive security analysis, compliance checking, and system health monitoring.
 
 ---
 
-Red Hat Insights is a hosted service that analyzes your RHEL systems for security vulnerabilities, performance issues, configuration drift, and compliance problems. It runs as part of your RHEL subscription at no extra cost. Setting it up on RHEL 9 takes about two minutes, and the value it provides in terms of catching problems before they become incidents is well worth the effort.
+Red Hat Insights is a hosted service that analyzes your RHEL systems for security vulnerabilities, performance issues, configuration drift, and compliance problems. It runs as part of your RHEL subscription at no extra cost. Setting it up on RHEL takes about two minutes, and the value it provides in terms of catching problems before they become incidents is well worth the effort.
 
 ## What Red Hat Insights Does
 
@@ -21,7 +21,7 @@ Insights collects system configuration data (not application data or user data) 
 
 ```mermaid
 flowchart LR
-    A[RHEL 9 System] -->|insights-client| B[Red Hat Insights Service]
+    A[RHEL System] -->|insights-client| B[Red Hat Insights Service]
     B --> C[Security Analysis]
     B --> D[Performance Recommendations]
     B --> E[Compliance Checks]
@@ -34,7 +34,7 @@ flowchart LR
 
 ## Prerequisites
 
-- The RHEL 9 system must be registered with `subscription-manager` (see the registration guide)
+- The RHEL system must be registered with `subscription-manager` (see the registration guide)
 - Network access to `cert-api.access.redhat.com` and `api.access.redhat.com` on port 443
 - Root or sudo access
 
@@ -56,7 +56,7 @@ sudo subscription-manager register
 
 ## Step 2 - Install the Insights Client
 
-On RHEL 9, the `insights-client` package is usually already installed. Verify and install if needed:
+On RHEL, the `insights-client` package is usually already installed. Verify and install if needed:
 
 ```bash
 # Check if insights-client is installed

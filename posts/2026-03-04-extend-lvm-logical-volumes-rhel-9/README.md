@@ -1,10 +1,10 @@
-# How to Extend LVM Logical Volumes on RHEL 9
+# How to Extend LVM Logical Volumes on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Storage, Filesystem, Linux
 
-Description: Learn how to grow LVM logical volumes and their filesystems on RHEL 9 without downtime.
+Description: Learn how to grow LVM logical volumes and their filesystems on RHEL without downtime.
 
 ---
 
@@ -124,5 +124,5 @@ df -h /
 
 ## Summary
 
-Extending LVM volumes on RHEL 9 is an online operation that does not require downtime. The key steps are verifying free space in the volume group, extending the logical volume, and then growing the filesystem. Use the `-r` flag with `lvextend` to handle both steps at once.
+Extending LVM volumes on RHEL is an online operation that does not require downtime. The key steps are verifying free space in the volume group, extending the logical volume, and then growing the filesystem. Use the `-r` flag with `lvextend` to handle both steps at once.
 

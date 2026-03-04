@@ -1,10 +1,10 @@
-# How to Extend a Logical Volume and Filesystem on RHEL 9 Without Downtime
+# How to Extend a Logical Volume and Filesystem on RHEL Without Downtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Extend, Filesystem, Linux
 
-Description: Extend logical volumes and grow XFS or ext4 filesystems on RHEL 9 online without unmounting or rebooting, using lvextend and filesystem resize tools.
+Description: Extend logical volumes and grow XFS or ext4 filesystems on RHEL online without unmounting or rebooting, using lvextend and filesystem resize tools.
 
 ---
 

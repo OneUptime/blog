@@ -1,10 +1,10 @@
-# How to Automate Disk Partitioning with Scripted parted Commands on RHEL 9
+# How to Automate Disk Partitioning with Scripted parted Commands on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, parted, Scripting, Automation, Linux
 
-Description: Automate disk partitioning on RHEL 9 using scripted parted commands for repeatable, consistent storage provisioning across multiple servers.
+Description: Automate disk partitioning on RHEL using scripted parted commands for repeatable, consistent storage provisioning across multiple servers.
 
 ---
 
@@ -265,4 +265,4 @@ echo "Safe to proceed with $DISK"
 
 ## Wrap-Up
 
-Scripted partitioning with parted on RHEL 9 saves time and ensures consistency. Use `parted -s` for non-interactive operation, add safety checks to prevent accidents, and make scripts idempotent for use with configuration management tools. Whether you are provisioning 10 servers or 10,000, automated partitioning is the way to go.
+Scripted partitioning with parted on RHEL saves time and ensures consistency. Use `parted -s` for non-interactive operation, add safety checks to prevent accidents, and make scripts idempotent for use with configuration management tools. Whether you are provisioning 10 servers or 10,000, automated partitioning is the way to go.

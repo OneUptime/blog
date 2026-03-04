@@ -1,10 +1,10 @@
-# How to Configure NBDE with Multiple Tang Servers for High Availability on RHEL 9
+# How to Configure NBDE with Multiple Tang Servers for High Availability on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NBDE, Tang, High Availability, Linux
 
-Description: Set up NBDE with multiple Tang servers on RHEL 9 using Shamir's Secret Sharing or redundant bindings to ensure encrypted volumes always unlock even if a Tang server is down.
+Description: Set up NBDE with multiple Tang servers on RHEL using Shamir's Secret Sharing or redundant bindings to ensure encrypted volumes always unlock even if a Tang server is down.
 
 ---
 

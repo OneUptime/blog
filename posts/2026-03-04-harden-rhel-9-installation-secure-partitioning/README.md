@@ -1,16 +1,16 @@
-# How to Harden RHEL 9 During Installation with Secure Partitioning
+# How to Harden RHEL During Installation with Secure Partitioning
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Security, Partitioning, Hardening, Linux
 
-Description: Learn how to set up a hardened RHEL 9 installation from the start by using a secure partitioning scheme that meets CIS benchmark and STIG requirements.
+Description: Learn how to set up a hardened RHEL installation from the start by using a secure partitioning scheme that meets CIS benchmark and STIG requirements.
 
 ---
 
 The single best time to harden a Linux server is during installation. Trying to repartition a running system is painful, risky, and often just not practical. If you get the disk layout right from day one, you save yourself a lot of headaches down the road.
 
-This guide walks through a secure partitioning strategy for RHEL 9 that satisfies CIS benchmarks and DISA STIG requirements. I have used this layout on hundreds of servers across government, healthcare, and financial environments.
+This guide walks through a secure partitioning strategy for RHEL that satisfies CIS benchmarks and DISA STIG requirements. I have used this layout on hundreds of servers across government, healthcare, and financial environments.
 
 ## Why Partitioning Matters for Security
 

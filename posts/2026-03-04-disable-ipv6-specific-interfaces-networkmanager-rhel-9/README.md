@@ -1,10 +1,10 @@
-# How to Disable IPv6 on Specific Interfaces Using NetworkManager on RHEL 9
+# How to Disable IPv6 on Specific Interfaces Using NetworkManager on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IPv6, NetworkManager, Linux
 
-Description: Step-by-step instructions for selectively disabling IPv6 on specific network interfaces through NetworkManager on RHEL 9, while keeping it active on others.
+Description: Step-by-step instructions for selectively disabling IPv6 on specific network interfaces through NetworkManager on RHEL, while keeping it active on others.
 
 ---
 
@@ -12,11 +12,11 @@ There are legitimate reasons to disable IPv6 on certain interfaces. Maybe you ha
 
 ## Why Selective Instead of System-Wide
 
-Disabling IPv6 globally with kernel parameters (`ipv6.disable=1`) is a heavy hammer. It breaks `::1` localhost, can cause issues with SELinux, and some services on RHEL 9 expect IPv6 to be available even if they don't actively use it. Disabling it per-interface through NetworkManager is the cleaner approach.
+Disabling IPv6 globally with kernel parameters (`ipv6.disable=1`) is a heavy hammer. It breaks `::1` localhost, can cause issues with SELinux, and some services on RHEL expect IPv6 to be available even if they don't actively use it. Disabling it per-interface through NetworkManager is the cleaner approach.
 
 ## Prerequisites
 
-- RHEL 9 system with root or sudo access
+- RHEL system with root or sudo access
 - NetworkManager running
 - Identify which interfaces need IPv6 disabled
 
@@ -99,7 +99,7 @@ sudo nmcli connection modify "ens224" ipv6.method ignore
 sudo nmcli connection up "ens224"
 ```
 
-Note: The `ignore` method was available in older NetworkManager. On RHEL 9, you might need to use `disabled` instead, as `ignore` may behave differently depending on the NetworkManager version. Check your version with:
+Note: The `ignore` method was available in older NetworkManager. On RHEL, you might need to use `disabled` instead, as `ignore` may behave differently depending on the NetworkManager version. Check your version with:
 
 ```bash
 nmcli --version
@@ -174,4 +174,4 @@ sysctl -a 2>/dev/null | grep disable_ipv6
 
 ## Wrapping Up
 
-Selectively disabling IPv6 per interface is the right way to handle IPv4-only network segments on RHEL 9. Use `nmcli connection modify` with `ipv6.method disabled` and you get clean, persistent, per-interface control. Stay away from kernel-level global disabling unless you have a very specific reason and fully understand the consequences.
+Selectively disabling IPv6 per interface is the right way to handle IPv4-only network segments on RHEL. Use `nmcli connection modify` with `ipv6.method disabled` and you get clean, persistent, per-interface control. Stay away from kernel-level global disabling unless you have a very specific reason and fully understand the consequences.

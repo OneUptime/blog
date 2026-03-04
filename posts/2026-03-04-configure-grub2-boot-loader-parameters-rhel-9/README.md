@@ -1,18 +1,18 @@
-# How to Configure GRUB2 Boot Loader Parameters on RHEL 9
+# How to Configure GRUB2 Boot Loader Parameters on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GRUB2, Boot Loader, Linux
 
-Description: A practical guide to configuring GRUB2 boot loader parameters on RHEL 9 using grubby, grub2-mkconfig, and direct configuration file editing.
+Description: A practical guide to configuring GRUB2 boot loader parameters on RHEL using grubby, grub2-mkconfig, and direct configuration file editing.
 
 ---
 
-## GRUB2 on RHEL 9
+## GRUB2 on RHEL
 
-GRUB2 (GRand Unified Bootloader version 2) is the default boot loader on RHEL 9. It loads the kernel and initramfs into memory, passes kernel command-line parameters, and hands off control to the kernel. Understanding how to configure GRUB2 is essential for any sysadmin managing RHEL systems.
+GRUB2 (GRand Unified Bootloader version 2) is the default boot loader on RHEL. It loads the kernel and initramfs into memory, passes kernel command-line parameters, and hands off control to the kernel. Understanding how to configure GRUB2 is essential for any sysadmin managing RHEL systems.
 
-RHEL 9 uses the Boot Loader Specification (BLS) by default, which means individual boot entries are stored as separate snippet files rather than being embedded in the main GRUB configuration.
+RHEL uses the Boot Loader Specification (BLS) by default, which means individual boot entries are stored as separate snippet files rather than being embedded in the main GRUB configuration.
 
 ## Key Configuration Files
 
@@ -84,7 +84,7 @@ sudo grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 
 ## Using grubby for Parameter Changes
 
-`grubby` is the preferred tool on RHEL 9 for modifying boot loader settings. It directly updates BLS entries without needing to regenerate the full GRUB configuration.
+`grubby` is the preferred tool on RHEL for modifying boot loader settings. It directly updates BLS entries without needing to regenerate the full GRUB configuration.
 
 ```bash
 # Add a parameter to all kernels
@@ -102,7 +102,7 @@ sudo grubby --update-kernel=ALL --args="transparent_hugepage=never numa_balancin
 
 ## Working with BLS Entries
 
-RHEL 9 uses the Boot Loader Specification. Each kernel has its own entry file.
+RHEL uses the Boot Loader Specification. Each kernel has its own entry file.
 
 ```bash
 # List BLS entry files
@@ -192,4 +192,4 @@ grep GRUB_TIMEOUT /etc/default/grub
 
 ## Wrapping Up
 
-GRUB2 configuration on RHEL 9 is split between the `/etc/default/grub` defaults file and the BLS entries in `/boot/loader/entries/`. Use `grubby` for kernel parameter changes because it handles the BLS entries correctly. Use `grub2-mkconfig` only when you need to regenerate the entire configuration, such as after changing `/etc/default/grub`. Always verify your changes with `grubby --info=DEFAULT` before rebooting, and keep a known-good kernel available in case something goes wrong.
+GRUB2 configuration on RHEL is split between the `/etc/default/grub` defaults file and the BLS entries in `/boot/loader/entries/`. Use `grubby` for kernel parameter changes because it handles the BLS entries correctly. Use `grub2-mkconfig` only when you need to regenerate the entire configuration, such as after changing `/etc/default/grub`. Always verify your changes with `grubby --info=DEFAULT` before rebooting, and keep a known-good kernel available in case something goes wrong.

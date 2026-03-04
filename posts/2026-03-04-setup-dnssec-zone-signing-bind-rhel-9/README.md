@@ -1,10 +1,10 @@
-# How to Set Up DNSSEC Zone Signing with BIND on RHEL 9
+# How to Set Up DNSSEC Zone Signing with BIND on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNSSEC, BIND, DNS Security, Linux
 
-Description: A practical guide to enabling DNSSEC zone signing on your BIND DNS server running RHEL 9 to protect against DNS spoofing and cache poisoning.
+Description: A practical guide to enabling DNSSEC zone signing on your BIND DNS server running RHEL to protect against DNS spoofing and cache poisoning.
 
 ---
 

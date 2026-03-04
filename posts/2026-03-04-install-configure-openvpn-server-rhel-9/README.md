@@ -1,18 +1,18 @@
-# How to Install and Configure an OpenVPN Server on RHEL 9
+# How to Install and Configure an OpenVPN Server on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenVPN, VPN, Server, Linux
 
-Description: A comprehensive guide to installing and configuring an OpenVPN server on RHEL 9, covering package installation, certificate generation, server configuration, firewall rules, and client setup.
+Description: A comprehensive guide to installing and configuring an OpenVPN server on RHEL, covering package installation, certificate generation, server configuration, firewall rules, and client setup.
 
 ---
 
-OpenVPN has been the workhorse of Linux VPN solutions for years. While WireGuard is newer and faster, OpenVPN still has its place - it runs over TCP (useful for restrictive networks), has mature client support on every platform, and supports complex authentication methods like LDAP and RADIUS. Here's how to get it running on RHEL 9.
+OpenVPN has been the workhorse of Linux VPN solutions for years. While WireGuard is newer and faster, OpenVPN still has its place - it runs over TCP (useful for restrictive networks), has mature client support on every platform, and supports complex authentication methods like LDAP and RADIUS. Here's how to get it running on RHEL.
 
 ## Prerequisites
 
-- RHEL 9 server with a public IP
+- RHEL server with a public IP
 - Root or sudo access
 - EPEL repository enabled
 - A domain name or public IP for the VPN endpoint
@@ -211,7 +211,7 @@ For easier distribution, you can embed the certificates directly in the .ovpn fi
 
 ```mermaid
 graph LR
-    C1[Client 1<br>10.8.0.2] -->|UDP 1194| S[RHEL 9 Server<br>OpenVPN<br>10.8.0.1]
+    C1[Client 1<br>10.8.0.2] -->|UDP 1194| S[RHEL Server<br>OpenVPN<br>10.8.0.1]
     C2[Client 2<br>10.8.0.3] -->|UDP 1194| S
     S -->|NAT/Masquerade| I[Internet]
     S -->|Route| LAN[Internal LAN<br>192.168.1.0/24]
@@ -257,4 +257,4 @@ ip route show
 
 ## Wrapping Up
 
-OpenVPN on RHEL 9 requires more setup than WireGuard, but the flexibility it offers is worth it for environments that need TCP transport, LDAP authentication, or broad client compatibility. The PKI setup is the most involved part. Once that's done, adding new clients is just a matter of generating certificates and handing out config files.
+OpenVPN on RHEL requires more setup than WireGuard, but the flexibility it offers is worth it for environments that need TCP transport, LDAP authentication, or broad client compatibility. The PKI setup is the most involved part. Once that's done, adding new clients is just a matter of generating certificates and handing out config files.

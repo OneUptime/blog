@@ -1,16 +1,16 @@
-# How to Create a Custom RHEL 9 Installation ISO Using Lorax and Kickstart
+# How to Create a Custom RHEL Installation ISO Using Lorax and Kickstart
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ISO, Lorax, Kickstart, Custom Installation, Linux
 
-Description: Learn how to build custom RHEL 9 installation ISOs with embedded Kickstart files and tailored package sets using lorax and mkksiso, enabling fully automated and reproducible server deployments.
+Description: Learn how to build custom RHEL installation ISOs with embedded Kickstart files and tailored package sets using lorax and mkksiso, enabling fully automated and reproducible server deployments.
 
 ---
 
-The stock RHEL 9 ISO works fine for one-off installations, but when you are deploying dozens or hundreds of servers with the same configuration, you want a custom ISO that automates everything. Boot it, walk away, come back to a fully configured system. That is what Kickstart gives you, and tools like `lorax` and `mkksiso` let you bake that Kickstart file right into the ISO.
+The stock RHEL ISO works fine for one-off installations, but when you are deploying dozens or hundreds of servers with the same configuration, you want a custom ISO that automates everything. Boot it, walk away, come back to a fully configured system. That is what Kickstart gives you, and tools like `lorax` and `mkksiso` let you bake that Kickstart file right into the ISO.
 
-This guide covers the full process of creating a custom RHEL 9 ISO, from writing the Kickstart file to building the ISO and testing it.
+This guide covers the full process of creating a custom RHEL ISO, from writing the Kickstart file to building the ISO and testing it.
 
 ## The Tools
 
@@ -35,7 +35,7 @@ flowchart TD
 
 ## Prerequisites
 
-You need a RHEL 9 system (or a build server) with the following:
+You need a RHEL system (or a build server) with the following:
 
 ```bash
 # Install lorax and its dependencies
@@ -45,7 +45,7 @@ sudo dnf install -y lorax
 which mkksiso
 ```
 
-You also need access to RHEL 9 repositories, either through a registered subscription or a local mirror.
+You also need access to RHEL repositories, either through a registered subscription or a local mirror.
 
 ```bash
 # Verify your system is registered and repos are enabled
@@ -58,7 +58,7 @@ The Kickstart file defines your entire installation. Here is a solid starting po
 
 ```bash
 # Save this as /root/ks.cfg
-# RHEL 9 Kickstart - Automated server installation
+# RHEL Kickstart - Automated server installation
 
 # Use graphical or text installer
 text
@@ -157,7 +157,7 @@ If `ksvalidator` exits silently with return code 0, your file is syntactically c
 
 ## Step 2a: Embed Kickstart into an Existing ISO with mkksiso
 
-This is the simplest approach. Take the stock RHEL 9 ISO and inject your Kickstart file.
+This is the simplest approach. Take the stock RHEL ISO and inject your Kickstart file.
 
 ```bash
 # Embed the Kickstart file into the existing ISO
@@ -183,7 +183,7 @@ sudo mkksiso --ks /root/ks.cfg --cmdline "inst.text console=ttyS0,115200" /path/
 
 If you need to change which packages are on the ISO itself (not just what gets installed, but what is available on the media), use `lorax`.
 
-First, set up a local repository or make sure you have access to the RHEL 9 repos:
+First, set up a local repository or make sure you have access to the RHEL repos:
 
 ```bash
 # Create the installation tree and ISO using lorax
@@ -324,4 +324,4 @@ fi
 
 ## Wrapping Up
 
-Building custom RHEL 9 ISOs is one of those investments that pays for itself quickly. The first time takes an hour or two to get the Kickstart right and build the ISO. After that, every server deployment drops from a 30-minute manual process to a boot-and-walk-away operation. Use `mkksiso` when you just need to embed a Kickstart into the stock ISO, and reach for `lorax` when you need full control over what packages and images are on the media. Either way, always test in a VM before deploying to production hardware.
+Building custom RHEL ISOs is one of those investments that pays for itself quickly. The first time takes an hour or two to get the Kickstart right and build the ISO. After that, every server deployment drops from a 30-minute manual process to a boot-and-walk-away operation. Use `mkksiso` when you just need to embed a Kickstart into the stock ISO, and reach for `lorax` when you need full control over what packages and images are on the media. Either way, always test in a VM before deploying to production hardware.

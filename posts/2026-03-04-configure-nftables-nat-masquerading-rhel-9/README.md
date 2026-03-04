@@ -1,14 +1,14 @@
-# How to Configure nftables for NAT and Masquerading on RHEL 9
+# How to Configure nftables for NAT and Masquerading on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, nftables, NAT, Masquerading, Linux
 
-Description: Learn how to set up source NAT, destination NAT, masquerading, and port forwarding using nftables on RHEL 9.
+Description: Learn how to set up source NAT, destination NAT, masquerading, and port forwarding using nftables on RHEL.
 
 ---
 
-If your RHEL 9 box is acting as a gateway, router, or load balancer, you need NAT. nftables handles all flavors of network address translation natively, and the syntax is straightforward once you understand how the NAT chains hook into the netfilter pipeline. This guide covers SNAT, DNAT, masquerading, and port forwarding.
+If your RHEL box is acting as a gateway, router, or load balancer, you need NAT. nftables handles all flavors of network address translation natively, and the syntax is straightforward once you understand how the NAT chains hook into the netfilter pipeline. This guide covers SNAT, DNAT, masquerading, and port forwarding.
 
 ## NAT Basics in nftables
 

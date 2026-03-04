@@ -1,10 +1,10 @@
-# How to Configure BIND as a Caching DNS Resolver on RHEL 9
+# How to Configure BIND as a Caching DNS Resolver on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BIND, DNS, Caching, Linux
 
-Description: Set up BIND as a caching-only DNS resolver on RHEL 9 to speed up DNS lookups across your local network.
+Description: Set up BIND as a caching-only DNS resolver on RHEL to speed up DNS lookups across your local network.
 
 ---
 

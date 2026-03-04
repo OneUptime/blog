@@ -222,7 +222,7 @@ With SCA, your automation scripts become simpler. Here is an Ansible example:
 
 ```yaml
 # Minimal registration playbook with SCA
-- name: Register and configure RHEL 9 systems
+- name: Register and configure RHEL systems
   hosts: all
   become: true
   tasks:

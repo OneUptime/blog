@@ -1,18 +1,18 @@
-# How to Set Up DHCP Client Configuration Using NetworkManager on RHEL 9
+# How to Set Up DHCP Client Configuration Using NetworkManager on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DHCP, NetworkManager, Linux
 
-Description: Configure and tune DHCP client behavior on RHEL 9 through NetworkManager, including custom options, persistent settings, and troubleshooting DHCP issues.
+Description: Configure and tune DHCP client behavior on RHEL through NetworkManager, including custom options, persistent settings, and troubleshooting DHCP issues.
 
 ---
 
-DHCP is the default network configuration method for most RHEL 9 installations. While it "just works" in many cases, there are plenty of situations where you need to customize how the DHCP client behaves. Maybe you need to send a specific hostname to the DHCP server, request additional options, or override certain DHCP-provided settings. NetworkManager gives you full control over all of this.
+DHCP is the default network configuration method for most RHEL installations. While it "just works" in many cases, there are plenty of situations where you need to customize how the DHCP client behaves. Maybe you need to send a specific hostname to the DHCP server, request additional options, or override certain DHCP-provided settings. NetworkManager gives you full control over all of this.
 
 ## How DHCP Works with NetworkManager
 
-On RHEL 9, NetworkManager includes its own internal DHCP client. By default, it uses the built-in client rather than an external one like dhclient. When a connection with `ipv4.method auto` is activated, NetworkManager's DHCP client broadcasts a DHCPDISCOVER, receives an offer, and configures the interface automatically.
+On RHEL, NetworkManager includes its own internal DHCP client. By default, it uses the built-in client rather than an external one like dhclient. When a connection with `ipv4.method auto` is activated, NetworkManager's DHCP client broadcasts a DHCPDISCOVER, receives an offer, and configures the interface automatically.
 
 ```mermaid
 sequenceDiagram
@@ -43,7 +43,7 @@ nmcli connection up dhcp-primary
 
 ## Choosing the DHCP Client
 
-NetworkManager on RHEL 9 supports two DHCP clients:
+NetworkManager on RHEL supports two DHCP clients:
 
 - **internal** (default) - NetworkManager's built-in DHCP client
 - **dhclient** - The ISC DHCP client (must be installed separately)
@@ -282,4 +282,4 @@ nmcli general logging level INFO domains DEFAULT
 
 ## Wrapping Up
 
-DHCP on RHEL 9 is managed entirely through NetworkManager, and the configuration options cover everything from basic automatic addressing to fine-grained control over what the client sends and accepts. The most common customizations are sending a hostname, overriding DNS servers, and adjusting timeouts. For most production servers, you will eventually switch to static IPs anyway, but for development environments, DHCP with a few tweaks is usually all you need.
+DHCP on RHEL is managed entirely through NetworkManager, and the configuration options cover everything from basic automatic addressing to fine-grained control over what the client sends and accepts. The most common customizations are sending a hostname, overriding DNS servers, and adjusting timeouts. For most production servers, you will eventually switch to static IPs anyway, but for development environments, DHCP with a few tweaks is usually all you need.

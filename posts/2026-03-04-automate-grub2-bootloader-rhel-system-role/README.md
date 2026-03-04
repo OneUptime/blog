@@ -1,10 +1,10 @@
-# How to Automate GRUB2 Configuration Using the bootloader RHEL System Role on RHEL 9
+# How to Automate GRUB2 Configuration Using the bootloader RHEL System Role on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GRUB2, Ansible, System Roles, Linux
 
-Description: Learn how to use the RHEL bootloader system role to automate GRUB2 configuration across multiple RHEL 9 servers with Ansible, including kernel parameter management and boot loader settings.
+Description: Learn how to use the RHEL bootloader system role to automate GRUB2 configuration across multiple RHEL servers with Ansible, including kernel parameter management and boot loader settings.
 
 ---
 
@@ -61,7 +61,7 @@ EOF
 ```yaml
 # bootloader-config.yml
 ---
-- name: Configure boot loader settings on RHEL 9 servers
+- name: Configure boot loader settings on RHEL servers
   hosts: all
   become: true
   roles:

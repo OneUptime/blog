@@ -1,10 +1,10 @@
-# How to Configure Email Relay Through Office 365 Using Postfix on RHEL 9
+# How to Configure Email Relay Through Office 365 Using Postfix on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, Office 365, Email Relay, Linux
 
-Description: Configure Postfix on RHEL 9 to relay outgoing email through Microsoft Office 365 (Microsoft 365) SMTP servers for reliable email delivery.
+Description: Configure Postfix on RHEL to relay outgoing email through Microsoft Office 365 (Microsoft 365) SMTP servers for reliable email delivery.
 
 ---
 
@@ -24,7 +24,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 with Postfix installed
+- RHEL with Postfix installed
 - An Office 365 account with a valid license that can send email
 - The account must have SMTP AUTH enabled (it is disabled by default in modern tenants)
 

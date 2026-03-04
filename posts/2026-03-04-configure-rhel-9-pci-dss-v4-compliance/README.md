@@ -1,16 +1,16 @@
-# How to Configure RHEL 9 for PCI-DSS v4.0 Compliance
+# How to Configure RHEL for PCI-DSS v4.0 Compliance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, PCI-DSS, Compliance, Security, Linux
 
-Description: Configure RHEL 9 to meet PCI-DSS v4.0 requirements, covering encryption, access control, logging, and network security controls.
+Description: Configure RHEL to meet PCI-DSS v4.0 requirements, covering encryption, access control, logging, and network security controls.
 
 ---
 
-PCI-DSS v4.0 raised the bar for systems that handle payment card data. If your RHEL 9 servers are in scope for PCI compliance, whether they process, store, or transmit cardholder data, they need to meet specific technical requirements. This guide maps the key PCI-DSS v4.0 requirements to practical RHEL 9 configurations.
+PCI-DSS v4.0 raised the bar for systems that handle payment card data. If your RHEL servers are in scope for PCI compliance, whether they process, store, or transmit cardholder data, they need to meet specific technical requirements. This guide maps the key PCI-DSS v4.0 requirements to practical RHEL configurations.
 
-## PCI-DSS v4.0 Requirements Mapped to RHEL 9
+## PCI-DSS v4.0 Requirements Mapped to RHEL
 
 ```mermaid
 flowchart TD
@@ -26,7 +26,7 @@ flowchart TD
 
 ## Use the PCI-DSS OpenSCAP Profile
 
-RHEL 9's SCAP Security Guide includes a PCI-DSS profile:
+RHEL's SCAP Security Guide includes a PCI-DSS profile:
 
 ```bash
 # Install OpenSCAP and SSG
@@ -303,4 +303,4 @@ echo "Pass: $(grep -c 'result="pass"' /var/log/compliance/pci-final.xml)"
 echo "Fail: $(grep -c 'result="fail"' /var/log/compliance/pci-final.xml)"
 ```
 
-PCI-DSS v4.0 compliance on RHEL 9 is achievable with the right configuration. The key is to use the built-in tools, scan regularly, and keep your documentation current. Auditors appreciate systems where the compliance evidence is generated automatically.
+PCI-DSS v4.0 compliance on RHEL is achievable with the right configuration. The key is to use the built-in tools, scan regularly, and keep your documentation current. Auditors appreciate systems where the compliance evidence is generated automatically.

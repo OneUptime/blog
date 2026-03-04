@@ -1,10 +1,10 @@
-# How to Set Up Mail Server Anti-Virus Scanning with ClamAV on RHEL 9
+# How to Set Up Mail Server Anti-Virus Scanning with ClamAV on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ClamAV, Anti-Virus, Mail Server, Linux
 
-Description: Install and integrate ClamAV with Postfix on RHEL 9 to scan incoming and outgoing email for viruses and malware.
+Description: Install and integrate ClamAV with Postfix on RHEL to scan incoming and outgoing email for viruses and malware.
 
 ---
 
@@ -25,7 +25,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 with Postfix installed and running
+- RHEL with Postfix installed and running
 - EPEL repository enabled (ClamAV packages are in EPEL)
 - Sufficient disk space for virus definitions (about 400 MB)
 

@@ -1,10 +1,10 @@
-# How to List and Clean the DNF Cache on RHEL 9
+# How to List and Clean the DNF Cache on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, DNF, Cache, Package Management, Linux
 
-Description: Learn how to manage the DNF package cache on RHEL 9, including listing cached data, cleaning metadata and packages, and configuring cache behavior for different environments.
+Description: Learn how to manage the DNF package cache on RHEL, including listing cached data, cleaning metadata and packages, and configuring cache behavior for different environments.
 
 ---
 

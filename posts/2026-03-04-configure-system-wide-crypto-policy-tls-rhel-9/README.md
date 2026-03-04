@@ -1,10 +1,10 @@
-# How to Configure the System-Wide Crypto Policy for TLS on RHEL 9
+# How to Configure the System-Wide Crypto Policy for TLS on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Crypto Policy, TLS, Security, Linux
 
-Description: Learn how to use RHEL 9's system-wide cryptographic policies to control TLS versions, cipher suites, and key lengths across all applications.
+Description: Learn how to use RHEL's system-wide cryptographic policies to control TLS versions, cipher suites, and key lengths across all applications.
 
 ---
 
@@ -14,7 +14,7 @@ This post explains how these policies work, how to switch between them, and how 
 
 ## How Crypto Policies Work
 
-RHEL 9 ships with a framework managed by the `crypto-policies` package. When you set a policy, it generates configuration files that various cryptographic libraries read. This means you do not need to manually edit cipher lists in httpd.conf, sshd_config, and every other service config file.
+RHEL ships with a framework managed by the `crypto-policies` package. When you set a policy, it generates configuration files that various cryptographic libraries read. This means you do not need to manually edit cipher lists in httpd.conf, sshd_config, and every other service config file.
 
 ```mermaid
 graph TD
@@ -36,11 +36,11 @@ graph TD
 update-crypto-policies --show
 ```
 
-On a fresh RHEL 9 install, this returns `DEFAULT`.
+On a fresh RHEL install, this returns `DEFAULT`.
 
 ## Available Built-in Policies
 
-RHEL 9 ships with four standard policies:
+RHEL ships with four standard policies:
 
 | Policy | TLS Minimum | Key Sizes | Use Case |
 |--------|-------------|-----------|----------|
@@ -239,7 +239,7 @@ See what sub-policy modules are already available:
 ls /usr/share/crypto-policies/policies/modules/
 ```
 
-RHEL 9 ships with several useful ones like `NO-SHA1`, `OSPP`, `NO-CAMELLIA`, and others.
+RHEL ships with several useful ones like `NO-SHA1`, `OSPP`, `NO-CAMELLIA`, and others.
 
 ## Auditing Crypto Policy Compliance
 
@@ -262,4 +262,4 @@ sudo update-crypto-policies --set DEFAULT
 
 ## Wrapping Up
 
-RHEL 9's system-wide crypto policy is one of those features that saves you from yourself. Instead of playing whack-a-mole with cipher configurations across dozens of services, you set it once and it propagates everywhere. Use sub-policies for fine-tuning, test thoroughly after changes, and keep your policy as strict as your environment allows.
+RHEL's system-wide crypto policy is one of those features that saves you from yourself. Instead of playing whack-a-mole with cipher configurations across dozens of services, you set it once and it propagates everywhere. Use sub-policies for fine-tuning, test thoroughly after changes, and keep your policy as strict as your environment allows.

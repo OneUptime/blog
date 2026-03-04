@@ -1,10 +1,10 @@
-# How to Configure SSH Tunneling and Port Forwarding on RHEL 9
+# How to Configure SSH Tunneling and Port Forwarding on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Tunneling, Port Forwarding, Linux
 
-Description: Set up SSH local, remote, and dynamic port forwarding on RHEL 9 to securely access services behind firewalls and encrypt network traffic.
+Description: Set up SSH local, remote, and dynamic port forwarding on RHEL to securely access services behind firewalls and encrypt network traffic.
 
 ---
 

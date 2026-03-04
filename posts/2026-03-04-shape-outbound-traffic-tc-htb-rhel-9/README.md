@@ -1,14 +1,14 @@
-# How to Shape Outbound Traffic with tc htb on RHEL 9
+# How to Shape Outbound Traffic with tc htb on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, tc htb, Traffic Shaping, Linux
 
-Description: A detailed guide to using Hierarchical Token Bucket (HTB) with tc on RHEL 9 for sophisticated outbound traffic shaping, covering class hierarchies, bandwidth borrowing, burst handling, and real-world configurations.
+Description: A detailed guide to using Hierarchical Token Bucket (HTB) with tc on RHEL for sophisticated outbound traffic shaping, covering class hierarchies, bandwidth borrowing, burst handling, and real-world configurations.
 
 ---
 
-HTB (Hierarchical Token Bucket) is the most widely used classful qdisc in Linux traffic shaping. It lets you build a tree of bandwidth allocations where each class has a guaranteed minimum rate and can borrow unused bandwidth from siblings. On RHEL 9, it's the foundation for any serious QoS deployment.
+HTB (Hierarchical Token Bucket) is the most widely used classful qdisc in Linux traffic shaping. It lets you build a tree of bandwidth allocations where each class has a guaranteed minimum rate and can borrow unused bandwidth from siblings. On RHEL, it's the foundation for any serious QoS deployment.
 
 ## How HTB Works
 
@@ -174,7 +174,7 @@ The `burst` parameter determines how much data can be sent at line rate before t
 
 ```bash
 # Burst should be at least: rate / HZ
-# HZ on RHEL 9 is typically 1000
+# HZ on RHEL is typically 1000
 # For 400 Mbit rate: 400,000,000 / 8 / 1000 = 50,000 bytes = ~50KB
 
 # Safe burst value for 400 Mbit
@@ -257,4 +257,4 @@ tc qdisc show dev ens192 | grep default
 
 ## Wrapping Up
 
-HTB on RHEL 9 is the go-to solution for outbound traffic shaping when you need per-service bandwidth guarantees. The hierarchy lets you model your bandwidth allocation to match your priorities, and the borrowing mechanism ensures bandwidth isn't wasted when a class is idle. Combine it with fq_codel on the leaf classes, and you get both inter-class fairness and intra-class fairness. Start with a simple flat hierarchy, add complexity as needed, and always monitor with `tc -s class show` to verify traffic is being classified correctly.
+HTB on RHEL is the go-to solution for outbound traffic shaping when you need per-service bandwidth guarantees. The hierarchy lets you model your bandwidth allocation to match your priorities, and the borrowing mechanism ensures bandwidth isn't wasted when a class is idle. Combine it with fq_codel on the leaf classes, and you get both inter-class fairness and intra-class fairness. Start with a simple flat hierarchy, add complexity as needed, and always monitor with `tc -s class show` to verify traffic is being classified correctly.

@@ -1,20 +1,20 @@
-# How to Mount SMB/CIFS Shares on RHEL 9 Linux Clients
+# How to Mount SMB/CIFS Shares on RHEL Linux Clients
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SMB, CIFS, Mounting, Linux
 
-Description: Mount Windows or Samba SMB/CIFS shares on RHEL 9 Linux clients, covering manual mounts, persistent fstab entries, and credential management.
+Description: Mount Windows or Samba SMB/CIFS shares on RHEL Linux clients, covering manual mounts, persistent fstab entries, and credential management.
 
 ---
 
 ## Accessing SMB Shares from Linux
 
-Linux can mount SMB/CIFS shares from Windows servers, Samba servers, or NAS devices. On RHEL 9, the cifs-utils package provides the mount.cifs helper that handles the connection.
+Linux can mount SMB/CIFS shares from Windows servers, Samba servers, or NAS devices. On RHEL, the cifs-utils package provides the mount.cifs helper that handles the connection.
 
 ## Prerequisites
 
-- RHEL 9 with root access
+- RHEL with root access
 - An SMB/CIFS share accessible on the network
 - Valid credentials for the share (unless it allows guest access)
 
@@ -134,7 +134,7 @@ sudo mount -t cifs //fileserver.example.com/shared /mnt/smb-share -o sec=krb5,cr
 
 ```mermaid
 graph LR
-    Client[RHEL 9 Client] -->|mount.cifs| K[Kernel CIFS Module]
+    Client[RHEL Client] -->|mount.cifs| K[Kernel CIFS Module]
     K -->|SMB Protocol| Server[SMB Server]
     Cred[Credentials File] --> K
     FSTAB[/etc/fstab] --> K
@@ -152,7 +152,7 @@ sudo mount -t cifs //192.168.1.10/public /mnt/public -o username=guest,password=
 
 ## SMB Protocol Versions
 
-RHEL 9 defaults to SMB 3.0. You can force specific versions:
+RHEL defaults to SMB 3.0. You can force specific versions:
 
 ```bash
 # Force SMB 3.0
@@ -190,4 +190,4 @@ sudo umount -l /mnt/smb-share
 
 ## Wrap-Up
 
-Mounting SMB/CIFS shares on RHEL 9 is straightforward with cifs-utils. Use credentials files instead of putting passwords in fstab, include `_netdev` and `nofail` for persistent mounts, and specify the SMB version when connecting to older servers. For domain environments, Kerberos authentication provides the cleanest integration.
+Mounting SMB/CIFS shares on RHEL is straightforward with cifs-utils. Use credentials files instead of putting passwords in fstab, include `_netdev` and `nofail` for persistent mounts, and specify the SMB version when connecting to older servers. For domain environments, Kerberos authentication provides the cleanest integration.

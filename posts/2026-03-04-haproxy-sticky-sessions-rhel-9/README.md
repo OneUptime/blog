@@ -1,10 +1,10 @@
-# How to Configure HAProxy Sticky Sessions on RHEL 9
+# How to Configure HAProxy Sticky Sessions on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, Sticky Sessions, Linux
 
-Description: How to configure session persistence in HAProxy on RHEL 9 using cookies, source IP, and other methods to ensure clients stick to the same backend server.
+Description: How to configure session persistence in HAProxy on RHEL using cookies, source IP, and other methods to ensure clients stick to the same backend server.
 
 ---
 
@@ -16,7 +16,7 @@ The better long-term solution is to make your application stateless or use a sha
 
 ## Prerequisites
 
-- RHEL 9 with HAProxy installed
+- RHEL with HAProxy installed
 - Multiple backend servers
 - Root or sudo access
 

@@ -1,14 +1,14 @@
-# How to Set Up Kerberos Client Authentication on RHEL 9
+# How to Set Up Kerberos Client Authentication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kerberos, Client, Authentication, Linux
 
-Description: A practical guide to configuring RHEL 9 systems as Kerberos clients, covering krb5.conf setup, ticket management, keytab configuration, and PAM integration.
+Description: A practical guide to configuring RHEL systems as Kerberos clients, covering krb5.conf setup, ticket management, keytab configuration, and PAM integration.
 
 ---
 
-Configuring a RHEL 9 system as a Kerberos client means setting it up to authenticate users and services against a Kerberos KDC. Whether your KDC is a standalone MIT Kerberos server, FreeIPA, or Active Directory, the client-side configuration follows the same pattern. This guide covers the full setup.
+Configuring a RHEL system as a Kerberos client means setting it up to authenticate users and services against a Kerberos KDC. Whether your KDC is a standalone MIT Kerberos server, FreeIPA, or Active Directory, the client-side configuration follows the same pattern. This guide covers the full setup.
 
 ## Step 1 - Install Kerberos Client Packages
 
@@ -136,7 +136,7 @@ Alternatively, for direct PAM/Kerberos integration without SSSD:
 sudo dnf install pam_krb5 -y
 ```
 
-Note: SSSD is the recommended approach on RHEL 9 for most scenarios.
+Note: SSSD is the recommended approach on RHEL for most scenarios.
 
 ## Step 6 - Manage Kerberos Tickets
 
@@ -184,7 +184,7 @@ klist
 
 ## Step 7 - Configure the KCM Credential Cache
 
-RHEL 9 supports the KCM (Kerberos Credential Manager) cache, which is managed by sssd-kcm. This provides persistent credential storage that survives logouts.
+RHEL supports the KCM (Kerberos Credential Manager) cache, which is managed by sssd-kcm. This provides persistent credential storage that survives logouts.
 
 ```bash
 # Install sssd-kcm
@@ -278,4 +278,4 @@ If your system needs to authenticate against multiple Kerberos realms:
 kinit jsmith@OTHER.COM
 ```
 
-Kerberos client configuration on RHEL 9 is straightforward. The main things to get right are the realm name in krb5.conf, DNS or explicit KDC addresses, time synchronization, and the keytab for service authentication. Once those are in place, ticket-based SSO just works.
+Kerberos client configuration on RHEL is straightforward. The main things to get right are the realm name in krb5.conf, DNS or explicit KDC addresses, time synchronization, and the keytab for service authentication. Once those are in place, ticket-based SSO just works.

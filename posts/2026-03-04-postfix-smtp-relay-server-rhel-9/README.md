@@ -1,10 +1,10 @@
-# How to Configure Postfix as an SMTP Relay Server on RHEL 9
+# How to Configure Postfix as an SMTP Relay Server on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, SMTP Relay, Linux
 
-Description: Set up Postfix as a centralized SMTP relay server on RHEL 9 that accepts mail from internal hosts and delivers it to the internet.
+Description: Set up Postfix as a centralized SMTP relay server on RHEL that accepts mail from internal hosts and delivers it to the internet.
 
 ---
 
@@ -28,7 +28,7 @@ graph LR
 
 ## Prerequisites
 
-- RHEL 9 with root or sudo access
+- RHEL with root or sudo access
 - A static IP with proper PTR record
 - DNS MX record (if receiving mail) or just A record for sending
 - Port 25 open outbound to the internet

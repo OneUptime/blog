@@ -1,10 +1,10 @@
-# How to Create a Network Bridge for KVM Virtual Machines on RHEL 9
+# How to Create a Network Bridge for KVM Virtual Machines on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Network Bridge, KVM, Virtualization, Linux
 
-Description: Step-by-step guide to creating a network bridge on RHEL 9 that lets KVM virtual machines appear directly on your physical network with their own IP addresses.
+Description: Step-by-step guide to creating a network bridge on RHEL that lets KVM virtual machines appear directly on your physical network with their own IP addresses.
 
 ---
 
@@ -27,7 +27,7 @@ The bridge acts like a virtual switch. Your physical NIC and the virtual NICs fr
 
 ## Prerequisites
 
-- RHEL 9 with KVM installed (qemu-kvm, libvirt)
+- RHEL with KVM installed (qemu-kvm, libvirt)
 - At least one physical NIC
 - Root or sudo access
 - Console access (recommended, since you are modifying the network config of the interface you are likely connected through)
@@ -211,4 +211,4 @@ bridge link show | grep eth0
 
 ## Summary
 
-Creating a network bridge for KVM on RHEL 9 involves making a bridge interface, moving your IP config to it, enslaving your physical NIC, and telling libvirt about the new bridge. Once set up, every VM connected to the bridge gets direct access to your physical network. Plan for a brief network interruption during setup, and always have console access when modifying the network config of your management interface.
+Creating a network bridge for KVM on RHEL involves making a bridge interface, moving your IP config to it, enslaving your physical NIC, and telling libvirt about the new bridge. Once set up, every VM connected to the bridge gets direct access to your physical network. Plan for a brief network interruption during setup, and always have console access when modifying the network config of your management interface.

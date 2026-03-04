@@ -1,10 +1,10 @@
-# How to Set Up Nginx with WebSocket Proxying on RHEL 9
+# How to Set Up Nginx with WebSocket Proxying on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, WebSocket, Proxy, Linux
 
-Description: How to configure Nginx to proxy WebSocket connections on RHEL 9 for real-time applications.
+Description: How to configure Nginx to proxy WebSocket connections on RHEL for real-time applications.
 
 ---
 
@@ -16,7 +16,7 @@ Nginx can proxy WebSocket connections, but it needs specific configuration becau
 
 ## Prerequisites
 
-- RHEL 9 with Nginx installed
+- RHEL with Nginx installed
 - A WebSocket backend application running
 - Root or sudo access
 - SELinux boolean `httpd_can_network_connect` enabled

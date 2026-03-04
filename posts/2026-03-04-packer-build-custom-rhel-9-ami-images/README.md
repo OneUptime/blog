@@ -1,10 +1,10 @@
-# How to Use Packer to Build Custom RHEL 9 AMI Images
+# How to Use Packer to Build Custom RHEL AMI Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Packer, AMI, AWS, Image Building, Linux
 
-Description: Build hardened, pre-configured RHEL 9 AMI images using HashiCorp Packer for faster and more consistent EC2 deployments.
+Description: Build hardened, pre-configured RHEL AMI images using HashiCorp Packer for faster and more consistent EC2 deployments.
 
 ---
 
@@ -22,7 +22,7 @@ graph LR
     D --> G[Create AMI Snapshot]
     E --> G
     F --> G
-    G --> H[Custom RHEL 9 AMI]
+    G --> H[Custom RHEL AMI]
 ```
 
 ## Install Packer
@@ -41,7 +41,7 @@ packer version
 ## Create the Packer Template
 
 ```hcl
-# rhel9-ami.pkr.hcl - Packer template for RHEL 9 AMI
+# rhel9-ami.pkr.hcl - Packer template for RHEL AMI
 
 packer {
   required_plugins {
@@ -68,7 +68,7 @@ variable "ami_name_prefix" {
   default = "rhel9-custom"
 }
 
-# Find the latest RHEL 9 base AMI
+# Find the latest RHEL base AMI
 source "amazon-ebs" "rhel9" {
   ami_name      = "${var.ami_name_prefix}-{{timestamp}}"
   instance_type = var.instance_type
@@ -91,7 +91,7 @@ source "amazon-ebs" "rhel9" {
   # Tag the resulting AMI
   tags = {
     Name        = "${var.ami_name_prefix}"
-    OS          = "RHEL 9"
+    OS          = "RHEL"
     BuildDate   = "{{timestamp}}"
     Builder     = "Packer"
   }
@@ -177,7 +177,7 @@ mkdir -p files
 
 # Create a hardened sshd_config
 cat > files/sshd_config << 'EOF'
-# Hardened SSH configuration for RHEL 9
+# Hardened SSH configuration for RHEL
 Port 22
 Protocol 2
 PermitRootLogin no
@@ -242,7 +242,7 @@ resource "aws_instance" "app_server" {
 
 ```bash
 #!/bin/bash
-# build-ami.sh - Build and tag the custom RHEL 9 AMI
+# build-ami.sh - Build and tag the custom RHEL AMI
 
 set -euo pipefail
 
@@ -259,4 +259,4 @@ GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 aws ec2 create-tags --resources "$AMI_ID" --tags "Key=GitCommit,Value=$GIT_COMMIT"
 ```
 
-Packer and Terraform work together naturally. Packer builds the golden image, and Terraform deploys instances from it. Your RHEL 9 servers launch in seconds instead of minutes, with every package and configuration already in place.
+Packer and Terraform work together naturally. Packer builds the golden image, and Terraform deploys instances from it. Your RHEL servers launch in seconds instead of minutes, with every package and configuration already in place.

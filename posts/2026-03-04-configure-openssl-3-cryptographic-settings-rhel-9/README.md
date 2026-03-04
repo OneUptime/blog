@@ -1,14 +1,14 @@
-# How to Configure OpenSSL 3.0 Cryptographic Settings on RHEL 9
+# How to Configure OpenSSL 3.0 Cryptographic Settings on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, OpenSSL, Cryptography, Security, FIPS, Linux
 
-Description: A practical guide to configuring OpenSSL 3.0 on RHEL 9, covering the provider architecture, FIPS module, system-wide crypto policies, deprecated algorithms, and common migration issues.
+Description: A practical guide to configuring OpenSSL 3.0 on RHEL, covering the provider architecture, FIPS module, system-wide crypto policies, deprecated algorithms, and common migration issues.
 
 ---
 
-RHEL 9 ships with OpenSSL 3.0, and if you are coming from RHEL 8 (which had OpenSSL 1.1.1), there are some significant changes to be aware of. The biggest one is the new provider architecture, which fundamentally changes how cryptographic algorithms are loaded and used. Then there is the FIPS module, system-wide crypto policies, and a bunch of deprecated algorithms that might break older applications.
+RHEL ships with OpenSSL 3.0, and if you are coming from RHEL 8 (which had OpenSSL 1.1.1), there are some significant changes to be aware of. The biggest one is the new provider architecture, which fundamentally changes how cryptographic algorithms are loaded and used. Then there is the FIPS module, system-wide crypto policies, and a bunch of deprecated algorithms that might break older applications.
 
 I have spent a lot of time getting applications working correctly after the OpenSSL 3.0 transition, so let me share what I have learned.
 
@@ -44,7 +44,7 @@ flowchart TD
 openssl version -a
 ```
 
-On RHEL 9, you should see something like:
+On RHEL, you should see something like:
 
 ```
 OpenSSL 3.0.7 1 Nov 2022 (Library: OpenSSL 3.0.7 1 Nov 2022)
@@ -52,7 +52,7 @@ OpenSSL 3.0.7 1 Nov 2022 (Library: OpenSSL 3.0.7 1 Nov 2022)
 
 ## Understanding the openssl.cnf Configuration
 
-The main configuration file is at `/etc/pki/tls/openssl.cnf`. On RHEL 9, it includes a provider configuration section.
+The main configuration file is at `/etc/pki/tls/openssl.cnf`. On RHEL, it includes a provider configuration section.
 
 ```bash
 # View the configuration file
@@ -156,7 +156,7 @@ OPENSSL_CONF=/etc/pki/tls/openssl-legacy.cnf openssl dgst -md4 somefile
 
 ## Configuring the FIPS Provider
 
-For environments that require FIPS 140-3 compliance, RHEL 9 provides a validated FIPS provider.
+For environments that require FIPS 140-3 compliance, RHEL provides a validated FIPS provider.
 
 ### Enabling FIPS Mode System-Wide
 
@@ -214,7 +214,7 @@ sudo systemctl reboot
 
 ## System-Wide Crypto Policies
 
-RHEL 9 uses `update-crypto-policies` to manage cryptographic settings across all applications (OpenSSL, GnuTLS, NSS, etc.) from a single place.
+RHEL uses `update-crypto-policies` to manage cryptographic settings across all applications (OpenSSL, GnuTLS, NSS, etc.) from a single place.
 
 ### Available Policies
 
@@ -371,4 +371,4 @@ openssl s_client -connect localhost:443 -cipher RC4-SHA 2>&1
 
 ## Summary
 
-OpenSSL 3.0 on RHEL 9 brings a significant architectural change with the provider system, and it tightens security by moving legacy algorithms out of the default configuration. For most deployments, the defaults work well. If you need FIPS compliance, the FIPS provider and `fips-mode-setup` make it straightforward. If you need backward compatibility with older systems, the legacy provider and LEGACY crypto policy have you covered. The key is understanding which levers to pull and being deliberate about weakening defaults only when you have a genuine need.
+OpenSSL 3.0 on RHEL brings a significant architectural change with the provider system, and it tightens security by moving legacy algorithms out of the default configuration. For most deployments, the defaults work well. If you need FIPS compliance, the FIPS provider and `fips-mode-setup` make it straightforward. If you need backward compatibility with older systems, the legacy provider and LEGACY crypto policy have you covered. The key is understanding which levers to pull and being deliberate about weakening defaults only when you have a genuine need.

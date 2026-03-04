@@ -1,10 +1,10 @@
-# How to Configure HAProxy Health Checks for Backend Servers on RHEL 9
+# How to Configure HAProxy Health Checks for Backend Servers on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, Health Checks, Linux
 
-Description: How to set up active and passive health checks in HAProxy on RHEL 9 to automatically detect and route around failed backend servers.
+Description: How to set up active and passive health checks in HAProxy on RHEL to automatically detect and route around failed backend servers.
 
 ---
 
@@ -14,7 +14,7 @@ If a backend server goes down and HAProxy keeps sending traffic to it, your user
 
 ## Prerequisites
 
-- RHEL 9 with HAProxy installed
+- RHEL with HAProxy installed
 - Backend servers with a health check endpoint
 - Root or sudo access
 

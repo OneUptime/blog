@@ -1,14 +1,14 @@
-# How to Validate STIG Compliance on RHEL 9 with Chef InSpec
+# How to Validate STIG Compliance on RHEL with Chef InSpec
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, STIG, Chef InSpec, Compliance, Linux
 
-Description: Validate DISA STIG compliance on RHEL 9 using Chef InSpec profiles, providing an alternative to OpenSCAP for compliance testing and continuous auditing.
+Description: Validate DISA STIG compliance on RHEL using Chef InSpec profiles, providing an alternative to OpenSCAP for compliance testing and continuous auditing.
 
 ---
 
-Chef InSpec is a testing framework that lets you write human-readable compliance checks. Unlike OpenSCAP, which relies on XCCDF/OVAL content, InSpec uses a Ruby-based DSL that is easier to customize and extend. The MITRE SAF (Security Automation Framework) team maintains an InSpec profile for the RHEL 9 STIG, making it a solid alternative for organizations already using the Chef ecosystem.
+Chef InSpec is a testing framework that lets you write human-readable compliance checks. Unlike OpenSCAP, which relies on XCCDF/OVAL content, InSpec uses a Ruby-based DSL that is easier to customize and extend. The MITRE SAF (Security Automation Framework) team maintains an InSpec profile for the RHEL STIG, making it a solid alternative for organizations already using the Chef ecosystem.
 
 ## Install Chef InSpec
 
@@ -23,12 +23,12 @@ inspec version
 inspec --chef-license=accept
 ```
 
-## Get the RHEL 9 STIG InSpec Profile
+## Get the RHEL STIG InSpec Profile
 
 The MITRE SAF team publishes InSpec profiles on GitHub:
 
 ```bash
-# Clone the RHEL 9 STIG InSpec profile
+# Clone the RHEL STIG InSpec profile
 git clone https://github.com/CMSgov/redhat-enterprise-linux-9-stig-baseline.git \
   /opt/rhel9-stig-inspec
 
@@ -72,7 +72,7 @@ inspec exec . \
 InSpec can scan remote systems over SSH:
 
 ```bash
-# Scan a remote RHEL 9 host
+# Scan a remote RHEL host
 inspec exec /opt/rhel9-stig-inspec \
   -t ssh://sysadmin@server1.example.com \
   --sudo \
@@ -93,7 +93,7 @@ Each STIG control is written as a readable test:
 ```ruby
 # Example InSpec control for STIG V-257987 (no root SSH login)
 control 'V-257987' do
-  title 'RHEL 9 must not allow direct root login via SSH'
+  title 'RHEL must not allow direct root login via SSH'
   desc 'Even though root login is disabled by default, explicitly
         setting this prevents accidental re-enablement.'
   impact 0.7

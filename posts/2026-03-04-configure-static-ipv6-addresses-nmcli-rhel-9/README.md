@@ -1,21 +1,21 @@
-# How to Configure Static IPv6 Addresses with nmcli on RHEL 9
+# How to Configure Static IPv6 Addresses with nmcli on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IPv6, nmcli, Networking, Linux
 
-Description: A hands-on guide to assigning static IPv6 addresses to network interfaces on RHEL 9 using nmcli, covering address configuration, gateway setup, DNS settings, and verification.
+Description: A hands-on guide to assigning static IPv6 addresses to network interfaces on RHEL using nmcli, covering address configuration, gateway setup, DNS settings, and verification.
 
 ---
 
-If your infrastructure is moving toward IPv6 (and honestly, it should be), knowing how to set static addresses from the command line is one of those skills you'll use constantly. NetworkManager's nmcli tool makes this straightforward on RHEL 9, and once you get the hang of it, you'll prefer it over editing config files by hand.
+If your infrastructure is moving toward IPv6 (and honestly, it should be), knowing how to set static addresses from the command line is one of those skills you'll use constantly. NetworkManager's nmcli tool makes this straightforward on RHEL, and once you get the hang of it, you'll prefer it over editing config files by hand.
 
 ## Prerequisites
 
 Before you start, make sure you have:
 
-- A RHEL 9 system with root or sudo access
-- NetworkManager running (it is by default on RHEL 9)
+- A RHEL system with root or sudo access
+- NetworkManager running (it is by default on RHEL)
 - An IPv6 address block assigned to your network
 - Basic familiarity with IPv6 notation
 
@@ -193,4 +193,4 @@ ip -6 addr show dev ens192
 
 ## Wrapping Up
 
-Static IPv6 configuration with nmcli on RHEL 9 is clean and predictable. The workflow is always the same: modify the connection, bring it up, verify. Once you've done it a few times, it becomes second nature. The key things to remember are using `manual` for the method, always specifying the prefix length with your address, and using the `+` prefix when you need to add addresses without replacing existing ones.
+Static IPv6 configuration with nmcli on RHEL is clean and predictable. The workflow is always the same: modify the connection, bring it up, verify. Once you've done it a few times, it becomes second nature. The key things to remember are using `manual` for the method, always specifying the prefix length with your address, and using the `+` prefix when you need to add addresses without replacing existing ones.

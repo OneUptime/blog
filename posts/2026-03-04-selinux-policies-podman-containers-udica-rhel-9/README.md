@@ -1,16 +1,16 @@
-# How to Create SELinux Policies for Podman Containers Using udica on RHEL 9
+# How to Create SELinux Policies for Podman Containers Using udica on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SELinux, Podman, udica, Containers, Linux
 
-Description: Use udica on RHEL 9 to generate custom SELinux policies for Podman containers, providing fine-grained security beyond the default container policy.
+Description: Use udica on RHEL to generate custom SELinux policies for Podman containers, providing fine-grained security beyond the default container policy.
 
 ---
 
 ## The Container SELinux Problem
 
-By default, Podman containers on RHEL 9 run with the `container_t` SELinux type. This generic policy works for most containers, but it is either too restrictive or too permissive depending on your needs. A container that needs to mount host volumes, access specific network ports, or interact with host devices might get blocked. On the flip side, `container_t` allows more than some containers actually need.
+By default, Podman containers on RHEL run with the `container_t` SELinux type. This generic policy works for most containers, but it is either too restrictive or too permissive depending on your needs. A container that needs to mount host volumes, access specific network ports, or interact with host devices might get blocked. On the flip side, `container_t` allows more than some containers actually need.
 
 `udica` solves this by generating custom SELinux policies tailored to each container's specific requirements.
 

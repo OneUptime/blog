@@ -1,16 +1,16 @@
-# How to Set Up Remote System Administration Using SSH on RHEL 9
+# How to Set Up Remote System Administration Using SSH on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Remote Administration, Security, Linux
 
-Description: A complete guide to setting up and hardening SSH for remote system administration on RHEL 9, covering key-based authentication, sshd configuration, SSH tunneling, and firewall rules.
+Description: A complete guide to setting up and hardening SSH for remote system administration on RHEL, covering key-based authentication, sshd configuration, SSH tunneling, and firewall rules.
 
 ---
 
 ## SSH Is Your Primary Remote Access Tool
 
-If you manage Linux servers, SSH is the backbone of your workflow. Every remote command, file transfer, and tunnel runs through it. On RHEL 9, OpenSSH is installed and enabled by default on most installation profiles, but the default configuration is not as locked down as it should be for production use.
+If you manage Linux servers, SSH is the backbone of your workflow. Every remote command, file transfer, and tunnel runs through it. On RHEL, OpenSSH is installed and enabled by default on most installation profiles, but the default configuration is not as locked down as it should be for production use.
 
 This guide walks through setting up SSH properly, from generating keys to hardening the configuration, so you can manage your servers securely.
 
@@ -38,7 +38,7 @@ Password authentication is the weakest link in SSH security. Key-based authentic
 On your workstation (not the server), generate a key pair.
 
 ```bash
-# Generate an Ed25519 key (recommended for RHEL 9)
+# Generate an Ed25519 key (recommended for RHEL)
 ssh-keygen -t ed25519 -C "admin@workstation"
 ```
 
@@ -194,7 +194,7 @@ sudo systemctl restart sshd
 
 ## Firewall Configuration
 
-RHEL 9 uses firewalld by default. Make sure SSH traffic is allowed.
+RHEL uses firewalld by default. Make sure SSH traffic is allowed.
 
 ```bash
 # Check current firewall rules
@@ -335,4 +335,4 @@ last -10
 
 ## Summary
 
-SSH on RHEL 9 is your gateway to remote server management. Start by setting up key-based authentication and disabling password login. Harden the sshd configuration by disabling root login, limiting authentication attempts, and restricting access by user or group. Use the firewall to control which networks can reach the SSH port. SSH tunneling extends your reach to services behind firewalls. With these basics in place, you have a secure, flexible foundation for managing your RHEL infrastructure remotely.
+SSH on RHEL is your gateway to remote server management. Start by setting up key-based authentication and disabling password login. Harden the sshd configuration by disabling root login, limiting authentication attempts, and restricting access by user or group. Use the firewall to control which networks can reach the SSH port. SSH tunneling extends your reach to services behind firewalls. With these basics in place, you have a secure, flexible foundation for managing your RHEL infrastructure remotely.

@@ -1,10 +1,10 @@
-# How to Configure SSH Agent Forwarding on RHEL 9
+# How to Configure SSH Agent Forwarding on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, Agent Forwarding, Linux
 
-Description: Set up SSH agent forwarding on RHEL 9 to use your local SSH keys on remote servers without copying private keys, including security considerations.
+Description: Set up SSH agent forwarding on RHEL to use your local SSH keys on remote servers without copying private keys, including security considerations.
 
 ---
 

@@ -1,10 +1,10 @@
-# How to Monitor RAID Array Health and Set Up Email Alerts on RHEL 9
+# How to Monitor RAID Array Health and Set Up Email Alerts on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RAID, Monitoring, Alerts, Linux
 
-Description: Set up proactive RAID monitoring with mdadm on RHEL 9, including email alerts for disk failures, degraded arrays, and scheduled scrubs.
+Description: Set up proactive RAID monitoring with mdadm on RHEL, including email alerts for disk failures, degraded arrays, and scheduled scrubs.
 
 ---
 
@@ -63,7 +63,7 @@ echo "RAID monitoring test" | mail -s "Test Alert" admin@example.com
 
 ### Step 3 - Start the Monitor
 
-On RHEL 9, the mdadm monitor runs via the mdmonitor systemd service.
+On RHEL, the mdadm monitor runs via the mdmonitor systemd service.
 
 ```bash
 # Enable and start the monitor service
@@ -130,7 +130,7 @@ echo "*/5 * * * * root /usr/local/bin/check-raid.sh" | sudo tee /etc/cron.d/raid
 
 ## Scheduled RAID Scrubs
 
-RHEL 9 includes a weekly RAID scrub that checks for data consistency. This runs via a systemd timer.
+RHEL includes a weekly RAID scrub that checks for data consistency. This runs via a systemd timer.
 
 ```bash
 # Check the scrub timer status
@@ -192,4 +192,4 @@ journalctl -t mdadm --since "7 days ago"
 
 ## Wrap-Up
 
-RAID monitoring on RHEL 9 takes about 10 minutes to set up and can save you from a catastrophic data loss. Enable the mdmonitor service, configure email alerts, run regular scrubs, and combine with SMART monitoring for full coverage. The best time to find out about a disk failure is when it happens, not when the second disk fails.
+RAID monitoring on RHEL takes about 10 minutes to set up and can save you from a catastrophic data loss. Enable the mdmonitor service, configure email alerts, run regular scrubs, and combine with SMART monitoring for full coverage. The best time to find out about a disk failure is when it happens, not when the second disk fails.

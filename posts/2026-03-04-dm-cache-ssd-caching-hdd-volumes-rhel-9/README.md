@@ -1,10 +1,10 @@
-# How to Set Up dm-cache for SSD Caching of HDD Volumes on RHEL 9
+# How to Set Up dm-cache for SSD Caching of HDD Volumes on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, dm-cache, SSD, Caching, Linux
 
-Description: Learn how to use dm-cache on RHEL 9 to accelerate HDD storage with SSD caching, combining HDD capacity with SSD speed.
+Description: Learn how to use dm-cache on RHEL to accelerate HDD storage with SSD caching, combining HDD capacity with SSD speed.
 
 ---
 
@@ -141,7 +141,7 @@ lvchange --cachemode writethrough vg_data/lv_data
 
 dm-cache supports different policies for deciding what to cache:
 
-- **smq** (default on RHEL 9) - Stochastic multiqueue, good for most workloads
+- **smq** (default on RHEL) - Stochastic multiqueue, good for most workloads
 - **cleaner** - Flushes cache to prepare for removal
 
 ```bash
@@ -179,4 +179,4 @@ A healthy cache should have a hit ratio above 80% for random I/O workloads.
 
 ## Summary
 
-dm-cache on RHEL 9 lets you add SSD caching to HDD volumes with minimal disruption. Use `writethrough` mode for safety, `writeback` for performance with redundant SSDs. Size the cache at 10-20% of the origin for most workloads. Monitor hit ratios to verify the cache is effective, and use the `smq` policy for automatic workload adaptation.
+dm-cache on RHEL lets you add SSD caching to HDD volumes with minimal disruption. Use `writethrough` mode for safety, `writeback` for performance with redundant SSDs. Size the cache at 10-20% of the origin for most workloads. Monitor hit ratios to verify the cache is effective, and use the `smq` policy for automatic workload adaptation.

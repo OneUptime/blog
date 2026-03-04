@@ -1,10 +1,10 @@
-# How to Deploy a LAMP Stack with Ansible on RHEL 9
+# How to Deploy a LAMP Stack with Ansible on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, LAMP, Apache, MySQL, PHP, Linux
 
-Description: Automate the deployment of a complete LAMP stack (Linux, Apache, MariaDB, PHP) on RHEL 9 using Ansible playbooks.
+Description: Automate the deployment of a complete LAMP stack (Linux, Apache, MariaDB, PHP) on RHEL using Ansible playbooks.
 
 ---
 
@@ -25,7 +25,7 @@ graph TD
 
 ```yaml
 # playbook-lamp.yml
-# Deploy a complete LAMP stack on RHEL 9
+# Deploy a complete LAMP stack on RHEL
 ---
 - name: Deploy LAMP stack
   hosts: webservers

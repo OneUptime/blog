@@ -1,18 +1,18 @@
-# How to Deploy Redash for SQL-Based Data Visualization on RHEL 9
+# How to Deploy Redash for SQL-Based Data Visualization on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Redash, SQL, Data Visualization, Analytics, Linux
 
-Description: Deploy Redash on RHEL 9 to provide your team with a SQL-first data visualization tool for querying databases and sharing dashboards.
+Description: Deploy Redash on RHEL to provide your team with a SQL-first data visualization tool for querying databases and sharing dashboards.
 
 ---
 
-Redash is an open-source tool built around SQL queries. Analysts write SQL, Redash visualizes the results, and teams share the dashboards. It supports over 35 data sources and makes it simple to collaborate on data analysis. This guide covers deploying Redash on RHEL 9 using Docker Compose.
+Redash is an open-source tool built around SQL queries. Analysts write SQL, Redash visualizes the results, and teams share the dashboards. It supports over 35 data sources and makes it simple to collaborate on data analysis. This guide covers deploying Redash on RHEL using Docker Compose.
 
 ## Prerequisites
 
-- RHEL 9 with at least 4 GB RAM
+- RHEL with at least 4 GB RAM
 - Docker and Docker Compose installed
 - Root or sudo access
 
@@ -244,4 +244,4 @@ sudo docker compose up -d
 
 ## Conclusion
 
-Redash is now running on your RHEL 9 server, ready for your team to write SQL queries, build visualizations, and share dashboards. Its SQL-first approach makes it particularly well suited for teams with analysts who are comfortable writing queries. Set up scheduled refreshes for your most important dashboards and configure alerts to stay on top of critical business metrics.
+Redash is now running on your RHEL server, ready for your team to write SQL queries, build visualizations, and share dashboards. Its SQL-first approach makes it particularly well suited for teams with analysts who are comfortable writing queries. Set up scheduled refreshes for your most important dashboards and configure alerts to stay on top of critical business metrics.

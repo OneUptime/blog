@@ -1,14 +1,14 @@
-# How to Find and Remediate World-Writable Files on RHEL 9
+# How to Find and Remediate World-Writable Files on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, World-Writable, File Permissions, Security, Linux
 
-Description: Find and fix world-writable files and directories on RHEL 9 to close a common security gap that allows any user to modify critical files.
+Description: Find and fix world-writable files and directories on RHEL to close a common security gap that allows any user to modify critical files.
 
 ---
 
-World-writable files are files that any user on the system can modify. In most cases, this is a security problem. An attacker or a malicious local user can modify scripts, configurations, or shared libraries to escalate privileges or disrupt services. Finding and fixing these is a standard part of RHEL 9 hardening.
+World-writable files are files that any user on the system can modify. In most cases, this is a security problem. An attacker or a malicious local user can modify scripts, configurations, or shared libraries to escalate privileges or disrupt services. Finding and fixing these is a standard part of RHEL hardening.
 
 ## What Makes a File World-Writable
 
@@ -200,4 +200,4 @@ Search the audit log for violations:
 sudo ausearch -k world-writable --start today
 ```
 
-World-writable file remediation is one of the quickest security wins on any RHEL 9 system. Run the audit, fix the findings, set a proper umask, and monitor for drift.
+World-writable file remediation is one of the quickest security wins on any RHEL system. Run the audit, fix the findings, set a proper umask, and monitor for drift.

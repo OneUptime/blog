@@ -1,14 +1,14 @@
-# How to Change the Default SSH Port on RHEL 9 and Update SELinux
+# How to Change the Default SSH Port on RHEL and Update SELinux
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SSH, SELinux, Port, Linux
 
-Description: Change the SSH listening port on RHEL 9 from the default 22 to a custom port, updating SELinux policies and firewall rules to match.
+Description: Change the SSH listening port on RHEL from the default 22 to a custom port, updating SELinux policies and firewall rules to match.
 
 ---
 
-Moving SSH off port 22 is not real security by itself, but it dramatically reduces the noise from automated scanners and bots. On RHEL 9, changing the port requires updating three things: the SSH configuration, SELinux, and the firewall. Skip any one of these and SSH will not work on the new port.
+Moving SSH off port 22 is not real security by itself, but it dramatically reduces the noise from automated scanners and bots. On RHEL, changing the port requires updating three things: the SSH configuration, SELinux, and the firewall. Skip any one of these and SSH will not work on the new port.
 
 ## Step 1: Choose a Port
 
@@ -225,4 +225,4 @@ sudo semanage port -m -t ssh_port_t -p tcp 2222
 
 ## Wrapping Up
 
-Changing the SSH port on RHEL 9 is a three-step process: SELinux, firewall, SSH config. Do them in that order and you will avoid the "why will it not start" debugging session. Remember, this is not a substitute for real security measures like key-based auth, fail2ban, and access controls. But it does cut down on the noise from automated scanners hammering port 22, and that alone makes your logs more useful.
+Changing the SSH port on RHEL is a three-step process: SELinux, firewall, SSH config. Do them in that order and you will avoid the "why will it not start" debugging session. Remember, this is not a substitute for real security measures like key-based auth, fail2ban, and access controls. But it does cut down on the noise from automated scanners hammering port 22, and that alone makes your logs more useful.

@@ -1,10 +1,10 @@
-# How to Set Up Partition Labels and UUIDs for Reliable Mounting on RHEL 9
+# How to Set Up Partition Labels and UUIDs for Reliable Mounting on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, UUID, Labels, Partitioning, Linux
 
-Description: Learn how to use filesystem labels and UUIDs for reliable partition identification on RHEL 9, avoiding boot failures caused by device name changes.
+Description: Learn how to use filesystem labels and UUIDs for reliable partition identification on RHEL, avoiding boot failures caused by device name changes.
 
 ---
 
@@ -91,7 +91,7 @@ lsblk -o NAME,UUID,LABEL,FSTYPE,MOUNTPOINT
 
 ## Using UUIDs in /etc/fstab
 
-The recommended approach on RHEL 9 is to use UUIDs in fstab:
+The recommended approach on RHEL is to use UUIDs in fstab:
 
 ```bash
 # Standard UUID mount entry
@@ -185,4 +185,4 @@ sudo findmnt --verify
 
 ## Wrap-Up
 
-Using UUIDs or labels for partition identification on RHEL 9 is essential for system reliability. Device names change, but UUIDs and labels persist. Use UUIDs when you want automatic, unique identification. Use labels when you want human-readable names. Either way, you avoid the nightmare of a system that fails to boot because /dev/sdb became /dev/sdc after a hardware change.
+Using UUIDs or labels for partition identification on RHEL is essential for system reliability. Device names change, but UUIDs and labels persist. Use UUIDs when you want automatic, unique identification. Use labels when you want human-readable names. Either way, you avoid the nightmare of a system that fails to boot because /dev/sdb became /dev/sdc after a hardware change.

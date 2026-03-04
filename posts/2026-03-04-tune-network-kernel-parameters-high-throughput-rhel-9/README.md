@@ -1,16 +1,16 @@
-# How to Tune Network Kernel Parameters for High-Throughput Workloads on RHEL 9
+# How to Tune Network Kernel Parameters for High-Throughput Workloads on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Kernel, Network, Throughput, Linux
 
-Description: A practical guide to tuning Linux network kernel parameters on RHEL 9 for high-throughput workloads, covering buffer sizes, connection limits, TCP optimizations, and real benchmarking tips.
+Description: A practical guide to tuning Linux network kernel parameters on RHEL for high-throughput workloads, covering buffer sizes, connection limits, TCP optimizations, and real benchmarking tips.
 
 ---
 
 ## When Default Settings Are Not Enough
 
-RHEL 9 ships with sensible network defaults, but those defaults target a general-purpose workload. When you are pushing 10Gbps or higher, handling tens of thousands of concurrent connections, or running latency-sensitive applications, the stock settings leave performance on the table.
+RHEL ships with sensible network defaults, but those defaults target a general-purpose workload. When you are pushing 10Gbps or higher, handling tens of thousands of concurrent connections, or running latency-sensitive applications, the stock settings leave performance on the table.
 
 Network tuning is not about cranking every knob to the maximum. It is about understanding your workload and adjusting the right parameters. A database server has different needs than a load balancer or a streaming media server.
 
@@ -215,4 +215,4 @@ ss -s
 
 ## Wrapping Up
 
-Network tuning on RHEL 9 is a methodical process. Measure first, change one category of parameters at a time, and measure again. The parameters in this guide are a solid starting point for high-throughput workloads, but your specific numbers will depend on your hardware, link speed, and application behavior. Document every change and keep your sysctl drop-in files under version control so you can trace back what changed when.
+Network tuning on RHEL is a methodical process. Measure first, change one category of parameters at a time, and measure again. The parameters in this guide are a solid starting point for high-throughput workloads, but your specific numbers will depend on your hardware, link speed, and application behavior. Document every change and keep your sysctl drop-in files under version control so you can trace back what changed when.

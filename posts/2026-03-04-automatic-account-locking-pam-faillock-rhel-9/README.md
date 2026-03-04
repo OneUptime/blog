@@ -1,14 +1,14 @@
-# How to Configure Automatic Account Locking with pam_faillock on RHEL 9
+# How to Configure Automatic Account Locking with pam_faillock on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, pam_faillock, Account Locking, Security, Linux
 
-Description: Step-by-step guide to configuring pam_faillock on RHEL 9 for automatic account lockout after failed login attempts, including how to unlock accounts and exclude specific users.
+Description: Step-by-step guide to configuring pam_faillock on RHEL for automatic account lockout after failed login attempts, including how to unlock accounts and exclude specific users.
 
 ---
 
-Brute-force attacks against user accounts are still one of the most common threats to any Linux server. On RHEL 9, `pam_faillock` is the standard module for automatically locking accounts after repeated failed authentication attempts. It replaced the older `pam_tally2` module, and it integrates cleanly with authselect.
+Brute-force attacks against user accounts are still one of the most common threats to any Linux server. On RHEL, `pam_faillock` is the standard module for automatically locking accounts after repeated failed authentication attempts. It replaced the older `pam_tally2` module, and it integrates cleanly with authselect.
 
 ## Enabling pam_faillock with authselect
 
@@ -243,4 +243,4 @@ sudo chmod 700 /usr/local/bin/check-lockouts.sh
 
 ## Wrapping Up
 
-pam_faillock is straightforward to set up on RHEL 9 thanks to authselect integration. The main decisions you need to make are how many failures to allow, how long the lockout lasts, and whether to lock root. Get these right for your compliance requirements, test thoroughly, and make sure your team knows how to unlock accounts manually. An overly aggressive lockout policy can cause more trouble than it prevents, so find the right balance for your environment.
+pam_faillock is straightforward to set up on RHEL thanks to authselect integration. The main decisions you need to make are how many failures to allow, how long the lockout lasts, and whether to lock root. Get these right for your compliance requirements, test thoroughly, and make sure your team knows how to unlock accounts manually. An overly aggressive lockout policy can cause more trouble than it prevents, so find the right balance for your environment.

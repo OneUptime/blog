@@ -1,10 +1,10 @@
-# How to Enable HTTP/2 on Apache httpd in RHEL 9
+# How to Enable HTTP/2 on Apache httpd in RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, HTTP/2, Performance, Linux
 
-Description: Step-by-step instructions for enabling HTTP/2 on Apache httpd in RHEL 9 to improve page load times and connection efficiency.
+Description: Step-by-step instructions for enabling HTTP/2 on Apache httpd in RHEL to improve page load times and connection efficiency.
 
 ---
 
@@ -12,11 +12,11 @@ Description: Step-by-step instructions for enabling HTTP/2 on Apache httpd in RH
 
 HTTP/1.1 has served us well, but it has a fundamental limitation: one request per connection at a time. Browsers work around this by opening multiple connections, which wastes resources. HTTP/2 fixes this with multiplexing, letting many requests share a single connection. It also adds header compression and server push.
 
-On RHEL 9, enabling HTTP/2 in Apache is surprisingly simple.
+On RHEL, enabling HTTP/2 in Apache is surprisingly simple.
 
 ## Prerequisites
 
-- RHEL 9 with Apache httpd installed
+- RHEL with Apache httpd installed
 - TLS configured (HTTP/2 in browsers requires HTTPS)
 - The event or worker MPM (not prefork)
 - Root or sudo access
@@ -192,7 +192,7 @@ You need to switch to the event or worker MPM. See Step 1.
 
 ### Old TLS Configuration
 
-HTTP/2 requires TLS 1.2 or higher with specific cipher suites. RHEL 9 defaults are fine, but if you have customized your TLS settings, make sure you have not accidentally excluded ECDHE ciphers.
+HTTP/2 requires TLS 1.2 or higher with specific cipher suites. RHEL defaults are fine, but if you have customized your TLS settings, make sure you have not accidentally excluded ECDHE ciphers.
 
 ### Client Does Not Support HTTP/2
 
@@ -200,4 +200,4 @@ Older browsers or curl builds without nghttp2 will fall back to HTTP/1.1 automat
 
 ## Wrap-Up
 
-Enabling HTTP/2 on Apache in RHEL 9 is a straightforward performance win. The main prerequisite is running the event MPM instead of prefork, which means moving away from mod_php to PHP-FPM if you are running PHP. Once that is done, adding `Protocols h2 http/1.1` to your virtual host is all it takes. The multiplexing alone makes a noticeable difference for page load times on asset-heavy sites.
+Enabling HTTP/2 on Apache in RHEL is a straightforward performance win. The main prerequisite is running the event MPM instead of prefork, which means moving away from mod_php to PHP-FPM if you are running PHP. Once that is done, adding `Protocols h2 http/1.1` to your virtual host is all it takes. The multiplexing alone makes a noticeable difference for page load times on asset-heavy sites.

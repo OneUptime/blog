@@ -1,14 +1,14 @@
-# How to Use Podman Compose as a Docker Compose Alternative on RHEL 9
+# How to Use Podman Compose as a Docker Compose Alternative on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Podman Compose, Docker Compose, Linux
 
-Description: A practical guide to using podman-compose on RHEL 9 as a drop-in replacement for Docker Compose, reusing your existing compose files with Podman's daemonless container engine.
+Description: A practical guide to using podman-compose on RHEL as a drop-in replacement for Docker Compose, reusing your existing compose files with Podman's daemonless container engine.
 
 ---
 
-If you have a stack of `docker-compose.yml` files and you are migrating to RHEL 9, you do not have to rewrite everything. Podman Compose reads the same YAML format and translates it into Podman commands. It is not a perfect 1:1 replacement, but for most common use cases it works well enough to save you a rewrite.
+If you have a stack of `docker-compose.yml` files and you are migrating to RHEL, you do not have to rewrite everything. Podman Compose reads the same YAML format and translates it into Podman commands. It is not a perfect 1:1 replacement, but for most common use cases it works well enough to save you a rewrite.
 
 ## Installing Podman Compose
 
@@ -307,4 +307,4 @@ This approach has better compatibility than podman-compose for advanced compose 
 
 ## Summary
 
-Podman Compose gets you running with existing `docker-compose.yml` files on RHEL 9 without major rewrites. It handles the common cases well - services, networks, volumes, environment variables, and build contexts. For new projects on RHEL 9, consider whether Quadlet might be a better fit, but for migrating existing Docker Compose stacks, podman-compose does the job.
+Podman Compose gets you running with existing `docker-compose.yml` files on RHEL without major rewrites. It handles the common cases well - services, networks, volumes, environment variables, and build contexts. For new projects on RHEL, consider whether Quadlet might be a better fit, but for migrating existing Docker Compose stacks, podman-compose does the job.

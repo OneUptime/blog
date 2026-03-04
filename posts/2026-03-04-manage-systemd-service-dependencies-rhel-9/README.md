@@ -1,10 +1,10 @@
-# How to Manage systemd Service Dependencies on RHEL 9
+# How to Manage systemd Service Dependencies on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Dependencies, Services, Linux
 
-Description: Understand and configure systemd service dependencies on RHEL 9, including ordering, requirement, and binding directives, plus tools to visualize and debug dependency trees.
+Description: Understand and configure systemd service dependencies on RHEL, including ordering, requirement, and binding directives, plus tools to visualize and debug dependency trees.
 
 ---
 

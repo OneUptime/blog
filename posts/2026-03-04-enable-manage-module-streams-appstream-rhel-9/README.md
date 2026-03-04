@@ -1,14 +1,14 @@
-# How to Enable and Manage Module Streams in AppStream on RHEL 9
+# How to Enable and Manage Module Streams in AppStream on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Module Streams, AppStream, DNF, Linux
 
-Description: A hands-on guide to working with module streams in RHEL 9 AppStream, covering how to list, enable, disable, reset, and install modules with different stream versions and profiles.
+Description: A hands-on guide to working with module streams in RHEL AppStream, covering how to list, enable, disable, reset, and install modules with different stream versions and profiles.
 
 ---
 
-Module streams are one of the more powerful features in RHEL 9, but they can be confusing if you have not worked with them before. They let you install different versions of the same software side by side across your fleet, without fighting dependency conflicts. This guide covers everything you need to manage modules day to day.
+Module streams are one of the more powerful features in RHEL, but they can be confusing if you have not worked with them before. They let you install different versions of the same software side by side across your fleet, without fighting dependency conflicts. This guide covers everything you need to manage modules day to day.
 
 ## What Are Module Streams?
 
@@ -274,4 +274,4 @@ php --version
 
 5. **Do not mix module and non-module packages.** If a module provides `php`, do not also install PHP from a third-party repo. That path leads to dependency nightmares.
 
-Module streams take a bit of getting used to, but they solve a real problem. Being able to run PHP 8.2 on one server and PHP 8.1 on another, both on RHEL 9 with full support, is genuinely useful. Once the concepts click, the commands are straightforward.
+Module streams take a bit of getting used to, but they solve a real problem. Being able to run PHP 8.2 on one server and PHP 8.1 on another, both on RHEL with full support, is genuinely useful. Once the concepts click, the commands are straightforward.

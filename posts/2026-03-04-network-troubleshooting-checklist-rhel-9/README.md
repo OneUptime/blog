@@ -1,14 +1,14 @@
-# How to Build a Network Troubleshooting Checklist for RHEL 9
+# How to Build a Network Troubleshooting Checklist for RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Troubleshooting, Networking, Checklist, Linux
 
-Description: A structured network troubleshooting checklist for RHEL 9 systems, walking through each layer from physical connectivity to application issues, with specific commands and verification steps.
+Description: A structured network troubleshooting checklist for RHEL systems, walking through each layer from physical connectivity to application issues, with specific commands and verification steps.
 
 ---
 
-When a network issue hits, having a systematic checklist keeps you from chasing your tail. I've seen seasoned engineers waste hours on DNS when the problem was a cable, and vice versa. Working through the layers methodically is faster than guessing. Here's the checklist I use on RHEL 9 systems.
+When a network issue hits, having a systematic checklist keeps you from chasing your tail. I've seen seasoned engineers waste hours on DNS when the problem was a cable, and vice versa. Working through the layers methodically is faster than guessing. Here's the checklist I use on RHEL systems.
 
 ## The Troubleshooting Stack
 
@@ -207,7 +207,7 @@ Here's a script that runs through the entire checklist:
 
 ```bash
 #!/bin/bash
-# Network troubleshooting checklist for RHEL 9
+# Network troubleshooting checklist for RHEL
 # Usage: sudo bash netcheck.sh [target_host]
 
 TARGET=${1:-"8.8.8.8"}
@@ -262,7 +262,7 @@ echo "SELinux:"
 getenforce 2>/dev/null
 ```
 
-## Common Gotchas on RHEL 9
+## Common Gotchas on RHEL
 
 **NetworkManager overrides manual changes:**
 Any `ip addr` or `ip route` changes will be undone when NetworkManager refreshes. Use `nmcli` for persistent changes.
@@ -286,4 +286,4 @@ After working through the checklist, if the issue is:
 
 ## Wrapping Up
 
-A systematic checklist prevents wasted time on network troubleshooting. Start at Layer 1, work up, and verify each layer before moving to the next. Most problems on RHEL 9 fall into a few categories: interface down, missing route, firewall blocking, DNS broken, or service not listening. The diagnostic script above covers all of these in one pass, giving you a snapshot of the entire network stack.
+A systematic checklist prevents wasted time on network troubleshooting. Start at Layer 1, work up, and verify each layer before moving to the next. Most problems on RHEL fall into a few categories: interface down, missing route, firewall blocking, DNS broken, or service not listening. The diagnostic script above covers all of these in one pass, giving you a snapshot of the entire network stack.

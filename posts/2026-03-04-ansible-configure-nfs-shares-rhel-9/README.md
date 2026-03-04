@@ -1,10 +1,10 @@
-# How to Use Ansible to Configure NFS Shares on RHEL 9
+# How to Use Ansible to Configure NFS Shares on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, NFS, File Sharing, Automation, Linux
 
-Description: Automate NFS server and client configuration on RHEL 9 using Ansible playbooks for consistent shared storage across your infrastructure.
+Description: Automate NFS server and client configuration on RHEL using Ansible playbooks for consistent shared storage across your infrastructure.
 
 ---
 
@@ -27,7 +27,7 @@ graph LR
 
 ```yaml
 # playbook-nfs-server.yml
-# Configure an NFS server on RHEL 9
+# Configure an NFS server on RHEL
 ---
 - name: Configure NFS server
   hosts: nfs_servers

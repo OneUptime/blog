@@ -1,10 +1,10 @@
-# How to Troubleshoot HAProxy Connection Timeout Issues on RHEL 9
+# How to Troubleshoot HAProxy Connection Timeout Issues on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, HAProxy, Timeout, Troubleshooting, Linux
 
-Description: A systematic guide to diagnosing and fixing connection timeout issues in HAProxy on RHEL 9.
+Description: A systematic guide to diagnosing and fixing connection timeout issues in HAProxy on RHEL.
 
 ---
 

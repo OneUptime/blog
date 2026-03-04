@@ -1,14 +1,14 @@
-# How to Manage LVM Volume Groups Using the Cockpit Web Console on RHEL 9
+# How to Manage LVM Volume Groups Using the Cockpit Web Console on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cockpit, LVM, Storage, Linux
 
-Description: A hands-on guide to creating and managing LVM volume groups, logical volumes, and snapshots using the Cockpit web console on RHEL 9.
+Description: A hands-on guide to creating and managing LVM volume groups, logical volumes, and snapshots using the Cockpit web console on RHEL.
 
 ---
 
-LVM (Logical Volume Manager) is the storage layer that gives you flexibility to resize, snapshot, and reorganize your disks without downtime. It's the default for RHEL 9 installations, and Cockpit's storage page gives you full control over volume groups, logical volumes, and physical volumes through a visual interface.
+LVM (Logical Volume Manager) is the storage layer that gives you flexibility to resize, snapshot, and reorganize your disks without downtime. It's the default for RHEL installations, and Cockpit's storage page gives you full control over volume groups, logical volumes, and physical volumes through a visual interface.
 
 ## LVM Architecture
 
@@ -34,7 +34,7 @@ The key advantage is that VGs can span multiple physical disks, and LVs can be r
 
 ## Viewing Existing LVM Configuration
 
-In Cockpit, go to Storage. If your RHEL 9 system was installed with the default layout, you'll see a volume group (typically named `rhel` or `cs`) with logical volumes for root, swap, and possibly home.
+In Cockpit, go to Storage. If your RHEL system was installed with the default layout, you'll see a volume group (typically named `rhel` or `cs`) with logical volumes for root, swap, and possibly home.
 
 From the CLI:
 

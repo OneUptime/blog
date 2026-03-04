@@ -1,10 +1,10 @@
-# How to Manage User Home Directories with systemd-homed on RHEL 9
+# How to Manage User Home Directories with systemd-homed on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, systemd-homed, Home Directories, Linux
 
-Description: Learn how to use systemd-homed on RHEL 9 to manage portable, encrypted user home directories with modern authentication.
+Description: Learn how to use systemd-homed on RHEL to manage portable, encrypted user home directories with modern authentication.
 
 ---
 
@@ -124,4 +124,4 @@ sudo homectl remove devuser
 
 ## Summary
 
-You have learned to manage user home directories with systemd-homed on RHEL 9. This modern approach provides encrypted, portable home directories with embedded user metadata. It is particularly useful for laptop users, shared workstations, and environments where users need to move between machines.
+You have learned to manage user home directories with systemd-homed on RHEL. This modern approach provides encrypted, portable home directories with embedded user metadata. It is particularly useful for laptop users, shared workstations, and environments where users need to move between machines.

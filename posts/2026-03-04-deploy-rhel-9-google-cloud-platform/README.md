@@ -1,19 +1,19 @@
-# How to Deploy RHEL 9 on Google Cloud Platform
+# How to Deploy RHEL on Google Cloud Platform
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GCP, Google Cloud, Cloud, Linux
 
-Description: Deploy and configure RHEL 9 on Google Cloud Platform Compute Engine with proper networking, storage, and monitoring setup.
+Description: Deploy and configure RHEL on Google Cloud Platform Compute Engine with proper networking, storage, and monitoring setup.
 
 ---
 
-Google Cloud Platform provides certified RHEL 9 images for Compute Engine instances. This guide covers deploying RHEL 9 on GCP with best practices for networking, storage, and integration with GCP services.
+Google Cloud Platform provides certified RHEL images for Compute Engine instances. This guide covers deploying RHEL on GCP with best practices for networking, storage, and integration with GCP services.
 
-## Step 1: Create a RHEL 9 Instance
+## Step 1: Create a RHEL Instance
 
 ```bash
-# Create a RHEL 9 instance on GCP
+# Create a RHEL instance on GCP
 gcloud compute instances create rhel9-instance \
   --zone=us-central1-a \
   --machine-type=e2-standard-4 \
@@ -112,7 +112,7 @@ sudo systemctl restart google-cloud-ops-agent
 ```bash
 # Create a service account for the VM
 gcloud iam service-accounts create rhel9-sa \
-  --display-name="RHEL 9 Service Account"
+  --display-name="RHEL Service Account"
 
 # Grant necessary roles
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
@@ -128,4 +128,4 @@ gcloud compute instances set-service-account rhel9-instance \
 
 ## Conclusion
 
-RHEL 9 on GCP benefits from SSD persistent disks, the Ops Agent for integrated monitoring, and OS Login for identity management. The certified RHEL 9 images are maintained by Red Hat and Google, ensuring compatibility and timely security patches.
+RHEL on GCP benefits from SSD persistent disks, the Ops Agent for integrated monitoring, and OS Login for identity management. The certified RHEL images are maintained by Red Hat and Google, ensuring compatibility and timely security patches.

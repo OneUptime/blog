@@ -1,18 +1,18 @@
-# How to Remediate CIS Benchmark Failures on RHEL 9 Using Ansible
+# How to Remediate CIS Benchmark Failures on RHEL Using Ansible
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CIS, Ansible, Remediation, Linux
 
-Description: Use Ansible to automatically fix CIS benchmark failures on RHEL 9, turning compliance scan results into actionable remediation playbooks.
+Description: Use Ansible to automatically fix CIS benchmark failures on RHEL, turning compliance scan results into actionable remediation playbooks.
 
 ---
 
-Scanning for CIS compliance is only half the battle. The other half is fixing the failures. Doing it manually on one server is tedious. Doing it across fifty servers is impossible without automation. Ansible is the natural tool for this on RHEL 9, especially since the SCAP Security Guide ships with ready-made Ansible content.
+Scanning for CIS compliance is only half the battle. The other half is fixing the failures. Doing it manually on one server is tedious. Doing it across fifty servers is impossible without automation. Ansible is the natural tool for this on RHEL, especially since the SCAP Security Guide ships with ready-made Ansible content.
 
 ## Prerequisites
 
-You need a control node with Ansible installed and SSH access to your RHEL 9 targets:
+You need a control node with Ansible installed and SSH access to your RHEL targets:
 
 ```bash
 # Install Ansible on your control node
@@ -199,7 +199,7 @@ Combine the individual tasks into a structured playbook:
 
 ```yaml
 ---
-# CIS Level 1 Server Remediation Playbook for RHEL 9
+# CIS Level 1 Server Remediation Playbook for RHEL
 - name: Apply CIS Level 1 Server hardening
   hosts: rhel9_servers
   become: yes

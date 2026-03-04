@@ -1,14 +1,14 @@
-# How to Scan RHEL 9 for STIG Compliance Using OpenSCAP
+# How to Scan RHEL for STIG Compliance Using OpenSCAP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, STIG, OpenSCAP, Compliance, Linux
 
-Description: Use OpenSCAP to scan RHEL 9 systems for DISA STIG compliance, generate reports, and identify security findings that need remediation.
+Description: Use OpenSCAP to scan RHEL systems for DISA STIG compliance, generate reports, and identify security findings that need remediation.
 
 ---
 
-Before you can fix STIG findings, you need to know what is failing. OpenSCAP is the standard tool for scanning RHEL 9 systems against the DISA STIG profile. It ships with Red Hat's SCAP Security Guide, which includes the official STIG content mapped to OpenSCAP rules. This means you can run a comprehensive STIG assessment without downloading anything extra from DISA.
+Before you can fix STIG findings, you need to know what is failing. OpenSCAP is the standard tool for scanning RHEL systems against the DISA STIG profile. It ships with Red Hat's SCAP Security Guide, which includes the official STIG content mapped to OpenSCAP rules. This means you can run a comprehensive STIG assessment without downloading anything extra from DISA.
 
 ## Install OpenSCAP and STIG Content
 
@@ -84,7 +84,7 @@ oscap xccdf eval \
   grep -B1 "^Result.*fail" | grep "^Title"
 ```
 
-Common CAT I findings on a default RHEL 9 installation include:
+Common CAT I findings on a default RHEL installation include:
 
 - FIPS mode not enabled
 - Root login permitted via SSH

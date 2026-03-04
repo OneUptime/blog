@@ -1,10 +1,10 @@
-# How to Set Up Postfix as a Null-Client Mail Relay on RHEL 9
+# How to Set Up Postfix as a Null-Client Mail Relay on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, Null Client, Mail Relay, Linux
 
-Description: Configure Postfix as a null client on RHEL 9 so your server sends all outgoing mail through a central relay without accepting any incoming mail.
+Description: Configure Postfix as a null client on RHEL so your server sends all outgoing mail through a central relay without accepting any incoming mail.
 
 ---
 
@@ -23,7 +23,7 @@ Instead of each server trying to deliver mail directly (and dealing with DNS, TL
 
 ## Prerequisites
 
-- RHEL 9 with root or sudo access
+- RHEL with root or sudo access
 - A relay server (your organization's mail server, or a service like an internal Postfix relay)
 - Network access to the relay server on port 25 or 587
 

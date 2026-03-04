@@ -51,7 +51,7 @@ Here is what the key facts look like across popular distributions.
 |---|---|---|---|---|
 | Ubuntu 22.04 | Ubuntu | Debian | apt | systemd |
 | Debian 12 | Debian | Debian | apt | systemd |
-| RHEL 9 | RedHat | RedHat | dnf | systemd |
+| RHEL | RedHat | RedHat | dnf | systemd |
 | Rocky Linux 9 | Rocky | RedHat | dnf | systemd |
 | AlmaLinux 9 | AlmaLinux | RedHat | dnf | systemd |
 | CentOS Stream 9 | CentOS | RedHat | dnf | systemd |

@@ -1,14 +1,14 @@
-# How to Configure Container Image Trust Policies on RHEL 9
+# How to Configure Container Image Trust Policies on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Container, Trust Policies, Security, Linux
 
-Description: Learn how to configure container image trust policies on RHEL 9 to control which registries and images are trusted, rejected, or require signature verification.
+Description: Learn how to configure container image trust policies on RHEL to control which registries and images are trusted, rejected, or require signature verification.
 
 ---
 
-Container image trust policies are your first line of defense against running unauthorized or tampered images in production. On RHEL 9, the trust policy system lets you define rules per registry, requiring signatures from specific GPG keys, allowing unsigned images from trusted sources, or blocking entire registries altogether.
+Container image trust policies are your first line of defense against running unauthorized or tampered images in production. On RHEL, the trust policy system lets you define rules per registry, requiring signatures from specific GPG keys, allowing unsigned images from trusted sources, or blocking entire registries altogether.
 
 ## Understanding the Trust Policy File
 
@@ -19,7 +19,7 @@ The trust policy lives at `/etc/containers/policy.json`. It tells Podman and oth
 cat /etc/containers/policy.json
 ```
 
-The default RHEL 9 policy is permissive:
+The default RHEL policy is permissive:
 
 ```json
 {
@@ -271,4 +271,4 @@ This prevents even attempting to pull from blocked registries, while trust polic
 
 ## Summary
 
-Container image trust policies on RHEL 9 give you control over what runs on your systems. Start with a default-reject policy and explicitly allow the registries and signing keys you trust. This, combined with registry configuration and image signing, creates a defense-in-depth approach to container security. It takes some effort to set up, but it prevents unauthorized or tampered images from ever running in your environment.
+Container image trust policies on RHEL give you control over what runs on your systems. Start with a default-reject policy and explicitly allow the registries and signing keys you trust. This, combined with registry configuration and image signing, creates a defense-in-depth approach to container security. It takes some effort to set up, but it prevents unauthorized or tampered images from ever running in your environment.

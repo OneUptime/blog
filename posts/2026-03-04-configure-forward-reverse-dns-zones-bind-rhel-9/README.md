@@ -1,10 +1,10 @@
-# How to Configure Forward and Reverse DNS Zones with BIND on RHEL 9
+# How to Configure Forward and Reverse DNS Zones with BIND on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, BIND, DNS Zones, Linux
 
-Description: A complete guide to setting up both forward and reverse DNS zones in BIND on RHEL 9, with proper record types and validation.
+Description: A complete guide to setting up both forward and reverse DNS zones in BIND on RHEL, with proper record types and validation.
 
 ---
 

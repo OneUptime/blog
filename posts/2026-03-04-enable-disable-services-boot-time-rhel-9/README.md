@@ -1,16 +1,16 @@
-# How to Enable and Disable Services at Boot Time on RHEL 9
+# How to Enable and Disable Services at Boot Time on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, systemd, Boot Services, systemctl, Linux
 
-Description: Learn how to control which services start automatically at boot on RHEL 9 using systemctl enable and disable, and understand what happens under the hood.
+Description: Learn how to control which services start automatically at boot on RHEL using systemctl enable and disable, and understand what happens under the hood.
 
 ---
 
 There is a difference between starting a service and enabling it. Starting a service brings it up right now. Enabling a service tells systemd to start it automatically every time the machine boots. If you have ever rebooted a server and found that the service you started manually yesterday is gone, you forgot to enable it.
 
-This guide covers everything you need to know about controlling boot-time service behavior on RHEL 9.
+This guide covers everything you need to know about controlling boot-time service behavior on RHEL.
 
 ---
 
@@ -188,7 +188,7 @@ The operations are independent. You can have a service that is:
 
 ## Preset Services: RHEL Defaults
 
-RHEL 9 uses presets to define which services should be enabled by default after package installation. You can see these presets:
+RHEL uses presets to define which services should be enabled by default after package installation. You can see these presets:
 
 ```bash
 # Show service presets

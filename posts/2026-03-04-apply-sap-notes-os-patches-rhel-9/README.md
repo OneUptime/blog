@@ -1,14 +1,14 @@
-# How to Apply SAP Notes and OS Patches on RHEL 9
+# How to Apply SAP Notes and OS Patches on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP, Patching, OS Updates, Linux
 
-Description: Learn the proper procedures for applying SAP Notes and RHEL 9 OS patches to SAP systems while minimizing downtime and risk.
+Description: Learn the proper procedures for applying SAP Notes and RHEL OS patches to SAP systems while minimizing downtime and risk.
 
 ---
 
-Keeping your SAP systems patched is critical for security and stability, but patching SAP environments on RHEL 9 requires careful planning. This guide covers the workflow for applying both SAP Notes (SAP-specific fixes) and RHEL OS patches in a controlled manner.
+Keeping your SAP systems patched is critical for security and stability, but patching SAP environments on RHEL requires careful planning. This guide covers the workflow for applying both SAP Notes (SAP-specific fixes) and RHEL OS patches in a controlled manner.
 
 ## Patching Workflow
 
@@ -28,7 +28,7 @@ graph TB
 
 ## Prerequisites
 
-- RHEL 9 running SAP workloads
+- RHEL running SAP workloads
 - SAP S-user credentials for accessing SAP Notes
 - Root or sudo access
 - A maintenance window scheduled with stakeholders
@@ -38,8 +38,8 @@ graph TB
 Before patching, check the SAP Launchpad for applicable notes:
 
 ```bash
-# Key SAP Notes for RHEL 9:
-# 3108316 - SAP on RHEL 9: Requirements and Information
+# Key SAP Notes for RHEL:
+# 3108316 - SAP on RHEL: Requirements and Information
 # 2772999 - Red Hat Enterprise Linux 9.x: Installation and Configuration
 # 2235581 - SAP HANA: Supported Operating Systems
 
@@ -187,4 +187,4 @@ sudo lvs
 
 ## Conclusion
 
-Patching SAP systems on RHEL 9 requires a methodical approach that covers both OS-level and SAP-level updates. Always test patches in a non-production environment first, maintain rollback capabilities, and follow the patching sequence of stopping SAP, applying patches, rebooting if needed, and then restarting SAP services. Document every change for audit compliance.
+Patching SAP systems on RHEL requires a methodical approach that covers both OS-level and SAP-level updates. Always test patches in a non-production environment first, maintain rollback capabilities, and follow the patching sequence of stopping SAP, applying patches, rebooting if needed, and then restarting SAP services. Document every change for audit compliance.

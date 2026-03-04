@@ -1,10 +1,10 @@
-# How to Export Home Directories Over NFS on RHEL 9
+# How to Export Home Directories Over NFS on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, NFS, Home Directories, Linux
 
-Description: Set up centralized home directories over NFS on RHEL 9, letting users access their files from any machine on the network.
+Description: Set up centralized home directories over NFS on RHEL, letting users access their files from any machine on the network.
 
 ---
 
@@ -179,4 +179,4 @@ sudo xfs_quota -x -c 'report -h' /home
 
 ## Wrap-Up
 
-Exporting home directories over NFS on RHEL 9 provides a seamless experience for users who work across multiple machines. The setup is straightforward: export the home directory, mount it on all clients, and ensure UID/GID consistency through centralized authentication. Use `nofail` in fstab to handle server outages gracefully, and consider quotas to keep storage manageable.
+Exporting home directories over NFS on RHEL provides a seamless experience for users who work across multiple machines. The setup is straightforward: export the home directory, mount it on all clients, and ensure UID/GID consistency through centralized authentication. Use `nofail` in fstab to handle server outages gracefully, and consider quotas to keep storage manageable.

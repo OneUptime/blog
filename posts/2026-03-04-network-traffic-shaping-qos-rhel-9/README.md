@@ -1,14 +1,14 @@
-# How to Set Up Network Traffic Shaping and QoS on RHEL 9
+# How to Set Up Network Traffic Shaping and QoS on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, QoS, Traffic Shaping, Networking, Linux
 
-Description: Learn how to implement network traffic shaping and Quality of Service (QoS) on RHEL 9 using tc (traffic control) to prioritize critical traffic, limit bandwidth, and manage network congestion.
+Description: Learn how to implement network traffic shaping and Quality of Service (QoS) on RHEL using tc (traffic control) to prioritize critical traffic, limit bandwidth, and manage network congestion.
 
 ---
 
-Not all network traffic is created equal. Database replication is more important than someone's Spotify stream. SSH sessions need low latency even if they use minimal bandwidth. Traffic shaping with QoS lets you enforce these priorities at the OS level on RHEL 9.
+Not all network traffic is created equal. Database replication is more important than someone's Spotify stream. SSH sessions need low latency even if they use minimal bandwidth. Traffic shaping with QoS lets you enforce these priorities at the OS level on RHEL.
 
 ## What Traffic Shaping Can Do
 
@@ -33,7 +33,7 @@ Important limitation: traffic shaping only works on **outbound** traffic. You ca
 # Check current queueing discipline
 tc qdisc show dev ens192
 
-# On RHEL 9, you'll likely see fq_codel as the default
+# On RHEL, you'll likely see fq_codel as the default
 ```
 
 ## Simple Bandwidth Limiting
@@ -176,4 +176,4 @@ tc qdisc show dev ens192
 
 ## Wrapping Up
 
-Traffic shaping on RHEL 9 with tc gives you control over how your outbound bandwidth is used. HTB with fq_codel on the leaf classes is the standard recipe. The setup involves three layers: qdiscs define the algorithm, classes define the bandwidth allocation, and filters classify packets into classes. Make it persistent with a dispatcher script, and monitor it with `tc -s` to make sure traffic is flowing where you expect.
+Traffic shaping on RHEL with tc gives you control over how your outbound bandwidth is used. HTB with fq_codel on the leaf classes is the standard recipe. The setup involves three layers: qdiscs define the algorithm, classes define the bandwidth allocation, and filters classify packets into classes. Make it persistent with a dispatcher script, and monitor it with `tc -s` to make sure traffic is flowing where you expect.

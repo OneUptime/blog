@@ -1,14 +1,14 @@
-# How to Use Ansible to Deploy Docker Containers on RHEL 9
+# How to Use Ansible to Deploy Docker Containers on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, Docker, Containers, Automation, Linux
 
-Description: Automate Docker installation and container deployment on RHEL 9 using Ansible playbooks for reproducible container infrastructure.
+Description: Automate Docker installation and container deployment on RHEL using Ansible playbooks for reproducible container infrastructure.
 
 ---
 
-While Podman is the default container runtime on RHEL 9, some teams still need Docker for compatibility reasons. This guide shows how to use Ansible to install Docker CE on RHEL 9 and deploy containers in an automated, repeatable way.
+While Podman is the default container runtime on RHEL, some teams still need Docker for compatibility reasons. This guide shows how to use Ansible to install Docker CE on RHEL and deploy containers in an automated, repeatable way.
 
 ## Architecture Overview
 
@@ -31,13 +31,13 @@ The `community.docker` Ansible collection is needed for Docker modules:
 ansible-galaxy collection install community.docker
 ```
 
-## Step 1: Install Docker CE on RHEL 9
+## Step 1: Install Docker CE on RHEL
 
 ```yaml
 # playbook-docker-install.yml
-# Install Docker CE on RHEL 9 servers
+# Install Docker CE on RHEL servers
 ---
-- name: Install Docker CE on RHEL 9
+- name: Install Docker CE on RHEL
   hosts: docker_hosts
   become: true
 
@@ -293,4 +293,4 @@ sudo firewall-cmd --reload
 
 ## Wrapping Up
 
-Using Ansible to deploy Docker containers on RHEL 9 gives you a repeatable deployment process. The `community.docker` collection provides modules for every Docker operation. For new projects on RHEL 9, consider Podman instead since it is the native container runtime, but if you need Docker for compatibility, this approach gets you there cleanly.
+Using Ansible to deploy Docker containers on RHEL gives you a repeatable deployment process. The `community.docker` collection provides modules for every Docker operation. For new projects on RHEL, consider Podman instead since it is the native container runtime, but if you need Docker for compatibility, this approach gets you there cleanly.

@@ -1,14 +1,14 @@
-# How to Use Cloud-Init to Configure RHEL 9 on First Boot
+# How to Use Cloud-Init to Configure RHEL on First Boot
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Cloud-Init, Automation, Cloud, Linux
 
-Description: Use cloud-init to automate RHEL 9 first-boot configuration including users, packages, network settings, and custom scripts.
+Description: Use cloud-init to automate RHEL first-boot configuration including users, packages, network settings, and custom scripts.
 
 ---
 
-Cloud-init is the standard tool for automating the initial configuration of cloud instances. On RHEL 9, it handles everything from setting the hostname to installing packages and running custom scripts on first boot. This guide covers writing effective cloud-init configurations.
+Cloud-init is the standard tool for automating the initial configuration of cloud instances. On RHEL, it handles everything from setting the hostname to installing packages and running custom scripts on first boot. This guide covers writing effective cloud-init configurations.
 
 ## Cloud-Init Execution Flow
 
@@ -30,7 +30,7 @@ graph TB
 
 ```yaml
 #cloud-config
-# Basic RHEL 9 cloud-init configuration
+# Basic RHEL cloud-init configuration
 
 # Set the hostname
 hostname: web-server-01
@@ -183,4 +183,4 @@ sudo cloud-init init
 
 ## Conclusion
 
-Cloud-init on RHEL 9 lets you define your entire server configuration as code, making deployments repeatable and consistent across cloud providers. Start with basic settings like users and packages, then add custom scripts and file configurations as needed. Always validate your cloud-config files before deployment.
+Cloud-init on RHEL lets you define your entire server configuration as code, making deployments repeatable and consistent across cloud providers. Start with basic settings like users and packages, then add custom scripts and file configurations as needed. Always validate your cloud-config files before deployment.

@@ -1,10 +1,10 @@
-# How to Configure ModSecurity Web Application Firewall with Apache on RHEL 9
+# How to Configure ModSecurity Web Application Firewall with Apache on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Apache, ModSecurity, WAF, Security, Linux
 
-Description: How to install and configure ModSecurity as a web application firewall with Apache httpd on RHEL 9 to protect against common web attacks.
+Description: How to install and configure ModSecurity as a web application firewall with Apache httpd on RHEL to protect against common web attacks.
 
 ---
 
@@ -14,7 +14,7 @@ ModSecurity is an open-source web application firewall (WAF) that sits inside Ap
 
 ## Prerequisites
 
-- RHEL 9 with Apache httpd installed
+- RHEL with Apache httpd installed
 - EPEL repository enabled
 - Root or sudo access
 

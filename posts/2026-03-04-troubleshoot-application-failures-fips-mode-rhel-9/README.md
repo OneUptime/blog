@@ -1,14 +1,14 @@
-# How to Troubleshoot Application Failures After Enabling FIPS Mode on RHEL 9
+# How to Troubleshoot Application Failures After Enabling FIPS Mode on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, FIPS, Troubleshooting, Linux
 
-Description: Diagnose and fix common application failures that occur after enabling FIPS mode on RHEL 9, including issues with Java, Python, databases, and web servers.
+Description: Diagnose and fix common application failures that occur after enabling FIPS mode on RHEL, including issues with Java, Python, databases, and web servers.
 
 ---
 
-Enabling FIPS mode on RHEL 9 is the easy part. The hard part comes when applications start failing because they relied on cryptographic algorithms that FIPS does not allow. I have seen this happen with everything from Java applications to Python scripts to database connections. This guide covers the most common failures and how to fix them.
+Enabling FIPS mode on RHEL is the easy part. The hard part comes when applications start failing because they relied on cryptographic algorithms that FIPS does not allow. I have seen this happen with everything from Java applications to Python scripts to database connections. This guide covers the most common failures and how to fix them.
 
 ## Understanding Why Applications Break
 

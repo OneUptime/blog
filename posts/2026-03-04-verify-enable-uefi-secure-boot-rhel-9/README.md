@@ -1,14 +1,14 @@
-# How to Verify and Enable UEFI Secure Boot on RHEL 9
+# How to Verify and Enable UEFI Secure Boot on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, UEFI, Secure Boot, Security, Linux
 
-Description: Learn how to verify the status of UEFI Secure Boot on RHEL 9 and enable it to protect your system against unauthorized bootloaders and rootkits.
+Description: Learn how to verify the status of UEFI Secure Boot on RHEL and enable it to protect your system against unauthorized bootloaders and rootkits.
 
 ---
 
-Secure Boot is a UEFI firmware feature that ensures only signed and trusted software runs during the boot process. It prevents rootkits and boot-level malware from loading before the operating system starts. RHEL 9 fully supports Secure Boot, and most enterprise hardware ships with it available. Here is how to check your current status and enable it.
+Secure Boot is a UEFI firmware feature that ensures only signed and trusted software runs during the boot process. It prevents rootkits and boot-level malware from loading before the operating system starts. RHEL fully supports Secure Boot, and most enterprise hardware ships with it available. Here is how to check your current status and enable it.
 
 ## Checking Secure Boot Status
 
@@ -65,7 +65,7 @@ flowchart TD
     D -->|Verifies signature| E[Kernel Modules]
 ```
 
-RHEL 9 uses a "shim" bootloader that is signed by Microsoft's UEFI CA. The shim then verifies GRUB2, which verifies the kernel. This chain of trust ensures nothing unauthorized runs during boot.
+RHEL uses a "shim" bootloader that is signed by Microsoft's UEFI CA. The shim then verifies GRUB2, which verifies the kernel. This chain of trust ensures nothing unauthorized runs during boot.
 
 ## Checking the Secure Boot Certificate Chain
 
@@ -155,7 +155,7 @@ From the OS, you cannot disable Secure Boot. It must be done through the firmwar
 
 ## Secure Boot and Virtual Machines
 
-If you are running RHEL 9 as a VM:
+If you are running RHEL as a VM:
 
 - **KVM/libvirt**: Secure Boot requires OVMF firmware. Set the VM to use UEFI firmware with Secure Boot enabled.
 - **VMware**: Supported in vSphere 6.5 and later.
@@ -174,4 +174,4 @@ rpm -q edk2-ovmf
 - Monitor for Secure Boot violations in system logs
 - Have a documented procedure for handling unsigned module issues
 
-Secure Boot adds an important layer to your RHEL 9 security posture. It is not a silver bullet, but it significantly raises the bar for boot-level attacks.
+Secure Boot adds an important layer to your RHEL security posture. It is not a silver bullet, but it significantly raises the bar for boot-level attacks.

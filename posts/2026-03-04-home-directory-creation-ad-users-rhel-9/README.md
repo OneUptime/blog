@@ -1,14 +1,14 @@
-# How to Configure Home Directory Creation for AD Users on RHEL 9
+# How to Configure Home Directory Creation for AD Users on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Active Directory, Home Directory, PAM, Linux
 
-Description: A guide to configuring automatic home directory creation for Active Directory users on RHEL 9, covering PAM configuration, oddjobd, authselect, and NFS-based home directories.
+Description: A guide to configuring automatic home directory creation for Active Directory users on RHEL, covering PAM configuration, oddjobd, authselect, and NFS-based home directories.
 
 ---
 
-When an AD user logs into a RHEL 9 system for the first time, they need a home directory. Without one, their login session starts in `/` or fails entirely, and nothing works right. RHEL 9 uses a combination of PAM (pam_oddjob_mkhomedir) and the oddjobd service to create home directories on the fly. This guide covers the configuration and a few alternative approaches for different environments.
+When an AD user logs into a RHEL system for the first time, they need a home directory. Without one, their login session starts in `/` or fails entirely, and nothing works right. RHEL uses a combination of PAM (pam_oddjob_mkhomedir) and the oddjobd service to create home directories on the fly. This guide covers the configuration and a few alternative approaches for different environments.
 
 ## How Automatic Home Directory Creation Works
 
@@ -26,7 +26,7 @@ When PAM encounters a user without a home directory, it calls the oddjobd daemon
 
 ## Step 1 - Enable mkhomedir with authselect
 
-The recommended way to configure home directory creation on RHEL 9 is through authselect.
+The recommended way to configure home directory creation on RHEL is through authselect.
 
 ```bash
 # Check the current authselect profile
@@ -208,7 +208,7 @@ sudo authselect disable-feature with-mkhomedir
 
 ## Alternative: Using pam_mkhomedir Directly
 
-If you cannot use oddjobd, you can use pam_mkhomedir directly in the PAM configuration. This is less recommended on RHEL 9 but works.
+If you cannot use oddjobd, you can use pam_mkhomedir directly in the PAM configuration. This is less recommended on RHEL but works.
 
 ```bash
 # Check if pam_mkhomedir is configured

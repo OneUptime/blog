@@ -1,10 +1,10 @@
-# How to Create a Software RAID 1 (Mirror) Array with mdadm on RHEL 9
+# How to Create a Software RAID 1 (Mirror) Array with mdadm on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RAID 1, mdadm, Storage, Linux
 
-Description: A hands-on guide to creating a software RAID 1 mirror with mdadm on RHEL 9, giving you real-time disk redundancy for critical data.
+Description: A hands-on guide to creating a software RAID 1 mirror with mdadm on RHEL, giving you real-time disk redundancy for critical data.
 
 ---
 
@@ -16,7 +16,7 @@ This is the simplest form of redundancy and works well for boot drives, small da
 
 ## Prerequisites
 
-- RHEL 9 with root or sudo access
+- RHEL with root or sudo access
 - At least two unused disks of equal (or near-equal) size
 - mdadm installed
 
@@ -190,4 +190,4 @@ Clean up /etc/mdadm.conf and /etc/fstab as well.
 
 ## Wrap-Up
 
-RAID 1 is the easiest way to protect against single-disk failure on RHEL 9. The setup is simple, recovery is straightforward, and the performance trade-off is minimal for most workloads. For anything storing data you cannot afford to lose, a mirror is the minimum level of protection you should have, ideally combined with regular off-site backups.
+RAID 1 is the easiest way to protect against single-disk failure on RHEL. The setup is simple, recovery is straightforward, and the performance trade-off is minimal for most workloads. For anything storing data you cannot afford to lose, a mirror is the minimum level of protection you should have, ideally combined with regular off-site backups.

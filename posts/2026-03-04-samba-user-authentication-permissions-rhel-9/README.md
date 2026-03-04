@@ -1,16 +1,16 @@
-# How to Configure Samba User Authentication and Permissions on RHEL 9
+# How to Configure Samba User Authentication and Permissions on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Samba, Authentication, Permissions, Linux
 
-Description: Configure Samba user authentication and file permissions on RHEL 9, covering local user management, password policies, and access control for shares.
+Description: Configure Samba user authentication and file permissions on RHEL, covering local user management, password policies, and access control for shares.
 
 ---
 
 ## Authentication in Samba
 
-Samba supports multiple authentication modes. On RHEL 9, the most common is "user" mode, where clients must provide a valid username and password to access shares. Samba maintains its own password database (tdbsam) separate from the system's /etc/shadow.
+Samba supports multiple authentication modes. On RHEL, the most common is "user" mode, where clients must provide a valid username and password to access shares. Samba maintains its own password database (tdbsam) separate from the system's /etc/shadow.
 
 ## Security Modes
 
@@ -231,4 +231,4 @@ This logs all file operations to syslog, which you can redirect to a dedicated l
 
 ## Wrap-Up
 
-Samba authentication and permissions on RHEL 9 involve three layers: Samba user accounts (smbpasswd/pdbedit), share-level access control (valid users, write list), and filesystem permissions (create mask, force group). Getting all three aligned is the key to a well-functioning Samba setup. Use groups for scalable access management, and test permissions from a client before going to production.
+Samba authentication and permissions on RHEL involve three layers: Samba user accounts (smbpasswd/pdbedit), share-level access control (valid users, write list), and filesystem permissions (create mask, force group). Getting all three aligned is the key to a well-functioning Samba setup. Use groups for scalable access management, and test permissions from a client before going to production.

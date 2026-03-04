@@ -1,10 +1,10 @@
-# How to Remove or Detach a Cache from a Logical Volume on RHEL 9
+# How to Remove or Detach a Cache from a Logical Volume on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Cache, Linux
 
-Description: Learn how to safely remove or detach LVM cache and dm-writecache from logical volumes on RHEL 9 without losing data.
+Description: Learn how to safely remove or detach LVM cache and dm-writecache from logical volumes on RHEL without losing data.
 
 ---
 
@@ -235,4 +235,4 @@ ls -la /data
 
 ## Summary
 
-Removing an LVM cache on RHEL 9 is safe when done correctly. Use `lvconvert --uncache` for a clean removal that flushes dirty data first. For writeback caches, switch to writethrough mode before removal to ensure all data reaches the origin. If the SSD has failed, writethrough caches are safe to force-remove, but writeback caches may have data loss. Always verify filesystem integrity after an unplanned cache removal.
+Removing an LVM cache on RHEL is safe when done correctly. Use `lvconvert --uncache` for a clean removal that flushes dirty data first. For writeback caches, switch to writethrough mode before removal to ensure all data reaches the origin. If the SSD has failed, writethrough caches are safe to force-remove, but writeback caches may have data loss. Always verify filesystem integrity after an unplanned cache removal.

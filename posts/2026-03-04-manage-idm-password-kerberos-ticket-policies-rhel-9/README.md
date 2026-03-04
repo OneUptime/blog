@@ -1,10 +1,10 @@
-# How to Manage IdM Password Policies and Kerberos Ticket Policies on RHEL 9
+# How to Manage IdM Password Policies and Kerberos Ticket Policies on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Password Policy, Kerberos, Linux
 
-Description: A practical walkthrough of managing password policies and Kerberos ticket policies in Red Hat Identity Management on RHEL 9, including group-based policies and real-world tuning advice.
+Description: A practical walkthrough of managing password policies and Kerberos ticket policies in Red Hat Identity Management on RHEL, including group-based policies and real-world tuning advice.
 
 ---
 

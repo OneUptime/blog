@@ -1,10 +1,10 @@
-# How to Build a STIG-Compliant RHEL 9 Image Using Kickstart
+# How to Build a STIG-Compliant RHEL Image Using Kickstart
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, STIG, Kickstart, Compliance, Linux
 
-Description: Build STIG-compliant RHEL 9 images from the start using Kickstart automation, ensuring every server meets compliance requirements before it even boots.
+Description: Build STIG-compliant RHEL images from the start using Kickstart automation, ensuring every server meets compliance requirements before it even boots.
 
 ---
 
@@ -48,7 +48,7 @@ cp /usr/share/scap-security-guide/kickstart/ssg-rhel9-stig-ks.cfg \
 Here is a full Kickstart file with STIG-compliant settings:
 
 ```bash
-# RHEL 9 STIG-Compliant Kickstart
+# RHEL STIG-Compliant Kickstart
 # Use text-based installer
 text
 
@@ -241,7 +241,7 @@ Store your Kickstart files in a Git repository so changes are tracked:
 cd /var/www/html/ks/
 git init
 git add rhel9-stig.cfg
-git commit -m "Initial STIG-compliant Kickstart for RHEL 9"
+git commit -m "Initial STIG-compliant Kickstart for RHEL"
 ```
 
 Building STIG compliance into the installation process means every server starts its life in a hardened state. There is no gap between deployment and compliance, and no risk that someone forgets to run the hardening playbook. Make the Kickstart file your single source of truth for server configuration.

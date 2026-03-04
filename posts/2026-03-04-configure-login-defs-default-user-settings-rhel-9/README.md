@@ -1,16 +1,16 @@
-# How to Configure the /etc/login.defs File for Default User Settings on RHEL 9
+# How to Configure the /etc/login.defs File for Default User Settings on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, login.defs, User Settings, Security, Linux
 
-Description: A detailed walkthrough of the /etc/login.defs file on RHEL 9, explaining each important setting and how to configure UID/GID ranges, password policies, umask, and more for new user accounts.
+Description: A detailed walkthrough of the /etc/login.defs file on RHEL, explaining each important setting and how to configure UID/GID ranges, password policies, umask, and more for new user accounts.
 
 ---
 
 ## What is /etc/login.defs?
 
-Every time you run `useradd` on RHEL 9, the system reads `/etc/login.defs` to figure out the defaults: what UID to assign, how long passwords last, what umask to apply, and a bunch of other settings. Most admins never touch this file, which means they are running with defaults that might not match their security policy.
+Every time you run `useradd` on RHEL, the system reads `/etc/login.defs` to figure out the defaults: what UID to assign, how long passwords last, what umask to apply, and a bunch of other settings. Most admins never touch this file, which means they are running with defaults that might not match their security policy.
 
 This is one of those files that is worth reviewing once, getting right, and then forgetting about. Let me walk through the important parts.
 
@@ -162,7 +162,7 @@ With `UMASK 077`:
 - New files get permissions `600` (rw-------)
 - New directories get permissions `700` (rwx------)
 
-Note that on RHEL 9, the umask is also set in `/etc/profile` and `/etc/bashrc`, which may override this value. The `pam_umask` module reads from login.defs and applies it during login.
+Note that on RHEL, the umask is also set in `/etc/profile` and `/etc/bashrc`, which may override this value. The `pam_umask` module reads from login.defs and applies it during login.
 
 ## CREATE_HOME
 
@@ -173,7 +173,7 @@ This controls whether `useradd` creates a home directory by default.
 CREATE_HOME     yes
 ```
 
-On RHEL 9, this is `yes` by default. If you set it to `no`, you need to pass `-m` to `useradd` to create a home directory. Some environments with centralized home directories (NFS/autofs) set this to `no` since the home directories are managed elsewhere.
+On RHEL, this is `yes` by default. If you set it to `no`, you need to pass `-m` to `useradd` to create a home directory. Some environments with centralized home directories (NFS/autofs) set this to `no` since the home directories are managed elsewhere.
 
 ## ENCRYPT_METHOD
 
@@ -189,15 +189,15 @@ grep ENCRYPT_METHOD /etc/login.defs
 ENCRYPT_METHOD SHA512
 ```
 
-RHEL 9 defaults to `SHA512`, which is solid. The options are:
+RHEL defaults to `SHA512`, which is solid. The options are:
 
 | Method | Security | Notes |
 |--------|----------|-------|
 | DES | Very weak | Legacy, do not use |
 | MD5 | Weak | Deprecated |
 | SHA256 | Good | Acceptable |
-| SHA512 | Good | RHEL 9 default |
-| YESCRYPT | Strong | Available on RHEL 9 |
+| SHA512 | Good | RHEL default |
+| YESCRYPT | Strong | Available on RHEL |
 
 If you want the strongest option:
 
@@ -205,7 +205,7 @@ If you want the strongest option:
 ENCRYPT_METHOD YESCRYPT
 ```
 
-YESCRYPT is a modern password hashing scheme designed to be resistant to GPU and ASIC attacks. It is available on RHEL 9 and is a good choice for new deployments.
+YESCRYPT is a modern password hashing scheme designed to be resistant to GPU and ASIC attacks. It is available on RHEL and is a good choice for new deployments.
 
 ## USERGROUPS_ENAB
 
@@ -258,7 +258,7 @@ grep -v '^#' /etc/login.defs | grep -v '^$'
 
 ## A Security-Hardened Configuration
 
-Here is what I typically set on production RHEL 9 servers:
+Here is what I typically set on production RHEL servers:
 
 ```
 PASS_MAX_DAYS   90

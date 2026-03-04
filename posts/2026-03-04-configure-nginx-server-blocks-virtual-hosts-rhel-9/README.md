@@ -1,10 +1,10 @@
-# How to Configure Nginx Server Blocks (Virtual Hosts) on RHEL 9
+# How to Configure Nginx Server Blocks (Virtual Hosts) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Nginx, Server Blocks, Virtual Hosts, Linux
 
-Description: Learn how to host multiple websites on a single Nginx server using server blocks on RHEL 9.
+Description: Learn how to host multiple websites on a single Nginx server using server blocks on RHEL.
 
 ---
 
@@ -14,7 +14,7 @@ Server blocks in Nginx are the equivalent of Apache virtual hosts. They let you 
 
 ## Prerequisites
 
-- RHEL 9 with Nginx installed
+- RHEL with Nginx installed
 - DNS records pointing your domains to the server
 - Root or sudo access
 
@@ -195,4 +195,4 @@ server {
 
 ## Wrap-Up
 
-Server blocks are how you host multiple domains on one Nginx instance. Keep each site in its own config file, set up separate logs, and always define a default server block. On RHEL 9, do not forget to set the SELinux context on any custom document roots. This pattern scales easily whether you have two sites or fifty.
+Server blocks are how you host multiple domains on one Nginx instance. Keep each site in its own config file, set up separate logs, and always define a default server block. On RHEL, do not forget to set the SELinux context on any custom document roots. This pattern scales easily whether you have two sites or fifty.

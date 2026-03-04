@@ -1,16 +1,16 @@
-# How to Manage Podman Containers with Ansible on RHEL 9
+# How to Manage Podman Containers with Ansible on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, Podman, Containers, Automation, Linux
 
-Description: Use Ansible to manage Podman containers on RHEL 9, including rootless containers, pod management, and systemd integration.
+Description: Use Ansible to manage Podman containers on RHEL, including rootless containers, pod management, and systemd integration.
 
 ---
 
-Podman is the native container runtime on RHEL 9. Unlike Docker, it runs without a daemon and supports rootless containers out of the box. Ansible works well with Podman, and since Podman is Docker-compatible at the CLI level, many of the same Ansible modules work for both.
+Podman is the native container runtime on RHEL. Unlike Docker, it runs without a daemon and supports rootless containers out of the box. Ansible works well with Podman, and since Podman is Docker-compatible at the CLI level, many of the same Ansible modules work for both.
 
-## Podman vs Docker on RHEL 9
+## Podman vs Docker on RHEL
 
 ```mermaid
 graph LR
@@ -27,7 +27,7 @@ graph LR
 ## Prerequisites
 
 ```bash
-# Podman should already be installed on RHEL 9
+# Podman should already be installed on RHEL
 rpm -q podman
 
 # If not, install it
@@ -41,7 +41,7 @@ ansible-galaxy collection install containers.podman
 
 ```yaml
 # playbook-podman-basic.yml
-# Deploy containers with Podman on RHEL 9
+# Deploy containers with Podman on RHEL
 ---
 - name: Manage Podman containers
   hosts: container_hosts
@@ -283,4 +283,4 @@ podman stats --no-stream
 
 ## Wrapping Up
 
-Podman with Ansible on RHEL 9 is a strong combination. You get rootless containers, no daemon dependency, and native systemd integration. The `containers.podman` collection provides everything you need. The pod concept is especially useful for multi-container applications since all containers in a pod share networking, just like in Kubernetes. If you are already using Kubernetes in production, Podman pods make your local development and staging environments more consistent.
+Podman with Ansible on RHEL is a strong combination. You get rootless containers, no daemon dependency, and native systemd integration. The `containers.podman` collection provides everything you need. The pod concept is especially useful for multi-container applications since all containers in a pod share networking, just like in Kubernetes. If you are already using Kubernetes in production, Podman pods make your local development and staging environments more consistent.

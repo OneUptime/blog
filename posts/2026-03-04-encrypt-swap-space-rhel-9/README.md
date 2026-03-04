@@ -1,10 +1,10 @@
-# How to Encrypt Swap Space on RHEL 9
+# How to Encrypt Swap Space on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Swap, Encryption, Security, Linux
 
-Description: Learn how to encrypt swap space on RHEL 9 to protect sensitive data that gets paged out of RAM, using LUKS and random-key encryption.
+Description: Learn how to encrypt swap space on RHEL to protect sensitive data that gets paged out of RAM, using LUKS and random-key encryption.
 
 ---
 
@@ -230,4 +230,4 @@ For the random-key method, make sure crypttab specifies `/dev/urandom` as the ke
 
 ## Summary
 
-Encrypting swap on RHEL 9 protects sensitive data that gets paged out of memory. Use random-key encryption (via `/dev/urandom` in crypttab) for systems that do not hibernate - it is simpler and more secure since keys are never stored. Use LUKS encryption if you need hibernation support. The performance impact is negligible on modern hardware with AES-NI. Always verify with `swapon --show` and `cryptsetup status` after setup.
+Encrypting swap on RHEL protects sensitive data that gets paged out of memory. Use random-key encryption (via `/dev/urandom` in crypttab) for systems that do not hibernate - it is simpler and more secure since keys are never stored. Use LUKS encryption if you need hibernation support. The performance impact is negligible on modern hardware with AES-NI. Always verify with `swapon --show` and `cryptsetup status` after setup.

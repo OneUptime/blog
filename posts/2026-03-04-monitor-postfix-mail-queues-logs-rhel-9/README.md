@@ -1,10 +1,10 @@
-# How to Monitor Postfix Mail Queues and Logs on RHEL 9
+# How to Monitor Postfix Mail Queues and Logs on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Postfix, Mail Queue, Monitoring, Linux
 
-Description: Learn how to effectively monitor Postfix mail queues and analyze logs on RHEL 9 to catch delivery issues before they become problems.
+Description: Learn how to effectively monitor Postfix mail queues and analyze logs on RHEL to catch delivery issues before they become problems.
 
 ---
 

@@ -1,16 +1,16 @@
-# How to Recover Deleted Files on RHEL 9
+# How to Recover Deleted Files on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, File Recovery, Troubleshooting, Linux, Data Recovery
 
-Description: Practical methods for recovering deleted files on RHEL 9, including the /proc/PID/fd technique for open files, extundelete for ext4, testdisk/photorec for various filesystems, and XFS recovery limitations.
+Description: Practical methods for recovering deleted files on RHEL, including the /proc/PID/fd technique for open files, extundelete for ext4, testdisk/photorec for various filesystems, and XFS recovery limitations.
 
 ---
 
 ## When Deletion Happens
 
-We have all been there. A misplaced `rm -rf`, a script that cleaned up the wrong directory, or a user who deleted something they should not have. The sinking feeling is universal. But before you panic, there are several recovery options on RHEL 9, depending on the filesystem and the circumstances.
+We have all been there. A misplaced `rm -rf`, a script that cleaned up the wrong directory, or a user who deleted something they should not have. The sinking feeling is universal. But before you panic, there are several recovery options on RHEL, depending on the filesystem and the circumstances.
 
 Let me be honest upfront: file recovery on Linux is not guaranteed. Unlike Windows with its Recycle Bin, Linux deletes are immediate. But "deleted" does not always mean "gone," especially if you act quickly.
 
@@ -130,7 +130,7 @@ ls -la RECOVERED_FILES/
 ### Limitations of extundelete
 
 - Only works with ext4 (and ext3) filesystems
-- Does NOT work with XFS, which is the default filesystem on RHEL 9
+- Does NOT work with XFS, which is the default filesystem on RHEL
 - Recovery success depends on whether the data blocks have been overwritten
 - Large files have lower recovery rates because their blocks are spread across the disk
 - The filesystem should be unmounted or mounted read-only for best results
@@ -189,7 +189,7 @@ Navigate through the menus:
 
 ## XFS Recovery Limitations
 
-RHEL 9 uses XFS as the default filesystem, and this is where things get difficult. XFS immediately reuses freed blocks and does not maintain the same kind of journal that ext4 does. This makes traditional undelete tools ineffective.
+RHEL uses XFS as the default filesystem, and this is where things get difficult. XFS immediately reuses freed blocks and does not maintain the same kind of journal that ext4 does. This makes traditional undelete tools ineffective.
 
 ```bash
 # Check your filesystem type
@@ -314,4 +314,4 @@ sudo lvs
 
 ## Summary
 
-File recovery on RHEL 9 depends heavily on timing and filesystem type. The `/proc/PID/fd` method is the most reliable if the file is still open. For ext4 filesystems, extundelete gives you a reasonable chance. For XFS (the RHEL 9 default), options are limited to PhotoRec's signature-based recovery, which loses filenames and structure. The real lesson is that prevention, through backups, snapshots, and safe deletion practices, is always more reliable than recovery.
+File recovery on RHEL depends heavily on timing and filesystem type. The `/proc/PID/fd` method is the most reliable if the file is still open. For ext4 filesystems, extundelete gives you a reasonable chance. For XFS (the RHEL default), options are limited to PhotoRec's signature-based recovery, which loses filenames and structure. The real lesson is that prevention, through backups, snapshots, and safe deletion practices, is always more reliable than recovery.

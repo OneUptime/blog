@@ -1,14 +1,14 @@
-# How to Configure IPv6 Router Advertisements on RHEL 9
+# How to Configure IPv6 Router Advertisements on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, IPv6, Router Advertisements, Linux
 
-Description: Learn how to configure your RHEL 9 system as an IPv6 router that sends Router Advertisements using radvd, enabling clients on the network to auto-configure their IPv6 addresses via SLAAC.
+Description: Learn how to configure your RHEL system as an IPv6 router that sends Router Advertisements using radvd, enabling clients on the network to auto-configure their IPv6 addresses via SLAAC.
 
 ---
 
-Router Advertisements (RAs) are the backbone of IPv6 autoconfiguration. When a host comes online, it sends a Router Solicitation, and your router responds with an RA that tells it what prefix to use, which gateway to talk to, and various other parameters. If you're running RHEL 9 as a gateway or router, you'll need radvd to handle this.
+Router Advertisements (RAs) are the backbone of IPv6 autoconfiguration. When a host comes online, it sends a Router Solicitation, and your router responds with an RA that tells it what prefix to use, which gateway to talk to, and various other parameters. If you're running RHEL as a gateway or router, you'll need radvd to handle this.
 
 ## How Router Advertisements Work
 
@@ -17,7 +17,7 @@ In IPv6, there's no DHCP server needed for basic address assignment (though DHCP
 ```mermaid
 sequenceDiagram
     participant Client as IPv6 Client
-    participant Router as RHEL 9 Router (radvd)
+    participant Router as RHEL Router (radvd)
     Client->>Router: Router Solicitation (RS)
     Router->>Client: Router Advertisement (RA)<br>Prefix: 2001:db8:1::/64<br>Flags, Lifetime, etc.
     Client->>Client: Generate IPv6 address<br>2001:db8:1::EUI64/64
@@ -27,7 +27,7 @@ sequenceDiagram
 
 ## Prerequisites
 
-- RHEL 9 system with two or more network interfaces (acting as a router)
+- RHEL system with two or more network interfaces (acting as a router)
 - Root or sudo access
 - IPv6 prefix allocated for your network
 - IPv6 forwarding enabled
@@ -136,7 +136,7 @@ sudo systemctl status radvd
 
 ## Verifying Router Advertisements
 
-From the RHEL 9 router itself, you can check that radvd is running and sending advertisements.
+From the RHEL router itself, you can check that radvd is running and sending advertisements.
 
 ```bash
 # Check radvd is listening
@@ -253,4 +253,4 @@ sudo firewall-cmd --reload
 
 ## Wrapping Up
 
-Running radvd on RHEL 9 gives you full control over IPv6 autoconfiguration on your network. The combination of SLAAC with RDNSS lets clients fully configure themselves without any DHCPv6 infrastructure. Just remember that IPv6 forwarding must be on, and your firewall must permit ICMPv6 traffic for the whole thing to work.
+Running radvd on RHEL gives you full control over IPv6 autoconfiguration on your network. The combination of SLAAC with RDNSS lets clients fully configure themselves without any DHCPv6 infrastructure. Just remember that IPv6 forwarding must be on, and your firewall must permit ICMPv6 traffic for the whole thing to work.

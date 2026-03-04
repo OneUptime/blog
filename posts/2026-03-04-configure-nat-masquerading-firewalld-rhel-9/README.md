@@ -1,14 +1,14 @@
-# How to Configure NAT Masquerading with Firewalld on RHEL 9
+# How to Configure NAT Masquerading with Firewalld on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Firewalld, NAT, Masquerading, Linux
 
-Description: How to set up NAT masquerading with firewalld on RHEL 9, turning your RHEL server into a gateway that provides internet access to private network hosts.
+Description: How to set up NAT masquerading with firewalld on RHEL, turning your RHEL server into a gateway that provides internet access to private network hosts.
 
 ---
 
-NAT masquerading lets hosts on a private network access the internet through a RHEL server acting as a gateway. The gateway replaces the private source IP with its own public IP on outgoing packets, and reverses the process for return traffic. This is the same thing your home router does, and on RHEL 9, firewalld makes it straightforward to set up.
+NAT masquerading lets hosts on a private network access the internet through a RHEL server acting as a gateway. The gateway replaces the private source IP with its own public IP on outgoing packets, and reverses the process for return traffic. This is the same thing your home router does, and on RHEL, firewalld makes it straightforward to set up.
 
 ## How Masquerading Works
 
@@ -26,7 +26,7 @@ The gateway translates:
 
 ## Prerequisites
 
-- RHEL 9 server with two network interfaces
+- RHEL server with two network interfaces
 - One interface connected to the private network (e.g., eth1 - 10.0.1.1/24)
 - One interface connected to the internet or upstream network (e.g., eth0 - public IP)
 - Root or sudo access
@@ -281,4 +281,4 @@ ping 10.0.1.50
 
 ## Summary
 
-NAT masquerading with firewalld turns a RHEL 9 server into a network gateway. Enable IP forwarding, assign interfaces to zones, enable masquerading on the external zone, and configure internal hosts to use the gateway. Add DHCP and DNS services for a complete gateway setup. For security, restrict outbound access with direct rules and use port forwarding for inbound services. Monitor the conntrack table size for performance and tune it for busy networks.
+NAT masquerading with firewalld turns a RHEL server into a network gateway. Enable IP forwarding, assign interfaces to zones, enable masquerading on the external zone, and configure internal hosts to use the gateway. Add DHCP and DNS services for a complete gateway setup. For security, restrict outbound access with direct rules and use port forwarding for inbound services. Monitor the conntrack table size for performance and tune it for busy networks.

@@ -1,10 +1,10 @@
-# How to Configure the GRUB2 Boot Menu Timeout on RHEL 9
+# How to Configure the GRUB2 Boot Menu Timeout on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, GRUB2, Timeout, Boot, Linux
 
-Description: Learn how to configure the GRUB2 boot menu timeout on RHEL 9, including setting, extending, and disabling the timeout for different server and workstation scenarios.
+Description: Learn how to configure the GRUB2 boot menu timeout on RHEL, including setting, extending, and disabling the timeout for different server and workstation scenarios.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to configure the GRUB2 boot menu timeout on RHEL 9, inclu
 
 The GRUB2 timeout determines how long the boot menu is displayed before automatically booting the default entry. On servers, you typically want a short timeout or no menu at all to minimize boot time. On workstations or systems where you might need to select a different kernel, a longer timeout gives you time to intervene.
 
-RHEL 9 defaults to a 5-second timeout, which is a reasonable middle ground.
+RHEL defaults to a 5-second timeout, which is a reasonable middle ground.
 
 ## Checking the Current Timeout
 
@@ -77,7 +77,7 @@ This requires manual selection every boot. Useful for multi-boot systems or test
 
 ## GRUB_TIMEOUT_STYLE Options
 
-RHEL 9 supports three timeout styles:
+RHEL supports three timeout styles:
 
 | Style | Behavior |
 |-------|----------|
@@ -95,7 +95,7 @@ sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 
 ## The Menu Auto-Hide Feature
 
-RHEL 9 has a menu auto-hide feature that skips the GRUB menu if there is only one boot entry and the previous boot was successful.
+RHEL has a menu auto-hide feature that skips the GRUB menu if there is only one boot entry and the previous boot was successful.
 
 ```bash
 # Check the auto-hide status
@@ -121,4 +121,4 @@ flowchart TD
 
 ## Wrapping Up
 
-The GRUB2 timeout is a small setting that matters more than you might think. Too short and you cannot catch a bad boot in time. Too long and every reboot wastes time staring at a menu. For most production RHEL 9 servers, a 5-second countdown is the sweet spot. Set it, regenerate the GRUB config, and move on to more interesting problems.
+The GRUB2 timeout is a small setting that matters more than you might think. Too short and you cannot catch a bad boot in time. Too long and every reboot wastes time staring at a menu. For most production RHEL servers, a 5-second countdown is the sweet spot. Set it, regenerate the GRUB config, and move on to more interesting problems.
