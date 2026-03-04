@@ -1,20 +1,20 @@
-# How to Plan and Deploy a GFS2 Cluster File System on RHEL 9
+# How to Plan and Deploy a GFS2 Cluster File System on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, GFS2, Cluster, Storage, Pacemaker, High Availability, Linux
 
-Description: Learn how to plan, deploy, and configure a GFS2 cluster file system on RHEL 9 for shared storage across multiple cluster nodes.
+Description: Learn how to plan, deploy, and configure a GFS2 cluster file system on RHEL for shared storage across multiple cluster nodes.
 
 ---
 
-GFS2 (Global File System 2) is a shared-disk cluster file system that allows multiple RHEL 9 nodes to simultaneously read and write to the same storage device. It is designed for high-availability clusters where applications need concurrent access to shared data. GFS2 requires a cluster infrastructure (Pacemaker and Corosync) and shared block storage (SAN, iSCSI, or Fibre Channel).
+GFS2 (Global File System 2) is a shared-disk cluster file system that allows multiple RHEL nodes to simultaneously read and write to the same storage device. It is designed for high-availability clusters where applications need concurrent access to shared data. GFS2 requires a cluster infrastructure (Pacemaker and Corosync) and shared block storage (SAN, iSCSI, or Fibre Channel).
 
 ## Prerequisites
 
 Before deploying GFS2, you need:
 
-- At least 2 RHEL 9 nodes with active subscriptions
+- At least 2 RHEL nodes with active subscriptions
 - Shared block storage accessible from all nodes (iSCSI, FC SAN, or shared virtual disk)
 - Pacemaker/Corosync cluster configured and running
 - Fencing configured (STONITH) - this is mandatory for GFS2
@@ -194,4 +194,4 @@ cat /shared/test.txt
 
 ## Summary
 
-Deploying GFS2 on RHEL 9 requires careful planning of cluster infrastructure, fencing, shared storage, and journal allocation. The deployment depends on a functioning Pacemaker/Corosync cluster with mandatory fencing. Follow the resource ordering constraints (DLM, then lvmlockd, then GFS2 mount) and always test shared access before putting the file system into production.
+Deploying GFS2 on RHEL requires careful planning of cluster infrastructure, fencing, shared storage, and journal allocation. The deployment depends on a functioning Pacemaker/Corosync cluster with mandatory fencing. Follow the resource ordering constraints (DLM, then lvmlockd, then GFS2 mount) and always test shared access before putting the file system into production.

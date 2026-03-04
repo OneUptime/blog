@@ -1,23 +1,23 @@
-# How to Prepare RHEL 9 for SAP HANA Installation Using RHEL System Roles
+# How to Prepare RHEL for SAP HANA Installation Using RHEL System Roles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP HANA, System Roles, Ansible
 
-Description: Prepare RHEL 9 for SAP HANA installation using RHEL System Roles.
+Description: Prepare RHEL for SAP HANA installation using RHEL System Roles.
 
 ---
 
 ## Overview
 
-Prepare RHEL 9 for SAP HANA installation using RHEL System Roles. Running SAP on RHEL 9 requires specific system preparation, kernel tuning, and high-availability configuration.
+Prepare RHEL for SAP HANA installation using RHEL System Roles. Running SAP on RHEL requires specific system preparation, kernel tuning, and high-availability configuration.
 
 ## Prerequisites
 
-- RHEL 9 with the SAP Solutions subscription
+- RHEL with the SAP Solutions subscription
 - Systems meeting SAP hardware requirements (see SAP Note 2772999)
 - Root or sudo access
-- For HA clusters: at least two RHEL 9 nodes with the HA add-on
+- For HA clusters: at least two RHEL nodes with the HA add-on
 
 ## Step 1 - Register and Enable SAP Repositories
 
@@ -78,4 +78,4 @@ Use the SAP HANA Hardware Configuration Check Tool (HWCCT) or the RHEL System Ro
 
 ## Summary
 
-You have learned how to prepare rhel 9 for sap hana installation using rhel system roles. SAP workloads on RHEL 9 require careful preparation, but RHEL System Roles and tuned profiles automate much of the configuration.
+You have learned how to prepare RHEL for sap hana installation using rhel system roles. SAP workloads on RHEL require careful preparation, but RHEL System Roles and tuned profiles automate much of the configuration.

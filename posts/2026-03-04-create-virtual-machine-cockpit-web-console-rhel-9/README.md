@@ -1,14 +1,14 @@
-# How to Create a Virtual Machine Using the Cockpit Web Console on RHEL 9
+# How to Create a Virtual Machine Using the Cockpit Web Console on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, KVM, Cockpit, Virtualization, Web Console, Linux
 
-Description: Learn how to create and manage KVM virtual machines through the Cockpit web console on RHEL 9 with a graphical browser-based interface.
+Description: Learn how to create and manage KVM virtual machines through the Cockpit web console on RHEL with a graphical browser-based interface.
 
 ---
 
-The Cockpit web console on RHEL 9 provides an intuitive browser-based interface for creating and managing KVM virtual machines. It is ideal for administrators who prefer graphical workflows or need to manage VMs remotely without SSH access.
+The Cockpit web console on RHEL provides an intuitive browser-based interface for creating and managing KVM virtual machines. It is ideal for administrators who prefer graphical workflows or need to manage VMs remotely without SSH access.
 
 ## Installing Cockpit with VM Support
 
@@ -148,4 +148,4 @@ Use `virsh` or `virt-install` from the command line.
 
 ## Summary
 
-The Cockpit web console on RHEL 9 makes VM creation and management accessible through a browser. Install `cockpit-machines` to enable the Virtual Machines section, create VMs from ISO or network sources, and manage the full VM lifecycle through the intuitive web interface. For advanced configurations, complement Cockpit with command-line tools like virsh and virt-install.
+The Cockpit web console on RHEL makes VM creation and management accessible through a browser. Install `cockpit-machines` to enable the Virtual Machines section, create VMs from ISO or network sources, and manage the full VM lifecycle through the intuitive web interface. For advanced configurations, complement Cockpit with command-line tools like virsh and virt-install.

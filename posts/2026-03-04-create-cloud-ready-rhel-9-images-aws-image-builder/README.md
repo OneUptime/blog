@@ -1,20 +1,20 @@
-# How to Create Cloud-Ready RHEL 9 Images for AWS Using Image Builder
+# How to Create Cloud-Ready RHEL Images for AWS Using Image Builder
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Image Builder, AWS, Cloud, AMI
 
-Description: Create cloud-ready RHEL 9 AMI images for AWS using Image Builder.
+Description: Create cloud-ready RHEL AMI images for AWS using Image Builder.
 
 ---
 
 ## Overview
 
-Create cloud-ready RHEL 9 AMI images for AWS using Image Builder. RHEL Image Builder lets you create customized, deployable operating system images for physical, virtual, and cloud environments.
+Create cloud-ready RHEL AMI images for AWS using Image Builder. RHEL Image Builder lets you create customized, deployable operating system images for physical, virtual, and cloud environments.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription
+- A RHEL system with a valid subscription
 - Root or sudo access
 - The osbuild-composer and composer-cli packages
 
@@ -31,7 +31,7 @@ Create a TOML blueprint file `my-image.toml`:
 
 ```toml
 name = "my-custom-image"
-description = "Custom RHEL 9 image"
+description = "Custom RHEL image"
 version = "1.0.0"
 
 [[packages]]
@@ -91,4 +91,4 @@ You can also manage Image Builder through the Cockpit web console at `https://yo
 
 ## Summary
 
-You have learned how to create cloud-ready rhel 9 images for aws using image builder. Image Builder provides a consistent workflow for creating RHEL images across all deployment targets.
+You have learned how to create cloud-ready RHEL images for aws using image builder. Image Builder provides a consistent workflow for creating RHEL images across all deployment targets.

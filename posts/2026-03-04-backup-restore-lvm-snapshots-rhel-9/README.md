@@ -1,26 +1,26 @@
-# How to Backup and Restore LVM Snapshots on RHEL 9
+# How to Backup and Restore LVM Snapshots on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, LVM, Snapshots, Backup
 
-Description: Create LVM snapshots on RHEL 9 for consistent backups and restore from them.
+Description: Create LVM snapshots on RHEL for consistent backups and restore from them.
 
 ---
 
 ## Overview
 
-Create LVM snapshots on RHEL 9 for consistent backups and restore from them. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
+Create LVM snapshots on RHEL for consistent backups and restore from them. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - Sufficient storage for backup files (local or remote)
 - For remote backups: SSH access to the backup destination
 
 ## Step 1 - Choose Your Backup Tool
 
-RHEL 9 provides several backup tools:
+RHEL provides several backup tools:
 
 - **tar** - full archive backups
 - **rsync** - incremental file synchronization

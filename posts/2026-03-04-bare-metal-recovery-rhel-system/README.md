@@ -14,13 +14,13 @@ Perform a bare-metal recovery of a RHEL system from backup images. A solid backu
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - Sufficient storage for backup files (local or remote)
 - For remote backups: SSH access to the backup destination
 
 ## Step 1 - Choose Your Backup Tool
 
-RHEL 9 provides several backup tools:
+RHEL provides several backup tools:
 
 - **tar** - full archive backups
 - **rsync** - incremental file synchronization

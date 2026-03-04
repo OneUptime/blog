@@ -1,26 +1,26 @@
-# How to Use rsync for Incremental Backups on RHEL 9
+# How to Use rsync for Incremental Backups on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, rsync, Backup, Linux
 
-Description: Use rsync for efficient incremental backups on RHEL 9.
+Description: Use rsync for efficient incremental backups on RHEL.
 
 ---
 
 ## Overview
 
-Use rsync for efficient incremental backups on RHEL 9. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
+Use rsync for efficient incremental backups on RHEL. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - Sufficient storage for backup files (local or remote)
 - For remote backups: SSH access to the backup destination
 
 ## Step 1 - Choose Your Backup Tool
 
-RHEL 9 provides several backup tools:
+RHEL provides several backup tools:
 
 - **tar** - full archive backups
 - **rsync** - incremental file synchronization

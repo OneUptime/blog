@@ -1,14 +1,14 @@
-# How to Install an IdM Server with an External CA on RHEL 9
+# How to Install an IdM Server with an External CA on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Identity Management, Certificate Authority, FreeIPA, Linux
 
-Description: Learn how to install a Red Hat Identity Management server on RHEL 9 using an external Certificate Authority for certificate signing.
+Description: Learn how to install a Red Hat Identity Management server on RHEL using an external Certificate Authority for certificate signing.
 
 ---
 
-Some organizations require that all certificates come from an existing corporate Certificate Authority rather than the IdM integrated CA. RHEL 9 IdM supports this by generating a Certificate Signing Request (CSR) during installation, which you submit to your external CA. The signed certificate is then imported to complete the installation.
+Some organizations require that all certificates come from an existing corporate Certificate Authority rather than the IdM integrated CA. RHEL IdM supports this by generating a Certificate Signing Request (CSR) during installation, which you submit to your external CA. The signed certificate is then imported to complete the installation.
 
 ## When to Use an External CA
 
@@ -195,4 +195,4 @@ openssl pkcs7 -print_certs -in idm-cert.p7b -out idm-cert.crt
 
 ## Summary
 
-Installing IdM with an external CA on RHEL 9 is a two-phase process: generate a CSR, get it signed by your external CA, and then complete the installation with the signed certificate. This approach integrates IdM into your existing PKI infrastructure while still providing centralized Kerberos authentication and LDAP directory services. Remember that certificate renewal requires manual intervention when using an external CA.
+Installing IdM with an external CA on RHEL is a two-phase process: generate a CSR, get it signed by your external CA, and then complete the installation with the signed certificate. This approach integrates IdM into your existing PKI infrastructure while still providing centralized Kerberos authentication and LDAP directory services. Remember that certificate renewal requires manual intervention when using an external CA.

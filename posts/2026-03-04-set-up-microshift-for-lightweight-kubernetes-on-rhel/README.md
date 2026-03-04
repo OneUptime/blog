@@ -12,7 +12,7 @@ MicroShift is a lightweight Kubernetes distribution from Red Hat designed for ed
 
 ## Prerequisites
 
-You need RHEL 9 with a valid subscription and at least 2 CPU cores and 2 GB of RAM. MicroShift also requires CRI-O as the container runtime.
+You need RHEL with a valid subscription and at least 2 CPU cores and 2 GB of RAM. MicroShift also requires CRI-O as the container runtime.
 
 ## Enable Required Repositories
 

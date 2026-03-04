@@ -1,18 +1,18 @@
-# How to Grow a VDO Logical Volume on RHEL 9
+# How to Grow a VDO Logical Volume on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VDO, LVM, Storage, Linux
 
-Description: Learn how to grow VDO logical volumes on RHEL 9 by expanding both the physical and virtual sizes, and how to resize the filesystem to use the new space.
+Description: Learn how to grow VDO logical volumes on RHEL by expanding both the physical and virtual sizes, and how to resize the filesystem to use the new space.
 
 ---
 
-As data grows, you may need to expand your VDO volumes. On RHEL 9, LVM-VDO volumes can be grown in two dimensions: the physical size (actual disk space) and the virtual size (logical capacity presented to the filesystem). This guide covers both types of expansion.
+As data grows, you may need to expand your VDO volumes. On RHEL, LVM-VDO volumes can be grown in two dimensions: the physical size (actual disk space) and the virtual size (logical capacity presented to the filesystem). This guide covers both types of expansion.
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - An existing LVM-VDO volume
 - Available space in the volume group (for physical expansion)
 - The `lvm2` and `kmod-kvdo` packages installed
@@ -221,4 +221,4 @@ free -h
 
 ## Conclusion
 
-Growing VDO logical volumes on RHEL 9 is a straightforward online operation. Understanding the distinction between physical and virtual size growth helps you make the right choice for your situation. Whether you need more actual storage capacity, more logical address space, or both, the LVM tools make expansion simple. Always monitor your deduplication ratios and physical utilization after growth to ensure your overprovisioning remains sustainable.
+Growing VDO logical volumes on RHEL is a straightforward online operation. Understanding the distinction between physical and virtual size growth helps you make the right choice for your situation. Whether you need more actual storage capacity, more logical address space, or both, the LVM tools make expansion simple. Always monitor your deduplication ratios and physical utilization after growth to ensure your overprovisioning remains sustainable.

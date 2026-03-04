@@ -1,14 +1,14 @@
-# How to Install and Configure Rancher for Kubernetes Management on RHEL 9
+# How to Install and Configure Rancher for Kubernetes Management on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Kubernetes, Rancher
 
-Description: Step-by-step guide on install and configure rancher for kubernetes management on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on install and configure rancher for kubernetes management on RHEL with practical examples and commands.
 
 ---
 
-Rancher provides a unified management platform for Kubernetes clusters running on RHEL 9.
+Rancher provides a unified management platform for Kubernetes clusters running on RHEL.
 
 ## Install Rancher with Helm
 
@@ -49,11 +49,11 @@ kubectl apply -f https://rancher.example.com/v3/import/xxx.yaml
 ## Provision New Clusters
 
 Rancher can provision clusters on:
-- Custom nodes (RHEL 9 servers)
+- Custom nodes (RHEL servers)
 - Cloud providers (AWS, Azure, GCP)
 - vSphere
 
 ## Conclusion
 
-Rancher on RHEL 9 provides centralized Kubernetes management with a user-friendly web interface. Use it to manage multiple clusters, enforce policies, and simplify Kubernetes operations.
+Rancher on RHEL provides centralized Kubernetes management with a user-friendly web interface. Use it to manage multiple clusters, enforce policies, and simplify Kubernetes operations.
 

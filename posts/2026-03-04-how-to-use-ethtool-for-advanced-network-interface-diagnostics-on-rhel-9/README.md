@@ -1,14 +1,14 @@
-# How to Use ethtool for Advanced Network Interface Diagnostics on RHEL 9
+# How to Use ethtool for Advanced Network Interface Diagnostics on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Networking
 
-Description: Step-by-step guide on use ethtool for advanced network interface diagnostics on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on use ethtool for advanced network interface diagnostics on RHEL with practical examples and commands.
 
 ---
 
-ethtool provides detailed network interface diagnostics and configuration on RHEL 9.
+ethtool provides detailed network interface diagnostics and configuration on RHEL.
 
 ## Check Interface Settings
 
@@ -100,5 +100,5 @@ watch -n 1 'ethtool -S eth0 | grep -E "rx_bytes|tx_bytes|errors|drops"'
 
 ## Conclusion
 
-ethtool on RHEL 9 is essential for network interface diagnostics. Use it to check link status, view error counters, configure offload features, and troubleshoot connectivity issues at the hardware level.
+ethtool on RHEL is essential for network interface diagnostics. Use it to check link status, view error counters, configure offload features, and troubleshoot connectivity issues at the hardware level.
 

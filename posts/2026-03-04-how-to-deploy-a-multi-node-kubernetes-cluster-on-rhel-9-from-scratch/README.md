@@ -1,14 +1,14 @@
-# How to Deploy a Multi-Node Kubernetes Cluster on RHEL 9 from Scratch
+# How to Deploy a Multi-Node Kubernetes Cluster on RHEL from Scratch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Kubernetes
 
-Description: Step-by-step guide on deploy a multi-node kubernetes cluster on rhel 9 from scratch with practical examples and commands.
+Description: Step-by-step guide on deploy a multi-node kubernetes cluster on RHEL from scratch with practical examples and commands.
 
 ---
 
-Deploying a multi-node Kubernetes cluster on RHEL 9 requires careful planning of networking, storage, and high availability.
+Deploying a multi-node Kubernetes cluster on RHEL requires careful planning of networking, storage, and high availability.
 
 ## Architecture
 
@@ -75,5 +75,5 @@ kubectl get nodes
 
 ## Conclusion
 
-A multi-node Kubernetes cluster on RHEL 9 with multiple control plane nodes provides high availability. Use a load balancer for the API server and stacked etcd for simplified topology.
+A multi-node Kubernetes cluster on RHEL with multiple control plane nodes provides high availability. Use a load balancer for the API server and stacked etcd for simplified topology.
 

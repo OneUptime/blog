@@ -1,18 +1,18 @@
-# How to Use Podman with systemd for Production Container Workloads on RHEL 9
+# How to Use Podman with systemd for Production Container Workloads on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Podman, Containers, systemd
 
-Description: Step-by-step guide on use podman with systemd for production container workloads on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on use podman with systemd for production container workloads on RHEL with practical examples and commands.
 
 ---
 
-Podman integrates with systemd to manage production container workloads on RHEL 9 with automatic restarts, dependency management, and logging.
+Podman integrates with systemd to manage production container workloads on RHEL with automatic restarts, dependency management, and logging.
 
 ## Prerequisites
 
-- RHEL 9 with Podman installed
+- RHEL with Podman installed
 - Basic understanding of systemd units
 - Container images for your workloads
 
@@ -79,7 +79,7 @@ podman generate systemd --new --name app-pod -f
 
 ## Use Quadlet for Declarative Container Management
 
-RHEL 9 supports Quadlet, which is a native way to define containers as systemd units:
+RHEL supports Quadlet, which is a native way to define containers as systemd units:
 
 ```ini
 # /etc/containers/systemd/webapp.container
@@ -134,5 +134,5 @@ podman run -d --name webapp \
 
 ## Conclusion
 
-Podman with systemd provides a daemonless, production-ready container runtime on RHEL 9. Use Quadlet for declarative configuration and systemd integration for reliable container lifecycle management.
+Podman with systemd provides a daemonless, production-ready container runtime on RHEL. Use Quadlet for declarative configuration and systemd integration for reliable container lifecycle management.
 

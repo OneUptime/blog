@@ -1,14 +1,14 @@
-# How to Fix 'No Route to Host' Network Errors on RHEL 9
+# How to Fix 'No Route to Host' Network Errors on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Networking, Troubleshooting
 
-Description: Step-by-step guide on fix 'no route to host' network errors on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on fix 'no route to host' network errors on RHEL with practical examples and commands.
 
 ---
 
-The "No route to host" error on RHEL 9 indicates a network routing or firewall problem preventing connections to the destination.
+The "No route to host" error on RHEL indicates a network routing or firewall problem preventing connections to the destination.
 
 ## Check Basic Connectivity
 
@@ -91,5 +91,5 @@ nslookup destination-host
 
 ## Conclusion
 
-"No route to host" errors on RHEL 9 are caused by missing routes, firewall rules blocking traffic, or network interface issues. Check routing, firewall rules on both ends, and interface status to resolve the problem.
+"No route to host" errors on RHEL are caused by missing routes, firewall rules blocking traffic, or network interface issues. Check routing, firewall rules on both ends, and interface status to resolve the problem.
 

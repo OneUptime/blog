@@ -1,10 +1,10 @@
-# How to Set Up a Highly Available Virtual IP with Pacemaker on RHEL 9
+# How to Set Up a Highly Available Virtual IP with Pacemaker on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Virtual IP, VIP, Pacemaker, High Availability, Cluster, Linux
 
-Description: Learn how to set up a highly available virtual IP address with Pacemaker on RHEL 9 for seamless failover between cluster nodes.
+Description: Learn how to set up a highly available virtual IP address with Pacemaker on RHEL for seamless failover between cluster nodes.
 
 ---
 
@@ -12,7 +12,7 @@ A virtual IP (VIP) is a floating IP address managed by Pacemaker that automatica
 
 ## Prerequisites
 
-- A RHEL 9 Pacemaker cluster with at least two nodes
+- A RHEL Pacemaker cluster with at least two nodes
 - STONITH fencing configured
 - An unused IP address on the cluster network
 
@@ -198,4 +198,4 @@ sudo pcs resource cleanup ClusterVIP
 
 ## Conclusion
 
-A virtual IP with Pacemaker on RHEL 9 provides seamless failover for client connections. The VIP automatically moves during node failures, and ARP announcements redirect network traffic to the new node. Group the VIP with service resources and configure stickiness to control failover behavior.
+A virtual IP with Pacemaker on RHEL provides seamless failover for client connections. The VIP automatically moves during node failures, and ARP announcements redirect network traffic to the new node. Group the VIP with service resources and configure stickiness to control failover behavior.

@@ -1,20 +1,20 @@
-# How to Install an IdM Server with Integrated DNS on RHEL 9
+# How to Install an IdM Server with Integrated DNS on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Identity Management, DNS, FreeIPA, Linux
 
-Description: Learn how to install and configure a Red Hat Identity Management server with integrated DNS on RHEL 9 for centralized authentication and name resolution.
+Description: Learn how to install and configure a Red Hat Identity Management server with integrated DNS on RHEL for centralized authentication and name resolution.
 
 ---
 
-Installing an IdM server with integrated DNS on RHEL 9 gives you a complete identity management solution with automatic DNS record management. The integrated DNS server handles service discovery records that Kerberos and LDAP clients need, significantly simplifying client enrollment and authentication.
+Installing an IdM server with integrated DNS on RHEL gives you a complete identity management solution with automatic DNS record management. The integrated DNS server handles service discovery records that Kerberos and LDAP clients need, significantly simplifying client enrollment and authentication.
 
 ## Prerequisites
 
 Before installation, ensure:
 
-- RHEL 9 with a valid subscription
+- RHEL with a valid subscription
 - A static IP address
 - A fully qualified hostname that resolves correctly
 - At least 4 GB RAM and 10 GB free disk space
@@ -207,4 +207,4 @@ Common issues:
 
 ## Summary
 
-Installing an IdM server with integrated DNS on RHEL 9 provides centralized authentication, Kerberos single sign-on, and automatic DNS management. The installation process handles LDAP, Kerberos, CA, and DNS configuration in a single step. After installation, verify all services are running with `ipactl status`, test DNS with dig, and access the web UI to begin managing users and hosts.
+Installing an IdM server with integrated DNS on RHEL provides centralized authentication, Kerberos single sign-on, and automatic DNS management. The installation process handles LDAP, Kerberos, CA, and DNS configuration in a single step. After installation, verify all services are running with `ipactl status`, test DNS with dig, and access the web UI to begin managing users and hosts.

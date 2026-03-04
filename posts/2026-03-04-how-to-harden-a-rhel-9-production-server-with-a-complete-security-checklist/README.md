@@ -1,14 +1,14 @@
-# How to Harden a RHEL 9 Production Server with a Complete Security Checklist
+# How to Harden a RHEL Production Server with a Complete Security Checklist
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Best Practices
 
-Description: Step-by-step guide on harden a rhel 9 production server with a complete security checklist with practical examples and commands.
+Description: Step-by-step guide on harden a RHEL production server with a complete security checklist with practical examples and commands.
 
 ---
 
-A comprehensive security hardening checklist ensures your RHEL 9 production servers are protected against common threats.
+A comprehensive security hardening checklist ensures your RHEL production servers are protected against common threats.
 
 ## System Updates
 
@@ -81,5 +81,5 @@ sudo firewall-cmd --reload
 
 ## Conclusion
 
-Apply this checklist systematically to every RHEL 9 production server. Automate the hardening process with Ansible or the RHEL9-CIS role for consistent security across your fleet.
+Apply this checklist systematically to every RHEL production server. Automate the hardening process with Ansible or the RHEL9-CIS role for consistent security across your fleet.
 

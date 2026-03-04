@@ -1,14 +1,14 @@
-# How to Manage Virtual Machine CPU and Memory Resources on RHEL 9
+# How to Manage Virtual Machine CPU and Memory Resources on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, KVM, CPU, Memory, Virtualization, Resource Management, Linux
 
-Description: Learn how to allocate, adjust, and optimize CPU and memory resources for KVM virtual machines on RHEL 9.
+Description: Learn how to allocate, adjust, and optimize CPU and memory resources for KVM virtual machines on RHEL.
 
 ---
 
-Properly managing CPU and memory resources for KVM virtual machines ensures optimal performance and efficient use of your RHEL 9 host. You can adjust these resources while VMs are running (hot-add) or configure them for the next boot.
+Properly managing CPU and memory resources for KVM virtual machines ensures optimal performance and efficient use of your RHEL host. You can adjust these resources while VMs are running (hot-add) or configure them for the next boot.
 
 ## Viewing Current Resources
 
@@ -172,4 +172,4 @@ sudo virsh domstats --balloon vmname
 
 ## Summary
 
-Managing CPU and memory for KVM VMs on RHEL 9 involves setting appropriate limits, using hot-add for dynamic scaling, CPU pinning for performance-critical VMs, and NUMA awareness for multi-socket hosts. Monitor resource usage with virt-top and virsh domstats to ensure VMs have the resources they need without overcommitting the host.
+Managing CPU and memory for KVM VMs on RHEL involves setting appropriate limits, using hot-add for dynamic scaling, CPU pinning for performance-critical VMs, and NUMA awareness for multi-socket hosts. Monitor resource usage with virt-top and virsh domstats to ensure VMs have the resources they need without overcommitting the host.

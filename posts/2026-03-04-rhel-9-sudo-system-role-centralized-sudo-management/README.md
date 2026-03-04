@@ -1,16 +1,16 @@
-# How to Use the RHEL 9 sudo System Role for Centralized sudo Management
+# How to Use the RHEL sudo System Role for Centralized sudo Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, System Roles, sudo, Privilege Escalation
 
-Description: Use the sudo RHEL System Role to centrally manage sudo rules across RHEL 9 systems.
+Description: Use the sudo RHEL System Role to centrally manage sudo rules across RHEL systems.
 
 ---
 
 ## Overview
 
-Use the sudo RHEL System Role to centrally manage sudo rules across RHEL 9 systems. RHEL System Roles provide a consistent, Ansible-based interface for managing common system configurations.
+Use the sudo RHEL System Role to centrally manage sudo rules across RHEL systems. RHEL System Roles provide a consistent, Ansible-based interface for managing common system configurations.
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ Create `configure-sudo.yml`:
 
 ```yaml
 ---
-- name: How to Use the RHEL 9 sudo System Role for Centralized sudo Management
+- name: How to Use the RHEL sudo System Role for Centralized sudo Management
   hosts: managed_hosts
   become: true
   roles:
@@ -79,4 +79,4 @@ RHEL System Roles are idempotent. Running the playbook again will not change sys
 
 ## Summary
 
-You have learned how to use the rhel 9 sudo system role for centralized sudo management. RHEL System Roles simplify fleet-wide configuration management by providing tested, supported Ansible roles for common RHEL administration tasks.
+You have learned how to use the RHEL sudo system role for centralized sudo management. RHEL System Roles simplify fleet-wide configuration management by providing tested, supported Ansible roles for common RHEL administration tasks.

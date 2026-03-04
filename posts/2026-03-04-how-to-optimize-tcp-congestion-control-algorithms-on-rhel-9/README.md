@@ -1,14 +1,14 @@
-# How to Optimize TCP Congestion Control Algorithms on RHEL 9
+# How to Optimize TCP Congestion Control Algorithms on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Networking
 
-Description: Step-by-step guide on optimize tcp congestion control algorithms on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on optimize tcp congestion control algorithms on RHEL with practical examples and commands.
 
 ---
 
-TCP congestion control algorithms affect how RHEL 9 handles network throughput. Choosing the right algorithm improves performance.
+TCP congestion control algorithms affect how RHEL handles network throughput. Choosing the right algorithm improves performance.
 
 ## Check Current Algorithm
 
@@ -67,5 +67,5 @@ done
 
 ## Conclusion
 
-BBR congestion control on RHEL 9 often provides better throughput than the default cubic algorithm on high-bandwidth or high-latency links. Test both algorithms with your specific network to determine which performs better.
+BBR congestion control on RHEL often provides better throughput than the default cubic algorithm on high-bandwidth or high-latency links. Test both algorithms with your specific network to determine which performs better.
 

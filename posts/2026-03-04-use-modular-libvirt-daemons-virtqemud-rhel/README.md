@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, KVM, libvirt, virtqemud, Virtualization, Daemons, Linux
 
-Description: Learn how to use the modular libvirt daemon architecture on RHEL 9, where virtqemud and other specialized daemons replace the monolithic libvirtd.
+Description: Learn how to use the modular libvirt daemon architecture on RHEL, where virtqemud and other specialized daemons replace the monolithic libvirtd.
 
 ---
 
-RHEL 9 introduces modular libvirt daemons as the default architecture, replacing the monolithic `libvirtd`. Instead of a single daemon handling everything, individual daemons handle specific drivers. The primary daemon for KVM is `virtqemud`. This improves security, isolation, and resource management.
+RHEL introduces modular libvirt daemons as the default architecture, replacing the monolithic `libvirtd`. Instead of a single daemon handling everything, individual daemons handle specific drivers. The primary daemon for KVM is `virtqemud`. This improves security, isolation, and resource management.
 
 ## Understanding the Modular Architecture
 
@@ -36,7 +36,7 @@ sudo systemctl status virtqemud
 sudo systemctl status virtnetworkd
 sudo systemctl status virtstoraged
 
-# On RHEL 9, modular daemons should be the default
+# On RHEL, modular daemons should be the default
 ```
 
 ## Switching from Monolithic to Modular Daemons
@@ -124,4 +124,4 @@ sudo systemctl disable virtqemud.socket virtnetworkd.socket virtstoraged.socket
 sudo systemctl enable --now libvirtd
 ```
 
-The modular daemon architecture is the recommended approach on RHEL 9. It provides better security through isolation - a bug in the storage daemon cannot affect the QEMU daemon, and each daemon can be restarted independently without impacting running VMs.
+The modular daemon architecture is the recommended approach on RHEL. It provides better security through isolation - a bug in the storage daemon cannot affect the QEMU daemon, and each daemon can be restarted independently without impacting running VMs.

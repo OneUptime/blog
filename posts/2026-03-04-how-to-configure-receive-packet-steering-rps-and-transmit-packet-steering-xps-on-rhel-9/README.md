@@ -1,14 +1,14 @@
-# How to Configure Receive Packet Steering (RPS) and Transmit Packet Steering (XPS) on RHEL 9
+# How to Configure Receive Packet Steering (RPS) and Transmit Packet Steering (XPS) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Networking
 
-Description: Step-by-step guide on configure receive packet steering (rps) and transmit packet steering (xps) on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on configure receive packet steering (rps) and transmit packet steering (xps) on RHEL with practical examples and commands.
 
 ---
 
-Receive Packet Steering (RPS) and Transmit Packet Steering (XPS) distribute network processing across CPU cores on RHEL 9.
+Receive Packet Steering (RPS) and Transmit Packet Steering (XPS) distribute network processing across CPU cores on RHEL.
 
 ## Check Current CPU Affinity
 
@@ -84,5 +84,5 @@ cat /sys/class/net/eth0/queues/tx-0/xps_cpus
 
 ## Conclusion
 
-RPS and XPS on RHEL 9 distribute network processing across CPU cores, preventing single-core bottlenecks on high-traffic servers. Configure them for NICs with fewer hardware queues than CPU cores.
+RPS and XPS on RHEL distribute network processing across CPU cores, preventing single-core bottlenecks on high-traffic servers. Configure them for NICs with fewer hardware queues than CPU cores.
 

@@ -1,14 +1,14 @@
-# How to Deploy Applications with Helm Charts on Kubernetes Running on RHEL 9
+# How to Deploy Applications with Helm Charts on Kubernetes Running on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Kubernetes, Helm
 
-Description: Step-by-step guide on deploy applications with helm charts on kubernetes running on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on deploy applications with helm charts on kubernetes running on RHEL with practical examples and commands.
 
 ---
 
-Helm simplifies application deployment on Kubernetes running on RHEL 9. This guide covers installing Helm and deploying applications.
+Helm simplifies application deployment on Kubernetes running on RHEL. This guide covers installing Helm and deploying applications.
 
 ## Install Helm
 
@@ -73,5 +73,5 @@ helm uninstall my-nginx -n web
 
 ## Conclusion
 
-Helm on RHEL 9 Kubernetes clusters simplifies application deployment with templated charts. Use custom values files for environment-specific configurations and Helm's rollback feature for safe updates.
+Helm on RHEL Kubernetes clusters simplifies application deployment with templated charts. Use custom values files for environment-specific configurations and Helm's rollback feature for safe updates.
 

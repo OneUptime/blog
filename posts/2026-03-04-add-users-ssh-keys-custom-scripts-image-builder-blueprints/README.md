@@ -14,7 +14,7 @@ Add users, SSH keys, and custom scripts to Image Builder blueprints. RHEL Image 
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription
+- A RHEL system with a valid subscription
 - Root or sudo access
 - The osbuild-composer and composer-cli packages
 
@@ -31,7 +31,7 @@ Create a TOML blueprint file `my-image.toml`:
 
 ```toml
 name = "my-custom-image"
-description = "Custom RHEL 9 image"
+description = "Custom RHEL image"
 version = "1.0.0"
 
 [[packages]]

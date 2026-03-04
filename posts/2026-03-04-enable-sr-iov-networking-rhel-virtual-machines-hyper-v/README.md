@@ -15,7 +15,7 @@ SR-IOV (Single Root I/O Virtualization) allows a physical network adapter to pre
 - Physical NIC that supports SR-IOV (Intel X710, Mellanox ConnectX, etc.)
 - SR-IOV enabled in the server BIOS/UEFI
 - Hyper-V host running Windows Server 2016 or later
-- RHEL 8 or RHEL 9 Generation 2 VM
+- RHEL 8 or RHEL Generation 2 VM
 
 ## Enable SR-IOV on the Hyper-V Host
 

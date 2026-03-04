@@ -1,14 +1,14 @@
-# How to Fix 'GPG Key Retrieval Failed' Errors When Adding Repositories on RHEL 9
+# How to Fix 'GPG Key Retrieval Failed' Errors When Adding Repositories on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Troubleshooting
 
-Description: Step-by-step guide on fix 'gpg key retrieval failed' errors when adding repositories on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on fix 'gpg key retrieval failed' errors when adding repositories on RHEL with practical examples and commands.
 
 ---
 
-GPG key retrieval failures prevent adding third-party repositories on RHEL 9. Here is how to fix them.
+GPG key retrieval failures prevent adding third-party repositories on RHEL. Here is how to fix them.
 
 ## The Error
 
@@ -77,5 +77,5 @@ sudo rpm --import https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-9
 
 ## Conclusion
 
-GPG key errors on RHEL 9 are resolved by importing the correct key from a trusted source. Always verify GPG keys to ensure package integrity and authenticity.
+GPG key errors on RHEL are resolved by importing the correct key from a trusted source. Always verify GPG keys to ensure package integrity and authenticity.
 

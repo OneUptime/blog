@@ -1,20 +1,20 @@
-# How to Forward Journal Logs to rsyslog on RHEL 9
+# How to Forward Journal Logs to rsyslog on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, journald, rsyslog, Logging, Linux
 
-Description: Forward systemd journal logs to rsyslog on RHEL 9 to combine both logging systems.
+Description: Forward systemd journal logs to rsyslog on RHEL to combine both logging systems.
 
 ---
 
 ## Overview
 
-Forward systemd journal logs to rsyslog on RHEL 9 to combine both logging systems. This guide covers the essential steps and configuration needed for a production RHEL 9 environment.
+Forward systemd journal logs to rsyslog on RHEL to combine both logging systems. This guide covers the essential steps and configuration needed for a production RHEL environment.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Basic familiarity with the command line
 
@@ -26,11 +26,11 @@ Ensure the relevant packages are installed:
 sudo dnf install -y rsyslog systemd
 ```
 
-rsyslog and systemd-journald ship by default on RHEL 9.
+rsyslog and systemd-journald ship by default on RHEL.
 
 ## Step 2 - Understand the Logging Architecture
 
-RHEL 9 uses two logging systems:
+RHEL uses two logging systems:
 
 - **systemd-journald** - captures structured binary logs from all services, the kernel, and early boot
 - **rsyslog** - processes, filters, and forwards text-based syslog messages
@@ -85,4 +85,4 @@ sudo firewall-cmd --reload
 
 ## Summary
 
-You have learned how to forward journal logs to rsyslog on RHEL 9. Regular log management is essential for security, compliance, and troubleshooting in any production environment.
+You have learned how to forward journal logs to rsyslog on RHEL. Regular log management is essential for security, compliance, and troubleshooting in any production environment.

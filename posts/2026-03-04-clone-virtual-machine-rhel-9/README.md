@@ -1,14 +1,14 @@
-# How to Clone a Virtual Machine on RHEL 9
+# How to Clone a Virtual Machine on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, KVM, Cloning, Virtualization, virt-clone, Linux
 
-Description: Learn how to clone KVM virtual machines on RHEL 9 using virt-clone and customize cloned images with virt-sysprep.
+Description: Learn how to clone KVM virtual machines on RHEL using virt-clone and customize cloned images with virt-sysprep.
 
 ---
 
-Cloning a virtual machine creates an identical copy with new unique identifiers. On RHEL 9, `virt-clone` handles the cloning process while `virt-sysprep` prepares the clone for use by removing host-specific data like SSH keys and machine IDs.
+Cloning a virtual machine creates an identical copy with new unique identifiers. On RHEL, `virt-clone` handles the cloning process while `virt-sysprep` prepares the clone for use by removing host-specific data like SSH keys and machine IDs.
 
 ## Basic Cloning
 
@@ -125,4 +125,4 @@ done
 
 ## Summary
 
-Cloning VMs on RHEL 9 with `virt-clone` is the fastest way to create new VMs from existing templates. Always run `virt-sysprep` on clones to remove host-specific data. For even faster provisioning, use qcow2 backing files to create thin clones that share a common base image.
+Cloning VMs on RHEL with `virt-clone` is the fastest way to create new VMs from existing templates. Always run `virt-sysprep` on clones to remove host-specific data. For even faster provisioning, use qcow2 backing files to create thin clones that share a common base image.

@@ -1,18 +1,18 @@
-# How to Deploy RHEL 9 HA Clusters on Azure with Pacemaker
+# How to Deploy RHEL HA Clusters on Azure with Pacemaker
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Azure, High Availability, Pacemaker
 
-Description: Step-by-step guide on deploy rhel 9 ha clusters on azure with pacemaker with practical examples and commands.
+Description: Step-by-step guide on deploy RHEL ha clusters on azure with pacemaker with practical examples and commands.
 
 ---
 
-Running highly available workloads on Azure requires proper clustering. This guide walks through deploying RHEL 9 HA clusters on Azure using Pacemaker and Corosync.
+Running highly available workloads on Azure requires proper clustering. This guide walks through deploying RHEL HA clusters on Azure using Pacemaker and Corosync.
 
 ## Prerequisites
 
-- Two or more RHEL 9 VMs on Azure with an active Red Hat subscription
+- Two or more RHEL VMs on Azure with an active Red Hat subscription
 - Azure CLI installed and configured
 - A virtual network with all nodes on the same subnet
 - An Azure load balancer for floating IP support
@@ -126,5 +126,5 @@ sudo pcs node unstandby node1
 
 ## Conclusion
 
-You now have a working RHEL 9 HA cluster on Azure with Pacemaker, Corosync, Azure fencing, and load balancer integration. Monitor your cluster regularly and test failover scenarios to validate your high-availability setup.
+You now have a working RHEL HA cluster on Azure with Pacemaker, Corosync, Azure fencing, and load balancer integration. Monitor your cluster regularly and test failover scenarios to validate your high-availability setup.
 

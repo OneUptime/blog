@@ -16,7 +16,7 @@ Azure Marketplace provides official RHEL images maintained by Red Hat. These ima
 # List available RHEL images
 az vm image list --publisher RedHat --offer RHEL --sku 9_4 --all --output table
 
-# Find the latest RHEL 9.4 image
+# Find the latest RHEL.4 image
 az vm image list \
   --publisher RedHat \
   --offer RHEL \

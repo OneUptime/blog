@@ -12,7 +12,7 @@ MicroShift is a lightweight Kubernetes distribution derived from OpenShift, desi
 
 ## Prerequisites
 
-MicroShift requires RHEL 9.x with an active subscription:
+MicroShift requires RHEL.x with an active subscription:
 
 ```bash
 # Verify RHEL version

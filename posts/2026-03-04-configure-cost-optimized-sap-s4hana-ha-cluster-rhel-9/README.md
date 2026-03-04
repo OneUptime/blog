@@ -1,23 +1,23 @@
-# How to Configure a Cost-Optimized SAP S/4HANA HA Cluster on RHEL 9
+# How to Configure a Cost-Optimized SAP S/4HANA HA Cluster on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP S/4HANA, Cost Optimization, HA
 
-Description: Configure a cost-optimized SAP S/4HANA HA cluster on RHEL 9.
+Description: Configure a cost-optimized SAP S/4HANA HA cluster on RHEL.
 
 ---
 
 ## Overview
 
-Configure a cost-optimized SAP S/4HANA HA cluster on RHEL 9. Running SAP on RHEL 9 requires specific system preparation, kernel tuning, and high-availability configuration.
+Configure a cost-optimized SAP S/4HANA HA cluster on RHEL. Running SAP on RHEL requires specific system preparation, kernel tuning, and high-availability configuration.
 
 ## Prerequisites
 
-- RHEL 9 with the SAP Solutions subscription
+- RHEL with the SAP Solutions subscription
 - Systems meeting SAP hardware requirements (see SAP Note 2772999)
 - Root or sudo access
-- For HA clusters: at least two RHEL 9 nodes with the HA add-on
+- For HA clusters: at least two RHEL nodes with the HA add-on
 
 ## Step 1 - Register and Enable SAP Repositories
 
@@ -78,4 +78,4 @@ Use the SAP HANA Hardware Configuration Check Tool (HWCCT) or the RHEL System Ro
 
 ## Summary
 
-You have learned how to configure a cost-optimized sap s/4hana ha cluster. SAP workloads on RHEL 9 require careful preparation, but RHEL System Roles and tuned profiles automate much of the configuration.
+You have learned how to configure a cost-optimized sap s/4hana ha cluster. SAP workloads on RHEL require careful preparation, but RHEL System Roles and tuned profiles automate much of the configuration.

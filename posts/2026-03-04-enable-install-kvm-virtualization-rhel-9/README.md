@@ -1,14 +1,14 @@
-# How to Enable and Install KVM Virtualization on RHEL 9
+# How to Enable and Install KVM Virtualization on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, KVM, Virtualization, libvirt, QEMU, Linux
 
-Description: Learn how to enable hardware virtualization support and install the KVM hypervisor stack on RHEL 9 for running virtual machines.
+Description: Learn how to enable hardware virtualization support and install the KVM hypervisor stack on RHEL for running virtual machines.
 
 ---
 
-KVM (Kernel-based Virtual Machine) is the built-in hypervisor for RHEL 9, turning your server into a platform for running multiple virtual machines. KVM leverages hardware virtualization extensions in modern CPUs (Intel VT-x or AMD-V) to provide near-native performance for guest operating systems.
+KVM (Kernel-based Virtual Machine) is the built-in hypervisor for RHEL, turning your server into a platform for running multiple virtual machines. KVM leverages hardware virtualization extensions in modern CPUs (Intel VT-x or AMD-V) to provide near-native performance for guest operating systems.
 
 ## Checking Hardware Virtualization Support
 
@@ -183,4 +183,4 @@ sudo firewall-cmd --reload
 
 ## Summary
 
-Installing KVM on RHEL 9 involves verifying hardware virtualization support, installing the virtualization packages, and enabling the libvirtd service. The default installation provides NAT networking and local disk storage. Use `virt-host-validate` to confirm everything is correctly configured, and consider installing Cockpit for web-based VM management.
+Installing KVM on RHEL involves verifying hardware virtualization support, installing the virtualization packages, and enabling the libvirtd service. The default installation provides NAT networking and local disk storage. Use `virt-host-validate` to confirm everything is correctly configured, and consider installing Cockpit for web-based VM management.

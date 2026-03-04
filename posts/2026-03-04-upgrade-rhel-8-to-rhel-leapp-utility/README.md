@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Leapp, Upgrade, Migration, System Administration, Linux
 
-Description: Perform an in-place upgrade from RHEL 8 to RHEL 9 using the Leapp utility, including pre-upgrade assessment, remediation, and the upgrade process.
+Description: Perform an in-place upgrade from RHEL 8 to RHEL using the Leapp utility, including pre-upgrade assessment, remediation, and the upgrade process.
 
 ---
 
@@ -62,7 +62,7 @@ sudo dnf remove -y make-devel
 sudo leapp answer --section remove_pam_pkcs11_module_check.confirm=True
 
 # Handle custom kernel modules
-# Remove any third-party kernel modules that are not compatible with RHEL 9
+# Remove any third-party kernel modules that are not compatible with RHEL
 sudo rmmod <module_name>
 
 # Ensure enough disk space (at least 5 GB free in /var/lib/leapp)

@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, VDO, LVM, Storage, Migration
 
-Description: Migrate existing standalone VDO volumes to LVM-managed VDO on RHEL 9, which integrates deduplication and compression directly into the LVM stack.
+Description: Migrate existing standalone VDO volumes to LVM-managed VDO on RHEL, which integrates deduplication and compression directly into the LVM stack.
 
 ---
 
-RHEL 9 integrates VDO into LVM, replacing standalone VDO volumes. If you are upgrading from RHEL 8 with standalone VDO volumes, you need to migrate them to LVM-VDO.
+RHEL integrates VDO into LVM, replacing standalone VDO volumes. If you are upgrading from RHEL 8 with standalone VDO volumes, you need to migrate them to LVM-VDO.
 
 ## Check Current VDO Configuration
 
@@ -41,7 +41,7 @@ sudo vdo list
 
 ## Perform the Migration
 
-RHEL 9 provides a conversion tool:
+RHEL provides a conversion tool:
 
 ```bash
 # Install the conversion tool if not present

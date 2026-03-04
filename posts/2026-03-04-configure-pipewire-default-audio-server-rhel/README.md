@@ -8,7 +8,7 @@ Description: Configure PipeWire as the default audio server on RHEL, replacing P
 
 ---
 
-PipeWire is a modern multimedia server that handles both audio and video streams. RHEL 9 uses PipeWire as the default audio server, replacing PulseAudio. It provides PulseAudio and JACK compatibility layers, so existing applications continue to work without modification.
+PipeWire is a modern multimedia server that handles both audio and video streams. RHEL uses PipeWire as the default audio server, replacing PulseAudio. It provides PulseAudio and JACK compatibility layers, so existing applications continue to work without modification.
 
 ## Check the Current Audio Server
 

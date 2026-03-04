@@ -1,20 +1,20 @@
-# How to Install and Configure Grafana on RHEL 9
+# How to Install and Configure Grafana on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Grafana, Monitoring, Visualization
 
-Description: Install and configure Grafana on RHEL 9 for building dashboards and visualizing metrics.
+Description: Install and configure Grafana on RHEL for building dashboards and visualizing metrics.
 
 ---
 
 ## Overview
 
-Install and configure Grafana on RHEL 9 for building dashboards and visualizing metrics. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
+Install and configure Grafana on RHEL for building dashboards and visualizing metrics. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Network access for remote monitoring tools (if applicable)
 
@@ -81,4 +81,4 @@ Configure alerts based on thresholds so you are notified before issues become cr
 
 ## Summary
 
-You now know how to install and configure grafana. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL 9 systems.
+You now know how to install and configure grafana. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL systems.

@@ -1,14 +1,14 @@
-# How to Fix 'Too Many Open Files' (ulimit) Errors on RHEL 9
+# How to Fix 'Too Many Open Files' (ulimit) Errors on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Troubleshooting
 
-Description: Step-by-step guide on fix 'too many open files' (ulimit) errors on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on fix 'too many open files' (ulimit) errors on RHEL with practical examples and commands.
 
 ---
 
-The "Too many open files" error on RHEL 9 means a process has exceeded its file descriptor limit. Here is how to diagnose and fix it.
+The "Too many open files" error on RHEL means a process has exceeded its file descriptor limit. Here is how to diagnose and fix it.
 
 ## Check Current Limits
 
@@ -94,5 +94,5 @@ done
 
 ## Conclusion
 
-"Too many open files" errors on RHEL 9 require increasing file descriptor limits at the user, system, or service level. Identify the process exceeding limits, then adjust the appropriate configuration to accommodate the workload.
+"Too many open files" errors on RHEL require increasing file descriptor limits at the user, system, or service level. Identify the process exceeding limits, then adjust the appropriate configuration to accommodate the workload.
 

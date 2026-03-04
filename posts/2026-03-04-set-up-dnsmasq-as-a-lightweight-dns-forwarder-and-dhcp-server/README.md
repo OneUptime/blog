@@ -112,5 +112,5 @@ cat /var/lib/dnsmasq/dnsmasq.leases
 
 ## Conclusion
 
-dnsmasq provides a lightweight all-in-one DNS and DHCP solution for RHEL 9. It is particularly well-suited for lab environments, small offices, and development networks where simplicity and ease of configuration are priorities.
+dnsmasq provides a lightweight all-in-one DNS and DHCP solution for RHEL. It is particularly well-suited for lab environments, small offices, and development networks where simplicity and ease of configuration are priorities.
 RHEL

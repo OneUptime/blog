@@ -1,14 +1,14 @@
-# How to Migrate from Standalone VDO to LVM-VDO on RHEL 9
+# How to Migrate from Standalone VDO to LVM-VDO on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, VDO, Migration, LVM
 
-Description: Step-by-step guide on migrate from standalone vdo to lvm-vdo on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on migrate from standalone vdo to lvm-vdo on RHEL with practical examples and commands.
 
 ---
 
-Red Hat deprecated standalone VDO in favor of LVM-managed VDO in RHEL 9. This guide covers migrating from standalone VDO volumes to LVM-VDO.
+Red Hat deprecated standalone VDO in favor of LVM-managed VDO in RHEL. This guide covers migrating from standalone VDO volumes to LVM-VDO.
 
 ## Check Current VDO Status
 
@@ -99,5 +99,5 @@ sudo vdostats --human-readable
 
 ## Conclusion
 
-Migrating from standalone VDO to LVM-VDO on RHEL 9 takes advantage of integrated LVM management, including snapshots, resizing, and consistent administration. Plan a maintenance window and always back up data before migration.
+Migrating from standalone VDO to LVM-VDO on RHEL takes advantage of integrated LVM management, including snapshots, resizing, and consistent administration. Plan a maintenance window and always back up data before migration.
 

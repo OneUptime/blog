@@ -1,20 +1,20 @@
-# How to Set Up MySQL Group Replication on RHEL 9
+# How to Set Up MySQL Group Replication on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, MySQL, Group Replication, High Availability
 
-Description: Set up MySQL Group Replication on RHEL 9 for fault-tolerant database clustering.
+Description: Set up MySQL Group Replication on RHEL for fault-tolerant database clustering.
 
 ---
 
 ## Overview
 
-Set up MySQL Group Replication on RHEL 9 for fault-tolerant database clustering. Proper database setup and management are essential for application reliability and data integrity.
+Set up MySQL Group Replication on RHEL for fault-tolerant database clustering. Proper database setup and management are essential for application reliability and data integrity.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Sufficient disk space for database storage
 

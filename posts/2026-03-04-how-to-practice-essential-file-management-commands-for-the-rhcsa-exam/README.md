@@ -8,7 +8,7 @@ Description: Step-by-step guide on practice essential file management commands f
 
 ---
 
-Passing the RHCSA exam requires solid command-line file management skills. This guide covers essential file operations you need to practice on RHEL 9.
+Passing the RHCSA exam requires solid command-line file management skills. This guide covers essential file operations you need to practice on RHEL.
 
 ## Key File Management Commands
 

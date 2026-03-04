@@ -1,22 +1,22 @@
-# How to Set Up Ansible AWX on RHEL 9 for Web-Based Automation
+# How to Set Up Ansible AWX on RHEL for Web-Based Automation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, AWX, Web UI
 
-Description: Install and configure Ansible AWX on RHEL 9 for web-based automation management.
+Description: Install and configure Ansible AWX on RHEL for web-based automation management.
 
 ---
 
 ## Overview
 
-Install and configure Ansible AWX on RHEL 9 for web-based automation management. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
+Install and configure Ansible AWX on RHEL for web-based automation management. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
 
 ## Prerequisites
 
-- A RHEL 9 system to serve as the Ansible control node
+- A RHEL system to serve as the Ansible control node
 - SSH access to managed hosts
-- Python 3 installed on managed hosts (included by default on RHEL 9)
+- Python 3 installed on managed hosts (included by default on RHEL)
 
 ## Step 1 - Install Ansible
 

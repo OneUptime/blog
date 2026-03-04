@@ -1,16 +1,16 @@
-# How to Install and Get Started with RHEL System Roles on RHEL 9
+# How to Install and Get Started with RHEL System Roles on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, System Roles, Ansible, Automation
 
-Description: Install and use RHEL System Roles on RHEL 9 for standardized system configuration.
+Description: Install and use RHEL System Roles on RHEL for standardized system configuration.
 
 ---
 
 ## Overview
 
-Install and use RHEL System Roles on RHEL 9 for standardized system configuration. RHEL System Roles provide a consistent, Ansible-based interface for managing common system configurations.
+Install and use RHEL System Roles on RHEL for standardized system configuration. RHEL System Roles provide a consistent, Ansible-based interface for managing common system configurations.
 
 ## Prerequisites
 

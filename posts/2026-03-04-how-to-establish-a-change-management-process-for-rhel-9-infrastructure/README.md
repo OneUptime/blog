@@ -1,14 +1,14 @@
-# How to Establish a Change Management Process for RHEL 9 Infrastructure
+# How to Establish a Change Management Process for RHEL Infrastructure
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux
 
-Description: Step-by-step guide on establish a change management process for rhel 9 infrastructure with practical examples and commands.
+Description: Step-by-step guide on establish a change management process for RHEL infrastructure with practical examples and commands.
 
 ---
 
-A change management process for RHEL 9 infrastructure ensures that modifications are tracked, approved, and reversible.
+A change management process for RHEL infrastructure ensures that modifications are tracked, approved, and reversible.
 
 ## Change Categories
 
@@ -92,5 +92,5 @@ sudo systemctl restart httpd
 
 ## Conclusion
 
-A change management process for RHEL 9 infrastructure combines documentation, version control with etckeeper, automation with Ansible, and tested rollback procedures to minimize risk and maintain system stability.
+A change management process for RHEL infrastructure combines documentation, version control with etckeeper, automation with Ansible, and tested rollback procedures to minimize risk and maintain system stability.
 

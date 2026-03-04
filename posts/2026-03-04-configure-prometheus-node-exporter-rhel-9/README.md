@@ -1,20 +1,20 @@
-# How to Configure Prometheus Node Exporter on RHEL 9 for Metrics Collection
+# How to Configure Prometheus Node Exporter on RHEL for Metrics Collection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Prometheus, Node Exporter, Monitoring
 
-Description: Install and configure Prometheus Node Exporter on RHEL 9 to expose system metrics.
+Description: Install and configure Prometheus Node Exporter on RHEL to expose system metrics.
 
 ---
 
 ## Overview
 
-Install and configure Prometheus Node Exporter on RHEL 9 to expose system metrics. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
+Install and configure Prometheus Node Exporter on RHEL to expose system metrics. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Network access for remote monitoring tools (if applicable)
 
@@ -81,4 +81,4 @@ Configure alerts based on thresholds so you are notified before issues become cr
 
 ## Summary
 
-You now know how to configure prometheus node exporter for metrics collection. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL 9 systems.
+You now know how to configure prometheus node exporter for metrics collection. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL systems.

@@ -1,14 +1,14 @@
-# How to Set Up Nested Virtualization on RHEL 9
+# How to Set Up Nested Virtualization on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, KVM, Nested Virtualization, Virtualization, Linux
 
-Description: Learn how to enable and configure nested virtualization on RHEL 9 to run virtual machines inside virtual machines for testing and development.
+Description: Learn how to enable and configure nested virtualization on RHEL to run virtual machines inside virtual machines for testing and development.
 
 ---
 
-Nested virtualization allows you to run a hypervisor inside a virtual machine, enabling VMs within VMs. On RHEL 9, this is useful for testing virtualization setups, training environments, and development workflows where you need to simulate a multi-host virtualization infrastructure without physical hardware.
+Nested virtualization allows you to run a hypervisor inside a virtual machine, enabling VMs within VMs. On RHEL, this is useful for testing virtualization setups, training environments, and development workflows where you need to simulate a multi-host virtualization infrastructure without physical hardware.
 
 ## Checking Nested Virtualization Support
 
@@ -133,4 +133,4 @@ Nested virtualization is intended for development and testing, not production wo
 
 ## Summary
 
-Nested virtualization on RHEL 9 enables running hypervisors inside VMs by enabling the nested parameter in the KVM module and using host-passthrough CPU mode. While not suitable for production due to performance overhead, it is invaluable for testing, training, and development of virtualization infrastructure.
+Nested virtualization on RHEL enables running hypervisors inside VMs by enabling the nested parameter in the KVM module and using host-passthrough CPU mode. While not suitable for production due to performance overhead, it is invaluable for testing, training, and development of virtualization infrastructure.

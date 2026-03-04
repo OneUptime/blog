@@ -1,26 +1,26 @@
-# How to Plan RPO and RTO Metrics for RHEL 9 Disaster Recovery
+# How to Plan RPO and RTO Metrics for RHEL Disaster Recovery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, RPO, RTO, Disaster Recovery
 
-Description: Plan RPO and RTO metrics for your RHEL 9 disaster recovery strategy.
+Description: Plan RPO and RTO metrics for your RHEL disaster recovery strategy.
 
 ---
 
 ## Overview
 
-Plan RPO and RTO metrics for your RHEL 9 disaster recovery strategy. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
+Plan RPO and RTO metrics for your RHEL disaster recovery strategy. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - Sufficient storage for backup files (local or remote)
 - For remote backups: SSH access to the backup destination
 
 ## Step 1 - Choose Your Backup Tool
 
-RHEL 9 provides several backup tools:
+RHEL provides several backup tools:
 
 - **tar** - full archive backups
 - **rsync** - incremental file synchronization
@@ -73,4 +73,4 @@ tar xzf /backups/full-backup-*.tar.gz -C /tmp/restore-test etc/hostname
 
 ## Summary
 
-You have learned how to plan rpo and rto metrics for rhel 9 disaster recovery. Remember the 3-2-1 rule: keep three copies of your data, on two different media types, with one copy stored off-site.
+You have learned how to plan rpo and rto metrics for RHEL disaster recovery. Remember the 3-2-1 rule: keep three copies of your data, on two different media types, with one copy stored off-site.

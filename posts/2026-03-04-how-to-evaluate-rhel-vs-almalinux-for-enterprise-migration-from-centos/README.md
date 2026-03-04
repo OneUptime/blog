@@ -27,7 +27,7 @@ cat /etc/redhat-release
 
 ## Key Differences
 
-| Feature | RHEL 9 | AlmaLinux 9 |
+| Feature | RHEL | AlmaLinux 9 |
 |---------|--------|-------------|
 | Cost | Subscription | Free |
 | Support | Red Hat | Community + CloudLinux |

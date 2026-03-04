@@ -1,14 +1,14 @@
-# How to Troubleshoot 'Read-Only Filesystem' Errors on RHEL 9
+# How to Troubleshoot 'Read-Only Filesystem' Errors on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Troubleshooting
 
-Description: Step-by-step guide on troubleshoot 'read-only filesystem' errors on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on troubleshoot 'read-only filesystem' errors on RHEL with practical examples and commands.
 
 ---
 
-A read-only filesystem on RHEL 9 prevents writes and indicates disk errors or mount issues. Here is how to troubleshoot and fix it.
+A read-only filesystem on RHEL prevents writes and indicates disk errors or mount issues. Here is how to troubleshoot and fix it.
 
 ## Check the Mount Status
 
@@ -102,5 +102,5 @@ sudo journalctl --vacuum-size=200M
 
 ## Conclusion
 
-Read-only filesystem errors on RHEL 9 typically indicate hardware disk failure, filesystem corruption, or a full disk. Check SMART data, run filesystem repair, and investigate the root cause before remounting as read-write.
+Read-only filesystem errors on RHEL typically indicate hardware disk failure, filesystem corruption, or a full disk. Check SMART data, run filesystem repair, and investigate the root cause before remounting as read-write.
 

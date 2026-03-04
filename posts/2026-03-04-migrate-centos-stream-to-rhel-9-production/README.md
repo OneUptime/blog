@@ -1,16 +1,16 @@
-# How to Migrate from CentOS Stream to RHEL 9 in Production
+# How to Migrate from CentOS Stream to RHEL in Production
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, CentOS Stream, Migration, Production
 
-Description: Migrate production systems from CentOS Stream to RHEL 9.
+Description: Migrate production systems from CentOS Stream to RHEL.
 
 ---
 
 ## Overview
 
-Migrate production systems from CentOS Stream to RHEL 9. Careful planning and testing are essential for successful RHEL migrations.
+Migrate production systems from CentOS Stream to RHEL. Careful planning and testing are essential for successful RHEL migrations.
 
 ## Prerequisites
 
@@ -95,4 +95,4 @@ If the migration fails, you can:
 
 ## Summary
 
-You have learned how to migrate from centos stream to rhel 9 in production. Always test upgrades in a staging environment first and maintain a reliable rollback plan.
+You have learned how to migrate from centos stream to RHEL in production. Always test upgrades in a staging environment first and maintain a reliable rollback plan.

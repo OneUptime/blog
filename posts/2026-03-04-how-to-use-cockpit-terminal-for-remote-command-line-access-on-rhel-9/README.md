@@ -1,14 +1,14 @@
-# How to Use Cockpit Terminal for Remote Command-Line Access on RHEL 9
+# How to Use Cockpit Terminal for Remote Command-Line Access on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Cockpit
 
-Description: Step-by-step guide on use cockpit terminal for remote command-line access on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on use cockpit terminal for remote command-line access on RHEL with practical examples and commands.
 
 ---
 
-Cockpit's terminal feature provides browser-based command-line access to your RHEL 9 servers, useful for remote administration.
+Cockpit's terminal feature provides browser-based command-line access to your RHEL servers, useful for remote administration.
 
 ## Install Cockpit
 
@@ -117,5 +117,5 @@ Cockpit can manage multiple servers from a single dashboard:
 
 ## Conclusion
 
-Cockpit's terminal provides convenient browser-based access to RHEL 9 servers without requiring SSH client software. Use session recording and access controls to maintain security and audit compliance.
+Cockpit's terminal provides convenient browser-based access to RHEL servers without requiring SSH client software. Use session recording and access controls to maintain security and audit compliance.
 

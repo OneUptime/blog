@@ -1,20 +1,20 @@
-# How to Configure Prometheus Service Discovery for Dynamic RHEL 9 Targets
+# How to Configure Prometheus Service Discovery for Dynamic RHEL Targets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Prometheus, Service Discovery, Monitoring
 
-Description: Configure Prometheus service discovery on RHEL 9 for automatically detecting targets.
+Description: Configure Prometheus service discovery on RHEL for automatically detecting targets.
 
 ---
 
 ## Overview
 
-Configure Prometheus service discovery on RHEL 9 for automatically detecting targets. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
+Configure Prometheus service discovery on RHEL for automatically detecting targets. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Network access for remote monitoring tools (if applicable)
 
@@ -81,4 +81,4 @@ Configure alerts based on thresholds so you are notified before issues become cr
 
 ## Summary
 
-You now know how to configure prometheus service discovery for dynamic rhel 9 targets. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL 9 systems.
+You now know how to configure prometheus service discovery for dynamic RHEL targets. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL systems.

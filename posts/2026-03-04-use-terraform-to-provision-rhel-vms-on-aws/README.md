@@ -8,14 +8,14 @@ Description: Use Terraform to declaratively provision RHEL EC2 instances on AWS,
 
 ---
 
-Terraform makes it easy to provision and manage RHEL instances on AWS in a repeatable, version-controlled way. This guide shows how to write a basic Terraform configuration to launch a RHEL 9 instance.
+Terraform makes it easy to provision and manage RHEL instances on AWS in a repeatable, version-controlled way. This guide shows how to write a basic Terraform configuration to launch a RHEL instance.
 
 ## Provider Configuration
 
 Create a `main.tf` file:
 
 ```hcl
-# main.tf - Provision a RHEL 9 instance on AWS
+# main.tf - Provision a RHEL instance on AWS
 
 terraform {
   required_providers {
@@ -30,7 +30,7 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# Look up the latest official RHEL 9 AMI
+# Look up the latest official RHEL AMI
 data "aws_ami" "rhel9" {
   most_recent = true
   owners      = ["309956199498"] # Red Hat's AWS account
@@ -66,7 +66,7 @@ resource "aws_security_group" "rhel_sg" {
   }
 }
 
-# Launch the RHEL 9 instance
+# Launch the RHEL instance
 resource "aws_instance" "rhel" {
   ami                    = data.aws_ami.rhel9.id
   instance_type          = "t3.medium"
@@ -108,4 +108,4 @@ terraform apply -auto-approve
 terraform destroy -auto-approve
 ```
 
-The AMI data source ensures you always get the latest RHEL 9 image. In production, pin to a specific AMI ID for stability.
+The AMI data source ensures you always get the latest RHEL image. In production, pin to a specific AMI ID for stability.

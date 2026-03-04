@@ -1,14 +1,14 @@
-# How to Tune TCP Buffer Sizes and Socket Parameters on RHEL 9
+# How to Tune TCP Buffer Sizes and Socket Parameters on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Networking
 
-Description: Step-by-step guide on tune tcp buffer sizes and socket parameters on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on tune tcp buffer sizes and socket parameters on RHEL with practical examples and commands.
 
 ---
 
-TCP buffer tuning on RHEL 9 optimizes network throughput for high-bandwidth and high-latency connections.
+TCP buffer tuning on RHEL optimizes network throughput for high-bandwidth and high-latency connections.
 
 ## View Current Settings
 
@@ -68,5 +68,5 @@ ss -tnei | head -20
 
 ## Conclusion
 
-TCP buffer tuning on RHEL 9 is essential for high-bandwidth or high-latency networks. Calculate the bandwidth-delay product for your connections and set buffer sizes accordingly.
+TCP buffer tuning on RHEL is essential for high-bandwidth or high-latency networks. Calculate the bandwidth-delay product for your connections and set buffer sizes accordingly.
 

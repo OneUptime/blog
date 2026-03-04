@@ -1,33 +1,33 @@
-# How to Deploy RHEL 9 HA Clusters on Azure with Pacemaker
+# How to Deploy RHEL HA Clusters on Azure with Pacemaker
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Azure, High Availability, Pacemaker
 
-Description: Deploy RHEL 9 HA clusters on Azure using Pacemaker.
+Description: Deploy RHEL HA clusters on Azure using Pacemaker.
 
 ---
 
 ## Overview
 
-Deploy RHEL 9 HA clusters on Azure using Pacemaker. RHEL 9 is fully supported on major cloud platforms with official images and integrated tooling.
+Deploy RHEL HA clusters on Azure using Pacemaker. RHEL is fully supported on major cloud platforms with official images and integrated tooling.
 
 ## Prerequisites
 
-- A RHEL 9 subscription or cloud marketplace entitlement
+- A RHEL subscription or cloud marketplace entitlement
 - An account on the target cloud platform (AWS, Azure, or GCP)
 - CLI tools installed: aws-cli, az-cli, or gcloud
 
 ## Step 1 - Choose Your Deployment Method
 
-You can deploy RHEL 9 in the cloud using:
+You can deploy RHEL in the cloud using:
 
 1. **Marketplace images** - pre-built, official Red Hat images
 2. **Custom images** - built with Image Builder and uploaded
 3. **Terraform** - infrastructure as code provisioning
 4. **Red Hat Hybrid Cloud Console** - centralized management
 
-## Step 2 - Launch a RHEL 9 Instance
+## Step 2 - Launch a RHEL Instance
 
 For AWS:
 
@@ -49,7 +49,7 @@ gcloud compute instances create myvm --image-project=rhel-cloud --image-family=r
 
 ## Step 3 - Configure cloud-init
 
-RHEL 9 cloud images use cloud-init for first-boot customization. Create a user-data script:
+RHEL cloud images use cloud-init for first-boot customization. Create a user-data script:
 
 ```yaml
 #cloud-config
@@ -88,4 +88,4 @@ sudo insights-client
 
 ## Summary
 
-You have learned how to deploy rhel 9 ha clusters on azure with pacemaker. RHEL 9 on cloud platforms benefits from official support, pre-configured images, and integration with Red Hat management tools.
+You have learned how to deploy RHEL ha clusters on azure with pacemaker. RHEL on cloud platforms benefits from official support, pre-configured images, and integration with Red Hat management tools.

@@ -14,7 +14,7 @@ Deploy RHEL for Edge with rpm-ostree on IoT devices for immutable updates. RHEL 
 
 ## Prerequisites
 
-- A RHEL 9 system for building edge images (with Image Builder)
+- A RHEL system for building edge images (with Image Builder)
 - Root or sudo access
 - For MicroShift: a system with at least 2 CPU cores and 2 GB RAM
 

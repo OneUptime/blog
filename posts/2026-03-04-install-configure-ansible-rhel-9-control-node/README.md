@@ -1,22 +1,22 @@
-# How to Install and Configure Ansible on RHEL 9 as a Control Node
+# How to Install and Configure Ansible on RHEL as a Control Node
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, Automation, Linux
 
-Description: Install and configure Ansible on RHEL 9 as a control node for infrastructure management.
+Description: Install and configure Ansible on RHEL as a control node for infrastructure management.
 
 ---
 
 ## Overview
 
-Install and configure Ansible on RHEL 9 as a control node for infrastructure management. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
+Install and configure Ansible on RHEL as a control node for infrastructure management. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
 
 ## Prerequisites
 
-- A RHEL 9 system to serve as the Ansible control node
+- A RHEL system to serve as the Ansible control node
 - SSH access to managed hosts
-- Python 3 installed on managed hosts (included by default on RHEL 9)
+- Python 3 installed on managed hosts (included by default on RHEL)
 
 ## Step 1 - Install Ansible
 

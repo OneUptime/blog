@@ -1,14 +1,14 @@
-# How to Use pgbench for PostgreSQL Load Testing on RHEL 9
+# How to Use pgbench for PostgreSQL Load Testing on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, PostgreSQL
 
-Description: Step-by-step guide on use pgbench for postgresql load testing on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on use pgbench for postgresql load testing on RHEL with practical examples and commands.
 
 ---
 
-pgbench is the standard PostgreSQL benchmarking tool, available on RHEL 9 for database performance testing.
+pgbench is the standard PostgreSQL benchmarking tool, available on RHEL for database performance testing.
 
 ## Install PostgreSQL and pgbench
 
@@ -64,5 +64,5 @@ sudo -u postgres pgbench -c 10 -j 4 -T 300 -f custom.sql pgbench_test
 
 ## Conclusion
 
-pgbench on RHEL 9 provides standardized PostgreSQL benchmarks. Use consistent parameters across tests to measure the impact of configuration changes, hardware upgrades, or kernel tuning.
+pgbench on RHEL provides standardized PostgreSQL benchmarks. Use consistent parameters across tests to measure the impact of configuration changes, hardware upgrades, or kernel tuning.
 

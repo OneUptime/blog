@@ -1,10 +1,10 @@
-# How to Install an IdM Replica for High Availability on RHEL 9
+# How to Install an IdM Replica for High Availability on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Identity Management, High Availability, Replica, Linux
 
-Description: Learn how to install an IdM replica on RHEL 9 to provide high availability and geographic redundancy for your identity management infrastructure.
+Description: Learn how to install an IdM replica on RHEL to provide high availability and geographic redundancy for your identity management infrastructure.
 
 ---
 
@@ -12,8 +12,8 @@ A single IdM server is a single point of failure for authentication across your 
 
 ## Prerequisites
 
-- An existing IdM server (primary) running on RHEL 9
-- A new RHEL 9 system for the replica
+- An existing IdM server (primary) running on RHEL
+- A new RHEL system for the replica
 - Network connectivity between the servers
 - DNS resolution working for both servers
 - Firewall ports open for IdM services
@@ -211,4 +211,4 @@ ipa server-del idm2.example.com
 
 ## Summary
 
-IdM replicas on RHEL 9 provide high availability for your identity management infrastructure through multi-master replication. Install replicas by first enrolling the host as a client, then promoting it with `ipa-replica-install`. Include `--setup-dns` and `--setup-ca` to make each replica fully independent. Test failover regularly and monitor replication status to ensure your identity infrastructure remains reliable.
+IdM replicas on RHEL provide high availability for your identity management infrastructure through multi-master replication. Install replicas by first enrolling the host as a client, then promoting it with `ipa-replica-install`. Include `--setup-dns` and `--setup-ca` to make each replica fully independent. Test failover regularly and monitor replication status to ensure your identity infrastructure remains reliable.

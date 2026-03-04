@@ -1,26 +1,26 @@
-# How to Restore a RHEL 9 System from a ReaR Rescue Image
+# How to Restore a RHEL System from a ReaR Rescue Image
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ReaR, Rescue Image, System Restore
 
-Description: Restore a RHEL 9 system from a ReaR rescue image after a failure.
+Description: Restore a RHEL system from a ReaR rescue image after a failure.
 
 ---
 
 ## Overview
 
-Restore a RHEL 9 system from a ReaR rescue image after a failure. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
+Restore a RHEL system from a ReaR rescue image after a failure. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - Sufficient storage for backup files (local or remote)
 - For remote backups: SSH access to the backup destination
 
 ## Step 1 - Choose Your Backup Tool
 
-RHEL 9 provides several backup tools:
+RHEL provides several backup tools:
 
 - **tar** - full archive backups
 - **rsync** - incremental file synchronization
@@ -73,4 +73,4 @@ tar xzf /backups/full-backup-*.tar.gz -C /tmp/restore-test etc/hostname
 
 ## Summary
 
-You have learned how to restore a rhel 9 system from a rear rescue image. Remember the 3-2-1 rule: keep three copies of your data, on two different media types, with one copy stored off-site.
+You have learned how to restore a RHEL system from a rear rescue image. Remember the 3-2-1 rule: keep three copies of your data, on two different media types, with one copy stored off-site.

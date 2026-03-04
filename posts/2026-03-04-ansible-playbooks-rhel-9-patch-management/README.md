@@ -1,22 +1,22 @@
-# How to Write Ansible Playbooks for RHEL 9 Patch Management
+# How to Write Ansible Playbooks for RHEL Patch Management
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, Patch Management, Security
 
-Description: Write Ansible playbooks for automating RHEL 9 patch management and security updates.
+Description: Write Ansible playbooks for automating RHEL patch management and security updates.
 
 ---
 
 ## Overview
 
-Write Ansible playbooks for automating RHEL 9 patch management and security updates. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
+Write Ansible playbooks for automating RHEL patch management and security updates. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
 
 ## Prerequisites
 
-- A RHEL 9 system to serve as the Ansible control node
+- A RHEL system to serve as the Ansible control node
 - SSH access to managed hosts
-- Python 3 installed on managed hosts (included by default on RHEL 9)
+- Python 3 installed on managed hosts (included by default on RHEL)
 
 ## Step 1 - Install Ansible
 
@@ -94,4 +94,4 @@ ansible all -i inventory.ini -m command -a "rpm -q htop"
 
 ## Summary
 
-You have learned how to write ansible playbooks for rhel 9 patch management. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.
+You have learned how to write ansible playbooks for RHEL patch management. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.

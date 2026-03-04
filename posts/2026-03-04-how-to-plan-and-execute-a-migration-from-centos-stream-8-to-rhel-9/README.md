@@ -1,14 +1,14 @@
-# How to Plan and Execute a Migration from CentOS Stream 8 to RHEL 9
+# How to Plan and Execute a Migration from CentOS Stream 8 to RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Best Practices, Migration, CentOS
 
-Description: Step-by-step guide on plan and execute a migration from centos stream 8 to rhel 9 with practical examples and commands.
+Description: Step-by-step guide on plan and execute a migration from centos stream 8 to RHEL with practical examples and commands.
 
 ---
 
-Planning a migration from CentOS Stream 8 to RHEL 9 requires understanding the differences and following a structured approach.
+Planning a migration from CentOS Stream 8 to RHEL requires understanding the differences and following a structured approach.
 
 ## Assessment
 
@@ -21,10 +21,10 @@ systemctl list-unit-files --state=enabled > /tmp/cs8-services.txt
 
 ## Migration Options
 
-### Option 1: Fresh RHEL 9 Install (Recommended)
+### Option 1: Fresh RHEL Install (Recommended)
 
 ```bash
-# Deploy new RHEL 9 system
+# Deploy new RHEL system
 # Migrate data and configurations
 # Test thoroughly
 # Cut over
@@ -38,7 +38,7 @@ sudo dnf install -y https://ftp.redhat.com/redhat/convert2rhel/8/convert2rhel.re
 sudo dnf install -y convert2rhel
 sudo convert2rhel --org <org-id> --activationkey <key>
 
-# Then upgrade to RHEL 9 with Leapp
+# Then upgrade to RHEL with Leapp
 sudo dnf install -y leapp-upgrade
 sudo leapp preupgrade --target 9.4
 sudo leapp upgrade --target 9.4
@@ -65,5 +65,5 @@ sudo systemctl --failed
 
 ## Conclusion
 
-CentOS Stream 8 to RHEL 9 migration is best done as a fresh install with data migration, or through conversion to RHEL 8 followed by a Leapp upgrade. Test thoroughly in a staging environment before production migration.
+CentOS Stream 8 to RHEL migration is best done as a fresh install with data migration, or through conversion to RHEL 8 followed by a Leapp upgrade. Test thoroughly in a staging environment before production migration.
 

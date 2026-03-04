@@ -8,12 +8,12 @@ Description: Step-by-step guide on use the ansible lockdown rhel9-cis role for a
 
 ---
 
-The Ansible Lockdown RHEL9-CIS role automates CIS benchmark hardening on RHEL 9 systems for consistent security compliance.
+The Ansible Lockdown RHEL9-CIS role automates CIS benchmark hardening on RHEL systems for consistent security compliance.
 
 ## Prerequisites
 
 - Ansible installed on your control node
-- RHEL 9 target systems
+- RHEL target systems
 - Root or sudo access on targets
 
 ## Install the Role
@@ -47,7 +47,7 @@ ansible_become=true
 ```yaml
 ---
 # harden-rhel9.yml
-- name: Apply CIS Benchmark to RHEL 9
+- name: Apply CIS Benchmark to RHEL
   hosts: rhel9_servers
   become: true
 
@@ -116,5 +116,5 @@ sudo oscap xccdf eval \
 
 ## Conclusion
 
-The Ansible Lockdown RHEL9-CIS role automates CIS benchmark compliance on RHEL 9. Customize controls for your environment, test in check mode first, and run regularly to maintain compliance.
+The Ansible Lockdown RHEL9-CIS role automates CIS benchmark compliance on RHEL. Customize controls for your environment, test in check mode first, and run regularly to maintain compliance.
 

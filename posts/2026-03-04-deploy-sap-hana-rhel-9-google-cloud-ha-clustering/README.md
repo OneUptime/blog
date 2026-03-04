@@ -1,23 +1,23 @@
-# How to Deploy SAP HANA on RHEL 9 in Google Cloud with HA Clustering
+# How to Deploy SAP HANA on RHEL in Google Cloud with HA Clustering
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SAP HANA, Google Cloud, High Availability
 
-Description: Deploy SAP HANA on RHEL 9 in Google Cloud with HA clustering.
+Description: Deploy SAP HANA on RHEL in Google Cloud with HA clustering.
 
 ---
 
 ## Overview
 
-Deploy SAP HANA on RHEL 9 in Google Cloud with HA clustering. Running SAP on RHEL 9 requires specific system preparation, kernel tuning, and high-availability configuration.
+Deploy SAP HANA on RHEL in Google Cloud with HA clustering. Running SAP on RHEL requires specific system preparation, kernel tuning, and high-availability configuration.
 
 ## Prerequisites
 
-- RHEL 9 with the SAP Solutions subscription
+- RHEL with the SAP Solutions subscription
 - Systems meeting SAP hardware requirements (see SAP Note 2772999)
 - Root or sudo access
-- For HA clusters: at least two RHEL 9 nodes with the HA add-on
+- For HA clusters: at least two RHEL nodes with the HA add-on
 
 ## Step 1 - Register and Enable SAP Repositories
 
@@ -78,4 +78,4 @@ Use the SAP HANA Hardware Configuration Check Tool (HWCCT) or the RHEL System Ro
 
 ## Summary
 
-You have learned how to deploy sap hana in google cloud with ha clustering. SAP workloads on RHEL 9 require careful preparation, but RHEL System Roles and tuned profiles automate much of the configuration.
+You have learned how to deploy sap hana in google cloud with ha clustering. SAP workloads on RHEL require careful preparation, but RHEL System Roles and tuned profiles automate much of the configuration.

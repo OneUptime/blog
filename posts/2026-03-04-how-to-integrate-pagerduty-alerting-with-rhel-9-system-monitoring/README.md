@@ -1,14 +1,14 @@
-# How to Integrate PagerDuty Alerting with RHEL 9 System Monitoring
+# How to Integrate PagerDuty Alerting with RHEL System Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Monitoring, PagerDuty
 
-Description: Step-by-step guide on integrate pagerduty alerting with rhel 9 system monitoring with practical examples and commands.
+Description: Step-by-step guide on integrate pagerduty alerting with RHEL system monitoring with practical examples and commands.
 
 ---
 
-PagerDuty alerting integration with RHEL 9 monitoring ensures your team is notified immediately when critical issues arise.
+PagerDuty alerting integration with RHEL monitoring ensures your team is notified immediately when critical issues arise.
 
 ## Integration Options
 
@@ -74,5 +74,5 @@ echo '*/5 * * * * root [ $(df / --output=pcent | tail -1 | tr -d " %") -gt 90 ] 
 
 ## Conclusion
 
-PagerDuty integration with RHEL 9 ensures critical alerts reach your team through the right escalation policies. Use the Events API for custom alerting from any monitoring script.
+PagerDuty integration with RHEL ensures critical alerts reach your team through the right escalation policies. Use the Events API for custom alerting from any monitoring script.
 

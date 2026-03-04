@@ -1,20 +1,20 @@
-# How to Export Journal Logs to a File for Analysis on RHEL 9
+# How to Export Journal Logs to a File for Analysis on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, journalctl, Log Analysis, Linux
 
-Description: Export systemd journal logs to a file on RHEL 9 for offline analysis and archival.
+Description: Export systemd journal logs to a file on RHEL for offline analysis and archival.
 
 ---
 
 ## Overview
 
-Export systemd journal logs to a file on RHEL 9 for offline analysis and archival. This guide covers the essential steps and configuration needed for a production RHEL 9 environment.
+Export systemd journal logs to a file on RHEL for offline analysis and archival. This guide covers the essential steps and configuration needed for a production RHEL environment.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Basic familiarity with the command line
 
@@ -26,11 +26,11 @@ Ensure the relevant packages are installed:
 sudo dnf install -y rsyslog systemd
 ```
 
-rsyslog and systemd-journald ship by default on RHEL 9.
+rsyslog and systemd-journald ship by default on RHEL.
 
 ## Step 2 - Understand the Logging Architecture
 
-RHEL 9 uses two logging systems:
+RHEL uses two logging systems:
 
 - **systemd-journald** - captures structured binary logs from all services, the kernel, and early boot
 - **rsyslog** - processes, filters, and forwards text-based syslog messages
@@ -85,4 +85,4 @@ sudo firewall-cmd --reload
 
 ## Summary
 
-You have learned how to export journal logs to a file for analysis on RHEL 9. Regular log management is essential for security, compliance, and troubleshooting in any production environment.
+You have learned how to export journal logs to a file for analysis on RHEL. Regular log management is essential for security, compliance, and troubleshooting in any production environment.

@@ -1,14 +1,14 @@
-# How to Migrate from Debian to RHEL 9 with Minimal Downtime
+# How to Migrate from Debian to RHEL with Minimal Downtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Security, Migration, Debian
 
-Description: Step-by-step guide on migrate from debian to rhel 9 with minimal downtime with practical examples and commands.
+Description: Step-by-step guide on migrate from debian to RHEL with minimal downtime with practical examples and commands.
 
 ---
 
-Migrating from Debian to RHEL 9 involves package mapping and configuration conversion. This guide minimizes downtime during the transition.
+Migrating from Debian to RHEL involves package mapping and configuration conversion. This guide minimizes downtime during the transition.
 
 ## Pre-Migration Assessment
 
@@ -19,9 +19,9 @@ systemctl list-unit-files --state=enabled > /tmp/debian-services.txt
 ip addr show > /tmp/debian-network.txt
 ```
 
-## Deploy RHEL 9 in Parallel
+## Deploy RHEL in Parallel
 
-Set up RHEL 9 alongside the existing Debian system:
+Set up RHEL alongside the existing Debian system:
 
 ```bash
 sudo subscription-manager register
@@ -57,7 +57,7 @@ sudo nmcli con up eth0
 
 ## DNS Cutover
 
-Update DNS records to point to the new RHEL 9 server:
+Update DNS records to point to the new RHEL server:
 
 ```bash
 # Reduce TTL before migration
@@ -74,5 +74,5 @@ curl -I http://new-rhel-server
 
 ## Conclusion
 
-Debian to RHEL 9 migration is best done as a parallel deployment with data synchronization. This approach minimizes downtime and allows easy rollback by simply reverting DNS changes.
+Debian to RHEL migration is best done as a parallel deployment with data synchronization. This approach minimizes downtime and allows easy rollback by simply reverting DNS changes.
 

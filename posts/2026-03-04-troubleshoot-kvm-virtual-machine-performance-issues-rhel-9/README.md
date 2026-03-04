@@ -1,14 +1,14 @@
-# How to Troubleshoot KVM Virtual Machine Performance Issues on RHEL 9
+# How to Troubleshoot KVM Virtual Machine Performance Issues on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, KVM, Performance, Troubleshooting, Virtualization, Linux
 
-Description: Learn how to diagnose and resolve common KVM virtual machine performance problems on RHEL 9, including CPU, memory, disk, and network bottlenecks.
+Description: Learn how to diagnose and resolve common KVM virtual machine performance problems on RHEL, including CPU, memory, disk, and network bottlenecks.
 
 ---
 
-When a KVM virtual machine on RHEL 9 performs poorly, the issue could be in the VM configuration, host resource contention, or the guest operating system itself. A systematic approach to troubleshooting helps you identify the bottleneck quickly and apply the right fix.
+When a KVM virtual machine on RHEL performs poorly, the issue could be in the VM configuration, host resource contention, or the guest operating system itself. A systematic approach to troubleshooting helps you identify the bottleneck quickly and apply the right fix.
 
 ## Step 1: Identify the Symptom
 
@@ -220,4 +220,4 @@ qemu-img create -f qcow2 -o preallocation=full vm.qcow2 50G
 
 ## Summary
 
-Troubleshooting KVM VM performance on RHEL 9 requires checking both the host and guest levels. Start with host resource utilization, verify VM configuration (virtio drivers, CPU mode, cache settings), then diagnose inside the guest. Common fixes include enabling virtio, CPU pinning, huge pages, and proper disk cache modes. Monitor regularly with virt-top and iostat to catch issues before they impact applications.
+Troubleshooting KVM VM performance on RHEL requires checking both the host and guest levels. Start with host resource utilization, verify VM configuration (virtio drivers, CPU mode, cache settings), then diagnose inside the guest. Common fixes include enabling virtio, CPU pinning, huge pages, and proper disk cache modes. Monitor regularly with virt-top and iostat to catch issues before they impact applications.

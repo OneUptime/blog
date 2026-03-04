@@ -1,14 +1,14 @@
-# How to Migrate from Amazon Linux 2 to RHEL 9 on AWS
+# How to Migrate from Amazon Linux 2 to RHEL on AWS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, AWS, Migration, Amazon Linux
 
-Description: Step-by-step guide on migrate from amazon linux 2 to rhel 9 on aws with practical examples and commands.
+Description: Step-by-step guide on migrate from amazon linux 2 to RHEL on aws with practical examples and commands.
 
 ---
 
-Migrating from Amazon Linux 2 to RHEL 9 on AWS provides longer support and multi-cloud portability.
+Migrating from Amazon Linux 2 to RHEL on AWS provides longer support and multi-cloud portability.
 
 ## Assessment
 
@@ -18,10 +18,10 @@ yum list installed > /tmp/al2-packages.txt
 systemctl list-unit-files --state=enabled > /tmp/al2-services.txt
 ```
 
-## Launch RHEL 9 on AWS
+## Launch RHEL on AWS
 
 ```bash
-# Find RHEL 9 AMI
+# Find RHEL AMI
 aws ec2 describe-images --owners 309956199498 \
   --filters "Name=name,Values=RHEL-9*" \
   --query 'Images[*].[ImageId,Name]' --output table
@@ -35,7 +35,7 @@ aws ec2 run-instances \
   --subnet-id subnet-XXXXX
 ```
 
-## Install AWS Tools on RHEL 9
+## Install AWS Tools on RHEL
 
 ```bash
 sudo dnf install -y amazon-ssm-agent
@@ -70,5 +70,5 @@ aws elbv2 register-targets \
 
 ## Conclusion
 
-Migrating from Amazon Linux 2 to RHEL 9 on AWS gives you longer support lifecycle and the ability to run the same OS across AWS, Azure, GCP, and on-premises.
+Migrating from Amazon Linux 2 to RHEL on AWS gives you longer support lifecycle and the ability to run the same OS across AWS, Azure, GCP, and on-premises.
 

@@ -19,7 +19,7 @@ You need two RHEL VMs in the same availability set or zone, with the HA add-on s
 On both nodes, enable the HA repository and install the cluster packages:
 
 ```bash
-# Enable the HA repo (RHEL 9)
+# Enable the HA repo (RHEL)
 sudo subscription-manager repos --enable=rhel-9-for-x86_64-highavailability-rpms
 
 # Install Pacemaker and fence agents

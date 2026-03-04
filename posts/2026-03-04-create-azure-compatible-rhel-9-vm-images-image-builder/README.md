@@ -1,20 +1,20 @@
-# How to Create Azure-Compatible RHEL 9 VM Images with Image Builder
+# How to Create Azure-Compatible RHEL VM Images with Image Builder
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Image Builder, Azure, VHD, Cloud
 
-Description: Create Azure-compatible RHEL 9 VM images with Image Builder.
+Description: Create Azure-compatible RHEL VM images with Image Builder.
 
 ---
 
 ## Overview
 
-Create Azure-compatible RHEL 9 VM images with Image Builder. RHEL Image Builder lets you create customized, deployable operating system images for physical, virtual, and cloud environments.
+Create Azure-compatible RHEL VM images with Image Builder. RHEL Image Builder lets you create customized, deployable operating system images for physical, virtual, and cloud environments.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription
+- A RHEL system with a valid subscription
 - Root or sudo access
 - The osbuild-composer and composer-cli packages
 
@@ -31,7 +31,7 @@ Create a TOML blueprint file `my-image.toml`:
 
 ```toml
 name = "my-custom-image"
-description = "Custom RHEL 9 image"
+description = "Custom RHEL image"
 version = "1.0.0"
 
 [[packages]]
@@ -91,4 +91,4 @@ You can also manage Image Builder through the Cockpit web console at `https://yo
 
 ## Summary
 
-You have learned how to create azure-compatible rhel 9 vm images with image builder. Image Builder provides a consistent workflow for creating RHEL images across all deployment targets.
+You have learned how to create azure-compatible RHEL vm images with image builder. Image Builder provides a consistent workflow for creating RHEL images across all deployment targets.

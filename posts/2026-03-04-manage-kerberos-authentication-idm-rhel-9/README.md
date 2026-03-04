@@ -1,14 +1,14 @@
-# How to Manage Kerberos Authentication with IdM on RHEL 9
+# How to Manage Kerberos Authentication with IdM on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, IdM, Kerberos, Authentication, SSO, Identity Management, Linux
 
-Description: Learn how to manage Kerberos authentication in Red Hat Identity Management on RHEL 9, including ticket management, keytabs, and service principals.
+Description: Learn how to manage Kerberos authentication in Red Hat Identity Management on RHEL, including ticket management, keytabs, and service principals.
 
 ---
 
-Kerberos is the core authentication protocol in IdM, providing single sign-on (SSO) across your RHEL 9 infrastructure. Once a user obtains a Kerberos ticket, they can access any Kerberized service without re-entering their password. Understanding how to manage Kerberos tickets, keytabs, and service principals is essential for IdM administration.
+Kerberos is the core authentication protocol in IdM, providing single sign-on (SSO) across your RHEL infrastructure. Once a user obtains a Kerberos ticket, they can access any Kerberized service without re-entering their password. Understanding how to manage Kerberos tickets, keytabs, and service principals is essential for IdM administration.
 
 ## How Kerberos Works in IdM
 
@@ -234,4 +234,4 @@ sudo journalctl -u krb5kdc -f
 
 ## Summary
 
-Kerberos authentication in IdM on RHEL 9 provides single sign-on across your infrastructure. Manage ticket lifetimes with `ipa krbtpolicy-mod`, create service principals for applications, and distribute keytabs with `ipa-getkeytab`. Configure services like Apache and SSH to accept Kerberos authentication for a seamless user experience. Keep clocks synchronized and use `KRB5_TRACE` for debugging authentication issues.
+Kerberos authentication in IdM on RHEL provides single sign-on across your infrastructure. Manage ticket lifetimes with `ipa krbtpolicy-mod`, create service principals for applications, and distribute keytabs with `ipa-getkeytab`. Configure services like Apache and SSH to accept Kerberos authentication for a seamless user experience. Keep clocks synchronized and use `KRB5_TRACE` for debugging authentication issues.

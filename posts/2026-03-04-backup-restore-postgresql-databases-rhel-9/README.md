@@ -1,20 +1,20 @@
-# How to Back Up and Restore PostgreSQL Databases on RHEL 9
+# How to Back Up and Restore PostgreSQL Databases on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, PostgreSQL, Backup, Database
 
-Description: Back up and restore PostgreSQL databases on RHEL 9 using pg_dump and pg_restore.
+Description: Back up and restore PostgreSQL databases on RHEL using pg_dump and pg_restore.
 
 ---
 
 ## Overview
 
-Back up and restore PostgreSQL databases on RHEL 9 using pg_dump and pg_restore. Proper database setup and management are essential for application reliability and data integrity.
+Back up and restore PostgreSQL databases on RHEL using pg_dump and pg_restore. Proper database setup and management are essential for application reliability and data integrity.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Sufficient disk space for database storage
 

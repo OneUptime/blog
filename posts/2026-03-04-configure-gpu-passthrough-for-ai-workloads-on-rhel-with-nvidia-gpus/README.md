@@ -12,7 +12,7 @@ GPU passthrough allows a virtual machine to directly access a physical NVIDIA GP
 
 ## Prerequisites
 
-- RHEL 9 with KVM/libvirt installed
+- RHEL with KVM/libvirt installed
 - NVIDIA GPU (Tesla, A100, H100, or similar)
 - CPU with IOMMU support (Intel VT-d or AMD-Vi)
 - BIOS/UEFI with IOMMU and SR-IOV enabled

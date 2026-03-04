@@ -1,26 +1,26 @@
-# How to Create Full System Backups with tar on RHEL 9
+# How to Create Full System Backups with tar on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, tar, Backup, Linux
 
-Description: Create full system backups using tar on RHEL 9 for disaster recovery.
+Description: Create full system backups using tar on RHEL for disaster recovery.
 
 ---
 
 ## Overview
 
-Create full system backups using tar on RHEL 9 for disaster recovery. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
+Create full system backups using tar on RHEL for disaster recovery. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - Sufficient storage for backup files (local or remote)
 - For remote backups: SSH access to the backup destination
 
 ## Step 1 - Choose Your Backup Tool
 
-RHEL 9 provides several backup tools:
+RHEL provides several backup tools:
 
 - **tar** - full archive backups
 - **rsync** - incremental file synchronization

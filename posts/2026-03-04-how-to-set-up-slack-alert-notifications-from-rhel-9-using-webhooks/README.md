@@ -1,14 +1,14 @@
-# How to Set Up Slack Alert Notifications from RHEL 9 Using Webhooks
+# How to Set Up Slack Alert Notifications from RHEL Using Webhooks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Slack
 
-Description: Step-by-step guide on set up slack alert notifications from rhel 9 using webhooks with practical examples and commands.
+Description: Step-by-step guide on set up slack alert notifications from RHEL using webhooks with practical examples and commands.
 
 ---
 
-Slack webhook integration sends RHEL 9 system alerts directly to your team's Slack channels.
+Slack webhook integration sends RHEL system alerts directly to your team's Slack channels.
 
 ## Create a Slack Webhook
 
@@ -39,7 +39,7 @@ curl -s -X POST "$WEBHOOK_URL" \
   -d "{
     "attachments": [{
       "color": "$COLOR",
-      "title": "RHEL 9 Alert - $HOSTNAME",
+      "title": "RHEL Alert - $HOSTNAME",
       "text": "$MESSAGE",
       "fields": [
         {"title": "Host", "value": "$HOSTNAME", "short": true},
@@ -69,10 +69,10 @@ EOF
 ## Test the Integration
 
 ```bash
-/opt/scripts/slack-alert.sh "Test alert from RHEL 9 server" info
+/opt/scripts/slack-alert.sh "Test alert from RHEL server" info
 ```
 
 ## Conclusion
 
-Slack webhook integration provides instant team notification for RHEL 9 system alerts. Customize the alert script with additional metrics and thresholds for your environment.
+Slack webhook integration provides instant team notification for RHEL system alerts. Customize the alert script with additional metrics and thresholds for your environment.
 

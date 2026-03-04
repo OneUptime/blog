@@ -1,14 +1,14 @@
-# How to Manage Virtual Machines with virsh Commands on RHEL 9
+# How to Manage Virtual Machines with virsh Commands on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, KVM, virsh, Virtualization, Management, Linux
 
-Description: Learn the essential virsh commands for managing KVM virtual machine lifecycle, configuration, and monitoring on RHEL 9.
+Description: Learn the essential virsh commands for managing KVM virtual machine lifecycle, configuration, and monitoring on RHEL.
 
 ---
 
-The `virsh` command is the primary CLI tool for managing KVM virtual machines on RHEL 9. It provides complete control over VM lifecycle, configuration, storage, networking, and monitoring. This guide covers the most important virsh commands for daily VM administration.
+The `virsh` command is the primary CLI tool for managing KVM virtual machines on RHEL. It provides complete control over VM lifecycle, configuration, storage, networking, and monitoring. This guide covers the most important virsh commands for daily VM administration.
 
 ## VM Lifecycle Commands
 
@@ -218,4 +218,4 @@ done
 
 ## Summary
 
-The `virsh` command on RHEL 9 provides comprehensive KVM VM management. Use lifecycle commands for start/stop/reboot, `virsh edit` for configuration changes, attach/detach commands for dynamic resource management, and domstats for monitoring. For complex operations, combine virsh with shell scripting for automation.
+The `virsh` command on RHEL provides comprehensive KVM VM management. Use lifecycle commands for start/stop/reboot, `virsh edit` for configuration changes, attach/detach commands for dynamic resource management, and domstats for monitoring. For complex operations, combine virsh with shell scripting for automation.

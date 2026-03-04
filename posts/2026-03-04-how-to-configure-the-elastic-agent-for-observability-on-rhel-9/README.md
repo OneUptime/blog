@@ -1,14 +1,14 @@
-# How to Configure the Elastic Agent for Observability on RHEL 9
+# How to Configure the Elastic Agent for Observability on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Elastic
 
-Description: Step-by-step guide on configure the elastic agent for observability on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on configure the elastic agent for observability on RHEL with practical examples and commands.
 
 ---
 
-The Elastic Agent provides unified data collection for Elasticsearch, Kibana, and the Elastic observability platform on RHEL 9.
+The Elastic Agent provides unified data collection for Elasticsearch, Kibana, and the Elastic observability platform on RHEL.
 
 ## Install the Elastic Agent
 
@@ -61,5 +61,5 @@ In Kibana Fleet, add the System integration to collect:
 
 ## Conclusion
 
-The Elastic Agent on RHEL 9 provides unified metrics, logs, and security data collection for the Elastic Stack. Manage agent policies centrally through Kibana Fleet for consistent observability.
+The Elastic Agent on RHEL provides unified metrics, logs, and security data collection for the Elastic Stack. Manage agent policies centrally through Kibana Fleet for consistent observability.
 

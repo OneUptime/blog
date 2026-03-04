@@ -99,5 +99,5 @@ Key metrics:
 
 ## Conclusion
 
-DNS caching on high-traffic RHEL 9 servers reduces latency and external DNS load. Use Unbound for recursive caching, nscd for system-level name service caching, and application-level caching for workloads with predictable DNS patterns.
+DNS caching on high-traffic RHEL servers reduces latency and external DNS load. Use Unbound for recursive caching, nscd for system-level name service caching, and application-level caching for workloads with predictable DNS patterns.
 RHELRHEL

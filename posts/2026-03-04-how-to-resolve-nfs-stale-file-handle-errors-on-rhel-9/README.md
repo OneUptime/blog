@@ -1,14 +1,14 @@
-# How to Resolve 'NFS Stale File Handle' Errors on RHEL 9
+# How to Resolve 'NFS Stale File Handle' Errors on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Troubleshooting, NFS
 
-Description: Step-by-step guide on resolve 'nfs stale file handle' errors on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on resolve 'nfs stale file handle' errors on RHEL with practical examples and commands.
 
 ---
 
-NFS stale file handle errors on RHEL 9 occur when the server-side file or export changes while the client holds a reference. Here is how to resolve them.
+NFS stale file handle errors on RHEL occur when the server-side file or export changes while the client holds a reference. Here is how to resolve them.
 
 ## Identify the Error
 
@@ -99,5 +99,5 @@ sudo mount -t nfs -o soft,timeo=10,retrans=3 server:/export /mnt/nfs-share
 
 ## Conclusion
 
-NFS stale file handle errors on RHEL 9 are resolved by remounting the share and ensuring server-side export consistency. Use autofs and the soft mount option for more resilient NFS client configurations.
+NFS stale file handle errors on RHEL are resolved by remounting the share and ensuring server-side export consistency. Use autofs and the soft mount option for more resilient NFS client configurations.
 

@@ -1,18 +1,18 @@
-# How to Set Up Integrity Measurement Architecture (IMA) on RHEL 9
+# How to Set Up Integrity Measurement Architecture (IMA) on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Security
 
-Description: Step-by-step guide on set up integrity measurement architecture (ima) on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on set up integrity measurement architecture (ima) on RHEL with practical examples and commands.
 
 ---
 
-Integrity Measurement Architecture (IMA) on RHEL 9 provides runtime integrity verification by measuring files before they are accessed. This guide covers setting up IMA for system security.
+Integrity Measurement Architecture (IMA) on RHEL provides runtime integrity verification by measuring files before they are accessed. This guide covers setting up IMA for system security.
 
 ## Prerequisites
 
-- RHEL 9 with a kernel that supports IMA (default)
+- RHEL with a kernel that supports IMA (default)
 - TPM 2.0 hardware (recommended but not required)
 - Root access
 
@@ -129,5 +129,5 @@ sudo ausearch -k ima_events
 
 ## Conclusion
 
-IMA on RHEL 9 provides a kernel-level integrity measurement framework. Combined with TPM 2.0, it creates a chain of trust from boot through runtime, verifying that executables, libraries, and kernel modules have not been tampered with.
+IMA on RHEL provides a kernel-level integrity measurement framework. Combined with TPM 2.0, it creates a chain of trust from boot through runtime, verifying that executables, libraries, and kernel modules have not been tampered with.
 

@@ -1,22 +1,22 @@
-# How to Set Up Ansible Execution Environments for RHEL 9 Automation
+# How to Set Up Ansible Execution Environments for RHEL Automation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Ansible, Execution Environments, Containers
 
-Description: Build and use Ansible execution environments on RHEL 9 for consistent automation.
+Description: Build and use Ansible execution environments on RHEL for consistent automation.
 
 ---
 
 ## Overview
 
-Build and use Ansible execution environments on RHEL 9 for consistent automation. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
+Build and use Ansible execution environments on RHEL for consistent automation. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
 
 ## Prerequisites
 
-- A RHEL 9 system to serve as the Ansible control node
+- A RHEL system to serve as the Ansible control node
 - SSH access to managed hosts
-- Python 3 installed on managed hosts (included by default on RHEL 9)
+- Python 3 installed on managed hosts (included by default on RHEL)
 
 ## Step 1 - Install Ansible
 
@@ -94,4 +94,4 @@ ansible all -i inventory.ini -m command -a "rpm -q htop"
 
 ## Summary
 
-You have learned how to set up ansible execution environments for rhel 9 automation. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.
+You have learned how to set up ansible execution environments for RHEL automation. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.

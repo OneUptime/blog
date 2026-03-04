@@ -8,7 +8,7 @@ Description: Switch between Wayland and X11 display servers on RHEL to resolve c
 
 ---
 
-RHEL 9 uses Wayland as the default display server for GNOME. While Wayland offers better security and performance, some applications (screen sharing tools, remote desktop software, certain graphics drivers) may still require X11. Switching between them is straightforward.
+RHEL uses Wayland as the default display server for GNOME. While Wayland offers better security and performance, some applications (screen sharing tools, remote desktop software, certain graphics drivers) may still require X11. Switching between them is straightforward.
 
 ## Check the Current Display Server
 

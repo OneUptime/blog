@@ -37,7 +37,7 @@ Ensure your system is registered and has access to the live patching repository:
 # Check available repositories
 sudo dnf repolist
 
-# Enable the kernel live patching repo (RHEL 9)
+# Enable the kernel live patching repo (RHEL)
 sudo subscription-manager repos --enable=rhel-9-for-x86_64-livepatch-rpms
 
 # Verify it is enabled

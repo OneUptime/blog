@@ -1,26 +1,26 @@
-# How to Configure ReaR with Network Backup for Automated RHEL 9 Recovery
+# How to Configure ReaR with Network Backup for Automated RHEL Recovery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, ReaR, Network Backup, Recovery
 
-Description: Configure ReaR with network-based backup for automated RHEL 9 disaster recovery.
+Description: Configure ReaR with network-based backup for automated RHEL disaster recovery.
 
 ---
 
 ## Overview
 
-Configure ReaR with network-based backup for automated RHEL 9 disaster recovery. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
+Configure ReaR with network-based backup for automated RHEL disaster recovery. A solid backup strategy protects against data loss from hardware failures, human errors, and security incidents.
 
 ## Prerequisites
 
-- A RHEL 9 system with root or sudo access
+- A RHEL system with root or sudo access
 - Sufficient storage for backup files (local or remote)
 - For remote backups: SSH access to the backup destination
 
 ## Step 1 - Choose Your Backup Tool
 
-RHEL 9 provides several backup tools:
+RHEL provides several backup tools:
 
 - **tar** - full archive backups
 - **rsync** - incremental file synchronization
@@ -73,4 +73,4 @@ tar xzf /backups/full-backup-*.tar.gz -C /tmp/restore-test etc/hostname
 
 ## Summary
 
-You have learned how to configure rear with network backup for automated rhel 9 recovery. Remember the 3-2-1 rule: keep three copies of your data, on two different media types, with one copy stored off-site.
+You have learned how to configure rear with network backup for automated RHEL recovery. Remember the 3-2-1 rule: keep three copies of your data, on two different media types, with one copy stored off-site.

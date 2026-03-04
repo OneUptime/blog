@@ -36,7 +36,7 @@ SCSI Slots:  Place the OS disk on SCSI 0:0
 # In the VM settings:
 1. Add a CD/DVD drive
 2. Select "Datastore ISO File"
-3. Browse to your uploaded RHEL 9 ISO
+3. Browse to your uploaded RHEL ISO
 4. Check "Connect at power on"
 ```
 

@@ -1,14 +1,14 @@
-# How to Use iperf3 for Network Throughput Testing on RHEL 9
+# How to Use iperf3 for Network Throughput Testing on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Networking, Performance
 
-Description: Step-by-step guide on use iperf3 for network throughput testing on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on use iperf3 for network throughput testing on RHEL with practical examples and commands.
 
 ---
 
-iperf3 measures network throughput between RHEL 9 systems for bandwidth validation and troubleshooting.
+iperf3 measures network throughput between RHEL systems for bandwidth validation and troubleshooting.
 
 ## Install iperf3
 
@@ -81,5 +81,5 @@ sudo firewall-cmd --reload
 
 ## Conclusion
 
-iperf3 on RHEL 9 validates network bandwidth between systems. Use it to verify network infrastructure, troubleshoot throughput issues, and compare performance before and after tuning changes.
+iperf3 on RHEL validates network bandwidth between systems. Use it to verify network infrastructure, troubleshoot throughput issues, and compare performance before and after tuning changes.
 

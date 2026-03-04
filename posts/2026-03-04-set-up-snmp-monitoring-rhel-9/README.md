@@ -1,20 +1,20 @@
-# How to Set Up SNMP Monitoring on RHEL 9
+# How to Set Up SNMP Monitoring on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, SNMP, Monitoring, Linux
 
-Description: Set up SNMP monitoring on RHEL 9 for integration with network management systems.
+Description: Set up SNMP monitoring on RHEL for integration with network management systems.
 
 ---
 
 ## Overview
 
-Set up SNMP monitoring on RHEL 9 for integration with network management systems. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
+Set up SNMP monitoring on RHEL for integration with network management systems. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Network access for remote monitoring tools (if applicable)
 
@@ -81,4 +81,4 @@ Configure alerts based on thresholds so you are notified before issues become cr
 
 ## Summary
 
-You now know how to set up snmp monitoring. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL 9 systems.
+You now know how to set up snmp monitoring. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL systems.

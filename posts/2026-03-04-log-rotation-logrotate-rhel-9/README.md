@@ -1,20 +1,20 @@
-# How to Set Up Log Rotation with logrotate on RHEL 9
+# How to Set Up Log Rotation with logrotate on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, logrotate, Logging, Linux
 
-Description: Set up and customize log rotation with logrotate on RHEL 9 to manage disk space.
+Description: Set up and customize log rotation with logrotate on RHEL to manage disk space.
 
 ---
 
 ## Overview
 
-Set up and customize log rotation with logrotate on RHEL 9 to manage disk space. This guide covers the essential steps and configuration needed for a production RHEL 9 environment.
+Set up and customize log rotation with logrotate on RHEL to manage disk space. This guide covers the essential steps and configuration needed for a production RHEL environment.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Basic familiarity with the command line
 
@@ -26,11 +26,11 @@ Ensure the relevant packages are installed:
 sudo dnf install -y rsyslog systemd
 ```
 
-rsyslog and systemd-journald ship by default on RHEL 9.
+rsyslog and systemd-journald ship by default on RHEL.
 
 ## Step 2 - Understand the Logging Architecture
 
-RHEL 9 uses two logging systems:
+RHEL uses two logging systems:
 
 - **systemd-journald** - captures structured binary logs from all services, the kernel, and early boot
 - **rsyslog** - processes, filters, and forwards text-based syslog messages
@@ -85,4 +85,4 @@ sudo firewall-cmd --reload
 
 ## Summary
 
-You have learned how to set up log rotation with logrotate on RHEL 9. Regular log management is essential for security, compliance, and troubleshooting in any production environment.
+You have learned how to set up log rotation with logrotate on RHEL. Regular log management is essential for security, compliance, and troubleshooting in any production environment.

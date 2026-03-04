@@ -1,20 +1,20 @@
-# How to Set Up Grafana Loki for Log Aggregation on RHEL 9
+# How to Set Up Grafana Loki for Log Aggregation on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Grafana Loki, Log Aggregation, Monitoring
 
-Description: Set up Grafana Loki on RHEL 9 for cost-effective log aggregation and querying.
+Description: Set up Grafana Loki on RHEL for cost-effective log aggregation and querying.
 
 ---
 
 ## Overview
 
-Set up Grafana Loki on RHEL 9 for cost-effective log aggregation and querying. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
+Set up Grafana Loki on RHEL for cost-effective log aggregation and querying. Effective monitoring is critical for maintaining system health, detecting issues early, and planning capacity.
 
 ## Prerequisites
 
-- A RHEL 9 system with a valid subscription or configured repositories
+- A RHEL system with a valid subscription or configured repositories
 - Root or sudo access
 - Network access for remote monitoring tools (if applicable)
 
@@ -81,4 +81,4 @@ Configure alerts based on thresholds so you are notified before issues become cr
 
 ## Summary
 
-You now know how to set up grafana loki for log aggregation. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL 9 systems.
+You now know how to set up grafana loki for log aggregation. Regular monitoring helps you detect performance degradation, plan capacity, and respond to incidents quickly on your RHEL systems.

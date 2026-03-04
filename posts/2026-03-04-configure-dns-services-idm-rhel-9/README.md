@@ -1,14 +1,14 @@
-# How to Configure DNS Services in IdM on RHEL 9
+# How to Configure DNS Services in IdM on RHEL
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: RHEL, IdM, DNS, Identity Management, BIND, Linux
 
-Description: Learn how to manage DNS zones, records, and forwarding in Red Hat Identity Management on RHEL 9 for integrated name resolution.
+Description: Learn how to manage DNS zones, records, and forwarding in Red Hat Identity Management on RHEL for integrated name resolution.
 
 ---
 
-IdM integrated DNS on RHEL 9 provides automatic management of DNS records needed for Kerberos and LDAP service discovery. Beyond automatic records, you can manage custom zones, records, and forwarding policies to make IdM your primary DNS solution for your RHEL infrastructure.
+IdM integrated DNS on RHEL provides automatic management of DNS records needed for Kerberos and LDAP service discovery. Beyond automatic records, you can manage custom zones, records, and forwarding policies to make IdM your primary DNS solution for your RHEL infrastructure.
 
 ## Understanding IdM DNS
 
@@ -241,4 +241,4 @@ ipa dnsforwardzone-show ad.example.com
 
 ## Summary
 
-IdM DNS on RHEL 9 provides integrated DNS management that simplifies Kerberos and LDAP service discovery. Manage zones and records through the `ipa` CLI, configure forwarding for external domains and AD integration, and rely on LDAP replication for consistent DNS across all IdM servers. The integrated approach reduces manual DNS administration and ensures service discovery records are always correct.
+IdM DNS on RHEL provides integrated DNS management that simplifies Kerberos and LDAP service discovery. Manage zones and records through the `ipa` CLI, configure forwarding for external domains and AD integration, and rely on LDAP replication for consistent DNS across all IdM servers. The integrated approach reduces manual DNS administration and ensures service discovery records are always correct.

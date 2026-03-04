@@ -1,22 +1,22 @@
-# How to Join RHEL 9 Systems to Active Directory Using Ansible System Roles
+# How to Join RHEL Systems to Active Directory Using Ansible System Roles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Active Directory, Ansible, Identity
 
-Description: Use Ansible System Roles to join RHEL 9 systems to Active Directory domains.
+Description: Use Ansible System Roles to join RHEL systems to Active Directory domains.
 
 ---
 
 ## Overview
 
-Use Ansible System Roles to join RHEL 9 systems to Active Directory domains. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
+Use Ansible System Roles to join RHEL systems to Active Directory domains. Ansible provides agentless automation that connects to RHEL hosts over SSH and applies desired-state configuration.
 
 ## Prerequisites
 
-- A RHEL 9 system to serve as the Ansible control node
+- A RHEL system to serve as the Ansible control node
 - SSH access to managed hosts
-- Python 3 installed on managed hosts (included by default on RHEL 9)
+- Python 3 installed on managed hosts (included by default on RHEL)
 
 ## Step 1 - Install Ansible
 
@@ -94,4 +94,4 @@ ansible all -i inventory.ini -m command -a "rpm -q htop"
 
 ## Summary
 
-You have learned how to join rhel 9 systems to active directory using ansible system roles. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.
+You have learned how to join RHEL systems to active directory using ansible system roles. Ansible's agentless architecture and declarative playbooks make it ideal for managing RHEL systems at scale.

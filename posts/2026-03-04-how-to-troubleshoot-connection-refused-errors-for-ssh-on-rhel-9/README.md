@@ -1,14 +1,14 @@
-# How to Troubleshoot 'Connection Refused' Errors for SSH on RHEL 9
+# How to Troubleshoot 'Connection Refused' Errors for SSH on RHEL
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, Troubleshooting, SSH
 
-Description: Step-by-step guide on troubleshoot 'connection refused' errors for ssh on rhel 9 with practical examples and commands.
+Description: Step-by-step guide on troubleshoot 'connection refused' errors for ssh on RHEL with practical examples and commands.
 
 ---
 
-"Connection refused" errors for SSH on RHEL 9 mean the SSH daemon is not accepting connections. Here is how to troubleshoot.
+"Connection refused" errors for SSH on RHEL mean the SSH daemon is not accepting connections. Here is how to troubleshoot.
 
 ## Check if sshd is Running
 
@@ -108,5 +108,5 @@ sudo tail -f /var/log/secure
 
 ## Conclusion
 
-SSH "Connection refused" errors on RHEL 9 are typically caused by the sshd service not running, firewall rules blocking port 22, or configuration errors. Check each layer systematically to restore SSH access.
+SSH "Connection refused" errors on RHEL are typically caused by the sshd service not running, firewall rules blocking port 22, or configuration errors. Check each layer systematically to restore SSH access.
 

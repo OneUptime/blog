@@ -1,18 +1,18 @@
-# How to Deploy RHEL 9 HA Clusters on GCP with Pacemaker
+# How to Deploy RHEL HA Clusters on GCP with Pacemaker
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: RHEL, Linux, GCP, High Availability, Pacemaker
 
-Description: Step-by-step guide on deploy rhel 9 ha clusters on gcp with pacemaker with practical examples and commands.
+Description: Step-by-step guide on deploy RHEL ha clusters on gcp with pacemaker with practical examples and commands.
 
 ---
 
-Google Cloud Platform provides the infrastructure for running RHEL 9 HA clusters. This guide covers deploying Pacemaker-based clusters on GCP with proper fencing and health checks.
+Google Cloud Platform provides the infrastructure for running RHEL HA clusters. This guide covers deploying Pacemaker-based clusters on GCP with proper fencing and health checks.
 
 ## Prerequisites
 
-- Two or more RHEL 9 VMs on GCP
+- Two or more RHEL VMs on GCP
 - Active Red Hat subscription
 - gcloud CLI configured
 - VMs in the same VPC network and subnet
@@ -107,5 +107,5 @@ sudo pcs node unstandby node1
 
 ## Conclusion
 
-Your RHEL 9 HA cluster on GCP is now operational with Pacemaker, GCP fencing, and internal load balancer integration. Regularly test failover and monitor cluster health to maintain availability.
+Your RHEL HA cluster on GCP is now operational with Pacemaker, GCP fencing, and internal load balancer integration. Regularly test failover and monitor cluster health to maintain availability.
 

@@ -8,7 +8,7 @@ Description: Learn how to configure systemd-resolved for Local DNS Caching on RH
 
 ---
 
-systemd-resolved provides local DNS caching and resolution management integraRHELth the systemd init system. On RHEL 9, it can serve as a local caching stRHELolver that speeds up repeated DNS lookups.
+systemd-resolved provides local DNS caching and resolution management integraRHELth the systemd init system. On RHEL, it can serve as a local caching stRHELolver that speeds up repeated DNS lookups.
 
 ## Prerequisites
 
@@ -84,5 +84,5 @@ resolvectl domain eth0 internal.company.com
 
 ## Conclusion
 
-systemd-resolved provides transparent DNS caching on RHEL 9 with support for DNSSEC and DNS-over-TLS. It integrates naturally with NetworkManager and systemd, making it a convenient choice for workstations and servers that benefit from reduced DNS latency.
+systemd-resolved provides transparent DNS caching on RHEL with support for DNSSEC and DNS-over-TLS. It integrates naturally with NetworkManager and systemd, making it a convenient choice for workstations and servers that benefit from reduced DNS latency.
 RHEL
