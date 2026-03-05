@@ -121434,5 +121434,11 @@
     "validatedAt": "2026-03-05T00:00:00Z",
     "issues_found": [],
     "notes": "File does not exist at specified path /posts/2026-01-22-vault-transit-encryption/README.md"
+  },
+  "2026-03-05-alert-fatigue-ai-on-call": {
+    "status": "not-code-blog",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "issues_found": [],
+    "notes": "Thought leadership post about AI and alert fatigue - no code tutorials"
   }
 }
