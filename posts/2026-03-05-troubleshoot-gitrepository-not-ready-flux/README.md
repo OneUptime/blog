@@ -29,7 +29,7 @@ flux get source git -A
 
 Identify which sources are not ready.
 
-```
+```text
 NAME        REVISION    SUSPENDED   READY   MESSAGE
 my-app                  False       False   failed to checkout and determine revision: ...
 infra-repo  main@...    False       True    stored artifact for revision ...

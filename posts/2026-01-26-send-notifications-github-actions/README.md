@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, Notifications, Slack, Discord, Team, Webhooks, DevOps
+Tags: GitHub Actions, Notifications, Slack, Discord, Team, Webhook, DevOps
 
 Description: Learn how to integrate notifications into your GitHub Actions workflows to alert your team about build status, deployments, failures, and other important events via Slack, Discord, Teams, and email.
 

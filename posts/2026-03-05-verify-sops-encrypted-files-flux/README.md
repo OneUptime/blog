@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secrets, SOPS, Verification, Pre-commit, CI/CD
+Tags: Flux CD, GitOps, Kubernetes, Secret, SOPS, Verification, Pre-Commit, CI/CD
 
 Description: Learn how to verify that SOPS-encrypted files are properly encrypted before committing them to your Flux CD Git repository.
 

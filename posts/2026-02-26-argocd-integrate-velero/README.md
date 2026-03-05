@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Velero, Backups
+Tags: ArgoCD, GitOps, Kubernetes, Velero, Backup
 
 Description: Learn how to integrate ArgoCD with Velero to implement GitOps-managed backup strategies, automated backup schedules, disaster recovery workflows, and pre-deployment backup hooks.
 

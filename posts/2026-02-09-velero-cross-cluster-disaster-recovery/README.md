@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Disaster Recovery, Multi-Cluster, Backups
+Tags: Velero, Kubernetes, Disaster Recovery, Multi-Cluster, Backup
 
 Description: Master cross-cluster disaster recovery with Velero for Kubernetes. Learn how to configure multi-cluster backup strategies, automate failover, and test recovery procedures.
 

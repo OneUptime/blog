@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Security, Webhooks, Kubernetes, Admission Control
+Tags: Istio, Security, Webhook, Kubernetes, Admission Control
 
 Description: How to secure Istio's mutating and validating admission webhooks to prevent tampering, injection bypasses, and denial of service.
 

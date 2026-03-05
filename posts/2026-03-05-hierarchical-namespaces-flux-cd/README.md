@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Hierarchical Namespaces, HNC, Multi-Tenancy, Namespace Management
+Tags: Flux CD, GitOps, Kubernetes, Hierarchical Namespace, HNC, Multi-Tenancy, Namespace Management
 
 Description: Learn how to use Kubernetes Hierarchical Namespace Controller (HNC) with Flux CD to create parent-child namespace relationships with inherited policies and resources.
 
@@ -203,7 +203,7 @@ The Role, RoleBinding, NetworkPolicy, and Secret will appear in `team-alpha-dev`
 
 Organize your Flux repository to reflect the namespace hierarchy:
 
-```
+```text
 clusters/
   my-cluster/
     flux-system/

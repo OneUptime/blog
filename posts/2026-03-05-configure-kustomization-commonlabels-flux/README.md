@@ -26,7 +26,7 @@ This automatic injection ensures that selectors and pod labels stay consistent, 
 
 ## Repository Structure
 
-```
+```text
 apps/
   webapp/
     base/

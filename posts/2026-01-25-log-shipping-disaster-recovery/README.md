@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Log Shipping, Disaster Recovery, Backups, Replication, High Availability, Business Continuity, DevOps
+Tags: Log Shipping, Disaster Recovery, Backup, Replication, High Availability, Business Continuity, DevOps
 
 Description: Learn how to configure log shipping for disaster recovery to ensure log availability during outages.
 

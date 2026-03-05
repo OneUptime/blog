@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Generics, Type Safety, JavaScript, Advanced TypeScript
+Tags: TypeScript, Generic, Type Safety, JavaScript, Advanced TypeScript
 
 Description: A comprehensive guide to understanding and effectively using generic types in TypeScript for flexible, reusable, and type-safe code.
 

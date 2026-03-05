@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Eventual Consistency, Reconciliation, Drift Detection
 
-Description: An explanation of how Flux CD embraces the eventual consistency model of Kubernetes to continuously converge cluster state toward the desired state defined in Git, handling drift, failures, and partial updates gracefully.
+Description: Learn how Flux CD uses Kubernetes eventual consistency to converge cluster state toward the desired state in Git, handling drift and failures.
 
 ---
 
@@ -76,7 +76,7 @@ Flux corrects this drift on every reconciliation cycle. With `spec.force: false`
 
 ### 2. Partial Application Failures
 
-When Flux applies a set of manifests, some resources may succeed while others fail. Flux does not roll back successful applies — it reports the failure and retries on the next reconciliation.
+When Flux applies a set of manifests, some resources may succeed while others fail. Flux does not roll back successful applies - it reports the failure and retries on the next reconciliation.
 
 ```yaml
 # Flux reports partial failures in the status conditions
@@ -111,7 +111,7 @@ graph TD
     G --> A
 ```
 
-The cluster does not degrade when Git is unavailable. It simply stops receiving updates until the source becomes reachable again. This is eventual consistency in action — the system is temporarily stale but not broken.
+The cluster does not degrade when Git is unavailable. It simply stops receiving updates until the source becomes reachable again. This is eventual consistency in action - the system is temporarily stale but not broken.
 
 ### 4. Ordering and Timing Issues
 
@@ -205,9 +205,9 @@ graph LR
 
 You can reduce convergence time by:
 
-1. **Using webhooks** — The notification-controller's Receiver resource eliminates the source polling delay.
-2. **Reducing intervals** — Shorter intervals mean faster detection, but more API server load.
-3. **Triggering manual reconciliation** — `flux reconcile` forces immediate processing.
+1. **Using webhooks** - The notification-controller's Receiver resource eliminates the source polling delay.
+2. **Reducing intervals** - Shorter intervals mean faster detection, but more API server load.
+3. **Triggering manual reconciliation** - `flux reconcile` forces immediate processing.
 
 ```bash
 # Trigger immediate reconciliation of the entire chain
@@ -249,13 +249,13 @@ Flux will only correct fields it owns. Custom annotations added by other tools r
 
 The eventual consistency model might seem like a limitation, but it is actually a strength:
 
-- **Resilience** — Temporary failures do not cause permanent damage. The system self-heals.
-- **Simplicity** — No need for distributed transactions or two-phase commits.
-- **Scalability** — Controllers work independently without coordination overhead.
-- **Safety** — Partial failures leave the system in a known state, not a corrupted one.
+- **Resilience** - Temporary failures do not cause permanent damage. The system self-heals.
+- **Simplicity** - No need for distributed transactions or two-phase commits.
+- **Scalability** - Controllers work independently without coordination overhead.
+- **Safety** - Partial failures leave the system in a known state, not a corrupted one.
 
 Flux CD leverages this model to provide a deployment system that is robust against network partitions, API server outages, and transient errors. The guarantee is not that the cluster is always in sync with Git, but that it will get there eventually.
 
 ## Summary
 
-Flux CD operates on an eventual consistency model where the cluster continuously converges toward the state defined in Git. Drift is detected and corrected on every reconciliation cycle using server-side apply. Source unavailability, partial application failures, and ordering issues are all handled gracefully through retries and the natural convergence of the reconciliation loop. Field ownership through server-side apply prevents conflicts with other controllers. The result is a deployment system that is resilient, self-healing, and reliable — even when individual components experience temporary failures.
+Flux CD operates on an eventual consistency model where the cluster continuously converges toward the state defined in Git. Drift is detected and corrected on every reconciliation cycle using server-side apply. Source unavailability, partial application failures, and ordering issues are all handled gracefully through retries and the natural convergence of the reconciliation loop. Field ownership through server-side apply prevents conflicts with other controllers. The result is a deployment system that is resilient, self-healing, and reliable - even when individual components experience temporary failures.

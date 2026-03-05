@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, RDS, Backups, Disaster Recovery, Database
+Tags: Terraform, AWS, RDS, Backup, Disaster Recovery, Database
 
 Description: Learn how to configure RDS automated backups in Terraform including retention policies, backup windows, cross-region backup replication, and point-in-time recovery.
 

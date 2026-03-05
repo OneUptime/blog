@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Cloud Storage, Buckets, Infrastructure as Code, Object Storage
+Tags: Terraform, GCP, Cloud Storage, Bucket, Infrastructure as Code, Object Storage
 
 Description: Learn how to create and configure GCP Cloud Storage buckets with Terraform, including storage classes, access control, versioning, encryption, and CORS settings.
 

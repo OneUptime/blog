@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Backups, Disaster Recovery, Best Practices
+Tags: AWS, Backup, Disaster Recovery, Best Practices
 
 Description: Learn how to implement robust backup and recovery strategies on AWS using AWS Backup, cross-region replication, and automated recovery testing.
 

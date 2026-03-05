@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kibana, Dashboards, Kubernetes Monitoring, Visualization, EFK Stack
+Tags: Kibana, Dashboard, Kubernetes Monitoring, Visualization, EFK Stack
 
 Description: Build comprehensive Kibana dashboards to monitor Kubernetes cluster health, application logs, error rates, and performance metrics with visualizations, saved searches, and alerting.
 

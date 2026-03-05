@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Dashboards, Service Health, Real-Time Monitoring, Metrics, Observability, RED Metrics
+Tags: OpenTelemetry, Dashboard, Service Health, Real-Time Monitoring, Metrics, Observability, RED Metrics
 
 Description: Learn how to build real-time service health dashboards using OpenTelemetry metrics, covering the RED method, golden signals, and practical dashboard design patterns.
 

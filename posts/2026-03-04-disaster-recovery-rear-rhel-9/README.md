@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ReaR, Disaster Recovery, Backups, Linux
+Tags: RHEL, ReaR, Disaster Recovery, Backup, Linux
 
 Description: Configure Relax-and-Recover (ReaR) on RHEL to create bootable disaster recovery images for bare-metal system restoration.
 

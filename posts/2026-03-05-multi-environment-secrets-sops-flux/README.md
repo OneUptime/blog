@@ -18,7 +18,7 @@ The recommended approach uses separate encryption keys for each environment. Thi
 
 Organize your repository with per-environment directories:
 
-```
+```text
 clusters/
   development/
     secrets/

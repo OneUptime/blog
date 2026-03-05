@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Velero, Disaster Recovery, Backups, Cross-Cluster, Cross-Region, RTO, RPO, DevOps
+Tags: Kubernetes, Velero, Disaster Recovery, Backup, Cross-Cluster, Cross-Region, RTO, RPO, DevOps
 
 Description: A comprehensive guide to implementing Velero for Kubernetes disaster recovery, including cross-cluster restores, cross-region backups, restore ordering, and RTO/RPO strategies.
 

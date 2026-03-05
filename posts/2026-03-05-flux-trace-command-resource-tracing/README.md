@@ -20,7 +20,7 @@ flux trace deployment my-app -n my-namespace
 
 The output shows the complete chain:
 
-```
+```text
 Object:          Deployment/my-app
 Namespace:       my-namespace
 Status:          Managed by Flux
@@ -76,7 +76,7 @@ flux trace deployment ingress-nginx-controller -n ingress-nginx
 
 The output for a Helm-managed resource looks like:
 
-```
+```text
 Object:          Deployment/ingress-nginx-controller
 Namespace:       ingress-nginx
 Status:          Managed by Flux
@@ -105,7 +105,7 @@ flux trace deployment my-app -n production
 
 If the source is failing:
 
-```
+```text
 Object:          Deployment/my-app
 Namespace:       production
 Status:          Managed by Flux

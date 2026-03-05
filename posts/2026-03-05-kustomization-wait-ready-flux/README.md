@@ -217,14 +217,14 @@ flux get ks my-app
 
 When a health check is in progress:
 
-```
+```text
 NAME    REVISION        SUSPENDED  READY    MESSAGE
 my-app  main@sha1:abc   False      Unknown  Running health checks for revision main@sha1:abc with a timeout of 5m0s
 ```
 
 When a health check fails:
 
-```
+```text
 NAME    REVISION        SUSPENDED  READY  MESSAGE
 my-app  main@sha1:abc   False      False  Health check failed after 5m0s timeout: Deployment/production/my-app: 1/3 ready replicas
 ```

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Bacula, Backups, Bareos, Linux
+Tags: RHEL, Bacula, Backup, Bareos, Linux
 
 Description: Learn how to set Up Bareos as a Fork of Bacula for Backup Management on RHEL with step-by-step instructions, configuration examples, and best practices.
 

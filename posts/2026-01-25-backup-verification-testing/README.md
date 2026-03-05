@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Backups, Testing, Disaster Recovery, DevOps, Data Protection
+Tags: Backup, Testing, Disaster Recovery, DevOps, Data Protection
 
 Description: Learn how to implement automated backup verification testing to ensure your backups are actually restorable, including integrity checks, automated restore tests, and monitoring strategies.
 

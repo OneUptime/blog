@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Disaster Recovery, Kubernetes, Backups, Multi-Region, Resilience
+Tags: Disaster Recovery, Kubernetes, Backup, Multi-Region, Resilience
 
 Description: A practical guide to planning disaster recovery for Kubernetes applications including backup strategies and multi-region setups.
 

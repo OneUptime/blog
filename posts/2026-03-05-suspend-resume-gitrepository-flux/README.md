@@ -46,7 +46,7 @@ flux suspend source git my-app
 
 You will see confirmation output.
 
-```
+```text
 ► suspending source git my-app in flux-system namespace
 ✔ source git suspended
 ```
@@ -60,7 +60,7 @@ flux get source git my-app
 
 The output will show `SUSPENDED` as `True`.
 
-```
+```text
 NAME    REVISION              SUSPENDED   READY   MESSAGE
 my-app  main@sha1:abc123def   True        True    stored artifact for revision 'main@sha1:abc123def'
 ```
@@ -111,7 +111,7 @@ flux resume source git my-app
 
 You will see confirmation output.
 
-```
+```text
 ► resuming source git my-app in flux-system namespace
 ✔ source git resumed
 ◎ waiting for GitRepository reconciliation

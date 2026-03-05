@@ -59,7 +59,7 @@ az eventhubs namespace authorization-rule keys list \
 
 The connection string will look like:
 
-```
+```text
 Endpoint=sb://flux-events-ns.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=XXXXX
 ```
 

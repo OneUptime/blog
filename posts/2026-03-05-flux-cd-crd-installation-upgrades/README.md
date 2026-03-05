@@ -14,7 +14,7 @@ Custom Resource Definitions (CRDs) present a classic chicken-and-egg problem in 
 
 When you apply a Kubernetes manifest that references a custom resource type, the API server must already know about that type via its CRD. If the CRD has not been installed yet, the apply fails with an error like:
 
-```
+```json
 error: unable to recognize "resource.yaml": no matches for kind "MyCustomResource" in version "example.com/v1"
 ```
 

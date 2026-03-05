@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Backups, CronJob
+Tags: ArgoCD, GitOps, Kubernetes, Backup, CronJob
 
 Description: Learn how to automate ArgoCD backups using Kubernetes CronJobs with cloud storage integration, retention policies, and monitoring.
 

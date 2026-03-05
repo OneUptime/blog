@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kustomize, Secrets
+Tags: Kubernetes, Kustomize, Secret
 
 Description: Learn how to use Kustomize secretGenerator to create Kubernetes Secrets from files, literals, and environment files with automatic hash suffixes for safe updates.
 

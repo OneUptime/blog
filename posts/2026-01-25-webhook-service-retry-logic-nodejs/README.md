@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NodeJS, TypeScript, Webhooks, Reliability, Distributed Systems, API
+Tags: NodeJS, TypeScript, Webhook, Reliability, Distributed Systems, API
 
 Description: Learn how to build a production-ready webhook delivery service in Node.js with exponential backoff, persistent queuing, signature verification, and comprehensive retry logic.
 

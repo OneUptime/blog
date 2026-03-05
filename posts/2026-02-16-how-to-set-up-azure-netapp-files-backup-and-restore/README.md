@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, NetApp Files, Backups, Restore, Disaster Recovery, Data Protection, Snapshots
+Tags: Azure, NetApp Files, Backup, Restore, Disaster Recovery, Data Protection, Snapshots
 
 Description: Learn how to configure automated backups for Azure NetApp Files volumes and restore data from backups when disaster strikes.
 

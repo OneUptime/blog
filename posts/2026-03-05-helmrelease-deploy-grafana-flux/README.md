@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Grafana, Dashboards, Observability
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Grafana, Dashboard, Observability
 
 Description: Learn how to deploy Grafana on Kubernetes using a Flux HelmRelease for centralized metrics visualization and dashboard management.
 

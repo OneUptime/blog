@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Event Hubs, Spring Boot, Event-Driven Architecture, Microservices, Java, Spring Cloud Stream, Kafka
+Tags: Azure Event Hub, Spring Boot, Event-Driven Architecture, Microservices, Java, Spring Cloud Stream, Kafka
 
 Description: Learn how to build event-driven microservices using Azure Event Hubs and Spring Boot with Spring Cloud Stream for scalable real-time event processing.
 

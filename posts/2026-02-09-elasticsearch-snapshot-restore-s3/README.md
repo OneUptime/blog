@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Elasticsearch, Snapshots, S3, Kubernetes, Backups
+Tags: Elasticsearch, Snapshots, S3, Kubernetes, Backup
 
 Description: A comprehensive guide to configuring Elasticsearch snapshot and restore workflows using S3-compatible object storage on Kubernetes clusters for reliable backup and disaster recovery.
 

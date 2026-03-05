@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Azure Event Hubs, OpenTelemetry Collector, Observability, Azure, Streaming, Telemetry Pipeline
+Tags: OpenTelemetry, Azure Event Hub, OpenTelemetry Collector, Observability, Azure, Streaming, Telemetry Pipeline
 
 Description: A step-by-step guide to using Azure Event Hubs as a receiver and exporter with the OpenTelemetry Collector for scalable telemetry pipelines.
 

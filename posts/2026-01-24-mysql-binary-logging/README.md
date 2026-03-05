@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Database, Binary Logging, Replication, Backups, Recovery, DevOps
+Tags: MySQL, Database, Binary Logging, Replication, Backup, Recovery, DevOps
 
 Description: Learn how to configure MySQL binary logging for replication, point-in-time recovery, and auditing with practical examples.
 

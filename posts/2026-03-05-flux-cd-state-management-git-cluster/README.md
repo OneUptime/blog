@@ -155,7 +155,7 @@ When `lastAppliedRevision` matches `lastAttemptedRevision` and the `Ready` condi
 
 If two Kustomizations try to manage the same resource, Flux detects the conflict through field ownership. The second Kustomization to apply will see a conflict error:
 
-```
+```text
 Apply failed: conflict with "kustomize-controller" using apps/v1
 ```
 

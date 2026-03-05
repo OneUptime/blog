@@ -25,7 +25,7 @@ In Microsoft Teams, navigate to the channel where you want notifications to appe
 
 The URL will look similar to:
 
-```
+```text
 https://outlook.office.com/webhook/XXXXXXXX/IncomingWebhook/YYYYYYYY/ZZZZZZZZ
 ```
 

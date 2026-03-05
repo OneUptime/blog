@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, CRD, Webhooks
+Tags: ArgoCD, GitOps, Kubernetes, CRD, Webhook
 
 Description: Learn how to deploy and manage CRD conversion webhooks with ArgoCD to handle multi-version custom resources safely during upgrades.
 

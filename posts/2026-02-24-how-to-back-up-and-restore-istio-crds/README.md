@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Backups, Disaster Recovery, Kubernetes, CRD
+Tags: Istio, Backup, Disaster Recovery, Kubernetes, CRD
 
 Description: Step-by-step methods for backing up and restoring Istio Custom Resource Definitions and their instances for disaster recovery scenarios.
 

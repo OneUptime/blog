@@ -185,7 +185,7 @@ This pipeline runs on every pull request and fails if the Kustomization produces
 
 **Missing kustomization.yaml**:
 
-```
+```text
 Error: kustomization path './apps/my-app' does not contain a kustomization.yaml file
 ```
 
@@ -193,7 +193,7 @@ Ensure the path contains a `kustomization.yaml` file that references your resour
 
 **Invalid patch target**:
 
-```
+```text
 Error: no matches for OriginalId Deployment.v1.apps/my-app
 ```
 
@@ -201,7 +201,7 @@ A strategic merge patch or JSON patch references a resource that does not exist 
 
 **Unresolved variable substitution**:
 
-```
+```text
 Error: variable 'CLUSTER_ENV' not found in substitution map
 ```
 

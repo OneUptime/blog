@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, Backups, Volumes, Disaster Recovery, DevOps
+Tags: Docker, Docker Compose, Backup, Volumes, Disaster Recovery, DevOps
 
 Description: Back up entire Docker Compose stacks including service definitions, named volumes, environment configs, and database states for reliable recovery.
 

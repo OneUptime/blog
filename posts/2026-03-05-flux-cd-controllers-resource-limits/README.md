@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Resource Limits, Performance, Controllers, Capacity Planning
+Tags: Flux CD, GitOps, Kubernetes, Resource Limits, Performance, Controller, Capacity Planning
 
 Description: Learn how to configure CPU and memory resource requests and limits for Flux CD controllers to ensure stable performance and prevent resource exhaustion.
 

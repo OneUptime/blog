@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, AlloyDB, Backups, Restore, Database
+Tags: GCP, AlloyDB, Backup, Restore, Database
 
 Description: Learn how to create on-demand and automated backups for AlloyDB clusters and restore them when disaster strikes, with step-by-step gcloud commands and best practices.
 

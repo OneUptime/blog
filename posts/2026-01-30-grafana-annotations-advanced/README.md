@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Annotations, Visualization, Dashboards
+Tags: Grafana, Annotations, Visualization, Dashboard
 
 Description: Master advanced Grafana annotations to correlate deployments, incidents, and events with your metrics.
 

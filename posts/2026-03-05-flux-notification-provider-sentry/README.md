@@ -25,7 +25,7 @@ In Sentry, navigate to your project's **Settings** then **Client Keys (DSN)**. C
 
 The DSN looks like:
 
-```
+```text
 https://EXAMPLEKEY@o123456.ingest.sentry.io/1234567
 ```
 

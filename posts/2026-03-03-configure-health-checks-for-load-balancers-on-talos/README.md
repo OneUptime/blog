@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Health Checks, Load Balancing, Kubernetes, Monitoring, Reliability
+Tags: Talos Linux, Health Check, Load Balancing, Kubernetes, Monitoring, Reliability
 
 Description: Set up comprehensive health checks for load balancers on Talos Linux to ensure traffic only reaches healthy endpoints and failed nodes are removed quickly.
 

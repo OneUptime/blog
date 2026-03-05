@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Jenkins, Backups, Restore, CI/CD, DevOps
+Tags: Jenkins, Backup, Restore, CI/CD, DevOps
 
 Description: Learn how to back up Jenkins safely, including JENKINS_HOME, plugins, and credentials, and how to restore with minimal downtime.
 

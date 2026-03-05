@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, HAProxy, Health Checks, Linux
+Tags: RHEL, HAProxy, Health Check, Linux
 
 Description: How to set up active and passive health checks in HAProxy on RHEL to automatically detect and route around failed backend servers.
 

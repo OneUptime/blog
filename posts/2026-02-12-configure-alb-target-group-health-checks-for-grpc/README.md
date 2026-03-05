@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ALB, gRPC, Health Checks, Load Balancing, Microservices
+Tags: AWS, ALB, gRPC, Health Check, Load Balancing, Microservices
 
 Description: Complete guide to configuring ALB target group health checks for gRPC services including the gRPC health checking protocol and troubleshooting common issues.
 

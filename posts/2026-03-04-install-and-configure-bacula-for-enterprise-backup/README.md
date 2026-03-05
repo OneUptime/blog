@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Bacula, Backups, Linux
+Tags: RHEL, Bacula, Backup, Linux
 
 Description: Learn how to install and Configure Bacula for Enterprise Backup on RHEL with step-by-step instructions, configuration examples, and best practices.
 

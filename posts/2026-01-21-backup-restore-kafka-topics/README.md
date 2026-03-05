@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, Backups, Restore, Disaster Recovery, MirrorMaker, Kafka Operations
+Tags: Apache Kafka, Backup, Restore, Disaster Recovery, MirrorMaker, Kafka Operations
 
 Description: A comprehensive guide to backing up and restoring Apache Kafka topics using MirrorMaker 2, consumer-based backup, and snapshot strategies for disaster recovery.
 

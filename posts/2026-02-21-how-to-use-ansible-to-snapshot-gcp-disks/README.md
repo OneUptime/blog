@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, GCP, Disk Snapshots, Backups, Infrastructure as Code
+Tags: Ansible, GCP, Disk Snapshots, Backup, Infrastructure as Code
 
 Description: Learn how to automate GCP disk snapshots with Ansible for reliable backups, disaster recovery, and disk cloning across zones and regions.
 

@@ -132,7 +132,7 @@ flux get source git my-app
 
 If the latest commit is properly signed by one of the trusted keys, you will see the source in a ready state.
 
-```
+```text
 NAME    REVISION              SUSPENDED   READY   MESSAGE
 my-app  main@sha1:abc123def   False       True    verified signature of commit 'abc123def'
 ```
@@ -159,7 +159,7 @@ flux get source git my-app
 
 The GitRepository should report a verification failure.
 
-```
+```text
 NAME    REVISION    SUSPENDED   READY   MESSAGE
 my-app              False       False   failed to verify signature of commit 'xyz789': no valid signature found
 ```

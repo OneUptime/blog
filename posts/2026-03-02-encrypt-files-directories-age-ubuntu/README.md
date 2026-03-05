@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Encryption, age, Cryptography
+Tags: Ubuntu, Security, Encryption, Age, Cryptography
 
 Description: Learn how to use age, a modern and simple file encryption tool, to encrypt files and directories on Ubuntu with passphrase and public key encryption.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Volume Snapshots, Storage, Backups, CSI
+Tags: Kubernetes, Volume Snapshots, Storage, Backup, CSI
 
 Description: Learn how to use Kubernetes VolumeSnapshot and VolumeSnapshotContent resources to create and restore persistent volume snapshots.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Grafana, Monitoring, Dashboards, Visualization, Linux
+Tags: RHEL, Grafana, Monitoring, Dashboard, Visualization, Linux
 
 Description: Learn how to install and configure Grafana on RHEL to create monitoring dashboards that visualize metrics from Prometheus and other data sources.
 

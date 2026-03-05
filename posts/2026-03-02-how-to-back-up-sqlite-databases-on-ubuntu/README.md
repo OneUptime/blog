@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, SQLite, Database, Backups
+Tags: Ubuntu, SQLite, Database, Backup
 
 Description: Learn multiple methods for safely backing up SQLite databases on Ubuntu, including online backups, SQL dumps, and automated backup scripts with rotation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Generics, Comparable, Type Constraints, Maps
+Tags: Go, Golang, Generic, Comparable, Type Constraints, Maps
 
 Description: Learn how to use Go's comparable constraint for generic functions that need equality comparison, map keys, and deduplication operations.
 

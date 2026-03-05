@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Jenkins, Backups, Restore, CI/CD, Administration
+Tags: RHEL, Jenkins, Backup, Restore, CI/CD, Administration
 
 Description: Protect your Jenkins CI/CD server by implementing reliable backup and restore procedures on RHEL, covering configuration, jobs, and plugins.
 

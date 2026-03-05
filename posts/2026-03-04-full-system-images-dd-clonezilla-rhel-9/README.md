@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dd, Clonezilla, Disk Imaging, Backups, Linux
+Tags: RHEL, dd, Clonezilla, Disk Imaging, Backup, Linux
 
 Description: Create full disk images and clones of RHEL systems using dd for raw imaging and Clonezilla for intelligent partition cloning.
 

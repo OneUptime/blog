@@ -31,7 +31,7 @@ flux get ks
 
 Output when an error is present:
 
-```
+```text
 NAME    REVISION        SUSPENDED  READY  MESSAGE
 my-app  main@sha1:abc   False      False  kustomize build failed: ...
 ```
@@ -56,7 +56,7 @@ flux events --for Kustomization/my-app
 
 This will show events such as:
 
-```
+```text
 LAST SEEN  TYPE     REASON           OBJECT                    MESSAGE
 2m         Warning  ReconciliationFailed  Kustomization/my-app  apply failed: ...
 5m         Normal   ReconciliationSucceeded  Kustomization/my-app  Applied revision: main@sha1:prev
@@ -112,7 +112,7 @@ kubectl logs -n flux-system deploy/kustomize-controller --tail=200 | grep "my-ap
 
 This occurs when the kustomization.yaml file or referenced resources contain syntax errors.
 
-```
+```text
 kustomize build failed: accumulating resources: ...
 ```
 
@@ -134,7 +134,7 @@ flux build ks my-app --path ./path/to/kustomization/
 
 This happens when another controller or manual edit conflicts with Flux-managed fields.
 
-```
+```text
 apply failed: Deployment/my-app server-side apply failed: conflict with "kubectl-client-side-apply"
 ```
 
@@ -162,7 +162,7 @@ spec:
 
 Resources reference a namespace that does not exist:
 
-```
+```text
 apply failed: namespace "my-namespace" not found
 ```
 
@@ -205,7 +205,7 @@ spec:
 
 The Flux service account lacks permission to create or modify resources:
 
-```
+```text
 apply failed: Deployment/my-app create forbidden: ...
 ```
 
@@ -223,7 +223,7 @@ kubectl auth can-i create deployments --as=system:serviceaccount:flux-system:my-
 
 Certain Kubernetes fields cannot be changed after creation (for example, a Service `spec.clusterIP` or a Job `spec.template`):
 
-```
+```text
 apply failed: Service/my-app is invalid: spec.clusterIP: Invalid value: "": field is immutable
 ```
 

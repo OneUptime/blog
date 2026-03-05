@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Certificates, Webhooks
+Tags: Kubernetes, Certificates, Webhook
 
 Description: Learn how to diagnose and fix certificate signed by unknown authority errors in Kubernetes admission webhooks, including CA bundle configuration and certificate management solutions.
 

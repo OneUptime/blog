@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Containers, DevOps, Backups, Storage, Reliability
+Tags: Docker, Containers, DevOps, Backup, Storage, Reliability
 
 Description: Implement volume snapshots using tar, restic, and borg integrations with scheduled backup patterns to protect your containerized data.
 

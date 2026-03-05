@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Backup, AKS, Kubernetes, Persistent Volumes, Data Protection, Backups, Disaster Recovery
+Tags: Azure Backup, AKS, Kubernetes, Persistent Volumes, Data Protection, Backup, Disaster Recovery
 
 Description: A step-by-step guide to configuring Azure Backup for AKS persistent volumes to protect stateful workloads running in Azure Kubernetes Service.
 

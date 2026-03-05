@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Power Automate, Azure Event Hubs, Stream Processing, Real-Time, Power Platform, Event Streaming, Azure
+Tags: Power Automate, Azure Event Hub, Stream Processing, Real-Time, Power Platform, Event Streaming, Azure
 
 Description: Send business event data from Power Automate flows to Azure Event Hubs for real-time stream processing and analytics with downstream consumers.
 

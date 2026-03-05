@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Rust, Generics, Type System, Performance
+Tags: Rust, Generic, Type System, Performance
 
 Description: Master const generics in Rust for compile-time array sizes, fixed-capacity buffers, and type-level computations with practical examples.
 

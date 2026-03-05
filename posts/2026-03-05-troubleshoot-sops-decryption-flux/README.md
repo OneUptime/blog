@@ -20,7 +20,7 @@ flux get kustomizations
 
 A decryption failure typically shows a message like:
 
-```
+```text
 NAME        REVISION    SUSPENDED   READY   MESSAGE
 my-app      main@sha1   False       False   decryption failed for 'secrets/db.sops.yaml'
 ```

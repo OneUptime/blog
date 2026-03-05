@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Database, Health Checks, Monitoring, Reliability
+Tags: Database, Health Check, Monitoring, Reliability
 
 Description: Learn to build connection health checks for validating database connections and detecting failures early.
 

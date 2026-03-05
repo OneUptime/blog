@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, Overlays, Multi-Environment
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, Overlay, Multi-Environment
 
 Description: Learn how to use Kustomize overlays with Flux CD to deploy the same application across development, staging, and production environments with environment-specific configuration.
 
@@ -32,7 +32,7 @@ The base contains the Kubernetes manifests that are common to all environments. 
 
 ## Repository Structure
 
-```
+```text
 apps/
   webapp/
     base/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWS, EBS, Snapshots, Backups
+Tags: Ansible, AWS, EBS, Snapshots, Backup
 
 Description: Learn how to automate AWS EBS volume snapshots with Ansible including creation, lifecycle management, and cross-region copying.
 

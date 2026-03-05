@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Security, Secrets, DevOps, Automation
+Tags: Security, Secret, DevOps, Automation
 
 Description: Implement automated secret rotation for database credentials, API keys, and certificates with zero-downtime strategies.
 

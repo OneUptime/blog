@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MongoDB, Real-Time Analytics, Change Streams, Dashboards
+Tags: MongoDB, Real-Time Analytics, Change Streams, Dashboard
 
 Description: Learn to implement real-time analytics with change streams, pre-aggregation, and time-series collections for live dashboard data.
 

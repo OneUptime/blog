@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Grafana, Dashboards, Monitoring, Kubernetes
+Tags: Talos Linux, Grafana, Dashboard, Monitoring, Kubernetes
 
 Description: Step-by-step guide to creating and configuring Grafana dashboards for monitoring your Talos Linux Kubernetes cluster.
 

@@ -177,10 +177,10 @@ graph LR
 
 The artifact contains:
 
-- **Revision** — A unique identifier, such as `main@sha1:abc123def` for Git or `6.1.0` for Helm charts.
-- **Checksum** — A SHA-256 digest of the artifact tarball for integrity verification.
-- **URL** — A local HTTP URL where the artifact can be downloaded by other controllers.
-- **Last update time** — When the artifact was last updated.
+- **Revision** - A unique identifier, such as `main@sha1:abc123def` for Git or `6.1.0` for Helm charts.
+- **Checksum** - A SHA-256 digest of the artifact tarball for integrity verification.
+- **URL** - A local HTTP URL where the artifact can be downloaded by other controllers.
+- **Last update time** - When the artifact was last updated.
 
 You can inspect artifacts by looking at the source status:
 
@@ -282,4 +282,4 @@ spec:
 
 ## Summary
 
-Sources are the entry point of the Flux CD pipeline. The source-controller fetches content from Git repositories, OCI registries, Helm repositories, and cloud storage buckets, then packages the content into versioned artifacts with checksums. These artifacts are stored locally and served to downstream controllers via an internal HTTP server. Understanding sources and artifacts is essential because they form the foundation of the entire Flux CD reconciliation chain — without a source, there is nothing to reconcile.
+Sources are the entry point of the Flux CD pipeline. The source-controller fetches content from Git repositories, OCI registries, Helm repositories, and cloud storage buckets, then packages the content into versioned artifacts with checksums. These artifacts are stored locally and served to downstream controllers via an internal HTTP server. Understanding sources and artifacts is essential because they form the foundation of the entire Flux CD reconciliation chain - without a source, there is nothing to reconcile.

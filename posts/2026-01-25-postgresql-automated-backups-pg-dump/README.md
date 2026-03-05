@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Database, Backups, pg_dump, Automation, Disaster Recovery
+Tags: PostgreSQL, Database, Backup, pg_dump, Automation, Disaster Recovery
 
 Description: Learn how to set up automated PostgreSQL backups using pg_dump.
 

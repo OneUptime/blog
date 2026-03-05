@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, Dashboards, Security, Read-Only
+Tags: Kubernetes, RBAC, Dashboard, Security, Read-Only
 
 Description: Learn how to configure RBAC roles for Kubernetes Dashboard users with view-only permissions, providing visibility without modification capabilities for safe cluster observation.
 

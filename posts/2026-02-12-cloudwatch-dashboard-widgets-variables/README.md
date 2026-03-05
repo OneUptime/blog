@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CloudWatch, Dashboards, Monitoring
+Tags: AWS, CloudWatch, Dashboard, Monitoring
 
 Description: A deep dive into CloudWatch dashboard widget types, configuration options, and dynamic variables that make your dashboards flexible and interactive.
 

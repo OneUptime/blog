@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Traits, Generics, Polymorphism, OOP
+Tags: Rust, Traits, Generic, Polymorphism, OOP
 
 Description: Learn how to implement traits in Rust including basic implementations, default methods, associated types, and the orphan rule. Master trait bounds and trait objects for polymorphic code.
 

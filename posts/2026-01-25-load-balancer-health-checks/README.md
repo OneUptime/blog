@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Load Balancing, Health Checks, High Availability, NGINX, HAProxy, DevOps
+Tags: Load Balancing, Health Check, High Availability, NGINX, HAProxy, DevOps
 
 Description: A hands-on guide to implementing effective health checks for load balancers, covering HTTP, TCP, and application-level health checks with examples for Nginx, HAProxy, and cloud load balancers.
 

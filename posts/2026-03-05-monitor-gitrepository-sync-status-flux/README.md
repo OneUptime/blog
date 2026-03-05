@@ -30,7 +30,7 @@ flux get source git -A
 
 Sample output:
 
-```
+```text
 NAMESPACE     NAME        REVISION              SUSPENDED   READY   MESSAGE
 flux-system   my-app      main@sha1:abc123def   False       True    stored artifact for revision 'main@sha1:abc123def'
 flux-system   infra       main@sha1:def456ghi   False       True    stored artifact for revision 'main@sha1:def456ghi'

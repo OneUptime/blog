@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Backups, Disaster Recovery, Data Protection
+Tags: AWS, Backup, Disaster Recovery, Data Protection
 
 Description: Set up AWS Backup as a centralized backup solution for your AWS resources, covering supported services, backup vaults, and organizational policies for consistent data protection.
 

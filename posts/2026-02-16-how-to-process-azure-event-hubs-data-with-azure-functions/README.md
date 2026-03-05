@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Functions, Azure Event Hubs, Serverless, Event Processing, Azure Cloud, Real-Time Processing, Trigger
+Tags: Azure Functions, Azure Event Hub, Serverless, Event Processing, Azure Cloud, Real-Time Processing, Trigger
 
 Description: Learn how to build serverless event processors using Azure Functions with Event Hubs triggers for real-time data processing pipelines.
 

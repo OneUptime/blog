@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GKE, Kubernetes, Backups, Restore, Volume Snapshots, Disaster Recovery, GCP
+Tags: GKE, Kubernetes, Backup, Restore, Volume Snapshots, Disaster Recovery, GCP
 
 Description: Troubleshoot and fix restore failures and volume snapshot errors when using Backup for GKE, covering common failure modes, permission issues, and snapshot compatibility problems.
 

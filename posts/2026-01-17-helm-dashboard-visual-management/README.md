@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Dashboards, GUI, Visualization, Management
+Tags: Helm, Kubernetes, DevOps, Dashboard, GUI, Visualization, Management
 
 Description: Complete guide to using Helm Dashboard for visual release management including installation, configuration, and leveraging the UI for efficient chart operations.
 

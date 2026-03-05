@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, duplicati, Backups, Disaster-Recovery, Self-Hosted, Encryption
+Tags: Docker, duplicati, Backup, Disaster-Recovery, Self-Hosted, Encryption
 
 Description: Deploy Duplicati in Docker for encrypted, deduplicated backups to local storage, S3, Backblaze B2, and other cloud destinations.
 

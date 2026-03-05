@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Database, Backups, pg_dump, Recovery, DevOps, Disaster Recovery
+Tags: PostgreSQL, Database, Backup, pg_dump, Recovery, DevOps, Disaster Recovery
 
 Description: Learn how to use pg_dump for PostgreSQL database backups. This guide covers backup formats, automation strategies, best practices, and recovery procedures for protecting your data.
 

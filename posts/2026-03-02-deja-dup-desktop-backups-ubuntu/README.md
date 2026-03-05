@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backups, Deja Dup, Desktop
+Tags: Ubuntu, Backup, Deja Dup, Desktop
 
 Description: Learn how to configure and use Deja Dup on Ubuntu for automatic encrypted desktop backups to local drives, NAS, or cloud storage like Google Drive.
 

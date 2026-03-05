@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Debugging, Upgrade Failures, Troubleshooting
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Debugging, Upgrade Failure, Troubleshooting
 
 Description: A comprehensive guide to diagnosing and resolving HelmRelease upgrade failures in Flux CD, covering rollback strategies and common error patterns.
 

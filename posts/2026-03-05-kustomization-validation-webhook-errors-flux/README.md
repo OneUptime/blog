@@ -31,7 +31,7 @@ flux get ks my-app
 
 Typical webhook error output:
 
-```
+```text
 NAME    REVISION        SUSPENDED  READY  MESSAGE
 my-app  main@sha1:abc   False      False  apply failed: Deployment/my-app dry-run failed: admission webhook "validate.example.com" denied the request: ...
 ```
@@ -51,7 +51,7 @@ Policy engines like Kyverno, OPA Gatekeeper, or Kubewarden enforce cluster polic
 
 Example error:
 
-```
+```text
 admission webhook "validate.kyverno.svc-fail" denied the request:
 resource Deployment/production/my-app was blocked due to the following policies:
   require-labels:
@@ -96,7 +96,7 @@ A webhook validates that resources have appropriate limits and requests set.
 
 Example error:
 
-```
+```text
 admission webhook "validation.gatekeeper.sh" denied the request:
 [container-must-have-limits] container "app" has no resource limits
 ```
@@ -131,7 +131,7 @@ The webhook service itself is down or unreachable, causing all requests to fail.
 
 Example error:
 
-```
+```json
 Internal error occurred: failed calling webhook "validate.example.com":
 Post "https://webhook-service.namespace.svc:443/validate": dial tcp: connection refused
 ```
@@ -165,7 +165,7 @@ Flux uses server-side dry-run before applying resources. Some webhooks do not su
 
 Example error:
 
-```
+```text
 Deployment/my-app dry-run failed: admission webhook "mutate.example.com" does not support dry run
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Amanda, Backups, Network, Linux
+Tags: RHEL, Amanda, Backup, Network, Linux
 
 Description: Set up Amanda (Advanced Maryland Automatic Network Disk Archiver) as a centralized backup server on RHEL for automated network backups.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, Backups, Database, Operations, Troubleshooting
+Tags: GCP, Cloud SQL, Backup, Database, Operations, Troubleshooting
 
 Description: How to resolve Cloud SQL automated backup failures caused by conflicting operations, including diagnosis steps and strategies to prevent backup conflicts.
 

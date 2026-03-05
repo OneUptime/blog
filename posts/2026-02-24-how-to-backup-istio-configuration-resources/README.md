@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Backups, Kubernetes, Disaster Recovery, Configuration
+Tags: Istio, Backup, Kubernetes, Disaster Recovery, Configuration
 
 Description: A comprehensive guide to backing up all Istio configuration resources including VirtualServices, DestinationRules, Gateways, and other CRDs from your Kubernetes cluster.
 

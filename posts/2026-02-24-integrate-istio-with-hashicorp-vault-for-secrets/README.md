@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, HashiCorp Vault, Secrets, Security, Kubernetes
+Tags: Istio, HashiCorp Vault, Secret, Security, Kubernetes
 
 Description: How to integrate HashiCorp Vault with Istio for secure secret management and dynamic credential injection in your mesh.
 

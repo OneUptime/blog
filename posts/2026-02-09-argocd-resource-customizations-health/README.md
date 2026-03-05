@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, Kubernetes, Health Checks, Custom Resource, CRD
+Tags: ArgoCD, Kubernetes, Health Check, Custom Resource, CRD
 
 Description: Learn how to configure ArgoCD resource customizations to define custom health assessment logic for CRDs and resources with non-standard health indicators.
 

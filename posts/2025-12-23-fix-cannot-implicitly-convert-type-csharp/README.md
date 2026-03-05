@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: C#, .NET, Type Safety, Debugging, Compiler Errors, Generics
+Tags: C#, .NET, Type Safety, Debugging, Compiler Errors, Generic
 
 Description: Learn how to diagnose and fix 'Cannot implicitly convert type' errors in C#.
 

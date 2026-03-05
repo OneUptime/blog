@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, GitOps Toolkit, Architecture, Controllers
+Tags: Flux CD, GitOps, Kubernetes, GitOps Toolkit, Architecture, Controller
 
 Description: An architectural overview of the Flux CD GitOps Toolkit, explaining how its modular controller-based design enables flexible and extensible continuous delivery for Kubernetes.
 
@@ -14,9 +14,9 @@ The GitOps Toolkit (GOTK) is the set of composable APIs and specialized controll
 
 The GitOps Toolkit was designed with these principles:
 
-- **Composable** — Each controller can be used independently or together with others.
-- **Extensible** — Custom controllers can be built using the same APIs.
-- **Kubernetes-native** — Everything is a custom resource, managed through the Kubernetes API.
+- **Composable** - Each controller can be used independently or together with others.
+- **Extensible** - Custom controllers can be built using the same APIs.
+- **Kubernetes-native** - Everything is a custom resource, managed through the Kubernetes API.
 
 ## The Controllers
 
@@ -64,11 +64,11 @@ graph TB
 The source-controller is the foundation of the toolkit. It is responsible for acquiring artifacts from external sources and making them available to other controllers.
 
 **Custom Resources it manages:**
-- `GitRepository` — Clones Git repositories
-- `OCIRepository` — Pulls OCI artifacts from container registries
-- `HelmRepository` — Indexes Helm chart repositories
-- `HelmChart` — Fetches specific Helm charts
-- `Bucket` — Downloads from S3-compatible storage
+- `GitRepository` - Clones Git repositories
+- `OCIRepository` - Pulls OCI artifacts from container registries
+- `HelmRepository` - Indexes Helm chart repositories
+- `HelmChart` - Fetches specific Helm charts
+- `Bucket` - Downloads from S3-compatible storage
 
 ```yaml
 # The source-controller is deployed as a Kubernetes Deployment
@@ -102,7 +102,7 @@ The source-controller runs an internal HTTP server that serves artifact tarballs
 The kustomize-controller watches for `Kustomization` resources and applies manifests to the cluster. It downloads artifacts from the source-controller, optionally runs `kustomize build`, performs variable substitution, and uses server-side apply to manage resources.
 
 **Custom Resources it manages:**
-- `Kustomization` — Defines what to deploy and how to reconcile
+- `Kustomization` - Defines what to deploy and how to reconcile
 
 ```yaml
 # A Kustomization with all key features demonstrated
@@ -151,7 +151,7 @@ Key capabilities of the kustomize-controller:
 The helm-controller manages Helm chart releases. It watches `HelmRelease` resources and coordinates with the source-controller to fetch charts, then installs or upgrades them using the Helm SDK (not the Helm CLI).
 
 **Custom Resources it manages:**
-- `HelmRelease` — Defines a Helm chart release and its values
+- `HelmRelease` - Defines a Helm chart release and its values
 
 ```yaml
 # A HelmRelease demonstrating the helm-controller's capabilities
@@ -200,9 +200,9 @@ The helm-controller also handles:
 The notification-controller handles both inbound and outbound events. It watches events from other Flux controllers and forwards them to external systems. It also receives webhooks from external systems and triggers reconciliation.
 
 **Custom Resources it manages:**
-- `Provider` — Defines an external notification destination
-- `Alert` — Defines which events to forward and where
-- `Receiver` — Defines a webhook endpoint that triggers reconciliation
+- `Provider` - Defines an external notification destination
+- `Alert` - Defines which events to forward and where
+- `Receiver` - Defines a webhook endpoint that triggers reconciliation
 
 ```yaml
 # Provider for Slack notifications
@@ -256,8 +256,8 @@ spec:
 
 These are two controllers that automate image updates:
 
-- **image-reflector-controller** — Scans container registries for new image tags.
-- **image-automation-controller** — Updates Git repositories with new image references.
+- **image-reflector-controller** - Scans container registries for new image tags.
+- **image-automation-controller** - Updates Git repositories with new image references.
 
 ```yaml
 # Scan a container registry for new tags

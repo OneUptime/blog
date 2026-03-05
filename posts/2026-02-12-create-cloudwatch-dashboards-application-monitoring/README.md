@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CloudWatch, Dashboards, Monitoring, Observability
+Tags: AWS, CloudWatch, Dashboard, Monitoring, Observability
 
 Description: A practical guide to building CloudWatch dashboards that give you real-time visibility into your application health, performance, and business metrics.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Clonezilla, System Image, Backups, Disaster Recovery, Tutorial
+Tags: Ubuntu, Clonezilla, System Image, Backup, Disaster Recovery, Tutorial
 
 Description: Complete guide to creating and restoring system images using Clonezilla on Ubuntu.
 

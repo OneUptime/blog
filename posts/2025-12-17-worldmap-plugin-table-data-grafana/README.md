@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Worldmap, Data Visualization, Geolocation, Dashboards
+Tags: Grafana, Worldmap, Data Visualization, Geolocation, Dashboard
 
 Description: Learn how to configure the Grafana Worldmap plugin with table data to visualize geographic metrics. This guide covers data formatting, coordinate mapping, and creating interactive geo-visualizations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Backups, Namespace Management, Velero
+Tags: Talos Linux, Kubernetes, Backup, Namespace Management, Velero
 
 Description: Learn how to back up and restore individual Kubernetes namespaces on Talos Linux for granular disaster recovery and migration.
 

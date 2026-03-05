@@ -25,7 +25,7 @@ In your Discord server, navigate to the channel where you want to receive Flux n
 
 The URL will follow this pattern:
 
-```
+```text
 https://discord.com/api/webhooks/CHANNEL_ID/WEBHOOK_TOKEN
 ```
 

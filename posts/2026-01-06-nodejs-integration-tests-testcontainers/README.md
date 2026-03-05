@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Tests, Database, Docker, DevOps
+Tags: NodeJS, Test, Database, Docker, DevOps
 
 Description: Learn to write reliable integration tests for Node.js APIs using Testcontainers to spin up real databases, Redis, and other services in isolated Docker containers.
 

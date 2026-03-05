@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Network Endpoint Group, Health Checks, Kubernetes
+Tags: GCP, GKE, Network Endpoint Group, Health Check, Kubernetes
 
 Description: Fix NEG health check failures for GKE pods in Google Cloud when using container-native load balancing with network endpoint groups.
 

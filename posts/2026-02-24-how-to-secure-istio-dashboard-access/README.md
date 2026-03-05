@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Dashboards, Security, Kiali, Grafana, Authentication
+Tags: Istio, Dashboard, Security, Kiali, Grafana, Authentication
 
 Description: How to secure access to Istio dashboards like Kiali, Grafana, Prometheus, and Jaeger with authentication, authorization, and network controls.
 

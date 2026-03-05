@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, LVM, Backups, Metadata, Storage, Linux
+Tags: RHEL, LVM, Backup, Metadata, Storage, Linux
 
 Description: Learn how to back up, inspect, and restore LVM metadata on RHEL to protect your volume group configurations against accidental changes or disk failures.
 

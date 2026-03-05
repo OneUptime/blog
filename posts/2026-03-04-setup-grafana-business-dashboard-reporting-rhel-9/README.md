@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Grafana, Dashboards, Reporting, Data Visualization, Linux
+Tags: RHEL, Grafana, Dashboard, Reporting, Data Visualization, Linux
 
 Description: Set up Grafana on RHEL for business dashboard reporting, connecting it to multiple data sources and building production-ready visualizations.
 

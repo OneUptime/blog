@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Graph API, Webhooks, Azure Event Grid, Change Notifications, Azure Functions, Microsoft 365, Serverless
+Tags: Microsoft Graph API, Webhook, Azure Event Grid, Change Notifications, Azure Functions, Microsoft 365, Serverless
 
 Description: Build a webhook listener using Azure Event Grid and Azure Functions to receive real-time change notifications from Microsoft Graph API resources.
 

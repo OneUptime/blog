@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Traits, Generics, Associated Types, Type System
+Tags: Rust, Traits, Generic, Associated Types, Type System
 
 Description: Learn when to use associated types versus generic type parameters in Rust traits. Understand the differences, trade-offs, and best practices for each approach.
 

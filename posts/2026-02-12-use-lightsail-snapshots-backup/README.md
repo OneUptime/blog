@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lightsail, Backups, Snapshots
+Tags: AWS, Lightsail, Backup, Snapshots
 
 Description: Protect your Lightsail resources with manual and automatic snapshots, including scheduling, restoring, cross-region copies, and cost management strategies.
 

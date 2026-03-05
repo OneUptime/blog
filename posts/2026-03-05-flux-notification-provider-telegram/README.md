@@ -23,7 +23,7 @@ This guide covers the full setup from creating a Telegram bot to verifying that 
 
 Open Telegram and search for **@BotFather**. Start a conversation and send the `/newbot` command. Follow the prompts to name your bot and get the **bot token**. The token will look like:
 
-```
+```text
 123456789:ABCdefGHIjklMNOpqrSTUvwxYZ
 ```
 

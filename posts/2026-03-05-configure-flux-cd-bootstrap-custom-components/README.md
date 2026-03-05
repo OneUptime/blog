@@ -61,7 +61,7 @@ kubectl get deployments -n flux-system
 
 Expected output:
 
-```
+```text
 NAME                          READY   UP-TO-DATE   AVAILABLE
 helm-controller               1/1     1            1
 image-automation-controller   1/1     1            1

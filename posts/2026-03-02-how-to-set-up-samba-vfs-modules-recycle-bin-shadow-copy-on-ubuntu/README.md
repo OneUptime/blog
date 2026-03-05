@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Samba, File Sharing, VFs, Backups
+Tags: Ubuntu, Samba, File Sharing, VFs, Backup
 
 Description: Configure Samba VFS modules on Ubuntu including the recycle bin for recovering deleted files and shadow copy integration for Windows Previous Versions support.
 

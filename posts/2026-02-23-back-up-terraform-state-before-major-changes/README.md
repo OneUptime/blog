@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, State Management, Backups, Disaster Recovery, DevOps
+Tags: Terraform, State Management, Backup, Disaster Recovery, DevOps
 
 Description: Learn practical methods for backing up Terraform state before major infrastructure changes, migrations, and refactoring operations.
 

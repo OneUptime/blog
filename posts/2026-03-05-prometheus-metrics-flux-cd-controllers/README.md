@@ -30,7 +30,7 @@ Each Flux controller exposes metrics on port 8080 at the `/metrics` endpoint. Th
 
 All Flux controllers expose these common metrics:
 
-```
+```text
 # Reconciliation condition (gauge)
 gotk_reconcile_condition{kind, name, namespace, type, status}
 

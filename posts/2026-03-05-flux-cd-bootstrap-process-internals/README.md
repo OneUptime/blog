@@ -46,7 +46,7 @@ Bootstrap generates the Kubernetes manifests for the Flux controllers. These are
 
 The manifests are written to a `flux-system` directory inside the specified path.
 
-```
+```text
 clusters/production/
   flux-system/
     gotk-components.yaml    # All controller manifests

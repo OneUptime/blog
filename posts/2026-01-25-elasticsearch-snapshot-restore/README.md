@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Snapshots, Restore, Backups, Disaster Recovery, Data Protection
+Tags: Elasticsearch, Snapshots, Restore, Backup, Disaster Recovery, Data Protection
 
 Description: Learn how to configure Elasticsearch snapshot and restore for data protection, covering repository setup, snapshot policies, restoration procedures, and disaster recovery strategies.
 

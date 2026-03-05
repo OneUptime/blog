@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Supply Chain Twin, Looker, Analytics, Dashboards, BigQuery
+Tags: GCP, Supply Chain Twin, Looker, Analytics, Dashboard, BigQuery
 
 Description: Build a comprehensive supply chain analytics dashboard using Google Cloud Supply Chain Twin data and Looker for visualization and business intelligence.
 

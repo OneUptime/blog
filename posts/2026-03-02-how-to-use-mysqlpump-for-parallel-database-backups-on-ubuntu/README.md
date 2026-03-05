@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, MySQL, Database, Backups, Performance
+Tags: Ubuntu, MySQL, Database, Backup, Performance
 
 Description: Use mysqlpump to create faster MySQL backups through parallel processing on Ubuntu, with filtering options and progress reporting not available in mysqldump.
 

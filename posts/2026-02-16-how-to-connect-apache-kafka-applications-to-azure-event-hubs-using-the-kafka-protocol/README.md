@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Apache Kafka, Azure Event Hubs, Kafka Protocol, Event Streaming, Migration, Azure Cloud, Message Broker
+Tags: Apache Kafka, Azure Event Hub, Kafka Protocol, Event Streaming, Migration, Azure Cloud, Message Broker
 
 Description: Learn how to connect existing Apache Kafka producers and consumers to Azure Event Hubs without changing your application code.
 

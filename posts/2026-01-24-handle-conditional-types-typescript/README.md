@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Types, Generics, Advanced Types, Type System
+Tags: TypeScript, Types, Generic, Advanced Types, Type System
 
 Description: Master TypeScript conditional types to create flexible and type-safe code that adapts based on input types.
 

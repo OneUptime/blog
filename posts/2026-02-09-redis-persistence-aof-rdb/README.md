@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Kubernetes, Persistence, Backups, Database
+Tags: Redis, Kubernetes, Persistence, Backup, Database
 
 Description: Learn how to configure Redis persistence using AOF and RDB snapshots on Kubernetes for data durability with automatic backups, recovery strategies, and performance optimization.
 

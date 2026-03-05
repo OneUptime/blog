@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Cron, rsync, Backups, Automation, Linux
+Tags: RHEL, Cron, rsync, Backup, Automation, Linux
 
 Description: Configure automated backups on RHEL using cron jobs and rsync to ensure regular, hands-off data protection with retention policies.
 

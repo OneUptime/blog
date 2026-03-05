@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Filter Processor, Health Checks, Cost Optimization
+Tags: OpenTelemetry, Filter Processor, Health Check, Cost Optimization
 
 Description: Configure the OpenTelemetry Collector filter processor to drop health check spans, metrics, and logs that inflate storage costs without adding value.
 

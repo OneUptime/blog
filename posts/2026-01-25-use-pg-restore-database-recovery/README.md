@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Database, Backups, Recovery, pg_restore, Disaster Recovery, DevOps
+Tags: PostgreSQL, Database, Backup, Recovery, pg_restore, Disaster Recovery, DevOps
 
 Description: Learn how to use pg_restore for PostgreSQL database recovery. This guide covers restore options, selective recovery, troubleshooting, and best practices for disaster recovery.
 

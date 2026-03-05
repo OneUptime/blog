@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, Namespaces, Multi-Tenancy, Resource Management
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, Namespace, Multi-Tenancy, Resource Management
 
 Description: Learn how to configure Flux Kustomizations to deploy and manage namespaced resources across multiple Kubernetes namespaces.
 

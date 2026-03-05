@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Dashboards, Templates, Observability, Monitoring, DevOps
+Tags: Grafana, Dashboard, Templates, Observability, Monitoring, DevOps
 
 Description: Learn how to create reusable Grafana dashboard templates with variables, provisioning, and jsonnet for scalable observability across environments and teams.
 

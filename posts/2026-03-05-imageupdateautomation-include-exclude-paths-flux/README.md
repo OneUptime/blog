@@ -142,7 +142,7 @@ This setup ensures that staging and production image updates are handled indepen
 
 Flux does not provide a native exclude path field in the ImageUpdateAutomation spec. Instead, you achieve exclusion by structuring your repository so that the `update.path` only covers the directories you want modified. Consider a repository layout like this:
 
-```
+```text
 my-repo/
   clusters/
     staging/

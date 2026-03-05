@@ -27,7 +27,7 @@ Navigate to the Slack API portal at https://api.slack.com/apps and create a new 
 
 The webhook URL will look something like:
 
-```
+```text
 https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
 ```
 

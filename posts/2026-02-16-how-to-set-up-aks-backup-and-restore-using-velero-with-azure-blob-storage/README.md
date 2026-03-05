@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Kubernetes, Velero, Backups, Disaster Recovery, Azure Blob Storage, Operations
+Tags: AKS, Kubernetes, Velero, Backup, Disaster Recovery, Azure Blob Storage, Operations
 
 Description: Complete walkthrough for setting up Velero on AKS to back up and restore Kubernetes resources and persistent volumes using Azure Blob Storage.
 

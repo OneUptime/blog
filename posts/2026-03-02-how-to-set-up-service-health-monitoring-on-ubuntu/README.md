@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Monitoring, systemd, Health Checks, DevOps
+Tags: Ubuntu, Monitoring, systemd, Health Check, DevOps
 
 Description: Learn how to configure service health monitoring on Ubuntu using systemd watchdog, custom health check scripts, and alerting to detect and respond to service failures automatically.
 

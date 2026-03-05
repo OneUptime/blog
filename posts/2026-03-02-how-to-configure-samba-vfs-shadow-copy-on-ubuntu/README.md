@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Samba, Storage, Backups, VFs
+Tags: Ubuntu, Samba, Storage, Backup, VFs
 
 Description: Set up Samba VFS shadow_copy2 on Ubuntu to expose filesystem snapshots as Windows Previous Versions, letting users restore their own files without admin help.
 

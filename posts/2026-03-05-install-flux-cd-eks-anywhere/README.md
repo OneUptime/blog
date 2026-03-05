@@ -127,7 +127,7 @@ You should see pods for the source-controller, kustomize-controller, helm-contro
 
 After bootstrap, your Git repository will have a structure similar to this.
 
-```
+```text
 eks-anywhere-fleet/
   clusters/
     eks-anywhere/

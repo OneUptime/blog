@@ -46,7 +46,7 @@ gpg --list-secret-keys --keyid-format long flux@example.com
 
 The output will show something like:
 
-```
+```text
 sec   rsa4096/ABCDEF1234567890 2026-03-05 [SC] [expires: 2028-03-05]
       1234567890ABCDEF1234567890ABCDEF12345678
 uid                 [ultimate] Flux Bot <flux@example.com>
@@ -160,7 +160,7 @@ git log --show-signature -1
 
 You should see output like:
 
-```
+```text
 commit abc123...
 gpg: Signature made Thu Mar 05 14:30:22 2026 UTC
 gpg:                using RSA key 1234567890ABCDEF1234567890ABCDEF12345678

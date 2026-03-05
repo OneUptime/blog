@@ -25,7 +25,7 @@ Unlike `commonLabels`, annotations are never added to selectors, so they are saf
 
 ## Repository Structure
 
-```
+```text
 apps/
   api-server/
     base/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: borg, Backups, Linux, Data Protection, Deduplication
+Tags: borg, Backup, Linux, Data Protection, Deduplication
 
 Description: A hands-on guide to using BorgBackup for space-efficient incremental backups, covering repository setup, encryption modes, automated scheduling, and practical restore scenarios.
 

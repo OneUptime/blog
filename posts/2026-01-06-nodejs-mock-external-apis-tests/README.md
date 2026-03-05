@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, Tests, API, DevOps
+Tags: NodeJS, Test, API, DevOps
 
 Description: Learn to mock external APIs in Node.js tests using nock and MSW patterns to eliminate flaky network calls while maintaining realistic test scenarios.
 

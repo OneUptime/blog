@@ -26,7 +26,7 @@ A Git repository with Helm charts typically follows one of these structures.
 
 Single chart at the root:
 
-```
+```text
 my-repo/
   Chart.yaml
   values.yaml
@@ -37,7 +37,7 @@ my-repo/
 
 Multiple charts in subdirectories:
 
-```
+```text
 my-repo/
   charts/
     app-a/
@@ -52,7 +52,7 @@ my-repo/
 
 Monorepo with application code and charts:
 
-```
+```text
 my-repo/
   src/
     main.go

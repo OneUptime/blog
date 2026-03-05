@@ -55,7 +55,7 @@ helm history my-app -n default
 
 Example output:
 
-```
+```text
 REVISION  STATUS      CHART         APP VERSION  DESCRIPTION
 1         superseded  my-app-1.0.0  1.0.0        Install complete
 2         superseded  my-app-1.1.0  1.1.0        Upgrade complete

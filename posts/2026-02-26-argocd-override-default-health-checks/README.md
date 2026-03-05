@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Health Checks
+Tags: ArgoCD, GitOps, Kubernetes, Health Check
 
 Description: Learn how to override ArgoCD's built-in default health checks for standard Kubernetes resources like Deployments, Services.
 

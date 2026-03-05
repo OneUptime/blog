@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCP Terraform, Notifications, Slack, Webhooks, DevOps
+Tags: Terraform, HCP Terraform, Notifications, Slack, Webhook, DevOps
 
 Description: Set up Slack, email, and webhook notifications in HCP Terraform to get alerted on run completions, failures, plan approvals, and other workspace events.
 

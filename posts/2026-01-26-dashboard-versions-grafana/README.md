@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Dashboard Management, Version Control, Backups, Restore, DevOps, Governance
+Tags: Grafana, Dashboard Management, Version Control, Backup, Restore, DevOps, Governance
 
 Description: Learn how to use Grafana's built-in versioning, implement Git-based version control, and establish governance practices for dashboard management.
 

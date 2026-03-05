@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Backups, PersistentVolume, Velero, Disaster Recovery
+Tags: Talos Linux, Kubernetes, Backup, PersistentVolume, Velero, Disaster Recovery
 
 Description: Learn how to back up and restore PersistentVolumes on Talos Linux using Velero, CSI snapshots, and other backup strategies.
 

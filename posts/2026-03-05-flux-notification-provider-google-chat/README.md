@@ -25,7 +25,7 @@ Open the Google Chat space where you want to receive notifications. Click on the
 
 The URL will follow this format:
 
-```
+```text
 https://chat.googleapis.com/v1/spaces/SPACE_ID/messages?key=KEY&token=TOKEN
 ```
 

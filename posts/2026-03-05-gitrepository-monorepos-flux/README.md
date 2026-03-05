@@ -23,7 +23,7 @@ Before you begin, make sure you have:
 
 In a typical monorepo, you might have a structure like this.
 
-```
+```text
 my-monorepo/
 ├── apps/
 │   ├── frontend/

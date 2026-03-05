@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Blob Storage, Backups, Cloud Storage, DevOps
+Tags: Azure, Blob Storage, Backup, Cloud Storage, DevOps
 
 Description: A hands-on guide to integrating Azure Blob Storage for backups and application data, covering account setup, access tiers, lifecycle management, and replication options.
 

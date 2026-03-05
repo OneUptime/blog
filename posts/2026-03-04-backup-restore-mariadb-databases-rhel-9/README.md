@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, MariaDB, Backups, Database
+Tags: RHEL, MariaDB, Backup, Database
 
 Description: Back up and restore MariaDB databases on RHEL 9 using mysqldump and mariabackup.
 

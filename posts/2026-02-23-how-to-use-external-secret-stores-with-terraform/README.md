@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Secrets, Security, IaC, DevOps, Vault, SOPS
+Tags: Terraform, Secret, Security, IaC, DevOps, Vault, SOPS
 
 Description: Learn how to integrate Terraform with external secret stores including HashiCorp Vault, cloud-native secret managers, SOPS, and custom secret backends for secure infrastructure management.
 

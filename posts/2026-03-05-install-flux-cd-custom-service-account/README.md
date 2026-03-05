@@ -281,7 +281,7 @@ kubectl get deployments -n flux-system -o jsonpath='{range .items[*]}{.metadata.
 
 Expected output:
 
-```
+```text
 source-controller       flux-source-controller
 kustomize-controller    flux-kustomize-controller
 helm-controller         flux-helm-controller

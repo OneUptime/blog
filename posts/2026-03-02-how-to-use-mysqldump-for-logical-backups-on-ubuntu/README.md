@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, MySQL, Database, Backups
+Tags: Ubuntu, MySQL, Database, Backup
 
 Description: Create logical database backups using mysqldump on Ubuntu, with options for single databases, full server backups, compression, and automated scheduling.
 

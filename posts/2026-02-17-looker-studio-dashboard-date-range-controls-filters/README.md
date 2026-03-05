@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Looker Studio, Dashboards, Date Range Controls, Filter, Data Visualization
+Tags: GCP, Looker Studio, Dashboard, Date Range Controls, Filter, Data Visualization
 
 Description: Learn how to build interactive Looker Studio dashboards with date range controls, drop-down filters, and cross-chart filtering for better user experience.
 

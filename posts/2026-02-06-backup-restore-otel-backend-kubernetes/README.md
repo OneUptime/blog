@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, Backups, Prometheus, Loki, Tempo
+Tags: OpenTelemetry, Kubernetes, Backup, Prometheus, Loki, Tempo
 
 Description: Learn how to back up and restore Prometheus, Loki, and Tempo data in Kubernetes to protect your OpenTelemetry telemetry backends.
 

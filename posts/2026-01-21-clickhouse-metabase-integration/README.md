@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Metabase, Business Intelligence, Data Visualization, SQL Analytics, Dashboards
+Tags: ClickHouse, Metabase, Business Intelligence, Data Visualization, SQL Analytics, Dashboard
 
 Description: A comprehensive guide to connecting Metabase to ClickHouse for self-service business intelligence, including setup, optimization, and dashboard best practices.
 

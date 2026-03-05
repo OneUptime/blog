@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboards, Heatmap
+Tags: Grafana, Observability, Dashboard, Heatmap
 
 Description: A practical guide to building effective Grafana heatmaps for visualizing time-series data distributions, latency patterns, and system behavior.
 

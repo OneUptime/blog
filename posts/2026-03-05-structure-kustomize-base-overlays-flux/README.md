@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, Base, Overlays, Repository Structure
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, Base, Overlay, Repository Structure
 
 Description: Learn best practices for organizing Kustomize base and overlay directories in a Flux CD-managed GitOps repository for maintainability and scalability.
 
@@ -26,7 +26,7 @@ Before diving into structures, here is a quick refresher on the key terms:
 
 This is the simplest and most common pattern. One application deployed to multiple environments.
 
-```
+```text
 repo/
   apps/
     myapp/
@@ -81,7 +81,7 @@ images:
 
 When you have several applications that share infrastructure components (like a database or message queue), organize shared components separately.
 
-```
+```text
 repo/
   infrastructure/
     base/
@@ -149,7 +149,7 @@ spec:
 
 When managing multiple clusters, add a cluster dimension to your directory structure.
 
-```
+```text
 repo/
   apps/
     webapp/
@@ -197,7 +197,7 @@ spec:
 
 When multiple applications share common configuration patterns, create a layered base structure.
 
-```
+```text
 repo/
   bases/
     common/
@@ -277,7 +277,7 @@ Each overlay should have exactly one Flux Kustomization resource pointing to it.
 
 Adopt a naming convention and stick to it across all applications.
 
-```
+```text
 apps/{app-name}/base/
 apps/{app-name}/overlays/{environment}/
 clusters/{cluster-name}/{app-name}-{environment}.yaml

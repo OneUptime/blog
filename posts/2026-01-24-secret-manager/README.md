@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Secret Manager, Google Cloud, Security, Secrets, GCP, DevOps, Configuration
+Tags: Secret Manager, Google Cloud, Security, Secret, GCP, DevOps, Configuration
 
 Description: Learn how to effectively use Google Cloud Secret Manager to store, access, and manage sensitive data like API keys, passwords, and certificates.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backups, Storage, Cost Optimization, Archive
+Tags: Backup, Storage, Cost Optimization, Archive
 
 Description: Learn how to use cold storage for long-term backup retention with minimal costs.
 

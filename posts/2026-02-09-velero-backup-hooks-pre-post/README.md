@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backups, Hooks, Automation
+Tags: Velero, Kubernetes, Backup, Hooks, Automation
 
 Description: Master Velero backup hooks to execute custom commands before and after backups. Learn how to implement application-consistent backups, database dumps, and cleanup operations.
 

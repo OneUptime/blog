@@ -37,7 +37,7 @@ spec:
 
 If you change the image from `v1` to `v2` and push the update, Flux will try to update the Job. But because `spec.template` is immutable on a Job, the update fails with an error like:
 
-```
+```text
 field is immutable
 ```
 

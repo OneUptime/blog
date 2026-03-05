@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, Backups, Disaster Recovery
+Tags: AWS, EC2, Backup, Disaster Recovery
 
 Description: Learn how to use AWS Backup to automate EC2 instance backups with scheduled plans, retention policies, cross-region copies, and compliance reporting.
 

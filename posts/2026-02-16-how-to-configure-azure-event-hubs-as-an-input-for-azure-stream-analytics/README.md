@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Event Hubs, Azure Stream Analytics, Event Streaming, Real-Time Data, Azure, Input Configuration
+Tags: Azure Event Hub, Azure Stream Analytics, Event Streaming, Real-Time Data, Azure, Input Configuration
 
 Description: Learn how to configure Azure Event Hubs as a streaming input for Azure Stream Analytics including partitioning, consumer groups, and serialization settings.
 

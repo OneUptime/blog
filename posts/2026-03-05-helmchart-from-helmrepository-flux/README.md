@@ -238,7 +238,7 @@ flux get sources chart
 
 A successful fetch shows `READY: True` and the resolved chart version.
 
-```
+```text
 NAME    CHART   VERSION   SOURCE KIND      SOURCE NAME   AGE   READY   STATUS
 nginx   nginx   15.x      HelmRepository   bitnami       1m    True    pulled 'nginx' chart with version '15.4.4'
 ```

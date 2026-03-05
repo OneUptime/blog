@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Post-Renderers, Kustomize, Resource Customization
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Post-Renderer, Kustomize, Resource Customization
 
 Description: Learn how to configure post-renderers on HelmRelease in Flux CD to modify Helm chart output before it is applied to the cluster.
 

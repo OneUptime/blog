@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Event Hubs, Consumer Groups, Parallel Processing, Event Streaming, Azure Cloud, Message Processing, Scalability
+Tags: Azure Event Hub, Consumer Groups, Parallel Processing, Event Streaming, Azure Cloud, Message Processing, Scalability
 
 Description: Learn how to configure and use consumer groups in Azure Event Hubs to enable multiple independent consumers reading the same event stream in parallel.
 

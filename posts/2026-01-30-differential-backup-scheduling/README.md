@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backups, Disaster Recovery, SRE, Data Protection
+Tags: Backup, Disaster Recovery, SRE, Data Protection
 
 Description: Learn how to implement differential backups for efficient data protection.
 

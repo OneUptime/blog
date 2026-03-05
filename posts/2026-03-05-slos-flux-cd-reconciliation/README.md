@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Monitoring, SLOs, SLIs, Prometheus, Reliability
+Tags: Flux CD, GitOps, Kubernetes, Monitoring, SLO, SLI, Prometheus, Reliability
 
 Description: Learn how to define and measure Service Level Objectives for Flux CD reconciliation to ensure reliable GitOps delivery pipelines.
 

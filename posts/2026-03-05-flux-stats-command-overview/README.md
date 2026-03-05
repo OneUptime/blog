@@ -20,7 +20,7 @@ flux stats -n flux-system
 
 The output looks like this:
 
-```
+```text
 RECONCILERS            READY   FAILED  SUSPENDED  STORAGE
 GitRepository          3       0       0          44.0 MiB
 OCIRepository          1       0       0          12.0 MiB

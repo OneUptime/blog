@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, EBS, Snapshots, Disaster Recovery, Backups
+Tags: AWS, EC2, EBS, Snapshots, Disaster Recovery, Backup
 
 Description: A complete guide to restoring EC2 instances from EBS snapshots, covering root volume replacement, data volume recovery, and full instance rebuilds.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Health Checks, Kubernetes, Sidecar, Troubleshooting
+Tags: Istio, Health Check, Kubernetes, Sidecar, Troubleshooting
 
 Description: How to resolve health check failures that occur when Istio sidecar proxies interfere with Kubernetes health probes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Mapped Types, Type System, Generics, Advanced Types, Type Manipulation
+Tags: TypeScript, Mapped Types, Type System, Generic, Advanced Types, Type Manipulation
 
 Description: Master TypeScript mapped types to transform existing types into new ones with modified properties and modifiers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Data Explorer, Dashboards, Real-Time Analytics, KQL, Data Visualization, Monitoring, Azure Cloud
+Tags: Azure Data Explorer, Dashboard, Real-Time Analytics, KQL, Data Visualization, Monitoring, Azure Cloud
 
 Description: Learn how to build real-time operational dashboards in Azure Data Explorer using KQL queries with auto-refresh and interactive filtering.
 

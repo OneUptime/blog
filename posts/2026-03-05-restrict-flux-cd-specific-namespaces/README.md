@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, RBAC, Multi-Tenancy, Namespaces, Security
+Tags: Flux CD, GitOps, Kubernetes, RBAC, Multi-Tenancy, Namespace, Security
 
 Description: Learn how to restrict Flux CD controllers and resources to specific namespaces for multi-tenant isolation and security boundaries.
 

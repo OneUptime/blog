@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Grafana, Dashboards, Monitoring, Visualization
+Tags: Kubernetes, Grafana, Dashboard, Monitoring, Visualization
 
 Description: A guide to the essential Grafana dashboards for Kubernetes monitoring including cluster, node, pod, and namespace level views.
 

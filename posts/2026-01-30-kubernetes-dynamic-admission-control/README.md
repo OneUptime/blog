@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Admission Control, Webhooks, Policy
+Tags: Kubernetes, Admission Control, Webhook, Policy
 
 Description: Learn to implement dynamic admission control with validating and mutating webhooks for custom policy enforcement in Kubernetes.
 

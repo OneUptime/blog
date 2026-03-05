@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, ConfigMap, Secrets, Configuration Management, Security
+Tags: Talos Linux, Kubernetes, ConfigMap, Secret, Configuration Management, Security
 
 Description: A complete guide to creating, managing, and using ConfigMaps and Secrets for applications running on Talos Linux clusters.
 

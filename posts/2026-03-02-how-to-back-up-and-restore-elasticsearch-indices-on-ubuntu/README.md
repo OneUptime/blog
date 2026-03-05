@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Elasticsearch, Backups, Recovery, DevOps
+Tags: Ubuntu, Elasticsearch, Backup, Recovery, DevOps
 
 Description: Learn how to back up and restore Elasticsearch indices on Ubuntu using the snapshot and restore API, with local filesystem and S3-compatible repository configurations.
 

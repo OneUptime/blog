@@ -18,7 +18,7 @@ Flux image automation uses the Setters strategy to find and replace image refere
 
 The simplest approach is placing markers in your base Kustomize manifests. Given a directory structure like this:
 
-```
+```text
 my-repo/
   base/
     kustomization.yaml

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Event Hubs, Partitions, Throughput Units, Event Streaming, Scalability, Azure Cloud, Message Ingestion
+Tags: Azure Event Hub, Partitions, Throughput Units, Event Streaming, Scalability, Azure Cloud, Message Ingestion
 
 Description: Learn how to properly configure partition counts and throughput units in Azure Event Hubs to handle your event streaming workload efficiently.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Disaster Recovery, Business Continuity, High Availability, Backups, DevOps, SRE, Infrastructure
+Tags: Disaster Recovery, Business Continuity, High Availability, Backup, DevOps, SRE, Infrastructure
 
 Description: A practical guide to configuring disaster recovery plans, including RTO/RPO definitions, backup strategies, failover procedures, and testing protocols.
 

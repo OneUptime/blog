@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Apache Superset, Data Visualization, Dashboards, Analytics, Docker Compose, BI
+Tags: Docker, Apache Superset, Data Visualization, Dashboard, Analytics, Docker Compose, BI
 
 Description: Deploy Apache Superset in Docker to create interactive dashboards and data visualizations connected to your databases and data warehouses.
 

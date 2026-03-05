@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Filestore, Backups, Disaster Recovery, NFS
+Tags: GCP, Filestore, Backup, Disaster Recovery, NFS
 
 Description: A complete guide to creating, managing, and restoring backups for Google Cloud Filestore instances to protect your shared file data against loss.
 

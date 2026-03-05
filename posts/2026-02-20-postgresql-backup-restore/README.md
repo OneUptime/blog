@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Backups, Restore, pg_dump, WAL Archiving
+Tags: PostgreSQL, Backup, Restore, pg_dump, WAL Archiving
 
 Description: Learn PostgreSQL backup strategies including pg_dump, pg_basebackup, WAL archiving, and point-in-time recovery.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Slack, Webhooks, Alerting, Monitoring
+Tags: RHEL, Slack, Webhook, Alerting, Monitoring
 
 Description: Send system alerts from RHEL servers to Slack channels using incoming webhooks for real-time notification of critical events.
 

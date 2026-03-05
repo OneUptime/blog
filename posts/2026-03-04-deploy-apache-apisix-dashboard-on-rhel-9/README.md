@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, Apache APISIX, API Gateway, Dashboards, Linux
+Tags: RHEL, Apache APISIX, API Gateway, Dashboard, Linux
 
 Description: Learn how to install and deploy the Apache APISIX Dashboard on RHEL, including etcd setup, APISIX gateway configuration, dashboard installation, and route management through the web UI.
 

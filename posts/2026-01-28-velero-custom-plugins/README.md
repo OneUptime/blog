@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backups, Plugin Development, Go
+Tags: Velero, Kubernetes, Backup, Plugin Development, Go
 
 Description: Learn how to extend Velero's backup and restore capabilities by building custom plugins for object stores, volume snapshotters, and backup item actions.
 

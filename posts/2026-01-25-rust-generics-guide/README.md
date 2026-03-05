@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Generics, Type System, Traits, Performance
+Tags: Rust, Generic, Type System, Traits, Performance
 
 Description: A comprehensive guide to generics in Rust. Learn generic functions, structs, enums, trait bounds, and advanced patterns for writing flexible and reusable code.
 

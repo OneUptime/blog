@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Real-Time, Dashboards, Metrics, Analytics, WebSocket, Data Streaming
+Tags: Redis, Real-Time, Dashboard, Metrics, Analytics, WebSocket, Data Streaming
 
 Description: A comprehensive guide to building live dashboards with Redis, covering real-time metrics collection, data streaming, chart updates, and efficient data aggregation for interactive analytics displays.
 

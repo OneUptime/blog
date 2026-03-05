@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Sentinel, Workbooks, Security Operations, SIEM, Dashboards, Azure Monitor, SOC
+Tags: Microsoft Sentinel, Workbooks, Security Operations, SIEM, Dashboard, Azure Monitor, SOC
 
 Description: A practical guide to creating and customizing Microsoft Sentinel workbooks that give your security operations team clear visibility into threats and incidents.
 

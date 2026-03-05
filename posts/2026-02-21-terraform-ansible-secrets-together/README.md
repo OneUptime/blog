@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Terraform, Secrets, Vault, Security
+Tags: Ansible, Terraform, Secret, Vault, Security
 
 Description: Manage secrets across Terraform and Ansible using HashiCorp Vault, environment variables, and encrypted variable files.
 

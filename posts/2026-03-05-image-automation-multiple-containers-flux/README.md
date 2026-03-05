@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Image Automation, Multi-container, Deployment
+Tags: Flux CD, GitOps, Kubernetes, Image Automation, Multi-Container, Deployment
 
 Description: Learn how to set up Flux image automation for pods that run multiple container images, including init containers and sidecars.
 
@@ -248,7 +248,7 @@ The `messageTemplate` in the ImageUpdateAutomation supports listing all changes.
 
 Example commit message output:
 
-```
+```text
 Automated image update
 
 - ghcr.io/my-org/my-app:1.0.0 -> ghcr.io/my-org/my-app:1.1.0

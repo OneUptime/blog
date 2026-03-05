@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Checks, HTTP Probes
+Tags: Kubernetes, Health Check, HTTP Probes
 
 Description: Configure Kubernetes HTTP GET probes with custom headers, paths, and schemes to integrate with authentication systems, virtual hosts, and complex application routing requirements.
 

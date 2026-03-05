@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Azure Workbooks, Log Analytics, Visualization, KQL, Monitoring, Dashboards
+Tags: Azure, Azure Workbooks, Log Analytics, Visualization, KQL, Monitoring, Dashboard
 
 Description: Learn how to build interactive Azure Workbooks that visualize Log Analytics query results with charts, grids, and dynamic parameters for effective monitoring.
 

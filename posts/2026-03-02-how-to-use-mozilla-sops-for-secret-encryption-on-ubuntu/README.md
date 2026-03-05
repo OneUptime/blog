@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Secrets, Encryption, DevOps
+Tags: Ubuntu, Security, Secret, Encryption, DevOps
 
 Description: A practical guide to using Mozilla SOPS for encrypting secrets in configuration files on Ubuntu, covering age, GPG, and AWS KMS key providers with Git workflow integration.
 

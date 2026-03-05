@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Secrets, Security
+Tags: ArgoCD, GitOps, Kubernetes, Secret, Security
 
 Description: Learn how to prevent secrets from being committed to Git repositories when using ArgoCD for GitOps workflows, using pre-commit hooks, scanning tools, and external secret management patterns.
 

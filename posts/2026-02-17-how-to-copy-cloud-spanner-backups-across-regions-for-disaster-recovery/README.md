@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Spanner, Backups, Disaster Recovery, Cross-Region
+Tags: GCP, Cloud Spanner, Backup, Disaster Recovery, Cross-Region
 
 Description: Learn how to copy Cloud Spanner backups across regions to build a robust disaster recovery strategy with step-by-step instructions.
 

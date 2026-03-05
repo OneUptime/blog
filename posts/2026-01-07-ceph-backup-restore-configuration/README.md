@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ceph, Storage, Backups, Disaster Recovery, Configuration, Cloud Native
+Tags: Ceph, Storage, Backup, Disaster Recovery, Configuration, Cloud Native
 
 Description: Learn how to backup and restore Ceph cluster configurations, monitors, and critical metadata.
 

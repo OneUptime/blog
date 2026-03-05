@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, TypeScript, Generics, Components, Type Safety, Reusability
+Tags: React, TypeScript, Generic, Components, Type Safety, Reusability
 
 Description: Learn how to build flexible, type-safe React components using TypeScript generics, from basic patterns to advanced constraints that maximize code reuse while preserving full type inference.
 

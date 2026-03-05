@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Disaster Recovery, Kubernetes, Backups, Restoration
+Tags: Istio, Disaster Recovery, Kubernetes, Backup, Restoration
 
 Description: A detailed walkthrough of restoring Istio mesh configuration from backups after a cluster failure, including the correct order of operations and common pitfalls.
 

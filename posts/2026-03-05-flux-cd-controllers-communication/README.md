@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Controllers, Architecture, Custom Resources
+Tags: Flux CD, GitOps, Kubernetes, Controller, Architecture, Custom Resource
 
 Description: An in-depth look at how Flux CD's independent controllers communicate through the Kubernetes API using custom resource status fields, artifact references, and event-driven coordination.
 
@@ -124,12 +124,12 @@ graph LR
 
 The URL for each artifact follows a predictable pattern:
 
-```
+```text
 http://source-controller.flux-system.svc.cluster.local./
   {source-kind}/{namespace}/{name}/latest.tar.gz
 ```
 
-This is an in-cluster HTTP call — it never leaves the cluster network. The consuming controller downloads the tarball, extracts it to a temporary directory, and processes the contents.
+This is an in-cluster HTTP call - it never leaves the cluster network. The consuming controller downloads the tarball, extracts it to a temporary directory, and processes the contents.
 
 ## Communication Mechanism 3: Kubernetes Events
 
@@ -267,7 +267,7 @@ graph TD
     J --> K[Notification Controller sends Slack alert]
 ```
 
-Every arrow in this diagram goes through the Kubernetes API server. No controller communicates directly with another controller's process. This is what makes the architecture resilient — if one controller restarts, the others continue operating, and reconciliation resumes from the last known state stored in the custom resources.
+Every arrow in this diagram goes through the Kubernetes API server. No controller communicates directly with another controller's process. This is what makes the architecture resilient - if one controller restarts, the others continue operating, and reconciliation resumes from the last known state stored in the custom resources.
 
 ## Summary
 

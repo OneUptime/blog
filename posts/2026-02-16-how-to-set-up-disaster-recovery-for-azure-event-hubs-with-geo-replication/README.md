@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Event Hubs, Disaster Recovery, Geo-Replication, High Availability, Event Streaming, Business Continuity, Azure
+Tags: Azure Event Hub, Disaster Recovery, Geo-Replication, High Availability, Event Streaming, Business Continuity, Azure
 
 Description: Configure geo-disaster recovery for Azure Event Hubs to ensure business continuity with automatic failover across Azure regions.
 

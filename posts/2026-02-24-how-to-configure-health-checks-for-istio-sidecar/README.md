@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Health Checks, Sidecar, Kubernetes, Envoy
+Tags: Istio, Health Check, Sidecar, Kubernetes, Envoy
 
 Description: Configure health checks that work correctly with Istio sidecar injection, covering probe rewriting, port configuration, and startup ordering.
 

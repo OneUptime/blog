@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Shopify, Azure Functions, E-Commerce, Order Processing, Serverless, Webhooks
+Tags: Azure, Shopify, Azure Functions, E-Commerce, Order Processing, Serverless, Webhook
 
 Description: Build a serverless Shopify backend integration using Azure Functions to automate order processing, inventory management, and fulfillment workflows.
 

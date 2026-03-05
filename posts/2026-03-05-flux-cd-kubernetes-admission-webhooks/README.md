@@ -196,7 +196,7 @@ kubectl describe kustomization my-app -n flux-system | grep -A 10 "Message"
 
 A typical error looks like:
 
-```
+```text
 Message: apply failed: admission webhook "validate.kyverno.svc" denied the request:
 resource Deployment/default/my-app was blocked due to the following policies:
 require-resource-limits: require-limits: All containers must have CPU and memory limits defined.

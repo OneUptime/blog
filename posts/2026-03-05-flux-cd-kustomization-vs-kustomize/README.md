@@ -12,8 +12,8 @@ Description: A clear explanation of the difference between a Flux CD Kustomizati
 
 One of the most common sources of confusion for people new to Flux CD is the word "Kustomization." It refers to two different things:
 
-1. **Kustomize kustomization.yaml** — A file used by the `kustomize` tool (built into `kubectl`) to define how Kubernetes manifests should be composed and transformed.
-2. **Flux CD Kustomization** — A custom Kubernetes resource (`kustomize.toolkit.fluxcd.io/v1`) that tells the Flux kustomize-controller what to deploy and how to reconcile it.
+1. **Kustomize kustomization.yaml** - A file used by the `kustomize` tool (built into `kubectl`) to define how Kubernetes manifests should be composed and transformed.
+2. **Flux CD Kustomization** - A custom Kubernetes resource (`kustomize.toolkit.fluxcd.io/v1`) that tells the Flux kustomize-controller what to deploy and how to reconcile it.
 
 These are not the same thing. They work together, but they serve different purposes and operate at different levels.
 
@@ -34,7 +34,7 @@ graph TD
 Kustomize is a standalone tool for customizing Kubernetes manifests without using templates. Its configuration file is called `kustomization.yaml`. This file lists the resources to include and the transformations to apply.
 
 ```yaml
-# kustomization.yaml — a Kustomize file that composes manifests
+# kustomization.yaml - a Kustomize file that composes manifests
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -83,7 +83,7 @@ Kustomize operates purely on files. It reads YAML, transforms it, and outputs YA
 A Flux CD Kustomization is a Kubernetes custom resource. It lives in the cluster and instructs the kustomize-controller to fetch manifests from a source, optionally run `kustomize build`, and apply the result to the cluster.
 
 ```yaml
-# Flux Kustomization CRD — a cluster resource that drives reconciliation
+# Flux Kustomization CRD - a cluster resource that drives reconciliation
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -116,12 +116,12 @@ spec:
 
 This resource has capabilities far beyond what a `kustomization.yaml` file provides:
 
-- **Source binding** — It knows which Git repository, OCI registry, or bucket to pull from.
-- **Reconciliation** — It continuously checks and reapplies the desired state.
-- **Pruning** — It can delete resources that no longer exist in Git.
-- **Dependencies** — It can wait for other Kustomizations to succeed first.
-- **Health checks** — It verifies that deployed resources are healthy.
-- **Variable substitution** — It can inject values after building manifests.
+- **Source binding** - It knows which Git repository, OCI registry, or bucket to pull from.
+- **Reconciliation** - It continuously checks and reapplies the desired state.
+- **Pruning** - It can delete resources that no longer exist in Git.
+- **Dependencies** - It can wait for other Kustomizations to succeed first.
+- **Health checks** - It verifies that deployed resources are healthy.
+- **Variable substitution** - It can inject values after building manifests.
 
 ## How They Work Together
 
@@ -191,7 +191,7 @@ fleet-infra/
 The Kustomize file in `apps/base/`:
 
 ```yaml
-# apps/base/kustomization.yaml — Kustomize file listing base resources
+# apps/base/kustomization.yaml - Kustomize file listing base resources
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -202,7 +202,7 @@ resources:
 The Kustomize file in `apps/production/`:
 
 ```yaml
-# apps/production/kustomization.yaml — Kustomize overlay for production
+# apps/production/kustomization.yaml - Kustomize overlay for production
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -215,7 +215,7 @@ patches:
 The Flux Kustomization in `clusters/production/apps.yaml`:
 
 ```yaml
-# clusters/production/apps.yaml — Flux Kustomization that reconciles the above
+# clusters/production/apps.yaml - Flux Kustomization that reconciles the above
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -243,4 +243,4 @@ When the kustomize-controller reconciles the Flux Kustomization named `apps`, it
 
 ## Summary
 
-The Flux CD Kustomization is a Kubernetes custom resource that drives continuous reconciliation. The Kustomize `kustomization.yaml` is a file that composes and transforms Kubernetes manifests. The Flux kustomize-controller uses the Kustomize tool internally when it finds a `kustomization.yaml` in the specified path, but the Flux Kustomization itself controls the reconciliation lifecycle — the source, the schedule, pruning, dependencies, and health checks. Understanding this distinction is fundamental to working effectively with Flux CD.
+The Flux CD Kustomization is a Kubernetes custom resource that drives continuous reconciliation. The Kustomize `kustomization.yaml` is a file that composes and transforms Kubernetes manifests. The Flux kustomize-controller uses the Kustomize tool internally when it finds a `kustomization.yaml` in the specified path, but the Flux Kustomization itself controls the reconciliation lifecycle - the source, the schedule, pruning, dependencies, and health checks. Understanding this distinction is fundamental to working effectively with Flux CD.

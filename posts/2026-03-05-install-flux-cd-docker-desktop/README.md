@@ -139,7 +139,7 @@ kubectl get pods -n flux-system
 
 Expected output:
 
-```
+```text
 NAME                                       READY   STATUS    RESTARTS   AGE
 helm-controller-xxxxxxxxxx-xxxxx           1/1     Running   0          60s
 kustomize-controller-xxxxxxxxxx-xxxxx      1/1     Running   0          60s

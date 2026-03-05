@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, BuildKit, Cache, Secrets, Performance, Security
+Tags: Docker, BuildKit, Cache, Secret, Performance, Security
 
 Description: Learn how to use Docker BuildKit's advanced features including cache mounts for faster builds, build secrets for secure credential handling, and other performance optimizations.
 

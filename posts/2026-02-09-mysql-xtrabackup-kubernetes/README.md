@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MySQL, Kubernetes, Backups, Percona, Database
+Tags: MySQL, Kubernetes, Backup, Percona, Database
 
 Description: Learn how to automate MySQL backups on Kubernetes using Percona XtraBackup with hot backups, point-in-time recovery, and scheduled backup strategies.
 

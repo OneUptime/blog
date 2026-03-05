@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Logging, Dashboards, Grafana, Visualization
+Tags: Logging, Dashboard, Grafana, Visualization
 
 Description: Learn to create log dashboards for visualizing log data and patterns.
 

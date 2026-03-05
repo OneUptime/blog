@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Type System, Type Inference, Generics, Error Handling
+Tags: Rust, Type System, Type Inference, Generic, Error Handling
 
 Description: Learn how to resolve 'type annotations needed' errors in Rust. This guide explains when type inference fails and how to provide the necessary annotations.
 

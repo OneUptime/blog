@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Security, TLS, Webhooks, Certificates
+Tags: Flux CD, GitOps, Kubernetes, Security, TLS, Webhook, Certificates
 
 Description: Learn how to configure TLS encryption for Flux CD webhook receivers to secure incoming webhook traffic from Git providers and external services.
 

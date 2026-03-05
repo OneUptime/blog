@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Grafana, GKE, Prometheus, Kubernetes, Dashboards, Monitoring
+Tags: GCP, Grafana, GKE, Prometheus, Kubernetes, Dashboard, Monitoring
 
 Description: Learn how to set up Grafana with the Prometheus data source to build dashboards for GKE cluster metrics on Google Cloud Platform.
 

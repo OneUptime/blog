@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backups, Deduplication, Storage, Data Protection
+Tags: Backup, Deduplication, Storage, Data Protection
 
 Description: A practical guide to implementing backup deduplication that reduces storage costs and speeds up backup windows.
 

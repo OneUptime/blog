@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backups, Storage, Cost Optimization, Disaster Recovery
+Tags: Backup, Storage, Cost Optimization, Disaster Recovery
 
 Description: Learn how to use warm storage for backups with moderate access requirements.
 

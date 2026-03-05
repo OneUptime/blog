@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, AMI, Backups, Infrastructure
+Tags: AWS, EC2, AMI, Backup, Infrastructure
 
 Description: Learn how to create a custom Amazon Machine Image from a running or stopped EC2 instance, including best practices for clean images and automation.
 

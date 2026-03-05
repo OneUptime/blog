@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Terraform, Backups, Disaster Recovery, Infrastructure as Code
+Tags: AWS, Terraform, Backup, Disaster Recovery, Infrastructure as Code
 
 Description: Learn how to create and manage AWS Backup plans using Terraform, including vaults, rules, selections, and lifecycle policies for automated data protection.
 

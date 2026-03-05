@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backups, Recovery, Data Protection, Storage
+Tags: Backup, Recovery, Data Protection, Storage
 
 Description: Learn how to implement synthetic full backups to reduce backup windows, save storage, and speed up restores without running full backups every time.
 

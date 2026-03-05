@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: TypeScript, Type System, Generics, Advanced Types
+Tags: TypeScript, Type System, Generic, Advanced Types
 
 Description: Understand and use variance annotations (in/out) in TypeScript 4.7+ to explicitly declare covariance and contravariance for generic type parameters.
 

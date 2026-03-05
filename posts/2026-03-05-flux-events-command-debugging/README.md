@@ -90,7 +90,7 @@ flux events --for GitRepository/my-repo -n flux-system
 
 Example output for an authentication failure:
 
-```
+```text
 LAST SEEN  TYPE      REASON                OBJECT                   MESSAGE
 2m         Warning   GitOperationFailed    GitRepository/my-repo    failed to checkout: authentication required
 ```
@@ -103,7 +103,7 @@ flux events --for Kustomization/apps -n flux-system
 
 Example output for a validation error:
 
-```
+```text
 LAST SEEN  TYPE      REASON                 OBJECT                  MESSAGE
 5m         Warning   ReconciliationFailed   Kustomization/apps      Deployment/my-app validation error: spec.replicas must be non-negative
 ```
@@ -116,7 +116,7 @@ flux events --for HelmRelease/ingress-nginx -n ingress
 
 Example output for a failed Helm upgrade:
 
-```
+```text
 LAST SEEN  TYPE      REASON           OBJECT                       MESSAGE
 3m         Warning   UpgradeFailed    HelmRelease/ingress-nginx    Helm upgrade failed: timed out waiting for the condition
 ```

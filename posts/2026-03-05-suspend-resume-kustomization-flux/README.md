@@ -56,7 +56,7 @@ flux suspend ks my-app
 
 You should see output confirming the suspension:
 
-```
+```text
 ► suspending kustomization my-app in flux-system namespace
 ✔ kustomization suspended
 ```
@@ -79,7 +79,7 @@ flux get ks my-app
 
 The output will show `True` under the `SUSPENDED` column:
 
-```
+```text
 NAME    REVISION        SUSPENDED  READY  MESSAGE
 my-app  main@sha1:abc   True       True   Applied revision: main@sha1:abc
 ```
@@ -108,7 +108,7 @@ flux resume ks my-app
 
 You should see output confirming the resume and a triggered reconciliation:
 
-```
+```text
 ► resuming kustomization my-app in flux-system namespace
 ✔ kustomization resumed
 ◎ waiting for Kustomization reconciliation

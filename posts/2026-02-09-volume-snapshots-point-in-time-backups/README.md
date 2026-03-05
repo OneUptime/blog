@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Storage, Backups, VolumeSnapshot
+Tags: Kubernetes, Storage, Backup, VolumeSnapshot
 
 Description: Learn how to create point-in-time backups of Kubernetes persistent volumes using VolumeSnapshots, enabling data protection and recovery capabilities for stateful workloads.
 

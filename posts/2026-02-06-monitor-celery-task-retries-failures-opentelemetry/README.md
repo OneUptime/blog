@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Celery, Retries, Failures, Python, Error Tracking
+Tags: OpenTelemetry, Celery, Retries, Failure, Python, Error Tracking
 
 Description: Learn how to instrument Celery task retries and failures with OpenTelemetry spans to track error patterns, retry behavior, and task reliability metrics.
 

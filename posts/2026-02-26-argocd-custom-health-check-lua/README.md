@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Lua, Health Checks
+Tags: ArgoCD, GitOps, Kubernetes, Lua, Health Check
 
 Description: Learn how to write custom Lua health check scripts for ArgoCD to assess the health of custom resources and override default health behavior.
 

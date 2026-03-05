@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Grafana, Monitoring, Observability, Managed Service, Dashboards
+Tags: AWS, Grafana, Monitoring, Observability, Managed Service, Dashboard
 
 Description: Step-by-step guide to setting up Amazon Managed Grafana for centralized monitoring dashboards with AWS data sources and SSO authentication
 

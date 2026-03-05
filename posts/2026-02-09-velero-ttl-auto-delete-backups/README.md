@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Velero, Backups, Storage Management
+Tags: Kubernetes, Velero, Backup, Storage Management
 
 Description: Learn how to configure Velero TTL (Time To Live) settings to automatically delete old backup archives, reducing storage costs and maintaining efficient backup retention policies in Kubernetes.
 

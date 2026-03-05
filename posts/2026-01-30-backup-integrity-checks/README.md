@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backups, Integrity, Validation, Data Protection
+Tags: Backup, Integrity, Validation, Data Protection
 
 Description: Learn how to verify backup integrity to ensure reliable data recovery.
 

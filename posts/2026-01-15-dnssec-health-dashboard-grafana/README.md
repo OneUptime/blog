@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: DNSSEC, Grafana, Monitoring, Dashboards, DNS, Visualization
+Tags: DNSSEC, Grafana, Monitoring, Dashboard, DNS, Visualization
 
 Description: A comprehensive guide to building a real-time DNSSEC health monitoring dashboard with Grafana, including data collection, panel configurations, alerting, and best practices.
 

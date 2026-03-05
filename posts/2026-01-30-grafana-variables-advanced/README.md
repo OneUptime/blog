@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Variables, Dashboards, Dynamic
+Tags: Grafana, Variables, Dashboard, Dynamic
 
 Description: Learn to implement advanced Grafana variables with chained queries, regex extraction, and custom variable types for dynamic dashboards.
 

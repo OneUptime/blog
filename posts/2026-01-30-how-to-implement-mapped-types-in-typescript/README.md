@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: TypeScript, Types, Advanced, Generics
+Tags: TypeScript, Types, Advanced, Generic
 
 Description: Learn how to use mapped types in TypeScript to transform existing types into new ones with powerful type manipulations.
 

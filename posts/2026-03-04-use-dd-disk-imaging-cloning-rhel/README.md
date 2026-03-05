@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, dd, Disk Imaging, Cloning, Backups, Linux
+Tags: RHEL, dd, Disk Imaging, Cloning, Backup, Linux
 
 Description: Use the dd command on RHEL to create exact disk images and clone drives for backup, migration, or replication purposes.
 

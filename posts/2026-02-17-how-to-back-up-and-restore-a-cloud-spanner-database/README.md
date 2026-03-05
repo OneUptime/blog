@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Spanner, Backups, Restore, Disaster Recovery
+Tags: GCP, Cloud Spanner, Backup, Restore, Disaster Recovery
 
 Description: A complete guide to creating, managing, and restoring Cloud Spanner database backups using the gcloud CLI and best practices.
 

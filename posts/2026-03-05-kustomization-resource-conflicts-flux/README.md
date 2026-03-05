@@ -33,7 +33,7 @@ kubectl get kustomization apps -n flux-system -o yaml
 
 A typical conflict error looks like this in the events output.
 
-```
+```text
 Apply failed: conflict with "flux-system/infrastructure" for resource
 ConfigMap/production/shared-config: field manager conflict for field
 .data.DATABASE_URL

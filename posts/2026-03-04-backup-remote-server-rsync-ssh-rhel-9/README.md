@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, rsync, SSH, Backups, Remote, Linux
+Tags: RHEL, rsync, SSH, Backup, Remote, Linux
 
 Description: Set up secure remote backups from RHEL servers to a central backup server using rsync over SSH with key-based authentication.
 

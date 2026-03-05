@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Syncthing, file-sync, peer-to-peer, Self-Hosted, Backups
+Tags: Docker, Syncthing, file-sync, peer-to-peer, Self-Hosted, Backup
 
 Description: Deploy Syncthing in Docker to synchronize files between devices without relying on cloud storage or third-party servers.
 

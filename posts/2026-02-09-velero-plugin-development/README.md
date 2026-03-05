@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Plugin Development, Go, Backups
+Tags: Velero, Kubernetes, Plugin Development, Go, Backup
 
 Description: Learn how to develop custom Velero plugins for specialized backup and restore logic. Complete guide covering plugin architecture, implementation patterns, and best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Backups, Restore, Disaster Recovery, Message Queue, DevOps, High Availability, Data Management
+Tags: RabbitMQ, Backup, Restore, Disaster Recovery, Message Queue, DevOps, High Availability, Data Management
 
 Description: A practical guide to backing up and restoring RabbitMQ configurations, definitions, and messages for disaster recovery and migration scenarios.
 

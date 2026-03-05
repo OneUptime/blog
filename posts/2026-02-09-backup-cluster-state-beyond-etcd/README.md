@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Backups, Disaster Recovery, Cluster Management
+Tags: Kubernetes, Backup, Disaster Recovery, Cluster Management
 
 Description: Learn how to comprehensively back up Kubernetes cluster state including not just etcd but also persistent volumes, secrets, configurations, and custom resources for complete disaster recovery.
 

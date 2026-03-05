@@ -289,7 +289,7 @@ kubectl describe gitrepository my-private-app -n flux-system
 
 A successful setup shows the source as ready.
 
-```
+```text
 NAME             REVISION              SUSPENDED   READY   MESSAGE
 my-private-app   main@sha1:abc123def   False       True    stored artifact for revision 'main@sha1:abc123def'
 ```

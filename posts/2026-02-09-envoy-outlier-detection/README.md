@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Envoy, Reliability, Load Balancing, Health Checks, Fault Tolerance
+Tags: Envoy, Reliability, Load Balancing, Health Check, Fault Tolerance
 
 Description: Learn how to configure Envoy outlier detection to automatically identify and eject unhealthy backend instances, improving service reliability through passive health checking.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Kubernetes, Backups, WAL-G, Disaster Recovery
+Tags: PostgreSQL, Kubernetes, Backup, WAL-G, Disaster Recovery
 
 Description: Learn how to implement PostgreSQL point-in-time recovery with WAL-G on Kubernetes, enabling precise recovery to any moment in time through continuous WAL archiving and automated backup management.
 

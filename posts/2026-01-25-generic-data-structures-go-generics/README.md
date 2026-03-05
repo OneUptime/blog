@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Generics, Data Structures, Go 1.21, Type Safety
+Tags: Go, Generic, Data Structures, Go 1.21, Type Safety
 
 Description: Learn how to build reusable, type-safe data structures in Go using generics. This guide covers stacks, queues, linked lists, and sets with practical examples and best practices.
 

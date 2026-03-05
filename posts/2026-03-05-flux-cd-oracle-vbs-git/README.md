@@ -24,7 +24,7 @@ Oracle VBS provides Git repository access via both HTTPS and SSH. For Flux CD, S
 
 The SSH URL format for VBS Git repositories is:
 
-```
+```text
 ssh://git@vbs.example.com/project-name/repo-name.git
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Database, Backups, MySQL, PostgreSQL
+Tags: Ubuntu, Database, Backup, MySQL, PostgreSQL
 
 Description: Implement automated database backup testing on Ubuntu to verify backup integrity, practice restoration, and ensure backups are actually usable when disaster strikes.
 

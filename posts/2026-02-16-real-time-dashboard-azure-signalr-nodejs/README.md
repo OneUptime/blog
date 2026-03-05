@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, SignalR, Node.js, Real-Time, Dashboards, WebSocket, JavaScript
+Tags: Azure, SignalR, Node.js, Real-Time, Dashboard, WebSocket, JavaScript
 
 Description: Build a real-time dashboard that pushes live updates to connected clients using Azure SignalR Service with a Node.js backend.
 

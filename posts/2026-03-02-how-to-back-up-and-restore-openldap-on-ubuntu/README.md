@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, OpenLDAP, Backups, Disaster Recovery, LDAP
+Tags: Ubuntu, OpenLDAP, Backup, Disaster Recovery, LDAP
 
 Description: Learn how to back up and restore OpenLDAP directories on Ubuntu using slapcat and slapadd, including automated backup scripts.
 

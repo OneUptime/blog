@@ -290,7 +290,7 @@ For clusters managing hundreds of Flux resources, using aggressive intervals (1m
 #   HelmRelease (standard):              30m
 ```
 
-Combine longer intervals with webhooks for the best of both worlds — fast convergence on push events, and regular drift correction at a sustainable pace.
+Combine longer intervals with webhooks for the best of both worlds - fast convergence on push events, and regular drift correction at a sustainable pace.
 
 ## Suspended Resources
 
@@ -322,4 +322,4 @@ spec:
 
 ## Summary
 
-The reconciliation interval is the fundamental timing mechanism in Flux CD. It controls how often each resource is checked and reconciled, directly affecting convergence speed, drift detection latency, and API server load. Use short intervals for critical applications and longer intervals for stable infrastructure. Combine intervals with webhooks to get immediate reactions to Git pushes while maintaining periodic drift correction. Use `retryInterval` for faster failure recovery and `timeout` to prevent stuck reconciliations. The interval is not a polling delay — it is the period between reconciliation starts, and it can be bypassed at any time with manual triggers or webhook events.
+The reconciliation interval is the fundamental timing mechanism in Flux CD. It controls how often each resource is checked and reconciled, directly affecting convergence speed, drift detection latency, and API server load. Use short intervals for critical applications and longer intervals for stable infrastructure. Combine intervals with webhooks to get immediate reactions to Git pushes while maintaining periodic drift correction. Use `retryInterval` for faster failure recovery and `timeout` to prevent stuck reconciliations. The interval is not a polling delay - it is the period between reconciliation starts, and it can be bypassed at any time with manual triggers or webhook events.

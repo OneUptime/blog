@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secrets, Sealed Secrets, Bitnami
+Tags: Flux CD, GitOps, Kubernetes, Secret, Sealed Secrets, Bitnami
 
 Description: Learn how to use Bitnami Sealed Secrets with Flux CD to safely store encrypted secrets in Git repositories.
 

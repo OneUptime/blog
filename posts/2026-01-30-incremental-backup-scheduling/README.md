@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backups, Data Protection, Database, SRE
+Tags: Backup, Data Protection, Database, SRE
 
 Description: Learn how to implement incremental backup strategies for efficient data protection.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Backups, Application
+Tags: ArgoCD, GitOps, Kubernetes, Backup, Application
 
 Description: Learn how to export ArgoCD applications in various formats for backup, migration, and version control with practical scripts and best practices.
 

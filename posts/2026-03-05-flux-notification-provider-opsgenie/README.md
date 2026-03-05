@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Notifications, Opsgenie, Incident Management, Monitoring
+Tags: Flux CD, GitOps, Kubernetes, Notifications, OpsGenie, Incident Management, Monitoring
 
 Description: Learn how to configure Flux CD's notification controller to send deployment and reconciliation alerts to Opsgenie using the Provider resource.
 

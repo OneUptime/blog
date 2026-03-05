@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, GRUB, Backups, System Recovery
+Tags: Ubuntu, GRUB, Backup, System Recovery
 
 Description: Learn how to back up and restore GRUB bootloader configuration on Ubuntu to recover from boot failures, disk replacements, and system migrations.
 

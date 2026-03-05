@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Verification, Installation, Troubleshooting, Health Checks
+Tags: Talos Linux, Verification, Installation, Troubleshooting, Health Check
 
 Description: A comprehensive checklist for verifying that your Talos Linux cluster installation completed successfully and is fully operational.
 

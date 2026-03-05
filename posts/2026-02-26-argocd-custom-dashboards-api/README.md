@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Dashboards, Monitoring
+Tags: ArgoCD, GitOps, Kubernetes, Dashboard, Monitoring
 
 Description: Learn how to build custom dashboards using the ArgoCD API to create tailored views for teams, executives, and operations with real-time deployment data.
 

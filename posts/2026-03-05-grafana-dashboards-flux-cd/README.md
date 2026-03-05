@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Grafana, Prometheus, Monitoring, Dashboards, Observability
+Tags: Flux CD, GitOps, Kubernetes, Grafana, Prometheus, Monitoring, Dashboard, Observability
 
 Description: Learn how to build custom Grafana dashboards for Flux CD using Prometheus metrics to monitor reconciliation health, performance, and resource status.
 

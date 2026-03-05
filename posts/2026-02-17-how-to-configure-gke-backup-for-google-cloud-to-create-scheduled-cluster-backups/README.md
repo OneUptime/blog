@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Backups, Disaster Recovery, Kubernetes, Cluster Management
+Tags: GCP, GKE, Backup, Disaster Recovery, Kubernetes, Cluster Management
 
 Description: Learn how to set up GKE Backup for Google Cloud to create automated, scheduled backups of your Kubernetes cluster resources and persistent volumes.
 

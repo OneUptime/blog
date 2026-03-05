@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Reconciliation, Controllers
+Tags: Flux CD, GitOps, Kubernetes, Reconciliation, Controller
 
 Description: A step-by-step breakdown of how Flux CD's reconciliation loop continuously synchronizes your Git-defined desired state with the actual state of your Kubernetes cluster.
 
@@ -87,7 +87,7 @@ The source-controller packages the repository contents into a tarball artifact a
 
 ## Step 3: Dependent Controllers Are Triggered
 
-When the source-controller updates an artifact, dependent controllers (kustomize-controller or helm-controller) detect the change and begin their own reconciliation. This happens through Kubernetes watch mechanisms — the controllers watch for changes to Source objects.
+When the source-controller updates an artifact, dependent controllers (kustomize-controller or helm-controller) detect the change and begin their own reconciliation. This happens through Kubernetes watch mechanisms - the controllers watch for changes to Source objects.
 
 ```yaml
 # A Kustomization references a GitRepository source
@@ -151,18 +151,18 @@ graph LR
 
 ## Step 6: Apply Changes
 
-If differences are detected, Flux applies the changes using server-side apply. This is an atomic operation per resource — each resource is applied individually, and failures on one resource do not prevent others from being applied.
+If differences are detected, Flux applies the changes using server-side apply. This is an atomic operation per resource - each resource is applied individually, and failures on one resource do not prevent others from being applied.
 
-When `spec.prune` is enabled, Flux also deletes resources that exist in the cluster but are no longer present in Git. This is how Flux handles resource removal — you delete the manifest from Git, and Flux removes it from the cluster.
+When `spec.prune` is enabled, Flux also deletes resources that exist in the cluster but are no longer present in Git. This is how Flux handles resource removal - you delete the manifest from Git, and Flux removes it from the cluster.
 
 ## Step 7: Health Checks
 
 After applying changes, the controller runs health checks on the affected resources. The health assessment waits for resources to become ready according to their type-specific readiness criteria:
 
-- **Deployments** — All replicas are available and updated.
-- **StatefulSets** — All replicas are ready with current revision.
-- **HelmReleases** — The Helm release reports success.
-- **Custom resources** — Status conditions show `Ready: True`.
+- **Deployments** - All replicas are available and updated.
+- **StatefulSets** - All replicas are ready with current revision.
+- **HelmReleases** - The Helm release reports success.
+- **Custom resources** - Status conditions show `Ready: True`.
 
 ```yaml
 # Health checks are configured via wait and timeout

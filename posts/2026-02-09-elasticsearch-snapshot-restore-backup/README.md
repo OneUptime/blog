@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Backups, Snapshots, Disaster Recovery, EFK Stack
+Tags: Elasticsearch, Backup, Snapshots, Disaster Recovery, EFK Stack
 
 Description: Configure Elasticsearch snapshot and restore functionality with S3, GCS, or Azure storage for automated backups, disaster recovery, and cluster migration strategies.
 

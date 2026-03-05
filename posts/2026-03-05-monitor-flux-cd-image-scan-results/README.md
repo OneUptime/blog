@@ -33,7 +33,7 @@ flux get image repository myapp -n flux-system
 
 The output shows the last scan time, the number of tags discovered, and the latest tag:
 
-```
+```text
 NAME    LAST SCAN                 SUSPENDED   READY   MESSAGE
 myapp   2026-03-05T14:30:00Z      False       True    successful scan: found 47 tags
 ```
@@ -60,7 +60,7 @@ flux get image policy myapp -n flux-system
 
 Output:
 
-```
+```text
 NAME    LATEST IMAGE                           READY   MESSAGE
 myapp   docker.io/myorg/myapp:v1.5.2          True    Latest image tag for 'docker.io/myorg/myapp' resolved to v1.5.2
 ```

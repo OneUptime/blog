@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GitHub Actions, Secrets, CI/CD, DevOps, Infrastructure as Code
+Tags: Terraform, GitHub Actions, Secret, CI/CD, DevOps, Infrastructure as Code
 
 Description: Learn how to manage GitHub Actions secrets with Terraform at repository, environment, and organization levels for secure CI/CD pipeline configuration.
 

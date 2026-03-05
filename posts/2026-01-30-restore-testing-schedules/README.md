@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backups, Testing, Disaster Recovery, Validation
+Tags: Backup, Testing, Disaster Recovery, Validation
 
 Description: Learn how to schedule and conduct regular restore tests for backup validation.
 

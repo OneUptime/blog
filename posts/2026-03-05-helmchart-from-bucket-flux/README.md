@@ -34,7 +34,7 @@ Bucket sources are a good fit when:
 
 When using a Bucket as a source for HelmChart resources, the bucket should contain chart directories at the expected paths.
 
-```
+```text
 my-bucket/
   charts/
     my-app/

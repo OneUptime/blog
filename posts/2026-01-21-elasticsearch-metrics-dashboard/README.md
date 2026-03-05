@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Metrics, Dashboards, Time-Series, Analytics, Visualization, Kibana
+Tags: Elasticsearch, Metrics, Dashboard, Time-Series, Analytics, Visualization, Kibana
 
 Description: A comprehensive guide to building metrics dashboards with Elasticsearch, covering time-series data ingestion, aggregations, Kibana visualizations, and real-time monitoring.
 

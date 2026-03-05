@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Event Hubs, Cosmos DB, Trading Platform, Real-Time Data, Financial Services, Stream Processing, Event Streaming
+Tags: Azure Event Hub, Cosmos DB, Trading Platform, Real-Time Data, Financial Services, Stream Processing, Event Streaming
 
 Description: Build a real-time trading data platform using Azure Event Hubs for ingestion and Cosmos DB for low-latency storage and querying.
 

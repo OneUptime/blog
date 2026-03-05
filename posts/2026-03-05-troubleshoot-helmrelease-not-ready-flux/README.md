@@ -49,7 +49,7 @@ kubectl get helmrelease my-app -n default \
 
 This will output something like:
 
-```
+```text
 Ready: False - UpgradeFailed - Helm upgrade failed: timed out waiting for the condition
 Released: False - UpgradeFailed - Helm upgrade failed: timed out waiting for the condition
 ```

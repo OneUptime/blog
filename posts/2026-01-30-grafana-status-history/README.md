@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboards, Status
+Tags: Grafana, Observability, Dashboard, Status
 
 Description: A complete guide to implementing Grafana Status History panels for visualizing state changes and service availability over time.
 

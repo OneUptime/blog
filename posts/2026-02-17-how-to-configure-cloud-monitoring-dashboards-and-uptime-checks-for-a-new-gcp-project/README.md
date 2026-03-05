@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Monitoring, Dashboards, Uptime Checks, Alerting, Observability
+Tags: GCP, Cloud Monitoring, Dashboard, Uptime Checks, Alerting, Observability
 
 Description: Set up Cloud Monitoring dashboards, uptime checks, and alerting policies for a new GCP project to gain visibility into infrastructure and application health from day one.
 

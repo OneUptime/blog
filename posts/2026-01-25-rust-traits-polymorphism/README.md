@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Traits, Polymorphism, Generics, Object-Oriented Programming
+Tags: Rust, Traits, Polymorphism, Generic, Object-Oriented Programming
 
 Description: Learn how to achieve polymorphism in Rust using traits. This guide covers static dispatch with generics, dynamic dispatch with trait objects, and when to use each approach.
 

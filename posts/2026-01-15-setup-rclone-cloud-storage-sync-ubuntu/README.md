@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, Rclone, Cloud Storage, Sync, Backups, Tutorial
+Tags: Ubuntu, Rclone, Cloud Storage, Sync, Backup, Tutorial
 
 Description: Complete guide to using Rclone for syncing and managing cloud storage on Ubuntu.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, Kubernetes, GKE, Backups
+Tags: Google Cloud, Kubernetes, GKE, Backup
 
 Description: Set up Backup for GKE to create automated backups of Kubernetes workloads, persistent volumes, and cluster state for disaster recovery.
 

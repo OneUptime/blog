@@ -24,7 +24,7 @@ This guide dives deep into SemVer range syntax, practical patterns, and strategi
 
 A semantic version follows the format `MAJOR.MINOR.PATCH`, optionally with pre-release and build metadata.
 
-```
+```text
 MAJOR.MINOR.PATCH[-prerelease][+buildmetadata]
 
 Examples:

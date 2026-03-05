@@ -33,7 +33,7 @@ The `kustomize create --autodetect` command generates a `kustomization.yaml` tha
 
 Here is a minimal repository structure for deploying plain YAML manifests.
 
-```
+```text
 manifests/
   app/
     namespace.yaml

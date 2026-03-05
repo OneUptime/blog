@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, OCI, Kustomize, Overlays
+Tags: Flux CD, GitOps, Kubernetes, OCI, Kustomize, Overlay
 
 Description: Learn how to package Kustomize overlays as OCI artifacts and deploy them using Flux CD's OCIRepository source.
 

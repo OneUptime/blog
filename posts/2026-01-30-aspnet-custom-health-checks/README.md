@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: C#, ASP.NET Core, Health Checks, Monitoring, .NET
+Tags: C#, ASP.NET Core, Health Check, Monitoring, .NET
 
 Description: Create custom health checks in ASP.NET Core for database connectivity, external services, and business logic validation with detailed health reports.
 

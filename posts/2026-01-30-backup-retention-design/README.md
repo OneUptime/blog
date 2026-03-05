@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backups, Data Protection, Compliance, SRE
+Tags: Backup, Data Protection, Compliance, SRE
 
 Description: Learn how to design backup retention policies that balance recovery needs with storage costs.
 

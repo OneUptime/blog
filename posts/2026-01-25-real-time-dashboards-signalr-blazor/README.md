@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, Blazor, SignalR, Real-Time, WebSocket, Dashboards
+Tags: .NET, Blazor, SignalR, Real-Time, WebSocket, Dashboard
 
 Description: Learn how to build real-time dashboards using SignalR and Blazor in .NET. Create live updating charts, metrics displays, and notification systems that push data to clients instantly.
 

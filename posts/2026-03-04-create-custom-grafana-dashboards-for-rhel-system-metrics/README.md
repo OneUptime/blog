@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Grafana, Dashboards, Prometheus, Visualization, Monitoring
+Tags: RHEL, Grafana, Dashboard, Prometheus, Visualization, Monitoring
 
 Description: Build custom Grafana dashboards with PromQL queries to visualize RHEL system metrics including CPU usage, memory, disk I/O, and network throughput.
 

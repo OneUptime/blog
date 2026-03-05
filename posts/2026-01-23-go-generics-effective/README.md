@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Generics, Type Parameters, Constraints, Go 1.18
+Tags: Go, Golang, Generic, Type Parameters, Constraints, Go 1.18
 
 Description: Learn how to use generics effectively in Go including type parameters, constraints, generic data structures, and best practices.
 

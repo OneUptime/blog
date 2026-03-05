@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Monitoring, talosctl, Dashboards
+Tags: Talos Linux, Kubernetes, Monitoring, talosctl, Dashboard
 
 Description: Explore the talosctl dashboard command for real-time monitoring of Talos Linux nodes including CPU, memory, and service status.
 

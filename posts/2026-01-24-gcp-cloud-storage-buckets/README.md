@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Storage, Buckets, Google Cloud, DevOps, Infrastructure
+Tags: GCP, Cloud Storage, Bucket, Google Cloud, DevOps, Infrastructure
 
 Description: Learn how to create, configure, and manage Google Cloud Storage buckets with best practices for security, lifecycle policies, and access control.
 

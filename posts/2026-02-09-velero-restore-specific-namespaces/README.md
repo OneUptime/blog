@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backups, Restore, Namespace
+Tags: Velero, Kubernetes, Backup, Restore, Namespace
 
 Description: Master selective namespace restoration with Velero for targeted recovery operations in Kubernetes. Learn filtering techniques, namespace mapping, and resource selection strategies.
 

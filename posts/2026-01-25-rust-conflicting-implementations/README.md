@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Traits, Generics, Type System, Error Handling
+Tags: Rust, Traits, Generic, Type System, Error Handling
 
 Description: Learn how to resolve conflicting trait implementation errors in Rust. This guide explains the orphan rule, coherence, and practical strategies for working around implementation conflicts.
 

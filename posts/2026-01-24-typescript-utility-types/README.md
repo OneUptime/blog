@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Utility Types, Generics, Partial, Pick, Omit, Record, Type Manipulation
+Tags: TypeScript, Utility Types, Generic, Partial, Pick, Omit, Record, Type Manipulation
 
 Description: Learn how to use TypeScript utility types to transform and manipulate types for cleaner, more reusable code.
 

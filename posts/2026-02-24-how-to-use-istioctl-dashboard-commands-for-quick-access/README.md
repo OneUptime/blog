@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, istioctl, Dashboards, Monitoring, Kubernetes
+Tags: Istio, istioctl, Dashboard, Monitoring, Kubernetes
 
 Description: A practical guide to using istioctl dashboard commands to quickly access Kiali, Grafana, Prometheus, Jaeger, and Envoy admin interfaces.
 

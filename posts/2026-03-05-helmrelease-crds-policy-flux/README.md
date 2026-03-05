@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, CRDs, Custom Resource Definitions, Installation Policy
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, CRD, Custom Resource Definitions, Installation Policy
 
 Description: Learn how to configure the CRDs installation policy for HelmRelease in Flux CD to control how Custom Resource Definitions are created and updated during Helm operations.
 

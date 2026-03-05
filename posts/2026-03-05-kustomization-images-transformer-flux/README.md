@@ -27,7 +27,7 @@ Kustomize scans all container image fields in pods, Deployments, StatefulSets, D
 
 ## Repository Structure
 
-```
+```text
 apps/
   ecommerce/
     base/

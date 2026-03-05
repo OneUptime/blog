@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Dashboards, Security, RBAC, Authentication, DevOps
+Tags: Kubernetes, Dashboard, Security, RBAC, Authentication, DevOps
 
 Description: Learn how to deploy the Kubernetes Dashboard securely with proper authentication, RBAC configuration, and access controls.
 

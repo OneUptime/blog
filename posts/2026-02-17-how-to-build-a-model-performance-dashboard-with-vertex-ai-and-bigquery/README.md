@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vertex AI, BigQuery, Model Monitoring, Dashboards, Google Cloud
+Tags: Vertex AI, BigQuery, Model Monitoring, Dashboard, Google Cloud
 
 Description: Learn how to build a comprehensive model performance dashboard using Vertex AI metrics and BigQuery for tracking ML model health in production.
 

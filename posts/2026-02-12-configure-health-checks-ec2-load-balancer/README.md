@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EC2, Load Balancing, Health Checks, Monitoring, ALB
+Tags: AWS, EC2, Load Balancing, Health Check, Monitoring, ALB
 
 Description: Learn how to configure and optimize health checks for EC2 instances behind AWS load balancers to ensure reliable traffic routing and quick failure detection.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, TLS, Secrets, Security, Certificates
+Tags: Talos Linux, Kubernetes, TLS, Secret, Security, Certificates
 
 Description: A complete guide to creating and configuring TLS Secrets on Talos Linux for securing your Kubernetes services with SSL/TLS certificates.
 

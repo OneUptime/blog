@@ -237,7 +237,7 @@ spec:
 
 Organize your SecretProviderClass resources in the GitOps repository:
 
-```
+```text
 clusters/
   production/
     secrets/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ubuntu, Dashboards, DevOps, Monitoring, Web UI, Cluster Management
+Tags: Kubernetes, Ubuntu, Dashboard, DevOps, Monitoring, Web UI, Cluster Management
 
 Description: A complete guide to installing, configuring, and securing Kubernetes Dashboard on Ubuntu for visual cluster management and monitoring.
 

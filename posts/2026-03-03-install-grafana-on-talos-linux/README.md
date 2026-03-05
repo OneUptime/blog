@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Grafana, Monitoring, Dashboards, Kubernetes, Observability
+Tags: Talos Linux, Grafana, Monitoring, Dashboard, Kubernetes, Observability
 
 Description: A practical guide to deploying Grafana on Talos Linux for building monitoring dashboards and visualizing metrics from Prometheus and other data sources.
 

@@ -36,7 +36,7 @@ kubectl events -n flux-system --for ocirepository/<name>
 
 ### Symptoms
 
-```
+```text
 failed to pull artifact: GET https://registry.example.com/v2/manifests/app/manifests/v1.0.0: UNAUTHORIZED
 ```
 
@@ -86,13 +86,13 @@ kubectl run -n flux-system debug --rm -it --image=curlimages/curl -- \
 
 ### Symptoms
 
-```
+```text
 failed to pull artifact: x509: certificate signed by unknown authority
 ```
 
 Or:
 
-```
+```text
 failed to pull artifact: tls: failed to verify certificate
 ```
 
@@ -146,13 +146,13 @@ kubectl run -n flux-system debug --rm -it --image=curlimages/curl -- \
 
 ### Symptoms
 
-```
+```text
 failed to pull artifact: not found
 ```
 
 Or:
 
-```
+```text
 failed to determine artifact digest: manifest unknown
 ```
 
@@ -190,7 +190,7 @@ url: oci://registry.example.com/manifests/app
 
 ### Symptoms
 
-```
+```text
 failed to determine artifact tag: no match found for semver: >=1.0.0
 ```
 
@@ -229,13 +229,13 @@ flux push artifact oci://registry.example.com/manifests/app:1.0.0 \
 
 ### Symptoms
 
-```
+```text
 failed to pull artifact: context deadline exceeded
 ```
 
 Or:
 
-```
+```text
 failed to pull artifact: i/o timeout
 ```
 
@@ -272,7 +272,7 @@ kubectl get deploy source-controller -n flux-system \
 
 ### Symptoms
 
-```
+```text
 failed to verify artifact: no matching signatures
 ```
 
@@ -317,7 +317,7 @@ cosign sign --key cosign.key registry.example.com/manifests/app:v1.0.0
 
 ### Symptoms
 
-```
+```text
 failed to pull artifact: unexpected status code 429: rate limit exceeded
 ```
 

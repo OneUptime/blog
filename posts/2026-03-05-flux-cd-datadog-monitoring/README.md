@@ -139,31 +139,31 @@ In the Datadog UI, create a new dashboard with widgets using these queries:
 
 **Reconciliation Failures:**
 
-```
+```text
 sum:flux.gotk_reconcile_condition{type:ready,status:false}
 ```
 
 **Ready Reconciliations:**
 
-```
+```text
 sum:flux.gotk_reconcile_condition{type:ready,status:true}
 ```
 
 **P95 Reconciliation Duration:**
 
-```
+```text
 p95:flux.gotk_reconcile_duration_seconds.quantile{*} by {kind,name}
 ```
 
 **Reconciliation Error Rate:**
 
-```
+```text
 sum:flux.controller_runtime_reconcile_errors_total{*}.as_rate() by {controller}
 ```
 
 **Suspended Resources:**
 
-```
+```text
 sum:flux.gotk_suspend_status{*} by {kind}
 ```
 

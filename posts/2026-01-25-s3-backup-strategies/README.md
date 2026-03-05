@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS, S3, Backups, Disaster Recovery, Cloud Storage
+Tags: AWS, S3, Backup, Disaster Recovery, Cloud Storage
 
 Description: Learn how to build reliable backup strategies using Amazon S3, including versioning, lifecycle policies, cross-region replication, and cost optimization techniques with practical examples.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Dashboards, Visualization, Legend, Sorting, UI, Monitoring, Time Series
+Tags: Grafana, Dashboard, Visualization, Legend, Sorting, UI, Monitoring, Time Series
 
 Description: Learn how to sort legends alphabetically by series name in Grafana panels.
 

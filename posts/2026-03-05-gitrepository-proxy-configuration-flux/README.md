@@ -162,7 +162,7 @@ kubectl describe gitrepository my-app -n flux-system
 
 A successful reconciliation indicates that the proxy connection is working.
 
-```
+```text
 NAME    REVISION              SUSPENDED   READY   MESSAGE
 my-app  main@sha1:abc123def   False       True    stored artifact for revision 'main@sha1:abc123def'
 ```

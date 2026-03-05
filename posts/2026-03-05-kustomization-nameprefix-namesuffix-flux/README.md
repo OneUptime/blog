@@ -29,7 +29,7 @@ This automatic reference updating is what makes `namePrefix` and `nameSuffix` sa
 
 ## Repository Structure
 
-```
+```text
 apps/
   worker/
     base/

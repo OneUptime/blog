@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Snapshots, Storage, Kubernetes, AWS, Backups
+Tags: Snapshots, Storage, Kubernetes, AWS, Backup
 
 Description: A practical guide to managing storage snapshots across cloud providers and Kubernetes, covering creation, scheduling, retention, and recovery procedures.
 

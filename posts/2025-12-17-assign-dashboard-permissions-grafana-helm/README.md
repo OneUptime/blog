@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Helm, Kubernetes, RBAC, Dashboards
+Tags: Grafana, Helm, Kubernetes, RBAC, Dashboard
 
 Description: Configure dashboard folder permissions and access control through Grafana Helm chart values using provisioning, including team-based access, organization roles, and RBAC settings.
 

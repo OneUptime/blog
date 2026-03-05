@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, BorgBackup, Backups, Linux
+Tags: RHEL, BorgBackup, Backup, Linux
 
 Description: Learn how to automate Backup Verification and Integrity Checks with BorgBackup on RHEL with step-by-step instructions, configuration examples, and best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secrets, SOPS, Configuration
+Tags: Flux CD, GitOps, Kubernetes, Secret, SOPS, Configuration
 
 Description: Learn how to configure the .sops.yaml file to define encryption rules for consistent secret management across your Flux CD repository.
 

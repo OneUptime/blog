@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Firebase, GCP, Cloud Storage, Buckets, Integration
+Tags: Firebase, GCP, Cloud Storage, Bucket, Integration
 
 Description: Understand the relationship between Firebase Cloud Storage and GCP Cloud Storage buckets and learn how to use both SDKs to manage your storage effectively.
 

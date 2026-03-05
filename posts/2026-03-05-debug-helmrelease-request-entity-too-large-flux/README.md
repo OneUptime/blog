@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Debugging, Request Entity Too Large, Release History
 
-Description: Learn how to diagnose and fix the "request entity too large" error in Flux CD HelmRelease caused by oversized Helm release secrets.
+Description: Learn how to diagnose and fix the 'request entity too large' error in Flux CD HelmRelease caused by oversized Helm release secrets.
 
 ---
 

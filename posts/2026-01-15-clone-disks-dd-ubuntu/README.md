@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ubuntu, dd, Disk Clone, Backups, System Migration, Tutorial
+Tags: Ubuntu, dd, Disk Clone, Backup, System Migration, Tutorial
 
 Description: Complete guide to cloning disks and partitions using dd command on Ubuntu.
 

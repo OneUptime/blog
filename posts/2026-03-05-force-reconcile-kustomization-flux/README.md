@@ -44,7 +44,7 @@ flux reconcile ks my-app
 
 Expected output:
 
-```
+```text
 ► annotating Kustomization my-app in flux-system namespace
 ✔ Kustomization annotated
 ◎ waiting for Kustomization reconciliation
@@ -72,7 +72,7 @@ This is particularly useful when you have just pushed a commit and want Flux to 
 
 Output with source reconciliation:
 
-```
+```text
 ► annotating GitRepository my-repo in flux-system namespace
 ✔ GitRepository annotated
 ◎ waiting for GitRepository reconciliation
@@ -96,7 +96,7 @@ flux get ks my-app
 
 Output:
 
-```
+```text
 NAME    REVISION            SUSPENDED  READY  MESSAGE
 my-app  main@sha1:def456    False      True   Applied revision: main@sha1:def456
 ```

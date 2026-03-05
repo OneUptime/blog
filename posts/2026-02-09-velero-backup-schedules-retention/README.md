@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backups, Disaster Recovery, Retention
+Tags: Velero, Kubernetes, Backup, Disaster Recovery, Retention
 
 Description: Learn how to configure automated Velero backup schedules with intelligent retention policies for Kubernetes clusters. Complete guide covering scheduling strategies and lifecycle management.
 

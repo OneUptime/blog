@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Health Checks, Monitoring, Observability
+Tags: Flux CD, GitOps, Kubernetes, Health Check, Monitoring, Observability
 
 Description: Learn how to verify the health and readiness of Flux CD controllers using CLI commands, Kubernetes probes, metrics, and automated monitoring.
 
@@ -42,7 +42,7 @@ This command verifies:
 
 Sample output for a healthy installation:
 
-```
+```text
 -> checking prerequisites
 -> Kubernetes 1.28.0 >=1.20.6-0
 -> checking controllers
@@ -89,7 +89,7 @@ kubectl get deployments -n flux-system -o wide
 
 Expected output:
 
-```
+```text
 NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
 helm-controller           1/1     1            1           7d
 kustomize-controller      1/1     1            1           7d

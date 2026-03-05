@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Backups, Disaster Recovery, Configuration Management, Kubernetes
+Tags: Istio, Backup, Disaster Recovery, Configuration Management, Kubernetes
 
 Description: A practical guide to backing up and restoring Istio configuration including VirtualServices, DestinationRules, Gateways, and other mesh resources.
 

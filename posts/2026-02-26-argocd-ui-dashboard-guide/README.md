@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Dashboards, DevOps
+Tags: ArgoCD, GitOps, Kubernetes, Dashboard, DevOps
 
 Description: A beginner-friendly guide to understanding the ArgoCD web UI dashboard, including application tiles, sync status, health indicators, and the resource tree view.
 

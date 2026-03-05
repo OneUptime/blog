@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, KVM, Backups, Virtualization
+Tags: Ubuntu, KVM, Backup, Virtualization
 
 Description: Learn how to back up KVM virtual machines on Ubuntu using snapshot-based live backups, disk image copies, and XML configuration exports for complete VM recovery.
 

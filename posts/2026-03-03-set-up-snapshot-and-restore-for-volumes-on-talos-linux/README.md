@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Volume Snapshots, Backups, Disaster Recovery
+Tags: Talos Linux, Kubernetes, Volume Snapshots, Backup, Disaster Recovery
 
 Description: Learn how to configure volume snapshots and restore workflows for persistent data on Talos Linux clusters.
 

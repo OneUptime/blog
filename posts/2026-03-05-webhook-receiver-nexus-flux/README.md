@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Webhooks, Nexus, Receiver, Container Registry
+Tags: Flux CD, GitOps, Kubernetes, Webhook, Nexus, Receiver, Container Registry
 
 Description: Learn how to configure a Flux Receiver to accept Nexus Repository Manager webhooks and trigger reconciliation on container image events.
 

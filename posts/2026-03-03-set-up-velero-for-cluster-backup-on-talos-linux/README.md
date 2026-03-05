@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Velero, Kubernetes, Backups, Disaster Recovery
+Tags: Talos Linux, Velero, Kubernetes, Backup, Disaster Recovery
 
 Description: A complete guide to installing and configuring Velero on Talos Linux for Kubernetes cluster backup and disaster recovery.
 

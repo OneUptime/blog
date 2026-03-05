@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, LXD, Containers, Backups, Snapshots
+Tags: Ubuntu, LXD, Containers, Backup, Snapshots
 
 Description: A complete guide to backing up LXD containers on Ubuntu using snapshots, exports, and automated backup strategies to protect containerized workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, ZFS, Backups, Replication, SSH
+Tags: Ubuntu, ZFS, Backup, Replication, SSH
 
 Description: Use zfs send and zfs receive to replicate ZFS snapshots to remote systems for off-site backup, covering full and incremental send operations on Ubuntu.
 

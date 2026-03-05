@@ -10,14 +10,14 @@ Description: A straightforward explanation of how GitOps principles work in prac
 
 ## What Is GitOps?
 
-GitOps is an operational framework that takes DevOps best practices used for application development — version control, collaboration, compliance — and applies them to infrastructure automation. The core idea is simple: Git is the single source of truth for your desired system state, and automated processes ensure your live environment matches that state.
+GitOps is an operational framework that takes DevOps best practices used for application development - version control, collaboration, compliance - and applies them to infrastructure automation. The core idea is simple: Git is the single source of truth for your desired system state, and automated processes ensure your live environment matches that state.
 
 There are four key principles behind GitOps:
 
-1. **Declarative configuration** — The entire system is described declaratively.
-2. **Version controlled** — The desired state is stored in Git, providing a full audit trail.
-3. **Automated delivery** — Approved changes are automatically applied to the system.
-4. **Continuous reconciliation** — Software agents continuously observe and correct drift.
+1. **Declarative configuration** - The entire system is described declaratively.
+2. **Version controlled** - The desired state is stored in Git, providing a full audit trail.
+3. **Automated delivery** - Approved changes are automatically applied to the system.
+4. **Continuous reconciliation** - Software agents continuously observe and correct drift.
 
 ## Where Flux CD Fits In
 
@@ -172,9 +172,9 @@ In the push model, the CI server needs direct access to the cluster API, which m
 
 Flux CD handles failures gracefully:
 
-- **Git is unavailable** — Flux retries on the next interval. The cluster continues running with the last known good state.
-- **Manifests have errors** — Flux reports the error in the Kustomization status and sends alerts via the notification-controller. The cluster retains the previous working state.
-- **Someone manually changes a resource** — Flux detects the drift and reverts it on the next reconciliation, enforcing the Git-defined state.
+- **Git is unavailable** - Flux retries on the next interval. The cluster continues running with the last known good state.
+- **Manifests have errors** - Flux reports the error in the Kustomization status and sends alerts via the notification-controller. The cluster retains the previous working state.
+- **Someone manually changes a resource** - Flux detects the drift and reverts it on the next reconciliation, enforcing the Git-defined state.
 
 ## Getting Started with Flux CD
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Backups, S3, AWS, DevOps, Disaster Recovery
+Tags: Redis, Backup, S3, AWS, DevOps, Disaster Recovery
 
 Description: Learn how to set up automated Redis backups to Amazon S3 with RDB snapshots, backup rotation, encryption, and restoration procedures for disaster recovery.
 

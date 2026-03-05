@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Disaster Recovery, High Availability, Backups, Business Continuity
+Tags: Helm, Kubernetes, DevOps, Disaster Recovery, High Availability, Backup, Business Continuity
 
 Description: Complete guide to implementing disaster recovery strategies for Kubernetes using Helm for backup, replication, and failover automation.
 

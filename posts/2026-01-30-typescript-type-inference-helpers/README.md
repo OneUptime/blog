@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: TypeScript, Type Inference, Generics, Utility Types
+Tags: TypeScript, Type Inference, Generic, Utility Types
 
 Description: Create type inference helper utilities in TypeScript using infer keyword, conditional types, and mapped types for automatic type extraction.
 

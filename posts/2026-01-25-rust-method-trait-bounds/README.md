@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Traits, Generics, Error Handling, Type System
+Tags: Rust, Traits, Generic, Error Handling, Type System
 
 Description: Learn how to fix 'method exists but trait bounds not satisfied' errors in Rust. This guide covers trait bounds, where clauses, and how to add the required trait implementations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Dashboards, Customization
+Tags: ArgoCD, GitOps, Kubernetes, Dashboard, Customization
 
 Description: Learn how to build custom dashboard widgets for ArgoCD to display cost data, deployment metrics, compliance status, and more in the ArgoCD UI.
 

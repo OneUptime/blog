@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Disaster Recovery, Backups, AWS Backup, Cloud
+Tags: AWS, Disaster Recovery, Backup, AWS Backup, Cloud
 
 Description: A hands-on guide to implementing a backup and restore disaster recovery strategy on AWS using AWS Backup, cross-region replication, and automated recovery procedures.
 

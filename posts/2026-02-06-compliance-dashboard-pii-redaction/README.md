@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Compliance, PII Redaction, Dashboards
+Tags: OpenTelemetry, Compliance, PII Redaction, Dashboard
 
 Description: Build a compliance dashboard that measures and tracks PII redaction effectiveness across your OpenTelemetry pipelines.
 

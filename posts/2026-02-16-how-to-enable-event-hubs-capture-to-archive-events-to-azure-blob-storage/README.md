@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Event Hubs, Event Capture, Azure Blob Storage, Data Archival, Event Streaming, ADLS Gen2, Apache Avro
+Tags: Azure Event Hub, Event Capture, Azure Blob Storage, Data Archival, Event Streaming, ADLS Gen2, Apache Avro
 
 Description: Learn how to enable Event Hubs Capture to automatically archive streaming events to Azure Blob Storage or Data Lake Storage in Avro format.
 

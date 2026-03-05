@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Backups, Restore, Disaster Recovery, Data Recovery
+Tags: AWS, Backup, Restore, Disaster Recovery, Data Recovery
 
 Description: Step-by-step guide to restoring AWS resources from backup recovery points, covering EBS, RDS, DynamoDB, EFS, EC2, and point-in-time recovery scenarios.
 

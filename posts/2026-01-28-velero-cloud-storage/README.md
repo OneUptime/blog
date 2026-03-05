@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backups, AWS S3, Azure Blob, Google Cloud Storage
+Tags: Velero, Kubernetes, Backup, AWS S3, Azure Blob, Google Cloud Storage
 
 Description: A practical guide to configuring Velero with major cloud storage providers including AWS S3, Azure Blob Storage, and Google Cloud Storage for Kubernetes backups.
 

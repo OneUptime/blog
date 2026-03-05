@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Backups, Hooks, Database Backup
+Tags: Velero, Kubernetes, Backup, Hooks, Database Backup
 
 Description: Learn how to use Velero backup and restore hooks to ensure application-consistent backups by running pre and post backup commands.
 

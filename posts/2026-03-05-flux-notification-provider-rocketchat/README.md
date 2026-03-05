@@ -30,7 +30,7 @@ In your Rocket.Chat instance, go to **Administration** then **Integrations** and
 
 Save the integration and copy the **Webhook URL**. It will look something like:
 
-```
+```text
 https://rocketchat.example.com/hooks/TOKEN_VALUE
 ```
 

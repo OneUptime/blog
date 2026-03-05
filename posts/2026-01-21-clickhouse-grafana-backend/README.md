@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Grafana, Dashboards, Visualization, Database, Analytics, Monitoring, Time-Series
+Tags: ClickHouse, Grafana, Dashboard, Visualization, Database, Analytics, Monitoring, Time-Series
 
 Description: A practical guide to using ClickHouse as a data source for Grafana dashboards, covering plugin setup, query optimization, variables, and best practices for building fast analytics dashboards.
 

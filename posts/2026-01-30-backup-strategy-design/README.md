@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Backups, Disaster Recovery, Database, DevOps
+Tags: Backup, Disaster Recovery, Database, DevOps
 
 Description: A practical guide to designing a robust backup strategy that protects your data, meets recovery objectives, and scales with your infrastructure.
 

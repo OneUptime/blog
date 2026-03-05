@@ -73,7 +73,7 @@ flux get kustomizations
 
 Output:
 
-```
+```text
 NAME       READY   MESSAGE                                    REVISION          SUSPENDED
 my-app     True    Applied revision: main@sha1:abc123         main@sha1:abc123  False
 my-infra   False   kustomize build failed: ...                main@sha1:def456  False
@@ -127,7 +127,7 @@ Flux resources can have multiple condition types beyond `Ready`. Common addition
 
 **Successful reconciliation**:
 
-```
+```text
 Applied revision: main@sha1:abc123def456
 ```
 
@@ -135,7 +135,7 @@ This means Flux successfully applied all manifests from the given Git commit.
 
 **Build failure**:
 
-```
+```text
 kustomize build failed: accumulating resources: accumulating resources from 'deployment.yaml': open /tmp/kustomization-123/deployment.yaml: no such file or directory
 ```
 
@@ -143,7 +143,7 @@ A file referenced in kustomization.yaml does not exist. Check the path and file 
 
 **Dependency not ready**:
 
-```
+```text
 dependency 'flux-system/infrastructure' is not ready
 ```
 
@@ -155,7 +155,7 @@ flux tree kustomization my-app
 
 **Health check failure**:
 
-```
+```text
 Health check failed after 5m0s, timeout waiting for: [Deployment/default/my-app status: 'False']
 ```
 
@@ -168,7 +168,7 @@ kubectl get events -n default --field-selector involvedObject.name=my-app
 
 **Authentication error**:
 
-```
+```text
 failed to checkout and determine revision: unable to clone 'ssh://git@github.com/my-org/repo': ssh: handshake failed
 ```
 

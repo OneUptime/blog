@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Bareos, Backups, Linux
+Tags: RHEL, Bareos, Backup, Linux
 
 Description: Learn how to set Up Bareos with PostgreSQL as the Catalog Database on RHEL with step-by-step instructions, configuration examples, and best practices.
 

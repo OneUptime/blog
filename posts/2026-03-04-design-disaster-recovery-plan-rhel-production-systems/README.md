@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Disaster Recovery, Backups, Production, Linux
+Tags: RHEL, Disaster Recovery, Backup, Production, Linux
 
 Description: Build a disaster recovery plan for RHEL production servers covering backup strategies, recovery procedures, and testing practices.
 

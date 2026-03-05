@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, etcd, Kubernetes, Maintenance, DevOps, High Availability, Backups
+Tags: K3s, etcd, Kubernetes, Maintenance, DevOps, High Availability, Backup
 
 Description: A practical guide to maintaining etcd in K3s clusters, covering health checks, backups, compaction, defragmentation, member management, and disaster recovery procedures.
 

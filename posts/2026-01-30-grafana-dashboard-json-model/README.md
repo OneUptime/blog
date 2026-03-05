@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboards, JSON
+Tags: Grafana, Observability, Dashboard, JSON
 
 Description: Learn how to create, customize, and manage Grafana dashboards using the JSON model for version control, automation, and reproducibility.
 

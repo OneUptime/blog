@@ -22,7 +22,7 @@ The field was introduced in Kustomize v5.0 and is supported by Flux's built-in K
 
 ## Repository Structure
 
-```
+```text
 apps/
   platform/
     base/

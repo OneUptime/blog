@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Crossplane, Kubernetes, Webhooks, Validation, Policy
+Tags: Crossplane, Kubernetes, Webhook, Validation, Policy
 
 Description: Learn how to configure validation webhooks for Crossplane composite resources to enforce policies, validate parameters, and prevent misconfigurations before they reach cloud providers.
 

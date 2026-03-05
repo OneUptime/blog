@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Storage, Object Versioning, Data Protection, Backups
+Tags: GCP, Google Cloud Storage, Object Versioning, Data Protection, Backup
 
 Description: A complete guide to enabling, managing, and working with object versioning in Google Cloud Storage for data protection and recovery.
 

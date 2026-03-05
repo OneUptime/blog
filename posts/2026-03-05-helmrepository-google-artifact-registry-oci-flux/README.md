@@ -1,4 +1,4 @@
-# How to Configure HelmRepository with Google Artifact Registry for Helm OCI in Flux
+# How to Configure HelmRepository with Google Artifact Registry OCI in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

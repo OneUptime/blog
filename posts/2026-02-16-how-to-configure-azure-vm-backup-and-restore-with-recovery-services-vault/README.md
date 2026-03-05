@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Virtual Machines, Backups, Recovery Services Vault, Disaster Recovery, Azure CLI, Data Protection
+Tags: Azure, Virtual Machines, Backup, Recovery Services Vault, Disaster Recovery, Azure CLI, Data Protection
 
 Description: How to set up Azure VM backup using Recovery Services Vault, configure backup policies, and restore VMs from backup snapshots.
 

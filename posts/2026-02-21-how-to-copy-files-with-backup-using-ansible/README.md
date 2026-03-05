@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, File Management, Backups, Configuration Management
+Tags: Ansible, File Management, Backup, Configuration Management
 
 Description: Learn how to use the Ansible copy module backup parameter to automatically create backup copies of files before overwriting them on remote hosts.
 

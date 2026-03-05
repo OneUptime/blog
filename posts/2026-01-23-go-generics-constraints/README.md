@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Generics, Type Constraints, Type Parameters, Go 1.18
+Tags: Go, Golang, Generic, Type Constraints, Type Parameters, Go 1.18
 
 Description: Learn how to use Go generics effectively with type constraints including any, comparable, custom constraints, and the constraints package.
 

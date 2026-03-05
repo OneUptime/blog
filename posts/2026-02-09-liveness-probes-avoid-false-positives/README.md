@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Liveness Probe, Health Checks, Reliability
+Tags: Kubernetes, Liveness Probe, Health Check, Reliability
 
 Description: Design liveness probes that accurately detect unrecoverable failures without triggering false positive restarts that degrade service availability and create cascading failures.
 

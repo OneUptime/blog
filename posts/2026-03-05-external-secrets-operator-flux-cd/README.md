@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secrets, External Secrets Operator, ESO
+Tags: Flux CD, GitOps, Kubernetes, Secret, External Secrets Operator, ESO
 
 Description: Learn how to deploy and use the External Secrets Operator with Flux CD to sync secrets from external providers into Kubernetes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, PhantomData, Type System, Generics, Zero-Cost Abstractions
+Tags: Rust, PhantomData, Type System, Generic, Zero-Cost Abstractions
 
 Description: Learn how to use PhantomData in Rust for type-level programming. This guide covers phantom type parameters, variance, ownership markers, and practical use cases.
 

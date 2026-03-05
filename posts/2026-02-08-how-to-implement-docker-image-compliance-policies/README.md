@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Compliance, Security, image policies, OPA, Vulnerability Scanning, CI/CD
+Tags: Docker, Compliance, Security, Image Policies, OPA, Vulnerability Scanning, CI/CD
 
 Description: Implement Docker image compliance policies using OPA, vulnerability scanners, and CI/CD gates to enforce security standards across your organization.
 

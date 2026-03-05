@@ -69,7 +69,7 @@ spec:
 
 This produces commits like:
 
-```
+```text
 Automated image update
 
 Automation name: flux-system/image-updater
@@ -108,7 +108,7 @@ spec:
 
 This gives you output like:
 
-```
+```text
 Automated image update
 
 Automation name: flux-system/image-updater
@@ -144,7 +144,7 @@ spec:
 
 This produces detailed commit messages showing the before and after for each image:
 
-```
+```text
 Automated image update
 
 Deployment/myapp:

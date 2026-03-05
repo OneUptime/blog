@@ -64,7 +64,7 @@ flux get helmreleases -A
 
 This outputs a table showing the namespace, name, revision, suspended status, ready state, and message for every HelmRelease in the cluster. Example output:
 
-```
+```text
 NAMESPACE    NAME        REVISION   SUSPENDED  READY  MESSAGE
 monitoring   prometheus  45.7.1     False      True   Helm install succeeded
 logging      loki        2.9.1      False      True   Helm upgrade succeeded

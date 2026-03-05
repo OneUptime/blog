@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Desktop, Dashboards, GUI, Container Management, DevOps
+Tags: Docker, Docker Desktop, Dashboard, GUI, Container Management, DevOps
 
 Description: Master the Docker Desktop Dashboard to manage containers, images, volumes, and builds through its graphical interface.
 

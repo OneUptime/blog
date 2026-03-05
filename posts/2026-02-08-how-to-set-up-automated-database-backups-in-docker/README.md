@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Database, Backups, PostgreSQL, MySQL, MongoDB, Automation, DevOps
+Tags: Docker, Database, Backup, PostgreSQL, MySQL, MongoDB, Automation, DevOps
 
 Description: Learn how to configure automated database backups for PostgreSQL, MySQL, and MongoDB using Docker containers and cron scheduling.
 

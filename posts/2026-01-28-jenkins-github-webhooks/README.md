@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Jenkins, GitHub, Webhooks, CI/CD, Automation
+Tags: Jenkins, GitHub, Webhook, CI/CD, Automation
 
 Description: Learn how to connect GitHub webhooks to Jenkins so builds trigger automatically on pushes and pull requests.
 

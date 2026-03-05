@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: BullMQ, Node.js, Redis, Arena, Monitoring, Dashboards, Queue Visualization, Job Management
+Tags: BullMQ, Node.js, Redis, Arena, Monitoring, Dashboard, Queue Visualization, Job Management
 
 Description: A comprehensive guide to setting up Arena for monitoring BullMQ queues, including configuration options, queue visualization, job inspection, and building a production-ready monitoring dashboard.
 

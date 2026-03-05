@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Checks, Liveness Probe, Readiness Probe, Container Orchestration
+Tags: Kubernetes, Health Check, Liveness Probe, Readiness Probe, Container Orchestration
 
 Description: Learn how to implement health checks that properly distinguish between liveness and readiness in Kubernetes, ensuring your applications handle startup, runtime failures, and traffic routing correctly.
 

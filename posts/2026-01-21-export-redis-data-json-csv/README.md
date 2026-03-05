@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Data Export, JSON, CSV, Backups, ETL, Data Migration
+Tags: Redis, Data Export, JSON, CSV, Backup, ETL, Data Migration
 
 Description: A comprehensive guide to exporting Redis data to JSON and CSV formats for backup, analysis, and migration purposes.
 

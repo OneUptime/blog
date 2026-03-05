@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Kubernetes, Multi-Cloud, Backups, Cloud Storage
+Tags: Velero, Kubernetes, Multi-Cloud, Backup, Cloud Storage
 
 Description: Learn how to configure Velero with multiple cloud provider storage locations for robust multi-cloud backup strategies. Complete guide covering AWS, Azure, GCP, and hybrid configurations.
 

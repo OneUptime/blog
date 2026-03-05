@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Backups, Disaster Recovery, Cross-Region, Data Protection
+Tags: AWS, Backup, Disaster Recovery, Cross-Region, Data Protection
 
 Description: Configure AWS Backup to automatically copy recovery points to another AWS region for disaster recovery, with step-by-step vault setup and copy action configuration.
 

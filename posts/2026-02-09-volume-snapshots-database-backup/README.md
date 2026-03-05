@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Database, Backups, VolumeSnapshot
+Tags: Kubernetes, Database, Backup, VolumeSnapshot
 
 Description: Learn how to implement application-consistent database backups using Kubernetes volume snapshots with proper freeze and flush operations for PostgreSQL, MySQL, and MongoDB.
 

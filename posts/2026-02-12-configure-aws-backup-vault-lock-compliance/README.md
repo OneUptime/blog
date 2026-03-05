@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Backups, Vault Lock, Compliance, WORM
+Tags: AWS, Backup, Vault Lock, Compliance, WORM
 
 Description: Enable AWS Backup Vault Lock to enforce write-once-read-many protection on your recovery points, meeting compliance requirements for data retention and immutability.
 

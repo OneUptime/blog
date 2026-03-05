@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Event Hubs, Schema Registry, Apache Avro, Serialization, Event Streaming, Data Contracts, Azure Cloud
+Tags: Azure Event Hub, Schema Registry, Apache Avro, Serialization, Event Streaming, Data Contracts, Azure Cloud
 
 Description: Learn how to use Azure Event Hubs Schema Registry to manage Avro schemas and enforce data contracts between event producers and consumers.
 

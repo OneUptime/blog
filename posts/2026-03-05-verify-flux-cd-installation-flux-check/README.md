@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Troubleshooting, Health Checks, DevOps
+Tags: Flux CD, GitOps, Kubernetes, Troubleshooting, Health Check, DevOps
 
 Description: Learn how to use the flux check command to verify your Flux CD installation, diagnose issues, and ensure all components are healthy.
 
@@ -31,7 +31,7 @@ flux check --pre
 
 Typical successful output:
 
-```
+```text
 ► checking prerequisites
 ✔ Kubernetes 1.28.2 >=1.25.0-0
 ✔ prerequisites checks passed
@@ -62,7 +62,7 @@ flux check
 
 Successful output looks like this:
 
-```
+```text
 ► checking prerequisites
 ✔ Kubernetes 1.28.2 >=1.25.0-0
 ► checking controllers
@@ -85,7 +85,7 @@ Each line in the `flux check` output tells you something specific.
 
 The prerequisites section confirms cluster compatibility.
 
-```
+```text
 ► checking prerequisites
 ✔ Kubernetes 1.28.2 >=1.25.0-0
 ```
@@ -96,7 +96,7 @@ A checkmark means the check passed. A cross means it failed.
 
 The controllers section validates each Flux component.
 
-```
+```text
 ► checking controllers
 ✔ helm-controller: deployment ready
 ℹ ghcr.io/fluxcd/helm-controller:v1.1.0
@@ -114,7 +114,7 @@ For each controller, the check verifies:
 
 If a controller deployment is not ready, `flux check` reports the issue.
 
-```
+```text
 ✗ source-controller: deployment not ready
 ```
 
@@ -148,7 +148,7 @@ kubectl get crds | grep fluxcd
 
 Expected CRDs include:
 
-```
+```text
 gitrepositories.source.toolkit.fluxcd.io
 helmreleases.helm.toolkit.fluxcd.io
 helmrepositories.source.toolkit.fluxcd.io

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, CEL, Health Checks, Monitoring
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, CEL, Health Check, Monitoring
 
 Description: Learn how to define custom health checks using CEL expressions in Flux Kustomization resources to verify that your deployed workloads are truly healthy.
 

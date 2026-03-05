@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Web PubSub, JavaScript, Dashboards, Real-Time, WebSocket, Frontend
+Tags: Azure, Web PubSub, JavaScript, Dashboard, Real-Time, WebSocket, Frontend
 
 Description: Build a real-time live dashboard using Azure Web PubSub and vanilla JavaScript that updates instantly as new data arrives.
 

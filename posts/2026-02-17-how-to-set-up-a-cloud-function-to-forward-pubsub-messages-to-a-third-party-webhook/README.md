@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Functions, Pub/Sub, Webhooks, Integration
+Tags: GCP, Cloud Functions, Pub/Sub, Webhook, Integration
 
 Description: Build a Cloud Function that forwards Google Cloud Pub/Sub messages to third-party webhooks like Slack, PagerDuty, or custom HTTP endpoints with retry logic and error handling.
 

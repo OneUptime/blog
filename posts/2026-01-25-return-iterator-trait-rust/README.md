@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Iterator, Traits, impl Trait, Generics
+Tags: Rust, Iterator, Traits, impl Trait, Generic
 
 Description: Learn different approaches to return iterators from functions in Rust including impl Trait, Box dyn, and concrete types. Understand the trade-offs between each approach.
 

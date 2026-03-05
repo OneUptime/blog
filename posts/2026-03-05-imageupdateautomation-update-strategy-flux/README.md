@@ -93,7 +93,7 @@ This limits updates to a specific application's manifests.
 
 The Setters strategy relies on inline comments that reference an ImagePolicy. The format is:
 
-```
+```json
 # {"$imagepolicy": "<namespace>:<policy-name>"}
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Event Hubs, Event Streaming, C#, .NET SDK, Real-Time Data, Azure Messaging, Event-Driven Architecture
+Tags: Azure Event Hub, Event Streaming, C#, .NET SDK, Real-Time Data, Azure Messaging, Event-Driven Architecture
 
 Description: Learn how to use the Azure.Messaging.EventHubs SDK in C# .NET to produce and consume real-time event streams for high-throughput data processing.
 

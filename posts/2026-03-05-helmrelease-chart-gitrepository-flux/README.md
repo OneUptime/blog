@@ -77,7 +77,7 @@ stringData:
 
 A typical Git repository structure with a Helm chart might look like this:
 
-```
+```text
 my-app/
   src/
     ...

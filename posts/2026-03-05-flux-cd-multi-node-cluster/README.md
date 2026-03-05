@@ -328,7 +328,7 @@ kubectl get pods -n flux-system -o custom-columns=\
 
 Expected output shows controllers distributed across different nodes:
 
-```
+```text
 POD                                        NODE     STATUS
 source-controller-6f8bdc7f9c-xyz12         node-1   Running
 kustomize-controller-7b8c5f9d4f-abc34      node-2   Running

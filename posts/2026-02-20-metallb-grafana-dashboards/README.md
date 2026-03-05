@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, Grafana, Dashboards, Monitoring
+Tags: Kubernetes, MetalLB, Grafana, Dashboard, Monitoring
 
 Description: Learn how to build Grafana dashboards for monitoring MetalLB health including BGP session status, IP pool utilization, and speaker metrics.
 

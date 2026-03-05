@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, IdM, Vault, Secrets, Linux
+Tags: RHEL, IdM, Vault, Secret, Linux
 
 Description: A hands-on guide to using IdM vaults on RHEL to securely store and retrieve secrets like passwords, keys, and certificates, including vault types, access control, and practical examples.
 

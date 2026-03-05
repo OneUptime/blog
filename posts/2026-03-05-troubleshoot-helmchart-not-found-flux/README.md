@@ -16,15 +16,15 @@ One of the most frustrating issues when working with Flux CD is the "chart not f
 
 Before diving into troubleshooting, here are the typical error messages you might encounter.
 
-```
+```text
 chart "my-app" version "1.0.0" not found in HelmRepository "flux-system/my-repo"
 ```
 
-```
+```text
 failed to get chart version for remote reference: no chart version found for my-app-1.0.0
 ```
 
-```
+```text
 HelmChart 'flux-system/my-app' is not ready: chart pull error
 ```
 

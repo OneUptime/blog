@@ -34,7 +34,7 @@ cat .gitmodules
 
 You should see output similar to:
 
-```
+```text
 [submodule "shared-charts"]
     path = shared-charts
     url = https://github.com/your-org/shared-charts.git
@@ -95,7 +95,7 @@ flux get source git my-app
 
 You should see output indicating the source is ready:
 
-```
+```text
 NAME    REVISION        SUSPENDED   READY   MESSAGE
 my-app  main@sha1:abc123 False      True    stored artifact for revision 'main@sha1:abc123'
 ```

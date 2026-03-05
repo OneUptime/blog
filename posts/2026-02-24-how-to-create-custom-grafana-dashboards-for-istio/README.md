@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Grafana, Dashboards, Monitoring, Prometheus, Observability
+Tags: Istio, Grafana, Dashboard, Monitoring, Prometheus, Observability
 
 Description: Build custom Grafana dashboards for Istio service mesh monitoring with practical PromQL queries for traffic, errors, latency, and saturation.
 

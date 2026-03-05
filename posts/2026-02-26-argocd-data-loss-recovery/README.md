@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Disaster Recovery, Backups
+Tags: ArgoCD, GitOps, Kubernetes, Disaster Recovery, Backup
 
 Description: Learn how to recover ArgoCD from data loss scenarios including lost applications, deleted ConfigMaps, corrupted secrets, and complete namespace deletion with step-by-step recovery procedures.
 

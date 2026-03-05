@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Monitoring, Prometheus, SLOs
+Tags: Flux CD, GitOps, Kubernetes, Monitoring, Prometheus, SLO
 
 Description: Learn how to monitor Flux CD reconciliation success rates using Prometheus metrics to track deployment reliability and set up SLO-based alerting.
 

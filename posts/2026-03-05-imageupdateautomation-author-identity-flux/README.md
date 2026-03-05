@@ -175,7 +175,7 @@ git log --format='%an <%ae> - %s' -5
 
 You should see entries like:
 
-```
+```text
 Flux Bot <fluxbot@example.com> - Automated image update
 ```
 

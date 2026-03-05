@@ -48,7 +48,7 @@ flux get ks
 
 Example output with a Not Ready Kustomization:
 
-```
+```text
 NAME        REVISION        SUSPENDED  READY  MESSAGE
 infra       main@sha1:abc   False      True   Applied revision: main@sha1:abc
 my-app      main@sha1:abc   False      False  Health check failed after 3m0s timeout: ...
@@ -72,7 +72,7 @@ The Kustomization cannot find its source (GitRepository, OCIRepository, or Bucke
 
 Symptoms:
 
-```
+```text
 Source artifact not found
 ```
 
@@ -118,7 +118,7 @@ The kustomization cannot be built from the source files.
 
 Symptoms:
 
-```
+```text
 kustomize build failed: accumulating resources: ...
 kustomize build failed: ... not found
 ```
@@ -144,7 +144,7 @@ The resources were applied successfully, but one or more resources failed their 
 
 Symptoms:
 
-```
+```text
 Health check failed after 3m0s timeout: Deployment/my-app not ready: 0/3 replicas available
 ```
 
@@ -196,7 +196,7 @@ The Kustomization depends on another Kustomization that is not yet Ready.
 
 Symptoms:
 
-```
+```text
 dependency 'flux-system/infra' is not ready
 ```
 
@@ -218,7 +218,7 @@ A webhook or admission controller rejected the resource.
 
 Symptoms:
 
-```
+```text
 apply failed: admission webhook "validate.example.com" denied the request
 ```
 

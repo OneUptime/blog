@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Grafana, Observability, Dashboards, Visualization
+Tags: Grafana, Observability, Dashboard, Visualization
 
 Description: Learn how to configure Grafana stat panel thresholds to create dynamic, color-coded dashboards that instantly communicate system health at a glance.
 

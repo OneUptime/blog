@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, DynamoDB, Backups, Disaster Recovery, Infrastructure as Code
+Tags: Terraform, AWS, DynamoDB, Backup, Disaster Recovery, Infrastructure as Code
 
 Description: Learn how to enable and manage point-in-time recovery for DynamoDB tables using Terraform to protect your data with continuous backups.
 

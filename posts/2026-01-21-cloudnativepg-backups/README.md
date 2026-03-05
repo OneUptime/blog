@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CloudNativePG, Kubernetes, PostgreSQL, Backups, S3, WAL Archiving, Disaster Recovery
+Tags: CloudNativePG, Kubernetes, PostgreSQL, Backup, S3, WAL Archiving, Disaster Recovery
 
 Description: A comprehensive guide to setting up PostgreSQL backups with CloudNativePG, covering continuous WAL archiving, scheduled backups, and storage configurations for S3, GCS, and Azure Blob Storage.
 

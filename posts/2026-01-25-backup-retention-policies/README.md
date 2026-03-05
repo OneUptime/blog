@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Backups, Retention, Compliance, DevOps, Data Management
+Tags: Backup, Retention, Compliance, DevOps, Data Management
 
 Description: Learn how to design and implement backup retention policies that balance data protection, compliance requirements, and storage costs with practical examples and automation strategies.
 

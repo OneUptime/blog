@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Python, Type Hints, Generics, Static Analysis
+Tags: Python, Type Hints, Generic, Static Analysis
 
 Description: Create flexible, type-safe generic functions and classes in Python using TypeVar, Generic, and ParamSpec for better IDE support and static analysis.
 

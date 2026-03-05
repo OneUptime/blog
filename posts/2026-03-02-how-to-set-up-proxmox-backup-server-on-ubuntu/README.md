@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Proxmox, Backups, Disaster Recovery, Server Administration
+Tags: Ubuntu, Proxmox, Backup, Disaster Recovery, Server Administration
 
 Description: Set up Proxmox Backup Server (PBS) on Ubuntu-compatible hardware to provide efficient, deduplicated backups for your Proxmox VE virtual machines and containers.
 

@@ -78,7 +78,7 @@ kubectl get helmrepository -n flux-system bitnami
 
 You should see output similar to this.
 
-```
+```text
 NAME      URL                                       AGE   READY   STATUS
 bitnami   https://charts.bitnami.com/bitnami        30s   True    stored artifact: revision 'sha256:abc123...'
 ```

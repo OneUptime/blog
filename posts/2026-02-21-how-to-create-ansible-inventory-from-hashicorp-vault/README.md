@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, HashiCorp Vault, Secrets, Dynamic Inventory, Security
+Tags: Ansible, HashiCorp Vault, Secret, Dynamic Inventory, Security
 
 Description: Learn how to use HashiCorp Vault as a source for Ansible dynamic inventory, pulling host data and credentials securely from Vault.
 

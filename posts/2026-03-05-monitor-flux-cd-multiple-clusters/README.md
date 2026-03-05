@@ -135,7 +135,7 @@ gotk_reconcile_condition{type="Ready", status="False"}
 
 Use Grafana variables to allow selecting a specific cluster:
 
-```
+```text
 label_values(gotk_reconcile_condition, cluster)
 ```
 

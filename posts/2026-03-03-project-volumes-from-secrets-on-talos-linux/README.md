@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Secrets, Projected Volumes, Security
+Tags: Talos Linux, Kubernetes, Secret, Projected Volumes, Security
 
 Description: Learn how to use projected volumes to combine Secrets, ConfigMaps, and other sources into a single volume mount on Talos Linux.
 

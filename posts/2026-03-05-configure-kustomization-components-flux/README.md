@@ -28,7 +28,7 @@ Common use cases include:
 
 Here is an example directory layout for a Flux-managed repository that uses components.
 
-```
+```text
 apps/
   myapp/
     base/

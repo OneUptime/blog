@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: TypeScript, Type Errors, Object Spread, Generics, Type Safety, Debugging
+Tags: TypeScript, Type Errors, Object Spread, Generic, Type Safety, Debugging
 
 Description: Learn how to diagnose and fix the 'Spread types may only be created from object types' error in TypeScript with practical solutions and examples.
 

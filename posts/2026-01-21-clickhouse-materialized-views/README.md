@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Materialized Views, Aggregation, Real-Time Analytics, Database, Performance, Dashboards
+Tags: ClickHouse, Materialized Views, Aggregation, Real-Time Analytics, Database, Performance, Dashboard
 
 Description: A practical guide to using ClickHouse materialized views for automatic pre-aggregation of data, enabling sub-second dashboard queries over billions of events through incremental processing.
 

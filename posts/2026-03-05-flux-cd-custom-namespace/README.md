@@ -102,7 +102,7 @@ kubectl get pods -n gitops
 
 Expected output:
 
-```
+```text
 NAME                                       READY   STATUS    RESTARTS   AGE
 helm-controller-6f8bdc7f9c-xyz12          1/1     Running   0          2m
 kustomize-controller-7b8c5f9d4f-abc34     1/1     Running   0          2m

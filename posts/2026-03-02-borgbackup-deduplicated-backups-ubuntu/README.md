@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backups, BorgBackup, Deduplication
+Tags: Ubuntu, Backup, BorgBackup, Deduplication
 
 Description: A practical guide to setting up BorgBackup on Ubuntu for space-efficient deduplicated and encrypted backups with automated scheduling.
 

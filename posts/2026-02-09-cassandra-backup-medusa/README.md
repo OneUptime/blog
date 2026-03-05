@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cassandra, Medusa, Backups, Kubernetes, Database
+Tags: Cassandra, Medusa, Backup, Kubernetes, Database
 
 Description: A comprehensive guide to setting up and managing Apache Cassandra backups using Medusa on Kubernetes clusters with object storage backends
 

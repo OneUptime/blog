@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Security, Encryption, Secrets, etcd
+Tags: Flux CD, GitOps, Kubernetes, Security, Encryption, Secret, etcd
 
 Description: Learn how to configure Kubernetes secrets encryption at rest to protect sensitive data used by Flux CD controllers stored in etcd.
 

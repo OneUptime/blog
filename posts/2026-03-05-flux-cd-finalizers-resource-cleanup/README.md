@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Finalizers, Resource Cleanup, Lifecycle Management
+Tags: Flux CD, GitOps, Kubernetes, Finalizer, Resource Cleanup, Lifecycle Management
 
 Description: Learn how Flux CD uses Kubernetes finalizers to manage resource cleanup and what to do when finalizers cause deletion to hang.
 

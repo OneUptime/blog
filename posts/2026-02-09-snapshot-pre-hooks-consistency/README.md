@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Storage, Backups, Application Consistency
+Tags: Kubernetes, Storage, Backup, Application Consistency
 
 Description: Learn how to implement pre-snapshot hooks to ensure application-consistent backups in Kubernetes by coordinating with applications before volume snapshot creation.
 

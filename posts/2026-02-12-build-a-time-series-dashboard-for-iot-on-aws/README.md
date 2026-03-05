@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, IoT Core, Timestream, Grafana, Lambda, Time-Series, Dashboards
+Tags: AWS, IoT Core, Timestream, Grafana, Lambda, Time-Series, Dashboard
 
 Description: Learn how to build a real-time time-series dashboard for IoT data on AWS using IoT Core, Amazon Timestream, and Grafana for visualization.
 

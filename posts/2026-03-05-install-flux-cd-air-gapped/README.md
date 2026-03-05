@@ -79,7 +79,7 @@ grep -oP 'image:\s*\K\S+' gotk-components.yaml | sort -u
 
 The output will look similar to this (versions will vary):
 
-```
+```text
 ghcr.io/fluxcd/helm-controller:v2.x.x
 ghcr.io/fluxcd/kustomize-controller:v1.x.x
 ghcr.io/fluxcd/notification-controller:v1.x.x

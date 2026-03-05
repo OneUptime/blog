@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secrets, SOPS, HashiCorp Vault, Transit, Encryption
+Tags: Flux CD, GitOps, Kubernetes, Secret, SOPS, HashiCorp Vault, Transit, Encryption
 
 Description: Learn how to encrypt Kubernetes secrets using SOPS with HashiCorp Vault Transit secrets engine for Flux CD GitOps workflows.
 

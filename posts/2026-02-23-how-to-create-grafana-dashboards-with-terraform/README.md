@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Grafana, Dashboards, Monitoring, Infrastructure as Code
+Tags: Terraform, Grafana, Dashboard, Monitoring, Infrastructure as Code
 
 Description: Learn how to create Grafana dashboards using Terraform to build reproducible, version-controlled monitoring visualizations for your infrastructure.
 

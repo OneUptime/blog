@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secrets, SOPS, Key Rotation, Security
+Tags: Flux CD, GitOps, Kubernetes, Secret, SOPS, Key Rotation, Security
 
 Description: Learn how to safely rotate SOPS encryption keys in a Flux CD GitOps workflow without disrupting secret decryption.
 

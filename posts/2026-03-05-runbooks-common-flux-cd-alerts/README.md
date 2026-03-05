@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Monitoring, Runbooks, Incident Response, Alerting
+Tags: Flux CD, GitOps, Kubernetes, Monitoring, Runbook, Incident Response, Alerting
 
 Description: Learn how to create operational runbooks for the most common Flux CD alerts to enable faster incident response and troubleshooting.
 

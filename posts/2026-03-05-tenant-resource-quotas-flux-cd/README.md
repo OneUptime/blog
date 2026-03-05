@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Multi-Tenancy, Resource Quotas, Capacity Planning
+Tags: Flux CD, GitOps, Kubernetes, Multi-Tenancy, Resource Quota, Capacity Planning
 
 Description: Learn how to configure and enforce resource quotas for tenants in Flux CD to prevent any single tenant from consuming excessive cluster resources.
 

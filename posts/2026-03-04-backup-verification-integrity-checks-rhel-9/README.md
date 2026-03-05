@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Backups, Verification, Integrity, Linux
+Tags: RHEL, Backup, Verification, Integrity, Linux
 
 Description: Implement automated backup verification and integrity checking on RHEL to ensure your backups are actually recoverable when you need them.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CloudWatch, Monitoring, Multi-Account, Dashboards
+Tags: AWS, CloudWatch, Monitoring, Multi-Account, Dashboard
 
 Description: Learn how to build CloudWatch cross-account dashboards that give you unified visibility across multiple AWS accounts from a single pane of glass.
 

@@ -67,7 +67,7 @@ stringData:
 
 Your bucket should contain either packaged chart archives or chart directories. A typical structure looks like this:
 
-```
+```text
 my-helm-charts/
   my-app/
     Chart.yaml

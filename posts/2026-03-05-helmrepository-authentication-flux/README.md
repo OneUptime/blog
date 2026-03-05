@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRepository, Authentication, Secrets
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRepository, Authentication, Secret
 
 Description: Learn how to configure authenticated access to Helm chart repositories in Flux CD using Kubernetes secrets for basic auth, TLS certificates, and cloud provider credentials.
 

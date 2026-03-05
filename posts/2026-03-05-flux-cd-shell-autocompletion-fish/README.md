@@ -101,7 +101,7 @@ flux <Tab>
 
 You should see a list of Flux subcommands with descriptions, such as:
 
-```
+```text
 bootstrap   Install or upgrade Flux on a cluster
 check       Check the cluster and Flux prerequisites
 create      Create or update Flux resources

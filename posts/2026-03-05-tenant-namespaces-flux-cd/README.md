@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Multi-Tenancy, Namespaces
+Tags: Flux CD, GitOps, Kubernetes, Multi-Tenancy, Namespace
 
 Description: Learn how to create and manage tenant namespaces using Flux CD with proper labeling, resource quotas, and limit ranges for multi-tenant clusters.
 

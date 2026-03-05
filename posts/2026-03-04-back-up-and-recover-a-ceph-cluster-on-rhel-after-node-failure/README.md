@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ceph, Backups, Recovery, Disaster Recovery
+Tags: RHEL, Ceph, Backup, Recovery, Disaster Recovery
 
 Description: Back up critical Ceph cluster configuration and recover from node failures on RHEL, including monitor recovery, OSD replacement, and data restoration.
 

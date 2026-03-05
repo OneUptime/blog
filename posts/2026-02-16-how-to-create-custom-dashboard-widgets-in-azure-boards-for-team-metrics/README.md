@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Boards, Dashboards, Team Metrics, Azure DevOps, Agile, Sprint Metrics, Project Management
+Tags: Azure Boards, Dashboard, Team Metrics, Azure DevOps, Agile, Sprint Metrics, Project Management
 
 Description: Build custom dashboard widgets in Azure Boards to visualize team metrics, sprint progress, and project health at a glance.
 
