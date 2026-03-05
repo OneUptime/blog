@@ -389,7 +389,7 @@ The simplest option if clusters are in the same network or connected via VPN.
 
 ### Cluster Gateway Pattern
 
-For clusters behind firewalls, use the [argocd-agent](https://github.com/argoproj-labs/argocd-agent) project. It flips the connectivity model — lightweight agents in remote clusters connect back to a central hub, eliminating the need for the control plane to reach target cluster API servers.
+For clusters behind firewalls, use the [argocd-agent](https://github.com/argoproj-labs/argocd-agent) project. It flips the connectivity model - lightweight agents in remote clusters connect back to a central hub, eliminating the need for the control plane to reach target cluster API servers.
 
 The argocd-agent uses a hub-and-spoke architecture with its own TLS/JWT setup. Refer to the [official argocd-agent documentation](https://argocd-agent.readthedocs.io/latest/user-guide/adding-agents/) for the current installation procedure, as the deployment model differs significantly from a simple Deployment manifest.
 

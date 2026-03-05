@@ -332,7 +332,7 @@ groups:
 
 ### Audit Logging
 
-ArgoCD leverages the Kubernetes API server audit logging. Enable audit logging at the Kubernetes API server level in your cluster configuration to track ArgoCD operations. ArgoCD itself does not expose a standalone `audit.enabled` ConfigMap field — audit trails are captured through the standard Kubernetes API audit log mechanism.
+ArgoCD leverages the Kubernetes API server audit logging. Enable audit logging at the Kubernetes API server level in your cluster configuration to track ArgoCD operations. ArgoCD itself does not expose a standalone `audit.enabled` ConfigMap field - audit trails are captured through the standard Kubernetes API audit log mechanism.
 
 ## Best Practices
 

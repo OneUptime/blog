@@ -635,7 +635,7 @@ dig @::1 AAAA ipv4only.arpa
 
 ## A Note on dnsmasq
 
-dnsmasq is a popular lightweight DNS forwarder, but it **does not support DNS64**. There is no `dns64-prefix` option or any DNS64 functionality in dnsmasq. If you need a lightweight DNS64 resolver, use **Unbound** (described above) — it is similarly easy to configure and has proper DNS64 support.
+dnsmasq is a popular lightweight DNS forwarder, but it **does not support DNS64**. There is no `dns64-prefix` option or any DNS64 functionality in dnsmasq. If you need a lightweight DNS64 resolver, use **Unbound** (described above) - it is similarly easy to configure and has proper DNS64 support.
 
 ---
 

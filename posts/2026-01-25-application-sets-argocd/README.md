@@ -39,7 +39,7 @@ Key benefits:
 
 ## Installing ApplicationSets
 
-ApplicationSets are included with ArgoCD since version 2.3. For modern installations (ArgoCD 2.3+), no separate installation is needed — the ApplicationSet controller is bundled with ArgoCD.
+ApplicationSets are included with ArgoCD since version 2.3. For modern installations (ArgoCD 2.3+), no separate installation is needed - the ApplicationSet controller is bundled with ArgoCD.
 
 If you are running an older version (pre-2.3), install the controller separately (note: the standalone repository is archived):
 
