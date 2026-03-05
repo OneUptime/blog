@@ -99,8 +99,7 @@ client = MongoClient(
     connectTimeoutMS=10000,
     serverSelectionTimeoutMS=30000,
 
-    # Keep-alive settings
-    socketKeepAlive=True,
+    # Keep-alive is enabled by default in PyMongo 4+
     heartbeatFrequencyMS=10000
 )
 ```
@@ -326,8 +325,7 @@ Enable driver-level debugging to identify the root cause:
 ```javascript
 // Enable verbose logging
 const client = new MongoClient(uri, {
-  monitorCommands: true,
-  loggerLevel: 'debug'
+  monitorCommands: true
 });
 
 client.on('commandStarted', (event) => {

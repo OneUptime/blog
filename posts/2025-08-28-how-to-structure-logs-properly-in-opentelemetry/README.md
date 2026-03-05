@@ -78,7 +78,7 @@ Install the OpenTelemetry SDK along with auto-instrumentation packages and Winst
 npm install @opentelemetry/api \
             @opentelemetry/sdk-node \
             @opentelemetry/auto-instrumentations-node \
-            @opentelemetry/exporter-otlp-http \
+            @opentelemetry/exporter-logs-otlp-http \
             @opentelemetry/instrumentation-winston \
             winston
 ```
@@ -91,7 +91,7 @@ This configuration initializes OpenTelemetry with log export to an OTLP endpoint
 // telemetry.ts - Initialize OpenTelemetry with logging support
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPLogExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
 import { Resource } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';

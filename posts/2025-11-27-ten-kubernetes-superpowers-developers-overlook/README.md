@@ -88,6 +88,7 @@ metadata:
 value: 100000                     # High priority - protected from preemption
 preemptionPolicy: PreemptLowerPriority  # Can evict lower-priority Pods
 ---
+apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: batch-low

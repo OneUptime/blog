@@ -348,7 +348,7 @@ Use Pydantic models to validate and sanitize all user input:
 ```python
 # input_validation.py
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 import re
 
@@ -357,12 +357,15 @@ app = FastAPI()
 class UserCreate(BaseModel):
     """Validated user creation model with comprehensive input validation"""
 
-    # Username with regex pattern - only alphanumeric and underscore
+    # Forbid extra fields to prevent mass assignment attacks
+    model_config = {"extra": "forbid"}
+
+    # Username with pattern validation - only alphanumeric and underscore
     username: str = Field(
         ...,
         min_length=3,
         max_length=50,
-        regex=r'^[a-zA-Z0-9_]+$',
+        pattern=r'^[a-zA-Z0-9_]+$',
         description="Alphanumeric and underscore only"
     )
 
@@ -379,10 +382,11 @@ class UserCreate(BaseModel):
     # Optional phone with E.164 format validation
     phone: Optional[str] = Field(
         None,
-        regex=r'^\+?[1-9]\d{1,14}$'
+        pattern=r'^\+?[1-9]\d{1,14}$'
     )
 
-    @validator('password')
+    @field_validator('password')
+    @classmethod
     def password_strength(cls, v):
         """Enforce password complexity requirements"""
         if not re.search(r'[A-Z]', v):
@@ -395,17 +399,14 @@ class UserCreate(BaseModel):
             raise ValueError('Password must contain special character')
         return v
 
-    @validator('username')
+    @field_validator('username')
+    @classmethod
     def username_not_reserved(cls, v):
         """Block reserved usernames that could be used for impersonation"""
         reserved = ['admin', 'root', 'system', 'administrator']
         if v.lower() in reserved:
             raise ValueError('Username is reserved')
         return v
-
-class Config:
-    # Forbid extra fields to prevent mass assignment attacks
-    extra = 'forbid'
 
 @app.post("/users")
 async def create_user(user: UserCreate):
@@ -625,8 +626,9 @@ Implement JWT authentication with short-lived tokens and refresh token rotation:
 # jwt_auth.py
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
+import jwt
+from jwt.exceptions import InvalidTokenError as JWTError
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import os
 
@@ -646,11 +648,11 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     Short expiration (15 minutes) limits damage from token theft.
     """
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=15))
     to_encode.update({
         "exp": expire,
         "type": "access",  # Token type for validation
-        "iat": datetime.utcnow()  # Issued at time
+        "iat": datetime.now(timezone.utc)  # Issued at time
     })
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -660,11 +662,11 @@ def create_refresh_token(data: dict):
     Used to obtain new access tokens without re-authentication.
     """
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({
         "exp": expire,
         "type": "refresh",  # Different type from access token
-        "iat": datetime.utcnow()
+        "iat": datetime.now(timezone.utc)
     })
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -856,7 +858,7 @@ def log_security_event(
 ):
     """Log security-relevant events in structured JSON format"""
     event = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "event_type": event_type,
         "ip_address": request.client.host,
         "user_agent": request.headers.get("user-agent"),

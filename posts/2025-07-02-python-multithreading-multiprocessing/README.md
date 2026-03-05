@@ -820,16 +820,24 @@ if __name__ == '__main__':
 
 ```python
 # fastapi_threading.py
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
 import httpx
 from typing import List
 
-app = FastAPI()
-
 # Thread pool for blocking I/O operations
 thread_executor = ThreadPoolExecutor(max_workers=20)
+
+@asynccontextmanager
+async def lifespan(app):
+    # Startup: nothing needed for thread pool
+    yield
+    # Shutdown: clean up thread pool
+    thread_executor.shutdown(wait=True)
+
+app = FastAPI(lifespan=lifespan)
 
 def blocking_database_call(query: str) -> dict:
     """Simulate a blocking database call
@@ -893,16 +901,14 @@ async def batch_fetch_threaded(urls: List[str]):
         "results": results
     }
 
-@app.on_event("shutdown")
-def shutdown():
-    """Clean up thread pool on shutdown"""
-    thread_executor.shutdown(wait=True)
+# Note: shutdown is handled by the lifespan context manager above
 ```
 
 ### Process Pool for CPU Operations
 
 ```python
 # fastapi_multiprocessing.py
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
@@ -910,11 +916,18 @@ import asyncio
 from typing import List
 import numpy as np
 
-app = FastAPI()
-
 # Process pool for CPU-intensive operations
 # Created at module level, shared across requests
 process_executor = ProcessPoolExecutor(max_workers=cpu_count())
+
+@asynccontextmanager
+async def lifespan(app):
+    # Startup: nothing needed for process pool
+    yield
+    # Shutdown: clean up process pool to prevent orphan processes
+    process_executor.shutdown(wait=True)
+
+app = FastAPI(lifespan=lifespan)
 
 def cpu_intensive_analysis(data: List[float]) -> dict:
     """Perform CPU-intensive data analysis
@@ -1004,14 +1017,7 @@ async def process_images(images: List[bytes]):
         "errors": failed
     }
 
-@app.on_event("shutdown")
-def shutdown():
-    """Clean up process pool on shutdown
-    
-    Important: always clean up executor to prevent
-    orphan processes and resource leaks.
-    """
-    process_executor.shutdown(wait=True)
+# Note: shutdown is handled by the lifespan context manager above
 ```
 
 ---

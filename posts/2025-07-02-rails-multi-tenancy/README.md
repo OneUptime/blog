@@ -95,8 +95,7 @@ gem 'puma', '~> 6.0'
 
 # Multi-tenancy gems
 gem 'acts_as_tenant', '~> 1.0'      # For shared database approach
-gem 'apartment', '~> 2.2'            # For schema-based approach (optional)
-gem 'ros-apartment', '~> 2.11'       # Modern fork of apartment gem
+gem 'ros-apartment', '~> 3.2'        # For schema-based approach (maintained fork of apartment gem)
 
 # Authentication and security
 gem 'devise', '~> 4.9'

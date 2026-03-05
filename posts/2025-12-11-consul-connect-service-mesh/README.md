@@ -52,13 +52,9 @@ data_dir = "/opt/consul/data"
 server = true
 bootstrap_expect = 3
 
-# Enable Connect service mesh
+# Enable Connect service mesh with built-in CA
 connect {
   enabled = true
-}
-
-# Configure the built-in CA
-connect {
   ca_provider = "consul"
   ca_config {
     # Certificate lifetime
@@ -494,9 +490,6 @@ TransparentProxy {
 Check that services are communicating securely:
 
 ```bash
-# View proxy configuration
-consul connect proxy -show-config -sidecar-for api
-
 # Check intentions for a service
 consul intention check api database
 

@@ -104,21 +104,21 @@ db.users.find({ username: "john" })
 
 | Strength | Comparison Level | Example |
 |----------|------------------|---------|
-| 1 | Base characters only | a = A = a = A |
-| 2 | Base + Case (case-insensitive) | a = A, a != a |
-| 3 | Base + Case + Diacritics (default) | a != A, a != a |
+| 1 | Base characters only (ignores case and diacritics) | a = A = à = À |
+| 2 | Base + Diacritics (case-insensitive, diacritic-sensitive) | a = A, a != à |
+| 3 | Base + Diacritics + Case (default) | a != A, a != à |
 
 ```javascript
 // Strength 1: Ignores case and diacritics
 db.words.find({ word: "cafe" })
   .collation({ locale: "en", strength: 1 });
-// Matches: "cafe", "Cafe", "CAFE", "cafe", "Cafe"
+// Matches: "cafe", "Cafe", "CAFE", "café", "Café"
 
-// Strength 2: Ignores case only
+// Strength 2: Ignores case, but considers diacritics
 db.words.find({ word: "cafe" })
   .collation({ locale: "en", strength: 2 });
 // Matches: "cafe", "Cafe", "CAFE"
-// Does NOT match: "cafe" (with accent)
+// Does NOT match: "café" (with accent)
 ```
 
 ### Collection-Level Collation

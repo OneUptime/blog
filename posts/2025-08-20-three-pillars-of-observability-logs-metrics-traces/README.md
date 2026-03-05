@@ -52,7 +52,7 @@ Strengths:
 
 - Arbitrary context; great for exception snapshots and audit trails
 - Legal / compliance retention (when sampled or tiered)
-- Quick wins: you already log, you probaby dont ingest them yet which means you can start using them right away
+- Quick wins: you already log, you probably don't ingest them yet which means you can start using them right away
 
 Misuses (guaranteed budget killers):
 

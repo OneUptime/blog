@@ -418,8 +418,10 @@ public class ApiService {
      */
     public List<Order> getUserOrders(Long userId) {
         String url = "http://order-service/orders?userId=" + userId;
-        return restTemplate.getForObject(url,
+        ResponseEntity<List<Order>> response = restTemplate.exchange(
+            url, HttpMethod.GET, null,
             new ParameterizedTypeReference<List<Order>>() {});
+        return response.getBody();
     }
 }
 ```

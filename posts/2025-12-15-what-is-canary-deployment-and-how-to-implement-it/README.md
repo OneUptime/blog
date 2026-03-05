@@ -270,7 +270,7 @@ spec:
 The DestinationRule defines named subsets that map to specific pod labels. VirtualService routes then reference these subsets to direct traffic to the correct version.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: myapp
@@ -292,7 +292,7 @@ The VirtualService is where you define the actual traffic split percentages. Unl
 Start with 5% to canary:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myapp
@@ -352,7 +352,7 @@ As monitoring confirms the canary is healthy, progressively shift more traffic. 
 Istio also supports routing specific users or requests to the canary based on headers. This is useful for internal testing before any public exposure, allowing your team to test the canary in production without affecting real users.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: myapp

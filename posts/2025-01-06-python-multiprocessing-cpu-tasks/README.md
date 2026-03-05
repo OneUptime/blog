@@ -184,7 +184,7 @@ async def process_endpoint(data: dict):
 
     return result
 
-@app.on_event("shutdown")
+@app.on_event("shutdown")  # Note: For FastAPI 0.95+, consider using lifespan handlers instead
 def shutdown_event():
     """Clean up executor on shutdown to prevent resource leaks"""
     executor.shutdown(wait=True)  # Wait for pending tasks to complete
@@ -492,10 +492,10 @@ def process_large_data(data_path: str) -> dict:
 
 def process_multiple_files(file_paths: list) -> list:
     """Process files in separate processes to isolate memory usage"""
-    # Use maxtasksperchild to prevent memory buildup in long-running workers
+    # Use max_tasks_per_child to prevent memory buildup in long-running workers (Python 3.11+)
     with ProcessPoolExecutor(
         max_workers=4,
-        # Each worker handles 10 tasks then restarts (clears accumulated memory)
+        max_tasks_per_child=10,  # Each worker handles 10 tasks then restarts (clears accumulated memory)
     ) as executor:
         results = list(executor.map(process_large_data, file_paths))
 

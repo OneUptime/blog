@@ -308,13 +308,19 @@ Enable MongoDB driver logging for detailed diagnostics:
 
 ```javascript
 // Enable debug logging
-const { MongoClient, Logger } = require('mongodb');
+// Note: The legacy Logger class (Logger.setLevel) was removed in
+// MongoDB Node.js driver v5+. Use the mongodbLogPath client option
+// or the MONGODB_LOG_ALL environment variable instead:
 
-Logger.setLevel('debug');
-Logger.filter('class', ['Cursor', 'Connection', 'Server']);
+const { MongoClient } = require('mongodb');
 
-// Or use connection string parameter
-const uri = "mongodb://localhost:27017/mydb?loggerLevel=debug";
+// Option 1: Use environment variable (recommended)
+// Set MONGODB_LOG_ALL=debug before starting your application
+
+// Option 2: Use client options
+const client = new MongoClient("mongodb://localhost:27017/mydb", {
+  mongodbLogPath: 'stderr'  // Logs to stderr
+});
 ```
 
 ## Quick Troubleshooting Checklist

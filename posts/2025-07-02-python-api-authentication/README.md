@@ -77,7 +77,7 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
-pip install fastapi uvicorn python-jose[cryptography] passlib[bcrypt] \
+pip install fastapi uvicorn PyJWT[crypto] passlib[bcrypt] \
     python-multipart httpx asyncpg slowapi pydantic-settings
 ```
 
@@ -189,7 +189,8 @@ This module handles all JWT operations including creation, validation, and decod
 # Core JWT token creation and validation utilities
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, Tuple
-from jose import jwt, JWTError
+import jwt
+from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
 import secrets
 from app.config import settings
 
@@ -199,6 +200,9 @@ class JWTHandler:
     This class provides methods for creating access tokens (short-lived,
     for API authentication) and refresh tokens (longer-lived, for
     obtaining new access tokens without re-authentication).
+
+    Note: Uses PyJWT (import jwt) rather than python-jose, which has
+    known security vulnerabilities including CVE-2025-61152.
     """
 
     def __init__(self):
@@ -306,11 +310,9 @@ class JWTHandler:
                 algorithms=[self.algorithm]
             )
             return payload
-        except jwt.ExpiredSignatureError:
+        except ExpiredSignatureError:
             raise ValueError("Token has expired")
-        except jwt.JWTClaimsError:
-            raise ValueError("Invalid token claims")
-        except JWTError as e:
+        except InvalidTokenError as e:
             raise ValueError(f"Invalid token: {str(e)}")
 
     def validate_token_type(

@@ -74,12 +74,16 @@ assertion 17006 BTree key size too large
 **Solution - Rebuild Indexes:**
 
 ```javascript
-// In mongo shell - rebuild all indexes for a collection
-db.collection.reIndex()
+// Note: db.collection.reIndex() is deprecated since MongoDB 6.0
+// and can only be run on standalone instances in MongoDB 5.0+.
+// Instead, drop and recreate indexes:
 
-// Rebuild all indexes for the database
-db.getCollectionNames().forEach(function(collection) {
-    db[collection].reIndex();
+// Rebuild all indexes for a collection
+db.collection.getIndexes().forEach(function(idx) {
+    if (idx.name !== "_id_") {
+        db.collection.dropIndex(idx.name);
+        db.collection.createIndex(idx.key, idx);
+    }
 });
 
 // Or drop and recreate specific index

@@ -370,7 +370,7 @@ async def good_async():
 import concurrent.futures
 
 async def blocking_in_executor():
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     # Run in thread pool
     result = await loop.run_in_executor(
         None,  # Default executor
@@ -482,27 +482,25 @@ async def async_context():
 ```python
 # fastapi_async.py
 from fastapi import FastAPI, Depends, HTTPException
+from contextlib import asynccontextmanager
 import httpx
 import asyncpg
 from typing import Optional
 
-app = FastAPI()
-
-# Connection pool
 pool: Optional[asyncpg.Pool] = None
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global pool
     pool = await asyncpg.create_pool(
         "postgresql://localhost/mydb",
         min_size=5,
         max_size=20
     )
-
-@app.on_event("shutdown")
-async def shutdown():
+    yield
     await pool.close()
+
+app = FastAPI(lifespan=lifespan)
 
 # Dependency for database
 async def get_db():
@@ -552,7 +550,7 @@ async def get_dashboard(user_id: int, db=Depends(get_db)):
 # CPU-bound work should use run_in_executor
 @app.post("/process-image")
 async def process_image(image_data: bytes):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Run CPU-bound work in thread pool
     result = await loop.run_in_executor(
@@ -710,7 +708,7 @@ def async_throttle(rate: float):
         async def wrapper(*args, **kwargs):
             nonlocal last_called
 
-            now = asyncio.get_event_loop().time()
+            now = asyncio.get_running_loop().time()
             if now - last_called >= rate:
                 last_called = now
                 return await func(*args, **kwargs)

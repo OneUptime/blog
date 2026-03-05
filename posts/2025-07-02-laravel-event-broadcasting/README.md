@@ -88,7 +88,7 @@ Update your `.env` file:
 
 ```bash
 # For Pusher
-BROADCAST_DRIVER=pusher
+BROADCAST_CONNECTION=pusher
 
 PUSHER_APP_ID=your-app-id
 PUSHER_APP_KEY=your-app-key
@@ -99,7 +99,7 @@ PUSHER_SCHEME=https
 PUSHER_APP_CLUSTER=mt1
 
 # For Laravel Reverb
-BROADCAST_DRIVER=reverb
+BROADCAST_CONNECTION=reverb
 
 REVERB_APP_ID=your-app-id
 REVERB_APP_KEY=your-app-key
@@ -117,7 +117,7 @@ REVERB_SCHEME=http
 
 return [
     // Default broadcast connection
-    'default' => env('BROADCAST_DRIVER', 'null'),
+    'default' => env('BROADCAST_CONNECTION', 'null'),
 
     // Available broadcast connections
     'connections' => [

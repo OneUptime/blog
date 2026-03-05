@@ -46,8 +46,8 @@ metadata:
 spec:
   # List of IP addresses or CIDR ranges available for allocation
   addresses:
-    - PUBLIC_IP_ADDRESS_1 # Replace with your IP + CIDR (e.g., 51.568.145.125/32)
-    - PUBLIC_IP_ADDRESS_2 # Replace with your IP + CIDR (e.g., 51.568.145.126/32)
+    - PUBLIC_IP_ADDRESS_1 # Replace with your IP + CIDR (e.g., 203.0.113.10/32)
+    - PUBLIC_IP_ADDRESS_2 # Replace with your IP + CIDR (e.g., 203.0.113.11/32)
     - MORE_IP_IF_YOU_HAVE_THEM # Add additional IPs as needed
 ```
 

@@ -94,7 +94,7 @@ Before you begin, ensure you have:
 1. **Ruby and Rails installed** (matching your project version)
 2. **Git installed** and configured
 3. **Heroku CLI installed**
-4. **A Heroku account** (free tier available)
+4. **A Heroku account** (paid plans starting at $5/month)
 
 ### Installing Heroku CLI
 
@@ -160,11 +160,6 @@ gem 'cssbundling-rails'
 
 # Reduces boot times through caching
 gem 'bootsnap', require: false
-
-group :production do
-  # Better logging for Heroku
-  gem 'rails_12factor', '~> 0.0.3'
-end
 
 group :development, :test do
   # Debugging tools
@@ -338,7 +333,7 @@ heroku config
 ### Add PostgreSQL Database
 
 ```bash
-# Add PostgreSQL add-on (hobby-dev is free)
+# Add PostgreSQL add-on (essential-0 is the entry-level paid plan)
 heroku addons:create heroku-postgresql:essential-0
 
 # Or for production (paid plans)
@@ -568,16 +563,14 @@ gem 'redis', '~> 5.1'
 # Configure Sidekiq for Heroku Redis
 
 Sidekiq.configure_server do |config|
-  config.redis = { 
-    url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0'),
-    ssl_params: { verify_mode: OpenSSL::SSL::VERIFY_NONE }
+  config.redis = {
+    url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0')
   }
 end
 
 Sidekiq.configure_client do |config|
-  config.redis = { 
-    url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0'),
-    ssl_params: { verify_mode: OpenSSL::SSL::VERIFY_NONE }
+  config.redis = {
+    url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0')
   }
 end
 ```

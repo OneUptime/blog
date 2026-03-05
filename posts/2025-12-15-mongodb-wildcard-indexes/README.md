@@ -292,14 +292,14 @@ db.responses.find({
 
 ## Wildcard Index Limitations
 
-### 1. No Compound Wildcard Indexes
+### 1. Compound Wildcard Index Limitations
 
 ```javascript
-// This is NOT allowed
+// Starting with MongoDB 7.0, compound wildcard indexes ARE supported
 db.collection.createIndex({ category: 1, "attributes.$**": 1 });
-// Error: compound wildcard indexes are not allowed
 
-// Workaround: Create separate indexes
+// For MongoDB versions before 7.0, compound wildcard indexes are not allowed
+// Workaround for older versions: Create separate indexes
 db.collection.createIndex({ category: 1 });
 db.collection.createIndex({ "attributes.$**": 1 });
 ```

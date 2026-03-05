@@ -186,11 +186,11 @@ The following command installs all the necessary OpenTelemetry packages: the cor
 # @opentelemetry/api - Core API for creating metrics and spans
 # @opentelemetry/sdk-node - Node.js SDK that ties everything together
 # @opentelemetry/auto-instrumentations-node - Automatic instrumentation for common libraries
-# @opentelemetry/exporter-otlp-http - OTLP exporter to send data to observability backends
+# @opentelemetry/exporter-metrics-otlp-http - OTLP HTTP exporter for metrics
 npm install @opentelemetry/api \
             @opentelemetry/sdk-node \
             @opentelemetry/auto-instrumentations-node \
-            @opentelemetry/exporter-otlp-http
+            @opentelemetry/exporter-metrics-otlp-http
 ```
 
 ### Basic Setup
@@ -202,7 +202,7 @@ This configuration file sets up the complete OpenTelemetry SDK for Node.js with 
 // Import all necessary OpenTelemetry SDK components
 import { NodeSDK } from '@opentelemetry/sdk-node';  // Main SDK for Node.js applications
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';  // Auto-instruments HTTP, Express, etc.
-import { OTLPMetricExporter } from '@opentelemetry/exporter-otlp-http';  // Sends metrics via OTLP protocol
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';  // Sends metrics via OTLP protocol
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';  // Periodically collects and exports metrics
 import { Resource } from '@opentelemetry/resources';  // Defines service metadata
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';  // Standard attribute names
@@ -667,7 +667,7 @@ This configuration shows how to send your OpenTelemetry metrics to OneUptime's o
 
 ```typescript
 // Import the OTLP exporter and metric reader from OpenTelemetry SDK
-import { OTLPMetricExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 
 // Basic OTLP exporter configuration for OneUptime
@@ -694,7 +694,7 @@ Production telemetry setups need robust error handling. This class encapsulates 
 ```typescript
 // telemetry-with-error-handling.ts
 // Production-ready OTLP setup with error handling and validation
-import { OTLPMetricExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 
 // Encapsulate OTLP setup in a class for better organization and testability
@@ -709,12 +709,8 @@ class RobustOTLPSetup {
         'x-oneuptime-token': process.env.ONEUPTIME_OTLP_TOKEN!,
       },
       timeoutMillis: 10000,  // 10 second timeout for export requests
-      // Optional: Add custom retry configuration for resilience
-      retryConfig: {
-        maxRetries: 3,          // Retry up to 3 times on failure
-        initialInterval: 1000,  // Start with 1 second delay between retries
-        maxInterval: 5000,      // Cap retry delay at 5 seconds (exponential backoff)
-      },
+      // Note: The JS OTLP exporter handles retries internally with exponential backoff
+      // for transient failures (e.g., HTTP 429, 503). No manual retry config is needed.
     });
   }
 

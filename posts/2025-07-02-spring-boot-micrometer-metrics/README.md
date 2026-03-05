@@ -99,10 +99,11 @@ management:
     web:
       exposure:
         include: health, metrics, prometheus
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
+  metrics:
     tags:
       # Common tags applied to all metrics
       application: ${spring.application.name}

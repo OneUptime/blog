@@ -78,7 +78,7 @@ LLM APIs fail. They time out, return 500 errors, hit rate limits, and occasional
 **Retries with exponential backoff** are essential. But naive retries can amplify load during an outage. Use jitter to spread retry attempts.
 
 ```python
-import time
+import asyncio
 import random
 import httpx
 
@@ -114,7 +114,7 @@ async def call_llm_with_retry(
                 raise
             # Exponential backoff with full jitter
             delay = base_delay * (2 ** attempt) * random.uniform(0.5, 1.5)
-            time.sleep(delay)
+            await asyncio.sleep(delay)
 ```
 
 **Model fallbacks** are the LLM equivalent of a circuit breaker. If GPT-4 is down or too slow, fall back to GPT-3.5-turbo or Claude. If the cloud API is unreachable, fall back to a local model. The response quality may differ, but a degraded response is better than no response.

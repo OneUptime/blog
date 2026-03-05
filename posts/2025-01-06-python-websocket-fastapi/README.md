@@ -561,7 +561,7 @@ When running multiple server instances (horizontal scaling), each server only kn
 ```python
 # redis_pubsub.py
 # WebSocket scaling with Redis pub/sub for multi-instance deployments
-import aioredis
+import redis.asyncio as aioredis  # aioredis is deprecated; use redis.asyncio (pip install redis>=4.2.0)
 import asyncio
 import json
 
@@ -576,7 +576,7 @@ class RedisWebSocketManager:
 
     async def connect(self):
         """Initialize Redis connection and start listener"""
-        self.redis = await aioredis.from_url(self.redis_url)
+        self.redis = aioredis.from_url(self.redis_url)
         self.pubsub = self.redis.pubsub()  # Create pub/sub object
         # Start background task to listen for messages from other servers
         asyncio.create_task(self._listen_to_redis())

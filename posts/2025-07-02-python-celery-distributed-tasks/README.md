@@ -562,7 +562,7 @@ from celery_app import app
 def call_external_api(endpoint: str, data: dict):
     """
     Call external API with rate limiting.
-    Maximum 10 calls per minute across all workers.
+    Maximum 10 calls per minute per worker instance.
     """
     import requests
     response = requests.post(endpoint, json=data, timeout=30)
@@ -572,7 +572,7 @@ def call_external_api(endpoint: str, data: dict):
 def fast_rate_limited_task(item_id: str):
     """
     Higher rate limit for fast operations.
-    100 tasks per second across all workers.
+    100 tasks per second per worker instance.
     """
     return process_item(item_id)
 

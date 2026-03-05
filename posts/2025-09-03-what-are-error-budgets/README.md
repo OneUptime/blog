@@ -183,7 +183,7 @@ Let's look at how error budgets work in practice:
 
 ### API Service
 - SLO: 99.9% success rate for all endpoints
-- Error Budget: 0.1% (43.2 minutes of errors per day)
+- Error Budget: 0.1% (43.2 minutes of errors per month)
 - Burn rate monitoring helps identify problematic endpoints early
 
 ### Mobile App

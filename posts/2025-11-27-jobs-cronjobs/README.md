@@ -110,7 +110,8 @@ kubectl apply -f cronjobs/nightly-cleanup.yaml
 kubectl get cronjobs -n prod
 
 # List Jobs created by this CronJob (appears after scheduled runs)
-kubectl get jobs -n prod --selector=cronjob-name=nightly-cleanup
+# Job names follow the pattern <cronjob-name>-<timestamp>
+kubectl get jobs -n prod | grep nightly-cleanup
 ```
 
 ## 4. Troubleshoot Failed Jobs

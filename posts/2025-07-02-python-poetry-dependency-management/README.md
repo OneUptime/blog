@@ -295,8 +295,8 @@ Development dependencies are isolated from production:
 # Add to the dev dependency group
 poetry add --group dev pytest pytest-cov
 
-# Shorthand for dev group
-poetry add -D black ruff mypy
+# Shorthand for dev group (note: -D is deprecated in Poetry 2.x, use --group dev)
+poetry add --group dev black ruff mypy
 
 # Add to a custom group
 poetry add --group docs mkdocs mkdocs-material
@@ -327,8 +327,8 @@ poetry update
 # Update specific packages
 poetry update requests pydantic
 
-# Update only within constraints (no major version bumps)
-poetry update --no-dev
+# Update only within constraints (exclude dev group)
+poetry update --without dev
 
 # Show outdated packages
 poetry show --outdated
@@ -403,7 +403,7 @@ Poetry automatically creates and manages virtual environments:
 poetry install
 
 # Install without dev dependencies (for production)
-poetry install --no-dev
+poetry install --without dev
 
 # Install with optional group
 poetry install --with docs
@@ -496,6 +496,8 @@ poetry lock --no-update
 poetry check
 
 # Export to requirements.txt format (for compatibility)
+# Note: In Poetry 2.x, export requires the poetry-plugin-export plugin.
+# Install it with: poetry self add poetry-plugin-export
 poetry export -f requirements.txt --output requirements.txt
 
 # Export without hashes
@@ -940,13 +942,13 @@ WORKDIR /app
 COPY pyproject.toml poetry.lock ./
 
 # Install dependencies (no dev dependencies for production)
-RUN poetry install --no-dev --no-root
+RUN poetry install --without dev --no-root
 
 # Copy application code
 COPY . .
 
 # Install the project itself
-RUN poetry install --no-dev
+RUN poetry install --without dev
 
 
 # Production stage - minimal runtime image
@@ -1126,8 +1128,8 @@ poetry lock --no-update
 # Clear Poetry cache if issues persist
 poetry cache clear . --all
 
-# Force reinstall all packages
-poetry install --remove-untracked
+# Force reinstall all packages (sync environment with lock file)
+poetry install --sync
 ```
 
 ### Python Version Issues
@@ -1305,7 +1307,7 @@ poetry init                     # Initialize in existing directory
 
 # Dependency management
 poetry add package              # Add production dependency
-poetry add -D package           # Add dev dependency
+poetry add --group dev package   # Add dev dependency
 poetry add --group test package # Add to custom group
 poetry remove package           # Remove dependency
 poetry update                   # Update all dependencies

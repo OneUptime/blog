@@ -105,7 +105,7 @@ Monitor Criteria:
 After creating the monitor, OneUptime provides a unique URL:
 
 ```text
-https://oneuptime.com.com/heartbeat/db_backup_abc123
+https://oneuptime.com/heartbeat/db_backup_abc123
 ```
 
 This URL is specific to your backup job and includes a secret key for security.

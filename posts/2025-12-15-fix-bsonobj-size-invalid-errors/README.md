@@ -40,13 +40,23 @@ First, let's identify what's causing the error. Run these diagnostic commands in
 // Check collection statistics
 db.yourCollection.stats()
 
-// Find large documents
-db.yourCollection.find().forEach(function(doc) {
-    var size = Object.bsonsize(doc);
-    if (size > 1000000) { // Documents larger than 1MB
-        print("Document ID: " + doc._id + " - Size: " + size + " bytes");
-    }
-});
+// Find large documents (using $bsonSize aggregation operator, available in MongoDB 4.4+)
+// Note: Object.bsonsize() only works in the legacy mongo shell, not in mongosh.
+// Use the aggregation approach below instead:
+db.yourCollection.aggregate([
+    {
+        $project: {
+            _id: 1,
+            docSize: { $bsonSize: "$$ROOT" }
+        }
+    },
+    {
+        $match: {
+            docSize: { $gt: 1000000 } // Documents larger than 1MB
+        }
+    },
+    { $sort: { docSize: -1 } }
+]);
 
 // Check for problematic documents
 db.yourCollection.aggregate([

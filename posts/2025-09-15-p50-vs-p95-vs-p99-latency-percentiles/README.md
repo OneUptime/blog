@@ -137,18 +137,18 @@ const exporter = new OTLPMetricExporter({
 });
 
 // Set up the meter provider - this is the entry point for creating metrics
-const meterProvider = new MeterProvider({});
-
-// Add a periodic reader that exports metrics every 60 seconds
-// Adjust exportIntervalMillis based on your needs:
-// - Lower (10-30s): More granular data, higher cost
-// - Higher (60-120s): Less granular, lower cost
-meterProvider.addMetricReader(
-  new PeriodicExportingMetricReader({
-    exporter,
-    exportIntervalMillis: 60000  // Export every 60 seconds
-  })
-);
+// Pass metric readers via the constructor (addMetricReader is removed in SDK 2.0)
+const meterProvider = new MeterProvider({
+  readers: [
+    new PeriodicExportingMetricReader({
+      exporter,
+      exportIntervalMillis: 60000  // Export every 60 seconds
+      // Adjust exportIntervalMillis based on your needs:
+      // - Lower (10-30s): More granular data, higher cost
+      // - Higher (60-120s): Less granular, lower cost
+    })
+  ],
+});
 
 // Get a meter for your service - use a descriptive name matching your service
 const meter = meterProvider.getMeter('checkout-service');

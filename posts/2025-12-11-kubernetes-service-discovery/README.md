@@ -177,7 +177,7 @@ package main
 import (
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "io"
     "net/http"
     "os"
     "strings"
@@ -199,7 +199,7 @@ func NewServiceClient() *ServiceClient {
 }
 
 func getNamespace() string {
-    data, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+    data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
     if err != nil {
         return os.Getenv("NAMESPACE")
     }
@@ -224,7 +224,7 @@ func (c *ServiceClient) CallService(serviceName, endpoint string, port int) ([]b
     }
     defer resp.Body.Close()
 
-    return ioutil.ReadAll(resp.Body)
+    return io.ReadAll(resp.Body)
 }
 
 func main() {

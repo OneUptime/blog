@@ -145,8 +145,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install only production dependencies to keep image size small
-# --only=production excludes devDependencies
-RUN npm install --only=production
+# --omit=dev excludes devDependencies (replaces deprecated --only=production)
+RUN npm install --omit=dev
 
 # Step 4: Copy application source code
 # This layer rebuilds whenever your code changes, but npm install stays cached
@@ -209,7 +209,7 @@ Once you understand the single-container flow, Docker Compose lets you describe 
 
 ```yaml
 # docker-compose.yaml - defines multi-container applications
-# version field is optional in Compose V2 but helps with compatibility
+# The version field is obsolete in Compose V2 and should be omitted
 services:
   api:
     build: .                    # Build from Dockerfile in current directory

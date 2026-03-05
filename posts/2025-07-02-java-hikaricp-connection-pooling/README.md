@@ -248,10 +248,10 @@ public class DataSourceConfig {
         config.setAutoCommit(true);
         
         // PostgreSQL-specific optimizations
-        config.addDataSourceProperty("cachePrepStmts", "true");
-        config.addDataSourceProperty("prepStmtCacheSize", "250");
-        config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
-        config.addDataSourceProperty("useServerPrepStmts", "true");
+        config.addDataSourceProperty("preparedStatementCacheQueries", "256");
+        config.addDataSourceProperty("preparedStatementCacheSizeMiB", "5");
+        config.addDataSourceProperty("binaryTransfer", "true");
+        config.addDataSourceProperty("tcpKeepAlive", "true");
         
         // Create and return the data source
         return new HikariDataSource(config);
@@ -1086,8 +1086,8 @@ public class DynamicPoolSizer {
         int currentMaxSize = hikariDataSource.getMaximumPoolSize();
         
         // Log current status
-        log.info("Pool utilization: {:.1f}% ({}/{} connections, {} waiting)",
-            utilization * 100, activeConnections, totalConnections, pendingThreads);
+        log.info("Pool utilization: {}% ({}/{} connections, {} waiting)",
+            String.format("%.1f", utilization * 100), activeConnections, totalConnections, pendingThreads);
         
         // Provide sizing recommendations
         if (pendingThreads > 0 || utilization > HIGH_UTILIZATION_THRESHOLD) {

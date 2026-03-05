@@ -807,14 +807,15 @@ import json
 import asyncio
 from functools import wraps
 from typing import Any, Callable, Optional
-import aioredis
+import redis.asyncio as aioredis
 
 class AsyncRedisCacheDecorator:
     """Async Redis cache decorator for asyncio applications.
-    
-    Works with aioredis for non-blocking Redis operations in async code.
+
+    Works with redis.asyncio (formerly aioredis) for non-blocking
+    Redis operations in async code.
     """
-    
+
     def __init__(
         self,
         redis_url: str = "redis://localhost:6379",
@@ -825,11 +826,11 @@ class AsyncRedisCacheDecorator:
         self.default_ttl = default_ttl
         self.key_prefix = key_prefix
         self._redis: Optional[aioredis.Redis] = None
-    
+
     async def get_redis(self) -> aioredis.Redis:
         """Get or create Redis connection lazily."""
         if self._redis is None:
-            self._redis = await aioredis.from_url(self.redis_url)
+            self._redis = aioredis.from_url(self.redis_url)
         return self._redis
     
     def __call__(

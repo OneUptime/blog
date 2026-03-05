@@ -122,7 +122,9 @@ def check_database():
             database='mydb',
             connect_timeout=3
         )
-        conn.execute('SELECT 1')
+        cur = conn.cursor()
+        cur.execute('SELECT 1')
+        cur.close()
         conn.close()
         return {'status': 'healthy'}
     except Exception as e:

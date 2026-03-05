@@ -84,8 +84,6 @@ This Docker Compose configuration demonstrates how to declare an NFS volume usin
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   app:
     image: nginx:alpine
@@ -126,8 +124,6 @@ volumes:
 This comprehensive example shows a multi-service stack with different NFS mount strategies for each workload type. Databases use hard mounts for data integrity, while ephemeral data uses soft mounts for better failure handling.
 
 ```yaml
-version: "3.8"
-
 services:
   # PostgreSQL database - critical data, needs reliable storage
   postgres:
@@ -204,8 +200,6 @@ For Windows environments or when your NAS only offers SMB shares.
 ### Basic SMB Volume
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: nginx:alpine
@@ -241,8 +235,6 @@ sudo chmod 600 /etc/docker-smb-credentials
 ```
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: nginx:alpine
@@ -294,8 +286,6 @@ sudo mount -a
 ### Step 2: Use Bind Mounts in Docker Compose
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: nginx:alpine
@@ -384,8 +374,6 @@ On Synology NFS settings, set "Squash" to "Map all users to admin" - this makes 
 A realistic example: a web app with a database, Redis cache, and shared file uploads.
 
 ```yaml
-version: "3.8"
-
 services:
   traefik:
     image: traefik:v2.10
@@ -600,8 +588,6 @@ docker-compose exec app ls -la /data/
 Make your compose file portable across environments:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: myapp

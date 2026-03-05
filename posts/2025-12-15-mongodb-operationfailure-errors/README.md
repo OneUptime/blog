@@ -251,10 +251,11 @@ const results = await db.largeCollection.aggregate([
   { $project: { name: 1, status: 1 } }
 ], { maxTimeMS: 30000 }).toArray();
 
-// Option 4: Set server-side timeout (admin operation)
+// Option 4: Set server-side default timeout (cluster parameter)
 db.adminCommand({
-  setParameter: 1,
-  maxTimeMS: 30000  // Server-wide default
+  setClusterParameter: {
+    defaultMaxTimeMS: { readOperations: 30000 }
+  }
 });
 ```
 

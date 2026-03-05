@@ -217,12 +217,12 @@ class OrderService {
                         { session, returnDocument: 'after' }
                     );
 
-                    if (!product.value) {
+                    if (!product) {
                         throw new Error(`Insufficient stock for product ${item.productId}`);
                     }
 
-                    item.price = product.value.price;
-                    item.name = product.value.name;
+                    item.price = product.price;
+                    item.name = product.name;
                 }
 
                 // 2. Calculate totals

@@ -116,10 +116,11 @@ Background index builds can still cause lock issues:
 // Problem: Index creation blocking other operations
 db.largeCollection.createIndex({ field: 1 })  // Blocks collection
 
-// Solution 1: Use background option (MongoDB 4.0 and earlier)
-db.largeCollection.createIndex({ field: 1 }, { background: true })
+// Note: The { background: true } option is deprecated since MongoDB 4.2
+// and is ignored in MongoDB 4.2+. All index builds now use an optimized
+// process that only holds an exclusive lock at the start and end of the build.
 
-// Solution 2: Use rolling index build on replica sets (Recommended)
+// Solution: Use rolling index build on replica sets (Recommended)
 // Build index on secondaries first, then step down primary
 
 // In Node.js - check index build progress

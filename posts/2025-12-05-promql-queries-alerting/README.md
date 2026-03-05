@@ -84,7 +84,7 @@ Monitor the rate of change rather than absolute values:
     severity: critical
   annotations:
     summary: "High error rate for {{ $labels.service }}"
-    description: "Error rate is {{ printf \"%.2f\" $value | mul 100 }}%"
+    description: "Error rate is {{ $value | humanizePercentage }}"
 ```
 
 ### Pattern 3: Absence Detection

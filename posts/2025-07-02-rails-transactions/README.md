@@ -1416,14 +1416,17 @@ end
 # This does NOT create independent transactions by default
 ActiveRecord::Base.transaction do
   User.create!(name: 'Alice')
-  
-  ActiveRecord::Base.transaction do  # This is a NO-OP
+
+  ActiveRecord::Base.transaction do  # This is a NO-OP - joins the outer transaction
     User.create!(name: 'Bob')
-    raise ActiveRecord::Rollback  # Rolls back ENTIRE outer transaction
+    raise ActiveRecord::Rollback  # Silently swallowed! Does NOT rollback anything
   end
-  
-  User.create!(name: 'Charlie')  # This code is never reached
+
+  User.create!(name: 'Charlie')
 end
+# Surprising result: Alice, Bob, AND Charlie are ALL created!
+# The ActiveRecord::Rollback is captured by the inner block
+# but since there is no real nested transaction, no rollback occurs.
 
 # Use requires_new: true for independent nested transactions
 ActiveRecord::Base.transaction do

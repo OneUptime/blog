@@ -267,7 +267,7 @@ Docker Compose setup:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
+# Note: The 'version' attribute is obsolete in modern Docker Compose and can be removed.
 
 services:
   mongodb:

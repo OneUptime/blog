@@ -113,6 +113,7 @@ Capturing exceptions in spans is crucial for understanding where and why errors 
 This pattern ensures that all errors are properly recorded in your traces, including the full stack trace for debugging.
 
 ```typescript
+// Requires: import { SpanStatusCode } from '@opentelemetry/api';
 try {
   // Simulate an operation that throws an error
   throw new Error('Database connection failed');
@@ -125,9 +126,9 @@ try {
     stack: error.stack      // Full stack trace for debugging
   });
 
-  // Set the span status to ERROR (code: 2) to mark this span as failed
+  // Set the span status to ERROR to mark this span as failed
   // This helps identify problematic traces in your dashboard
-  span.setStatus({ code: 2, message: 'Error during operation' });
+  span.setStatus({ code: SpanStatusCode.ERROR, message: 'Error during operation' });
 } finally {
   // Always end the span in finally block to ensure it's recorded
   // even if an exception occurs
@@ -142,8 +143,8 @@ Here's how to put span names, attributes, events and exceptions together. This i
 This comprehensive example demonstrates a complete user login flow with proper span naming, attributes, events, exception handling, and parent-child span relationships.
 
 ```typescript
-// Import the trace API from OpenTelemetry
-import { trace } from '@opentelemetry/api';
+// Import the trace and context APIs from OpenTelemetry
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 
 // Create a tracer instance with a descriptive name
 // This name helps identify where traces originate from
@@ -179,8 +180,8 @@ try {
   // Record the full exception details in the span
   loginSpan.recordException(error);
 
-  // Mark the span as failed with status code 2 (ERROR)
-  loginSpan.setStatus({ code: 2, message: 'Error during user login' });
+  // Mark the span as failed with ERROR status
+  loginSpan.setStatus({ code: SpanStatusCode.ERROR, message: 'Error during user login' });
 } finally {
   // Always end the span to ensure it gets recorded
   loginSpan.end();
@@ -191,9 +192,10 @@ function validateUser({
   user,
   parentSpan  // Parent span for creating trace hierarchy
 }) {
-  // Create a child span linked to the parent
+  // Create a child span linked to the parent using context
   // This shows the relationship in trace visualization
-  const span = tracer.startSpan('UserService.validateUser', { parent: parentSpan });
+  const parentContext = trace.setSpan(context.active(), parentSpan);
+  const span = tracer.startSpan('UserService.validateUser', undefined, parentContext);
 
   try {
     // Perform the actual validation logic
@@ -204,7 +206,7 @@ function validateUser({
   } catch (error) {
     // Record any validation errors
     span.recordException(error);
-    span.setStatus({ code: 2, message: 'Error in user data validation' });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: 'Error in user data validation' });
 
     // Re-throw to propagate error to parent span
     throw error;

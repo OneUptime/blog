@@ -298,7 +298,7 @@ Before creating migrations, define your SQLAlchemy models:
 # app/models.py
 """SQLAlchemy ORM models for the application."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 
 from sqlalchemy import (
@@ -314,12 +314,14 @@ from sqlalchemy import (
     UniqueConstraint,
     CheckConstraint,
 )
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 
+
 # Create the declarative base - this is what we import in env.py
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
 class User(Base):
@@ -382,14 +384,14 @@ class User(Base):
     # Timestamps
     created_at = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
         comment="When the user was created"
     )
     updated_at = Column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
         comment="When the user was last updated"
     )
@@ -479,13 +481,13 @@ class Post(Base):
     # Timestamps
     created_at = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     updated_at = Column(
         DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False
     )
     
@@ -551,7 +553,7 @@ class AuditLog(Base):
     # When
     created_at = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
         index=True
     )
@@ -792,6 +794,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import TSVECTOR
 
 revision: str = 'b2c3d4e5f6g7'
 down_revision: Union[str, None] = 'a1b2c3d4e5f6'
@@ -810,7 +813,7 @@ def upgrade() -> None:
         'posts',
         sa.Column(
             'search_vector',
-            sa.dialects.postgresql.TSVECTOR(),
+            TSVECTOR(),
             nullable=True,
             comment='Full-text search vector'
         )
@@ -1130,7 +1133,7 @@ Run migrations with proper error handling, logging, and rollback capabilities.
 import os
 import sys
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from alembic import command

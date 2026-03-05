@@ -264,10 +264,12 @@ sum(rate(http_request_duration_seconds_count[5m])) by (status)
 (
   sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
   +
-  sum(rate(http_request_duration_seconds_bucket{le="2"}[5m]))
-  -
-  sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
-) / 2
+  (
+    sum(rate(http_request_duration_seconds_bucket{le="2"}[5m]))
+    -
+    sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
+  ) / 2
+)
 /
 sum(rate(http_request_duration_seconds_count[5m]))
 ```

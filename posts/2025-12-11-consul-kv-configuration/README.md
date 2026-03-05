@@ -413,14 +413,13 @@ Create a template file:
 `/etc/consul-template/api-config.ctmpl`
 
 ```hcl
-{{- with secret "config/production/api/settings" }}
 # Auto-generated configuration - do not edit manually
 # Last updated: {{ timestamp }}
 
 database:
   url: {{ key "config/production/api/database_url" }}
-  max_connections: {{ .Data.max_connections }}
-  timeout: {{ .Data.timeout_seconds }}s
+  max_connections: {{ keyOrDefault "config/production/api/max_connections" "100" }}
+  timeout: {{ keyOrDefault "config/production/api/timeout_seconds" "30" }}s
 
 logging:
   level: {{ key "config/production/api/log_level" }}
@@ -428,7 +427,6 @@ logging:
 features:
 {{- range ls "config/shared/feature_flags" }}
   {{ .Key }}: {{ .Value }}
-{{- end }}
 {{- end }}
 ```
 

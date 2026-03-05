@@ -236,23 +236,19 @@ db.products.aggregate([
 // { _id: "wireless", types: ["bool"], count: 1, sample: true }
 ```
 
-## Method 5: MapReduce (Legacy)
+## Method 5: JavaScript forEach (Legacy)
 
 For older MongoDB versions without `$objectToArray`:
 
 ```javascript
-// MapReduce approach
-db.products.mapReduce(
-  function() {
-    for (var key in this) {
-      emit(key, null);
-    }
-  },
-  function(key, values) {
-    return null;
-  },
-  { out: { inline: 1 } }
-).results.map(r => r._id);
+// JavaScript forEach approach (mapReduce is deprecated since MongoDB 5.0)
+const allKeys = new Set();
+db.products.find().forEach(function(doc) {
+  Object.keys(doc).forEach(function(key) {
+    allKeys.add(key);
+  });
+});
+Array.from(allKeys);
 ```
 
 ## Building a Complete Schema Report

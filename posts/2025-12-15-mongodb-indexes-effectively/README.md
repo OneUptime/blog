@@ -425,15 +425,16 @@ class IndexManager {
             }
         }
 
-        // Estimate index size
-        const stats = await collection.stats();
-        const estimatedSize = this.estimateIndexSize(stats, indexSpec);
+        // Estimate index size using $collStats aggregation
+        const [stats] = await collection.aggregate([
+            { $collStats: { storageStats: {} } }
+        ]).toArray();
+        const estimatedSize = this.estimateIndexSize(stats.storageStats, indexSpec);
         console.log(`Estimated index size: ${(estimatedSize / 1024 / 1024).toFixed(2)} MB`);
 
-        // Create index in background
+        // Create index (background option removed - MongoDB 4.2+ uses optimized builds automatically)
         const result = await collection.createIndex(indexSpec, {
-            ...options,
-            background: true
+            ...options
         });
 
         console.log(`Created index: ${result}`);
@@ -454,8 +455,8 @@ class IndexManager {
         return false;
     }
 
-    estimateIndexSize(stats, indexSpec) {
-        const docCount = stats.count;
+    estimateIndexSize(storageStats, indexSpec) {
+        const docCount = storageStats.count;
         const keyCount = Object.keys(indexSpec).length;
         // Rough estimate: 20 bytes overhead + 8 bytes per key field
         return docCount * (20 + keyCount * 8);
@@ -563,10 +564,7 @@ main();
 Keep your indexes healthy:
 
 ```javascript
-// Rebuild indexes (use sparingly - locks collection)
-db.orders.reIndex()
-
-// Compact collection and indexes
+// Compact collection and indexes (reIndex is deprecated since MongoDB 6.0)
 db.runCommand({ compact: "orders" })
 
 // Check index sizes

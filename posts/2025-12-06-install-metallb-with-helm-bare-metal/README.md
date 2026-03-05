@@ -57,7 +57,6 @@ This values file defines your IP address pool and tells MetalLB to use Layer 2 (
 ```yaml
 ipAddressPools:
   - name: baremetal-pool          # Logical name referenced by services and advertisements
-    protocol: layer2              # Use ARP/NDP for simple flat networks
     addresses:
       - 10.20.30.220-10.20.30.239 # 20 IPs reserved exclusively for load balancers
 l2Advertisements:

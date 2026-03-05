@@ -183,7 +183,7 @@ systemctl stop etcd
 
 # Restore on each member with unique data directories
 # Member 1
-etcdctl snapshot restore /backup/etcd-snapshot.db \
+etcdutl snapshot restore /backup/etcd-snapshot.db \
   --name etcd1 \
   --initial-cluster etcd1=https://10.0.1.10:2380,etcd2=https://10.0.1.11:2380,etcd3=https://10.0.1.12:2380 \
   --initial-cluster-token etcd-cluster-restored \
@@ -191,7 +191,7 @@ etcdctl snapshot restore /backup/etcd-snapshot.db \
   --data-dir /var/lib/etcd-restored
 
 # Member 2
-etcdctl snapshot restore /backup/etcd-snapshot.db \
+etcdutl snapshot restore /backup/etcd-snapshot.db \
   --name etcd2 \
   --initial-cluster etcd1=https://10.0.1.10:2380,etcd2=https://10.0.1.11:2380,etcd3=https://10.0.1.12:2380 \
   --initial-cluster-token etcd-cluster-restored \
@@ -199,7 +199,7 @@ etcdctl snapshot restore /backup/etcd-snapshot.db \
   --data-dir /var/lib/etcd-restored
 
 # Member 3
-etcdctl snapshot restore /backup/etcd-snapshot.db \
+etcdutl snapshot restore /backup/etcd-snapshot.db \
   --name etcd3 \
   --initial-cluster etcd1=https://10.0.1.10:2380,etcd2=https://10.0.1.11:2380,etcd3=https://10.0.1.12:2380 \
   --initial-cluster-token etcd-cluster-restored \

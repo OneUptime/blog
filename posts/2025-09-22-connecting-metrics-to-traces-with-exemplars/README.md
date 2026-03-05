@@ -1,4 +1,4 @@
-# Connecitng Metrics ↔ Traces with Exemplars in OpenTelemetry
+# Connecting Metrics ↔ Traces with Exemplars in OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -402,9 +402,9 @@ http {
             proxy_set_header Content-Length $content_length;
         }
 
-        # Static files - no body expected
+        # Static files - restrict body size to minimum
         location /static/ {
-            client_max_body_size 0;
+            client_max_body_size 1k;
             root /var/www;
         }
     }

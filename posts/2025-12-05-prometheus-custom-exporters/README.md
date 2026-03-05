@@ -376,7 +376,7 @@ func main() {
 ### Basic Structure
 
 ```python
-from prometheus_client import start_http_server, Gauge, Counter, Histogram, REGISTRY
+from prometheus_client import start_http_server
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
 import time
 import requests
@@ -523,7 +523,6 @@ class APICollector:
                     [endpoint['path']],
                     buckets=list(zip(hist['bounds'], hist['counts'])),
                     sum_value=hist['sum'],
-                    gsum_value=hist['count']
                 )
         yield latency_metric
 

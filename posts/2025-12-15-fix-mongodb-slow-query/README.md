@@ -37,7 +37,7 @@ graph TD
 db.setProfilingLevel(0, { slowms: 100 });
 
 // Enable profiling at different levels
-db.setProfilingLevel(0);  // Off - only log slow queries
+db.setProfilingLevel(0);  // Off - profiler disabled, slow ops still logged to diagnostic log
 db.setProfilingLevel(1);  // Log slow operations only
 db.setProfilingLevel(2);  // Log all operations (use cautiously)
 

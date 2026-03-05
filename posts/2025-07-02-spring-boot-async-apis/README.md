@@ -1544,10 +1544,11 @@ management:
     web:
       exposure:
         include: health, metrics, prometheus, threaddump
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
+  metrics:
     tags:
       application: ${spring.application.name}
   endpoint:

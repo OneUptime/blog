@@ -39,7 +39,7 @@ Minimal SDK setup using OTLP exporter, W3C propagators, and head sampling. This 
 // Import OpenTelemetry SDK and core components
 import { NodeSDK } from '@opentelemetry/sdk-node'
 import { Resource } from '@opentelemetry/resources'
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions'
+import { ATTR_SERVICE_NAME, ATTR_DEPLOYMENT_ENVIRONMENT_NAME } from '@opentelemetry/semantic-conventions'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import { CompositePropagator, W3CTraceContextPropagator, W3CBaggagePropagator } from '@opentelemetry/core'
@@ -50,8 +50,8 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 const sdk = new NodeSDK({
   // Resource attributes identify this service in traces
   resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'checkout-api',  // Unique service identifier
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',  // Environment tag
+    [ATTR_SERVICE_NAME]: 'checkout-api',  // Unique service identifier
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',  // Environment tag
   }),
 
   // Configure where traces are sent (OTLP over HTTP)
@@ -155,7 +155,7 @@ async function publishOrder(kafkaProducer: any, order: any) {
       // Add semantic attributes per OpenTelemetry messaging conventions
       span.setAttribute('messaging.system', 'kafka')           // Message broker type
       span.setAttribute('messaging.destination.name', 'orders') // Topic name
-      span.setAttribute('messaging.destination.kind', 'topic')  // Destination type
+      // Note: messaging.destination.kind was removed in semconv 1.20.0
 
       // CRITICAL: Inject trace context into message headers
       // This allows consumers to continue the same trace

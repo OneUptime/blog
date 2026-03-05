@@ -15,9 +15,6 @@ Compose profiles let you ship one `docker-compose.yaml` that adapts to laptops, 
 This single Compose file defines all services across environments. The `profiles` key controls which services start based on the selected profile(s).
 
 ```yaml
-# Docker Compose file version - 3.9 supports profiles and other modern features
-version: "3.9"
-
 services:
   # Main API service - runs in all environments
   api:

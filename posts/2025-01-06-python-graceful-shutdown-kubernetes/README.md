@@ -465,6 +465,7 @@ class GracefulShutdownManager:
         """Trigger the shutdown process - called by signal handler"""
         self._shutdown_event.set()
 
+    @asynccontextmanager
     async def track_request(self):
         """Async context manager for tracking in-flight requests"""
         async with self._lock:
@@ -477,12 +478,12 @@ class GracefulShutdownManager:
 
     async def wait_for_requests(self, timeout: float = 30):
         """Wait for all in-flight requests to complete (async connection draining)"""
-        start = asyncio.get_event_loop().time()
+        start = asyncio.get_running_loop().time()
         while True:
             async with self._lock:
                 if self._in_flight == 0:
                     return True  # All requests completed
-            if asyncio.get_event_loop().time() - start > timeout:
+            if asyncio.get_running_loop().time() - start > timeout:
                 logger.warning(f"Timeout: {self._in_flight} requests still in flight")
                 return False  # Timeout reached
             await asyncio.sleep(0.1)  # Non-blocking wait
@@ -547,7 +548,7 @@ async def lifespan(app: FastAPI):
     shutdown_manager.register_handler("database", db.disconnect, priority=10)
 
     # Setup signal handlers for async context
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(
             sig,
@@ -580,7 +581,7 @@ async def shutdown_middleware(request: Request, call_next):
         raise HTTPException(status_code=503, detail="Service shutting down")
 
     # Track this request for graceful shutdown
-    async for _ in shutdown_manager.track_request():
+    async with shutdown_manager.track_request():
         response = await call_next(request)
         return response
 
@@ -617,6 +618,7 @@ Celery workers need special handling for graceful shutdown. This example uses Ce
 # celery_graceful.py
 # Celery worker with graceful shutdown support
 from celery import Celery
+from celery.contrib.abortable import AbortableTask
 from celery.signals import worker_shutting_down, worker_shutdown
 import logging
 import time
@@ -642,19 +644,21 @@ def handle_worker_shutdown(**kwargs):
     """Signal handler called after worker has fully shut down"""
     logger.info("Worker shutdown complete")
 
-@app.task(bind=True)
+@app.task(bind=True, base=AbortableTask)
 def long_running_task(self, duration: int):
-    """Long-running task with abort checking for graceful termination"""
+    """Long-running task with abort checking for graceful termination.
+    Uses AbortableTask base class to enable is_aborted() checks."""
     task_id = self.request.id
     active_tasks.add(task_id)  # Track this task
 
     try:
         logger.info(f"Task {task_id} started, duration={duration}s")
 
-        # Check for revocation periodically to enable graceful abort
+        # Check for abort periodically to enable graceful termination
+        # is_aborted() is provided by the AbortableTask base class
         for i in range(duration):
             if self.is_aborted():
-                # Task was revoked - exit gracefully
+                # Task was aborted - exit gracefully
                 logger.warning(f"Task {task_id} aborted")
                 return {"status": "aborted"}
             time.sleep(1)  # Do 1 second of work

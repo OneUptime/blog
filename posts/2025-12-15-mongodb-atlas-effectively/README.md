@@ -122,8 +122,7 @@ const encryption = new ClientEncryption(client, {
 
 // Create suggested indexes
 db.orders.createIndex(
-  { status: 1, createdAt: -1 },
-  { background: true }
+  { status: 1, createdAt: -1 }
 );
 
 // Monitor index usage
@@ -430,7 +429,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Run tests with Atlas
         env:

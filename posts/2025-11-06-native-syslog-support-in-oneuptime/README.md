@@ -81,10 +81,12 @@ action(
   server="oneuptime.com"
   serverport="443"
   usehttps="on"                        # Enable TLS encryption
-  endpoint="/syslog/v1/logs"           # Syslog ingestion endpoint
-  header="Content-Type: application/json"
-  header="x-oneuptime-token: <TOKEN>"  # Replace with your ingestion key
-  header="x-oneuptime-service-name: perimeter-firewall"  # Identifies the source
+  restpath="syslog/v1/logs"            # Syslog ingestion endpoint (no leading slash)
+  httpcontenttype="application/json"   # Set Content-Type header
+  httpheaders=[
+    "x-oneuptime-token: <TOKEN>",                       # Replace with your ingestion key
+    "x-oneuptime-service-name: perimeter-firewall"      # Identifies the source
+  ]
   template="OneUptimeJSON"             # Use our JSON wrapper template
 )
 ```
@@ -112,10 +114,12 @@ action(
   server="oneuptime.com"
   serverport="443"
   usehttps="on"                        # Secure transport
-  endpoint="/syslog/v1/logs"
-  header="Content-Type: application/json"
-  header="x-oneuptime-token: <TOKEN>"  # Your ingestion key
-  header="x-oneuptime-service-name: linux-fleet"  # Groups all Linux hosts
+  restpath="syslog/v1/logs"            # Syslog ingestion endpoint (no leading slash)
+  httpcontenttype="application/json"   # Set Content-Type header
+  httpheaders=[
+    "x-oneuptime-token: <TOKEN>",                  # Your ingestion key
+    "x-oneuptime-service-name: linux-fleet"        # Groups all Linux hosts
+  ]
   template="OneUptimeJSON"             # Use the JSON template defined earlier
 )
 ```
@@ -135,6 +139,7 @@ This Fluent Bit configuration listens for syslog messages on TCP port 5140 and f
 # INPUT: Listen for incoming syslog messages
 [INPUT]
     Name              syslog         # Use the syslog input plugin
+    Parser            syslog-rfc5424 # Parser for incoming messages (use syslog-rfc3164 for BSD format)
     Mode              tcp            # Accept TCP connections (use 'udp' for UDP)
     Listen            0.0.0.0        # Listen on all interfaces
     Port              5140           # Standard syslog-over-TCP port

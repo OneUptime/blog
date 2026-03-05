@@ -95,7 +95,7 @@ flowchart LR
 After creating the monitor, OneUptime provides a unique URL:
 
 ```text
-https://oneuptime.com.com/heartbeat/abc123
+https://oneuptime.com/heartbeat/abc123
 ```
 
 This URL will receive webhook payloads from Grafana.
@@ -110,7 +110,7 @@ In Grafana, create a new contact point:
 4. Configure the webhook:
    ```text
    Name: OneUptime Integration
-   URL: https://oneuptime.com.com/heartbeat/abc123
+   URL: https://oneuptime.com/heartbeat/abc123
    HTTP Method: POST
    ```
 

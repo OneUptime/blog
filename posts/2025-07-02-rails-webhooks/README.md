@@ -200,12 +200,12 @@ end
 ```ruby
 # config/routes.rb
 Rails.application.routes.draw do
-  # Webhook endpoints
-  # Use a dedicated namespace for clarity
-  namespace :webhooks do
-    post "stripe", to: "/webhooks#stripe"
-    post "github", to: "/webhooks#github"
-    post "sendgrid", to: "/webhooks#sendgrid"
+  # Webhook endpoints using scope for URL grouping
+  # without requiring a namespaced controller
+  scope :webhooks do
+    post "stripe", to: "webhooks#stripe"
+    post "github", to: "webhooks#github"
+    post "sendgrid", to: "webhooks#sendgrid"
   end
 
   # Alternative: Generic webhook endpoint with provider param

@@ -135,7 +135,7 @@ For liveness tests, sleep the process longer than the probe timeout or `iptables
 
 - `failureThreshold × periodSeconds` ≈ total downtime tolerated before restart.
 - `timeoutSeconds` should be slightly higher than your P99 handler latency.
-- Use `grpcHealthCheck` for gRPC servers instead of HTTP GET.
+- Use `grpc` probes (e.g., `grpc: { port: 8000 }`) for gRPC servers instead of HTTP GET.
 
 Monitor probe events; flapping indicates thresholds are too aggressive.
 

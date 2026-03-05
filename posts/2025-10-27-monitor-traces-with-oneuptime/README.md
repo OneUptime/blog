@@ -87,9 +87,9 @@ Here is an example of a properly instrumented span that works well with trace mo
         "message": ""
     },
     "attributes": [
-        { "key": "http.method", "value": { "stringValue": "POST" } },
-        { "key": "http.url", "value": { "stringValue": "/api/v1/checkout" } },
-        { "key": "http.status_code", "value": { "intValue": 200 } },
+        { "key": "http.request.method", "value": { "stringValue": "POST" } },
+        { "key": "url.full", "value": { "stringValue": "/api/v1/checkout" } },
+        { "key": "http.response.status_code", "value": { "intValue": 200 } },
         { "key": "service.name", "value": { "stringValue": "checkout-service" } },
         { "key": "deployment.environment", "value": { "stringValue": "production" } },
         { "key": "cloud.region", "value": { "stringValue": "us-east-1" } },

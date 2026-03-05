@@ -91,7 +91,7 @@ For example, a log entry might look like:
 
 This structured log entry demonstrates the key elements of effective logging. Notice how the `trace_id` and `span_id` fields enable correlation with distributed traces, while the `details` object provides queryable context without embedding values in the message string.
 
-```json
+```jsonc
 {
   // ISO 8601 timestamp for consistent parsing across systems
   "timestamp": "2025-08-21T12:00:00.210Z",
@@ -119,7 +119,7 @@ This structured log entry demonstrates the key elements of effective logging. No
 }
 ```
 
-Plese note logs are often linked to traces via `trace_id` and `span_id`, allowing you to correlate detailed logs with specific spans in your trace.
+Please note logs are often linked to traces via `trace_id` and `span_id`, allowing you to correlate detailed logs with specific spans in your trace.
 
 
 ---

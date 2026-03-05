@@ -67,15 +67,15 @@ spec:
         auth_type: serviceAccount      # Use pod's service account for kubelet auth
         endpoint: ${K8S_NODE_NAME}:10250  # Connect to local node's kubelet
         insecure_skip_verify: true     # Skip TLS verify (use certs in production)
-      k8scluster:                      # Collect cluster-level metadata and events
+      k8s_cluster:                      # Collect cluster-level metadata and events
         collection_interval: 60s       # Less frequent - cluster state changes slowly
       filelog:                         # Tail container log files from the node
         include: [/var/log/pods/*/*/*.log]  # Standard Kubernetes log path
         start_at: end                  # Only collect new logs, skip historical
         operators:
-          - type: add_attributes       # Tag all logs with a type for filtering
-            attributes:
-              log_type: "container"
+          - type: add                  # Tag all logs with a type for filtering
+            field: attributes.log_type
+            value: "container"
           - type: container            # Parse container log format and extract metadata
     processors:
       batch:                           # Batch telemetry for efficient network usage
@@ -90,12 +90,12 @@ spec:
         endpoint: https://oneuptime.com/otlp/v1
         headers:
           x-oneuptime-token: ${ONEUPTIME_OTLP_TOKEN}  # Auth token from secret
-      logging:                         # Also log telemetry locally for debugging
+      debug:                           # Also log telemetry locally for debugging
         verbosity: normal              # Set to detailed when troubleshooting
     service:
       pipelines:
         metrics:                       # Metrics pipeline configuration
-          receivers: [kubeletstats, k8scluster, otlp]  # All metric sources
+          receivers: [kubeletstats, k8s_cluster, otlp]  # All metric sources
           processors: [k8sattributes, batch]           # Enrich then batch
           exporters: [otlphttp]                        # Send to OneUptime
         logs:                          # Logs pipeline configuration
@@ -150,7 +150,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 const sdk = new NodeSDK({
   // Configure where to send traces - point to your Collector's gRPC endpoint
   traceExporter: new OTLPTraceExporter({
-    url: 'grpc://otel-collector.default:4317',  // Collector service in default namespace
+    url: 'http://otel-collector.default:4317',  // Collector service in default namespace
   }),
   // Auto-instrument HTTP, Express, database clients, and more
   instrumentations: [getNodeAutoInstrumentations()],

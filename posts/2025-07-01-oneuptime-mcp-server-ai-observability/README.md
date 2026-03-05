@@ -71,7 +71,7 @@ The MCP server provides **complete access** to OneUptime's functionality through
 ```text
 AI Tools Available:
 - oneuptime_create_monitor
-- oneuptime_list_onitors  
+- oneuptime_list_monitors
 - oneuptime_get_monitor
 - oneuptime_update_monitor
 - oneuptime_delete_monitor

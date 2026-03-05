@@ -190,7 +190,8 @@ async function registerUserSafe(email, userData) {
       },
       {
         upsert: true,
-        returnDocument: 'after'
+        returnDocument: 'after',
+        includeResultMetadata: true  // Required to access lastErrorObject
       }
     );
 

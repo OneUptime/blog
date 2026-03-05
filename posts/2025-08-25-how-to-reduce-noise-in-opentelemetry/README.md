@@ -292,7 +292,7 @@ exporters:
   # Export over HTTP
   otlphttp:
     endpoint: "https://oneuptime.com/otlp"
-    # Requires use JSON encoder insted of default Proto(buf)
+    # Requires use of JSON encoder instead of default Proto(buf)
     encoding: json
     headers:
       "Content-Type": "application/json"

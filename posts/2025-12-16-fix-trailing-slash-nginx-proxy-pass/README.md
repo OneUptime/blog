@@ -143,15 +143,20 @@ location /api {
 
 ## Handling Regex Locations
 
-When using regex in location blocks, you cannot include a URI in `proxy_pass`. You must use `rewrite` instead:
+When using regex in location blocks, you cannot include a static URI in `proxy_pass`. However, you can use captured groups from the regex:
 
 ```nginx
-# This will NOT work - causes Nginx configuration error
+# This will NOT work - static URI in regex location causes configuration error
 location ~ ^/api/v(\d+)/(.*)$ {
-    proxy_pass http://backend:3000/api/$2;  # ERROR!
+    proxy_pass http://backend:3000/app/;  # ERROR: static URI not allowed in regex location
 }
 
-# Correct approach using rewrite
+# Option 1: Use captured groups in proxy_pass URI (this works)
+location ~ ^/api/v(\d+)/(.*)$ {
+    proxy_pass http://backend:3000/api/$2;
+}
+
+# Option 2: Use rewrite with break flag
 location ~ ^/api/v(\d+)/(.*)$ {
     rewrite ^/api/v(\d+)/(.*)$ /api/$2 break;
     proxy_pass http://backend:3000;

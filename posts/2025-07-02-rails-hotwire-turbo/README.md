@@ -202,7 +202,7 @@ Turbo Drive shows a progress bar for slow requests. Customize it:
 import "@hotwired/turbo-rails"
 
 // Customize progress bar delay (default: 500ms)
-Turbo.setProgressBarDelay(100)
+Turbo.config.drive.progressBarDelay = 100
 ```
 
 ---

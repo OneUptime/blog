@@ -142,7 +142,7 @@ spec:
 This PeerAuthentication policy enables strict mutual TLS for all services in the namespace. Istio automatically manages certificates, rotation, and encryption - no application code changes required.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -178,7 +178,7 @@ istioctl dashboard grafana
 With Istio, you can split traffic between two versions of a service for safe rollouts. This VirtualService routes 80% of traffic to v1 (stable) and 20% to v2 (canary), regardless of replica counts.
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: backend

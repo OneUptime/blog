@@ -51,7 +51,7 @@ flowchart TB
         E["title_eq"] --> F["WHERE title = value"]
         G["price_gteq"] --> H["WHERE price >= value"]
         I["name_cont"] --> J["WHERE name LIKE '%value%'"]
-        K["created_at_between"] --> L["WHERE created_at BETWEEN a AND b"]
+        K["created_at_gteq + created_at_lteq"] --> L["WHERE created_at >= a AND created_at <= b"]
     end
 ```
 

@@ -462,7 +462,7 @@ consul acl token create \
 
 Monitor ACL usage and changes.
 
-```bash
+```hcl
 # Enable audit logging in config
 audit {
   enabled = true

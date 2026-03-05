@@ -314,6 +314,8 @@ For high-traffic scenarios, implement proper queuing:
 # Limit connections to prevent overload
 upstream backend {
     server localhost:3000 max_conns=100;
+    # Note: the 'queue' directive below is only available in Nginx Plus (commercial version).
+    # In open-source Nginx, excess connections will receive a 502 error when max_conns is reached.
     queue 100 timeout=30s;
 }
 

@@ -312,12 +312,12 @@ db.good.insertOne({ createdAt: new Date() });  // Date object - will expire
 ### 2. Array of Dates Uses Lowest Value
 
 ```javascript
-// With array of dates, the earliest date is used for expiration
+// With array of dates, the earliest (lowest) date is used for expiration
 db.events.insertOne({
   name: "Multi-day event",
   dates: [
-    new Date("2025-12-15"),
-    new Date("2025-12-20"),  // This is used for TTL
+    new Date("2025-12-15"),  // This is used for TTL (earliest date)
+    new Date("2025-12-20"),
     new Date("2025-12-25")
   ]
 });

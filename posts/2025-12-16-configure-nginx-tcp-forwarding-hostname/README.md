@@ -171,14 +171,11 @@ stream {
     upstream api_backend {
         zone api_backend 64k;
 
-        # Weighted load balancing
-        server 192.168.1.10:443 weight=5;
-        server 192.168.1.11:443 weight=3;
+        # Weighted load balancing with health check settings
+        # (max_fails and fail_timeout are available in open source Nginx)
+        server 192.168.1.10:443 weight=5 max_fails=3 fail_timeout=30s;
+        server 192.168.1.11:443 weight=3 max_fails=3 fail_timeout=30s;
         server 192.168.1.12:443 backup;
-
-        # Health check settings (Nginx Plus feature)
-        # For open source, use max_fails and fail_timeout
-        server 192.168.1.10:443 max_fails=3 fail_timeout=30s;
     }
 
     upstream app_backend {

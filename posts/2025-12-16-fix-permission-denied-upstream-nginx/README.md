@@ -82,16 +82,18 @@ semanage port -a -t http_port_t -p tcp 3000
 
 ### For Unix Socket Connections
 
-When proxying to a Unix socket:
+When proxying to a Unix socket, ensure the socket file has the correct SELinux context:
 
 ```bash
-# Allow httpd to connect to Unix sockets
-setsebool -P httpd_execmem 1
-
 # Set correct SELinux context on socket directory
 semanage fcontext -a -t httpd_var_run_t "/var/run/myapp(/.*)?"
 restorecon -Rv /var/run/myapp
+
+# If your application also needs to make outbound network connections
+setsebool -P httpd_can_network_connect 1
 ```
+
+Note: The `httpd_execmem` boolean is unrelated to socket access. It controls whether httpd processes can use executable memory (e.g., for certain modules that require it). Do not enable it unless specifically needed for that purpose.
 
 ## Solution 2: Unix Socket Permissions
 

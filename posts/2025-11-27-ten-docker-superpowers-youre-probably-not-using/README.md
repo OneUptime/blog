@@ -68,7 +68,7 @@ In your Dockerfile, mount and use the secret during the RUN command. It exists o
 ```dockerfile
 # Mount the secret at /root/.npmrc during this command only
 # The secret is never written to any image layer
-RUN --mount=type=secret,id=npmrc target=/root/.npmrc \
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc \
     npm publish
 ```
 

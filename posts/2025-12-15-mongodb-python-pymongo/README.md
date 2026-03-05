@@ -98,14 +98,14 @@ print(db.list_collection_names())
 ### Create Documents
 
 ```python
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Insert one document
 user = {
     "name": "John Doe",
     "email": "john@example.com",
     "age": 30,
-    "created_at": datetime.utcnow()
+    "created_at": datetime.now(tz=timezone.utc)
 }
 
 result = collection.insert_one(user)
@@ -160,12 +160,12 @@ count = collection.count_documents({"age": {"$gte": 25}})
 ### Update Documents
 
 ```python
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Update one document
 result = collection.update_one(
     {"email": "john@example.com"},
-    {"$set": {"age": 31, "updated_at": datetime.utcnow()}}
+    {"$set": {"age": 31, "updated_at": datetime.now(tz=timezone.utc)}}
 )
 print(f"Modified count: {result.modified_count}")
 
@@ -426,14 +426,19 @@ asyncio.run(main())
 
 ```python
 from pydantic import BaseModel, EmailStr, Field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from bson import ObjectId
 
+from pydantic import GetCoreSchemaHandler
+from pydantic_core import CoreSchema, core_schema
+
 class PyObjectId(ObjectId):
     @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
+    def __get_pydantic_core_schema__(
+        cls, source_type: type, handler: GetCoreSchemaHandler
+    ) -> CoreSchema:
+        return core_schema.no_info_plain_validator_function(cls.validate)
 
     @classmethod
     def validate(cls, v):
@@ -442,17 +447,14 @@ class PyObjectId(ObjectId):
         return ObjectId(v)
 
 class UserModel(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id")
+    model_config = {"populate_by_name": True, "arbitrary_types_allowed": True}
+
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
     name: str
     email: EmailStr
     age: int = Field(ge=0, le=150)
     tags: List[str] = []
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed = True
-        json_encoders = {ObjectId: str}
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 # Usage
 user_data = {"name": "John", "email": "john@example.com", "age": 30}

@@ -178,7 +178,7 @@ location /uploads/ {
 
 ## Solution 5: Method-Based Routing
 
-Route different HTTP methods to different backends:
+Route different HTTP methods to different backends. Note that using `proxy_pass` inside `if` blocks is generally discouraged (the Nginx community refers to this as "If is Evil") because directives may not inherit correctly across `if` contexts. Use separate `location` blocks or `limit_except` instead:
 
 ```nginx
 server {
@@ -186,45 +186,18 @@ server {
     server_name example.com;
 
     location / {
-        # GET requests serve static files
-        if ($request_method = GET) {
-            root /var/www/html;
-        }
+        root /var/www/html;
+        index index.html;
 
-        # POST requests go to the application
-        if ($request_method = POST) {
+        # Use limit_except to proxy non-GET methods to the backend
+        limit_except GET HEAD {
             proxy_pass http://localhost:3000;
         }
     }
 }
 ```
 
-A cleaner approach using map:
-
-```nginx
-map $request_method $backend {
-    GET     static;
-    POST    application;
-    PUT     application;
-    DELETE  application;
-    default static;
-}
-
-server {
-    listen 80;
-    server_name example.com;
-
-    location / {
-        if ($backend = static) {
-            root /var/www/html;
-        }
-
-        if ($backend = application) {
-            proxy_pass http://localhost:3000;
-        }
-    }
-}
-```
+Alternatively, use separate location blocks for static and dynamic content as shown in Solution 2, which is the recommended approach.
 
 ## Solution 6: CORS and Preflight Requests
 

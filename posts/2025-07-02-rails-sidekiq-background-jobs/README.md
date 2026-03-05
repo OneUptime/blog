@@ -112,8 +112,7 @@ Add Sidekiq to your Gemfile:
 # Main Sidekiq gem
 gem 'sidekiq', '~> 7.2'
 
-# Optional: Web UI for monitoring (highly recommended)
-gem 'sidekiq-web'
+# The web UI is included with sidekiq; just require 'sidekiq/web' in routes.rb
 
 # Optional: Scheduler for recurring jobs
 gem 'sidekiq-scheduler', '~> 5.0'
@@ -145,12 +144,11 @@ REDIS_URL = ENV.fetch('REDIS_URL', 'redis://localhost:6379/0')
 
 # Configure Sidekiq server (the worker process)
 Sidekiq.configure_server do |config|
-  # Redis connection pool for server
+  # Redis connection for server
+  # In Sidekiq 7+, pool sizes are managed internally.
+  # Do not set pool_size; let Sidekiq auto-size based on concurrency.
   config.redis = {
     url: REDIS_URL,
-    # Connection pool size should match concurrency
-    # Sidekiq uses (concurrency + 5) connections by default
-    pool_size: ENV.fetch('SIDEKIQ_CONCURRENCY', 10).to_i + 5,
     # Network timeout settings
     network_timeout: 5,
     # SSL settings for production Redis
@@ -180,10 +178,10 @@ end
 
 # Configure Sidekiq client (the Rails app pushing jobs)
 Sidekiq.configure_client do |config|
+  # In Sidekiq 7+, do not set pool_size manually.
+  # Sidekiq manages connection pools internally.
   config.redis = {
     url: REDIS_URL,
-    # Client needs fewer connections than server
-    pool_size: 5,
     network_timeout: 5
   }
 end
@@ -1599,9 +1597,9 @@ require 'sidekiq-scheduler' if defined?(SidekiqScheduler)
 REDIS_URL = ENV.fetch('REDIS_URL', 'redis://localhost:6379/0')
 
 Sidekiq.configure_server do |config|
+  # In Sidekiq 7+, do not set pool_size; Sidekiq manages pools internally.
   config.redis = {
     url: REDIS_URL,
-    pool_size: ENV.fetch('SIDEKIQ_CONCURRENCY', 10).to_i + 5,
     network_timeout: 5
   }
 
@@ -1637,9 +1635,9 @@ Sidekiq.configure_server do |config|
 end
 
 Sidekiq.configure_client do |config|
+  # In Sidekiq 7+, do not set pool_size; Sidekiq manages pools internally.
   config.redis = {
     url: REDIS_URL,
-    pool_size: 5,
     network_timeout: 5
   }
 

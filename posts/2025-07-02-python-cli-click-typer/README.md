@@ -212,7 +212,7 @@ def cli():
 # type=click.Path(exists=True) validates that the path exists
 @click.option("--pattern", "-p", default="*", help="Glob pattern to match files.")
 @click.option("--recursive", "-r", is_flag=True, help="Search recursively.")
-def list(directory, pattern, recursive):
+def list_files(directory, pattern, recursive):
     """List files in a directory.
 
     DIRECTORY is the path to search for files.
@@ -527,7 +527,7 @@ Typer uses function parameters and type hints to define CLI arguments and option
 ```python
 #!/usr/bin/env python3
 # hello_typer.py
-import typer,
+import typer
 
 # Create a Typer app instance
 # This is similar to Click's @click.group() but more flexible

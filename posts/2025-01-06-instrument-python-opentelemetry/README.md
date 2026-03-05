@@ -431,6 +431,7 @@ Create a reusable decorator to automatically trace functions. This pattern reduc
 ```python
 from functools import wraps
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("my_app.decorators")
 

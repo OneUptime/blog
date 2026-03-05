@@ -53,23 +53,19 @@ consul intention create admin secrets-service
 Using the HTTP API:
 
 ```bash
-# Create allow intention
+# Create allow intention (upsert by exact source and destination)
 curl --request PUT \
   --data '{
-    "SourceName": "web",
-    "DestinationName": "api",
     "Action": "allow"
   }' \
-  http://localhost:8500/v1/connect/intentions
+  'http://localhost:8500/v1/connect/intentions/exact?source=web&destination=api'
 
 # Create deny intention
 curl --request PUT \
   --data '{
-    "SourceName": "*",
-    "DestinationName": "secrets-service",
     "Action": "deny"
   }' \
-  http://localhost:8500/v1/connect/intentions
+  'http://localhost:8500/v1/connect/intentions/exact?source=*&destination=secrets-service'
 ```
 
 ## 2. L7 Intentions (Application-Aware)
@@ -393,7 +389,7 @@ consul intention create -deny '*' '*'
 
 Define intentions declaratively for GitOps workflows.
 
-`intentions.hcl`:
+`api-intentions.hcl`:
 
 ```hcl
 # API service intentions
@@ -414,9 +410,11 @@ Sources = [
     Description = "Deny all other sources"
   }
 ]
+```
 
----
+`database-intentions.hcl`:
 
+```hcl
 # Database service intentions
 Kind = "service-intentions"
 Name = "database"
@@ -431,7 +429,6 @@ Sources = [
   },
   {
     Name   = "backup-service"
-    Action = "allow"
     Permissions = [
       {
         Action = "allow"
@@ -451,7 +448,8 @@ Sources = [
 Apply with:
 
 ```bash
-consul config write intentions.hcl
+consul config write api-intentions.hcl
+consul config write database-intentions.hcl
 ```
 
 ## 7. Monitor and Debug Intentions

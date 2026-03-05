@@ -328,8 +328,8 @@ rs.status();
 // Check configuration
 rs.conf();
 
-// Check if primary
-rs.isMaster();
+// Check if primary (rs.isMaster() is deprecated since MongoDB 5.0, use rs.hello())
+rs.hello();
 ```
 
 ## Reconfiguring an Existing Replica Set

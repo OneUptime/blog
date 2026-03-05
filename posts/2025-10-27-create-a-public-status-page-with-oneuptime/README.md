@@ -94,11 +94,10 @@ The following HTML snippet embeds a status badge that automatically updates to r
 
 <iframe
     src="https://oneuptime.com/status-page/your-status-page-id/badge"
-    width="250"           <!-- Width of the badge container -->
-    height="50"           <!-- Height of the badge container -->
-    frameborder="0"       <!-- Remove default iframe border -->
-    scrolling="no"        <!-- Disable scrolling since badge is fixed size -->
-    style="border: none;" <!-- Additional styling to ensure clean appearance -->
+    width="250"
+    height="50"
+    scrolling="no"
+    style="border: none;"
 ></iframe>
 ```
 

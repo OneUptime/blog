@@ -72,21 +72,22 @@ Rook releases intentionally lag Ceph so that each operator knows how to orchestr
 
    ```bash
    # Preview all changes between current state and target version
+   # Target Rook operator version v1.14.2 with your custom operator settings
    helm diff upgrade rook-ceph rook-release/rook-ceph \
      --namespace rook-ceph \
-     --version v1.14.2 \                    # Target Rook operator version
-     -f values/rook/operator.yaml           # Your custom operator settings
+     --version v1.14.2 \
+     -f values/rook/operator.yaml
    ```
 3. **Apply the upgrade**:
 
    This command performs the actual upgrade. The operator pod will restart and begin reconciling all Ceph CRDs with the new controller logic.
 
    ```bash
-   # Execute the operator upgrade
+   # Execute the operator upgrade (pin to specific version for reproducibility)
    helm upgrade --install rook-ceph rook-release/rook-ceph \
      --namespace rook-ceph \
-     --version v1.14.2 \                    # Pin to specific version for reproducibility
-     -f values/rook/operator.yaml           # Apply your custom configuration
+     --version v1.14.2 \
+     -f values/rook/operator.yaml
    ```
 4. **Watch the operator** restart once and reconcile:
 
@@ -132,12 +133,13 @@ Once the operator is healthy it automatically refreshes CRDs so the cluster CRs 
    A dry-run renders the manifests without applying them. Use this to catch configuration mistakes before they affect your live storage cluster.
 
    ```bash
-   # Preview the upgrade without making any changes
+   # Preview the upgrade without making any changes (dry-run only, render but do not apply)
+   # Match the operator version v1.14.2 with your cluster configuration
    helm upgrade rook-ceph-cluster rook-release/rook-ceph-cluster \
      --namespace rook-ceph \
-     --version v1.14.2 \                   # Match the operator version
-     -f values/rook/cluster.yaml \         # Your cluster configuration
-     --dry-run                             # Render only - do not apply
+     --version v1.14.2 \
+     -f values/rook/cluster.yaml \
+     --dry-run
    ```
 3. **Apply the upgrade** when the diff looks good:
 
@@ -145,10 +147,11 @@ Once the operator is healthy it automatically refreshes CRDs so the cluster CRs 
 
    ```bash
    # Execute the cluster upgrade - Rook handles the rolling restart sequence
+   # Target chart version v1.14.2 with your storage configuration
    helm upgrade rook-ceph-cluster rook-release/rook-ceph-cluster \
      --namespace rook-ceph \
-     --version v1.14.2 \                   # Target chart version
-     -f values/rook/cluster.yaml           # Apply your storage configuration
+     --version v1.14.2 \
+     -f values/rook/cluster.yaml
    ```
 4. **Track component rollouts**:
 

@@ -240,10 +240,10 @@ sh.shardCollection("mydb.users", { _id: "hashed" })
 sh.shardCollection("mydb.orders", { customerId: 1, _id: 1 })
 
 // GOOD: Zone-based sharding for geographic distribution
-sh.addShardTag("shard0", "US")
-sh.addShardTag("shard1", "EU")
-sh.addTagRange("mydb.users", { region: "US" }, { region: "USA" }, "US")
-sh.addTagRange("mydb.users", { region: "EU" }, { region: "EUA" }, "EU")
+sh.addShardToZone("shard0", "US")
+sh.addShardToZone("shard1", "EU")
+sh.updateZoneKeyRange("mydb.users", { region: "US" }, { region: "USA" }, "US")
+sh.updateZoneKeyRange("mydb.users", { region: "EU" }, { region: "EUA" }, "EU")
 ```
 
 ## Balancer Issues

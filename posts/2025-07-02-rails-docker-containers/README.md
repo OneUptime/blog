@@ -99,7 +99,7 @@ brew install --cask docker
 
 # Ubuntu/Debian
 sudo apt-get update
-sudo apt-get install docker.io docker-compose-v2
+sudo apt-get install docker.io docker-compose-plugin
 
 # Verify installation
 docker --version
@@ -504,7 +504,6 @@ services:
       - RAILS_ENV=development
       - DATABASE_URL=postgresql://postgres:password@db:5432/myapp_development
       - REDIS_URL=redis://redis:6379/0
-      - WEBPACKER_DEV_SERVER_HOST=webpacker
     depends_on:
       db:
         condition: service_healthy
@@ -558,23 +557,6 @@ services:
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes
-
-  # Webpacker dev server (if using Webpacker)
-  webpacker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: builder
-    command: bin/webpack-dev-server
-    volumes:
-      - .:/app:cached
-      - bundle:/app/vendor/bundle
-      - node_modules:/app/node_modules
-    ports:
-      - "3035:3035"
-    environment:
-      - RAILS_ENV=development
-      - WEBPACKER_DEV_SERVER_HOST=0.0.0.0
 
 # Named volumes for data persistence
 volumes:
@@ -823,8 +805,7 @@ Rails.application.config.action_cable.url = "wss://#{ENV.fetch('HOST', 'localhos
   - mailers
   - low
 
-# Retry configuration
-:max_retries: 5
+# Retry configuration is handled per-job via sidekiq_options retry: 5
 ```
 
 ```ruby
@@ -1028,8 +1009,8 @@ server {
         gzip_static on;
     }
     
-    # Packs (Webpacker assets)
-    location /packs {
+    # JavaScript builds (jsbundling-rails assets)
+    location /builds {
         expires 1y;
         add_header Cache-Control "public, immutable";
         gzip_static on;

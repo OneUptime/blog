@@ -60,7 +60,7 @@ This configuration implements a local cache strategy for Docker builds. The cach
             ${{ runner.os }}-buildx-
 
       # Build the Docker image using cached layers
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
@@ -85,7 +85,7 @@ Automatically scan every build for known vulnerabilities. This step fails the pi
 ```yaml
       # Scan the built image for security vulnerabilities
       - name: Scan image
-        uses: aquasecurity/trivy-action@0.18.0
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           image-ref: ghcr.io/acme/api:pr-${{ github.event.number }}
           severity: CRITICAL,HIGH  # Only report serious vulnerabilities
@@ -123,7 +123,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Build and push multi-arch images with provenance
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           platforms: linux/amd64,linux/arm64  # Build for both Intel and ARM
           provenance: true   # Generate SLSA provenance attestation

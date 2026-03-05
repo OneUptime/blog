@@ -531,7 +531,7 @@ async def handle_shutdown():
 async def lifespan(app: FastAPI):
     """Manage application lifecycle with signal handling"""
     # Get the event loop for signal handling
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Register handlers for shutdown signals from Kubernetes
     for sig in (signal.SIGTERM, signal.SIGINT):

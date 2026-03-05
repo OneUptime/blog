@@ -187,7 +187,7 @@ groups:
           severity: critical
         annotations:
           summary: "High error rate for {{ $labels.service }}"
-          description: "Error rate: {{ printf \"%.2f\" $value | mul 100 }}%"
+          description: "Error rate: {{ humanizePercentage $value }}"
 
       # High latency
       - alert: HighLatency
@@ -289,18 +289,18 @@ route:
   repeat_interval: 4h
   receiver: 'default'
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'pagerduty'
       continue: true
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'slack-critical'
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'slack-warning'
-    - match:
-        team: database
+    - matchers:
+        - team="database"
       receiver: 'database-team'
 
 receivers:
@@ -310,7 +310,7 @@ receivers:
 
   - name: 'pagerduty'
     pagerduty_configs:
-      - service_key: 'your-pagerduty-key'
+      - routing_key: 'your-pagerduty-routing-key'
 
   - name: 'slack-critical'
     slack_configs:
@@ -329,10 +329,10 @@ receivers:
       - to: 'dba@example.com'
 
 inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'instance']
 ```
 
@@ -358,7 +358,7 @@ groups:
           description: |
             Service: {{ $labels.service }}
             Namespace: {{ $labels.namespace }}
-            Error Rate: {{ printf "%.2f" $value | mul 100 }}%
+            Error Rate: {{ humanizePercentage $value }}
 
             Runbook: {{ $labels.runbook_url }}
 ```

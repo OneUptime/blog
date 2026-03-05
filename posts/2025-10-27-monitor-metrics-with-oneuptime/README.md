@@ -72,7 +72,11 @@ sum by (endpoint) (
 (
     sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
     +
-    sum(rate(http_request_duration_seconds_bucket{le="2.0"}[5m])) / 2
+    (
+        sum(rate(http_request_duration_seconds_bucket{le="2.0"}[5m]))
+        -
+        sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
+    ) / 2
 )
 /
 sum(rate(http_request_duration_seconds_count[5m]))
@@ -101,7 +105,7 @@ Here is an example metric data point following OpenTelemetry conventions. Consis
                         {
                             "name": "http.server.request.duration",
                             "description": "Duration of HTTP server requests",
-                            "unit": "ms",
+                            "unit": "s",
                             "histogram": {
                                 "dataPoints": [
                                     {

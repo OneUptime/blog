@@ -163,10 +163,11 @@ processors:
 
 # EXPORTERS: Define where telemetry is sent
 exporters:
-  otlphttp_oneuptime:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+  otlphttp/oneuptime:
+    endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}  # Auth token from environment
+    # Signal paths (/v1/traces, /v1/metrics, /v1/logs) are appended automatically
 
 # SERVICE: Wire receivers → processors → exporters into pipelines
 service:
@@ -175,19 +176,19 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, tail_sampling, attributes/redact]
-      exporters: [otlphttp_oneuptime]
+      exporters: [otlphttp/oneuptime]
 
     # Metrics pipeline (no sampling needed for aggregated data)
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp_oneuptime]
+      exporters: [otlphttp/oneuptime]
 
     # Logs pipeline with PII redaction
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch, attributes/redact]
-      exporters: [otlphttp_oneuptime]
+      exporters: [otlphttp/oneuptime]
 ```
 
 ---

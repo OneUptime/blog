@@ -266,7 +266,7 @@ py-spy record -o profile.svg -- python my_script.py
 
 # Generate output in Speedscope format for web-based analysis
 # Speedscope (https://speedscope.app) provides interactive visualization
-py-spy record -o flamegraph.svg --format speedscope -- python my_script.py
+py-spy record -o profile.speedscope.json --format speedscope -- python my_script.py
 
 # Profile the main process and all child processes
 # Essential for multi-process applications (multiprocessing, subprocess)
@@ -659,6 +659,7 @@ if __name__ == "__main__":
 
 ```python
 # continuous_profiler.py
+import sys
 import signal
 import traceback
 import threading
@@ -717,8 +718,6 @@ class ContinuousProfiler:
             self.samples[tuple(stack)] += 1
 
 # Usage
-import sys
-
 profiler = ContinuousProfiler(interval=0.001)  # 1ms sampling
 profiler.start()
 

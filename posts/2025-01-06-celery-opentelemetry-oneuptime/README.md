@@ -71,7 +71,7 @@ def setup_telemetry(service_name: str = "celery-worker"):
     # Get OneUptime endpoint and authentication token from environment
     endpoint = os.getenv("ONEUPTIME_ENDPOINT", "https://otlp.oneuptime.com")
     token = os.getenv("ONEUPTIME_TOKEN")
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"x-oneuptime-token": token}
 
     # Configure the tracer provider with OTLP exporter for distributed tracing
     trace_provider = TracerProvider(resource=resource)
@@ -256,14 +256,6 @@ task_duration = meter.create_histogram(
     unit="ms"
 )
 
-# Observable gauge for monitoring queue depth
-# The callback function is called periodically to collect current values
-queue_depth = meter.create_observable_gauge(
-    name="celery.queue.depth",
-    description="Number of messages in queue",
-    callbacks=[get_queue_depth]
-)
-
 def get_queue_depth(options):
     """Callback to get current queue depth from Redis broker"""
     import redis
@@ -276,6 +268,14 @@ def get_queue_depth(options):
             depth,
             {"queue": queue}
         )
+
+# Observable gauge for monitoring queue depth
+# The callback function is called periodically to collect current values
+queue_depth = meter.create_observable_gauge(
+    name="celery.queue.depth",
+    description="Number of messages in queue",
+    callbacks=[get_queue_depth]
+)
 ```
 
 ### Instrumented Task Decorator
@@ -587,20 +587,6 @@ import threading
 
 meter = metrics.get_meter(__name__)
 
-# Observable gauge for queue sizes - callbacks are invoked during metric collection
-queue_size = meter.create_observable_gauge(
-    name="celery.queue.size",
-    description="Number of tasks in queue",
-    callbacks=[observe_queue_size]
-)
-
-# Observable gauge for active worker count
-active_workers = meter.create_observable_gauge(
-    name="celery.workers.active",
-    description="Number of active workers",
-    callbacks=[observe_active_workers]
-)
-
 def observe_queue_size(options):
     """Observe queue sizes across all configured queues"""
     r = redis.from_url(os.getenv('CELERY_BROKER_URL'))
@@ -627,6 +613,20 @@ def observe_active_workers(options):
     except:
         # Return 0 if unable to connect to broker
         yield metrics.Observation(0, {})
+
+# Observable gauge for queue sizes - callbacks are invoked during metric collection
+queue_size = meter.create_observable_gauge(
+    name="celery.queue.size",
+    description="Number of tasks in queue",
+    callbacks=[observe_queue_size]
+)
+
+# Observable gauge for active worker count
+active_workers = meter.create_observable_gauge(
+    name="celery.workers.active",
+    description="Number of active workers",
+    callbacks=[observe_active_workers]
+)
 ```
 
 ---
@@ -639,8 +639,6 @@ Deploy a complete Celery setup with Redis broker and monitoring:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   redis:
     image: redis:7-alpine

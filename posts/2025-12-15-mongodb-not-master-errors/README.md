@@ -236,15 +236,15 @@ await db.collection('data').insertOne({ key: 'value' });
 ```javascript
 // From mongo shell
 rs.status()
-rs.isMaster()
+rs.hello()
 
 // From application
 async function getCurrentPrimary(client) {
   const admin = client.db('admin');
-  const result = await admin.command({ isMaster: 1 });
+  const result = await admin.command({ hello: 1 });
 
   return {
-    isPrimary: result.ismaster,
+    isPrimary: result.isWritablePrimary,
     primary: result.primary,
     hosts: result.hosts,
     setName: result.setName,
@@ -284,7 +284,7 @@ let currentPrimary = null;
 async function monitorPrimary(client) {
   setInterval(async () => {
     try {
-      const info = await client.db('admin').command({ isMaster: 1 });
+      const info = await client.db('admin').command({ hello: 1 });
 
       if (info.primary !== currentPrimary) {
         console.log(`Primary changed: ${currentPrimary} -> ${info.primary}`);

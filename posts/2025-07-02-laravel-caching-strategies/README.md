@@ -84,7 +84,8 @@ Laravel's cache configuration lives in `config/cache.php`:
 
 return [
     // Default cache store to use
-    'default' => env('CACHE_DRIVER', 'file'),
+    // Note: In Laravel 11+, CACHE_DRIVER was renamed to CACHE_STORE
+    'default' => env('CACHE_STORE', 'file'),
 
     // Available cache stores
     'stores' => [
@@ -145,11 +146,11 @@ return [
 ### Environment Configuration
 
 ```bash
-# .env - Development
-CACHE_DRIVER=file
+# .env - Development (use CACHE_STORE in Laravel 11+)
+CACHE_STORE=file
 
-# .env - Production
-CACHE_DRIVER=redis
+# .env - Production (use CACHE_STORE in Laravel 11+)
+CACHE_STORE=redis
 REDIS_HOST=redis.example.com
 REDIS_PASSWORD=your-secure-password
 REDIS_PORT=6379

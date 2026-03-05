@@ -196,7 +196,6 @@ import (
     "encoding/hex"
     "encoding/json"
     "fmt"
-    "io/ioutil"
     "log"
     "os"
     "path/filepath"
@@ -247,7 +246,7 @@ func (r *ConfigHotReloader) computeHash(content []byte) string {
 }
 
 func (r *ConfigHotReloader) loadConfig() error {
-    content, err := ioutil.ReadFile(r.configPath)
+    content, err := os.ReadFile(r.configPath)
     if err != nil {
         return err
     }

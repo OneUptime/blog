@@ -168,19 +168,22 @@ Metric labels (dimensions) often leak PII because they are "just strings". Views
 
 ```typescript
 // telemetry/metrics.ts - Metric views enforce attribute allow-lists
-import { MeterProvider, View, InstrumentType } from '@opentelemetry/sdk-metrics';
+import { MeterProvider, View, InstrumentType, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 
 const exporter = new OTLPMetricExporter({ url: process.env.OTEL_EXPORTER_OTLP_METRICS_URL });
 
 const meterProvider = new MeterProvider({
+  readers: [
+    new PeriodicExportingMetricReader({ exporter }),
+  ],
   views: [
     // Define allowed attributes for HTTP duration histogram
     // Any other attributes (like user.email) are automatically dropped
     new View({
       instrumentName: 'http.server.duration',
       instrumentType: InstrumentType.HISTOGRAM,
-      attributeKeys: ['http.method', 'http.route', 'http.status_code', 'deployment.environment'],
+      attributeKeys: ['http.request.method', 'http.route', 'http.response.status_code', 'deployment.environment'],
       // NOT included: user.id, user.email, request.body, etc.
     }),
     // Define allowed attributes for the orders counter
@@ -192,8 +195,6 @@ const meterProvider = new MeterProvider({
     }),
   ],
 });
-
-meterProvider.addMetricReader(exporter);
 ```
 
 Views drop any attribute keys not explicitly listed, ensuring no engineer can add `user.email` to a counter without changing the view configuration.
@@ -221,8 +222,7 @@ processors:
       - key: http.request.header.cookie         # Remove session cookies
         action: delete
       - key: user.email                         # Hash instead of delete
-        action: hash                            # Preserves cardinality without exposing PII
-        value_hash_algorithm: sha256
+        action: hash                            # SHA-256 hash; preserves cardinality without exposing PII
 
   # STRATEGY 2: Delete payment data from specific services
   attributes/drop_unused:
@@ -252,7 +252,7 @@ processors:
   filter/deny_spans:
     traces:
       span:
-        - attributes["span.name"] == "PIIDump"  # Catch rogue debugging spans
+        - 'name == "PIIDump"'                    # Catch rogue debugging spans
 
 exporters:
   otlphttp/secure:

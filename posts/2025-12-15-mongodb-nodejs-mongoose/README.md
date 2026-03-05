@@ -16,8 +16,8 @@ Mongoose is the most popular Object Document Mapper (ODM) for MongoDB and Node.j
 # Install Mongoose
 npm install mongoose
 
-# For TypeScript support
-npm install mongoose @types/mongoose
+# For TypeScript support (mongoose includes its own type definitions)
+npm install mongoose
 ```
 
 ## Basic Connection
@@ -215,8 +215,8 @@ userSchema.pre(/^find/, function(next) {
   next();
 });
 
-// Pre-remove middleware
-userSchema.pre('remove', async function(next) {
+// Pre-deleteOne middleware (replaces deprecated pre('remove'))
+userSchema.pre('deleteOne', { document: true, query: false }, async function(next) {
   // Clean up related documents
   await mongoose.model('Post').deleteMany({ author: this._id });
   next();
@@ -425,7 +425,7 @@ const stats = await User.aggregate([
 
 // Aggregation with lookup (join)
 const userOrders = await User.aggregate([
-  { $match: { _id: mongoose.Types.ObjectId(userId) } },
+  { $match: { _id: new mongoose.Types.ObjectId(userId) } },
   { $lookup: {
     from: 'orders',
     localField: '_id',
@@ -536,7 +536,7 @@ userSchema.index({ name: 'text', bio: 'text' });
 userSchema.index({ createdAt: 1 }, { expireAfterSeconds: 3600 });
 
 // Ensure indexes are created
-await User.ensureIndexes();
+await User.createIndexes();
 ```
 
 ## Production Best Practices

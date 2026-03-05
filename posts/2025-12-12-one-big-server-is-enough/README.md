@@ -82,7 +82,7 @@ These make it easier than ever to run reliable services on a single machine.
 For most applications, Docker Compose provides everything you need:
 
 ```yaml
-version: '3.8'
+# Note: The 'version' attribute is obsolete in modern Docker Compose and can be removed.
 services:
   app:
     image: your-app:latest
