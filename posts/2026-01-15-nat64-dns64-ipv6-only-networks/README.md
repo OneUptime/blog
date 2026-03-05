@@ -103,16 +103,14 @@ Jool is a robust, open-source NAT64 implementation for Linux. It's used in produ
 ### Installing Jool
 
 ```bash
-# For Ubuntu/Debian
-sudo apt update
-sudo apt install -y linux-headers-$(uname -r) build-essential dkms
-
-# Add Jool repository
-sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 5B2C6B94B3AA27A7
-echo "deb http://jool.mx/debian bullseye main" | sudo tee /etc/apt/sources.list.d/jool.list
-
+# For Debian unstable/testing, Jool is in the official repos:
 sudo apt update
 sudo apt install -y jool-dkms jool-tools
+
+# For other Debian/Ubuntu versions, download standalone .deb files
+# from the Jool downloads page (https://www.jool.mx/en/download.html):
+sudo apt install -y linux-headers-$(uname -r) build-essential dkms
+sudo apt install ./jool-dkms_*.deb ./jool-tools_*.deb
 
 # Load the kernel module
 sudo modprobe jool
@@ -164,9 +162,9 @@ sudo jool instance add "nat64" --iptables --pool6 64:ff9b::/96
 
 # Add IPv4 pool (addresses for NAT)
 # This is the IPv4 address(es) that will be used for outgoing connections
-sudo jool -i nat64 pool4 add 192.0.2.1 --tcp
-sudo jool -i nat64 pool4 add 192.0.2.1 --udp
-sudo jool -i nat64 pool4 add 192.0.2.1 --icmp
+sudo jool -i nat64 pool4 add --tcp 192.0.2.1 1-65535
+sudo jool -i nat64 pool4 add --udp 192.0.2.1 1-65535
+sudo jool -i nat64 pool4 add --icmp 192.0.2.1 0-65535
 
 # Configure iptables to direct traffic to Jool
 sudo ip6tables -t mangle -A PREROUTING -d 64:ff9b::/96 -j JOOL --instance nat64
@@ -202,8 +200,8 @@ Create `/etc/jool/nat64.conf`:
         "udp-timeout": 300,
         "icmp-timeout": 60,
 
-        "comment": "Maximum simultaneous connections per IPv4",
-        "max-stored-pkts": 10,
+        "comment": "Maximum simultaneous opens (pending connections)",
+        "maximum-simultaneous-opens": 10,
 
         "comment": "Fragment handling",
         "handle-rst-during-fin-rcv": false,
@@ -417,7 +415,7 @@ logging {
     };
 
     category queries { query_log; };
-    category dns64 { dns64_log; };
+    category resolver { dns64_log; };
 };
 ```
 
@@ -569,7 +567,7 @@ server:
     dns64-synthall: no
 
     # Don't synthesize for these domains (have native IPv6)
-    # dns64-ignore: example.com
+    # dns64-ignore-aaaa: example.com
 
     # Root hints
     root-hints: "/usr/share/dns/root.hints"
@@ -635,64 +633,9 @@ dig @::1 AAAA ipv4only.arpa
 
 ---
 
-## DNS64 with dnsmasq (Lightweight Option)
+## A Note on dnsmasq
 
-For smaller deployments, dnsmasq provides simple DNS64 support.
-
-### Installing dnsmasq
-
-```bash
-# Ubuntu/Debian
-sudo apt install -y dnsmasq
-
-# RHEL/CentOS
-sudo dnf install -y dnsmasq
-```
-
-### dnsmasq DNS64 Configuration
-
-Create `/etc/dnsmasq.d/dns64.conf`:
-
-```bash
-# /etc/dnsmasq.d/dns64.conf
-# dnsmasq DNS64 configuration
-
-# Listen on IPv6
-listen-address=::1
-listen-address=2001:db8::1
-
-# DNS64 prefix
-dns64-prefix=64:ff9b::/96
-
-# Upstream DNS servers (IPv6)
-server=2606:4700:4700::1111
-server=2606:4700:4700::1001
-server=2001:4860:4860::8888
-server=2001:4860:4860::8844
-
-# Don't use /etc/resolv.conf
-no-resolv
-
-# Cache size
-cache-size=10000
-
-# Log queries (for debugging)
-log-queries
-log-facility=/var/log/dnsmasq.log
-
-# Don't forward short names
-domain-needed
-
-# Never forward addresses in the non-routed spaces
-bogus-priv
-```
-
-Start dnsmasq:
-
-```bash
-sudo systemctl enable dnsmasq
-sudo systemctl restart dnsmasq
-```
+dnsmasq is a popular lightweight DNS forwarder, but it **does not support DNS64**. There is no `dns64-prefix` option or any DNS64 functionality in dnsmasq. If you need a lightweight DNS64 resolver, use **Unbound** (described above) — it is similarly easy to configure and has proper DNS64 support.
 
 ---
 
@@ -763,7 +706,8 @@ interface eth0
     {
         AdvOnLink on;
         AdvAutonomous on;
-        AdvRouterAddr on;
+        AdvValidLifetime 86400;
+        AdvPreferredLifetime 14400;
     };
 
     # DNS64 server via RDNSS
@@ -1126,12 +1070,12 @@ def get_jool_stats():
     """Get statistics from Jool"""
     try:
         result = subprocess.run(
-            ['jool', '-i', 'nat64', 'stats', 'display', '--json'],
+            ['jool', '-i', 'nat64', 'stats', 'display', '--csv', '--all'],
             capture_output=True,
             text=True,
             timeout=5
         )
-        return json.loads(result.stdout)
+        return result.stdout
     except Exception as e:
         print(f"Error getting stats: {e}")
         return None
@@ -1143,14 +1087,14 @@ def get_session_counts():
     for proto in ['tcp', 'udp', 'icmp']:
         try:
             result = subprocess.run(
-                ['jool', '-i', 'nat64', 'session', 'display', '--' + proto, '--count'],
+                ['jool', '-i', 'nat64', 'session', 'display', '--' + proto, '--csv'],
                 capture_output=True,
                 text=True,
                 timeout=5
             )
-            match = re.search(r'(\d+)', result.stdout)
-            if match:
-                counts[proto] = int(match.group(1))
+            # Count lines (minus header) to get session count
+            lines = result.stdout.strip().split('\n')
+            counts[proto] = max(0, len(lines) - 1)
         except Exception as e:
             print(f"Error counting {proto} sessions: {e}")
 
@@ -1164,10 +1108,10 @@ def update_metrics():
     SESSIONS_UDP.set(sessions['udp'])
     SESSIONS_ICMP.set(sessions['icmp'])
 
-    # Get packet statistics
+    # Get packet statistics (CSV format)
     stats = get_jool_stats()
     if stats:
-        # Parse and set packet metrics
+        # Parse CSV output and set packet metrics
         # (Exact fields depend on Jool version)
         pass
 
@@ -1474,8 +1418,8 @@ tcpdump -i eth1 -n 'ip and host 192.0.2.1'
 
 | Component | Software Options | Default Port | Config Location |
 |-----------|-----------------|--------------|-----------------|
-| NAT64 | Jool, Tayga | N/A (kernel) | `/etc/jool/` |
-| DNS64 | BIND, Unbound, dnsmasq | 53 | `/etc/bind/`, `/etc/unbound/` |
+| NAT64 | Jool (stateful), Tayga (stateless) | N/A (kernel) | `/etc/jool/` |
+| DNS64 | BIND, Unbound | 53 | `/etc/bind/`, `/etc/unbound/` |
 | RA/RDNSS | radvd | N/A | `/etc/radvd.conf` |
 | DHCPv6 | ISC DHCP, Kea | 547 | `/etc/dhcp/dhcpd6.conf` |
 
