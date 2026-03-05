@@ -36,6 +36,7 @@
  * 30. Relative link validation — Check that relative markdown links resolve to real files
  * 31. Tag normalization — Detect near-duplicate tags across posts (e.g., "Docker" vs "docker" vs "Dockers")
  * 32. social-media.png dimensions — Verify the image is the expected size (1200x630)
+ * 33. CodeValidate.json coverage — Every post must have an entry with status "validated" or "not-code-blog"
  *
  * Run with: npm run validate
  */
@@ -48,6 +49,7 @@ import { execSync } from 'child_process';
 const POSTS_DIR = 'posts';
 const BLOGS_JSON = 'Blogs.json';
 const AUTHORS_JSON = 'Authors.json';
+const CODE_VALIDATE_JSON = 'CodeValidate.json';
 const TAGS_MD = 'Tags.md';
 const MIN_DESCRIPTION_LENGTH = 50;
 const MAX_TITLE_LENGTH = 80;
@@ -83,6 +85,15 @@ interface FormatIssue {
 interface BlogIssue {
   dir: string;
   issues: FormatIssue[];
+}
+
+interface CodeValidateEntry {
+  status: 'validated' | 'not-code-blog';
+  validatedAt: string;
+}
+
+interface CodeValidateJson {
+  [postSlug: string]: CodeValidateEntry;
 }
 
 interface CodeFence {
@@ -2184,6 +2195,52 @@ function checkSocialMediaDimensions(postsDir: string[]): void {
 /**
  * Main function
  */
+/**
+ * Check that every blog post has an entry in CodeValidate.json with status
+ * "validated" or "not-code-blog". Missing or unrecognised entries are errors.
+ */
+function checkCodeValidation(postsDir: string[]): void {
+  logHeader(`Checking CodeValidate.json for all blog posts`);
+
+  if (!fs.existsSync(CODE_VALIDATE_JSON)) {
+    hasErrors = true;
+    logError(`${CODE_VALIDATE_JSON} not found. Every blog post must be listed in this file.`);
+    return;
+  }
+
+  const raw = fs.readFileSync(CODE_VALIDATE_JSON, 'utf-8');
+  const codeValidate: CodeValidateJson = JSON.parse(raw);
+
+  const validStatuses = new Set<string>(['validated', 'not-code-blog']);
+  const errors: string[] = [];
+
+  for (const dir of postsDir) {
+    const entry = codeValidate[dir];
+    if (!entry) {
+      errors.push(`  - ${colors.red}${dir}${colors.reset}: not found in ${CODE_VALIDATE_JSON}`);
+    } else if (!validStatuses.has(entry.status)) {
+      errors.push(
+        `  - ${colors.red}${dir}${colors.reset}: invalid status "${entry.status}" (must be "validated" or "not-code-blog")`
+      );
+    }
+  }
+
+  if (errors.length > 0) {
+    hasErrors = true;
+    console.log(
+      `${colors.red}${colors.bold}ERROR:${colors.reset} ${errors.length} blog post${errors.length === 1 ? '' : 's'} missing or not validated in ${CODE_VALIDATE_JSON}:\n`
+    );
+    for (const err of errors) {
+      console.log(err);
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Add an entry to ${CODE_VALIDATE_JSON} for each missing post with status "validated" or "not-code-blog".\n`
+    );
+  } else {
+    logSuccess(`All ${postsDir.length} blog posts are accounted for in ${CODE_VALIDATE_JSON}`);
+  }
+}
+
 function main(): void {
   // Check required files
   checkRequiredFiles();
@@ -2196,6 +2253,9 @@ function main(): void {
 
   // Get all directories in posts/
   const postsDir = getPostDirectories();
+
+  // Check CodeValidate.json coverage
+  checkCodeValidation(postsDir);
 
   // Validate directory name date format
   validateDirectoryDateFormat(postsDir);
