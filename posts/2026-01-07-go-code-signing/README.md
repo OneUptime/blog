@@ -965,7 +965,7 @@ func printVersionInfo() {
 
 Here is a comprehensive release pipeline combining all security measures.
 
-```yaml
+````yaml
 # .github/workflows/secure-release.yml
 name: Secure Release Pipeline
 
@@ -1154,7 +1154,7 @@ jobs:
     with:
       base64-subjects: "${{ needs.build.outputs.hashes }}"
       upload-assets: true
-```
+````
 
 ## Security Best Practices
 

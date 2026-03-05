@@ -66,7 +66,7 @@ create_release:
 
 Include a changelog in your release description.
 
-```yaml
+````yaml
 create_release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
@@ -87,7 +87,7 @@ create_release:
       ```
   rules:
     - if: '$CI_COMMIT_TAG'
-```
+````
 
 ## Dynamic Release Description
 

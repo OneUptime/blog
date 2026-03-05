@@ -1177,7 +1177,7 @@ kubectl -n rook-ceph logs -l app=csi-cephfsplugin-provisioner -c csi-cephfsplugi
 
 ### Common Issues and Solutions
 
-```yaml
+````yaml
 # troubleshooting-guide.yaml
 # This ConfigMap documents common issues and their solutions
 apiVersion: v1
@@ -1256,7 +1256,7 @@ data:
     - Use POSIX file locking (flock, fcntl)
     - Implement application-level locking
     - Consider using leader election for write coordination
-```
+````
 
 ## Best Practices for Shared CephFS Access
 
