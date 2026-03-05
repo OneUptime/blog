@@ -210,7 +210,7 @@ except KeyboardInterrupt:
 
 ## Method 2: Logstash MongoDB Input
 
-Use Logstash for a configuration-based approach.
+Use Logstash for a configuration-based approach. Note: The `logstash-input-mongodb` plugin is a community-maintained plugin, not an official Elastic plugin. You must install it separately with `bin/logstash-plugin install logstash-input-mongodb`.
 
 ### Logstash Configuration
 

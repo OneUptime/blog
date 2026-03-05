@@ -494,7 +494,7 @@ jobs:
         run: npm run test:integration -- --coverage
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: coverage/lcov.info
 

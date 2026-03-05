@@ -331,13 +331,16 @@ variable "key_version" {
   default     = "v1"
 }
 
+resource "terraform_data" "key_version" {
+  input = var.key_version
+}
+
 resource "tls_private_key" "rotating" {
   algorithm = "RSA"
   rsa_bits  = 4096
 
-  # Recreate key when version changes
-  keepers = {
-    version = var.key_version
+  lifecycle {
+    replace_triggered_by = [terraform_data.key_version]
   }
 }
 

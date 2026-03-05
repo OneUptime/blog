@@ -78,8 +78,8 @@ location /api/ {
     # Query string is automatically appended when using rewrite with break
 }
 
-# Or explicitly append query string
-location /api/ {
+# Or explicitly append query string using a regex location
+location ~ ^/api/(.*)$ {
     proxy_pass http://backend/v2/$1$is_args$args;
 }
 ```

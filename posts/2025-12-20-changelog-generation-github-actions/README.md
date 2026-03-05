@@ -263,7 +263,7 @@ jobs:
           mv CHANGELOG.new.md CHANGELOG.md
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'docs: update changelog'
@@ -415,7 +415,7 @@ jobs:
           mv CHANGELOG.new.md CHANGELOG.md
 
       - name: Create Release PR
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: 'chore: release ${{ needs.version.outputs.new_version }}'
           title: 'Release ${{ needs.version.outputs.new_version }}'

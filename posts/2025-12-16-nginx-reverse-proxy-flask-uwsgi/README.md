@@ -250,10 +250,6 @@ server {
     location / {
         include uwsgi_params;
         uwsgi_pass flask_app;
-
-        # Enable keepalive to upstream
-        uwsgi_http_version 1.1;
-        uwsgi_param Connection "";
     }
 }
 ```

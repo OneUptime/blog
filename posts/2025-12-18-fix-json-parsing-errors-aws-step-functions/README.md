@@ -462,12 +462,10 @@ resource "aws_sfn_state_machine" "complex" {
 # Extract and validate JSON from Terraform
 terraform console <<< 'jsonencode(local.state_machine_definition)' | jq .
 
-# Use AWS CLI to validate
-aws stepfunctions create-state-machine \
-  --name "test-validation" \
-  --role-arn "arn:aws:iam::123456789:role/test" \
-  --definition file://definition.json \
-  --dry-run
+# Use AWS CLI to validate (create and then delete, or use Step Functions console)
+# Note: AWS CLI does not have a --dry-run flag for create-state-machine
+# Instead, validate your JSON definition locally with jq or a JSON schema validator
+cat definition.json | python3 -m json.tool
 ```
 
 ### Common Validation Errors

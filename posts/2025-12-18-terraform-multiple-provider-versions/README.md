@@ -129,39 +129,9 @@ resource "aws_ec2_transit_gateway" "main" {
 
 ## Using Different Provider Versions
 
-Sometimes you need to use different provider versions, typically during migrations or when working with legacy configurations:
+Sometimes you need to use different provider versions, typically during migrations or when working with legacy configurations.
 
-```hcl
-terraform {
-  required_providers {
-    # Current AWS provider
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-
-    # Legacy AWS provider with different configuration name
-    awslegacy = {
-      source  = "hashicorp/aws"
-      version = "~> 4.0"
-      configuration_aliases = [awslegacy.main]
-    }
-  }
-}
-
-# Modern provider configuration
-provider "aws" {
-  region = "us-east-1"
-}
-
-# Legacy provider for resources requiring older version
-provider "awslegacy" {
-  alias  = "main"
-  region = "us-east-1"
-}
-```
-
-Note: Terraform doesn't natively support different versions of the exact same provider. The workaround above uses provider aliasing with different source names, but both point to the same underlying provider. For true version separation, you'll need to split resources into separate configurations.
+**Important:** Terraform does not support running two different versions of the same provider (e.g., `hashicorp/aws` v4 and v5) in a single configuration. You cannot assign two local names to the same provider source with different versions. For true version separation, you must split resources into separate Terraform configurations (see the next section).
 
 ## Practical Multi-Version Strategy
 
@@ -325,20 +295,11 @@ module "regional_app" {
 }
 ```
 
-## Dynamic Provider Selection with for_each
+## Multi-Region Deployment with Provider Aliases
 
-Create resources across multiple regions dynamically:
+Create resources across multiple regions using explicit provider aliases. Note that Terraform does not support dynamic provider references in `providers` blocks -- each module instance must be declared separately:
 
 ```hcl
-locals {
-  regions = {
-    primary   = "us-east-1"
-    secondary = "us-west-2"
-    tertiary  = "eu-west-1"
-  }
-}
-
-# Generate provider configurations
 provider "aws" {
   alias  = "us_east_1"
   region = "us-east-1"
@@ -354,17 +315,38 @@ provider "aws" {
   region = "eu-west-1"
 }
 
-# Map region names to provider aliases
-module "regional_resources" {
-  source   = "./modules/regional-base"
-  for_each = local.regions
+# Each region requires a separate module block
+module "regional_us_east" {
+  source = "./modules/regional-base"
 
   providers = {
-    aws = aws.${replace(each.value, "-", "_")}
+    aws = aws.us_east_1
   }
 
-  region_name = each.key
-  vpc_cidr    = cidrsubnet("10.0.0.0/8", 8, index(keys(local.regions), each.key))
+  region_name = "primary"
+  vpc_cidr    = "10.0.0.0/16"
+}
+
+module "regional_us_west" {
+  source = "./modules/regional-base"
+
+  providers = {
+    aws = aws.us_west_2
+  }
+
+  region_name = "secondary"
+  vpc_cidr    = "10.1.0.0/16"
+}
+
+module "regional_eu_west" {
+  source = "./modules/regional-base"
+
+  providers = {
+    aws = aws.eu_west_1
+  }
+
+  region_name = "tertiary"
+  vpc_cidr    = "10.2.0.0/16"
 }
 ```
 
@@ -426,28 +408,22 @@ jobs:
 
 ### 4. Handle Provider-Specific Behavior
 
+When migrating between provider versions, use a variable to control version-specific logic:
+
 ```hcl
-# Check provider version and adjust behavior
-locals {
-  # AWS provider v5 changed some resource behaviors
-  use_new_s3_syntax = tonumber(split(".", data.aws_provider_version.current.version)[0]) >= 5
+variable "use_new_s3_syntax" {
+  description = "Set to true when using AWS provider v4+ (where S3 bucket sub-resources are separate)"
+  type        = bool
+  default     = true
 }
 
 resource "aws_s3_bucket" "example" {
   bucket = "my-bucket"
-
-  # Use dynamic blocks for version-specific configuration
-  dynamic "website" {
-    for_each = local.use_new_s3_syntax ? [] : [1]
-    content {
-      index_document = "index.html"
-    }
-  }
 }
 
-# For v5+, use separate resource
+# For AWS provider v4+, use separate resource for website configuration
 resource "aws_s3_bucket_website_configuration" "example" {
-  count  = local.use_new_s3_syntax ? 1 : 0
+  count  = var.use_new_s3_syntax ? 1 : 0
   bucket = aws_s3_bucket.example.id
 
   index_document {

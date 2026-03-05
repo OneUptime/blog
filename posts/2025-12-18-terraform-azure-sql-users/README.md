@@ -406,8 +406,12 @@ locals {
 
 resource "null_resource" "sql_user" {
   triggers = {
-    username = var.username
-    roles    = join(",", var.roles)
+    username       = var.username
+    roles          = join(",", var.roles)
+    server_fqdn    = var.server_fqdn
+    database_name  = var.database_name
+    admin_username = var.admin_username
+    admin_password = var.admin_password
   }
 
   provisioner "local-exec" {

@@ -103,7 +103,7 @@ curl -X POST \
 
 ## API Keys (Legacy)
 
-API keys are being deprecated in favor of service accounts but are still supported:
+API keys have been deprecated and automatically migrated to service accounts as of Grafana 12.3 (early 2025). They are shown here for reference with legacy systems:
 
 ### Creating API Keys
 

@@ -233,9 +233,12 @@ resource "aws_subnet" "private" {
 
 ```hcl
 terraform {
+  # Note: Backend blocks do not support variable interpolation.
+  # Use partial configuration and pass values via -backend-config flags,
+  # or use Terragrunt to generate backend configs dynamically.
   backend "s3" {
     bucket         = "company-terraform-state"
-    key            = "${var.project}/${var.environment}/terraform.tfstate"
+    key            = "myproject/production/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
     dynamodb_table = "terraform-locks"

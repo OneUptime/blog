@@ -306,14 +306,15 @@ provider "aws" {
 }
 
 # backend per tenant account
+# Note: Backend blocks do not support variable interpolation.
+# Use partial configuration with -backend-config to set role_arn dynamically.
 terraform {
   backend "s3" {
     bucket         = "tenant-terraform-state"
     key            = "infrastructure/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    # Backend is in tenant's account
-    role_arn       = "arn:aws:iam::${var.tenant_account_id}:role/TerraformStateRole"
+    # role_arn is set via: terraform init -backend-config="role_arn=arn:aws:iam::TENANT_ACCOUNT_ID:role/TerraformStateRole"
   }
 }
 ```

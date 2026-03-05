@@ -148,35 +148,29 @@ module "vpc" {
 
 ### Environment-Specific Branches
 
-Use different branches for different environments:
+Use different branches for different environments by setting the `ref` value directly in each environment's configuration. Note that Terraform's `source` argument does not support variable interpolation -- you must use a literal string:
 
 ```hcl
-# variables.tf
-variable "module_ref" {
-  type        = string
-  description = "Git reference for modules (branch, tag, or commit)"
-  default     = "main"
-}
-
-# main.tf
+# environments/development/main.tf
 module "vpc" {
-  source = "git::https://github.com/myorg/modules.git//vpc?ref=${var.module_ref}"
+  source = "git::https://github.com/myorg/modules.git//vpc?ref=develop"
 
   vpc_cidr = var.vpc_cidr
 }
-```
 
-Environment configurations:
+# environments/staging/main.tf
+module "vpc" {
+  source = "git::https://github.com/myorg/modules.git//vpc?ref=release/v2.0"
 
-```hcl
-# environments/development/terraform.tfvars
-module_ref = "develop"
+  vpc_cidr = var.vpc_cidr
+}
 
-# environments/staging/terraform.tfvars
-module_ref = "release/v2.0"
+# environments/production/main.tf - Always use tags in production
+module "vpc" {
+  source = "git::https://github.com/myorg/modules.git//vpc?ref=v2.0.1"
 
-# environments/production/terraform.tfvars
-module_ref = "v2.0.1"  # Always use tags in production
+  vpc_cidr = var.vpc_cidr
+}
 ```
 
 ## Version Pinning Strategies

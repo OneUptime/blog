@@ -266,21 +266,29 @@ server {
 }
 ```
 
-### Restrict to Specific Locations
+### Restrict to Specific Servers
+
+Note: `underscores_in_headers` is only valid in the `http` and `server` contexts. It cannot be placed inside a `location` block. If you need different behavior for different endpoints, use separate server blocks:
 
 ```nginx
+# Server for public endpoints - no underscore headers
 server {
     listen 80;
-    # Don't enable globally
+    server_name public.example.com;
 
-    # Public endpoints - no underscore headers
-    location /public/ {
+    location / {
         proxy_pass http://public-backend;
     }
+}
 
-    # Legacy API - needs underscore headers
-    location /legacy-api/ {
-        underscores_in_headers on;
+# Server for legacy API - needs underscore headers
+server {
+    listen 80;
+    server_name legacy-api.example.com;
+
+    underscores_in_headers on;
+
+    location / {
         proxy_pass http://legacy-backend;
     }
 }
@@ -387,27 +395,21 @@ sudo nginx -T | grep underscores_in_headers
 sudo nginx -s reload
 ```
 
-## Alternative: Convert Headers at Proxy Level
+## Alternative: Use Hyphenated Header Names
 
-Instead of enabling underscore headers, convert them at the proxy level.
+Instead of enabling underscore headers, ask clients to use hyphenated header names (the HTTP standard convention). Nginx passes hyphenated headers by default.
 
 ```nginx
 server {
     listen 80;
-    # Don't need underscores_in_headers
+    # No need for underscores_in_headers
 
     location / {
         proxy_pass http://backend;
 
-        # Convert hyphen headers to underscore for backend
-        proxy_set_header X_Custom_Header $http_x_custom_header;
-
-        # Or use a default if not provided
-        set $custom_val $http_x_custom_header;
-        if ($custom_val = "") {
-            set $custom_val "default";
-        }
-        proxy_set_header X_Custom_Header $custom_val;
+        # X-Custom-Header (with hyphens) works by default
+        # Access via $http_x_custom_header variable
+        proxy_set_header X-Custom-Header $http_x_custom_header;
     }
 }
 ```

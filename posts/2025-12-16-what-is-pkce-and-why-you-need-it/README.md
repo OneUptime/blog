@@ -426,7 +426,7 @@ flowchart TB
 
 - **Server-side applications**: OAuth 2.1 (the upcoming revision) recommends PKCE for all clients, including confidential ones. It provides defense-in-depth against authorization code injection attacks.
 
-The OAuth 2.0 Security Best Current Practice document (RFC 6819) and the newer OAuth 2.1 draft both recommend using PKCE universally.
+The OAuth 2.0 Security Best Current Practice document (RFC 9700, which updates RFC 6819) and the OAuth 2.1 draft both recommend using PKCE universally.
 
 ## Code Challenge Methods
 

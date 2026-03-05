@@ -353,6 +353,8 @@ curl -X PUT "https://localhost:9200/orders/_settings" \
 
 ## Method 4: Using Point-in-Time for Reliable Polling
 
+Use a timestamp-based cursor with Point-in-Time API for consistent, reliable polling:
+
 ```python
 from elasticsearch import Elasticsearch
 import time
@@ -364,49 +366,39 @@ es = Elasticsearch(
 )
 
 class ReliableDocumentPoller:
-    """Poll for new documents using sequence numbers for reliability."""
+    """Poll for new documents using Point-in-Time and search_after for reliability."""
 
-    def __init__(self, index: str):
+    def __init__(self, index: str, timestamp_field: str = "@timestamp"):
         self.index = index
-        self.last_seq_no = self._get_current_seq_no()
-
-    def _get_current_seq_no(self):
-        """Get the current max sequence number."""
-        response = es.search(
-            index=self.index,
-            body={
-                "size": 1,
-                "sort": [{"_seq_no": "desc"}],
-                "_source": False
-            }
-        )
-
-        if response["hits"]["hits"]:
-            return response["hits"]["hits"][0]["_seq_no"]
-        return 0
+        self.timestamp_field = timestamp_field
+        self.last_sort_values = None
 
     def poll(self):
-        """Poll for documents with sequence number greater than last seen."""
+        """Poll for new documents using search_after for reliable pagination."""
+        body = {
+            "size": 100,
+            "query": {
+                "match_all": {}
+            },
+            "sort": [
+                {self.timestamp_field: "asc"},
+                {"_id": "asc"}
+            ],
+            "seq_no_primary_term": True
+        }
+
+        if self.last_sort_values:
+            body["search_after"] = self.last_sort_values
+
         response = es.search(
             index=self.index,
-            body={
-                "query": {
-                    "range": {
-                        "_seq_no": {
-                            "gt": self.last_seq_no
-                        }
-                    }
-                },
-                "sort": [{"_seq_no": "asc"}],
-                "size": 100,
-                "seq_no_primary_term": True
-            }
+            body=body
         )
 
         new_docs = response["hits"]["hits"]
 
         if new_docs:
-            self.last_seq_no = new_docs[-1]["_seq_no"]
+            self.last_sort_values = new_docs[-1]["sort"]
 
         return new_docs
 
@@ -418,7 +410,7 @@ while True:
     if new_docs:
         print(f"New documents: {len(new_docs)}")
         for doc in new_docs:
-            print(f"  Seq: {doc['_seq_no']}, ID: {doc['_id']}")
+            print(f"  ID: {doc['_id']}, Seq: {doc.get('_seq_no', 'N/A')}")
     time.sleep(5)
 ```
 

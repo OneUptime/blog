@@ -157,8 +157,11 @@ data:
     # EXPORTERS: Send to both old and new backends during migration
     exporters:
       # Keep Jaeger backend for comparison and rollback capability
-      jaeger:
-        endpoint: jaeger-collector.observability:14250
+      # Note: The native jaeger: exporter was removed from official OTel Collector
+      # distributions after v0.85.0. Since Jaeger v2 supports OTLP natively,
+      # use the otlp exporter to send traces to Jaeger.
+      otlp/jaeger:
+        endpoint: jaeger-collector.observability:4317
         tls:
           insecure: true             # Set to false in production with proper certs
 
@@ -177,7 +180,7 @@ data:
           # Transform Jaeger format, then batch
           processors: [transform, batch]
           # Export to BOTH backends for comparison during migration
-          exporters: [jaeger, otlphttp]
+          exporters: [otlp/jaeger, otlphttp]
 ```
 
 ### Step 2: Update Jaeger Clients to Point to Collector
@@ -571,8 +574,10 @@ Dual export is the safest migration strategy. Send traces to both the old Jaeger
 # This ensures data goes to both backends for comparison and safety
 exporters:
   # Keep sending to Jaeger - maintains existing dashboards and workflows
-  jaeger:
-    endpoint: jaeger-collector:14250
+  # Use OTLP exporter since Jaeger v2 supports OTLP natively
+  # (the native jaeger: exporter was removed after Collector v0.85.0)
+  otlp/jaeger:
+    endpoint: jaeger-collector:4317
     tls:
       insecure: true  # Configure TLS in production
 
@@ -590,7 +595,7 @@ service:
       processors: [batch]
       # DUAL EXPORT: send to BOTH backends
       # Compare data between systems to validate migration
-      exporters: [jaeger, otlphttp]
+      exporters: [otlp/jaeger, otlphttp]
 ```
 
 ## 6. Data Migration Considerations
@@ -943,19 +948,20 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  # Export only to Jaeger backend - no OTel exporters
-  jaeger:
-    endpoint: jaeger-collector:14250
+  # Export only to Jaeger backend via OTLP (Jaeger v2 supports OTLP natively)
+  # Note: the native jaeger: exporter was removed after Collector v0.85.0
+  otlp/jaeger:
+    endpoint: jaeger-collector:4317
     tls:
       insecure: true  # Match your original TLS settings
 
 service:
   pipelines:
     traces:
-      # Simple pipeline: Jaeger in -> batch -> Jaeger out
+      # Simple pipeline: Jaeger in -> batch -> Jaeger out (via OTLP)
       receivers: [jaeger]
       processors: [batch]
-      exporters: [jaeger]
+      exporters: [otlp/jaeger]
 ```
 
 ## Summary

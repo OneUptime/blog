@@ -93,11 +93,11 @@ Use metric filters within `label_values()` to narrow results.
 
 ### Filter by Metric Existence
 
-Show labels only where metric has recent data:
+Show labels only where metric exists:
 
 ```promql
-# Pods that have reported metrics in the last 5 minutes
-label_values(container_cpu_usage_seconds_total{namespace="$namespace"}[5m], pod)
+# Pods that have reported metrics recently
+label_values(container_cpu_usage_seconds_total{namespace="$namespace"}, pod)
 ```
 
 ### Filter by Label Value

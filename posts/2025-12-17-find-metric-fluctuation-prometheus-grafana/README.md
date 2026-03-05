@@ -34,10 +34,10 @@ Standard deviation quantifies how spread out values are from the mean.
 # Standard deviation over 5 minutes
 stddev_over_time(http_request_duration_seconds[5m])
 
-# By service
-stddev_over_time(http_request_duration_seconds[5m]) by (service)
+# By service (stddev_over_time preserves labels per series; no by clause needed)
+stddev_over_time(http_request_duration_seconds{service!=""}[5m])
 
-# Compare stddev to mean (coefficient of variation)
+# Compare stddev to mean (coefficient of variation) per series
 stddev_over_time(http_request_duration_seconds[5m])
 / avg_over_time(http_request_duration_seconds[5m])
 ```

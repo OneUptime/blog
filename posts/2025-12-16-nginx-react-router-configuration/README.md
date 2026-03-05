@@ -82,7 +82,7 @@ server {
     gzip_vary on;
     gzip_min_length 1024;
     gzip_proxied expired no-cache no-store private auth;
-    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml application/javascript application/json;
+    gzip_types text/plain text/css text/xml text/javascript application/xml application/javascript application/json;
 
     # Static files with cache headers
     location /static/ {

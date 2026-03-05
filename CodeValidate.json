@@ -1202,5 +1202,805 @@
   "2025-12-16-flask-traceback-nginx-logs": {
     "status": "validated",
     "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-prometheus-queries-return-label-values": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-prometheus-ranges-vector-selectors-error": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-prometheus-rate-vs-increase": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-prometheus-vector-same-labelset-error": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-rewrite-urls-grafana-ingress": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-selected-time-period-grafana-queries": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-show-x-time-ago-grafana-influxdb": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-sort-legends-series-name-grafana": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-time-field-influxdb-grafana-single-stat": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-time-shift-single-query-grafana": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-understand-container-pod-label-prometheus": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-vendor-neutral-cicd-pipelines": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-visualize-histograms-grafana-prometheus": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-worldmap-plugin-table-data-grafana": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-aws-assumerole-ec2-service": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-azure-keyvault-ssl-application-gateway": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-check-string-contains-substring-terraform": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-conditionally-create-resources-tfvars-terraform": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-create-ansible-inventory-from-terraform": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-different-terraform-backends-each-project": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-forward-query-string-parameters-proxy-pass-nginx": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-http2-nodejs-behind-nginx": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-increase-client-max-body-size-nginx": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-kubernetes-external-ip-pending-nginx-ingress": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-403-directory-index-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-403-forbidden-all-files": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-413-request-entity-too-large-aws": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-499-error-debug": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-bind-port-80-failed": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-decode-urls-proxy-pass": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-docker-localhost-host": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-host-vs-http-host": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-http-to-https-redirect": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-load-balancing-configuration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-location-blocks-subfolders": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-location-priority": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-meteor-configuration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-nodejs-setup": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-not-loading-css-files": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-php-download-instead-of-execute": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-react-router-configuration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-redirect-urls-properly": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-responding-any-domain": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-reverse-proxy-flask-uwsgi": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-rewrite-urls-parameters": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-root-vs-alias-static-files": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-underscores-in-headers": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-upstream-timed-out": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-upstream-too-big-header": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-websocket-proxy-ssl": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-nginx-www-non-www-redirect": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-react-docker-nginx-exit-code-0": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-react-router-404-nginx": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-remove-file-extensions-nginx": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-rewrite-all-requests-index-php-nginx": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-rewrite-urls-proxy-responses-nginx": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-server-sent-events-nginx": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-socketio-nginx-configuration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-websocket-400-bad-request-nginx": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-what-is-oauth-and-how-does-it-work": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-16-what-is-pkce-and-why-you-need-it": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-access-prometheus-grafana-istio-gateway": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-aggregate-loki-logs-by-day-grafana": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-alerts-pod-failures-kubernetes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-assign-dashboard-permissions-grafana-helm": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-build-mcp-server-nodejs": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-configure-azure-ad-oauth-roles-grafana": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-connect-grafana-datasources-via-proxy": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-count-unique-label-values-prometheus": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-counter-over-time-graph-prometheus": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-cumulative-function-resets-daily-grafana": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-display-points-worldmap-panel-grafana": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-divide-two-series-grafana": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-filter-prometheus-query-based-on-another-metric": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-find-metric-fluctuation-prometheus-grafana": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-fix-hpa-not-fetching-custom-metrics": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-fix-prometheus-job-label-breaking-grafana": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-get-webpage-values-blackbox-exporter": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-grafana-api-automatic-authentication": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-grafana-dashboard-variables-chained": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-grafana-email-url-root-url": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-grafana-instant-checkbox-explained": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-grafana-instant-query-prometheus": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-grafana-kafka-exporter-datasource": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-grafana-label-filters-metric-results": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-grafana-pq-resize-shared-memory-error": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-grafana-public-dashboards-no-password": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-grafana-template-variables-alert-queries": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-hide-grafana-panels-template-variables": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-kubernetes-persistent-volume-disk-usage": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-measure-service-latency-prometheus": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-migrating-jaeger-to-opentelemetry": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-persistent-grafana-dashboards-kubernetes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-prometheus-cpu-memory-kubernetes-pods": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-prometheus-cumulative-increase": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-prometheus-disk-space-total-free": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-prometheus-filter-by-metric-value": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-prometheus-join-two-metrics": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-prometheus-metrics-over-time-analysis": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-17-prometheus-or-logical-operator": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-display-sensitive-output-variables-terraform": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-fix-ecs-registered-container-instance-showing-zero": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-fix-invalid-schema-errors-aws-glue": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-fix-json-parsing-errors-aws-step-functions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-identify-public-ip-terraform-execution-environment": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-remove-resources-terraform-state": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-structure-terraform-folders-properly": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-and-or-operators": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-avoid-secrets-in-state": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-aws-athena-views-programmatically": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-azure-arm-config-error": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-azure-sql-users": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-azure-storage-network-rules": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-backend-setup": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-best-practices": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-cloud-agnostic-approach": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-conditional-properties": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-create-ssh-keys": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-deploy-multiple-aws-accounts": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-elb-s3-permissions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-fix-describe-network-interfaces-lambda": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-fix-malformed-policy-document-resource": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-fix-not-valid-output-module-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-for-each-list-index": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-for-each-list-objects": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-git-branches-module-sources": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-ignore-changes-sub-blocks": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-import-azure-resources": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-lambda-scheduled-events": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-lambda-source-code-hash": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-local-powershell-scripts-vm-extension": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-modules-multiple-environments": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-multiple-provider-versions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-preinstalled-plugins": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-recreate-ec2-asg": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-refresh-explained": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-rest-api-calls": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-s3-backend-error": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-state-multi-tenancy": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-tfstate-git-decision": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-terraform-workspaces-structure": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-18-vary-attributes-count-index-terraform": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-amazon-elasticsearch-access-policy": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-build-autocomplete-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-bulk-index-json-data-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-combine-must-or-elasticsearch-bool-query": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-combine-shingles-edgengram-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-aggregation-sorting-pagination": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-bulk-api-python": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-bulk-index-nested-json": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-find-empty-string-values": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-fix-cluster-block-forbidden-12": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-fix-localhost-connection-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-fuzzy-match-email-phone": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-import-json-files": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-index-structure-multiple-entities": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-join-data": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-latest-values-per-group": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-must-vs-should-bool-queries": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-non-prod-docker": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-not-analyze-fields": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-notify-new-indexed-documents": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-queries-vs-filters": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-remove-duplicate-documents": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-return-unique-values": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-search-filenames": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-searchable-synthetic-fields": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-store-yes-mapping": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-term-vs-match-phrase-vs-query-string": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-time-between-events": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-vs-cassandra-comparison": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-vs-solr": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-vs-sphinx-vs-lucene-vs-xapian": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-elasticsearch-with-mongodb": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-fix-elasticsearch-returning-every-document": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-fix-no-query-registered-filtered-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-fix-result-window-too-large-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-fix-utf8-encoding-max-length-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-handle-unassigned-shards-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-match-vs-term-query-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-max-limit-ids-filter-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-multiple-indexes-vs-one-index-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-remove-field-elasticsearch-documents": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-replicate-data-to-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-return-all-records-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-return-certain-fields-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-search-part-of-word-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-shards-replicas-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-unique-count-kibana-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-19-update-multiple-documents-query-elasticsearch": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-artifacts-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-changelog-generation-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-code-coverage-reports-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-concurrency-control-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-conditional-steps-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-container-scanning-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-cross-repository-workflows-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-database-testing-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-debug-action-timed-out-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-dependency-updates-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
   }
 }

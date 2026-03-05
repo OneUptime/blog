@@ -289,7 +289,7 @@ resource "aws_cloudwatch_event_rule" "schedules" {
   name                = each.key
   description         = each.value.description
   schedule_expression = each.value.expression
-  is_enabled          = each.value.enabled
+  state               = each.value.enabled ? "ENABLED" : "DISABLED"
 }
 
 resource "aws_cloudwatch_event_target" "schedules" {
@@ -538,7 +538,7 @@ variable "schedule_enabled" {
 resource "aws_cloudwatch_event_rule" "schedule" {
   name                = "scheduled-task-trigger"
   schedule_expression = "rate(5 minutes)"
-  is_enabled          = var.schedule_enabled
+  state               = var.schedule_enabled ? "ENABLED" : "DISABLED"
 }
 ```
 

@@ -363,14 +363,14 @@ resource "google_compute_instance" "preemptible" {
   # ... instance configuration
 }
 
-# Azure doesn't have direct spot equivalent for VMs
-# Document this limitation
-resource "null_resource" "azure_spot_warning" {
+# Azure Spot VMs
+resource "azurerm_linux_virtual_machine" "spot" {
   count = var.provider_type == "azure" && var.enable_spot_instances ? 1 : 0
 
-  provisioner "local-exec" {
-    command = "echo 'Warning: Spot instances not supported on Azure in this module. Using standard instances.'"
-  }
+  priority        = "Spot"
+  eviction_policy = "Deallocate"
+  max_bid_price   = -1  # Pay up to on-demand price
+  # ... instance configuration
 }
 ```
 

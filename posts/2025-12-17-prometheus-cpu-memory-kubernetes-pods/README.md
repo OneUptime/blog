@@ -96,7 +96,7 @@ When containers hit their CPU limits, they get throttled. Monitor throttling wit
 
 ```promql
 # CPU throttling percentage
-sum(rate(container_cpu_cfs_throttled_seconds_total{
+sum(rate(container_cpu_cfs_throttled_periods_total{
   container!=""
 }[5m])) by (pod, container)
 /
@@ -298,7 +298,7 @@ groups:
       # CPU throttling alert
       - alert: ContainerCPUThrottling
         expr: |
-          sum(rate(container_cpu_cfs_throttled_seconds_total[5m])) by (namespace, pod, container)
+          sum(rate(container_cpu_cfs_throttled_periods_total[5m])) by (namespace, pod, container)
           /
           sum(rate(container_cpu_cfs_periods_total[5m])) by (namespace, pod, container)
           > 0.25

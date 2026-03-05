@@ -199,7 +199,7 @@ upstream backend {
     server 192.168.1.12:8080 weight=1 max_conns=25;
 
     # Queue for when max_conns is reached
-    queue 100 timeout=70s;
+    queue 100 timeout=70s;  # Note: queue directive is NGINX Plus only
 }
 ```
 
@@ -386,7 +386,7 @@ upstream backend {
     server 192.168.1.10:8080 max_conns=100;
     server 192.168.1.11:8080 max_conns=100;
 
-    queue 100 timeout=70s;  # Queue excess connections
+    queue 100 timeout=70s;  # Note: queue directive is NGINX Plus only  # Queue excess connections
 }
 ```
 
@@ -404,7 +404,8 @@ upstream backend {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -435,7 +436,8 @@ upstream backend_ssl {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -637,7 +639,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     # SSL configuration

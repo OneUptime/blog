@@ -250,28 +250,25 @@ app.listen(PORT, '127.0.0.1', () => {
 });
 ```
 
-## Step 5: HTTP/2 Server Push (Optional)
+## Step 5: HTTP/2 Server Push (Obsolete)
 
-Nginx can push resources to clients before they request them:
+**Note:** The `http2_push`, `http2_push_preload`, and `http2_max_concurrent_pushes` directives are **obsolete since Nginx 1.25.1**. HTTP/2 server push was disabled in Chrome 106 and is no longer supported by most browsers. Use `103 Early Hints` via the `early_hints` directive instead, or use `<link rel="preload">` headers.
 
 ```nginx
 location / {
     proxy_pass http://nodejs_backend;
 
-    # Push critical assets
-    http2_push /static/css/main.css;
-    http2_push /static/js/app.js;
-
-    # Or use Link header from Node.js
-    http2_push_preload on;
+    # Use 103 Early Hints instead of server push
+    # (requires Nginx 1.25.1+)
+    # early_hints on;
 }
 ```
 
-In Node.js, set the Link header:
+In Node.js, set preload Link headers (browsers will fetch these early):
 
 ```javascript
 app.get('/', (req, res) => {
-    // Tell Nginx to push these resources
+    // Preload hints via Link header
     res.set('Link', [
         '</static/css/main.css>; rel=preload; as=style',
         '</static/js/app.js>; rel=preload; as=script'

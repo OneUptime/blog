@@ -242,7 +242,7 @@ jobs:
 
       - name: Create Pull Request
         if: steps.check.outputs.has_updates == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'chore(deps): update dependencies'
@@ -320,7 +320,7 @@ jobs:
 
       - name: Create urgent PR
         if: steps.audit.outputs.has_vulnerabilities == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'fix(security): patch vulnerable dependencies'
@@ -375,7 +375,7 @@ jobs:
         with:
           node-version: '20'
       - run: npm update
-      - uses: peter-evans/create-pull-request@v6
+      - uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'chore(deps): update npm dependencies'
@@ -395,7 +395,7 @@ jobs:
           pip install pip-tools
           pip-compile --upgrade requirements.in
 
-      - uses: peter-evans/create-pull-request@v6
+      - uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'chore(deps): update Python dependencies'
@@ -415,7 +415,7 @@ jobs:
           go get -u ./...
           go mod tidy
 
-      - uses: peter-evans/create-pull-request@v6
+      - uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'chore(deps): update Go dependencies'
@@ -453,7 +453,7 @@ jobs:
       - name: Test with fresh lock file
         run: npm test
 
-      - uses: peter-evans/create-pull-request@v6
+      - uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'chore: refresh package-lock.json'

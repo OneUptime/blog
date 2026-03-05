@@ -411,22 +411,22 @@ exit $ERRORS
 ### Preserve vs Strip Query Strings
 
 ```nginx
-# Strip query string (default with rewrite)
+# Preserve query string (default behavior with rewrite)
 rewrite ^/old-page$ /new-page permanent;
+# /old-page?foo=bar -> /new-page?foo=bar
+
+# Strip query string (add ? at the end)
+rewrite ^/old-page$ /new-page? permanent;
 # /old-page?foo=bar -> /new-page
 
-# Preserve query string
-rewrite ^/old-page$ /new-page? permanent;
-# Note the ? at the end - it appends nothing, keeping original query
-# Actually: rewrite ^/old-page$ /new-page permanent; preserves by default
+# Replace query string with new parameters
+rewrite ^/old-page$ /new-page?newparam=1 permanent;
+# /old-page?foo=bar -> /new-page?newparam=1
+# (original query string is replaced, not appended)
 
-# To truly strip query string
-if ($request_uri ~ ^/old-page) {
-    return 301 /new-page;
-}
-
-# Explicit append
-rewrite ^/old-page$ /new-page?$query_string permanent;
+# Append new parameters while preserving original query string
+rewrite ^/old-page$ /new-page?newparam=1&$query_string permanent;
+# /old-page?foo=bar -> /new-page?newparam=1&foo=bar
 ```
 
 ### Case-Insensitive Matching

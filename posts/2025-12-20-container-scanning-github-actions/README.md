@@ -117,7 +117,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Scan image with Grype
-        uses: anchore/scan-action@v3
+        uses: anchore/scan-action@v7
         id: scan
         with:
           image: 'myapp:${{ github.sha }}'
@@ -150,7 +150,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and export to Docker
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           load: true
@@ -175,7 +175,7 @@ jobs:
 
       - name: Push to registry
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true

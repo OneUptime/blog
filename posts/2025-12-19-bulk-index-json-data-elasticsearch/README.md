@@ -462,14 +462,15 @@ POST /products/_forcemerge?max_num_segments=5
 Monitor bulk thread pool:
 
 ```json
-GET /_nodes/stats/thread_pool/bulk
+GET /_nodes/stats/thread_pool/write
 
 // Response shows queue and rejections
+// Note: The "bulk" thread pool was renamed to "write" in ES 7.x
 {
   "nodes": {
     "node_id": {
       "thread_pool": {
-        "bulk": {
+        "write": {
           "threads": 8,
           "queue": 25,
           "active": 8,

@@ -352,8 +352,8 @@ For environments with thousands of pods:
 3. Consider custom variable types with static lists
 
 ```promql
-# Limit to first 100 matching pods
-label_values(kube_pod_info{namespace="$namespace", pod=~"api-.*"}[100], pod)
+# Limit results with a regex filter on pod name
+label_values(kube_pod_info{namespace="$namespace", pod=~"api-.*"}, pod)
 ```
 
 ## Best Practices

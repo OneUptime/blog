@@ -166,16 +166,9 @@ sum(rate(http_request_duration_seconds_bucket[$__rate_interval])) by (le)
 4. Color scheme: Spectral or similar
 5. Options > Calculate from data: On
 
-### Advanced Heatmap Query
+### Advanced Heatmap Settings
 
-For smoother visualization:
-
-```promql
-# Non-cumulative bucket counts (difference between buckets)
-sum(rate(http_request_duration_seconds_bucket[$__rate_interval])) by (le)
-- ignoring(le) group_left
-sum(rate(http_request_duration_seconds_bucket[$__rate_interval] offset 0s)) by (le)
-```
+For smoother visualization, enable "Calculate from data" in the heatmap panel options. Grafana will automatically convert cumulative histogram buckets into non-cumulative counts for proper heatmap rendering. Set the Y-axis bucket configuration to use the `le` label values from Prometheus.
 
 ---
 
@@ -270,8 +263,6 @@ sum(rate(http_request_duration_seconds_count[5m]))
   sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
   +
   sum(rate(http_request_duration_seconds_bucket{le="2.0"}[5m]))
-  -
-  sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
 ) / 2
 /
 sum(rate(http_request_duration_seconds_count[5m]))

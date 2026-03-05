@@ -393,7 +393,8 @@ error_log /var/log/nginx/error.log debug;
 ```nginx
 server {
     listen 80;
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/ssl/certs/example.com.crt;

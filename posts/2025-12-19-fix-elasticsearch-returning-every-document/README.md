@@ -234,15 +234,18 @@ Match query type to field type:
 }
 ```
 
-## Cause 4: Should Clauses Without minimum_should_match
+## Cause 4: Should Clauses Combined With Must or Filter
 
-When `must` is empty or absent, `should` clauses become purely optional:
+When `must` or `filter` clauses are present, `should` clauses become purely optional boosters and do not filter results:
 
 ```json
 GET /products/_search
 {
   "query": {
     "bool": {
+      "must": [
+        {"match_all": {}}
+      ],
       "should": [
         {"term": {"brand": "apple"}},
         {"term": {"brand": "samsung"}}
@@ -252,28 +255,11 @@ GET /products/_search
 }
 ```
 
-This returns ALL documents because should clauses are optional when no must exists.
+This returns ALL documents because when `must` or `filter` is present, `should` clauses only boost scores without filtering. Note: if a bool query contains only `should` clauses (no `must` or `filter`), Elasticsearch defaults `minimum_should_match` to 1, so at least one `should` clause must match.
 
 ### Fix
 
-Add `minimum_should_match`:
-
-```json
-GET /products/_search
-{
-  "query": {
-    "bool": {
-      "should": [
-        {"term": {"brand": "apple"}},
-        {"term": {"brand": "samsung"}}
-      ],
-      "minimum_should_match": 1
-    }
-  }
-}
-```
-
-Or add a must clause:
+Add `minimum_should_match` when combining `should` with `must` or `filter`:
 
 ```json
 GET /products/_search
@@ -286,6 +272,26 @@ GET /products/_search
       "should": [
         {"term": {"brand": "apple"}},
         {"term": {"brand": "samsung"}}
+      ],
+      "minimum_should_match": 1
+    }
+  }
+}
+```
+
+Or use `filter` instead of `should` when you need mandatory matching:
+
+```json
+GET /products/_search
+{
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "terms": {
+            "brand": ["apple", "samsung"]
+          }
+        }
       ]
     }
   }

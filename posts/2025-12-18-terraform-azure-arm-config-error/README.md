@@ -223,11 +223,11 @@ For Azure VMs or App Services using Managed Identity:
 provider "azurerm" {
   features {}
 
-  # Use system-assigned managed identity
-  use_msi = true
+  # For AzureRM v3.x, use_msi is supported but deprecated.
+  # The provider auto-detects managed identity in supported environments.
+  # You can also set ARM_USE_MSI=true as an environment variable.
 
-  # Or use user-assigned managed identity
-  # use_msi   = true
+  # For user-assigned managed identity, specify the client_id:
   # client_id = "managed-identity-client-id"
 
   subscription_id = var.subscription_id

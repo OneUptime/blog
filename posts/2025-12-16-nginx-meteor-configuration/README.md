@@ -53,7 +53,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name myapp.com;
 
     ssl_certificate /etc/letsencrypt/live/myapp.com/fullchain.pem;
@@ -95,7 +96,8 @@ map $http_upgrade $connection_upgrade {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name myapp.com;
 
     # ... SSL config ...
@@ -159,7 +161,8 @@ map $http_upgrade $connection_upgrade {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name myapp.com;
 
     ssl_certificate /etc/letsencrypt/live/myapp.com/fullchain.pem;
@@ -292,7 +295,8 @@ If your Meteor app serves mobile clients:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name myapp.com;
 
     # ... SSL config ...
@@ -421,7 +425,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name myapp.com;
 
     # SSL Configuration

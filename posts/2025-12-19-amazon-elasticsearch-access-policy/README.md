@@ -242,12 +242,12 @@ aws ec2 authorize-security-group-ingress \
 ### Terraform Configuration
 
 ```hcl
-resource "aws_elasticsearch_domain" "main" {
-  domain_name           = "my-domain"
-  elasticsearch_version = "OpenSearch_2.5"
+resource "aws_opensearch_domain" "main" {
+  domain_name    = "my-domain"
+  engine_version = "OpenSearch_2.5"
 
   cluster_config {
-    instance_type  = "r6g.large.elasticsearch"
+    instance_type  = "r6g.large.search"
     instance_count = 3
   }
 

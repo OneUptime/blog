@@ -132,14 +132,9 @@ Align metrics to day boundaries using time functions:
 ```promql
 # Get seconds since start of day
 time() - (floor(time() / 86400) * 86400)
-
-# Use this to calculate daily cumulative
-increase(http_requests_total[
-  (time() - floor(time() / 86400) * 86400)s
-])
 ```
 
-Note: This approach has limitations with variable time ranges in Grafana.
+Note: PromQL does not allow dynamic expressions inside range vector brackets, so you cannot directly use the computed seconds-since-midnight as a range duration. Instead, use `increase()` with a fixed range like `[1d]` combined with Grafana's "Today so far" time range setting to achieve daily alignment.
 
 ## Practical Implementation Example
 
@@ -242,10 +237,9 @@ Daily resets should align with your business time zone:
 ### Query with Time Zone Offset
 
 ```promql
-# Adjust for timezone (e.g., UTC-5 for EST)
-increase(http_requests_total[
-  ((time() + 18000) % 86400)s
-])
+# Adjust for timezone (e.g., UTC-5 for EST) using offset
+# Set the Grafana dashboard timezone instead of trying to offset in PromQL
+increase(http_requests_total[1d] offset 5h)
 ```
 
 ## Advanced: Multi-Day Comparison

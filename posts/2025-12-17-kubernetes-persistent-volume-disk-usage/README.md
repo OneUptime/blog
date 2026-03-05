@@ -240,13 +240,13 @@ groups:
             kubelet_volume_stats_capacity_bytes - kubelet_volume_stats_available_bytes
           )
           / kubelet_volume_stats_capacity_bytes
-          > 0.8
+          * 100 > 80
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "PVC {{ $labels.persistentvolumeclaim }} is over 80% full"
-          description: "PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} is {{ printf \"%.1f\" $value | float64Mul 100 }}% full"
+          description: "PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} is {{ printf \"%.1f\" $value }}% full"
 
       # Critical at 90% usage
       - alert: PVCUsageCritical
@@ -255,13 +255,13 @@ groups:
             kubelet_volume_stats_capacity_bytes - kubelet_volume_stats_available_bytes
           )
           / kubelet_volume_stats_capacity_bytes
-          > 0.9
+          * 100 > 90
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "PVC {{ $labels.persistentvolumeclaim }} is over 90% full"
-          description: "PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} is {{ printf \"%.1f\" $value | float64Mul 100 }}% full. Immediate action required."
+          description: "PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} is {{ printf \"%.1f\" $value }}% full. Immediate action required."
 ```
 
 ### Predictive Alerts
@@ -304,13 +304,13 @@ groups:
         expr: |
           kubelet_volume_stats_inodes_free
           / kubelet_volume_stats_inodes
-          < 0.1
+          * 100 < 10
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "PVC {{ $labels.persistentvolumeclaim }} has low inode availability"
-          description: "Only {{ printf \"%.1f\" $value | float64Mul 100 }}% of inodes are free"
+          description: "Only {{ printf \"%.1f\" $value }}% of inodes are free"
 ```
 
 ## Recording Rules
@@ -454,9 +454,11 @@ kubelet_volume_stats_used_bytes
 kube_persistentvolumeclaim_info
 
 # Usage by storage class
-sum by (storageclass) (kubelet_volume_stats_used_bytes)
-* on(namespace, persistentvolumeclaim) group_left(storageclass)
-kube_persistentvolumeclaim_info
+sum by (storageclass) (
+  kubelet_volume_stats_used_bytes
+  * on(namespace, persistentvolumeclaim) group_left(storageclass)
+  kube_persistentvolumeclaim_info
+)
 ```
 
 ### PVC Status Information
