@@ -59,7 +59,7 @@ import (
 )
 
 func main() {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
@@ -367,7 +367,7 @@ import (
 )
 
 func main() {
-    conn, _ := grpc.Dial("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+    conn, _ := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
     defer conn.Close()
 
     client := pb.NewReportServiceClient(conn)
@@ -723,6 +723,7 @@ package adaptive
 
 import (
     "context"
+    "sort"
     "sync"
     "time"
 

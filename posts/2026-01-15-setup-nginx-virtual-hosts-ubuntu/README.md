@@ -678,8 +678,9 @@ server {
 # HTTPS server - main configuration
 server {
     # Listen on 443 with SSL and HTTP/2 support
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
 
     server_name example.com www.example.com;
 
@@ -801,7 +802,8 @@ Then use it in your server blocks:
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -1111,8 +1113,9 @@ server {
 # WWW REDIRECT - Canonical URL
 # =================================================================
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name www.myapp.example.com;
 
     ssl_certificate /etc/letsencrypt/live/myapp.example.com/fullchain.pem;
@@ -1127,8 +1130,9 @@ server {
 # MAIN HTTPS SERVER
 # =================================================================
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
 
     server_name myapp.example.com;
 

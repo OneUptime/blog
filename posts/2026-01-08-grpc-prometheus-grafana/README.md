@@ -48,6 +48,7 @@ import (
 
     grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
     "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/collectors"
     "github.com/prometheus/client_golang/prometheus/promhttp"
     "google.golang.org/grpc"
 
@@ -63,8 +64,8 @@ func main() {
 
     // Register standard metrics
     reg.MustRegister(grpcMetrics)
-    reg.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
-    reg.MustRegister(prometheus.NewGoCollector())
+    reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+    reg.MustRegister(collectors.NewGoCollector())
 
     // Create gRPC server with metrics interceptors
     server := grpc.NewServer(
@@ -241,11 +242,11 @@ scrape_configs:
         action: keep
         regex: true
       # Use custom port from annotation
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
-        regex: (.+)
-        replacement: ${1}
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
       # Add service label
       - source_labels: [__meta_kubernetes_pod_label_app]
         action: replace

@@ -12,7 +12,7 @@ KeyDB is a high-performance fork of Redis that introduces multi-threading and ot
 
 ## What is KeyDB?
 
-KeyDB was created by Snap Inc. (Snapchat) in 2019 as a multi-threaded fork of Redis. It aims to provide higher throughput by utilizing multiple CPU cores while maintaining 100% compatibility with Redis clients and commands.
+KeyDB was created by EQ Alpha Inc. in 2019 as a multi-threaded fork of Redis. It aims to provide higher throughput by utilizing multiple CPU cores while maintaining 100% compatibility with Redis clients and commands.
 
 ## Quick Comparison
 

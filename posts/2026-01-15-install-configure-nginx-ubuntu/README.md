@@ -221,8 +221,9 @@ sudo certbot --nginx -d example.com -d www.example.com
 
 ```nginx
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
 
     server_name example.com www.example.com;
     root /var/www/example.com/html;

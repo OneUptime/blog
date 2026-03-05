@@ -157,9 +157,9 @@ query_range:
 schema_config:
   configs:
     - from: 2020-10-24
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -500,9 +500,9 @@ ingester:
 schema_config:
   configs:
     - from: 2020-10-24
-      store: boltdb-shipper
+      store: tsdb
       object_store: s3
-      schema: v11
+      schema: v13
       index:
         prefix: loki_index_
         period: 24h
@@ -511,7 +511,7 @@ storage_config:
   aws:
     s3: s3://access_key:secret_key@region/bucket_name
     s3forcepathstyle: true
-  boltdb_shipper:
+  tsdb_shipper:
     active_index_directory: /var/lib/loki/index
     cache_location: /var/lib/loki/cache
     shared_store: s3

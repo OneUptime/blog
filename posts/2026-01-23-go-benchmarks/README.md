@@ -174,6 +174,7 @@ package main
 
 import (
     "sync"
+    "sync/atomic"
     "testing"
 )
 

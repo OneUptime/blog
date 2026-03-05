@@ -75,8 +75,11 @@ Tune ZFS parameters for container workloads.
 # Disable access time updates
 sudo zfs set atime=off containerd-pool/containerd
 
-# Enable deduplication for shared layers
-sudo zfs set dedup=on containerd-pool/containerd
+# NOTE: Deduplication is NOT recommended for container workloads.
+# It has high memory overhead (~5GB RAM per 1TB of data) and causes
+# unpredictable performance degradation. Docker/containerd's layer
+# sharing already provides deduplication at the image layer level.
+# sudo zfs set dedup=off containerd-pool/containerd  # keep dedup off (default)
 
 # Set ARC cache limits
 echo "options zfs zfs_arc_max=8589934592" | sudo tee -a /etc/modprobe.d/zfs.conf

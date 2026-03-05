@@ -1140,6 +1140,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/hibiken/asynq"
 	"github.com/yourusername/go-job-queue/internal/config"

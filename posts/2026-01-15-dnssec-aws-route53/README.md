@@ -230,6 +230,7 @@ HOSTED_ZONE_ID="Z1234567890ABC"
 KMS_KEY_ARN="arn:aws:kms:us-east-1:YOUR_ACCOUNT_ID:key/YOUR_KEY_ID"
 
 aws route53 create-key-signing-key \
+    --caller-reference "ksk-example-com-2026-$(date +%s)" \
     --hosted-zone-id $HOSTED_ZONE_ID \
     --key-management-service-arn $KMS_KEY_ARN \
     --name "ksk-example-com-2026" \
@@ -568,6 +569,7 @@ To rotate the KSK:
 
 ```bash
 aws route53 create-key-signing-key \
+    --caller-reference "ksk-example-com-2027-$(date +%s)" \
     --hosted-zone-id $HOSTED_ZONE_ID \
     --key-management-service-arn $NEW_KMS_KEY_ARN \
     --name "ksk-example-com-2027" \
@@ -732,7 +734,7 @@ For a typical domain with moderate traffic, expect approximately $2-5/month addi
 |------|---------------|-------------|
 | Create KMS Key | KMS > Create Key > Asymmetric > ECC_NIST_P256 | `aws kms create-key --key-spec ECC_NIST_P256 --key-usage SIGN_VERIFY` |
 | Enable DNSSEC | Route 53 > Hosted Zone > DNSSEC > Enable | `aws route53 enable-hosted-zone-dnssec --hosted-zone-id ZONE_ID` |
-| Create KSK | Route 53 > DNSSEC > Create KSK | `aws route53 create-key-signing-key --hosted-zone-id ZONE_ID --key-management-service-arn KMS_ARN --name NAME --status ACTIVE` |
+| Create KSK | Route 53 > DNSSEC > Create KSK | `aws route53 create-key-signing-key --caller-reference UNIQUE_STRING --hosted-zone-id ZONE_ID --key-management-service-arn KMS_ARN --name NAME --status ACTIVE` |
 | Get DS Record | Route 53 > DNSSEC > View KSK Details | `aws route53 get-dnssec --hosted-zone-id ZONE_ID` |
 | Check Status | Route 53 > DNSSEC tab | `aws route53 get-dnssec --hosted-zone-id ZONE_ID` |
 | Deactivate KSK | Route 53 > DNSSEC > Deactivate | `aws route53 deactivate-key-signing-key --hosted-zone-id ZONE_ID --name NAME` |

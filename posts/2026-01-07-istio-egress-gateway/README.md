@@ -768,7 +768,7 @@ This AuthorizationPolicy restricts which service accounts can access external se
 ```yaml
 # authz-egress-policy.yaml
 # Authorization policy to control egress gateway access
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: egress-gateway-authz
@@ -828,7 +828,7 @@ Create a deny-all policy as a safety net to block unauthorized egress:
 ```yaml
 # authz-deny-all-egress.yaml
 # Deny all egress traffic by default (applied after ALLOW policies)
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: egress-deny-all
@@ -1162,7 +1162,7 @@ spec:
 
 ---
 # Authorization policy for payment service access
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-api-authz

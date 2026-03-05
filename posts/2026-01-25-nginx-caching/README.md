@@ -327,7 +327,8 @@ upstream app_backend {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name app.example.com;
 
     ssl_certificate /etc/ssl/certs/app.example.com.crt;

@@ -441,10 +441,11 @@ chmod +x generate-keys.sh
 dnssec-dsfromkey -2 Kexample.com.+013+12345.key
 
 # Generate DS record with SHA-384
-dnssec-dsfromkey -4 Kexample.com.+013+12345.key
+dnssec-dsfromkey -a SHA-384 Kexample.com.+013+12345.key
 
 # Generate multiple digest types
-dnssec-dsfromkey -a SHA-256 -a SHA-384 Kexample.com.+013+12345.key
+dnssec-dsfromkey -a SHA-256 Kexample.com.+013+12345.key
+dnssec-dsfromkey -a SHA-384 Kexample.com.+013+12345.key
 ```
 
 ### DS Record Output

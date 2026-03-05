@@ -58,7 +58,7 @@ apt search openjdk | grep -E "openjdk-[0-9]+-jdk "
 Install your desired version:
 
 ```bash
-# Install OpenJDK 21 (latest LTS as of 2024)
+# Install OpenJDK 21 (LTS, released September 2023)
 sudo apt install openjdk-21-jdk -y
 
 # Install OpenJDK 17 (previous LTS)

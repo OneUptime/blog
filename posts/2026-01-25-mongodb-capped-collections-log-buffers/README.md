@@ -312,15 +312,17 @@ Use capped collections as a buffer for events that need background processing.
 // Event buffer with worker pattern
 class EventBuffer {
   constructor(db) {
+    this.db = db;
     this.collection = db.collection('event_buffer');
   }
 
   async initialize() {
     // Create capped collection if it doesn't exist
-    const collections = await this.collection.listCollections({ name: 'event_buffer' }).toArray();
+    // listCollections is a method on the db object, not on a collection
+    const collections = await this.db.listCollections({ name: 'event_buffer' }).toArray();
 
     if (collections.length === 0) {
-      await db.createCollection('event_buffer', {
+      await this.db.createCollection('event_buffer', {
         capped: true,
         size: 10 * 1024 * 1024  // 10 MB buffer
       });

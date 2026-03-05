@@ -640,7 +640,7 @@ async def monitor_event_loop():
     Creates spans with event loop metrics.
     """
     with tracer.start_as_current_span("event_loop_metrics") as span:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         # Get event loop metrics (Python 3.8+)
         span.set_attribute("loop.is_running", loop.is_running())

@@ -118,18 +118,18 @@ heartbeat_thread.start()
 
 ### Server-Side Heartbeat Configuration
 
-```erlang
-%% /etc/rabbitmq/rabbitmq.conf
-%% Configure server-side heartbeat settings
+```ini
+# /etc/rabbitmq/rabbitmq.conf
+# Configure server-side heartbeat settings
 
-%% Default heartbeat timeout in seconds
-%% 0 disables heartbeats (not recommended)
-%% Clients can negotiate a lower value but not higher
+# Default heartbeat timeout in seconds
+# 0 disables heartbeats (not recommended)
+# Clients can negotiate a lower value but not higher
 heartbeat = 60
 
-%% For environments with aggressive firewalls, lower this value
-%% Some load balancers close idle connections after 60 seconds
-%% heartbeat = 30
+# For environments with aggressive firewalls, lower this value
+# Some load balancers close idle connections after 60 seconds
+# heartbeat = 30
 ```
 
 ## Cause 2: Network Infrastructure Issues
@@ -217,23 +217,23 @@ rabbitmqctl status | grep -A 3 "File Descriptors"
 
 Configure appropriate resource limits.
 
-```erlang
-%% /etc/rabbitmq/rabbitmq.conf
-%% Resource limit configuration
+```ini
+# /etc/rabbitmq/rabbitmq.conf
+# Resource limit configuration
 
-%% Maximum number of connections
-%% Set based on your expected client count plus buffer
-%% Default is infinity, which can exhaust file descriptors
-%% connection_max = 10000
+# Maximum number of connections
+# Set based on your expected client count plus buffer
+# Default is infinity, which can exhaust file descriptors
+# connection_max = 10000
 
-%% Memory high watermark
-%% Connections are blocked (not reset) when exceeded
-%% Set to 40-50% of available RAM
+# Memory high watermark
+# Connections are blocked (not reset) when exceeded
+# Set to 40-50% of available RAM
 vm_memory_high_watermark.relative = 0.4
 
-%% File descriptor limit (set in systemd/init scripts)
-%% RabbitMQ needs: connections * 2 + queues + 100
-%% See /etc/systemd/system/rabbitmq-server.service.d/limits.conf
+# File descriptor limit (set in systemd/init scripts)
+# RabbitMQ needs: connections * 2 + queues + 100
+# See /etc/systemd/system/rabbitmq-server.service.d/limits.conf
 ```
 
 ```bash

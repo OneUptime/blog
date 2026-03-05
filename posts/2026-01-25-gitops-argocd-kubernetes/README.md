@@ -270,7 +270,7 @@ spec:
   # Allowed source repositories
   sourceRepos:
     - https://github.com/org/k8s-manifests.git
-    - https://charts.helm.sh/stable
+    - https://charts.bitnami.com/bitnami
 
   # Allowed destination clusters and namespaces
   destinations:

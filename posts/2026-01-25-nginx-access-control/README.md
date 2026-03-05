@@ -337,7 +337,8 @@ map $remote_addr $maintenance_mode {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name secure.example.com;
 
     ssl_certificate /etc/ssl/certs/secure.example.com.crt;

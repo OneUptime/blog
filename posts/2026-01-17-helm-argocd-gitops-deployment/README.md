@@ -425,7 +425,8 @@ spec:
     targetRevision: v1.13.2
     helm:
       parameters:
-        - name: installCRDs
+        # Note: installCRDs is deprecated since cert-manager v1.15. Use crds.enabled=true instead.
+        - name: crds.enabled
           value: "true"
   destination:
     server: https://kubernetes.default.svc

@@ -281,16 +281,26 @@ LIMIT 20;
 ### Alert on Timeouts
 
 ```sql
--- Create a function to log timeouts
-CREATE OR REPLACE FUNCTION log_timeout()
-RETURNS event_trigger AS $$
-BEGIN
-    IF sqlerrm LIKE '%statement timeout%' THEN
-        INSERT INTO timeout_log (query, occurred_at)
-        VALUES (current_query(), now());
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
+-- Create a table to store timeout log entries
+CREATE TABLE IF NOT EXISTS timeout_log (
+    id serial PRIMARY KEY,
+    query text,
+    occurred_at timestamptz DEFAULT now()
+);
+
+-- Log timeouts from your application by catching QueryCanceled errors
+-- and inserting into timeout_log in a separate connection/transaction.
+-- PostgreSQL itself logs statement timeouts when log_min_error_statement = 'error'.
+-- To capture them in a table, use pg_stat_statements to find long-running queries:
+SELECT
+    calls,
+    round(max_exec_time::numeric, 2) AS max_ms,
+    round(mean_exec_time::numeric, 2) AS mean_ms,
+    query
+FROM pg_stat_statements
+WHERE max_exec_time > 10000  -- queries that have exceeded 10s
+ORDER BY max_exec_time DESC
+LIMIT 20;
 ```
 
 ## Different Timeouts for Different Operations

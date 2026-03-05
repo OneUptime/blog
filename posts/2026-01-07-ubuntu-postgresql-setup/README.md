@@ -48,8 +48,8 @@ echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://
 # Update package list with the new repository
 sudo apt update
 
-# Install PostgreSQL 16 (latest stable version as of 2026)
-sudo apt install -y postgresql-16 postgresql-contrib-16
+# Install PostgreSQL 17 (latest stable version as of 2026)
+sudo apt install -y postgresql-17 postgresql-contrib-17
 ```
 
 ### Step 3: Verify Installation
@@ -90,8 +90,8 @@ PostgreSQL's configuration is managed through two primary files: `postgresql.con
 sudo -u postgres psql -c "SHOW config_file;"
 
 # The configuration files are typically located at:
-# /etc/postgresql/16/main/postgresql.conf
-# /etc/postgresql/16/main/pg_hba.conf
+# /etc/postgresql/17/main/postgresql.conf
+# /etc/postgresql/17/main/pg_hba.conf
 ```
 
 ### Step 1: Configure postgresql.conf
@@ -100,10 +100,10 @@ The `postgresql.conf` file controls server behavior, performance settings, and c
 
 ```bash
 # Create a backup of the original configuration
-sudo cp /etc/postgresql/16/main/postgresql.conf /etc/postgresql/16/main/postgresql.conf.backup
+sudo cp /etc/postgresql/17/main/postgresql.conf /etc/postgresql/17/main/postgresql.conf.backup
 
 # Open the configuration file for editing
-sudo nano /etc/postgresql/16/main/postgresql.conf
+sudo nano /etc/postgresql/17/main/postgresql.conf
 ```
 
 Apply these essential configuration changes for a production environment:
@@ -243,8 +243,8 @@ password_encryption = scram-sha-256
 
 # SSL configuration (detailed in SSL section below)
 ssl = on
-ssl_cert_file = '/etc/postgresql/16/main/server.crt'
-ssl_key_file = '/etc/postgresql/16/main/server.key'
+ssl_cert_file = '/etc/postgresql/17/main/server.crt'
+ssl_key_file = '/etc/postgresql/17/main/server.key'
 ```
 
 ### Step 2: Configure pg_hba.conf
@@ -253,10 +253,10 @@ The `pg_hba.conf` file controls client authentication - who can connect, from wh
 
 ```bash
 # Create a backup of the original pg_hba.conf
-sudo cp /etc/postgresql/16/main/pg_hba.conf /etc/postgresql/16/main/pg_hba.conf.backup
+sudo cp /etc/postgresql/17/main/pg_hba.conf /etc/postgresql/17/main/pg_hba.conf.backup
 
 # Open pg_hba.conf for editing
-sudo nano /etc/postgresql/16/main/pg_hba.conf
+sudo nano /etc/postgresql/17/main/pg_hba.conf
 ```
 
 Configure secure authentication rules:
@@ -301,8 +301,8 @@ hostssl replication     replicator      10.0.1.0/24             scram-sha-256
 Restart PostgreSQL to apply the new configuration.
 
 ```bash
-# Validate configuration syntax before restarting
-sudo -u postgres pg_ctlcluster 16 main check
+# Validate configuration for errors before restarting (check pg_file_settings for errors)
+sudo -u postgres psql -c "SELECT sourcefile, name, sourceline, error FROM pg_file_settings WHERE error IS NOT NULL;"
 
 # Restart PostgreSQL to apply changes
 sudo systemctl restart postgresql
@@ -311,7 +311,7 @@ sudo systemctl restart postgresql
 sudo systemctl status postgresql
 
 # Check the logs for any configuration errors
-sudo tail -50 /var/log/postgresql/postgresql-16-main.log
+sudo tail -50 /var/log/postgresql/postgresql-17-main.log
 ```
 
 ## Part 3: User and Role Management
@@ -445,25 +445,25 @@ For production, use certificates from a trusted Certificate Authority. For testi
 
 ```bash
 # Create a directory for SSL certificates
-sudo mkdir -p /etc/postgresql/16/main/ssl
+sudo mkdir -p /etc/postgresql/17/main/ssl
 
 # Generate a private key for the server
-sudo openssl genrsa -out /etc/postgresql/16/main/ssl/server.key 4096
+sudo openssl genrsa -out /etc/postgresql/17/main/ssl/server.key 4096
 
 # Set restrictive permissions on the private key
-sudo chmod 600 /etc/postgresql/16/main/ssl/server.key
-sudo chown postgres:postgres /etc/postgresql/16/main/ssl/server.key
+sudo chmod 600 /etc/postgresql/17/main/ssl/server.key
+sudo chown postgres:postgres /etc/postgresql/17/main/ssl/server.key
 
 # Generate a self-signed certificate (for testing)
 # For production, use a CSR and get it signed by a CA
 sudo openssl req -new -x509 -days 365 \
-    -key /etc/postgresql/16/main/ssl/server.key \
-    -out /etc/postgresql/16/main/ssl/server.crt \
+    -key /etc/postgresql/17/main/ssl/server.key \
+    -out /etc/postgresql/17/main/ssl/server.crt \
     -subj "/C=US/ST=State/L=City/O=Organization/CN=db.example.com"
 
 # Set permissions on the certificate
-sudo chmod 644 /etc/postgresql/16/main/ssl/server.crt
-sudo chown postgres:postgres /etc/postgresql/16/main/ssl/server.crt
+sudo chmod 644 /etc/postgresql/17/main/ssl/server.crt
+sudo chown postgres:postgres /etc/postgresql/17/main/ssl/server.crt
 ```
 
 ### Step 2: Configure PostgreSQL for SSL
@@ -472,7 +472,7 @@ Update `postgresql.conf` to use the SSL certificates.
 
 ```bash
 # Edit postgresql.conf
-sudo nano /etc/postgresql/16/main/postgresql.conf
+sudo nano /etc/postgresql/17/main/postgresql.conf
 ```
 
 Add or update these SSL settings:
@@ -486,10 +486,10 @@ Add or update these SSL settings:
 ssl = on
 
 # Path to the server certificate
-ssl_cert_file = '/etc/postgresql/16/main/ssl/server.crt'
+ssl_cert_file = '/etc/postgresql/17/main/ssl/server.crt'
 
 # Path to the server private key
-ssl_key_file = '/etc/postgresql/16/main/ssl/server.key'
+ssl_key_file = '/etc/postgresql/17/main/ssl/server.key'
 
 # Minimum TLS version - TLS 1.2 or higher for security
 ssl_min_protocol_version = 'TLSv1.2'
@@ -732,7 +732,7 @@ Configure the primary server to send WAL data to standbys.
 
 ```bash
 # Edit postgresql.conf on the PRIMARY server
-sudo nano /etc/postgresql/16/main/postgresql.conf
+sudo nano /etc/postgresql/17/main/postgresql.conf
 ```
 
 Ensure these settings are configured:
@@ -756,7 +756,7 @@ wal_keep_size = 2GB
 
 # Enable archiving for additional safety (optional but recommended)
 archive_mode = on
-archive_command = 'cp %p /var/lib/postgresql/16/archive/%f'
+archive_command = 'cp %p /var/lib/postgresql/17/archive/%f'
 
 # Hot standby feedback to prevent query conflicts
 hot_standby_feedback = on
@@ -774,8 +774,8 @@ Create the archive directory and restart:
 
 ```bash
 # Create the WAL archive directory
-sudo mkdir -p /var/lib/postgresql/16/archive
-sudo chown postgres:postgres /var/lib/postgresql/16/archive
+sudo mkdir -p /var/lib/postgresql/17/archive
+sudo chown postgres:postgres /var/lib/postgresql/17/archive
 
 # Restart PostgreSQL to apply changes
 sudo systemctl restart postgresql
@@ -793,7 +793,7 @@ Set up the standby server to receive WAL data from the primary.
 sudo systemctl stop postgresql
 
 # Remove existing data directory (CAUTION: destroys all data)
-sudo rm -rf /var/lib/postgresql/16/main/*
+sudo rm -rf /var/lib/postgresql/17/main/*
 
 # Create base backup from primary server
 # Replace 10.0.1.1 with your primary server's IP address
@@ -801,7 +801,7 @@ sudo -u postgres pg_basebackup \
     --host=10.0.1.1 \
     --port=5432 \
     --username=replicator \
-    --pgdata=/var/lib/postgresql/16/main \
+    --pgdata=/var/lib/postgresql/17/main \
     --wal-method=stream \
     --write-recovery-conf \
     --slot=standby1 \
@@ -814,17 +814,17 @@ The `--write-recovery-conf` flag automatically creates the standby signal file a
 
 ```bash
 # Check that standby.signal file was created
-ls -la /var/lib/postgresql/16/main/standby.signal
+ls -la /var/lib/postgresql/17/main/standby.signal
 
 # View the auto-generated replication configuration
-cat /var/lib/postgresql/16/main/postgresql.auto.conf
+cat /var/lib/postgresql/17/main/postgresql.auto.conf
 ```
 
 Configure the standby server settings:
 
 ```bash
 # Edit postgresql.conf on the STANDBY server
-sudo nano /etc/postgresql/16/main/postgresql.conf
+sudo nano /etc/postgresql/17/main/postgresql.conf
 ```
 
 Add these standby-specific settings:

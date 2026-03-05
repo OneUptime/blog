@@ -275,13 +275,13 @@ Istio integrates with popular observability tools. These add-ons provide metrics
 ```bash
 # Apply observability add-ons from the Istio samples
 # Prometheus for metrics collection
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/prometheus.yaml
 # Grafana for dashboards
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
 # Jaeger for distributed tracing
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/jaeger.yaml
 # Kiali for service mesh visualization
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/kiali.yaml
 
 # Access the Kiali dashboard for service mesh visualization
 istioctl dashboard kiali
@@ -447,7 +447,7 @@ Istio requires explicit configuration for mTLS mode. PeerAuthentication controls
 
 ```yaml
 # Strict mTLS for a specific namespace - all traffic must be encrypted
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -457,7 +457,7 @@ spec:
     mode: STRICT  # Reject any non-mTLS traffic
 ---
 # Or cluster-wide mTLS - apply to all namespaces
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -472,7 +472,7 @@ spec:
 Authorization policies control access between services based on identity, namespace, and request attributes. This provides fine-grained access control.
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: api-authz
@@ -626,7 +626,7 @@ istioctl proxy-config all deploy/api -n production
 kubectl logs deploy/api -n production -c istio-proxy
 
 # Verify mTLS is working between services
-istioctl authn tls-check api.production.svc.cluster.local
+istioctl x describe service api.production.svc.cluster.local
 ```
 
 ## Migration Strategy

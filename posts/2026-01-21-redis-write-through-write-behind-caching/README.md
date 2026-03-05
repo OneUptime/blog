@@ -949,7 +949,7 @@ class WriteBehindWithRecovery:
 ### 2. Monitor Write Performance
 
 ```python
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Histogram, Gauge
 
 write_latency = Histogram(
     'cache_write_latency_seconds',

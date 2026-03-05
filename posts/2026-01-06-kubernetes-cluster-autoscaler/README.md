@@ -116,7 +116,7 @@ spec:
       serviceAccountName: cluster-autoscaler  # Service account with IAM role
       containers:
         - name: cluster-autoscaler
-          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.0
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.0  # Use same minor version as your Kubernetes cluster
           command:
             - ./cluster-autoscaler
             - --v=4                                    # Verbosity level for logging

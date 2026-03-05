@@ -68,7 +68,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy Scan Results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
 ```
@@ -236,7 +236,7 @@ jobs:
           args: --severity-threshold=high
 
       - name: Upload Snyk Report
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: snyk.sarif
@@ -303,7 +303,7 @@ jobs:
           severity-cutoff: high
 
       - name: Upload SARIF Report
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
 ```

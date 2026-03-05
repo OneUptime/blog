@@ -42,8 +42,8 @@ pip install httpx[http2,brotli]
 For production applications, pin your version in requirements.txt:
 
 ```text
-httpx==0.27.0
-httpx[http2]==0.27.0
+httpx==0.28.1
+httpx[http2]==0.28.1
 ```
 
 ## Basic Sync Usage

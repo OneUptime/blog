@@ -433,17 +433,17 @@ spec:
   data:
     - secretKey: db_host
       remoteRef:
-        key: secret/data/app/database
+        key: app/database  # Path relative to the SecretStore mount; ESO handles /data/ prefix for KV v2
         property: host
-        
+
     - secretKey: db_password
       remoteRef:
-        key: secret/data/app/database
+        key: app/database
         property: password
-        
+
     - secretKey: api_key
       remoteRef:
-        key: secret/data/app/api
+        key: app/api
         property: key
 ```
 
@@ -467,13 +467,13 @@ spec:
     creationPolicy: Owner
     
   dataFrom:
-    # Get all keys from a path
+    # Get all keys from a path (path relative to SecretStore mount; ESO handles /data/ prefix for KV v2)
     - extract:
-        key: secret/data/app/config
-        
+        key: app/config
+
     # Find secrets matching pattern
     - find:
-        path: secret/data/app/
+        path: app/
         name:
           regexp: "^api-.*"
 ```

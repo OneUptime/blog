@@ -21,7 +21,9 @@ The community.docker collection provides modules for all Docker operations.
 ansible-galaxy collection install community.docker
 
 # Install Python Docker SDK (required by modules)
-pip install docker docker-compose
+# Note: The legacy 'docker-compose' pip package is deprecated (Docker Compose v1 is EOL).
+# The docker_compose_v2 module only requires the Docker CLI with the Compose plugin.
+pip install docker
 
 # Verify installation
 ansible-doc community.docker.docker_container
@@ -394,8 +396,7 @@ Deploy multi-container applications with Docker Compose.
 
 ```yaml
 # templates/docker-compose.yml.j2
-version: '3.8'
-
+# Note: The top-level 'version' key is obsolete in Docker Compose V2 and should be omitted
 services:
   app:
     image: {{ app_image }}:{{ app_version }}

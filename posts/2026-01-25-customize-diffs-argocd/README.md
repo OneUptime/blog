@@ -383,8 +383,9 @@ ignoreDifferences:
 ### Test Before Production
 
 ```bash
-# Verify ignore rules work
-argocd app diff myapp --ignore-normalizer-jq '.metadata.annotations'
+# Verify ignore rules work after applying the Application manifest
+kubectl apply -f application.yaml
+argocd app diff myapp
 ```
 
 ## Troubleshooting
@@ -402,8 +403,11 @@ kubectl get deployment myapp -o jsonpath='{.spec.replicas}'
 ### Diff Shows Unexpected Fields
 
 ```bash
-# See all differences including ignored
-argocd app diff myapp --show-ignored-fields
+# See all current differences
+argocd app diff myapp
+
+# Use the admin settings tool to test ignore-differences rules
+argocd admin settings resource-overrides ignore-differences ./resource.yaml --argocd-config-path ./argocd-cm.yaml
 ```
 
 ### JQ Expression Not Working

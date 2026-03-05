@@ -114,7 +114,7 @@ helm install argocd argo/argo-cd \
     --namespace argocd \
     --create-namespace \
     --set server.service.type=LoadBalancer \
-    --set configs.params.server.insecure=true \
+    --set configs.params."server\.insecure"=true \
     --wait
 ```
 

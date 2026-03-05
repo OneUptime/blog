@@ -708,8 +708,8 @@ argocd app get myapp --hard-refresh
 argocd app delete myapp
 argocd app create -f application.yaml
 
-# Debug Helm rendering
-argocd app manifests myapp --source helm
+# Debug Helm rendering (--source accepts: live or git)
+argocd app manifests myapp --source git
 ```
 
 ## Wrap-up

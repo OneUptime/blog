@@ -450,13 +450,12 @@ datasources:
     url: https://loki.example.com
     basicAuth: true
     basicAuthUser: grafana
-    secureJsonData:
-      basicAuthPassword: ${GRAFANA_LOKI_PASSWORD}
     jsonData:
       maxLines: 1000
       tlsAuth: false
       tlsAuthWithCACert: true
     secureJsonData:
+      basicAuthPassword: ${GRAFANA_LOKI_PASSWORD}
       tlsCACert: |
         -----BEGIN CERTIFICATE-----
         ... CA certificate ...

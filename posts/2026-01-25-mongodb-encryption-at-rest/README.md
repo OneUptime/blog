@@ -62,16 +62,18 @@ storage:
   journal:
     enabled: true
 
-  # WiredTiger encryption configuration
-  wiredTiger:
-    engineConfig:
-      # Enable encryption at rest
-      encryptionCipherMode: AES256-CBC
-      encryptionKeyFile: /etc/mongodb/encryption-keyfile
-
 security:
   # Enable authorization for additional security
   authorization: enabled
+
+  # Enable encryption at rest (MongoDB Enterprise only)
+  enableEncryption: true
+
+  # Cipher mode for encryption at rest
+  encryptionCipherMode: AES256-CBC
+
+  # Path to the local keyfile for encryption
+  encryptionKeyFile: /etc/mongodb/encryption-keyfile
 
   # Encryption key rotation interval (optional)
   # encryptionKeyRotationIntervalSec: 86400
@@ -97,12 +99,14 @@ For production environments, integrate with a KMIP server for centralized key ma
 
 storage:
   dbPath: /var/lib/mongodb
-  wiredTiger:
-    engineConfig:
-      # Use KMIP for key management
-      encryptionCipherMode: AES256-CBC
 
 security:
+  # Enable encryption at rest (MongoDB Enterprise only)
+  enableEncryption: true
+
+  # Use KMIP for key management
+  encryptionCipherMode: AES256-CBC
+
   # KMIP server connection settings
   kmip:
     serverName: kmip.example.com
@@ -124,12 +128,13 @@ When running on AWS, integrate with AWS Key Management Service for managed encry
 # /etc/mongod.conf
 # AWS KMS configuration
 
-storage:
-  wiredTiger:
-    engineConfig:
-      encryptionCipherMode: AES256-CBC
-
 security:
+  # Enable encryption at rest (MongoDB Enterprise only)
+  enableEncryption: true
+
+  # Cipher mode for encryption at rest
+  encryptionCipherMode: AES256-CBC
+
   # AWS KMS configuration
   kms:
     aws:

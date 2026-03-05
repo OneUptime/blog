@@ -333,11 +333,11 @@ spec:
   data:
     - secretKey: username
       remoteRef:
-        key: secret/data/database
+        key: database  # Path relative to the SecretStore mount; ESO handles /data/ prefix for KV v2
         property: username
     - secretKey: password
       remoteRef:
-        key: secret/data/database
+        key: database
         property: password
 ```
 

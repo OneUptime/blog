@@ -439,8 +439,8 @@ dig example.com DNSKEY +short
 # Check for DS records at parent
 dig example.com DS +short
 
-# Verify the chain of trust
-dig +sigchase +trusted-key=./root.keys example.com A
+# Verify the chain of trust (use delv - dig +sigchase was removed in BIND 9.12+)
+delv @8.8.8.8 example.com A +rtrace
 
 # Check with DNSSEC validation
 dig +dnssec example.com A

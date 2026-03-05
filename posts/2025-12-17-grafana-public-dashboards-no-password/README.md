@@ -27,14 +27,16 @@ graph TD
 
 ## Method 1: Public Dashboard Feature (Recommended)
 
-Grafana 9.1+ includes a built-in Public Dashboard feature that creates a read-only, shareable link for specific dashboards.
+Grafana 9.1+ includes a built-in Public Dashboard feature that creates a read-only, shareable link for specific dashboards. In Grafana 11.x (released September 2024), this feature was renamed from "Public Dashboards" to **"Externally Shared Dashboards"** (also called "Shared Dashboards"). The functionality is the same; only the label changed in the UI.
 
 ### Enable Public Dashboards
 
-First, enable the feature in Grafana configuration:
+In Grafana 9.x and 10.x, the feature must be explicitly enabled via a feature toggle. In Grafana 11+ the feature is enabled by default and no toggle is required.
+
+For Grafana 9.x/10.x, enable the feature in Grafana configuration:
 
 ```ini
-# grafana.ini
+# grafana.ini (Grafana 9.x / 10.x only)
 [feature_toggles]
 enable = publicDashboards
 ```
@@ -42,7 +44,7 @@ enable = publicDashboards
 Or via environment variable:
 
 ```yaml
-# Docker Compose
+# Docker Compose (Grafana 9.x / 10.x)
 services:
   grafana:
     image: grafana/grafana:latest

@@ -1277,7 +1277,7 @@ export async function clearPendingRequest(id) {
 Create `src/hooks/useOfflineAPI.js`:
 
 ```javascript
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   getFromCache,
   saveToCache,
@@ -1288,7 +1288,7 @@ export function useOfflineAPI() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   // Listen for online/offline events
-  useState(() => {
+  useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 

@@ -501,16 +501,16 @@ curl -X PUT "https://localhost:9200/_data_stream/logs-app" \
 
 ### Set Up Monitoring
 
+Note: The `xpack.monitoring.collection.enabled` setting is deprecated in Elasticsearch 8.x. The recommended approach is to use Elastic Agent or Metricbeat to collect and ship monitoring data. For a quick check, you can still use the cluster stats APIs directly:
+
 ```bash
-# Enable monitoring collection
-curl -X PUT "https://localhost:9200/_cluster/settings" \
-  -H "Content-Type: application/json" \
-  -u elastic:password \
-  -d '{
-    "persistent": {
-      "xpack.monitoring.collection.enabled": true
-    }
-  }'
+# Check cluster stats (current method)
+curl -X GET "https://localhost:9200/_cluster/stats?pretty" \
+  -u elastic:password
+
+# Check node stats
+curl -X GET "https://localhost:9200/_nodes/stats?pretty" \
+  -u elastic:password
 ```
 
 ### Key Alerts

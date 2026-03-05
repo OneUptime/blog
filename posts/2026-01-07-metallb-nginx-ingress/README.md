@@ -227,9 +227,9 @@ controller:
     # Annotations to control MetalLB behavior
     annotations:
       # Request a specific IP from MetalLB (optional)
-      # metallb.universe.tf/loadBalancerIPs: "192.168.1.240"
+      # metallb.io/loadBalancerIPs: "192.168.1.240"
       # Specify which address pool to use (optional if autoAssign is true)
-      metallb.universe.tf/address-pool: nginx-ingress-pool
+      metallb.io/address-pool: nginx-ingress-pool
     # External traffic policy affects how traffic is routed
     # Local: preserves client IP but may cause uneven load distribution
     # Cluster: may lose client IP but provides better load balancing
@@ -608,13 +608,8 @@ kind: Ingress
 metadata:
   name: healthcheck-example
   annotations:
-    # Enable active health checking
+    # Session affinity based on request URI
     nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
-
-    # Custom health check endpoint for the backend
-    nginx.ingress.kubernetes.io/health-check-path: "/health"
-    nginx.ingress.kubernetes.io/health-check-interval: "10s"
-    nginx.ingress.kubernetes.io/health-check-timeout: "5s"
 
     # Connection draining for graceful shutdown
     nginx.ingress.kubernetes.io/server-snippet: |

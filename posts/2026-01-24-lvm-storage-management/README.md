@@ -73,9 +73,9 @@ sudo yum install lvm2
 # Verify LVM is installed and check version
 lvm version
 
-# Start and enable the LVM service
-sudo systemctl enable lvm2-lvmetad
-sudo systemctl start lvm2-lvmetad
+# Verify LVM devices are activated (lvmetad was removed in LVM 2.03+)
+sudo vgscan
+sudo vgchange -ay
 ```
 
 ## Creating LVM Storage Step by Step

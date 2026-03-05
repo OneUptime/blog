@@ -247,20 +247,20 @@ connection.close()
 
 ### RabbitMQ Configuration File
 
-```erlang
-%% rabbitmq.conf - Quorum queue specific settings
+```ini
+# rabbitmq.conf - Quorum queue specific settings
 
-%% Default queue type for new queues (optional)
+# Default queue type for new queues (optional)
 default_queue_type = quorum
 
-%% Quorum queue settings
+# Quorum queue settings
 quorum_queue.default_initial_cluster_size = 3
 
-%% Raft settings for quorum queues
+# Raft settings for quorum queues
 raft.segment_max_entries = 32768
 raft.wal_max_size_bytes = 536870912
 
-%% Memory management
+# Memory management
 quorum_queue.memory_limit = 0.4
 ```
 
@@ -651,31 +651,31 @@ flowchart LR
 
 ### 2. Memory and Disk Considerations
 
-```erlang
-%% rabbitmq.conf
+```ini
+# rabbitmq.conf
 
-%% Set memory high watermark
+# Set memory high watermark
 vm_memory_high_watermark.relative = 0.6
 
-%% Configure disk free space limit
+# Configure disk free space limit
 disk_free_limit.relative = 2.0
 
-%% Quorum queue memory limit (fraction of total memory)
+# Quorum queue memory limit (fraction of total memory)
 quorum_queue.memory_limit = 0.3
 ```
 
 ### 3. Network Configuration
 
-```erlang
-%% rabbitmq.conf
+```ini
+# rabbitmq.conf
 
-%% Increase inter-node communication timeout for WAN deployments
+# Increase inter-node communication timeout for WAN deployments
 cluster_partition_handling = pause_minority
 
-%% Heartbeat interval
+# Heartbeat interval
 heartbeat = 60
 
-%% TCP connection timeout
+# TCP connection timeout
 handshake_timeout = 30000
 ```
 
@@ -701,11 +701,11 @@ rabbitmqctl list_queues name type members online --formatter=json | \
         {name, members: .members|length, online: .online|length}'
 
 # Force leader election (if needed)
-rabbitmqctl delete_member <queue-name> <node-name>
-rabbitmqctl add_member <queue-name> <node-name>
+rabbitmq-queues delete_member <queue-name> <node-name>
+rabbitmq-queues add_member <queue-name> <node-name>
 
-# Check Raft log status
-rabbitmqctl quorum_status <queue-name>
+# Check Raft log status (uses rabbitmq-queues, not rabbitmqctl)
+rabbitmq-queues quorum_status <queue-name>
 ```
 
 ---

@@ -15,8 +15,8 @@ Production containers often lack debugging tools. `kubectl debug` lets you attac
 `kubectl debug` creates ephemeral containers or debug pods to troubleshoot running workloads. It works even with distroless images that have no shell.
 
 Requirements:
-- Kubernetes 1.18+ (ephemeral containers in beta)
-- Kubernetes 1.25+ (ephemeral containers GA)
+- Kubernetes 1.23+ (ephemeral containers in beta, requires EphemeralContainers feature gate)
+- Kubernetes 1.25+ (ephemeral containers GA, no feature gate required)
 
 ## Debug Running Pods
 

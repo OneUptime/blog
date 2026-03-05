@@ -183,11 +183,11 @@ kubectl version --short
 The istioctl command-line tool is essential for managing Istio installations and debugging.
 
 ```bash
-# Download the latest Istio release (1.23 or later recommended for ambient)
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.23.0 sh -
+# Download the latest Istio release (1.24 or later recommended for ambient)
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
 
 # Add istioctl to your PATH for easy access
-cd istio-1.23.0
+cd istio-1.24.0
 export PATH=$PWD/bin:$PATH
 
 # Verify the installation by checking the version
@@ -1076,16 +1076,16 @@ graph TB
 ```bash
 # Install Prometheus for metrics collection
 # Prometheus scrapes metrics from ztunnel and waypoint proxies
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.23/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/prometheus.yaml
 
 # Install Grafana for metrics visualization
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.23/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
 
 # Install Kiali for service mesh visualization
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.23/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/kiali.yaml
 
 # Install Jaeger for distributed tracing
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.23/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/jaeger.yaml
 ```
 
 ### Key Metrics for Ambient Mesh

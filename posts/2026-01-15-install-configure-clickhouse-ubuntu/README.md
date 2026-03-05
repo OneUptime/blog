@@ -39,7 +39,8 @@ sudo apt install -y apt-transport-https ca-certificates curl gnupg
 curl -fsSL https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key | sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
 
 # Add repository
-echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" | sudo tee /etc/apt/sources.list.d/clickhouse.list
+ARCH=$(dpkg --print-architecture)
+echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=${ARCH}] https://packages.clickhouse.com/deb stable main" | sudo tee /etc/apt/sources.list.d/clickhouse.list
 
 # Install ClickHouse
 sudo apt update
@@ -137,10 +138,6 @@ Key settings:
         <size>1000M</size>
         <count>10</count>
     </logger>
-
-    <!-- Memory limits -->
-    <max_memory_usage>10000000000</max_memory_usage>  <!-- 10GB -->
-    <max_memory_usage_for_all_queries>20000000000</max_memory_usage_for_all_queries>
 
     <!-- Query settings -->
     <max_concurrent_queries>100</max_concurrent_queries>
@@ -529,7 +526,7 @@ SELECT count() FROM events_distributed;
 
 ```bash
 # Install clickhouse-backup
-wget https://github.com/AlexAkulov/clickhouse-backup/releases/download/v2.4.0/clickhouse-backup_2.4.0_amd64.deb
+wget https://github.com/Altinity/clickhouse-backup/releases/download/v2.4.0/clickhouse-backup_2.4.0_amd64.deb
 sudo dpkg -i clickhouse-backup_2.4.0_amd64.deb
 
 # Configure
@@ -571,12 +568,16 @@ clickhouse-backup restore backup_name
 ### Memory Settings
 
 ```xml
-<!-- /etc/clickhouse-server/config.d/memory.xml -->
+<!-- /etc/clickhouse-server/users.d/memory.xml -->
+<!-- Note: max_memory_usage is a query/user-level setting, not a server-level setting -->
 <clickhouse>
-    <max_memory_usage>10000000000</max_memory_usage>
-    <max_memory_usage_for_user>5000000000</max_memory_usage_for_user>
-    <max_bytes_before_external_group_by>2000000000</max_bytes_before_external_group_by>
-    <max_bytes_before_external_sort>2000000000</max_bytes_before_external_sort>
+    <profiles>
+        <default>
+            <max_memory_usage>10000000000</max_memory_usage>
+            <max_bytes_before_external_group_by>2000000000</max_bytes_before_external_group_by>
+            <max_bytes_before_external_sort>2000000000</max_bytes_before_external_sort>
+        </default>
+    </profiles>
 </clickhouse>
 ```
 

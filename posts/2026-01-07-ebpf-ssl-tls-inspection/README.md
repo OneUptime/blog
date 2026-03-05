@@ -19,7 +19,7 @@ In this comprehensive guide, we will explore how to use eBPF to inspect SSL/TLS 
 Before we dive in, ensure you have:
 
 - Linux kernel 4.14 or later (5.x recommended for best eBPF support)
-- Root privileges or CAP_BPF capability
+- Root privileges or CAP_BPF capability (note: CAP_BPF was introduced in kernel 5.8; on older kernels, CAP_SYS_ADMIN or root is required)
 - BCC (BPF Compiler Collection) or libbpf installed
 - Python 3.6+ (for BCC-based examples)
 - OpenSSL development headers

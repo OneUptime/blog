@@ -84,9 +84,11 @@ Use `helm package --sign` to create a signed chart.
 
 ```bash
 # Package and sign in one step
+# Note: GPG 2.1+ does NOT create secring.gpg by default. Export first:
+# gpg --export-secret-keys > ~/.gnupg/secring.gpg
 helm package ./my-chart --sign --key "Your Name" --keyring ~/.gnupg/secring.gpg
 
-# For GPG 2.1+, use the pubring.kbx format
+# For GPG 2.1+, use the pubring.kbx format (no export needed)
 helm package ./my-chart --sign --key "email@example.com" --keyring ~/.gnupg/pubring.kbx
 
 # This creates:

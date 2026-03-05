@@ -49,11 +49,18 @@ flowchart LR
 
 ### Installing the Plugin
 
-```bash
-# Check current plugins
-rabbitmq-plugins list
+The `rabbitmq_delayed_message_exchange` plugin is a **community plugin** that does not ship with RabbitMQ. You must download and install it manually before enabling it.
 
-# Enable the delayed message plugin
+```bash
+# Step 1: Download the plugin .ez file from the RabbitMQ community plugins page
+# https://www.rabbitmq.com/community-plugins
+# Choose the version matching your RabbitMQ installation, e.g.:
+wget https://github.com/rabbitmq/rabbitmq-delayed-message-exchange/releases/download/v3.13.0/rabbitmq_delayed_message_exchange-3.13.0.ez
+
+# Step 2: Copy the plugin to RabbitMQ's plugins directory
+cp rabbitmq_delayed_message_exchange-3.13.0.ez /usr/lib/rabbitmq/plugins/
+
+# Step 3: Enable the delayed message plugin
 rabbitmq-plugins enable rabbitmq_delayed_message_exchange
 
 # Verify installation

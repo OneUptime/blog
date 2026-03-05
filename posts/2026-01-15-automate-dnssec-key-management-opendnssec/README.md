@@ -326,7 +326,7 @@ sudo -u opendnssec ods-enforcer key ds-seen --zone example.com --keytag 12345
 
 ```named
 zone "example.com" {
-    type master;
+    type primary;
     file "/var/opendnssec/signed/example.com";
     notify yes;
 };

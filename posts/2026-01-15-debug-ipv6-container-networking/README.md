@@ -47,6 +47,8 @@ A properly configured daemon.json for IPv6 should look like this:
 }
 ```
 
+Note: The `experimental: true` flag is required for Docker versions prior to v27. Docker v27 and later no longer require this flag as `ip6tables` support is enabled by default.
+
 ### Common Configuration Issues
 
 ```bash
@@ -73,6 +75,8 @@ sudo tee /etc/docker/daemon.json << 'EOF'
   "ip6tables": true
 }
 EOF
+# Note: "experimental": true is only needed for Docker versions older than v27.
+# Docker v27+ enables ip6tables by default without the experimental flag.
 
 # Restart Docker daemon to apply changes
 sudo systemctl restart docker

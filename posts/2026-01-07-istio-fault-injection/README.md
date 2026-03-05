@@ -1180,8 +1180,8 @@ jobs:
     - name: Install Istio
       run: |
         # Download and install Istio CLI
-        curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-        cd istio-1.20.0
+        curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
+        cd istio-1.24.0
         export PATH=$PWD/bin:$PATH
 
         # Install Istio with demo profile for testing

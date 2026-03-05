@@ -415,9 +415,11 @@ async function uploadToS3(stream, key) {
 For video, process asynchronously:
 
 ```javascript
-const Queue = require('bull');
+const { Queue } = require('bullmq');
 
-const videoQueue = new Queue('video-processing', process.env.REDIS_URL);
+const videoQueue = new Queue('video-processing', {
+  connection: { host: new URL(process.env.REDIS_URL).hostname, port: parseInt(new URL(process.env.REDIS_URL).port) || 6379 },
+});
 
 app.post('/upload/video', (req, res) => {
   const bb = busboy({
@@ -500,7 +502,10 @@ function hashFile(filePath) {
 ### Validate File Type by Magic Bytes
 
 ```javascript
-const fileType = require('file-type');
+// file-type is an ES module (v19+); use dynamic import() in a CommonJS context
+// or switch your project to ESM with "type": "module" in package.json
+// Example using dynamic import:
+// const { fileTypeFromBuffer } = await import('file-type');
 
 app.post('/upload', (req, res) => {
   const bb = busboy({ headers: req.headers });
@@ -519,7 +524,8 @@ app.post('/upload', (req, res) => {
 
         if (bytesRead >= 4100 && !detectedType) {
           const buffer = Buffer.concat(chunks);
-          detectedType = await fileType.fromBuffer(buffer);
+          const { fileTypeFromBuffer } = await import('file-type'); // ESM-only package
+          detectedType = await fileTypeFromBuffer(buffer);
 
           if (!detectedType || !allowedTypes.includes(detectedType.mime)) {
             file.resume(); // Drain stream

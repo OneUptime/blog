@@ -468,29 +468,25 @@ groups:
             avg_over_time(probe_success{job=~"blackbox.*ipv6.*"}[5m])
           )
 
-      # IPv6 probe latency percentiles
-      - record: job:probe_ipv6_duration_seconds:p50_5m
+      # IPv6 probe latency averages
+      # Note: probe_duration_seconds is a Gauge (not a Histogram), so use
+      # avg_over_time or quantile aggregations rather than histogram_quantile.
+      - record: job:probe_ipv6_duration_seconds:avg5m
         expr: |
-          histogram_quantile(0.50,
-            sum by (job, le) (
-              rate(probe_duration_seconds_bucket{job=~"blackbox.*ipv6.*"}[5m])
-            )
+          avg by (job) (
+            avg_over_time(probe_duration_seconds{job=~"blackbox.*ipv6.*"}[5m])
+          )
+
+      - record: job:probe_ipv6_duration_seconds:max5m
+        expr: |
+          max by (job) (
+            max_over_time(probe_duration_seconds{job=~"blackbox.*ipv6.*"}[5m])
           )
 
       - record: job:probe_ipv6_duration_seconds:p95_5m
         expr: |
-          histogram_quantile(0.95,
-            sum by (job, le) (
-              rate(probe_duration_seconds_bucket{job=~"blackbox.*ipv6.*"}[5m])
-            )
-          )
-
-      - record: job:probe_ipv6_duration_seconds:p99_5m
-        expr: |
-          histogram_quantile(0.99,
-            sum by (job, le) (
-              rate(probe_duration_seconds_bucket{job=~"blackbox.*ipv6.*"}[5m])
-            )
+          quantile by (job) (0.95,
+            probe_duration_seconds{job=~"blackbox.*ipv6.*"}
           )
 
       # ICMPv6 message rates
@@ -751,18 +747,16 @@ node_sockstat_FRAG6_inuse
 # IPv6 probe success rate by target
 avg_over_time(probe_success{job=~"blackbox.*ipv6.*"}[1h])
 
-# IPv6 probe latency (median)
-histogram_quantile(0.50,
-  sum by (instance, le) (
-    rate(probe_duration_seconds_bucket{job=~"blackbox.*ipv6.*"}[5m])
-  )
+# IPv6 probe latency (average over last 5 minutes)
+# Note: probe_duration_seconds is a Gauge, not a Histogram.
+# Use avg_over_time or max_over_time instead of histogram_quantile.
+avg by (instance) (
+  avg_over_time(probe_duration_seconds{job=~"blackbox.*ipv6.*"}[5m])
 )
 
-# IPv6 probe latency (99th percentile)
-histogram_quantile(0.99,
-  sum by (instance, le) (
-    rate(probe_duration_seconds_bucket{job=~"blackbox.*ipv6.*"}[5m])
-  )
+# IPv6 probe latency (max over last 5 minutes - catches worst case)
+max by (instance) (
+  max_over_time(probe_duration_seconds{job=~"blackbox.*ipv6.*"}[5m])
 )
 
 # Failed IPv6 probes in last hour
@@ -973,13 +967,13 @@ Organize your IPv6 monitoring dashboard into logical sections:
   "type": "heatmap",
   "targets": [
     {
-      "expr": "sum by (le) (rate(probe_duration_seconds_bucket{job=~\"blackbox.*ipv6.*\"}[5m]))",
-      "format": "heatmap",
-      "legendFormat": "{{ le }}"
+      "expr": "probe_duration_seconds{job=~\"blackbox.*ipv6.*\"}",
+      "format": "time_series",
+      "legendFormat": "{{ instance }}"
     }
   ],
   "options": {
-    "calculate": false,
+    "calculate": true,
     "yAxis": {
       "unit": "s"
     },

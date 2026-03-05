@@ -66,7 +66,7 @@ jobs:
     environment: staging
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Deploy to staging
         env:
@@ -83,7 +83,7 @@ jobs:
       url: https://example.com
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Deploy to production
         env:
@@ -105,7 +105,7 @@ jobs:
       name: production
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: ./deploy.sh
 ```
 
@@ -161,7 +161,7 @@ jobs:
     # Job fails if branch doesn't match environment rules
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: ./deploy.sh
 ```
 
@@ -221,7 +221,7 @@ jobs:
       # Custom deployment protection rule checks external system
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: ./deploy.sh
 ```
 
@@ -249,7 +249,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build
         run: npm run build
@@ -334,7 +334,7 @@ jobs:
       url: ${{ steps.deploy.outputs.url }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Deploy preview
         id: deploy
@@ -359,7 +359,7 @@ jobs:
       name: ${{ github.ref_type == 'tag' && 'production' || 'staging' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: ./deploy.sh
 ```
 

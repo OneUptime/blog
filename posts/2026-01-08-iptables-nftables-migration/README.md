@@ -99,8 +99,8 @@ cat /etc/os-release
 ### Kubernetes Version Requirements
 
 ```bash
-# Check Kubernetes version (1.25+ has native nftables support in kube-proxy)
-kubectl version --short
+# Check Kubernetes version (1.29+ has native nftables support in kube-proxy, 1.31+ beta)
+kubectl version
 
 # Check current kube-proxy mode
 kubectl get cm kube-proxy -n kube-system -o yaml | grep mode
@@ -112,8 +112,8 @@ kubectl get cm kube-proxy -n kube-system -o yaml | grep mode
 |-----------|----------------|---------------------|
 | Kernel | 4.10 | 5.10+ |
 | nftables | 0.9.0 | 1.0.0+ |
-| Kubernetes | 1.25 | 1.29+ |
-| kube-proxy | 1.25 | 1.29+ |
+| Kubernetes | 1.29 | 1.31+ |
+| kube-proxy | 1.29 | 1.31+ |
 
 ## Understanding iptables to nftables Rule Translation
 
@@ -207,7 +207,7 @@ ip6tables-save | ip6tables-restore-translate >> nftables-rules.nft
 
 ## Configuring kube-proxy for nftables
 
-Kubernetes 1.25+ introduced native nftables support in kube-proxy.
+Kubernetes 1.29 introduced native nftables support in kube-proxy (alpha), graduating to beta in 1.31.
 
 ### Option 1: Fresh Cluster with nftables Mode
 
@@ -404,11 +404,11 @@ table inet filter {
 
 table ip nat {
     chain prerouting {
-        type nat hook prerouting priority -100;
+        type nat hook prerouting priority dstnat;
     }
 
     chain postrouting {
-        type nat hook postrouting priority 100;
+        type nat hook postrouting priority srcnat;
 
         # Masquerade for pod network
         ip saddr 10.244.0.0/16 oifname != "cni0" masquerade
@@ -542,7 +542,7 @@ nft list ruleset | grep 8080
 
 table inet my_filter {
     chain my_input {
-        type filter hook input priority 10;  # Higher priority than iptables
+        type filter hook input priority -10;  # Lower number = higher priority, runs before iptables-nft (priority 0)
 
         # Custom rules here
         tcp dport 9000 accept

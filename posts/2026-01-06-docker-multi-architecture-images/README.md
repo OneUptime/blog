@@ -76,10 +76,11 @@ The simplest way to build for multiple platforms. The --push flag is required be
 ```bash
 # Build for AMD64 and ARM64, then push to registry
 # Multi-platform images must be pushed directly - can't load locally
+# --platform: target platforms, --tag: image tag, --push: push to registry
 docker buildx build \
-  --platform linux/amd64,linux/arm64 \   # Target platforms
-  --tag myregistry/myapp:latest \         # Image tag
-  --push \                                 # Push to registry
+  --platform linux/amd64,linux/arm64 \
+  --tag myregistry/myapp:latest \
+  --push \
   .
 ```
 
@@ -106,11 +107,12 @@ Create multiple tags in a single build operation. This is useful for version tag
 
 ```bash
 # Build with multiple tags - common for releases
+# Tags: latest (floating), exact version, and minor version alias
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --tag myregistry/myapp:latest \    # Latest tag
-  --tag myregistry/myapp:1.0.0 \     # Exact version
-  --tag myregistry/myapp:1.0 \       # Minor version
+  --tag myregistry/myapp:latest \
+  --tag myregistry/myapp:1.0.0 \
+  --tag myregistry/myapp:1.0 \
   --push \
   .
 ```
@@ -504,10 +506,11 @@ Use registry-based caching to speed up multi-platform builds by reusing layers b
 
 ```bash
 # Use registry-based build cache for faster rebuilds
+# --cache-from: pull cache from registry, --cache-to: push cache to registry after build
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --cache-from type=registry,ref=myregistry/myapp:cache \   # Pull cache from registry
-  --cache-to type=registry,ref=myregistry/myapp:cache,mode=max \  # Push cache to registry
+  --cache-from type=registry,ref=myregistry/myapp:cache \
+  --cache-to type=registry,ref=myregistry/myapp:cache,mode=max \
   --push \
   -t myregistry/myapp:latest .
 ```

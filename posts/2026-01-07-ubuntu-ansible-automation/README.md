@@ -1352,7 +1352,7 @@ retry_files_save_path = ~/.ansible/retry
 
 # Output formatting
 stdout_callback = yaml
-callback_whitelist = timer, profile_tasks
+callbacks_enabled = timer, profile_tasks
 
 # Fact caching for performance
 gathering = smart

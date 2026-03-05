@@ -367,14 +367,14 @@ Limit how much space the build cache can consume:
 
 ```bash
 # Limit build cache to 10GB - removes oldest entries beyond this limit
-docker builder prune --keep-storage 10GB
+docker builder prune --reserved-space 10GB
 ```
 
 In BuildKit:
 
 ```bash
 # Configure max cache size in buildkitd.toml or use:
-docker builder prune --keep-storage 10000
+docker builder prune --reserved-space 10gb
 ```
 
 ---

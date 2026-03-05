@@ -477,8 +477,8 @@ dig +dnssec +multiline +trace example.com
 # Check for CD (Checking Disabled) flag behavior
 dig +cd example.com
 
-# Validate specific record
-dig +sigchase +trusted-key=/etc/trusted-key.key example.com A
+# Validate specific record (use delv - dig +sigchase was removed in BIND 9.12+)
+delv example.com A
 ```
 
 ### 4. ldns-verify-zone

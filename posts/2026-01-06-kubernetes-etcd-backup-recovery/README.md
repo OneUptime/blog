@@ -117,7 +117,7 @@ spec:
               effect: NoSchedule
           containers:
             - name: backup
-              image: bitnami/etcd:3.5
+              image: registry.k8s.io/etcd:3.5.21-0
               command:
                 - /bin/sh
                 - -c
@@ -188,8 +188,8 @@ spec:
                 - -c
                 - |
                   # Install etcdctl
-                  curl -L https://github.com/etcd-io/etcd/releases/download/v3.5.9/etcd-v3.5.9-linux-amd64.tar.gz | tar xz
-                  mv etcd-v3.5.9-linux-amd64/etcdctl /usr/local/bin/
+                  curl -L https://github.com/etcd-io/etcd/releases/download/v3.5.21/etcd-v3.5.21-linux-amd64.tar.gz | tar xz
+                  mv etcd-v3.5.21-linux-amd64/etcdctl /usr/local/bin/
 
                   # Create snapshot
                   SNAPSHOT_FILE="etcd-$(date +%Y%m%d-%H%M%S).db"

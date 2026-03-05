@@ -564,7 +564,7 @@ metricsApp.get('/metrics', async (req, res) => {
 });
 
 app.listen(3000);         // Public port - exposed through load balancer
-metricsApp.listen(9090);  // Internal port - only accessible within cluster
+metricsApp.listen(9091);  // Internal port - only accessible within cluster (avoid 9090, Prometheus's default)
 ```
 
 ### Kubernetes Service Monitor

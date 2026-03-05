@@ -59,7 +59,7 @@ jobs:
       name: development
       url: https://dev.example.com
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Deploy to development
         run: |
@@ -81,7 +81,7 @@ jobs:
     outputs:
       image-tag: ${{ steps.build.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build application
         id: build
@@ -101,7 +101,7 @@ jobs:
       name: development
       url: https://dev.example.com
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Deploy to development
         run: |
@@ -122,7 +122,7 @@ jobs:
       name: staging
       url: https://staging.example.com
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Deploy to staging
         run: |
@@ -142,7 +142,7 @@ jobs:
       name: production
       url: https://example.com
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Deploy to production
         run: |
@@ -168,7 +168,7 @@ jobs:
     environment:
       name: ${{ matrix.environment }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure environment
         run: |
@@ -221,7 +221,7 @@ Include rollback capabilities in your deployment workflow:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Store current version before deployment
       - name: Capture current version
@@ -265,7 +265,7 @@ jobs:
       name: preview-${{ github.event.number }}
       url: https://pr-${{ github.event.number }}.preview.example.com
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Create preview namespace
         run: |

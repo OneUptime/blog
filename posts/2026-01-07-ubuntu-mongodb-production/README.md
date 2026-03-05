@@ -660,12 +660,9 @@ rs.initiate({
     // Number of seconds a member waits before seeking election
     electionTimeoutMillis: 10000,
     // How frequently members send heartbeat messages
-    heartbeatIntervalMillis: 2000,
-    // Write concern for configuration changes
-    getLastErrorDefaults: {
-      w: "majority",
-      wtimeout: 5000
-    }
+    heartbeatIntervalMillis: 2000
+    // Note: getLastErrorDefaults is deprecated since MongoDB 4.4 and unsupported in 5.0+.
+    // Use db.adminCommand({ setDefaultRWConcern: 1, defaultWriteConcern: { w: "majority" } }) instead.
   }
 })
 
@@ -678,8 +675,8 @@ rs.status()
 // View the replica set configuration
 rs.conf()
 
-// Check which member is primary
-rs.isMaster()
+// Check which member is primary (use db.hello() - rs.isMaster() is deprecated since MongoDB 5.0)
+db.hello()
 EOF
 ```
 
@@ -1565,11 +1562,11 @@ use myapp
 // Analyze your query patterns and create appropriate indexes
 
 // Example: Index for user queries by email with sorting by creation date
+// Note: background: true is ignored since MongoDB 4.2 - all indexes build in background by default
 db.users.createIndex(
     { "email": 1, "createdAt": -1 },
     {
         name: "idx_users_email_created",
-        background: true,  // Build index in background (doesn't block operations)
         unique: true       // Ensure email uniqueness
     }
 )

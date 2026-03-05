@@ -318,7 +318,7 @@ import (
 
 func main() {
     // Connect to the server
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )

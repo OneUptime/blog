@@ -160,8 +160,7 @@ helm repo update
 helm install traefik traefik/traefik \
   --namespace traefik \
   --create-namespace \
-  --set dashboard.enabled=true \                  # Enable web dashboard
-  --set dashboard.ingressRoute=true \             # Expose dashboard via IngressRoute
+  --set ingressRoute.dashboard.enabled=true \     # Expose dashboard via IngressRoute
   --set providers.kubernetesIngress.enabled=true \ # Support standard Ingress
   --set providers.kubernetesCRD.enabled=true      # Support Traefik CRDs
 ```
@@ -377,7 +376,7 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true           # Install Custom Resource Definitions
+  --set crds.enabled=true          # Install Custom Resource Definitions
 ```
 
 ### ClusterIssuer for Let's Encrypt

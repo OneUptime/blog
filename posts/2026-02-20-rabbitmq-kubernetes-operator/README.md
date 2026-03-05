@@ -147,9 +147,14 @@ graph TB
 
 ## Step 4: Configure Policies with Kubernetes
 
+> **Note**: Classic queue mirroring (`ha-mode` policy) was removed in RabbitMQ 4.0. Use quorum queues (`x-queue-type: quorum`) for high availability instead, as shown in the application connection example in Step 6.
+
 ```yaml
 # rabbitmq-policy.yaml
-# Define a policy for high-availability queues
+# Define a policy for high-availability quorum queues
+# Note: The ha-mode/ha-sync-mode policy settings (classic mirroring) were
+# removed in RabbitMQ 4.0. Use quorum queues declared with x-queue-type=quorum
+# for HA instead of applying an ha-mode policy.
 apiVersion: rabbitmq.com/v1beta1
 kind: Policy
 metadata:
@@ -162,9 +167,9 @@ spec:
   pattern: ".*"
   applyTo: "queues"
   definition:
-    # Mirror queues across all nodes
-    ha-mode: all
-    ha-sync-mode: automatic
+    # Set default queue type to quorum for high availability
+    # (RabbitMQ 4.0+ - replaces deprecated ha-mode mirroring)
+    queue-master-locator: min-masters
   rabbitmqClusterReference:
     name: production-rabbitmq
 ```

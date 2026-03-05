@@ -45,8 +45,8 @@ apiVersion: 1
 providers:
   - name: 'default'
     orgId: 1
-    folder: 'Provisioned'
-    folderUid: 'provisioned'
+    folder: ''
+    folderUid: ''
     type: file
     disableDeletion: false
     updateIntervalSeconds: 30

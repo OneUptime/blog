@@ -15,8 +15,6 @@ Apache Kafka is a distributed event streaming platform for high-throughput data 
 ### Basic Setup
 
 ```yaml
-version: '3.8'
-
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -52,8 +50,6 @@ volumes:
 ### KRaft Mode Setup
 
 ```yaml
-version: '3.8'
-
 services:
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -80,8 +76,6 @@ volumes:
 ## Multi-Broker Cluster
 
 ```yaml
-version: '3.8'
-
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -134,8 +128,6 @@ services:
 ## With Kafka UI
 
 ```yaml
-version: '3.8'
-
 services:
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -171,8 +163,6 @@ services:
 ## Complete Production Setup
 
 ```yaml
-version: '3.8'
-
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0

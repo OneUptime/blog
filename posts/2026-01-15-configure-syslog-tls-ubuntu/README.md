@@ -203,13 +203,10 @@ cat << 'EOF' | sudo tee /etc/rsyslog.d/10-tls-server.conf
 # Rsyslog TLS Server Configuration
 #####################################
 
-# Load the input module for TCP connections
+# Load the input module for TCP connections with TLS settings
 # imtcp is required for TLS - UDP does not support encryption
-module(load="imtcp")
-
-# Load GnuTLS driver for TLS support
-# This module provides certificate-based encryption
-module(load="gtls"
+# The gtls stream driver is referenced by name and does not need a separate module(load=) call
+module(load="imtcp"
     StreamDriver.Name="gtls"
     StreamDriver.Mode="1"
     StreamDriver.AuthMode="x509/name")
@@ -295,21 +292,16 @@ cat << 'EOF' | sudo tee /etc/rsyslog.d/10-tls-client.conf
 # Rsyslog TLS Client Configuration
 #####################################
 
-# Load GnuTLS driver for TLS support
-module(load="gtls"
-    StreamDriver.Name="gtls"
-    StreamDriver.Mode="1"
-    StreamDriver.AuthMode="x509/name")
-
 # Configure the default stream driver
+# The gtls stream driver is referenced by name and does not need a separate module(load=) call
 global(
     DefaultNetstreamDriver="gtls"
     DefaultNetstreamDriverCAFile="/etc/ssl/syslog/ca/ca.crt"
 )
 
 # Define the action to forward logs to the TLS server
-# The @@@ prefix denotes TCP with TLS (@ = UDP, @@ = TCP, @@@ = TLS)
-# However, for clarity, we use the action() syntax below
+# Note: rsyslog uses @ for UDP and @@ for TCP. There is no @@@ prefix for TLS.
+# TLS is configured via StreamDriver parameters in the action() syntax, as shown below.
 
 # Forward all logs to the syslog server over TLS
 action(

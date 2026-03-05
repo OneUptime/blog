@@ -586,7 +586,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import update
 from models import User, Post
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def update_user(
@@ -638,7 +638,7 @@ def publish_post(db: Session, post_id: int) -> Optional[Post]:
         return None
 
     post.is_published = True
-    post.published_at = datetime.utcnow()
+    post.published_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(post)
@@ -674,7 +674,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import delete
 from models import User, Post, Comment
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 def delete_user(db: Session, user_id: int) -> bool:
@@ -719,7 +719,7 @@ def delete_old_drafts(db: Session, days: int = 90) -> int:
     Returns:
         Number of deleted posts
     """
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
     stmt = (
         delete(Post)
@@ -868,9 +868,9 @@ def get_recent_active_users_cte(db: Session, days: int = 30) -> List[User]:
     """
     Get users who have posted in the last N days using a CTE.
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
     # Define CTE for users with recent posts
     recent_posters_cte = (

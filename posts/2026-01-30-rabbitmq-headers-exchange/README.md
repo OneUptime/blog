@@ -455,12 +455,24 @@ Route messages to different queues based on priority levels.
 
 ```python
 # High priority queue - processed first
+# Note: Python dicts cannot have duplicate keys; use separate bindings
+# for each value, or accept that only the last value is used.
+# Bind for 'critical' priority
 channel.queue_bind(
     exchange='tasks',
     queue='high_priority_tasks',
     arguments={
         'x-match': 'any',
-        'priority': 'critical',
+        'priority': 'critical'
+    }
+)
+
+# Also bind for 'high' priority (separate binding needed for multiple values)
+channel.queue_bind(
+    exchange='tasks',
+    queue='high_priority_tasks',
+    arguments={
+        'x-match': 'any',
         'priority': 'high'
     }
 )
@@ -594,13 +606,23 @@ class NotificationSystem:
             }
         )
 
-        # Bind urgent queue - catches any urgent message
+        # Bind urgent queue - catches urgent messages
+        # Note: Python dicts cannot have duplicate keys; bind separately for each value
         self.channel.queue_bind(
             exchange='notification_hub',
             queue='urgent_queue',
             arguments={
                 'x-match': 'any',
-                'priority': 'urgent',
+                'priority': 'urgent'
+            }
+        )
+
+        # Also bind for 'critical' priority
+        self.channel.queue_bind(
+            exchange='notification_hub',
+            queue='urgent_queue',
+            arguments={
+                'x-match': 'any',
                 'priority': 'critical'
             }
         )
@@ -829,12 +851,20 @@ Route logs based on severity and source.
 
 ```python
 # Critical errors - immediate alerting
+# Note: Python dicts cannot have duplicate keys; bind separately for each value
 channel.queue_bind(
     exchange='logs',
     queue='critical_alerts',
     arguments={
         'x-match': 'any',
-        'level': 'critical',
+        'level': 'critical'
+    }
+)
+channel.queue_bind(
+    exchange='logs',
+    queue='critical_alerts',
+    arguments={
+        'x-match': 'any',
         'level': 'fatal'
     }
 )

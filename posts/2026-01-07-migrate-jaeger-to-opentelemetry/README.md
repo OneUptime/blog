@@ -179,7 +179,7 @@ import (
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
 )
@@ -207,12 +207,10 @@ func InitOpenTelemetry(ctx context.Context, serviceName string) (func(context.Co
 
     // Create a gRPC connection to the OpenTelemetry Collector
     // This replaces the Jaeger agent connection
-    conn, err := grpc.DialContext(
-        ctx,
+    conn, err := grpc.NewClient(
         // Default OTel Collector gRPC endpoint
         "localhost:4317",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
-        grpc.WithBlock(),
     )
     if err != nil {
         return nil, err
@@ -681,7 +679,7 @@ package tracing
 
 import (
     "go.opentelemetry.io/otel/attribute"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
 // Common Jaeger tag to OpenTelemetry attribute mappings

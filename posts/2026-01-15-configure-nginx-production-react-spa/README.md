@@ -166,8 +166,9 @@ Here is a comprehensive Nginx configuration for production React SPAs:
 ```nginx
 # Main server block for HTTPS
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name yourdomain.com www.yourdomain.com;
 
     # SSL Configuration
@@ -340,8 +341,9 @@ server {
 
 # Redirect www to non-www (optional)
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name www.yourdomain.com;
 
     ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
@@ -564,7 +566,8 @@ location /api/ {
 HTTP/2 provides significant performance improvements:
 
 ```nginx
-listen 443 ssl http2;
+listen 443 ssl;
+http2 on;
 ```
 
 Benefits include:
@@ -725,7 +728,7 @@ For containerized deployments, here is a complete Dockerfile and Nginx configura
 FROM node:18-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 COPY . .
 RUN npm run build
 

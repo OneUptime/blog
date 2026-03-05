@@ -67,9 +67,11 @@ This approach uses a temporary Alpine container to create a compressed archive o
 docker stop myapp
 
 # Create backup using temporary Alpine container
+# -v mydata:/source:ro: mount source volume as read-only
+# -v $(pwd)/backups:/backup: mount local backup directory
 docker run --rm \
-  -v mydata:/source:ro \       # Mount source volume as read-only
-  -v $(pwd)/backups:/backup \  # Mount local backup directory
+  -v mydata:/source:ro \
+  -v $(pwd)/backups:/backup \
   alpine tar czf /backup/mydata-$(date +%Y%m%d-%H%M%S).tar.gz -C /source .
 
 # Restart container after backup completes
@@ -88,9 +90,11 @@ docker stop myapp
 docker run --rm -v mydata:/target alpine sh -c "rm -rf /target/*"
 
 # Restore from backup archive to target volume
+# -v mydata:/target: mount volume to restore into
+# -v $(pwd)/backups:/backup:ro: mount backup directory as read-only
 docker run --rm \
-  -v mydata:/target \           # Mount volume to restore into
-  -v $(pwd)/backups:/backup:ro \ # Mount backup directory as read-only
+  -v mydata:/target \
+  -v $(pwd)/backups:/backup:ro \
   alpine tar xzf /backup/mydata-20240106-120000.tar.gz -C /target
 
 # Start container with restored data
@@ -116,9 +120,10 @@ mkdir -p "$BACKUP_DIR"
 echo "Backing up volume: $VOLUME_NAME"
 
 # Run backup using Alpine container with tar
+# Mount source volume read-only and backup directory as write target
 docker run --rm \
-  -v "${VOLUME_NAME}:/source:ro" \   # Source volume mounted read-only
-  -v "${BACKUP_DIR}:/backup" \        # Backup destination
+  -v "${VOLUME_NAME}:/source:ro" \
+  -v "${BACKUP_DIR}:/backup" \
   alpine tar czf "/backup/${BACKUP_FILE}" -C /source .
 
 echo "Backup created: ${BACKUP_DIR}/${BACKUP_FILE}"
@@ -278,8 +283,9 @@ docker run --rm \
   restic/restic snapshots
 
 # Restore specific snapshot (abc123) to the data volume
+# -v appdata:/data mounts the target volume for restore
 docker run --rm \
-  -v appdata:/data \  # Volume to restore into
+  -v appdata:/data \
   -e RESTIC_REPOSITORY=s3:s3.amazonaws.com/mybucket/backups \
   -e RESTIC_PASSWORD=your-encryption-password \
   restic/restic restore abc123 --target /data
@@ -323,16 +329,18 @@ These commands demonstrate manual Borg operations for initialization, backup, li
 
 ```bash
 # Initialize new encrypted repository
+# --encryption=repokey stores the encryption key in the repository
 docker run --rm \
   -v borg-repo:/repo \
   -e BORG_PASSPHRASE=secret \
   pschiffe/borg-backup \
-  borg init --encryption=repokey /repo  # repokey stores encryption key in repo
+  borg init --encryption=repokey /repo
 
 # Create a new backup archive with dated name
+# -v appdata:/source:ro: source data (read-only), -v borg-repo:/repo: repository
 docker run --rm \
-  -v appdata:/source:ro \  # Source data
-  -v borg-repo:/repo \      # Repository location
+  -v appdata:/source:ro \
+  -v borg-repo:/repo \
   -e BORG_PASSPHRASE=secret \
   pschiffe/borg-backup \
   borg create /repo::backup-$(date +%Y%m%d) /source
@@ -345,8 +353,9 @@ docker run --rm \
   borg list /repo
 
 # Restore specific backup archive to target volume
+# -v appdata:/target: destination for restored files
 docker run --rm \
-  -v appdata:/target \  # Destination for restored files
+  -v appdata:/target \
   -v borg-repo:/repo \
   -e BORG_PASSPHRASE=secret \
   pschiffe/borg-backup \

@@ -246,8 +246,8 @@ vault kv list secret/
 # Delete secret
 vault kv delete secret/myapp
 
-# Destroy all versions
-vault kv destroy -versions=all secret/myapp
+# Destroy all versions and metadata
+vault kv metadata delete secret/myapp
 ```
 
 ### Dynamic Secrets (Database)
@@ -485,7 +485,7 @@ curl https://vault.example.com:8200/v1/sys/metrics?format=prometheus
 vault status
 
 # Check seal status
-vault operator seal-status
+vault status
 
 # Check HA status
 vault operator raft list-peers

@@ -871,7 +871,7 @@ jobs:
         # Deploy a sample application to test the configurations
         run: |
           kubectl label namespace default istio-injection=enabled
-          kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/bookinfo/platform/kube/bookinfo.yaml
+          kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/bookinfo/platform/kube/bookinfo.yaml
           kubectl wait --for=condition=ready pod -l app=productpage --timeout=300s
 
       - name: Run integration tests

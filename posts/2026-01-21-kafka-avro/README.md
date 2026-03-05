@@ -24,7 +24,6 @@ Avro offers several advantages over JSON or other formats:
 ### Docker Compose Setup
 
 ```yaml
-version: '3'
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -273,10 +272,6 @@ public class SpecificAvroProducer {
 ## Python Implementation
 
 ```python
-from confluent_kafka import Producer, Consumer
-from confluent_kafka.avro import AvroProducer, AvroConsumer
-from confluent_kafka.avro.cached_schema_registry_client import CachedSchemaRegistryClient
-
 # Schema definition
 user_schema_str = """
 {
@@ -291,7 +286,6 @@ user_schema_str = """
 }
 """
 
-# Modern approach using SerializingProducer
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer, AvroDeserializer
 from confluent_kafka.serialization import SerializationContext, MessageField

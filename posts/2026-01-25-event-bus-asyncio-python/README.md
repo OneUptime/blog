@@ -40,7 +40,7 @@ Let's start with a minimal async event bus:
 import asyncio
 from typing import Callable, Dict, List, Any, Coroutine
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import logging
 
@@ -53,7 +53,7 @@ class Event:
     event_type: str
     payload: Dict[str, Any]
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -130,7 +130,7 @@ Type safety helps catch errors early. Define your events as dataclasses:
 ```python
 # events.py
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 import uuid
 
@@ -139,7 +139,7 @@ import uuid
 class BaseEvent:
     """Base class with common event attributes"""
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_event(self) -> Event:
         """Convert to Event object for the bus"""
@@ -357,7 +357,7 @@ Production systems need retry logic and dead letter queues for failed events:
 import asyncio
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Any, Coroutine, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import logging
 
@@ -371,7 +371,7 @@ class EventEnvelope:
     attempt: int = 0
     max_attempts: int = 3
     last_error: Optional[str] = None
-    first_attempt_at: datetime = field(default_factory=datetime.utcnow)
+    first_attempt_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AdvancedEventBus:

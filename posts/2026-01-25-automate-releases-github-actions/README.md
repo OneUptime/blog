@@ -53,13 +53,13 @@ jobs:
     steps:
       # Checkout with full history for changelog generation
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Full history needed for changelog
 
       # Set up your language runtime
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
@@ -186,7 +186,7 @@ Tie everything together by creating a GitHub Release with your changelog, artifa
 ```yaml
       # Create GitHub Release with all artifacts
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.changelog }}
@@ -287,7 +287,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Create and push the tag
       - name: Create tag
@@ -321,7 +321,7 @@ jobs:
             artifact: myapp-windows-amd64.exe
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
@@ -340,7 +340,7 @@ jobs:
         uses: actions/download-artifact@v4
 
       - name: Create release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             myapp-linux-amd64/myapp

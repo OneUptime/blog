@@ -501,7 +501,7 @@ curl http://localhost:9200/_cluster/health
 
 # MongoDB connection issues
 sudo systemctl status mongod
-mongo --eval "db.adminCommand('ping')"
+mongosh --eval "db.adminCommand('ping')"
 
 # Check Graylog node status
 curl -u admin:password http://localhost:9000/api/system/cluster/nodes

@@ -210,8 +210,9 @@ After Certbot modifies your configuration, it will look similar to this:
 
 server {
     # Listen on port 443 for HTTPS connections with HTTP/2 support
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
 
     server_name example.com www.example.com;
 
@@ -260,8 +261,9 @@ For more control over SSL settings, you can manually configure SSL:
 # Advanced SSL configuration with custom security settings
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
 
     server_name example.com www.example.com;
 
@@ -390,8 +392,9 @@ map $http_upgrade $connection_upgrade {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
 
     server_name example.com;
 
@@ -491,8 +494,9 @@ upstream myapp_backend {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
 
     server_name example.com;
 
@@ -571,7 +575,8 @@ upstream myapp_backend {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
@@ -608,8 +613,9 @@ Adding security headers helps protect your application from common web vulnerabi
 # Includes all recommended security headers
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
 
     server_name example.com;
 

@@ -79,7 +79,7 @@ The key to high throughput is running many operations concurrently while respect
 import asyncio
 import uuid
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 async def bulk_insert(container, documents, max_concurrency=50):
     """
@@ -116,7 +116,7 @@ def generate_telemetry_events(count):
             "deviceId": f"device-{i % 100}",  # 100 unique devices (partition keys)
             "eventType": "temperature_reading",
             "value": 20.0 + (i % 30) * 0.5,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metadata": {
                 "firmware": "v2.1.0",
                 "region": "us-east",

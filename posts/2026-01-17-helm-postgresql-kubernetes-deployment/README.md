@@ -583,7 +583,7 @@ kubectl get events -n database --sort-by='.lastTimestamp'
 kubectl exec -it postgresql-0 -n database -- psql -U postgres -c "SELECT * FROM pg_stat_replication;"
 
 # Check replication lag
-kubectl exec -it postgresql-0 -n database -- psql -U postgres -c "SELECT client_addr, state, sent_lsn - replay_lsn AS replication_lag FROM pg_stat_replication;"
+kubectl exec -it postgresql-0 -n database -- psql -U postgres -c "SELECT client_addr, state, pg_wal_lsn_diff(sent_lsn, replay_lsn) AS replication_lag FROM pg_stat_replication;"
 ```
 
 ### Connection Issues

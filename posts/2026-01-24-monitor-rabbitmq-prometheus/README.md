@@ -57,18 +57,16 @@ curl http://localhost:15692/metrics
 
 ### Method 2: Configuration File
 
-```erlang
-%% rabbitmq.conf
+```ini
+# rabbitmq.conf
+# Note: rabbitmq.conf uses # for comments (not Erlang %% style)
 
-%% Enable Prometheus plugin
+# Enable Prometheus plugin
 prometheus.return_per_object_metrics = true
 prometheus.path = /metrics
 
-%% Configure metrics port (default is 15692)
+# Configure metrics port (default is 15692)
 prometheus.tcp.port = 15692
-
-%% Enable detailed per-queue metrics
-prometheus.return_per_object_metrics = true
 ```
 
 ### Metrics Endpoint Verification

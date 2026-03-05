@@ -189,6 +189,7 @@ loki:
 
 ```bash
 # Deploy with Helm
+# Note: grafana/loki-stack is deprecated. For new deployments, use grafana/loki instead.
 helm repo add grafana https://grafana.github.io/helm-charts
 helm install loki grafana/loki-stack -f loki-values.yaml -n loki --create-namespace
 ```

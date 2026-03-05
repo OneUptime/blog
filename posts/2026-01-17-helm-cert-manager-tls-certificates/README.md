@@ -62,11 +62,11 @@ helm search repo cert-manager --versions
 ### Install cert-manager
 
 ```bash
-# Install with CRDs
+# Install with CRDs (use crds.enabled=true for cert-manager v1.15+; installCRDs is deprecated)
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 ```
 
 ### Verify Installation
@@ -117,7 +117,10 @@ kubectl delete namespace cert-manager-test
 
 ```yaml
 # cert-manager-values.yaml
-installCRDs: true
+# Use crds.enabled instead of installCRDs (deprecated since cert-manager v1.15)
+crds:
+  enabled: true
+  keep: true
 
 replicaCount: 2
 

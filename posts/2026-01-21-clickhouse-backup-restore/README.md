@@ -27,7 +27,7 @@ The most popular backup tool for ClickHouse, supporting local and cloud storage.
 
 ```bash
 # Download latest release
-wget https://github.com/Altinity/clickhouse-backup/releases/download/v2.4.0/clickhouse-backup-linux-amd64.tar.gz
+wget https://github.com/Altinity/clickhouse-backup/releases/latest/download/clickhouse-backup-linux-amd64.tar.gz
 tar -xzf clickhouse-backup-linux-amd64.tar.gz
 sudo mv clickhouse-backup /usr/local/bin/
 
@@ -113,8 +113,8 @@ clickhouse-backup restore daily-20240115
 # Restore single table
 clickhouse-backup restore --table default.events daily-20240115
 
-# Restore with different name
-clickhouse-backup restore --table default.events --restore-table default.events_restored daily-20240115
+# Restore with different name (use --restore-table-mapping source:destination)
+clickhouse-backup restore --table default.events --restore-table-mapping "default.events:default.events_restored" daily-20240115
 ```
 
 ### Automated Backups with Cron
@@ -122,8 +122,7 @@ clickhouse-backup restore --table default.events --restore-table default.events_
 ```bash
 # /etc/cron.d/clickhouse-backup
 0 2 * * * root /usr/local/bin/clickhouse-backup create_remote daily-$(date +\%Y\%m\%d) >> /var/log/clickhouse-backup.log 2>&1
-0 3 * * 0 root /usr/local/bin/clickhouse-backup delete local --keep-last 7 >> /var/log/clickhouse-backup.log 2>&1
-0 4 * * 0 root /usr/local/bin/clickhouse-backup delete remote --keep-last 30 >> /var/log/clickhouse-backup.log 2>&1
+0 3 * * 0 root /usr/local/bin/clickhouse-backup clean >> /var/log/clickhouse-backup.log 2>&1
 ```
 
 ## Method 2: Native BACKUP Command
@@ -291,18 +290,21 @@ s3:
 ### Verify Backup Integrity
 
 ```bash
-# Verify local backup
-clickhouse-backup verify daily-20240115
+# List local backups to verify existence
+clickhouse-backup list
 
-# Verify remote backup
-clickhouse-backup verify_remote daily-20240115
+# List remote backups
+clickhouse-backup list remote
+
+# Download and check a backup by attempting a dry-run restore
+clickhouse-backup download daily-20240115
 ```
 
 ### Test Restore Regularly
 
 ```bash
-# Restore to test cluster monthly
-clickhouse-backup restore_remote --restore-database test_restore daily-20240115
+# Restore to test cluster monthly (use --restore-database-mapping to rename)
+clickhouse-backup restore_remote --restore-database-mapping default:test_restore daily-20240115
 
 # Verify data
 clickhouse-client --query "SELECT count() FROM test_restore.events"
@@ -321,10 +323,10 @@ WHERE metric LIKE '%Backup%';
 -- Check backup sizes over time
 SELECT
     name,
-    formatReadableSize(total_bytes) AS size,
-    creation_time
+    formatReadableSize(total_size) AS size,
+    start_time
 FROM system.backups
-ORDER BY creation_time DESC;
+ORDER BY start_time DESC;
 ```
 
 ## Disaster Recovery Runbook
@@ -388,7 +390,7 @@ DROP TABLE events_backup;
 # Monthly restore test script
 #!/bin/bash
 BACKUP=$(clickhouse-backup list remote | head -1 | awk '{print $1}')
-clickhouse-backup restore_remote --restore-database restore_test $BACKUP
+clickhouse-backup restore_remote --restore-database-mapping default:restore_test $BACKUP
 clickhouse-client --query "SELECT count() FROM restore_test.events"
 clickhouse-client --query "DROP DATABASE restore_test"
 ```

@@ -194,7 +194,8 @@ cosign sign-blob --output-signature myapp.sig \
     myapp
 
 # For headless environments, use device flow
-COSIGN_EXPERIMENTAL=1 cosign sign-blob \
+# COSIGN_EXPERIMENTAL=1 is no longer needed in cosign 2.0+; keyless signing is stable
+cosign sign-blob \
     --output-signature myapp.sig \
     --output-certificate myapp.pem \
     --oidc-device-flow \
@@ -1252,5 +1253,3 @@ The investment in proper code signing pays dividends in user trust, security inc
 
 Start with the basics and gradually adopt more comprehensive measures. Even simple signature verification significantly raises the bar for attackers and demonstrates your commitment to security.
 
-```bash
-```

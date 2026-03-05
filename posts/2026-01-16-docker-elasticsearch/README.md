@@ -36,7 +36,7 @@ version: '3.8'
 
 services:
   elasticsearch:
-    image: elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -57,7 +57,7 @@ version: '3.8'
 
 services:
   elasticsearch:
-    image: elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
@@ -104,7 +104,7 @@ version: '3.8'
 
 services:
   es01:
-    image: elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     environment:
       - node.name=es01
       - cluster.name=es-cluster
@@ -126,7 +126,7 @@ services:
       - elastic
 
   es02:
-    image: elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     environment:
       - node.name=es02
       - cluster.name=es-cluster
@@ -145,7 +145,7 @@ services:
       - elastic
 
   es03:
-    image: elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     environment:
       - node.name=es03
       - cluster.name=es-cluster
@@ -164,7 +164,7 @@ services:
       - elastic
 
   kibana:
-    image: kibana:8.11.0
+    image: docker.elastic.co/kibana/kibana:8.11.0
     ports:
       - "5601:5601"
     environment:
@@ -190,7 +190,7 @@ volumes:
 ```yaml
 services:
   elasticsearch:
-    image: elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     healthcheck:
       test: curl -s http://localhost:9200/_cluster/health | grep -vq '"status":"red"'
       interval: 30s
@@ -216,7 +216,7 @@ version: '3.8'
 
 services:
   elasticsearch:
-    image: elasticsearch:8.11.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     restart: unless-stopped
     environment:
       - discovery.type=single-node
@@ -254,7 +254,7 @@ services:
       - backend
 
   kibana:
-    image: kibana:8.11.0
+    image: docker.elastic.co/kibana/kibana:8.11.0
     restart: unless-stopped
     ports:
       - "5601:5601"

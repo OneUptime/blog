@@ -29,6 +29,8 @@ Grafana OnCall is a built-in incident management solution that integrates native
 
 ### Enabling Grafana OnCall
 
+> **Note:** As of March 2025, Grafana OnCall OSS has entered maintenance mode and is scheduled to be archived on March 24, 2026. For new deployments, Grafana recommends migrating to [Grafana Cloud IRM](https://grafana.com/blog/oncall-management-incident-response-grafana-cloud-irm/). The self-hosted OSS path described below still works until that date but will not receive new features.
+
 In Grafana Cloud, OnCall is available by default. For self-hosted Grafana, you can deploy Grafana OnCall separately:
 
 ```bash

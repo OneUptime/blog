@@ -386,6 +386,8 @@ curl -X GET "https://localhost:9200/orders/_search" \
 
 ### Moving Average
 
+Note: The `moving_avg` aggregation was removed in Elasticsearch 8.0. Use the `moving_fn` aggregation instead, which provides equivalent functionality with a script-based approach.
+
 ```bash
 curl -X GET "https://localhost:9200/orders/_search" \
   -H "Content-Type: application/json" \
@@ -401,10 +403,10 @@ curl -X GET "https://localhost:9200/orders/_search" \
         "aggs": {
           "sales": { "sum": { "field": "amount" } },
           "moving_avg_sales": {
-            "moving_avg": {
+            "moving_fn": {
               "buckets_path": "sales",
               "window": 7,
-              "model": "simple"
+              "script": "MovingFunctions.unweightedAvg(values)"
             }
           }
         }

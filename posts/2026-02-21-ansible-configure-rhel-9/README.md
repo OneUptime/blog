@@ -303,7 +303,7 @@ Here are several practical scenarios where this module proves essential in real-
         state: present
 
     - name: Configure system timezone
-      ansible.builtin.timezone:
+      community.general.timezone:
         name: "{{ system_timezone | default('UTC') }}"
 
     - name: Configure hostname
@@ -327,19 +327,18 @@ Here are several practical scenarios where this module proves essential in real-
       notify: restart sshd
 
     - name: Configure firewall rules
-      community.general.ufw:
-        rule: allow
-        port: "{{ item }}"
-        proto: tcp
+      ansible.posix.firewalld:
+        port: "{{ item }}/tcp"
+        permanent: true
+        state: enabled
       loop:
         - "22"
         - "80"
         - "443"
 
-    - name: Enable firewall
-      community.general.ufw:
-        state: enabled
-        policy: deny
+    - name: Reload firewalld
+      ansible.builtin.command: firewall-cmd --reload
+      changed_when: false
 
   handlers:
     - name: restart sshd

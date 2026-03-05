@@ -114,11 +114,9 @@ func NewPool(config PoolConfig) (*Pool, error) {
         stopHealth:  make(chan struct{}),
     }
 
-    // Initialize connections
+    // Initialize connections (grpc.NewClient connects lazily on first RPC)
     for i := 0; i < config.Size; i++ {
-        ctx, cancel := context.WithTimeout(context.Background(), config.DialTimeout)
-        conn, err := grpc.DialContext(ctx, config.Target, opts...)
-        cancel()
+        conn, err := grpc.NewClient(config.Target, opts...)
         if err != nil {
             pool.Close()
             return nil, err
@@ -188,10 +186,8 @@ func (p *Pool) checkAndReconnect() {
             // Close old connection
             conn.Close()
 
-            // Create new connection
-            ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-            newConn, err := grpc.DialContext(ctx, p.target, p.opts...)
-            cancel()
+            // Create new connection (connects lazily on first RPC)
+            newConn, err := grpc.NewClient(p.target, p.opts...)
 
             if err == nil {
                 p.connections[i] = newConn
@@ -1128,7 +1124,7 @@ for _, req := range requests {
 
 // Bad: Creating new channels per request
 for _, req := range requests {
-    conn, _ := grpc.Dial(target, opts...)
+    conn, _ := grpc.NewClient(target, opts...)
     // Use connection
     conn.Close() // Expensive!
 }
@@ -1180,7 +1176,7 @@ serviceConfig := `{
     }
 }`
 
-conn, err := grpc.Dial(
+conn, err := grpc.NewClient(
     "dns:///my-service:50051",
     grpc.WithDefaultServiceConfig(serviceConfig),
 )

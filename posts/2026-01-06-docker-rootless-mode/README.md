@@ -234,12 +234,14 @@ The pasta network backend provides better performance than slirp4netns for rootl
 ```bash
 # Install pasta (faster than slirp4netns)
 sudo apt install passt
+```
 
-# Then configure Docker to use it
-# In ~/.config/docker/daemon.json
+Then configure Docker to use it by creating or updating `~/.config/docker/daemon.json`:
+
+```json
 {
   "features": {
-    "containerd-snapshotter": true  # Enable modern features
+    "containerd-snapshotter": true
   }
 }
 ```
@@ -303,12 +305,17 @@ You can relocate Docker's data directory to a larger partition. This is useful w
 ```bash
 # Create directory elsewhere (e.g., on larger partition)
 mkdir -p /data/docker-rootless
+```
 
-# Configure in ~/.config/docker/daemon.json
+Configure `~/.config/docker/daemon.json` with the custom data root:
+
+```json
 {
-  "data-root": "/data/docker-rootless"  # Custom data directory
+  "data-root": "/data/docker-rootless"
 }
+```
 
+```bash
 # Restart daemon to apply changes
 systemctl --user restart docker
 ```

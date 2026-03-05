@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Set up kubectl
       - name: Set up kubectl
@@ -77,11 +77,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Set up Helm
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4
         with:
           version: 'v3.14.0'
 
@@ -128,7 +128,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Configure AWS credentials via OIDC
       - name: Configure AWS credentials
@@ -173,7 +173,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Authenticate to Google Cloud
       - name: Authenticate to GCP
@@ -216,7 +216,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Login to Azure
       - name: Azure Login
@@ -256,7 +256,7 @@ jobs:
       image-tag: ${{ steps.build.outputs.tag }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build and push
         id: build
@@ -272,7 +272,7 @@ jobs:
     environment: staging
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure kubectl
         run: |
@@ -299,7 +299,7 @@ jobs:
     environment: production
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure kubectl
         run: |
@@ -332,7 +332,7 @@ jobs:
     environment: production
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure kubectl
         run: |
@@ -396,7 +396,7 @@ jobs:
     environment: production
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure kubectl
         run: |
@@ -455,7 +455,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure kubectl
         run: |
@@ -514,7 +514,7 @@ jobs:
     environment: ${{ matrix.environment }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure kubectl
         run: |
@@ -539,7 +539,7 @@ Notify your team about deployments:
 ```yaml
 - name: Notify Slack on success
   if: success()
-  uses: slackapi/slack-github-action@v1
+  uses: slackapi/slack-github-action@v2
   with:
     channel-id: 'deployments'
     slack-message: |
@@ -552,7 +552,7 @@ Notify your team about deployments:
 
 - name: Notify Slack on failure
   if: failure()
-  uses: slackapi/slack-github-action@v1
+  uses: slackapi/slack-github-action@v2
   with:
     channel-id: 'deployments'
     slack-message: |

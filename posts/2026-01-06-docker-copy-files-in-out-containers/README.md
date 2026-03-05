@@ -117,9 +117,11 @@ docker run -v $(pwd):/app myapp:dev
 docker run -v /etc/myapp/config.yaml:/app/config.yaml:ro myapp:prod
 
 # Multiple mounts - separate source code from read-only config
+# -v $(pwd)/src:/app/src: editable source code
+# -v $(pwd)/config:/app/config:ro: read-only configuration
 docker run \
-  -v $(pwd)/src:/app/src \           # Editable source code
-  -v $(pwd)/config:/app/config:ro \  # Read-only configuration
+  -v $(pwd)/src:/app/src \
+  -v $(pwd)/config:/app/config:ro \
   myapp:dev
 ```
 
@@ -211,15 +213,19 @@ Since named volumes live in Docker's storage, mount the volume into an Alpine co
 
 ```bash
 # Backup - mount volume read-only and create tarball
+# -v myapp-data:/source:ro: mount the volume to backup (read-only)
+# -v $(pwd):/backup: mount host directory for output
 docker run --rm \
-  -v myapp-data:/source:ro \         # Mount the volume to backup
-  -v $(pwd):/backup \                # Mount host directory for output
+  -v myapp-data:/source:ro \
+  -v $(pwd):/backup \
   alpine tar czf /backup/myapp-data-backup.tar.gz -C /source .
 
 # Restore - extract tarball into the volume
+# -v myapp-data:/target: mount the volume to restore to
+# -v $(pwd):/backup:ro: mount backup directory read-only
 docker run --rm \
-  -v myapp-data:/target \            # Mount the volume to restore to
-  -v $(pwd):/backup:ro \             # Mount backup directory read-only
+  -v myapp-data:/target \
+  -v $(pwd):/backup:ro \
   alpine tar xzf /backup/myapp-data-backup.tar.gz -C /target
 ```
 

@@ -183,9 +183,12 @@ rabbit@rabbit3
 
 ## Step 5: Configure Queue Mirroring (Classic Mirroring)
 
-For high availability, configure queues to be mirrored across multiple nodes.
+> **Warning**: Classic queue mirroring (`ha-mode` policy) was deprecated in RabbitMQ 3.9 and **completely removed in RabbitMQ 4.0**. The commands below only work on RabbitMQ 3.x. For all new deployments, use quorum queues (Step 6) instead.
+
+For high availability on RabbitMQ 3.x only, configure queues to be mirrored across multiple nodes.
 
 ```bash
+# RabbitMQ 3.x ONLY - removed in RabbitMQ 4.0
 # Create a policy that mirrors all queues to all nodes
 sudo rabbitmqctl set_policy ha-all ".*" \
     '{"ha-mode":"all","ha-sync-mode":"automatic"}' \
@@ -193,7 +196,7 @@ sudo rabbitmqctl set_policy ha-all ".*" \
     --apply-to queues
 ```
 
-Different mirroring policies:
+Different mirroring policies (RabbitMQ 3.x only):
 
 ```bash
 # Mirror to exactly 2 nodes (good for 3-node clusters)

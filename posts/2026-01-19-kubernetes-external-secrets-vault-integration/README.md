@@ -255,12 +255,12 @@ spec:
     # Map Vault keys to Kubernetes Secret keys
     - secretKey: DATABASE_URL  # Key in K8s Secret
       remoteRef:
-        key: secret/data/myapp/config  # Path in Vault
+        key: myapp/config  # Path relative to the SecretStore's 'path' mount (ESO handles /data/ prefix for KV v2)
         property: database_url  # Key within the Vault secret
-    
+
     - secretKey: API_KEY
       remoteRef:
-        key: secret/data/myapp/config
+        key: myapp/config
         property: api_key
 ```
 
@@ -299,7 +299,7 @@ spec:
   # Use dataFrom to sync all keys from a path
   dataFrom:
     - extract:
-        key: secret/data/myapp/config
+        key: myapp/config  # Path relative to the SecretStore mount; ESO handles /data/ prefix for KV v2
         # All keys from this path become keys in the K8s Secret
 ```
 

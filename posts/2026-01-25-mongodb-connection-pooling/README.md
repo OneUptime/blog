@@ -62,11 +62,7 @@ const client = new MongoClient('mongodb://localhost:27017/mydb', {
 
   // Maximum time to wait for a connection from the pool
   // Fail fast instead of hanging when pool is exhausted
-  waitQueueTimeoutMS: 5000,
-
-  // Maximum number of operations waiting for a connection
-  // Prevents unbounded memory growth under extreme load
-  maxWaitQueueSize: 500
+  waitQueueTimeoutMS: 5000
 });
 
 async function connectWithPooling() {

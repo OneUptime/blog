@@ -161,8 +161,8 @@ bluestore_cache_size = 4294967296
 # Metadata caching is critical for IOPS performance
 bluestore_cache_kv_ratio = 0.7
 
-# Allocate remaining 30% to data caching
-bluestore_cache_data_ratio = 0.3
+# Note: The data cache portion is implicitly the remainder: 1.0 - bluestore_cache_kv_ratio
+# There is no bluestore_cache_data_ratio config parameter in Ceph
 
 # Minimum allocation size for SSDs (4KB matches SSD page size)
 # Smaller allocations reduce write amplification
@@ -758,7 +758,7 @@ osd_disk_threads = 4
 bluestore_cache_size = 4294967296
 bluestore_cache_autotune = true
 bluestore_cache_kv_ratio = 0.7
-bluestore_cache_data_ratio = 0.3
+# Note: data cache is implicitly 1.0 - bluestore_cache_kv_ratio; no bluestore_cache_data_ratio parameter exists
 
 # SSD-optimized allocation
 bluestore_min_alloc_size_ssd = 4096

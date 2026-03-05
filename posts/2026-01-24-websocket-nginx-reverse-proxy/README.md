@@ -84,6 +84,7 @@ server {
 
 server {
     listen 443 ssl;
+    http2 on;
     server_name ws.example.com;
 
     # SSL certificates
@@ -189,6 +190,7 @@ upstream websocket_backend_cookie {
 
 server {
     listen 443 ssl;
+    http2 on;
     server_name ws.example.com;
 
     # SSL configuration...
@@ -253,6 +255,7 @@ upstream websocket_backend {
 
 server {
     listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     # SSL configuration...
@@ -317,6 +320,7 @@ map $http_upgrade $connection_upgrade {
 
 server {
     listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     # SSL configuration...
@@ -354,6 +358,7 @@ limit_conn_zone $binary_remote_addr zone=websocket_conn:10m;
 
 server {
     listen 443 ssl;
+    http2 on;
     server_name ws.example.com;
 
     # SSL configuration...

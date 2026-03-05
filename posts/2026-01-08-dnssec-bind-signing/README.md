@@ -268,14 +268,16 @@ nano /etc/bind/named.conf.local
 ```
 
 ```bind
-// Key directory must be specified
-key-directory "/etc/bind/keys/example.com";
-
 zone "example.com" {
     type primary;
     file "/etc/bind/zones/example.com.zone";
 
+    // Key directory must be specified inside the zone block
+    key-directory "/etc/bind/keys/example.com";
+
     // Enable inline signing
+    // Note: auto-dnssec is deprecated since BIND 9.16.36/9.18.10 and will be removed;
+    // use dnssec-policy instead (shown below)
     inline-signing yes;
     auto-dnssec maintain;
 

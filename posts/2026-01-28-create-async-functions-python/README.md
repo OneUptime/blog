@@ -455,13 +455,16 @@ class RateLimiter:
         self.rate = rate
         self.capacity = capacity
         self.tokens = capacity
-        self.last_update = asyncio.get_event_loop().time()
+        self.last_update: float = 0.0  # Initialized lazily on first acquire
         self.lock = asyncio.Lock()
 
     async def acquire(self):
         """Acquire a token, waiting if necessary."""
         async with self.lock:
-            now = asyncio.get_event_loop().time()
+            loop = asyncio.get_running_loop()
+            now = loop.time()
+            if self.last_update == 0.0:
+                self.last_update = now
             elapsed = now - self.last_update
             self.tokens = min(
                 self.capacity,
@@ -481,7 +484,8 @@ async def main():
 
     async def limited_request(n: int):
         await limiter.acquire()
-        print(f"Request {n} at {asyncio.get_event_loop().time():.2f}")
+        loop = asyncio.get_running_loop()
+        print(f"Request {n} at {loop.time():.2f}")
 
     await asyncio.gather(*[limited_request(i) for i in range(10)])
 
@@ -558,7 +562,7 @@ def blocking_io():
 
 async def main():
     # Run blocking code in thread pool
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(None, blocking_io)
     print(f"Got: {result}")
 

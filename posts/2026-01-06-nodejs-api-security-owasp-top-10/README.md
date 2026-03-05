@@ -183,7 +183,8 @@ const KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
 
 function encrypt(plaintext) {
   // Generate a unique IV for each encryption - NEVER reuse IVs
-  const iv = crypto.randomBytes(16);
+  // NIST SP 800-38D recommends 12 bytes (96 bits) for AES-GCM for maximum efficiency and interoperability
+  const iv = crypto.randomBytes(12);
 
   // Create cipher with algorithm, key, and IV
   const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
@@ -459,8 +460,8 @@ app.use(helmet({
       frameSrc: ["'none'"],             // Block all iframes
     },
   },
-  crossOriginEmbedderPolicy: true,      // Prevent loading cross-origin resources without CORS
-  crossOriginOpenerPolicy: true,        // Isolate browsing context from popups
+  crossOriginEmbedderPolicy: false,     // Disabled by default in helmet v7+; enable with { policy: 'require-corp' } only if needed
+  crossOriginOpenerPolicy: { policy: 'same-origin' }, // Isolate browsing context from popups
   crossOriginResourcePolicy: { policy: 'same-site' }, // Restrict resource loading
   dnsPrefetchControl: { allow: false }, // Disable DNS prefetching to prevent info leakage
   frameguard: { action: 'deny' },       // Prevent clickjacking by blocking iframe embedding
@@ -470,7 +471,7 @@ app.use(helmet({
   originAgentCluster: true,             // Request separate process for this origin
   permittedCrossDomainPolicies: { permittedPolicies: 'none' }, // Block Adobe Flash/PDF policies
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' }, // Control referrer header
-  xssFilter: true,                      // Enable browser's XSS filter
+  xssFilter: false,                     // Disable legacy X-XSS-Protection header (helmet v7+ disables by default; modern browsers ignore it)
 }));
 ```
 

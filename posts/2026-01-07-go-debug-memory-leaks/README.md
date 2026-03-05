@@ -522,6 +522,7 @@ GOGC=off ./myapp
 package main
 
 import (
+    "runtime"
     "runtime/debug"
 )
 
@@ -530,12 +531,12 @@ func main() {
     oldValue := debug.SetGCPercent(50)
     println("Previous GOGC:", oldValue)
 
-    // Read current value
-    currentValue := debug.SetGCPercent(-1) // -1 returns current without changing
-    println("Current GOGC:", currentValue)
+    // Disable GC and read previous value (-1 disables GC)
+    currentValue := debug.SetGCPercent(-1) // Returns previous value; -1 disables GC
+    println("Previous GOGC:", currentValue)
 
-    // Disable GC temporarily for a critical section
-    debug.SetGCPercent(-1) // Actually doesn't disable, just returns current
+    // Re-enable GC with original value
+    debug.SetGCPercent(int(currentValue)) // Restore previous GOGC
 
     // To truly control GC timing, use debug.FreeOSMemory() after manual GC
     runtime.GC()

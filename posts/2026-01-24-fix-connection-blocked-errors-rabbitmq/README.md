@@ -153,17 +153,17 @@ if __name__ == '__main__':
 
 ### 1. Adjust Memory High Watermark
 
-```erlang
-%% rabbitmq.conf
+```ini
+# rabbitmq.conf
 
-%% Increase memory threshold (default is 0.4 = 40%)
-%% Only increase if you have sufficient RAM
+# Increase memory threshold (default is 0.4 = 40%)
+# Only increase if you have sufficient RAM
 vm_memory_high_watermark.relative = 0.6
 
-%% Or set an absolute value
+# Or set an absolute value
 vm_memory_high_watermark.absolute = 2GB
 
-%% Configure paging threshold (when messages start being paged to disk)
+# Configure paging threshold (when messages start being paged to disk)
 vm_memory_high_watermark_paging_ratio = 0.75
 ```
 
@@ -177,11 +177,11 @@ rabbitmqctl set_vm_memory_high_watermark absolute 2GB
 
 ### 2. Enable Message Paging
 
-```erlang
-%% rabbitmq.conf
+```ini
+# rabbitmq.conf
 
-%% Configure queue to page messages to disk earlier
-%% This reduces memory pressure at the cost of performance
+# Configure queue to page messages to disk earlier
+# This reduces memory pressure at the cost of performance
 queue_master_locator = min-masters
 ```
 
@@ -234,14 +234,14 @@ df -h /var/lib/rabbitmq
 
 ### Adjusting Disk Free Limit
 
-```erlang
-%% rabbitmq.conf
+```ini
+# rabbitmq.conf
 
-%% Set minimum free disk space (default is 50MB)
+# Set minimum free disk space (default is 50MB)
 disk_free_limit.relative = 1.5
-%% This means: 1.5 * RAM size must be free
+# This means: 1.5 * RAM size must be free
 
-%% Or set absolute value
+# Or set absolute value
 disk_free_limit.absolute = 5GB
 ```
 
@@ -922,24 +922,24 @@ if __name__ == '__main__':
 
 ### 3. Configuration Checklist
 
-```erlang
-%% rabbitmq.conf - Production settings to prevent blocking
+```ini
+# rabbitmq.conf - Production settings to prevent blocking
 
-%% Memory management
+# Memory management
 vm_memory_high_watermark.relative = 0.6
 vm_memory_high_watermark_paging_ratio = 0.75
 
-%% Disk management
+# Disk management
 disk_free_limit.relative = 2.0
 
-%% Connection limits
+# Connection limits
 channel_max = 128
 connection_max = 1024
 
-%% Queue defaults
+# Queue defaults
 default_queue_type = quorum
 
-%% Logging for debugging
+# Logging for debugging
 log.console = true
 log.console.level = warning
 log.file.level = info

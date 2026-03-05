@@ -96,7 +96,7 @@ import (
 )
 
 // CustomSpanExporter sends spans to a custom HTTP backend
-// It implements the trace.SpanExporter interface
+// It implements the sdktrace.SpanExporter interface
 type CustomSpanExporter struct {
     // endpoint is the URL where spans will be sent
     endpoint string
@@ -781,12 +781,12 @@ func DefaultRetryConfig() RetryConfig {
 
 // RetryableSpanExporter wraps an exporter with retry logic
 type RetryableSpanExporter struct {
-    exporter trace.SpanExporter
+    exporter sdktrace.SpanExporter
     config   RetryConfig
 }
 
 // NewRetryableSpanExporter creates an exporter with retry capability
-func NewRetryableSpanExporter(exporter trace.SpanExporter, config RetryConfig) *RetryableSpanExporter {
+func NewRetryableSpanExporter(exporter sdktrace.SpanExporter, config RetryConfig) *RetryableSpanExporter {
     return &RetryableSpanExporter{
         exporter: exporter,
         config:   config,
@@ -884,7 +884,7 @@ Proper shutdown is critical for data integrity and resource management.
 ```go
 // GracefulExporter wraps exporters with graceful shutdown handling
 type GracefulExporter struct {
-    exporter    trace.SpanExporter
+    exporter    sdktrace.SpanExporter
     shutdownCh  chan struct{}
     wg          sync.WaitGroup
     mu          sync.RWMutex
@@ -892,7 +892,7 @@ type GracefulExporter struct {
 }
 
 // NewGracefulExporter creates an exporter with enhanced shutdown handling
-func NewGracefulExporter(exporter trace.SpanExporter) *GracefulExporter {
+func NewGracefulExporter(exporter sdktrace.SpanExporter) *GracefulExporter {
     return &GracefulExporter{
         exporter:   exporter,
         shutdownCh: make(chan struct{}),

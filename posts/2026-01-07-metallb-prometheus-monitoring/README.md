@@ -1670,7 +1670,7 @@ spec:
     # The controller is required for IP allocation
     - alert: MetalLBControllerDown
       expr: |
-        absent(up{job="metallb-controller"} == 1)
+        up{job="metallb-controller"} == 0
       for: 2m
       labels:
         severity: critical

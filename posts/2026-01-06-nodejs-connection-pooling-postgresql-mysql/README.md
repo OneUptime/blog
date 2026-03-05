@@ -248,7 +248,7 @@ const pool = mysql.createPool({
 
   // Timeouts
   connectTimeout: 10000,       // Connection establishment timeout
-  acquireTimeout: 10000,       // Time to wait for connection from pool
+  // Note: acquireTimeout is not supported by mysql2; use queueLimit to cap waiting connections
 });
 
 module.exports = pool;

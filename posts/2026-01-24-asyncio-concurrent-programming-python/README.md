@@ -461,7 +461,7 @@ def blocking_operation():
     return "Blocking result"
 
 async def main():
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Run blocking code in thread pool
     result = await loop.run_in_executor(

@@ -537,9 +537,9 @@ table inet filter {
     }
 }
 
-table inet nat {
+table ip nat {
     chain postrouting {
-        type nat hook postrouting priority 100;
+        type nat hook postrouting priority srcnat;
         oifname "eth0" masquerade
     }
 }
@@ -997,9 +997,10 @@ PostUp = iptables -A FORWARD -i wg0 -j ACCEPT
 PostUp = iptables -A FORWARD -o wg0 -j ACCEPT
 PostUp = iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 
-# Routing for cluster networks
-PostUp = ip route add 10.200.0.0/16 dev wg0
-PostUp = ip route add 10.201.0.0/16 dev wg0
+# Note: Routes for AllowedIPs are automatically added by wg-quick.
+# Only add explicit PostUp routes for networks NOT covered by AllowedIPs.
+# The routes below are examples for networks beyond the peer's AllowedIPs:
+# PostUp = ip route add 10.202.0.0/16 dev wg0
 
 PostDown = iptables -D FORWARD -i wg0 -j ACCEPT
 PostDown = iptables -D FORWARD -o wg0 -j ACCEPT

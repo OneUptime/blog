@@ -813,7 +813,9 @@ Dead letter queues capture messages that cannot be processed, enabling debugging
 package main
 
 import (
+	"context"
 	"log"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -966,7 +968,11 @@ func RequeueWithDelay(ch *amqp.Channel, delivery amqp.Delivery, retryCount int) 
 	headers["x-retry-count"] = int32(retryCount)
 
 	// Publish to delay queue
-	return ch.Publish(
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return ch.PublishWithContext(
+		ctx,
 		"retry_exchange",
 		routingKey,
 		false,
@@ -1377,7 +1383,9 @@ func (op *OrderProcessor) processOrder(workerID int, delivery amqp.Delivery, ch 
 	}
 	eventBody, _ := json.Marshal(event)
 
-	ch.Publish("order_events", "", false, false, amqp.Publishing{
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ch.PublishWithContext(ctx, "order_events", "", false, false, amqp.Publishing{ //nolint:errcheck
 		ContentType: "application/json",
 		Body:        eventBody,
 	})

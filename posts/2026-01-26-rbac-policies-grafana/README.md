@@ -158,7 +158,7 @@ grafana_team_ids = [1]  # Maps to Platform Team
 
 ## Fine-Grained RBAC (Enterprise/Cloud)
 
-Grafana Enterprise and Cloud offer granular permissions beyond folder-based access.
+Grafana Enterprise and Grafana Cloud Advanced offer the full suite of granular custom-role permissions beyond folder-based access. Grafana OSS includes a subset of RBAC (basic fixed roles and some access-control APIs), but creating fully custom roles with arbitrary permission scopes requires Enterprise or Cloud Advanced.
 
 ### Custom Roles
 

@@ -252,7 +252,9 @@ parameters:
 
 ```bash
 # Set bridge priority (lower = more preferred as root)
-sudo ip link set br0 type bridge priority 100
+sudo brctl setbridgeprio br0 100
+# Alternative using sysfs:
+# echo 100 | sudo tee /sys/class/net/br0/bridge/priority
 ```
 
 ## Multiple Interfaces Bridge

@@ -208,7 +208,7 @@ First, create a dedicated user for the rbd-mirror daemon with appropriate permis
 # Create a user for rbd-mirror with necessary capabilities
 # The user needs read access to monitor, read-write to RBD pools
 ceph auth get-or-create client.rbd-mirror.secondary \
-    mon 'profile rbd-mirror' \
+    mon 'profile rbd-mirror-peer' \
     osd 'profile rbd' \
     -o /etc/ceph/ceph.client.rbd-mirror.secondary.keyring
 

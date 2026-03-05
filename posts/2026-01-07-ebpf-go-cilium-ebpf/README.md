@@ -103,7 +103,7 @@ go mod init github.com/yourusername/ebpf-go-project
 
 # Install cilium/ebpf library and tools
 go get github.com/cilium/ebpf@latest
-go get github.com/cilium/ebpf/cmd/bpf2go@latest
+go install github.com/cilium/ebpf/cmd/bpf2go@latest
 ```
 
 ## Project Structure

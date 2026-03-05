@@ -46,10 +46,13 @@ Overlay networks span all Swarm nodes. The --attachable flag allows standalone c
 
 ```bash
 # Create an encrypted overlay network spanning all swarm nodes
+# --driver overlay: overlay driver for multi-host networking
+# --attachable: allow standalone containers to attach
+# --opt encrypted: enable IPsec encryption for traffic
 docker network create \
-  --driver overlay \          # Overlay driver for multi-host networking
-  --attachable \              # Allow standalone containers to attach
-  --opt encrypted \           # Enable IPsec encryption for traffic
+  --driver overlay \
+  --attachable \
+  --opt encrypted \
   app-network
 ```
 
@@ -59,15 +62,18 @@ Services deployed to the overlay network can reach each other by name, regardles
 
 ```bash
 # Service on any node can reach others on the overlay by service name
+# --network app-network: attach to our overlay network
+# --replicas 3: run 3 instances across the swarm
 docker service create \
   --name api \
-  --network app-network \     # Attach to our overlay network
-  --replicas 3 \              # Run 3 instances across the swarm
+  --network app-network \
+  --replicas 3 \
   myapp:latest
 
+# Same network = automatic discovery by service name
 docker service create \
   --name redis \
-  --network app-network \     # Same network = automatic discovery
+  --network app-network \
   redis:7
 ```
 

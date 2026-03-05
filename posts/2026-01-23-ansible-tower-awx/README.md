@@ -29,8 +29,17 @@ Both products share the same codebase, but differ in support and features:
 AWX runs best on Kubernetes using the AWX Operator.
 
 ```bash
-# Install AWX Operator
-kubectl apply -f https://raw.githubusercontent.com/ansible/awx-operator/devel/deploy/awx-operator.yaml
+# Create a kustomization.yaml file with a specific release tag
+# Find the latest release at: https://github.com/ansible/awx-operator/releases
+cat << 'EOF' > kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://raw.githubusercontent.com/ansible/awx-operator/2.19.1/deploy/awx-operator.yaml
+EOF
+
+# Install AWX Operator using kustomize (recommended approach)
+kubectl apply -k .
 
 # Wait for operator to be ready
 kubectl get pods -n awx -w

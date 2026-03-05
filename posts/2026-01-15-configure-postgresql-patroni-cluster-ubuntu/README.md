@@ -310,11 +310,11 @@ With etcd running, we can now install PostgreSQL and Patroni on all nodes.
 # Install required packages
 sudo apt install -y wget gnupg2 lsb-release
 
-# Add PostgreSQL official repository
-sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+# Add PostgreSQL official repository signing key (gpg --dearmor is the modern approach)
+wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg
 
-# Import repository signing key
-wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+# Add the PostgreSQL repository referencing the keyring
+echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
 
 # Update package lists
 sudo apt update
@@ -340,10 +340,17 @@ sudo rm -rf /var/lib/postgresql/16/main
 
 ```bash
 # Install Python pip and required dependencies
-sudo apt install -y python3-pip python3-dev libpq-dev
+sudo apt install -y python3-pip python3-dev libpq-dev python3-venv
 
-# Install Patroni with etcd support
-sudo pip3 install patroni[etcd] psycopg2-binary
+# Create a virtual environment for Patroni (recommended on Ubuntu 22.04+)
+sudo python3 -m venv /opt/patroni-venv
+
+# Install Patroni with etcd support inside the virtual environment
+sudo /opt/patroni-venv/bin/pip install patroni[etcd] psycopg2-binary
+
+# Create a symlink so patroni is available system-wide
+sudo ln -s /opt/patroni-venv/bin/patroni /usr/local/bin/patroni
+sudo ln -s /opt/patroni-venv/bin/patronictl /usr/local/bin/patronictl
 
 # Verify Patroni installation
 patroni --version
@@ -400,9 +407,9 @@ restapi:
   listen: 192.168.1.101:8008      # IP and port to listen on
   connect_address: 192.168.1.101:8008  # Address other nodes use to connect
 
-# etcd configuration
+# etcd3 configuration (use etcd3: for etcd v3.4+; etcd API v2 is disabled by default from v3.4)
 # Connection settings for the distributed configuration store
-etcd:
+etcd3:
   hosts:
     - 192.168.1.101:2379
     - 192.168.1.102:2379
@@ -542,7 +549,7 @@ restapi:
   listen: 192.168.1.102:8008
   connect_address: 192.168.1.102:8008
 
-etcd:
+etcd3:
   hosts:
     - 192.168.1.101:2379
     - 192.168.1.102:2379
@@ -632,7 +639,7 @@ restapi:
   listen: 192.168.1.103:8008
   connect_address: 192.168.1.103:8008
 
-etcd:
+etcd3:
   hosts:
     - 192.168.1.101:2379
     - 192.168.1.102:2379

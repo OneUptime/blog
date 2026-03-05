@@ -44,9 +44,11 @@ The simplest way to limit log size is to configure it when running a container. 
 
 ```bash
 # Limit log size and number of files when running a container
+# --log-opt max-size=10m: maximum size per log file
+# --log-opt max-file=3: number of rotated files to keep
 docker run \
-  --log-opt max-size=10m \   # Maximum size per log file
-  --log-opt max-file=3 \     # Number of rotated files to keep
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
   myapp:latest
 ```
 
@@ -118,10 +120,13 @@ The syslog driver sends container logs to a syslog server, enabling centralized 
 
 ```bash
 # Run container with syslog driver
+# --log-driver=syslog: use syslog instead of json-file
+# --log-opt syslog-address: syslog server address
+# --log-opt tag: tag logs with container name
 docker run \
-  --log-driver=syslog \                      # Use syslog instead of json-file
-  --log-opt syslog-address=udp://logserver:514 \  # Syslog server address
-  --log-opt tag="{{.Name}}" \                # Tag logs with container name
+  --log-driver=syslog \
+  --log-opt syslog-address=udp://logserver:514 \
+  --log-opt tag="{{.Name}}" \
   myapp:latest
 ```
 

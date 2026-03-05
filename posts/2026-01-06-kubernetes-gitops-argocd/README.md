@@ -475,6 +475,8 @@ spec:
 
 ### Option 3: Vault Plugin
 
+Note: The `spec.source.plugin` field with `name:` was removed in ArgoCD v2.8. The current approach uses a sidecar-based Config Management Plugin (CMP). Install argocd-vault-plugin as a sidecar on argocd-repo-server and ArgoCD will auto-detect it. See the [argocd-vault-plugin installation docs](https://argocd-vault-plugin.readthedocs.io/en/stable/installation/) for the current setup.
+
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -482,13 +484,11 @@ metadata:
   name: myapp
 spec:
   source:
-    plugin:
-      name: argocd-vault-plugin
-      env:
-        - name: AVP_TYPE
-          value: vault
-        - name: AVP_AUTH_TYPE
-          value: k8s
+    # argocd-vault-plugin is detected automatically via sidecar CMP
+    # No plugin: field needed when using the sidecar installation method
+    repoURL: https://github.com/myorg/myapp.git
+    targetRevision: HEAD
+    path: k8s
 ```
 
 ## Notifications

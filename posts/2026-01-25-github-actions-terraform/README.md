@@ -534,10 +534,12 @@ Add cost estimation to PRs:
       --out-file=/tmp/infracost.json
 
 - name: Post Cost Comment
-  uses: infracost/actions/comment@v1
-  with:
-    path: /tmp/infracost.json
-    behavior: update
+  run: |
+    infracost comment github --path=/tmp/infracost.json \
+      --repo=$GITHUB_REPOSITORY \
+      --github-token=${{ github.token }} \
+      --pull-request=${{ github.event.pull_request.number }} \
+      --behavior=update
 ```
 
 ## Handling Secrets in Terraform

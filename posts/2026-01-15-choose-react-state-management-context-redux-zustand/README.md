@@ -337,12 +337,12 @@ export type AppDispatch = typeof store.dispatch;
 ### Typed Hooks
 
 ```typescript
-import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import type { RootState, AppDispatch } from './store';
 
 // Use throughout your app instead of plain useDispatch and useSelector
-export const useAppDispatch = () => useDispatch<AppDispatch>();
-export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
+export const useAppDispatch = useDispatch.withTypes<AppDispatch>();
+export const useAppSelector = useSelector.withTypes<RootState>();
 ```
 
 ### Using Redux in Components
@@ -432,7 +432,7 @@ interface UserStore {
 }
 
 // Create the store
-const useUserStore = create<UserStore>((set, get) => ({
+const useUserStore = create<UserStore>()((set, get) => ({
   // Initial state
   user: null,
   isLoading: false,
@@ -985,7 +985,7 @@ export const productsApi = createApi({
 
 ```typescript
 // Perfect use case: Real-time chat store
-const useChatStore = create<ChatStore>((set, get) => ({
+const useChatStore = create<ChatStore>()((set, get) => ({
   messages: [],
   isConnected: false,
 
@@ -1078,7 +1078,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 }
 
 // After (Zustand)
-const useUserStore = create<UserStore>((set) => ({
+const useUserStore = create<UserStore>()((set) => ({
   user: null,
   setUser: (user) => set({ user }),
 }));
@@ -1101,7 +1101,7 @@ const userSlice = createSlice({
 });
 
 // After (Zustand)
-const useUserStore = create<UserStore>((set) => ({
+const useUserStore = create<UserStore>()((set) => ({
   user: null,
   setUser: (user) => set({ user }),
 }));
@@ -1117,7 +1117,7 @@ This migration is less common but may be needed for enterprise requirements:
 
 ```typescript
 // Before (Zustand)
-const useStore = create<Store>((set) => ({
+const useStore = create<Store>()((set) => ({
   items: [],
   addItem: (item) => set((state) => ({ items: [...state.items, item] })),
 }));

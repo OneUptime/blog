@@ -278,7 +278,7 @@ flux bootstrap github \
 ImageRepository tells Flux which container registry and image to monitor for new tags. It periodically scans the registry and caches the available tags.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp
@@ -295,7 +295,7 @@ spec:
 ImagePolicy defines which image tags should be selected for deployment. It filters and orders tags based on semantic versioning, alphabetical order, or timestamp patterns.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp
@@ -325,7 +325,7 @@ spec:
 ImageUpdateAutomation commits image tag updates back to Git when new images match the policy. This closes the GitOps loop by ensuring Git always reflects the deployed state.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: myapp

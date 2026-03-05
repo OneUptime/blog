@@ -517,7 +517,7 @@ shutdown.registerCleanup('websocket', async () => {
 ## Queue Worker Shutdown
 
 ```javascript
-const { Worker } = require('bullmq');
+const { Worker, Queue } = require('bullmq');
 
 const worker = new Worker('orders', async (job) => {
   // Process job
@@ -526,14 +526,17 @@ const worker = new Worker('orders', async (job) => {
   connection: redis,
 });
 
+// Queue instance is needed to query job counts; getJobs() is a Queue method, not a Worker method
+const ordersQueue = new Queue('orders', { connection: redis });
+
 shutdown.registerCleanup('queue-worker', async () => {
   console.log('Closing queue worker...');
 
   // Stop accepting new jobs
   await worker.pause();
 
-  // Wait for current job to complete
-  const activeJobs = await worker.getJobs(['active']);
+  // Wait for current job to complete (use Queue, not Worker, to query active jobs)
+  const activeJobs = await ordersQueue.getJobs(['active']);
   if (activeJobs.length > 0) {
     console.log(`Waiting for ${activeJobs.length} active jobs to complete`);
 
@@ -541,7 +544,7 @@ shutdown.registerCleanup('queue-worker', async () => {
     await Promise.race([
       new Promise(resolve => {
         const check = setInterval(async () => {
-          const active = await worker.getJobs(['active']);
+          const active = await ordersQueue.getJobs(['active']);
           if (active.length === 0) {
             clearInterval(check);
             resolve();

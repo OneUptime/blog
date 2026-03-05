@@ -1129,7 +1129,7 @@ func main() {
 
     // Create Kafka consumer
     config := sarama.NewConfig()
-    config.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
+    config.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{sarama.NewBalanceStrategyRoundRobin()}
 
     consumer, err := sarama.NewConsumer([]string{"localhost:9092"}, config)
     if err != nil {

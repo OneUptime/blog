@@ -214,16 +214,12 @@ Review and customize the main configuration. Key sections include etcd connectio
 
 ```yaml
 # /usr/local/apisix/conf/config.yaml
-# Main APISIX configuration file
+# Main APISIX configuration file (APISIX 3.x format)
 
 apisix:
   # Node listener configuration - where APISIX accepts traffic
   node_listen: 9080                    # HTTP port for proxy traffic
   enable_ipv6: false                   # Disable IPv6 if not needed
-  enable_admin: true                   # Enable the Admin API
-  admin_listen:
-    ip: 0.0.0.0                        # Admin API listen address
-    port: 9180                         # Admin API port
 
   # SSL/TLS listener for HTTPS traffic
   ssl:
@@ -231,21 +227,34 @@ apisix:
     listen:
       - port: 9443                     # HTTPS port
 
-# Admin API authentication - CHANGE THIS IN PRODUCTION
-admin_key:
-  - name: admin                        # Admin user name
-    key: edd1c9f034335f136f87ad84b625c8f1  # API key (change this!)
-    role: admin                        # Full admin access
-  - name: viewer
-    key: 4054f7cf07e344346cd3f287985e76a2
-    role: viewer                       # Read-only access
+# Deployment configuration (APISIX 3.x)
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
 
-# etcd configuration - connection to configuration store
-etcd:
-  host:
-    - "http://127.0.0.1:2379"          # etcd cluster endpoints
-  prefix: /apisix                      # Key prefix in etcd
-  timeout: 30                          # Connection timeout in seconds
+  # Admin API configuration
+  admin:
+    allow_admin:
+      - 127.0.0.0/24                   # Restrict admin API to localhost
+    admin_listen:
+      ip: 0.0.0.0                      # Admin API listen address
+      port: 9180                       # Admin API port
+    # Admin API authentication - CHANGE THIS IN PRODUCTION
+    admin_key:
+      - name: admin                    # Admin user name
+        key: edd1c9f034335f136f87ad84b625c8f1  # API key (change this!)
+        role: admin                    # Full admin access
+      - name: viewer
+        key: 4054f7cf07e344346cd3f287985e76a2
+        role: viewer                   # Read-only access
+
+  # etcd configuration - connection to configuration store
+  etcd:
+    host:
+      - "http://127.0.0.1:2379"        # etcd cluster endpoints
+    prefix: /apisix                    # Key prefix in etcd
+    timeout: 30                        # Connection timeout in seconds
 
 # Plugin configuration
 plugins:

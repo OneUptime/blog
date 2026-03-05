@@ -239,7 +239,7 @@ jobs:
           otel-cli version
 
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Initialize the root trace for this workflow run
       # All subsequent spans will be children of this root span
@@ -365,7 +365,7 @@ jobs:
           sudo mv otel-cli /usr/local/bin/
 
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Continue the trace from the build job
       # This creates a proper parent-child relationship
@@ -397,7 +397,7 @@ jobs:
           sudo mv otel-cli /usr/local/bin/
 
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - uses: actions/download-artifact@v4
         with:
@@ -466,7 +466,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # This action exports workflow traces to OTLP endpoint
       # It runs in the background and captures all step timings
@@ -482,7 +482,7 @@ jobs:
           runId: ${{ github.run_id }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'

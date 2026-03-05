@@ -8,6 +8,10 @@ Description: Learn how to use Flipper to profile and debug React Native applicat
 
 ---
 
+## Important Notice: Flipper Deprecation
+
+**As of React Native 0.73, Flipper's built-in integration has been deprecated. Starting with React Native 0.74, Flipper is no longer included in new app templates.** The React Native team has replaced Flipper with a new JavaScript debugger experience built on Chrome DevTools. If you are using React Native 0.74 or later, consider using the new built-in debugger instead. The information in this guide applies to React Native projects that still use Flipper (RN 0.62–0.72) or projects that have manually re-integrated Flipper after upgrading.
+
 ## Introduction
 
 React Native has revolutionized mobile app development by enabling developers to build cross-platform applications using JavaScript. However, with this convenience comes the challenge of ensuring optimal performance across both iOS and Android platforms. This is where Flipper becomes an indispensable tool in your development arsenal.
@@ -37,7 +41,7 @@ Flipper is an extensible mobile app debugger that runs on your desktop. Unlike t
 Before setting up Flipper, ensure you have the following:
 
 - Node.js (version 14 or higher)
-- React Native (version 0.62 or higher for built-in Flipper support)
+- React Native (version 0.62–0.72 for built-in Flipper support; deprecated in 0.73, removed from templates in 0.74)
 - Xcode (for iOS development)
 - Android Studio (for Android development)
 
@@ -58,7 +62,7 @@ choco install flipper
 
 ### Configuring React Native Project
 
-Starting from React Native 0.62, Flipper integration comes built-in. However, you may need to configure it properly:
+From React Native 0.62 through 0.72, Flipper integration was built-in. Note that Flipper was deprecated in React Native 0.73 and removed from the new app template in 0.74. For RN 0.62–0.72, configure Flipper as follows:
 
 #### iOS Configuration
 

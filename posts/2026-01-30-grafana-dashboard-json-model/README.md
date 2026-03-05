@@ -86,7 +86,7 @@ Key fields explained:
 | `title` | Dashboard name displayed in the UI |
 | `tags` | Array of strings for organization and filtering |
 | `timezone` | Time zone for the dashboard (`browser`, `utc`, or specific zone) |
-| `schemaVersion` | JSON schema version (use latest, currently 39) |
+| `schemaVersion` | JSON schema version (use latest; as of 2025, values in the 39–42 range are common depending on your Grafana version) |
 | `version` | Dashboard revision number (Grafana increments this on save) |
 | `panels` | Array of panel definitions |
 

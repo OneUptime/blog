@@ -29,25 +29,27 @@ Docker Compose can update services without stopping them entirely.
 
 This configuration defines a service with rolling update capabilities. The key settings ensure new containers start before old ones stop, and health checks verify the service is ready to receive traffic.
 
+**Note:** The `deploy` section (including `update_config` and `replicas`) is part of the Compose Deploy Specification and is only fully enforced when deploying as a Docker Swarm stack using `docker stack deploy`. When using `docker compose up` in standalone mode, the `deploy` section is parsed but most orchestration behavior (rolling updates, replica management) is ignored. For Swarm-based deployments, deploy with `docker stack deploy -c docker-compose.yml myapp`.
+
 ```yaml
 # docker-compose.yml
 services:
   api:
-    image: myapp:${VERSION:-latest}  # Use VERSION env var, default to latest
+    image: myapp:${VERSION:-latest}
     deploy:
-      replicas: 3  # Run 3 instances for high availability
+      replicas: 3
       update_config:
-        parallelism: 1  # Update one container at a time
-        delay: 10s  # Wait 10 seconds between updates
-        order: start-first  # Start new container before stopping old one
+        parallelism: 1
+        delay: 10s
+        order: start-first
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]  # Check if service responds
-      interval: 10s  # Check every 10 seconds
-      timeout: 5s  # Fail if no response in 5 seconds
-      retries: 3  # Unhealthy after 3 consecutive failures
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 ```
 
-The following commands trigger the rolling update process. Docker Compose will automatically handle the orchestration based on the update_config settings defined above.
+The following commands trigger the rolling update process. For standalone Compose, Docker recreates containers sequentially. For full rolling update behavior, deploy as a Swarm stack.
 
 ```bash
 # Update to new version by setting VERSION environment variable
@@ -447,38 +449,40 @@ This comprehensive example combines Traefik, health checks, and rolling updates 
 
 ```yaml
 # docker-compose.yml
+# Note: deploy section (replicas, update_config) requires Swarm mode.
+# Deploy as a stack with: docker stack deploy -c docker-compose.yml myapp
 services:
   traefik:
     image: traefik:v3.0
     command:
-      - "--providers.docker=true"  # Enable Docker service discovery
-      - "--providers.docker.exposedbydefault=false"  # Require explicit enabling
-      - "--entrypoints.web.address=:80"  # HTTP entrypoint
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
     ports:
       - "80:80"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for service discovery
+      - /var/run/docker.sock:/var/run/docker.sock
 
   api:
-    image: myapp:${VERSION:-latest}  # Dynamic version via environment variable
+    image: myapp:${VERSION:-latest}
     labels:
-      - "traefik.enable=true"  # Enable Traefik routing
-      - "traefik.http.routers.api.rule=Host(`api.example.com`)"  # Routing rule
-      - "traefik.http.services.api.loadbalancer.server.port=3000"  # Container port
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.example.com`)"
+      - "traefik.http.services.api.loadbalancer.server.port=3000"
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]  # Lightweight health check
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 30s  # Initial startup grace period
-    stop_grace_period: 30s  # Graceful shutdown timeout
+      start_period: 30s
+    stop_grace_period: 30s
     deploy:
-      replicas: 2  # Run 2 instances for availability
+      replicas: 2
       update_config:
-        parallelism: 1  # Update one at a time
-        delay: 10s  # Wait between updates
-        order: start-first  # Zero-downtime strategy
-        failure_action: rollback  # Auto-rollback on failure
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
 ```
 
 This deployment script automates the rolling update process with health verification and automatic rollback capability.

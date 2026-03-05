@@ -84,6 +84,9 @@ Install the Windows collection and Python dependencies.
 ansible-galaxy collection install ansible.windows
 ansible-galaxy collection install community.windows
 
+# Install Chocolatey collection (win_chocolatey is NOT in ansible.windows)
+ansible-galaxy collection install chocolatey.chocolatey
+
 # Install pywinrm for WinRM connectivity
 pip install pywinrm pywinrm[credssp]
 ```
@@ -201,12 +204,12 @@ ansible windows -i inventory/hosts.yml -m ansible.windows.win_ping
 
   tasks:
     - name: Install Chocolatey package manager
-      ansible.windows.win_chocolatey:
+      chocolatey.chocolatey.win_chocolatey:
         name: chocolatey
         state: present
 
     - name: Install common software via Chocolatey
-      ansible.windows.win_chocolatey:
+      chocolatey.chocolatey.win_chocolatey:
         name: "{{ item }}"
         state: present
       loop:
@@ -506,7 +509,7 @@ ansible windows -i inventory/hosts.yml -m ansible.windows.win_ping
       Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "srvcomment" -Value $description
 
 - name: Configure Windows Firewall
-  community.windows.win_firewall:
+  ansible.windows.win_firewall:
     state: enabled
     profiles:
       - Domain

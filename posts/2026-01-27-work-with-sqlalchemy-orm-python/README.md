@@ -345,9 +345,9 @@ def delete_user(db: Session, user_id: int) -> bool:
 
 def delete_old_posts(db: Session, days: int = 30):
     """Delete posts older than specified days."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
     deleted_count = db.query(Post)\
         .filter(Post.created_at < cutoff_date)\
@@ -516,15 +516,14 @@ def upsert_tags(db: Session, tag_names: list):
 ```python
 # async_database.py
 # Async SQLAlchemy setup
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 ASYNC_DATABASE_URL = "postgresql+asyncpg://user:password@localhost/mydb"
 
 async_engine = create_async_engine(ASYNC_DATABASE_URL, echo=True)
 
-AsyncSessionLocal = sessionmaker(
-    async_engine, class_=AsyncSession, expire_on_commit=False
+AsyncSessionLocal = async_sessionmaker(
+    async_engine, expire_on_commit=False
 )
 
 async def get_async_db():

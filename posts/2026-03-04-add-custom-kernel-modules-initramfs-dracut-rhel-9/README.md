@@ -39,7 +39,7 @@ lsinitrd /boot/initramfs-$(uname -r).img | grep "\.ko"
 # Create a dracut config to add specific modules
 cat <<'EOF' | sudo tee /etc/dracut.conf.d/extra-modules.conf
 # Add the vfio modules for PCI passthrough during boot
-add_drivers+=" vfio vfio-pci vfio_iommu_type1 "
+add_drivers+=" vfio vfio_pci vfio_iommu_type1 "
 
 # Add a specific storage driver
 add_drivers+=" mpt3sas "

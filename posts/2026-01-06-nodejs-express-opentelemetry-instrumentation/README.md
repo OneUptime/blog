@@ -116,7 +116,7 @@ node -r ./tracing.js app.js
 While auto-instrumentation captures Express routes and HTTP calls, you often need custom spans for business logic. Custom spans let you measure specific operations and add domain-specific attributes.
 
 ```javascript
-const { trace, SpanStatusCode } = require('@opentelemetry/api');
+const { trace, context, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('express-api');
 
@@ -130,10 +130,9 @@ app.post('/orders', async (req, res) => {
   });
 
   try {
-    // Child span for validation
-    const validationSpan = tracer.startSpan('validate-order', {
-      parent: trace.setSpan(trace.active(), span),
-    });
+    // Child span for validation - pass parent context as third argument
+    const parentCtx = trace.setSpan(context.active(), span);
+    const validationSpan = tracer.startSpan('validate-order', {}, parentCtx);
 
     const validationResult = await validateOrder(req.body);
     validationSpan.setStatus({ code: SpanStatusCode.OK });

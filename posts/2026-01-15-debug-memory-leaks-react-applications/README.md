@@ -963,18 +963,21 @@ Set up automated testing to catch memory leaks before production.
 
 ```typescript
 // memoryLeakTest.ts
-import { render, unmountComponentAtNode } from 'react-dom';
+import { createRoot } from 'react-dom/client';
+import type { Root } from 'react-dom/client';
 
 describe('Memory Leak Tests', () => {
   let container: HTMLDivElement;
+  let root: Root;
 
   beforeEach(() => {
     container = document.createElement('div');
     document.body.appendChild(container);
+    root = createRoot(container);
   });
 
   afterEach(() => {
-    unmountComponentAtNode(container);
+    root.unmount();
     container.remove();
   });
 
@@ -983,8 +986,9 @@ describe('Memory Leak Tests', () => {
 
     // Mount and unmount multiple times
     for (let i = 0; i < 100; i++) {
-      render(<YourComponent />, container);
-      unmountComponentAtNode(container);
+      root.render(<YourComponent />);
+      root.unmount();
+      root = createRoot(container);
     }
 
     // Force garbage collection if available

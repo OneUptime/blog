@@ -570,7 +570,7 @@ export const Button = ({
   className,
   disabled,
   ...props
-}: ButtonProps): JSX.Element => {
+}: ButtonProps): React.ReactElement => {
   const buttonClasses = [
     styles.button,
     styles[variant],
@@ -627,10 +627,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
-      react({
-        // Enable Fast Refresh
-        fastRefresh: true,
-      }),
+      react(),
       // Gzip compression
       isProduction &&
         compression({

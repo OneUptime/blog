@@ -828,8 +828,7 @@ metadata:
   namespace: ingress-nginx
   annotations:
     # MetalLB specific annotations
-    metallb.universe.tf/address-pool: dual-stack-pool
-    metallb.universe.tf/allow-shared-ip: "ingress-nginx"
+    metallb.io/address-pool: dual-stack-pool
 spec:
   ipFamilyPolicy: RequireDualStack
   ipFamilies:

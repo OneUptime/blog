@@ -260,7 +260,8 @@ ipam:
 
 # Enable socket-level load balancing
 # This replaces kube-proxy for service handling
-kubeProxyReplacement: true
+# Use "true" (string) for Cilium 1.14-1.15 or "strict" for 1.16+
+kubeProxyReplacement: "true"
 
 # Configure load balancer settings
 loadBalancer:
@@ -807,7 +808,7 @@ To fully leverage Cilium's performance benefits, you can replace kube-proxy enti
 # When installing Cilium, disable kube-proxy
 helm install cilium cilium/cilium --version 1.15.0 \
     --namespace kube-system \
-    --set kubeProxyReplacement=true \
+    --set kubeProxyReplacement="true" \
     --set k8sServiceHost=<API_SERVER_IP> \
     --set k8sServicePort=<API_SERVER_PORT>
 

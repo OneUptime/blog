@@ -30,8 +30,8 @@ brew install velero
 
 # Install Velero CLI on Linux by downloading the binary
 # Linux
-curl -L https://github.com/vmware-tanzu/velero/releases/download/v1.12.0/velero-v1.12.0-linux-amd64.tar.gz | tar xz
-sudo mv velero-v1.12.0-linux-amd64/velero /usr/local/bin/
+curl -L https://github.com/vmware-tanzu/velero/releases/download/v1.15.0/velero-v1.15.0-linux-amd64.tar.gz | tar xz
+sudo mv velero-v1.15.0-linux-amd64/velero /usr/local/bin/
 ```
 
 ### AWS S3 + EBS Setup
@@ -92,7 +92,7 @@ EOF
 # Install Velero with AWS plugin, S3 storage, and EBS snapshots
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.11.0 \
   --bucket velero-backups-mycompany \
   --backup-location-config region=us-west-2 \
   --snapshot-location-config region=us-west-2 \
@@ -128,7 +128,7 @@ gcloud iam service-accounts keys create credentials-velero \
 # Install Velero with GCP plugin
 velero install \
   --provider gcp \
-  --plugins velero/velero-plugin-for-gcp:v1.8.0 \
+  --plugins velero/velero-plugin-for-gcp:v1.11.0 \
   --bucket velero-backups-mycompany \
   --secret-file ./credentials-velero
 ```
@@ -163,7 +163,7 @@ EOF
 # Install Velero with Azure plugin
 velero install \
   --provider azure \
-  --plugins velero/velero-plugin-for-microsoft-azure:v1.8.0 \
+  --plugins velero/velero-plugin-for-microsoft-azure:v1.11.0 \
   --bucket velero \
   --backup-location-config storageAccount=velerobackups \
   --secret-file ./credentials-velero
@@ -312,13 +312,13 @@ velero restore logs production-restore
 
 ### CSI Snapshots (Recommended)
 
-CSI snapshots provide native, storage-provider-integrated volume backups. Enable the CSI feature flag during Velero installation.
+CSI snapshots provide native, storage-provider-integrated volume backups. In Velero v1.14+, CSI support is built-in and no separate CSI plugin is required.
 
 ```yaml
-# Enable CSI snapshots in Velero installation command
+# Enable CSI snapshots in Velero installation command (Velero v1.14+)
+# The CSI plugin is bundled - no separate plugin needed
 velero install \
-  --features=EnableCSI \
-  --plugins velero/velero-plugin-for-csi:v0.6.0,...
+  --features=EnableCSI
 ```
 
 Create a VolumeSnapshotClass that Velero will use for CSI snapshots. The label tells Velero which class to use.
@@ -431,7 +431,7 @@ Set up Velero in the recovery cluster pointing to the same backup storage locati
 # Install Velero with identical configuration to access existing backups
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.11.0 \
   --bucket velero-backups-mycompany \
   --backup-location-config region=us-west-2 \
   --secret-file ./credentials-velero

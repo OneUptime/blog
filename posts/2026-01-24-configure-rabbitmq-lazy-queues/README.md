@@ -10,6 +10,8 @@ Description: Learn how to configure RabbitMQ lazy queues to optimize memory usag
 
 > Lazy queues in RabbitMQ store messages on disk as early as possible, reducing RAM usage significantly. This guide covers when and how to configure lazy queues for optimal performance.
 
+> **Important**: Starting with RabbitMQ 3.12, the `x-queue-mode=lazy` argument is **ignored**. All classic queues in 3.12+ automatically behave like lazy queues — messages are written to disk and only a small subset is kept in memory. The explicit lazy queue configuration described in this guide applies to RabbitMQ 3.11 and earlier. For RabbitMQ 3.12+, you can remove `x-queue-mode: lazy` from your queue declarations as it has no effect. For new high-volume deployments on 3.12+, use quorum queues with `x-max-in-memory-length: 0`.
+
 Standard RabbitMQ queues keep messages in memory for fast delivery. However, when dealing with millions of messages or memory-constrained environments, lazy queues offer a better alternative by writing messages to disk immediately.
 
 ---

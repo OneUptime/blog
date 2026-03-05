@@ -67,6 +67,7 @@ helm repo update
 kubectl create namespace logging
 
 # Install Loki stack (includes Promtail)
+# Note: grafana/loki-stack is deprecated. For new deployments, use grafana/loki instead.
 helm install loki grafana/loki-stack \
   --namespace logging \
   --set loki.persistence.enabled=true \

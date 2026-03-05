@@ -351,17 +351,26 @@ sudo rabbitmqctl cluster_status
 
 ## High Availability Queues
 
-Configure queue mirroring:
+> **Note**: Classic queue mirroring (`ha-mode` policy) was deprecated in RabbitMQ 3.9 and removed in RabbitMQ 4.0. For new deployments, use quorum queues instead. The `ha-mode` policy commands below only apply to RabbitMQ 3.x.
+
+Configure queue mirroring (RabbitMQ 3.x only):
 
 ```bash
-# Set HA policy for all queues
+# Set HA policy for all queues (RabbitMQ 3.x only - removed in 4.0)
 sudo rabbitmqctl set_policy ha-all ".*" '{"ha-mode":"all"}' --apply-to queues
 
-# Set HA policy with replication factor
+# Set HA policy with replication factor (RabbitMQ 3.x only - removed in 4.0)
 sudo rabbitmqctl set_policy ha-two "^ha\." '{"ha-mode":"exactly","ha-params":2,"ha-sync-mode":"automatic"}' --apply-to queues
 
 # List policies
 sudo rabbitmqctl list_policies
+```
+
+For RabbitMQ 4.0+ and modern deployments, use quorum queues for high availability:
+
+```bash
+# Create a quorum queue with replication (recommended for HA)
+rabbitmqadmin declare queue name=my-queue durable=true arguments='{"x-queue-type":"quorum"}'
 ```
 
 ## Monitoring

@@ -158,7 +158,7 @@ datasources:
   - name: Tempo
     type: tempo
     access: proxy
-    url: http://tempo-query-frontend.tracing.svc:3100
+    url: http://tempo-query-frontend.tracing.svc:3200
     uid: tempo
     jsonData:
       tracesToLogs:
@@ -561,7 +561,7 @@ querier:
     search:
       external_backend: true
       external_endpoints:
-        - tempo-query-frontend.tracing.svc:3100
+        - tempo-query-frontend.tracing.svc:3200
 
 queryFrontend:
   config:

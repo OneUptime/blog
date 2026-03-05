@@ -43,7 +43,7 @@ Multi-stage builds use multiple FROM statements. Each stage can access files fro
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production  # No devDependencies
+RUN npm ci --omit=dev  # No devDependencies (--only=production is deprecated since npm v9)
 
 # Stage 2: Build the application
 # This stage has full devDependencies for TypeScript, etc.
@@ -109,7 +109,7 @@ COPY package.json package-lock.json ./
 # Install production dependencies only
 # Use cache mount for faster rebuilds
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --only=production --ignore-scripts && \
+    npm ci --omit=dev --ignore-scripts && \
     npm cache clean --force
 
 # ============================================
@@ -203,7 +203,7 @@ FROM base AS prod-deps
 COPY package.json package-lock.json ./
 # --ignore-scripts prevents postinstall scripts (security)
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --only=production --ignore-scripts
+    npm ci --omit=dev --ignore-scripts
 
 # ============================================
 # Production image - minimal runtime only
@@ -256,7 +256,7 @@ RUN npm run build  # Outputs to dist/
 FROM base AS prod-deps
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --only=production
+    npm ci --omit=dev
 
 # Production - minimal runtime image
 FROM node:20-alpine AS production
@@ -298,7 +298,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # 6. Install dependencies (changes when deps change) - slow step, cached when possible
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # 7. Application code (changes frequently) - invalidated on every code change
 COPY --chown=nodejs:nodejs . .

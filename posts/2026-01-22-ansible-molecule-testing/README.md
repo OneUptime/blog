@@ -32,10 +32,17 @@ pip install pytest-testinfra ansible-lint yamllint
 Set up Molecule in an existing role or create a new role with Molecule.
 
 ```bash
-# Create new role with Molecule scaffolding
-molecule init role my_role --driver-name docker
+# Note: 'molecule init role' was removed in Molecule 6.0
+# Use ansible-galaxy to create the role first, then add a molecule scenario
 
-# Or add Molecule to existing role
+# Create a new role using ansible-galaxy
+ansible-galaxy role init my_role
+cd my_role
+
+# Add Molecule scenario to the role (default driver is docker)
+molecule init scenario -d docker
+
+# Or add Molecule to an existing role
 cd roles/existing_role
 molecule init scenario -d docker
 
@@ -382,6 +389,9 @@ Create different scenarios for different test cases.
 ```bash
 # Create additional scenario
 molecule init scenario --scenario-name with_ssl -d docker
+
+# Note: In Molecule 6.0+, use '-d' to specify the driver.
+# Use 'molecule init scenario --help' to see all available options.
 ```
 
 ```yaml

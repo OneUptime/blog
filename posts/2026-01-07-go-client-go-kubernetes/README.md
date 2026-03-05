@@ -1077,7 +1077,7 @@ import (
 type PodMonitor struct {
     clientset     *kubernetes.Clientset
     podInformer   cache.SharedIndexInformer
-    queue         workqueue.RateLimitingInterface
+    queue         workqueue.TypedRateLimitingInterface[string]
 }
 
 func NewPodMonitor(clientset *kubernetes.Clientset) *PodMonitor {
@@ -1087,8 +1087,8 @@ func NewPodMonitor(clientset *kubernetes.Clientset) *PodMonitor {
     monitor := &PodMonitor{
         clientset:   clientset,
         podInformer: podInformer,
-        queue: workqueue.NewRateLimitingQueue(
-            workqueue.DefaultControllerRateLimiter(),
+        queue: workqueue.NewTypedRateLimitingQueue(
+            workqueue.DefaultTypedControllerRateLimiter[string](),
         ),
     }
 
@@ -1160,23 +1160,22 @@ func (m *PodMonitor) worker(ctx context.Context) {
 }
 
 func (m *PodMonitor) processNext(ctx context.Context) bool {
-    obj, shutdown := m.queue.Get()
+    key, shutdown := m.queue.Get()
     if shutdown {
         return false
     }
-    defer m.queue.Done(obj)
+    defer m.queue.Done(key)
 
-    key := obj.(string)
     if err := m.sync(ctx, key); err != nil {
-        if m.queue.NumRequeues(obj) < 5 {
+        if m.queue.NumRequeues(key) < 5 {
             klog.Warningf("Error syncing %s, requeuing: %v", key, err)
-            m.queue.AddRateLimited(obj)
+            m.queue.AddRateLimited(key)
             return true
         }
         klog.Errorf("Dropping %s after max retries: %v", key, err)
     }
 
-    m.queue.Forget(obj)
+    m.queue.Forget(key)
     return true
 }
 

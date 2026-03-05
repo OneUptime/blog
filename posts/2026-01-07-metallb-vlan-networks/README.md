@@ -75,7 +75,7 @@ graph TB
     end
 
     subgraph "VLAN 300 - Management"
-        V300[10.300.0.0/24]
+        V300[10.30.0.0/24]
         IP300[MetalLB Pool: 10.30.0.200-250]
     end
 

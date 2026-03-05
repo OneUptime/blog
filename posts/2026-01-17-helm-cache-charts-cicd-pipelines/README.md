@@ -60,7 +60,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup Helm
         uses: azure/setup-helm@v3
@@ -69,7 +69,7 @@ jobs:
       
       # Cache Helm dependencies
       - name: Cache Helm Dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: |
             charts/*/charts
@@ -103,14 +103,14 @@ jobs:
       matrix:
         chart: [frontend, backend, database]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup Helm
         uses: azure/setup-helm@v3
       
       # Per-chart cache
       - name: Cache ${{ matrix.chart }} Dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: charts/${{ matrix.chart }}/charts
           key: helm-${{ matrix.chart }}-${{ hashFiles(format('charts/{0}/Chart.lock', matrix.chart)) }}
@@ -122,7 +122,7 @@ jobs:
           helm dependency build charts/${{ matrix.chart }}
           helm package charts/${{ matrix.chart }} -d packages/
       
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.chart }}-chart
           path: packages/*.tgz
@@ -140,14 +140,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup Helm
         uses: azure/setup-helm@v3
       
       # Cache repository indexes
       - name: Cache Helm Repositories
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: ~/.cache/helm/repository
           key: helm-repos-${{ hashFiles('.helm-repositories') }}
@@ -556,7 +556,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup Helm
         uses: azure/setup-helm@v3

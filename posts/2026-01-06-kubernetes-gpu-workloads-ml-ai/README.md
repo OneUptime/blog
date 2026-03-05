@@ -120,7 +120,7 @@ spec:
       priorityClassName: system-node-critical  # High priority for reliability
       containers:
         - name: nvidia-device-plugin-ctr
-          image: nvcr.io/nvidia/k8s-device-plugin:v0.14.3
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.17.1
           env:
             # Continue if some GPUs fail initialization
             - name: FAIL_ON_INIT_ERROR

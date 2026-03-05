@@ -312,61 +312,6 @@ spec:
         name: kube-root-ca.crt
 ```
 
-## ApplicationSet Restrictions
-
-Control ApplicationSet usage per project:
-
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: AppProject
-metadata:
-  name: team-a
-spec:
-  # Allow ApplicationSets only for specific generators
-  applicationSetAllowList:
-    - list
-    - git
-
-  # Or deny specific generators
-  applicationSetDenyList:
-    - clusters  # Prevent creating apps on all clusters
-```
-
-## Hierarchical Projects
-
-Create project hierarchies for large organizations:
-
-```yaml
-# Parent project for all teams
-apiVersion: argoproj.io/v1alpha1
-kind: AppProject
-metadata:
-  name: all-teams
-spec:
-  sourceRepos:
-    - '*'
-  destinations:
-    - namespace: '*'
-      server: '*'
-
----
-# Child project inherits restrictions
-apiVersion: argoproj.io/v1alpha1
-kind: AppProject
-metadata:
-  name: team-a
-  annotations:
-    # Reference parent project
-    argocd.argoproj.io/parent-project: all-teams
-spec:
-  # More restrictive than parent
-  sourceRepos:
-    - 'https://github.com/myorg/team-a-*'
-  destinations:
-    - namespace: 'team-a-*'
-      server: '*'
-```
-
 ## Monitoring Multi-Tenant Usage
 
 ### Per-Project Metrics
@@ -387,18 +332,7 @@ groups:
 
 ### Audit Logging
 
-Enable audit logging to track who does what:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Enable audit logging
-  audit.enabled: "true"
-```
+ArgoCD leverages the Kubernetes API server audit logging. Enable audit logging at the Kubernetes API server level in your cluster configuration to track ArgoCD operations. ArgoCD itself does not expose a standalone `audit.enabled` ConfigMap field — audit trails are captured through the standard Kubernetes API audit log mechanism.
 
 ## Best Practices
 

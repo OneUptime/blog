@@ -487,8 +487,10 @@ aws ec2 authorize-security-group-ingress \
 aws lambda list-functions
 
 # Invoke a function synchronously
+# Note: AWS CLI v2 requires --cli-binary-format raw-in-base64-out for inline JSON payloads
 aws lambda invoke \
     --function-name my-function \
+    --cli-binary-format raw-in-base64-out \
     --payload '{"key": "value"}' \
     response.json
 

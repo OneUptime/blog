@@ -143,12 +143,12 @@ groups:
   - name: docker
     rules:
       - alert: ContainerDown
-        expr: absent(container_last_seen{name=~".+"}) == 1
+        expr: time() - container_last_seen > 60
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Container down"
+          summary: "Container {{ $labels.name }} down"
 
       - alert: HighCPUUsage
         expr: rate(container_cpu_usage_seconds_total[5m]) * 100 > 80
@@ -183,7 +183,10 @@ services:
 # alertmanager.yml
 route:
   receiver: 'slack'
+  group_by: ['alertname']
   group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
 
 receivers:
   - name: 'slack'

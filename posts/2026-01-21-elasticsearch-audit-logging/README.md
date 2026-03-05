@@ -420,7 +420,7 @@ curl -u elastic:password -X PUT "localhost:9200/_ilm/policy/audit-logs-policy" -
       "cold": {
         "min_age": "30d",
         "actions": {
-          "freeze": {}
+          "readonly": {}
         }
       },
       "delete": {

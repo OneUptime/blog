@@ -766,13 +766,12 @@ func run() error {
 	// Set up gRPC connection
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	}
 
 	// Register the service handler
-	conn, err := grpc.DialContext(ctx, grpcServerEndpoint, opts...)
+	conn, err := grpc.NewClient(grpcServerEndpoint, opts...)
 	if err != nil {
-		return fmt.Errorf("failed to dial gRPC server: %w", err)
+		return fmt.Errorf("failed to create gRPC client: %w", err)
 	}
 	defer conn.Close()
 
@@ -846,6 +845,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // ValidationError creates a status with field violations

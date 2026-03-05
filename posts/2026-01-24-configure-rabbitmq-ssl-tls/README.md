@@ -144,56 +144,56 @@ ls -la "$CERT_DIR"
 
 Update the RabbitMQ configuration to enable TLS.
 
-```erlang
-%% /etc/rabbitmq/rabbitmq.conf
-%% Modern RabbitMQ configuration format (3.7+)
+```ini
+# /etc/rabbitmq/rabbitmq.conf
+# Modern RabbitMQ configuration format (3.7+)
 
-%% Disable plain AMQP listener (optional but recommended for security)
-%% Uncomment to force all connections through TLS
-%% listeners.tcp = none
+# Disable plain AMQP listener (optional but recommended for security)
+# Uncomment to force all connections through TLS
+# listeners.tcp = none
 
-%% Enable TLS listener on port 5671
-%% This is the standard port for AMQPS (AMQP over TLS)
+# Enable TLS listener on port 5671
+# This is the standard port for AMQPS (AMQP over TLS)
 listeners.ssl.default = 5671
 
-%% Path to the CA certificate
-%% Clients must trust this CA to verify the server
+# Path to the CA certificate
+# Clients must trust this CA to verify the server
 ssl_options.cacertfile = /etc/rabbitmq/ssl/ca_certificate.pem
 
-%% Path to the server certificate
-%% This certificate is presented to clients during TLS handshake
+# Path to the server certificate
+# This certificate is presented to clients during TLS handshake
 ssl_options.certfile = /etc/rabbitmq/ssl/server_certificate.pem
 
-%% Path to the server private key
-%% Must be readable by the rabbitmq user
+# Path to the server private key
+# Must be readable by the rabbitmq user
 ssl_options.keyfile = /etc/rabbitmq/ssl/server_key.pem
 
-%% Require clients to present a certificate (mutual TLS)
-%% Set to verify_none to allow connections without client certificates
+# Require clients to present a certificate (mutual TLS)
+# Set to verify_none to allow connections without client certificates
 ssl_options.verify = verify_peer
 
-%% Reject connections from clients without valid certificates
-%% Only applies when verify = verify_peer
+# Reject connections from clients without valid certificates
+# Only applies when verify = verify_peer
 ssl_options.fail_if_no_peer_cert = true
 
-%% Minimum TLS version (TLS 1.2 recommended minimum)
-%% TLS 1.3 is preferred when supported by clients
+# Minimum TLS version (TLS 1.2 recommended minimum)
+# TLS 1.3 is preferred when supported by clients
 ssl_options.versions.1 = tlsv1.3
 ssl_options.versions.2 = tlsv1.2
 
-%% Cipher suites (TLS 1.2)
-%% Use strong ciphers only, disable weak algorithms
+# Cipher suites (TLS 1.2)
+# Use strong ciphers only, disable weak algorithms
 ssl_options.ciphers.1 = ECDHE-ECDSA-AES256-GCM-SHA384
 ssl_options.ciphers.2 = ECDHE-RSA-AES256-GCM-SHA384
 ssl_options.ciphers.3 = ECDHE-ECDSA-AES128-GCM-SHA256
 ssl_options.ciphers.4 = ECDHE-RSA-AES128-GCM-SHA256
 
-%% Honor server cipher order
-%% Server chooses the cipher, not the client
+# Honor server cipher order
+# Server chooses the cipher, not the client
 ssl_options.honor_cipher_order = true
 
-%% Management UI TLS configuration
-%% Enable HTTPS for the management interface
+# Management UI TLS configuration
+# Enable HTTPS for the management interface
 management.ssl.port = 15671
 management.ssl.cacertfile = /etc/rabbitmq/ssl/ca_certificate.pem
 management.ssl.certfile = /etc/rabbitmq/ssl/server_certificate.pem

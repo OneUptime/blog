@@ -714,10 +714,10 @@ metadata:
 
     # Request a specific IP from the pool (optional)
     # If not specified, MetalLB assigns the next available IP
-    metallb.universe.tf/loadBalancerIPs: 192.168.1.241
+    metallb.io/loadBalancerIPs: 192.168.1.241
 
     # Address pool selection (optional if you have multiple pools)
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
 spec:
   type: LoadBalancer
   # External traffic policy "Local" preserves client source IP
@@ -754,7 +754,7 @@ metadata:
     # Short TTL for faster updates during testing
     external-dns.alpha.kubernetes.io/ttl: "60"
     # Use staging IP pool
-    metallb.universe.tf/address-pool: staging-pool
+    metallb.io/address-pool: staging-pool
 spec:
   type: LoadBalancer
   ports:
@@ -777,7 +777,7 @@ metadata:
     # Longer TTL for stability and reduced DNS queries
     external-dns.alpha.kubernetes.io/ttl: "3600"
     # Use production IP pool
-    metallb.universe.tf/address-pool: production-pool
+    metallb.io/address-pool: production-pool
 spec:
   type: LoadBalancer
   ports:

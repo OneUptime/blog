@@ -14,7 +14,7 @@ This guide covers how to prepare a Btrfs filesystem, configure Docker to use the
 
 ## Why Choose Btrfs for Docker?
 
-Btrfs has been in the Linux kernel since version 3.10 and offers features that align naturally with container storage:
+Btrfs has been in the Linux kernel since version 2.6.29 (merged in 2009) and offers features that align naturally with container storage:
 
 - **Copy-on-write**: New container layers only consume space for the data that has actually changed, not for an entire copy
 - **Subvolumes**: Each Docker layer becomes a Btrfs subvolume, giving clean isolation between layers

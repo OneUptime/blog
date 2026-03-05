@@ -435,7 +435,7 @@ func (m *GoBreakerManager) UnaryInterceptor() grpc.UnaryClientInterceptor {
 func main() {
     cbManager := NewGoBreakerManager()
 
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithUnaryInterceptor(cbManager.UnaryInterceptor()),
@@ -1057,7 +1057,7 @@ func main() {
     cbManager.settings = cbSettings
 
     // Create connection with circuit breaker
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithChainUnaryInterceptor(

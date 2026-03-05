@@ -248,20 +248,15 @@ metadata:
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: cluster
-  annotations:
-    # Custom annotations for filtering
-    region: us-east-1
+    # Cluster labels used by ApplicationSet cluster generator
     environment: production
+    region: us-east-1
+  annotations:
+    # Custom annotations for organizational metadata
     team: platform
 stringData:
   name: production
   server: https://prod.example.com:6443
-  # Add labels to the cluster definition
-  clusterLabels: |
-    {
-      "environment": "production",
-      "region": "us-east-1"
-    }
   config: |
     {
       "bearerToken": "<token>",
@@ -394,38 +389,9 @@ The simplest option if clusters are in the same network or connected via VPN.
 
 ### Cluster Gateway Pattern
 
-For clusters behind firewalls, use a reverse proxy or gateway:
+For clusters behind firewalls, use the [argocd-agent](https://github.com/argoproj-labs/argocd-agent) project. It flips the connectivity model — lightweight agents in remote clusters connect back to a central hub, eliminating the need for the control plane to reach target cluster API servers.
 
-```yaml
-# Gateway deployment in target cluster
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-agent
-  namespace: argocd
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: argocd-agent
-  template:
-    metadata:
-      labels:
-        app: argocd-agent
-    spec:
-      containers:
-        - name: agent
-          image: argoproj/argocd-agent:latest
-          args:
-            - --server=argocd.management.example.com
-            - --token=$(ARGOCD_TOKEN)
-          env:
-            - name: ARGOCD_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: argocd-credentials
-                  key: token
-```
+The argocd-agent uses a hub-and-spoke architecture with its own TLS/JWT setup. Refer to the [official argocd-agent documentation](https://argocd-agent.readthedocs.io/latest/user-guide/adding-agents/) for the current installation procedure, as the deployment model differs significantly from a simple Deployment manifest.
 
 ## Monitoring Multi-Cluster Deployments
 
