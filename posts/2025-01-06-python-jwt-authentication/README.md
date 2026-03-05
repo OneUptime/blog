@@ -261,13 +261,13 @@ CREATE TABLE refresh_tokens (
     device_info VARCHAR(500),            -- User-Agent for session management UI
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- When token was issued
     expires_at TIMESTAMP NOT NULL,       -- When token becomes invalid
-    revoked BOOLEAN DEFAULT FALSE,       -- Whether token has been invalidated
-
-    -- Indexes for efficient lookups
-    INDEX idx_user_id (user_id),         -- For 'logout everywhere'
-    INDEX idx_family_id (family_id),     -- For family revocation
-    INDEX idx_expires_at (expires_at)    -- For cleanup queries
+    revoked BOOLEAN DEFAULT FALSE        -- Whether token has been invalidated
 );
+
+-- Indexes for efficient lookups
+CREATE INDEX idx_user_id ON refresh_tokens (user_id);         -- For 'logout everywhere'
+CREATE INDEX idx_family_id ON refresh_tokens (family_id);     -- For family revocation
+CREATE INDEX idx_expires_at ON refresh_tokens (expires_at);   -- For cleanup queries
 
 -- Run periodically to remove old tokens and keep table size manageable
 DELETE FROM refresh_tokens WHERE expires_at < NOW() - INTERVAL '30 days';
@@ -305,7 +305,7 @@ class RefreshRequest(BaseModel):
 # Global token manager - initialized at startup
 token_manager: TokenManager = None
 
-@app.on_event("startup")
+@app.on_event("startup")  # Note: For FastAPI 0.95+, consider using lifespan handlers instead
 async def startup():
     """Initialize database pool and token manager at app startup"""
     global token_manager

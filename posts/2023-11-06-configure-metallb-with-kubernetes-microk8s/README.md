@@ -74,7 +74,8 @@ metadata:
   name: "service-name"
   annotations:
     # This annotation tells MetalLB to use the address pool we created earlier
-    metallb.universe.tf/address-pool: metallb-address-pool
+    # Note: The old prefix "metallb.universe.tf" is deprecated; use "metallb.io"
+    metallb.io/address-pool: metallb-address-pool
 spec:
   # Uncomment the line below to request a specific IP from your pool
   # loadBalancerIP: a.b.c.d

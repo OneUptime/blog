@@ -235,8 +235,7 @@ def init_db_pool():
         max_conn=20
     )
 
-@app.before_first_request
-def setup():
+with app.app_context():
     init_db_pool()
 
 @app.teardown_appcontext

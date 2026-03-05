@@ -113,7 +113,7 @@ async def readiness_check(response: Response):
 
 ### Flask Implementation
 
-The Flask equivalent uses the `before_first_request` decorator to handle initialization. This ensures services are set up before the first request is processed, and the readiness endpoint reflects this state.
+The Flask equivalent initializes services during application setup. The `before_first_request` decorator was removed in Flask 2.3, so initialization should happen during app creation instead.
 
 ```python
 # flask_health.py
@@ -125,14 +125,16 @@ app = Flask(__name__)
 
 # Track startup time and initialization state
 startup_time = datetime.utcnow()
-ready = False  # Becomes True after first request initializes services
+ready = False  # Becomes True after initialization completes
 
-@app.before_first_request
 def initialize():
     global ready
-    # This runs before the first request is handled
     # Initialize database connections, caches, etc.
     ready = True
+
+# Run initialization during app setup
+with app.app_context():
+    initialize()
 
 @app.route('/health')
 def health():
@@ -335,7 +337,7 @@ This example shows how to integrate the health check service with real dependenc
 from fastapi import FastAPI, Response, Depends
 from contextlib import asynccontextmanager
 import asyncpg
-import aioredis
+import redis.asyncio as aioredis
 
 # Initialize the health check service
 health_service = HealthCheckService()
@@ -627,16 +629,16 @@ async def check_database_health(pool: asyncpg.Pool) -> ComponentHealth:
 The Redis health check uses the built-in PING command and optionally retrieves server information to provide useful metadata in the health response.
 
 ```python
-async def check_redis_health(redis: aioredis.Redis) -> ComponentHealth:
+async def check_redis_health(redis_client: aioredis.Redis) -> ComponentHealth:
     """Redis health check with latency and server info"""
     start = datetime.utcnow()
 
     try:
-        await redis.ping()  # Built-in Redis connectivity check
+        await redis_client.ping()  # Built-in Redis connectivity check
         latency = (datetime.utcnow() - start).total_seconds() * 1000
 
         # Get additional Redis server info for diagnostics
-        info = await redis.info("server")
+        info = await redis_client.info("server")
 
         return ComponentHealth(
             name="redis",
