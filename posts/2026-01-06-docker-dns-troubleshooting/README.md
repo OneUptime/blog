@@ -98,9 +98,11 @@ docker run --rm alpine nslookup google.com
 ```bash
 # Specify DNS servers explicitly when running containers
 docker run --dns 8.8.8.8 --dns 8.8.4.4 alpine ping google.com
+```
 
-# Or configure daemon-wide by editing Docker's configuration
-# /etc/docker/daemon.json
+Or configure daemon-wide in `/etc/docker/daemon.json`:
+
+```json
 {
   "dns": ["8.8.8.8", "8.8.4.4"]
 }
@@ -290,13 +292,14 @@ services:
 Configure DNS for all containers by modifying Docker daemon settings:
 
 ```json
-// /etc/docker/daemon.json
 {
   "dns": ["8.8.8.8", "8.8.4.4"],
   "dns-search": ["example.com"],
   "dns-opts": ["timeout:2", "attempts:3"]
 }
 ```
+
+This file is located at `/etc/docker/daemon.json`.
 
 After modifying daemon.json, restart Docker to apply changes:
 

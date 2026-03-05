@@ -1162,7 +1162,7 @@ func (mc metadataCarrier) Keys() []string {
 
 func createClient() (*grpc.ClientConn, error) {
     // Create client connection with chained interceptors
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithChainUnaryInterceptor(
@@ -1187,6 +1187,7 @@ package interceptors
 
 import (
     "context"
+    "log"
     "runtime/debug"
 
     "google.golang.org/grpc"

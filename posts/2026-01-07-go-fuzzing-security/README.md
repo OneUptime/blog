@@ -401,41 +401,27 @@ Go's fuzzer supports these parameter types:
 
 ```go
 // All supported types for fuzz parameters
+// IMPORTANT: Each f.Add() call must provide ALL arguments that match
+// the fuzz target function signature, in the same order and types.
 func FuzzMultipleTypes(f *testing.F) {
-    // String input
-    f.Add("test string")
-
-    // Byte slice input
-    f.Add([]byte("byte data"))
-
-    // Integer types
-    f.Add(int(42))
-    f.Add(int8(1))
-    f.Add(int16(100))
-    f.Add(int32(1000))
-    f.Add(int64(10000))
-
-    // Unsigned integer types
-    f.Add(uint(42))
-    f.Add(uint8(1))
-    f.Add(uint16(100))
-    f.Add(uint32(1000))
-    f.Add(uint64(10000))
-
-    // Floating point types
-    f.Add(float32(3.14))
-    f.Add(float64(2.718))
-
-    // Boolean type
-    f.Add(true)
-
-    // Rune type
-    f.Add('a')
+    // Each f.Add() call provides values for ALL parameters of the fuzz target
+    f.Add("test string", []byte("byte data"), int(42), float32(3.14))
+    f.Add("another", []byte("more data"), int(100), float32(2.718))
+    f.Add("", []byte{}, int(0), float32(0.0))
 
     f.Fuzz(func(t *testing.T, s string, b []byte, i int, f32 float32) {
-        // Test implementation
+        // Test implementation using all four parameters
     })
 }
+
+// Go's fuzzer supports these parameter types in fuzz targets:
+// - string
+// - []byte
+// - int, int8, int16, int32, int64
+// - uint, uint8, uint16, uint32, uint64
+// - float32, float64
+// - bool
+// - rune
 ```
 
 ## Fuzzing Parsers and Validators
@@ -1030,7 +1016,7 @@ CGO_ENABLED=1 CC=clang go test -fuzz=FuzzParser -fuzztime=5m -msan
 Set up OSS-Fuzz or ClusterFuzz for continuous coverage:
 
 ```go
-// +build gofuzz
+//go:build gofuzz
 
 package parser
 

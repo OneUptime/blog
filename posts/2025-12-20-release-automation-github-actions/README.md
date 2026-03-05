@@ -361,7 +361,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -469,7 +469,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           push: true
           tags: |

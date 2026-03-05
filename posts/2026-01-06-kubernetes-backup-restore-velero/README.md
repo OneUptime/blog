@@ -50,29 +50,29 @@ cat > velero-policy.json <<EOF
         {
             "Effect": "Allow",
             "Action": [
-                "ec2:DescribeVolumes",      # Read EBS volume info
-                "ec2:DescribeSnapshots",    # Read snapshot info
-                "ec2:CreateTags",           # Tag resources
-                "ec2:CreateVolume",         # Create volumes from snapshots
-                "ec2:CreateSnapshot",       # Create EBS snapshots
-                "ec2:DeleteSnapshot"        # Clean up old snapshots
+                "ec2:DescribeVolumes",
+                "ec2:DescribeSnapshots",
+                "ec2:CreateTags",
+                "ec2:CreateVolume",
+                "ec2:CreateSnapshot",
+                "ec2:DeleteSnapshot"
             ],
             "Resource": "*"
         },
         {
             "Effect": "Allow",
             "Action": [
-                "s3:GetObject",             # Download backups
-                "s3:DeleteObject",          # Remove old backups
-                "s3:PutObject",             # Upload backups
-                "s3:AbortMultipartUpload",  # Handle failed uploads
+                "s3:GetObject",
+                "s3:DeleteObject",
+                "s3:PutObject",
+                "s3:AbortMultipartUpload",
                 "s3:ListMultipartUploadParts"
             ],
             "Resource": "arn:aws:s3:::velero-backups-mycompany/*"
         },
         {
             "Effect": "Allow",
-            "Action": ["s3:ListBucket"],    # List bucket contents
+            "Action": ["s3:ListBucket"],
             "Resource": "arn:aws:s3:::velero-backups-mycompany"
         }
     ]

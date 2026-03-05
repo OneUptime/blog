@@ -170,7 +170,7 @@ Tests that depend on timing:
 
 ```yaml
       - name: Run flaky test with retries
-        uses: nick-fields/retry@v2
+        uses: nick-fields/retry@v3
         with:
           timeout_minutes: 10
           max_attempts: 3

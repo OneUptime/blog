@@ -399,8 +399,8 @@ test_integration:
   stage: test
   script:
     - docker pull $IMAGE_NAME:$IMAGE_TAG
-    - docker-compose -f docker-compose.test.yml up --abort-on-container-exit
-    - docker-compose -f docker-compose.test.yml down -v
+    - docker compose -f docker-compose.test.yml up --abort-on-container-exit
+    - docker compose -f docker-compose.test.yml down -v
 
 security_scan:
   stage: scan

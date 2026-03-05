@@ -307,9 +307,12 @@ const dlqWorker = new Worker('email-dlq', async (job) => {
 Control job processing rate to respect external API limits or prevent system overload. Rate limiting is essential when integrating with third-party services that enforce quotas.
 
 ```javascript
-// Global rate limit: 100 jobs per minute across all workers
-// Useful for respecting API rate limits
-const rateLimitedQueue = new Queue('api-calls', {
+// Rate limiting is configured on the Worker, not the Queue
+// This limits processing to 100 jobs per minute across all workers
+const rateLimitedWorker = new Worker('api-calls', async (job) => {
+  // Process job
+  await callExternalApi(job.data);
+}, {
   connection,
   limiter: {
     max: 100,          // Maximum jobs to process
@@ -317,19 +320,14 @@ const rateLimitedQueue = new Queue('api-calls', {
   },
 });
 
-// Per-key rate limit - limits are applied per group key
-// Useful for fair usage limits per user/tenant
+// Add jobs normally - rate limiting is enforced by the worker
 await rateLimitedQueue.add(
   'api-call',
-  { userId: 123, action: 'fetch-data' },
-  {
-    limiter: {
-      groupKey: 'userId:123',  // Rate limit key - usually user or tenant ID
-      max: 10,                  // 10 requests max
-      duration: 60000,          // Per minute per user
-    },
-  }
+  { userId: 123, action: 'fetch-data' }
 );
+
+// Note: Per-key (group) rate limiting is available in BullMQ Pro.
+// For the open-source version, use the global rate limiter above.
 ```
 
 ## Job Dependencies (Flows)
@@ -473,7 +471,7 @@ Configure BullMQ for production with proper Redis settings, job retention polici
 
 ```javascript
 // queue.js - Shared configuration module
-const { Queue, Worker, QueueScheduler } = require('bullmq');
+const { Queue, Worker } = require('bullmq');
 const IORedis = require('ioredis');
 
 // Shared Redis connection with production settings

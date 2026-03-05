@@ -181,8 +181,9 @@ ceph osd pool set-quota app-data max_bytes 107374182400
 # Useful for limiting metadata overhead and object fragmentation
 ceph osd pool set-quota app-data max_objects 1000000
 
-# Apply both quotas simultaneously for comprehensive limits
-ceph osd pool set-quota app-data max_bytes 107374182400 max_objects 1000000
+# Apply both quotas (one command per quota type)
+ceph osd pool set-quota app-data max_bytes 107374182400
+ceph osd pool set-quota app-data max_objects 1000000
 
 # Remove quotas by setting them to zero
 # Zero means unlimited (no quota enforcement)

@@ -288,8 +288,8 @@ deploy:
   script:
     # $API_KEY comes from protected project variable
     - curl -H "Authorization: Bearer $API_KEY" https://api.example.com
-  only:
-    - main  # Protected branch
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"  # Protected branch
 ```
 
 ### Preventing Variable Leakage

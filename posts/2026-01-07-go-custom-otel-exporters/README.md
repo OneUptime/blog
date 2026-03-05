@@ -92,7 +92,6 @@ import (
     "sync"
     "time"
 
-    "go.opentelemetry.io/otel/sdk/trace"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 

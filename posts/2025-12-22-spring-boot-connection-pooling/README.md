@@ -201,10 +201,9 @@ public class HikariConfig {
         config.setLeakDetectionThreshold(60000);
 
         // PostgreSQL specific optimizations
-        config.addDataSourceProperty("cachePrepStmts", "true");
-        config.addDataSourceProperty("prepStmtCacheSize", "250");
-        config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
-        config.addDataSourceProperty("useServerPrepStmts", "true");
+        config.addDataSourceProperty("prepareThreshold", "5");
+        config.addDataSourceProperty("preparedStatementCacheQueries", "256");
+        config.addDataSourceProperty("preparedStatementCacheSizeMiB", "5");
 
         return new HikariDataSource(config);
     }

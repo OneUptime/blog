@@ -500,7 +500,6 @@ package main
 
 import (
     "context"
-    "errors"
     "fmt"
     "math/rand"
     "sync"
@@ -609,7 +608,8 @@ func collectResults[T any](results <-chan Result[T]) ([]T, []error) {
 }
 
 func main() {
-    rand.Seed(time.Now().UnixNano())
+    // Note: As of Go 1.20+, the global random generator is automatically
+    // seeded, so calling rand.Seed() is no longer necessary.
 
     // Create items to process
     items := make([]int, 20)

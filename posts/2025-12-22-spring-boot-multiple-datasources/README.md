@@ -112,7 +112,7 @@ public class PrimaryDataSourceConfig {
 
         Map<String, Object> properties = new HashMap<>();
         properties.put("hibernate.hbm2ddl.auto", "update");
-        properties.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
+        // Hibernate auto-detects the dialect from the JDBC connection in Spring Boot 3+
 
         return builder
             .dataSource(dataSource)
@@ -165,7 +165,7 @@ public class SecondaryDataSourceConfig {
 
         Map<String, Object> properties = new HashMap<>();
         properties.put("hibernate.hbm2ddl.auto", "validate");
-        properties.put("hibernate.dialect", "org.hibernate.dialect.MySQLDialect");
+        // Hibernate auto-detects the dialect from the JDBC connection in Spring Boot 3+
 
         return builder
             .dataSource(dataSource)
@@ -441,9 +441,11 @@ public class CrossDbService {
 ### Option 2: Use JTA/XA Transactions
 
 ```xml
+<!-- For Spring Boot 3+, use the Atomikos starter directly -->
 <dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-jta-atomikos</artifactId>
+    <groupId>com.atomikos</groupId>
+    <artifactId>transactions-spring-boot3-starter</artifactId>
+    <version>6.0.109</version>
 </dependency>
 ```
 

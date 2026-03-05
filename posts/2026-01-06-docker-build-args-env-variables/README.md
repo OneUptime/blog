@@ -112,7 +112,7 @@ These patterns demonstrate practical uses for ARG: conditional dependency instal
 ```dockerfile
 # Conditional dependencies - install dev deps only when requested
 ARG INSTALL_DEV_DEPS=false
-RUN if [ "$INSTALL_DEV_DEPS" = "true" ]; then npm install; else npm install --only=production; fi
+RUN if [ "$INSTALL_DEV_DEPS" = "true" ]; then npm install; else npm install --omit=dev; fi
 
 # Version pinning - control base image versions from build command
 ARG ALPINE_VERSION=3.19

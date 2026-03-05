@@ -84,10 +84,10 @@ create_release:
 
       ```bash
       npm install mypackage@$CI_COMMIT_TAG
-      ```bash
+      ```
   rules:
     - if: '$CI_COMMIT_TAG'
-```text
+```
 
 ## Dynamic Release Description
 

@@ -284,7 +284,7 @@ jobs:
 
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           push: true
           tags: myapp:latest

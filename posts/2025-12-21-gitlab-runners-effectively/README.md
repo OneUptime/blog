@@ -132,7 +132,7 @@ kubectl create namespace gitlab-runner
 helm install gitlab-runner gitlab/gitlab-runner \
   --namespace gitlab-runner \
   --set gitlabUrl=https://gitlab.com/ \
-  --set runnerRegistrationToken="your-token" \
+  --set runnerToken="your-runner-authentication-token" \
   --set runners.privileged=true
 ```
 
@@ -150,7 +150,7 @@ gitlab-runner register
 gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --registration-token "PROJECT_REGISTRATION_TOKEN" \
+  --token "glrt-YOUR_RUNNER_AUTHENTICATION_TOKEN" \
   --executor "docker" \
   --docker-image alpine:latest \
   --description "Docker Runner" \
@@ -187,14 +187,12 @@ build_any:
 
 ### Runner Configuration with Tags
 
-```toml
-[[runners]]
-  name = "gpu-runner"
-  token = "token"
-  url = "https://gitlab.com/"
-  executor = "shell"
-  tag_list = ["gpu", "linux", "cuda"]
-  run_untagged = false
+Tags are assigned during runner registration or managed through the GitLab UI/API, not in `config.toml`. When registering a runner, use `--tag-list`:
+
+```bash
+gitlab-runner register \
+  --tag-list "gpu,linux,cuda" \
+  --run-untagged=false
 ```
 
 ## Resource Management

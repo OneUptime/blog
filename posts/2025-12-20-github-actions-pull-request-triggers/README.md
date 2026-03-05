@@ -271,9 +271,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: PR Info
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           echo "PR Number: ${{ github.event.pull_request.number }}"
-          echo "PR Title: ${{ github.event.pull_request.title }}"
+          echo "PR Title: $PR_TITLE"
           echo "PR Author: ${{ github.event.pull_request.user.login }}"
           echo "Base Branch: ${{ github.base_ref }}"
           echo "Head Branch: ${{ github.head_ref }}"

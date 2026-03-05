@@ -93,7 +93,7 @@ jobs:
           go-version: '1.22'
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v7
         with:
           version: latest
           args: --timeout=5m
@@ -122,7 +122,8 @@ linters-settings:
   errcheck:
     check-type-assertions: true
   govet:
-    check-shadowing: true
+    enable:
+      - shadow
   revive:
     severity: warning
     rules:
@@ -311,7 +312,7 @@ jobs:
           go-version: '1.22'
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
           args: release --clean
@@ -416,7 +417,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - uses: golangci/golangci-lint-action@v4
+      - uses: golangci/golangci-lint-action@v7
         with:
           version: latest
 
@@ -516,7 +517,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - uses: goreleaser/goreleaser-action@v5
+      - uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
           args: release --clean

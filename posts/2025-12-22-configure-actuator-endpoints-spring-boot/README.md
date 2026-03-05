@@ -255,8 +255,8 @@ public class CustomInfoContributor implements InfoContributor {
 ```xml
 <!-- pom.xml -->
 <plugin>
-    <groupId>pl.project13.maven</groupId>
-    <artifactId>git-commit-id-plugin</artifactId>
+    <groupId>io.github.git-commit-id</groupId>
+    <artifactId>git-commit-id-maven-plugin</artifactId>
     <configuration>
         <generateGitPropertiesFile>true</generateGitPropertiesFile>
     </configuration>
@@ -280,10 +280,11 @@ management:
 ```yaml
 # application.yml
 management:
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
+  metrics:
     tags:
       application: ${spring.application.name}
       environment: ${spring.profiles.active:default}
@@ -444,10 +445,11 @@ management:
     readinessstate:
       enabled: true
 
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
+  metrics:
     tags:
       application: ${spring.application.name}
       environment: production

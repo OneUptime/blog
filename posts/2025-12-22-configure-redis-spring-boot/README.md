@@ -199,16 +199,15 @@ public class RedisConfig {
         template.setHashKeySerializer(new StringRedisSerializer());
 
         // Value serializer (JSON)
-        Jackson2JsonRedisSerializer<Object> jsonSerializer =
-            new Jackson2JsonRedisSerializer<>(Object.class);
-
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
         mapper.activateDefaultTyping(
             mapper.getPolymorphicTypeValidator(),
             ObjectMapper.DefaultTyping.NON_FINAL
         );
-        jsonSerializer.setObjectMapper(mapper);
+
+        Jackson2JsonRedisSerializer<Object> jsonSerializer =
+            new Jackson2JsonRedisSerializer<>(mapper, Object.class);
 
         template.setValueSerializer(jsonSerializer);
         template.setHashValueSerializer(jsonSerializer);

@@ -84,7 +84,6 @@ import (
     "fmt"
     "log"
     "net/http"
-    "os"
 
     "github.com/yourusername/my-go-app/internal/config"
     "github.com/yourusername/my-go-app/internal/handlers"
@@ -114,7 +113,6 @@ func main() {
     // This blocks until the server is shut down
     if err := http.ListenAndServe(addr, mux); err != nil {
         log.Fatalf("Server failed to start: %v", err)
-        os.Exit(1)
     }
 }
 ```
@@ -449,7 +447,7 @@ WORKDIR /app
 
 # Install Air for hot reloading
 # We install it globally so it's available in the PATH
-RUN go install github.com/cosmtrek/air@latest
+RUN go install github.com/air-verse/air@latest
 
 # Install additional development tools (optional but useful)
 # - delve: Go debugger for debugging inside containers
@@ -1094,7 +1092,7 @@ With this setup, you can enjoy the isolation and consistency benefits of Docker 
 
 ## Additional Resources
 
-- [Air GitHub Repository](https://github.com/cosmtrek/air) - Official Air documentation and source code
+- [Air GitHub Repository](https://github.com/air-verse/air) - Official Air documentation and source code
 - [Docker Compose Documentation](https://docs.docker.com/compose/) - Complete Docker Compose reference
 - [Go Modules Reference](https://go.dev/ref/mod) - Official Go modules documentation
 - [Delve Debugger](https://github.com/go-delve/delve) - Go debugger for container debugging

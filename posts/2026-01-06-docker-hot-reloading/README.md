@@ -85,15 +85,20 @@ services:
 A nodemon.json file gives you fine-grained control over which files are watched and how nodemon responds to changes.
 
 ```json
-// nodemon.json - Configure nodemon behavior
 {
-  "watch": ["src"],              // Only watch the src directory
-  "ext": "js,json,ts",           // File extensions to monitor
-  "ignore": ["src/**/*.test.js", "node_modules"],  // Skip test files and dependencies
-  "delay": "500",                // Wait 500ms before restart (debouncing)
-  "exec": "node src/index.js"    // Command to execute on restart
+  "watch": ["src"],
+  "ext": "js,json,ts",
+  "ignore": ["src/**/*.test.js", "node_modules"],
+  "delay": "500",
+  "exec": "node src/index.js"
 }
 ```
+
+- **watch**: Only watch the src directory
+- **ext**: File extensions to monitor
+- **ignore**: Skip test files and dependencies
+- **delay**: Wait 500ms before restart (debouncing)
+- **exec**: Command to execute on restart
 
 ### TypeScript with ts-node
 
@@ -118,12 +123,11 @@ CMD ["nodemon", "--exec", "ts-node", "src/index.ts"]
 This nodemon configuration is specifically tuned for TypeScript projects, watching .ts files and ignoring test files.
 
 ```json
-// nodemon.json for TypeScript - watches .ts files and runs ts-node
 {
   "watch": ["src"],
-  "ext": "ts,json",                // Watch TypeScript and JSON files
-  "ignore": ["src/**/*.spec.ts"],  // Ignore test files
-  "exec": "ts-node src/index.ts"   // Compile and run TypeScript
+  "ext": "ts,json",
+  "ignore": ["src/**/*.spec.ts"],
+  "exec": "ts-node src/index.ts"
 }
 ```
 
@@ -184,7 +188,7 @@ CMD ["watchmedo", "auto-restart", "--directory=./", "--pattern=*.py", "--recursi
 
 Flask has built-in reloading:
 
-Flask's built-in development server includes automatic code reloading. When FLASK_ENV is set to development, Flask watches for Python file changes and restarts automatically.
+Flask's built-in development server includes automatic code reloading. When FLASK_DEBUG is set to 1, Flask watches for Python file changes and restarts automatically.
 
 ```dockerfile
 # Flask development Dockerfile with built-in hot reload
@@ -194,8 +198,8 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
 
-# Enable Flask development mode for automatic reloading
-ENV FLASK_ENV=development
+# Enable Flask debug mode for automatic reloading
+ENV FLASK_DEBUG=1
 
 # --reload flag ensures Flask watches for file changes
 CMD ["flask", "run", "--host=0.0.0.0", "--reload"]
@@ -215,7 +219,7 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - FLASK_ENV=development  # Enable debug mode and auto-reload
+      - FLASK_DEBUG=1  # Enable debug mode and auto-reload
       - FLASK_APP=app.py       # Tell Flask which file is the application
 ```
 

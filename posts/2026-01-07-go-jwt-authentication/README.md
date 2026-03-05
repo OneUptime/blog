@@ -173,7 +173,7 @@ type TokenStore interface {
 	// GetUserTokenVersion returns the current token version for a user
 	GetUserTokenVersion(ctx context.Context, userID string) (int, error)
 	// IncrementUserTokenVersion increments and returns the new token version
-	IncrementUserTokenVersion(ctx context.Context, userID string) (int, error)
+	IncrementUserTokenVersion(ctx context.Context, userID string) (int64, error)
 }
 
 // RefreshTokenData contains metadata about a stored refresh token.
@@ -617,7 +617,7 @@ func (s *RedisTokenStore) GetUserTokenVersion(ctx context.Context, userID string
 }
 
 // IncrementUserTokenVersion atomically increments the token version.
-func (s *RedisTokenStore) IncrementUserTokenVersion(ctx context.Context, userID string) (int, error) {
+func (s *RedisTokenStore) IncrementUserTokenVersion(ctx context.Context, userID string) (int64, error) {
 	return s.client.Incr(ctx, tokenVersionPrefix+userID).Result()
 }
 ```
@@ -631,6 +631,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 )
@@ -734,9 +735,13 @@ These handlers demonstrate a complete authentication flow including login, token
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // AuthHandler handles authentication-related HTTP requests.

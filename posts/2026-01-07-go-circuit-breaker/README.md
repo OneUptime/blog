@@ -234,6 +234,7 @@ package main
 import (
     "errors"
     "net/http"
+    "time"
 
     "github.com/sony/gobreaker"
 )

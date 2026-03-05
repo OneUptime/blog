@@ -79,8 +79,6 @@ Docker Compose stacks deploy services to Swarm with built-in networking. This ex
 
 ```yaml
 # docker-compose.yml (deploy as stack)
-version: "3.8"
-
 services:
   api:
     image: myapp:latest

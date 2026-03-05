@@ -237,7 +237,6 @@ stop_review:
 
 ```yaml
 # docker-compose.review.yml
-version: '3.8'
 services:
   app:
     build: .

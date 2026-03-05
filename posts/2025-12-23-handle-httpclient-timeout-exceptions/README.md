@@ -166,6 +166,8 @@ public async Task<string?> GetDataAsync(
 
 ## Retry Strategy with Polly
 
+> **Note:** The `Microsoft.Extensions.Http.Polly` package and `AddTransientHttpErrorPolicy` are deprecated. For new projects, use the `Microsoft.Extensions.Http.Resilience` package instead, which is built on Polly v8. The examples below use the older Polly v7 API for reference, but consider migrating to `Microsoft.Extensions.Http.Resilience` for new applications.
+
 Use Polly for sophisticated retry logic:
 
 ```csharp

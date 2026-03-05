@@ -80,7 +80,8 @@ artifacts:
   paths:
     - "*.jar"
     - "build/**/*.js"
-    - "!build/**/*.map"  # Exclude source maps
+  exclude:
+    - "build/**/*.map"  # Exclude source maps
 ```
 
 ## Artifact Expiration

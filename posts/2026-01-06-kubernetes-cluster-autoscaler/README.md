@@ -61,29 +61,28 @@ This policy grants Cluster Autoscaler the permissions to describe and modify Aut
     {
       "Effect": "Allow",
       "Action": [
-        "autoscaling:DescribeAutoScalingGroups",      // Read ASG configuration
-        "autoscaling:DescribeAutoScalingInstances",   // Read instance status
-        "autoscaling:DescribeLaunchConfigurations",   // Read launch configs
-        "autoscaling:DescribeScalingActivities",      // Read scaling history
-        "autoscaling:DescribeTags",                   // Read ASG tags
-        "ec2:DescribeImages",                         // Read AMI info
-        "ec2:DescribeInstanceTypes",                  // Read instance type specs
-        "ec2:DescribeLaunchTemplateVersions",         // Read launch templates
+        "autoscaling:DescribeAutoScalingGroups",
+        "autoscaling:DescribeAutoScalingInstances",
+        "autoscaling:DescribeLaunchConfigurations",
+        "autoscaling:DescribeScalingActivities",
+        "autoscaling:DescribeTags",
+        "ec2:DescribeImages",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeLaunchTemplateVersions",
         "ec2:GetInstanceTypesFromInstanceRequirements",
-        "eks:DescribeNodegroup"                       // Read EKS nodegroup info
+        "eks:DescribeNodegroup"
       ],
       "Resource": ["*"]
     },
     {
       "Effect": "Allow",
       "Action": [
-        "autoscaling:SetDesiredCapacity",             // Scale node group size
-        "autoscaling:TerminateInstanceInAutoScalingGroup"  // Remove nodes
+        "autoscaling:SetDesiredCapacity",
+        "autoscaling:TerminateInstanceInAutoScalingGroup"
       ],
       "Resource": ["*"],
       "Condition": {
         "StringEquals": {
-          // Only allow modifications to this specific cluster
           "aws:ResourceTag/k8s.io/cluster-autoscaler/my-cluster": "owned"
         }
       }

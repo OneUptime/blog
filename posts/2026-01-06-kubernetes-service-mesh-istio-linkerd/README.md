@@ -52,7 +52,7 @@ flowchart LR
 | mTLS | Yes | Yes |
 | Traffic management | Advanced | Basic |
 | Multi-cluster | Yes | Yes |
-| CNCF status | Not CNCF | Graduated |
+| CNCF status | Graduated | Graduated |
 
 ## Option 1: Linkerd Setup
 

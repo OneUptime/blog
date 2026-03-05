@@ -279,8 +279,10 @@ public class DateRangeRequest : IValidatableObject
 
 For more complex validation, use FluentValidation:
 
+> **Note:** The `FluentValidation.AspNetCore` package and its auto-validation feature (`AddFluentValidationAutoValidation`) have been deprecated. Use the core `FluentValidation` package with manual validation instead. See the manual validation approach below.
+
 ```bash
-dotnet add package FluentValidation.AspNetCore
+dotnet add package FluentValidation
 ```
 
 ```csharp
@@ -331,12 +333,27 @@ public class OrderItemValidator : AbstractValidator<OrderItemRequest>
 }
 ```
 
-Register FluentValidation:
+Register FluentValidation validators and use manual validation:
 
 ```csharp
 builder.Services.AddControllers();
 builder.Services.AddValidatorsFromAssemblyContaining<CreateOrderRequestValidator>();
-builder.Services.AddFluentValidationAutoValidation();
+
+// Manual validation in your endpoint or controller:
+[HttpPost]
+public async Task<IActionResult> CreateOrder(
+    [FromBody] CreateOrderRequest request,
+    IValidator<CreateOrderRequest> validator)
+{
+    var validationResult = await validator.ValidateAsync(request);
+    if (!validationResult.IsValid)
+    {
+        return BadRequest(validationResult.Errors);
+    }
+
+    // Process valid request
+    return Ok();
+}
 ```
 
 ## Handling Null Models

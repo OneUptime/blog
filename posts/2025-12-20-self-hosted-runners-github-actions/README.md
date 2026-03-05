@@ -300,7 +300,7 @@ jobs:
             image=moby/buildkit:latest
             network=host
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           cache-from: type=local,src=/opt/cache/buildx

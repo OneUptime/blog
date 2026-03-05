@@ -119,7 +119,7 @@ jobs:
           go-version: '1.22'
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v7
         with:
           version: latest
 ```

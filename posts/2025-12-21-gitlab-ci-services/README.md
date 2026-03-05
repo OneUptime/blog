@@ -160,7 +160,7 @@ test_mysql:
   services:
     - name: mysql:8.0
       alias: db
-      command: ["--default-authentication-plugin=mysql_native_password"]
+      command: ["--authentication-policy=mysql_native_password"]
   variables:
     MYSQL_DATABASE: test
     MYSQL_ROOT_PASSWORD: root

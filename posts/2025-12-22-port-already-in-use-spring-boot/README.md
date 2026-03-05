@@ -353,7 +353,7 @@ java -jar target/myapp.jar
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
+# version field is no longer needed with modern Docker Compose
 services:
   app:
     image: myapp:latest
@@ -373,7 +373,7 @@ ports:
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
+# version field is no longer needed with modern Docker Compose
 services:
   app1:
     image: myapp:latest

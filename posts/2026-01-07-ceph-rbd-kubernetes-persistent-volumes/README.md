@@ -120,15 +120,16 @@ Configure the default features for RBD images created in this pool:
 
 ```bash
 # Enable useful RBD features by default
-# - layering: enables cloning and copy-on-write
-# - exclusive-lock: required for features like journaling
-# - object-map: improves performance for sparse images
-# - fast-diff: enables fast diff calculations
-# - deep-flatten: allows flattening of cloned images
-ceph osd pool set kubernetes rbd_default_features 125
+# - layering: enables cloning and copy-on-write (bit 1)
+# - exclusive-lock: required for features like journaling (bit 4)
+# - object-map: improves performance for sparse images (bit 8)
+# - fast-diff: enables fast diff calculations (bit 16)
+# - deep-flatten: allows flattening of cloned images (bit 32)
+ceph osd pool set kubernetes rbd_default_features 61
 
 # Alternatively, set features using names (more readable)
-# The numeric value 125 corresponds to: layering + exclusive-lock + object-map + fast-diff + deep-flatten
+# The numeric value 61 corresponds to: layering + exclusive-lock + object-map + fast-diff + deep-flatten
+# Note: value 125 would also include journaling (bit 64), which is needed for RBD mirroring
 ```
 
 ## Part 2: Deploying Rook-Ceph Operator (Recommended Approach)

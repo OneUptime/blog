@@ -179,13 +179,13 @@ integration_test:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
   before_script:
-    - apk add --no-cache docker-compose
+    - apk add --no-cache docker-cli-compose
   script:
-    - docker-compose -f docker-compose.test.yml up -d
-    - docker-compose -f docker-compose.test.yml exec -T app npm test
-    - docker-compose -f docker-compose.test.yml logs
+    - docker compose -f docker-compose.test.yml up -d
+    - docker compose -f docker-compose.test.yml exec -T app npm test
+    - docker compose -f docker-compose.test.yml logs
   after_script:
-    - docker-compose -f docker-compose.test.yml down -v
+    - docker compose -f docker-compose.test.yml down -v
 ```
 
 ```yaml
@@ -400,17 +400,17 @@ integration_test:
   extends: .docker_template
   stage: test
   before_script:
-    - apk add --no-cache docker-compose
+    - apk add --no-cache docker-cli-compose
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     - docker pull $IMAGE_TAG
     - docker tag $IMAGE_TAG myapp:test
-    - docker-compose -f docker-compose.test.yml up -d
+    - docker compose -f docker-compose.test.yml up -d
     - sleep 10
-    - docker-compose -f docker-compose.test.yml exec -T app npm run test:integration
+    - docker compose -f docker-compose.test.yml exec -T app npm run test:integration
   after_script:
-    - docker-compose -f docker-compose.test.yml logs
-    - docker-compose -f docker-compose.test.yml down -v
+    - docker compose -f docker-compose.test.yml logs
+    - docker compose -f docker-compose.test.yml down -v
   needs:
     - build
 

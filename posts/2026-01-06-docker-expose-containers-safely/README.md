@@ -124,16 +124,16 @@ labels:
   - "traefik.http.routers.api.middlewares=api-ratelimit"
 ```
 
-### IP Whitelist
+### IP Allow List
 
 Restrict access to specific IP ranges for internal services:
 
 ```yaml
 labels:
   # Only allow specific IP ranges (internal networks)
-  - "traefik.http.middlewares.api-whitelist.ipwhitelist.sourcerange=10.0.0.0/8,192.168.1.0/24"
-  # Apply whitelist middleware to the router
-  - "traefik.http.routers.api.middlewares=api-whitelist"
+  - "traefik.http.middlewares.api-allowlist.ipallowlist.sourcerange=10.0.0.0/8,192.168.1.0/24"
+  # Apply allow list middleware to the router
+  - "traefik.http.routers.api.middlewares=api-allowlist"
 ```
 
 ### Basic Authentication
@@ -249,7 +249,8 @@ http {
 
     # HTTPS server - main application entry point
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name api.example.com;
 
         # SSL certificate configuration

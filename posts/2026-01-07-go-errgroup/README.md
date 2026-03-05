@@ -698,7 +698,7 @@ func main() {
 
     if err := CheckAllServices(context.Background(), services); err != nil {
         fmt.Printf("Service health check failed: %v\n", err)
-        os.Exit(1)
+        return
     }
 
     fmt.Println("All services healthy, starting application...")
@@ -902,7 +902,7 @@ var g errgroup.Group
 g.Go(func() error { return nil })
 g.Wait()
 
-// WRONG - undefined behavior
+// AVOID - reuse is unreliable if an error occurred or WithContext was used
 g.Go(func() error { return nil })
 
 // CORRECT - create a new group

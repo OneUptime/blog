@@ -16,7 +16,7 @@ Good API documentation is essential for any REST API. SpringDoc OpenAPI provides
 <dependency>
     <groupId>org.springdoc</groupId>
     <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-    <version>2.3.0</version>
+    <version>2.8.6</version>
 </dependency>
 ```
 
@@ -26,7 +26,7 @@ For WebFlux applications:
 <dependency>
     <groupId>org.springdoc</groupId>
     <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
-    <version>2.3.0</version>
+    <version>2.8.6</version>
 </dependency>
 ```
 

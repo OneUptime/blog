@@ -182,7 +182,7 @@ jobs:
         run: pytest --cov=. --cov-report=xml
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: coverage.xml
 ```
@@ -249,7 +249,7 @@ jobs:
             type=sha
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}

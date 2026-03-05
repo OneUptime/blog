@@ -10,6 +10,8 @@ Description: Learn how to configure Swagger/OpenAPI in ASP.NET Core with practic
 
 Swagger (OpenAPI) provides interactive documentation for your ASP.NET Core APIs. It allows developers to explore and test endpoints directly from the browser. This guide covers complete Swagger configuration from basic setup to advanced customization.
 
+> **Note:** Starting with .NET 9, Swashbuckle.AspNetCore is no longer included in the default ASP.NET Core Web API project template. Microsoft now provides built-in OpenAPI support via the `Microsoft.AspNetCore.OpenApi` package with `AddOpenApi()` and `MapOpenApi()`. However, Swashbuckle.AspNetCore remains a fully supported community package and can still be added manually to your projects.
+
 ## Basic Setup
 
 ### Installation

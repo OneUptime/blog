@@ -214,7 +214,7 @@ if (settings.TryGetValue("Key", out var value))
     // Use value
 }
 
-// Option 2: GetValueOrDefault (C# 7.1+)
+// Option 2: GetValueOrDefault (.NET Core 2.0+ / .NET Standard 2.1+)
 var value = settings.GetValueOrDefault("Key", "DefaultValue");
 
 // Option 3: Null-coalescing with indexer
@@ -280,8 +280,8 @@ public class OrderService
     public async Task<Order> CreateOrderAsync(CreateOrderRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        ArgumentException.ThrowIfNullOrEmpty(request.CustomerId);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(request.Items.Count, 0);
+        ArgumentException.ThrowIfNullOrEmpty(request.CustomerId); // .NET 7+
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(request.Items.Count, 0); // .NET 8+
 
         // Proceed with validated parameters
         return await _repository.CreateAsync(request);

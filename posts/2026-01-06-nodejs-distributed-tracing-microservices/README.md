@@ -256,7 +256,7 @@ const orderService = {
 const server = new grpc.Server();
 server.addService(orderProto.OrderService.service, orderService);
 server.bindAsync('0.0.0.0:50051', grpc.ServerCredentials.createInsecure(), () => {
-  server.start();
+  console.log('gRPC server listening on 0.0.0.0:50051');
 });
 ```
 

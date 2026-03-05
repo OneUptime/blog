@@ -130,7 +130,7 @@ ceph config set mgr mgr/prometheus/server_addr 0.0.0.0
 
 # Set the port for the metrics endpoint (default is 9283)
 # Ensure this port is open in your firewall rules
-ceph config set mgr mgr/prometheus/port 9283
+ceph config set mgr mgr/prometheus/server_port 9283
 
 # Enable scraping of RBD (block device) performance metrics
 # This provides detailed I/O statistics for RBD images

@@ -369,8 +369,8 @@ public class UserService {
 ### Pitfall 4: Wrong Package for @Transactional
 
 ```java
-// Wrong! Using javax instead of Spring
-import javax.transaction.Transactional;
+// Wrong! Using Jakarta/JTA instead of Spring
+import jakarta.transaction.Transactional;
 
 // Correct
 import org.springframework.transaction.annotation.Transactional;

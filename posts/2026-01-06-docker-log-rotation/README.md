@@ -86,14 +86,15 @@ Apply limits to all containers by default:
 
 The daemon.json configuration applies log rotation settings to all new containers, ensuring no container can consume unlimited disk space.
 
+Add the following to `/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json - Global Docker daemon configuration
 {
-  "log-driver": "json-file",    // Default logging driver
+  "log-driver": "json-file",
   "log-opts": {
-    "max-size": "10m",          // Default max size for all containers
-    "max-file": "3",            // Default number of rotated files
-    "compress": "true"          // Compress rotated files
+    "max-size": "10m",
+    "max-file": "3",
+    "compress": "true"
   }
 }
 ```

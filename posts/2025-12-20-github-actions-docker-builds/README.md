@@ -57,7 +57,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: false
@@ -117,7 +117,7 @@ jobs:
             type=sha
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
@@ -139,7 +139,7 @@ For Docker Hub, use repository secrets:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -164,7 +164,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build multi-arch
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64,linux/arm/v7
@@ -182,7 +182,7 @@ Speed up builds with layer caching:
 
 ```yaml
       - name: Build with registry cache
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -195,7 +195,7 @@ Speed up builds with layer caching:
 
 ```yaml
       - name: Build with GHA cache
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -216,7 +216,7 @@ Speed up builds with layer caching:
             ${{ runner.os }}-buildx-
 
       - name: Build with local cache
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -236,7 +236,7 @@ Pass build-time variables:
 
 ```yaml
       - name: Build with args
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           build-args: |
@@ -251,7 +251,7 @@ Pass secrets securely:
 
 ```yaml
       - name: Build with secrets
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           secrets: |
@@ -298,7 +298,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
           push: true
@@ -311,7 +311,7 @@ Scan images for vulnerabilities before pushing:
 
 ```yaml
       - name: Build for scanning
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           load: true
@@ -337,7 +337,7 @@ Generate software bill of materials:
 
 ```yaml
       - name: Build with attestations
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -352,7 +352,7 @@ Build on all events, push only on main:
 
 ```yaml
       - name: Build and conditionally push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: ${{ github.ref == 'refs/heads/main' }}
@@ -417,7 +417,7 @@ jobs:
             type=sha
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64

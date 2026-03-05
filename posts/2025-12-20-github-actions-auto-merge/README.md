@@ -395,10 +395,12 @@ Add pre-merge validation:
 
 ```yaml
       - name: Log auto-merge
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           echo "Auto-merging PR #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
           echo "- Author: ${{ github.event.pull_request.user.login }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Title: ${{ github.event.pull_request.title }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Title: $PR_TITLE" >> $GITHUB_STEP_SUMMARY
           echo "- Reason: Dependabot patch update" >> $GITHUB_STEP_SUMMARY
 ```
 

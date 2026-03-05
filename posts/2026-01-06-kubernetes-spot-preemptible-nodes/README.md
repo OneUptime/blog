@@ -523,50 +523,56 @@ Karpenter is more flexible than Cluster Autoscaler for spot:
 Karpenter provides faster scaling and better spot instance handling. It provisions nodes based on pending pods rather than using fixed node groups.
 
 ```yaml
-apiVersion: karpenter.sh/v1alpha5
-kind: Provisioner
+apiVersion: karpenter.sh/v1
+kind: NodePool
 metadata:
-  name: spot-provisioner
+  name: spot-nodepool
 spec:
-  requirements:
-    # Only use spot capacity
-    - key: karpenter.sh/capacity-type
-      operator: In
-      values: ["spot"]
-    # Specify architecture
-    - key: kubernetes.io/arch
-      operator: In
-      values: ["amd64"]
-    # Multiple instance types for better availability
-    - key: node.kubernetes.io/instance-type
-      operator: In
-      values:
-        - m5.large
-        - m5.xlarge
-        - m5a.large
-        - m5a.xlarge
-        - m4.large
-        - m4.xlarge
+  template:
+    spec:
+      requirements:
+        # Only use spot capacity
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        # Specify architecture
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        # Multiple instance types for better availability
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - m5.large
+            - m5.xlarge
+            - m5a.large
+            - m5a.xlarge
+            - m4.large
+            - m4.xlarge
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
   # Limit total provisioned capacity
   limits:
-    resources:
-      cpu: 1000   # Maximum 1000 vCPUs across all nodes
-  providerRef:
-    name: default
-  # Remove empty nodes after 60 seconds
-  ttlSecondsAfterEmpty: 60
+    cpu: 1000   # Maximum 1000 vCPUs across all nodes
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 60s
 
 ---
-apiVersion: karpenter.k8s.aws/v1alpha1
-kind: AWSNodeTemplate
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
 metadata:
   name: default
 spec:
   # Discover subnets and security groups by tags
-  subnetSelector:
-    karpenter.sh/discovery: my-cluster
-  securityGroupSelector:
-    karpenter.sh/discovery: my-cluster
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: my-cluster
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: my-cluster
   tags:
     Environment: production
 ```

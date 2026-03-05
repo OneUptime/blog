@@ -254,32 +254,37 @@ merge_coverage:
 
 ## Dynamic Parallel Count
 
-Adjust the number of parallel jobs based on the number of tests.
+Note that the `parallel` keyword requires a static integer value and does not support CI/CD variable expansion. You cannot use `parallel: $VARIABLE`. Instead, set a fixed value or use a parent-child pipeline approach where the parent generates a child pipeline YAML with the desired parallel count.
 
 ```yaml
-# First, count tests
-count_tests:
+# Generate a child pipeline with dynamic parallel count
+generate_test_pipeline:
   stage: .pre
   script:
     - TEST_COUNT=$(find tests -name "*.test.js" | wc -l)
     - |
-      # Calculate optimal parallel count (1 job per 10 tests, max 10)
       PARALLEL_COUNT=$(( (TEST_COUNT + 9) / 10 ))
       if [ $PARALLEL_COUNT -gt 10 ]; then
         PARALLEL_COUNT=10
       fi
-      echo "PARALLEL_COUNT=$PARALLEL_COUNT" >> count.env
+      cat > child-test-pipeline.yml << EOF
+      test:
+        stage: test
+        parallel: $PARALLEL_COUNT
+        script:
+          - npm test -- --shard=\$CI_NODE_INDEX/\$CI_NODE_TOTAL
+      EOF
   artifacts:
-    reports:
-      dotenv: count.env
+    paths:
+      - child-test-pipeline.yml
 
-test:
+run_tests:
   stage: test
-  parallel: $PARALLEL_COUNT
-  needs:
-    - count_tests
-  script:
-    - npm test -- --shard=$CI_NODE_INDEX/$CI_NODE_TOTAL
+  trigger:
+    include:
+      - artifact: child-test-pipeline.yml
+        job: generate_test_pipeline
+    strategy: depend
 ```
 
 ## Parallel Integration Tests

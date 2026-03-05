@@ -91,13 +91,14 @@ Resources:
           Value: Main
 
   # Redrive allow policy on DLQ
-  DeadLetterQueuePolicy:
-    Type: AWS::SQS::RedriveAllowPolicy
-    Properties:
-      QueueUrl: !Ref DeadLetterQueue
-      RedrivePermission: byQueue
-      SourceQueueArns:
-        - !GetAtt MainQueue.Arn
+  # Note: RedriveAllowPolicy is set as a JSON property on the AWS::SQS::Queue resource.
+  # Update the DeadLetterQueue resource above to include:
+  #   RedriveAllowPolicy:
+  #     redrivePermission: byQueue
+  #     sourceQueueArns:
+  #       - !GetAtt MainQueue.Arn
+  # Due to the circular dependency (MainQueue references DeadLetterQueue and vice versa),
+  # you may need to set the RedriveAllowPolicy via a custom resource or CLI after stack creation.
 
 Outputs:
   MainQueueUrl:

@@ -343,7 +343,6 @@ Container logs grow unbounded by default:
 Docker logs can consume significant disk space. Configure limits at the daemon level:
 
 ```json
-// /etc/docker/daemon.json
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -352,6 +351,8 @@ Docker logs can consume significant disk space. Configure limits at the daemon l
   }
 }
 ```
+
+This file is located at `/etc/docker/daemon.json`.
 
 Or per-container:
 
@@ -372,8 +373,8 @@ docker builder prune --keep-storage 10GB
 In BuildKit:
 
 ```bash
-# Set max cache size via environment variable (in MB)
-BUILDKIT_CACHE_SIZE_MB=10000 docker build .
+# Configure max cache size in buildkitd.toml or use:
+docker builder prune --keep-storage 10000
 ```
 
 ---
@@ -445,9 +446,9 @@ docker builder prune -f        # Remove build cache
 # Removes ALL unused resources including tagged images
 docker system prune -a --volumes -f
 
-# Check what will be removed (dry run) - no actual deletion
-docker container prune --dry-run
-docker image prune -a --dry-run
+# Preview what will be removed (list candidates before pruning)
+docker container ls -a -f "status=exited"
+docker images -f "dangling=true"
 
 # Remove images older than 7 days (168 hours)
 docker image prune -a -f --filter "until=168h"

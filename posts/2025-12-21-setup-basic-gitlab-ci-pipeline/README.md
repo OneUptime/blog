@@ -62,8 +62,8 @@ deploy_job:
   stage: deploy
   script:
     - echo "Deploying application..."
-  only:
-    - main
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
 ```
 
 ## Understanding Pipeline Stages
@@ -194,8 +194,8 @@ deploy_staging:
   environment:
     name: staging
     url: https://staging.example.com
-  only:
-    - develop
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
 
 deploy_production:
   stage: deploy
@@ -205,9 +205,9 @@ deploy_production:
   environment:
     name: production
     url: https://example.com
-  when: manual
-  only:
-    - main
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
 ```
 
 ## Using Default Settings

@@ -377,7 +377,7 @@ For projects using uv (much faster):
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
 
       - name: Run tests
         run: |

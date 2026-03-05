@@ -51,7 +51,7 @@ runs:
   using: 'composite'
   steps:
     - name: Setup pnpm
-      uses: pnpm/action-setup@v2
+      uses: pnpm/action-setup@v4
       with:
         version: 8
 
@@ -198,7 +198,7 @@ runs:
 
     - name: Build and push
       id: build
-      uses: docker/build-push-action@v5
+      uses: docker/build-push-action@v6
       with:
         context: ${{ inputs.context }}
         file: ${{ inputs.dockerfile }}

@@ -104,9 +104,9 @@ graph LR
 
 Ceph supports multiple erasure coding plugins, each with different characteristics:
 
-### 1. Jerasure Plugin (Default)
+### 1. Jerasure Plugin (Legacy Default)
 
-The Jerasure plugin is the default and most widely used EC plugin in Ceph.
+The Jerasure plugin was the default EC plugin in Ceph through the Squid release. Starting with the Tentacle release, ISA-L has replaced Jerasure as the default plugin. The Jerasure library is no longer actively maintained and does not leverage modern CPU instruction sets (AVX2, AVX-512). For new deployments, consider using the ISA plugin instead.
 
 The following command creates an erasure code profile using the Jerasure plugin with Reed-Solomon algorithm:
 

@@ -2002,5 +2002,1348 @@
   "2025-12-20-dependency-updates-github-actions": {
     "status": "validated",
     "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-helm-charts-setup": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-hpa-setup": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-ingress-controllers-nginx-traefik-haproxy": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-kubectl-debug": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-migrate-workloads-zero-downtime": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-multi-cluster-high-availability": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-network-policies-zero-trust": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-pod-disruption-budgets": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-pod-security-standards": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-rbac-best-practices": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-right-size-cluster": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-right-size-resources": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-rolling-updates-canary": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-secrets-vault-sealed-secrets": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-security-audit-kube-bench": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-service-mesh-istio-linkerd": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-spot-preemptible-nodes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-stateful-applications-postgres-redis-kafka": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-troubleshoot-persistent-volumes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-vpa-vertical-pod-autoscaling": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-api-security-owasp-top-10": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-connection-pooling-postgresql-mysql": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-custom-metrics-prometheus": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-distributed-tracing-microservices": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-express-opentelemetry-instrumentation": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-file-uploads-scale": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-graceful-shutdown-handler": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-health-checks-kubernetes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-integration-tests-testcontainers": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-job-queue-bullmq-redis": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-jwt-authentication-secure": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-memory-optimization-prevent-leaks": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-mock-external-apis-tests": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-multi-stage-dockerfile": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-production-environment-variables": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-profiling-v8-inspector-chrome-devtools": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-rate-limiting-no-external-services": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-retry-exponential-backoff": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-websocket-socketio-scaling": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-nodejs-worker-threads-cpu-intensive": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-backup-restore-configuration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-bluestore-performance-configuration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-crush-maps-data-locality": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-dashboard-cluster-management": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-encryption-at-rest": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-erasure-coding-storage-efficiency": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-high-iops-workloads": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-mirroring-disaster-recovery": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-multi-site-geo-redundancy": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-network-segmentation-security": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-nvme-performance-optimization": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-openstack-integration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-osd-troubleshooting-recovery": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-performance-troubleshooting": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-placement-groups-performance": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-prometheus-grafana-monitoring": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-quotas-user-management": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-rbd-kubernetes-persistent-volumes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-rgw-s3-compatible-storage": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-rook-bare-metal-kubernetes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-scale-osds-storage-capacity": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ceph-upgrade-zero-downtime": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-cephfs-shared-filesystem-kubernetes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-cilium-kubernetes-networking": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-container-runtime-security": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-core-portable-programs": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-cpu-profiling": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-debugging-troubleshooting": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-disk-io-analysis": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-dns-monitoring": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-file-access-monitoring": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-getting-started-linux": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-go-cilium-ebpf": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-hubble-kubernetes-observability": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-kernel-parameter-tuning": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-kubernetes-network-policies": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-libbpf-portable-development": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-memory-debugging": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-network-traffic-monitoring": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-process-lifecycle-tracking": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-rust-aya": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-security-monitoring-falco-tetragon": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-sidecar-replacement-service-mesh": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-ssl-tls-inspection": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-tcp-ip-stack-analysis": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-tracing-bpftrace-bcc": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-ebpf-xdp-load-balancer": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-api-key-authentication": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-asynq-job-queue-redis": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-benchmarking": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-circuit-breaker": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-clean-architecture": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-client-go-kubernetes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-cobra-cli": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-code-signing": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-concurrent-testing": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-continuous-profiling": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-custom-otel-exporters": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-database-migrations": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-debug-memory-leaks": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-distributed-tracing-microservices": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-docker-multi-stage": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-errgroup": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-event-sourcing": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-fan-out-fan-in": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-feature-flags": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-file-uploads-scale": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-fuzzing-security": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-gorm-orm": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-goroutine-leaks": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-goroutines-channels-concurrency": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-graceful-shutdown-kubernetes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-grpc-error-handling": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-grpc-interceptors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-grpc-services": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-health-checks-kubernetes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-hot-reloading-docker-air": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-integration-tests-testcontainers": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-json-optimization": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-07-go-jwt-authentication": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-deployment-gates-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [],
+    "notes": "All action versions current (actions/checkout@v4). YAML syntax correct. Environment and deployment gate configurations are accurate."
+  },
+  "2025-12-20-dynamic-matrix-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [],
+    "notes": "All action versions current (actions/checkout@v4, actions/setup-node@v4). fromJson usage and dynamic matrix patterns are correct."
+  },
+  "2025-12-20-github-actions-auto-merge": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Fixed script injection vulnerability: github.event.pull_request.title was used directly in run context. Moved to env variable PR_TITLE."
+    ],
+    "notes": "dependabot/fetch-metadata@v2 is current. gh pr merge syntax is correct."
+  },
+  "2025-12-20-github-actions-cache-dependencies": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Updated docker/build-push-action from v5 to v6."
+    ],
+    "notes": "actions/cache@v4, actions/setup-node@v4, actions/setup-python@v5, actions/setup-go@v5, actions/setup-java@v4 all current."
+  },
+  "2025-12-20-github-actions-composite-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Updated pnpm/action-setup from v2 to v4.",
+      "Updated docker/build-push-action from v5 to v6."
+    ],
+    "notes": "Composite action structure and syntax are correct. Shell specification guidance is accurate."
+  },
+  "2025-12-20-github-actions-debug-failures": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Updated nick-fields/retry from v2 to v3."
+    ],
+    "notes": "Debug logging techniques, artifact upload, tmate SSH access patterns are all correct."
+  },
+  "2025-12-20-github-actions-deploy-aws": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Updated aws-actions/amazon-ecs-deploy-task-definition from v1 to v2."
+    ],
+    "notes": "OIDC authentication pattern is correct. aws-actions/configure-aws-credentials@v4 is current. S3, Lambda, CloudFormation deployment patterns are accurate."
+  },
+  "2025-12-20-github-actions-deploy-kubernetes": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [],
+    "notes": "All action versions current (google-github-actions/auth@v2, azure/login@v2, azure/setup-kubectl@v3, azure/setup-helm@v3). Kubernetes deployment patterns are correct."
+  },
+  "2025-12-20-github-actions-docker-builds": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Updated docker/build-push-action from v5 to v6 (all 12 occurrences)."
+    ],
+    "notes": "docker/setup-buildx-action@v3, docker/login-action@v3, docker/metadata-action@v5 are current. Multi-arch, caching, and SBOM patterns are correct."
+  },
+  "2025-12-20-github-actions-environment-variables": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [],
+    "notes": "Environment variable scoping, GITHUB_ENV, GITHUB_OUTPUT, GITHUB_PATH usage all correct. Dynamic variable patterns accurate."
+  },
+  "2025-12-20-github-actions-matrix-builds": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [],
+    "notes": "All action versions current. Matrix strategy syntax, fail-fast, max-parallel, include/exclude patterns are correct."
+  },
+  "2025-12-20-github-actions-matrix-include-exclude": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [],
+    "notes": "All action versions current (actions/setup-python@v5). Include/exclude syntax, partial matching, and dynamic matrix generation patterns are correct."
+  },
+  "2025-12-20-github-actions-nodejs-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [],
+    "notes": "All action versions current (actions/checkout@v4, actions/setup-node@v4, actions/upload-artifact@v4, actions/cache@v4, actions/github-script@v7, dorny/paths-filter@v3). CI pipeline patterns are correct."
+  },
+  "2025-12-20-github-actions-notifications": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Updated slackapi/slack-github-action from v1.25.0 to v2."
+    ],
+    "notes": "Slack webhook, Teams MessageCard, Discord embed, and email notification patterns are correct. Note: v2 has breaking API changes from v1."
+  },
+  "2025-12-20-github-actions-parallel-tests": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [],
+    "notes": "All action versions current (actions/setup-python@v5, actions/download-artifact@v4, actions/upload-artifact@v4). Test sharding patterns for Jest, Playwright, pytest are correct."
+  },
+  "2025-12-20-github-actions-pull-request-triggers": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Fixed script injection vulnerability: github.event.pull_request.title was used directly in run context. Moved to env variable PR_TITLE."
+    ],
+    "notes": "PR trigger types, branch filtering, path filtering, pull_request_target security warning, and dorny/paths-filter@v3 are all correct."
+  },
+  "2025-12-20-github-actions-reusable-workflows": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [],
+    "notes": "workflow_call trigger syntax, inputs/outputs/secrets definitions, secrets:inherit, nesting depth (4 levels) are all correct."
+  },
+  "2025-12-20-github-actions-secrets": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [],
+    "notes": "Secret types, GITHUB_TOKEN permissions, OIDC pattern, base64 encoding for large secrets, and security best practices are all accurate. Secret limits (48KB, 100 per repo) are correct."
+  },
+  "2025-12-20-github-actions-service-containers": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [],
+    "notes": "Service container syntax, health checks, port mapping, job containers with service name networking, and matrix with service versions are all correct."
+  },
+  "2025-12-20-github-actions-workflow-templates": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Updated docker/build-push-action from v5 to v6.",
+      "Updated codecov/codecov-action from v4 to v5."
+    ],
+    "notes": "$default-branch placeholder, properties.json format, workflow template repository structure are all correct."
+  },
+  "2025-12-20-github-api-in-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-go-ci-pipeline-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-integration-testing-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-job-dependencies-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-job-outputs-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-linting-pipeline-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-monorepo-path-filters-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-multi-platform-docker-builds-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-oidc-cloud-authentication-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-path-filtering-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-performance-testing-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-preview-deployments-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-python-ci-pipeline-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-release-automation-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-repository-dispatch-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-scheduled-workflows-cron-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-security-scanning-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-self-hosted-runners-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-terraform-pipeline-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-20-workflow-dispatch-inputs-github-actions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-21-artifacts-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Fixed invalid glob negation syntax ('!build/**/*.map') in artifacts:paths. GitLab CI does not support negation in paths; replaced with proper artifacts:exclude keyword."
+    ]
+  },
+  "2025-12-21-cache-dependencies-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-dag-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-deploy-kubernetes-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Fixed deprecated Kustomize 'bases' keyword to 'resources' in overlay kustomization.yaml example."
+    ]
+  },
+  "2025-12-21-docker-builds-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Updated deprecated 'docker-compose' command (v1) to 'docker compose' (v2 plugin) in integration test example."
+    ]
+  },
+  "2025-12-21-gitlab-auto-devops": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-gitlab-ci-environments": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-gitlab-ci-include-extend": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-gitlab-ci-needs-keyword": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-gitlab-ci-services": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Fixed deprecated MySQL '--default-authentication-plugin=mysql_native_password' flag to '--authentication-policy=mysql_native_password'. The default_authentication_plugin option was deprecated in MySQL 8.0.27 and removed in 8.4."
+    ]
+  },
+  "2025-12-21-gitlab-ci-trigger-jobs": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-gitlab-container-registry": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-gitlab-deployment-approvals": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-gitlab-docker-in-docker": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Updated deprecated 'docker-compose' command (v1) to 'docker compose' (v2 plugin) throughout the post.",
+      "Updated 'apk add --no-cache docker-compose' to 'apk add --no-cache docker-cli-compose' for Alpine package name."
+    ]
+  },
+  "2025-12-21-gitlab-merge-request-pipelines": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-gitlab-pages-deployment": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-gitlab-parallel-testing": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Fixed 'Dynamic Parallel Count' section: 'parallel: $PARALLEL_COUNT' is not valid because the parallel keyword requires a static integer and does not support CI/CD variable expansion. Replaced with a parent-child pipeline approach that generates the child pipeline YAML dynamically."
+    ]
+  },
+  "2025-12-21-gitlab-release-jobs": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Fixed malformed code fence in release description YAML block - closing fence had '```bash' instead of '```', and trailing '```text' was changed to '```'."
+    ]
+  },
+  "2025-12-21-gitlab-runners-effectively": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Updated deprecated 'runnerRegistrationToken' Helm chart value to 'runnerToken' with runner authentication token (runner registration tokens are deprecated since GitLab 16.0, disabled by default in 17.0).",
+      "Updated deprecated '--registration-token' CLI flag to '--token' with glrt- prefixed authentication token.",
+      "Fixed invalid 'tag_list' field in config.toml example - tags are managed via GitLab UI/API or during registration, not in config.toml. Replaced with registration command example."
+    ]
+  },
+  "2025-12-21-gitlab-terraform-pipeline": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": []
+  },
+  "2025-12-21-matrix-jobs-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-21-multi-project-pipelines-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-21-parent-child-pipelines-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-21-review-apps-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-21-rules-conditional-jobs-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-21-security-scanning-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-21-setup-basic-gitlab-ci-pipeline": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-21-use-variables-gitlab-ci": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-configure-actuator-endpoints-spring-boot": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-configure-cors-spring-boot": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-configure-redis-spring-boot": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-httpmessagenotreadableexception-spring": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-integration-testing-spring-boot": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-invalid-csrf-token-spring": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-jackson-no-serializer-found-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-java-null-pointer-exception-handling": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-jpa-lazy-initialization-exception": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-method-not-allowed-spring-mvc": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-no-bean-named-available-spring": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-port-already-in-use-spring-boot": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-request-method-not-supported-spring": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-scheduled-tasks-spring-boot": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-setup-caching-spring-boot": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-bean-type-not-found-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-connection-pooling": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-connection-timeout": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-could-not-autowire-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-email-sending": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-failed-to-instantiate": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-file-upload": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-global-exception-handling": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-graphql-setup": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-jpa-entity-relationships": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-kafka-configuration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-logging-configuration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-multiple-datasources": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-no-qualifying-bean-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-null-tostring-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-rabbitmq-configuration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-swagger-openapi-documentation": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-transaction-management": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "notes": "Fixed Pitfall 4: Changed 'javax.transaction.Transactional' to 'jakarta.transaction.Transactional' to match Spring Boot 3.x/Jakarta EE namespace."
+  },
+  "2025-12-22-spring-boot-validation-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-websocket-setup": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-boot-whitelabel-error-page": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-circular-reference-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-spring-security-jwt-configuration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-unable-find-springbootconfiguration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-22-unit-testing-mockito-spring-boot": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "notes": "@MockBean is deprecated since Spring Boot 3.4 in favor of @MockitoBean. Code still compiles and works but is outdated practice."
+  },
+  "2025-12-23-aspnet-core-api-versioning": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-aspnet-core-grpc-configuration": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-aspnet-core-health-checks": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-aspnet-core-opentelemetry": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-aspnet-core-rate-limiting": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-aspnet-core-response-caching": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-configure-caching-aspnet-core": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-configure-connection-strings-aspnet-core": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-configure-cors-aspnet-core": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-configure-dependency-injection-aspnet-core": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-configure-entity-framework-core-relationships": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-configure-middleware-aspnet-core": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-configure-swagger-aspnet-core": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Added note about Swashbuckle.AspNetCore being removed from .NET 9 project templates in favor of Microsoft.AspNetCore.OpenApi"
+    ]
+  },
+  "2025-12-23-fix-cannot-access-disposed-object-csharp": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-fix-cannot-implicitly-convert-type-csharp": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-fix-dbcontext-disposed-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-fix-invalid-operation-collection-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-fix-model-state-invalid-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Updated deprecated FluentValidation.AspNetCore package to core FluentValidation package",
+      "Replaced deprecated AddFluentValidationAutoValidation() with manual validation pattern"
+    ]
+  },
+  "2025-12-23-fix-name-does-not-exist-in-current-context-csharp": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-fix-no-service-for-type-dependency-injection-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-fix-object-reference-not-set-csharp": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-fix-ssl-certificate-problem-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-fix-unable-resolve-service-type": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-fix-value-cannot-be-null-argumentnullexception": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Corrected GetValueOrDefault version from 'C# 7.1+' to '.NET Core 2.0+ / .NET Standard 2.1+'",
+      "Added version annotations for ThrowIfNullOrEmpty (.NET 7+) and ThrowIfLessThanOrEqual (.NET 8+)"
+    ]
+  },
+  "2025-12-23-handle-async-await-properly-csharp": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-handle-collection-was-modified-csharp": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-handle-deadlock-detected-issues-csharp": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-handle-format-string-exceptions-csharp": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-handle-httpclient-timeout-exceptions": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Added deprecation note for Microsoft.Extensions.Http.Polly and AddTransientHttpErrorPolicy in favor of Microsoft.Extensions.Http.Resilience"
+    ]
+  },
+  "2025-12-23-handle-index-out-of-range-errors-csharp": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-handle-sequence-contains-no-elements-csharp": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-handle-sqlexception-errors-dotnet": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-handle-task-was-canceled-csharp": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-handle-thread-abort-exceptions-dotnet": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-set-up-background-services-aspnet-core": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-set-up-integration-testing-aspnet-core": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-set-up-signalr-aspnet-core": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-set-up-unit-testing-dotnet-xunit": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-setup-jwt-authentication-aspnet-core": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-23-setup-logging-aspnet-core": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-24-aurora-serverless-v2-setup": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-24-codepipeline-cicd-setup": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-24-dynamodb-table-does-not-exist-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-24-rds-connection-timeout-errors": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-24-sqs-dead-letter-queue-messages": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2025-12-24-waf-rules-api-gateway": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-debug-kubernetes-dns-issues": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-docker-build-args-env-variables": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-docker-containers-across-multiple-hosts": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-docker-copy-files-in-out-containers": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-docker-cron-jobs": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-docker-dev-containers-vscode": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-docker-disk-usage-cleanup": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Removed invalid JSON comments from daemon.json example",
+      "Replaced non-existent BUILDKIT_CACHE_SIZE_MB env var with valid docker builder prune --keep-storage command",
+      "Replaced non-existent docker container prune --dry-run and docker image prune -a --dry-run with valid preview commands"
+    ]
+  },
+  "2026-01-06-docker-dns-troubleshooting": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Removed invalid JSON comments from two daemon.json examples"
+    ]
+  },
+  "2026-01-06-docker-expose-containers-safely": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Replaced deprecated Traefik v3 ipwhitelist middleware with ipallowlist",
+      "Replaced deprecated nginx 'listen 443 ssl http2' with 'listen 443 ssl' plus 'http2 on' directive"
+    ]
+  },
+  "2026-01-06-docker-health-checks": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-docker-hot-reloading": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Removed invalid JSON comments from two nodemon.json examples",
+      "Replaced deprecated FLASK_ENV=development with FLASK_DEBUG=1 (FLASK_ENV deprecated since Flask 2.2)"
+    ]
+  },
+  "2026-01-06-docker-log-rotation": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Removed invalid JSON comments from daemon.json example"
+    ]
+  },
+  "2026-01-06-docker-multi-architecture-images": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-docker-rootless-mode": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-docker-update-without-downtime": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-docker-volume-backup-restore": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-backup-restore-velero": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Removed invalid JSON comments (# style) from IAM policy document"
+    ]
+  },
+  "2026-01-06-kubernetes-cluster-autoscaler": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Removed invalid JSON comments (// style) from IAM policy document"
+    ]
+  },
+  "2026-01-06-kubernetes-cost-monitoring-kubecost": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-custom-controllers-operators": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-debug-crashloopbackoff-oomkilled": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-diagnose-slow-deployments": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-etcd-backup-recovery": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-gitops-argocd": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-gitops-fluxcd": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z"
+  },
+  "2026-01-06-kubernetes-gpu-workloads-ml-ai": {
+    "status": "validated",
+    "validatedAt": "2026-03-05T00:00:00Z",
+    "fixes": [
+      "Replaced deprecated torch.distributed.launch with torchrun in distributed training examples (Master and Worker)"
+    ]
   }
 }

@@ -251,6 +251,7 @@ The push-based model is simpler to set up and works well for most use cases. The
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"

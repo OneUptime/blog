@@ -402,12 +402,13 @@ public class CorsConfig implements WebMvcConfigurer {
 
 ### Trailing Slash Handling
 
-```yaml
-# application.yml
-spring:
-  mvc:
-    pathmatch:
-      trailing-slash: true  # /api/users and /api/users/ both match
+In Spring Boot 3+ (Spring Framework 6+), trailing slash matching is no longer supported by default and the configuration option is deprecated. Instead, explicitly map both paths or use a filter:
+
+```java
+@GetMapping({"/api/users", "/api/users/"})
+public List<User> getUsers() {
+    return userService.findAll();
+}
 ```
 
 ---

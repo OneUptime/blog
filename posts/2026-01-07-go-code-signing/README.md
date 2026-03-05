@@ -1133,7 +1133,7 @@ jobs:
               --certificate myapp-linux-amd64.pem \
               --certificate-identity-regexp "https://github.com/${{ github.repository }}/.github/workflows/.*" \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com
-            ```bash
+            ```
 
             ## Checksums
 
@@ -1153,7 +1153,7 @@ jobs:
     with:
       base64-subjects: "${{ needs.build.outputs.hashes }}"
       upload-assets: true
-```text
+```
 
 ## Security Best Practices
 
@@ -1206,7 +1206,7 @@ Always provide clear documentation for users to verify your releases:
 Install cosign:
 ```bash
 go install github.com/sigstore/cosign/v2/cmd/cosign@latest
-```bash
+```
 
 ## Verification Steps
 
@@ -1219,13 +1219,13 @@ cosign verify-blob myapp-linux-amd64 \
     --certificate myapp-linux-amd64.pem \
     --certificate-identity-regexp "https://github.com/yourorg/yourrepo/.github/workflows/.*" \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
-```bash
+```
 
 3. Verify checksum:
 
 ```bash
 sha256sum -c checksums.sha256
-```bash
+```
 
 ## Transparency Log
 
@@ -1233,8 +1233,7 @@ All signing events are recorded in the Rekor transparency log. You can search fo
 
 ```bash
 rekor-cli search --artifact myapp-linux-amd64
-```bash
-```text
+```
 
 ## Conclusion
 

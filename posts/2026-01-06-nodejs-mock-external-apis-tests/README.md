@@ -160,7 +160,7 @@ nock('https://api.example.com')
 
 ## MSW (Mock Service Worker)
 
-MSW provides a more modern approach with better TypeScript support:
+MSW (v2+) provides a more modern approach with better TypeScript support:
 
 ```bash
 npm install msw --save-dev
@@ -173,39 +173,36 @@ MSW uses a centralized handler configuration. Define your default mocks in one p
 ```javascript
 // tests/mocks/server.js
 const { setupServer } = require('msw/node');
-const { rest } = require('msw');
+const { http, HttpResponse } = require('msw');
 
 // Define default handlers for all tests
 // These simulate "happy path" responses
 const handlers = [
   // Stripe customer creation
-  rest.post('https://api.stripe.com/v1/customers', (req, res, ctx) => {
-    return res(
-      ctx.json({
-        id: 'cus_test123',
-        email: req.body.email,
-        created: Date.now(),
-      })
-    );
+  http.post('https://api.stripe.com/v1/customers', async ({ request }) => {
+    const body = await request.json();
+    return HttpResponse.json({
+      id: 'cus_test123',
+      email: body.email,
+      created: Date.now(),
+    });
   }),
 
   // GitHub user lookup - :username is a URL parameter
-  rest.get('https://api.github.com/users/:username', (req, res, ctx) => {
-    const { username } = req.params;  // Extract from URL
-    return res(
-      ctx.json({
-        login: username,
-        id: 12345,
-        name: 'Test User',
-      })
-    );
+  http.get('https://api.github.com/users/:username', ({ params }) => {
+    const { username } = params;  // Extract from URL
+    return HttpResponse.json({
+      login: username,
+      id: 12345,
+      name: 'Test User',
+    });
   }),
 ];
 
 // Create server instance with default handlers
 const server = setupServer(...handlers);
 
-module.exports = { server, rest };
+module.exports = { server, http, HttpResponse };
 ```
 
 Configure Jest to start/stop the MSW server for all tests:
@@ -222,6 +219,8 @@ afterEach(() => server.resetHandlers());
 
 // Stop server after all tests complete
 afterAll(() => server.close());
+
+// Note: MSW v2+ uses `http` instead of `rest` and `HttpResponse` instead of `res(ctx.json())`
 ```
 
 ### Test-Specific Overrides
@@ -229,7 +228,7 @@ afterAll(() => server.close());
 Use `server.use()` to override default handlers for specific tests. This pattern lets you test error conditions and edge cases without modifying your default handlers. Overrides are automatically reset after each test.
 
 ```javascript
-const { server, rest } = require('./mocks/server');
+const { server, http, HttpResponse } = require('./mocks/server');
 
 describe('GitHub API', () => {
   // Uses default handler - returns successful response
@@ -242,8 +241,8 @@ describe('GitHub API', () => {
   it('should handle not found', async () => {
     // This handler takes precedence over the default
     server.use(
-      rest.get('https://api.github.com/users/:username', (req, res, ctx) => {
-        return res(ctx.status(404), ctx.json({ message: 'Not Found' }));
+      http.get('https://api.github.com/users/:username', () => {
+        return HttpResponse.json({ message: 'Not Found' }, { status: 404 });
       })
     );
 
@@ -255,11 +254,13 @@ describe('GitHub API', () => {
   // Override to test rate limiting behavior
   it('should handle rate limiting', async () => {
     server.use(
-      rest.get('https://api.github.com/users/:username', (req, res, ctx) => {
-        return res(
-          ctx.status(429),                        // 429 Too Many Requests
-          ctx.set('Retry-After', '60'),           // Header indicating retry time
-          ctx.json({ message: 'API rate limit exceeded' })
+      http.get('https://api.github.com/users/:username', () => {
+        return HttpResponse.json(
+          { message: 'API rate limit exceeded' },
+          {
+            status: 429,                                // 429 Too Many Requests
+            headers: { 'Retry-After': '60' },           // Header indicating retry time
+          }
         );
       })
     );

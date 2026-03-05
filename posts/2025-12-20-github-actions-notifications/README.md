@@ -127,7 +127,7 @@ For richer formatting, use the official action:
 
 ```yaml
       - name: Slack notification
-        uses: slackapi/slack-github-action@v1.25.0
+        uses: slackapi/slack-github-action@v2
         with:
           channel-id: 'C0123456789'
           payload: |

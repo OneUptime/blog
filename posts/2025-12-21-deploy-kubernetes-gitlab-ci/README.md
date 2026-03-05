@@ -173,7 +173,7 @@ resources:
 # k8s/overlays/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
+resources:
   - ../../base
 namespace: production
 images:

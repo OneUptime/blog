@@ -192,11 +192,18 @@ kubectl debug -it myapp-pod --image=busybox --target=myapp
 
 # Memory
 cat /proc/meminfo
-cat /sys/fs/cgroup/memory/memory.usage_in_bytes
-cat /sys/fs/cgroup/memory/memory.limit_in_bytes
 
 # CPU
 cat /proc/cpuinfo
+
+# cgroup v2 (default on modern distributions and Kubernetes 1.25+)
+cat /sys/fs/cgroup/memory.current
+cat /sys/fs/cgroup/memory.max
+cat /sys/fs/cgroup/cpu.max
+
+# cgroup v1 (legacy)
+cat /sys/fs/cgroup/memory/memory.usage_in_bytes
+cat /sys/fs/cgroup/memory/memory.limit_in_bytes
 cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us
 cat /sys/fs/cgroup/cpu/cpu.cfs_period_us
 ```
@@ -292,7 +299,10 @@ apk add --no-cache procps
 # Find memory hogs
 ps aux --sort=-%mem | head -20
 
-# Check cgroup limits
+# Check cgroup limits (cgroup v2)
+cat /sys/fs/cgroup/memory.max
+cat /sys/fs/cgroup/memory.current
+# Or cgroup v1 (legacy)
 cat /sys/fs/cgroup/memory/memory.limit_in_bytes
 cat /sys/fs/cgroup/memory/memory.usage_in_bytes
 

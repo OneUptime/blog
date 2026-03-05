@@ -161,14 +161,14 @@ spec:
         capabilities:
           drop: []                    # Must drop ALL capabilities
       ports:
-        - containerPort: 80           # Must be > 1024 (non-privileged port)
+        - containerPort: 80           # Not restricted by PSS, but non-root users cannot bind to ports < 1024 at the OS level
 ```
 
 ## Writing Compliant Pod Specs
 
 ### Restricted-Compliant Pod
 
-This pod specification is fully compliant with the restricted profile. It includes all required security settings: non-root user, seccomp profile, dropped capabilities, read-only filesystem, and non-privileged ports. Use this as a template for secure workloads.
+This pod specification is fully compliant with the restricted profile. It includes all required security settings: non-root user, seccomp profile, dropped capabilities, and read-only filesystem. Non-privileged ports (> 1024) are recommended since non-root users cannot bind to privileged ports at the OS level. Use this as a template for secure workloads.
 
 ```yaml
 apiVersion: v1

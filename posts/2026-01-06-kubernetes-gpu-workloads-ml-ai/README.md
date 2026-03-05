@@ -353,9 +353,7 @@ spec:
             - name: pytorch
               image: myregistry/pytorch-training:latest
               command:
-                - python
-                - -m
-                - torch.distributed.launch
+                - torchrun
                 - --nproc_per_node=2      # 2 GPUs per node
                 - --nnodes=3              # Total 3 nodes
                 - --node_rank=0           # Master is rank 0
@@ -380,9 +378,7 @@ spec:
             - name: pytorch
               image: myregistry/pytorch-training:latest
               command:
-                - python
-                - -m
-                - torch.distributed.launch
+                - torchrun
                 - --nproc_per_node=2      # 2 GPUs per worker
                 - --nnodes=3              # Same total nodes
                 - /scripts/train.py

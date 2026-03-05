@@ -318,7 +318,7 @@ jobs:
         run: npx wait-on http://localhost:4173
 
       - name: Run Lighthouse
-        uses: treosh/lighthouse-ci-action@v11
+        uses: treosh/lighthouse-ci-action@v12
         with:
           urls: |
             http://localhost:4173/

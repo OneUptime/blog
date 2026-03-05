@@ -218,7 +218,7 @@ spec:
     spec:
       containers:
         - name: cluster-autoscaler
-          image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.28.0
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.28.0
           command:
             - ./cluster-autoscaler
             - --cloud-provider=aws
@@ -284,7 +284,7 @@ Descheduler configuration:
 This policy configures the descheduler to move pods from underutilized nodes (below 20% CPU/memory) to better-utilized nodes (targeting 50% utilization), improving overall cluster efficiency.
 
 ```yaml
-apiVersion: descheduler/v1alpha1
+apiVersion: descheduler/v1alpha2
 kind: DeschedulerPolicy
 strategies:
   # Fix pods violating spread constraints

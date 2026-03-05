@@ -54,7 +54,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -84,7 +84,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -100,7 +100,7 @@ Use registry-based caching for shared cache across runners:
 
 ```yaml
 - name: Build and push
-  uses: docker/build-push-action@v5
+  uses: docker/build-push-action@v6
   with:
     context: .
     platforms: linux/amd64,linux/arm64
@@ -127,7 +127,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
@@ -148,7 +148,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/arm64
@@ -187,7 +187,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           platforms: linux/amd64
           push: true
@@ -198,7 +198,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           platforms: linux/arm64
           push: true
@@ -267,7 +267,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -281,7 +281,7 @@ jobs:
 Pass different build arguments per platform:
 
 ```yaml
-- uses: docker/build-push-action@v5
+- uses: docker/build-push-action@v6
   with:
     context: .
     platforms: linux/amd64,linux/arm64
@@ -312,7 +312,7 @@ LABEL version=$VERSION
 Add supply chain security:
 
 ```yaml
-- uses: docker/build-push-action@v5
+- uses: docker/build-push-action@v6
   with:
     context: .
     platforms: linux/amd64,linux/arm64
@@ -378,7 +378,7 @@ jobs:
 
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64

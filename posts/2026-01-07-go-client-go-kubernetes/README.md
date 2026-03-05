@@ -162,6 +162,7 @@ package config
 import (
     "os"
     "path/filepath"
+    "time"
 
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
@@ -193,7 +194,7 @@ func GetClientset() (*kubernetes.Clientset, error) {
     // Configure connection settings for better reliability
     config.QPS = 50           // Queries per second
     config.Burst = 100        // Burst capacity
-    config.Timeout = 30       // Request timeout in seconds
+    config.Timeout = 30 * time.Second // Request timeout
 
     return kubernetes.NewForConfig(config)
 }
@@ -214,6 +215,7 @@ import (
 
     appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
+    "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
 )

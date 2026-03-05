@@ -196,7 +196,7 @@ jobs:
 
       - name: Create Pull Request
         if: steps.updates.outputs.has_updates == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'chore: update dependencies'

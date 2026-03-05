@@ -1206,7 +1206,7 @@ data:
 
     # Check Ceph health
     kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph health detail
-    ```bash
+    ```
 
     ## Issue: Pod can't mount CephFS volume
 
@@ -1225,7 +1225,7 @@ data:
 
     # Verify secrets exist
     kubectl -n rook-ceph get secret rook-csi-cephfs-node
-    ```bash
+    ```
 
     ## Issue: Slow filesystem performance
 
@@ -1244,7 +1244,7 @@ data:
 
     # Monitor OSD utilization
     kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- ceph osd df
-    ```bash
+    ```
 
     ## Issue: File locking conflicts with multiple pods
 
@@ -1256,7 +1256,7 @@ data:
     - Use POSIX file locking (flock, fcntl)
     - Implement application-level locking
     - Consider using leader election for write coordination
-```text
+```
 
 ## Best Practices for Shared CephFS Access
 

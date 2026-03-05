@@ -109,8 +109,6 @@ For complex multi-service setups, use Docker Compose:
 
 ```yaml
 # docker-compose.test.yml
-version: '3.8'
-
 services:
   app:
     build:
