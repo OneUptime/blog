@@ -173,7 +173,7 @@ If you pushed the chart using `flux push artifact` (Step 3), you can use an OCIR
 
 ```yaml
 # ocirepository-helm.yaml -- OCIRepository for a Helm chart artifact
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: myapp-chart

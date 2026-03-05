@@ -78,7 +78,7 @@ Extract the timestamp portion for numerical sorting.
 ```yaml
 # image-policy-timestamp-sha.yaml
 # Extracts the timestamp prefix from timestamp-sha tags for sorting
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -121,7 +121,7 @@ Filter by branch and extract the timestamp.
 ```yaml
 # image-policy-branch-sha-ts.yaml
 # Only considers tags from the main branch, sorts by timestamp
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -159,7 +159,7 @@ docker push ghcr.io/my-org/my-app:${TAG}
 ```yaml
 # image-policy-build-sha.yaml
 # Extracts the build number for numerical sorting
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -182,7 +182,7 @@ The ImageRepository configuration is the same regardless of which tag format you
 ```yaml
 # image-repository.yaml
 # Scans the registry for all available tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

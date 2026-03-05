@@ -89,7 +89,7 @@ Configure the OCIRepository to pull artifacts from Docker Hub using the secret.
 ```yaml
 # ocirepository-dockerhub.yaml
 # OCIRepository configured to pull from Docker Hub with authentication
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -122,7 +122,7 @@ For public Docker Hub repositories, you do not need authentication. However, Doc
 ```yaml
 # ocirepository-dockerhub-public.yaml
 # OCIRepository for a public Docker Hub repository (no auth required)
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: public-manifests
@@ -141,7 +141,7 @@ To avoid rate limits even on public repos, add authentication.
 ```yaml
 # ocirepository-dockerhub-public-auth.yaml
 # Public repository with authentication to avoid rate limits
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: public-manifests
@@ -163,7 +163,7 @@ Configure the OCIRepository to automatically track semantic versions.
 ```yaml
 # ocirepository-dockerhub-semver.yaml
 # OCIRepository tracking semver releases from Docker Hub
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-semver
@@ -203,7 +203,7 @@ Configure separate OCIRepository resources for each environment.
 ```yaml
 # ocirepository-dockerhub-staging.yaml
 # Staging OCIRepository tracking the "staging" tag
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

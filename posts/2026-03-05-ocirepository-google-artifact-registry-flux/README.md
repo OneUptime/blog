@@ -123,7 +123,7 @@ kubectl rollout status deployment/source-controller -n flux-system
 ```yaml
 # ocirepository-gar-workload-identity.yaml
 # OCIRepository configured to pull from Google Artifact Registry using Workload Identity
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -179,7 +179,7 @@ rm key.json
 ```yaml
 # ocirepository-gar-secret.yaml
 # OCIRepository using a service account key for Artifact Registry authentication
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -221,7 +221,7 @@ Configure the OCIRepository to track semantic versions for automatic updates.
 ```yaml
 # ocirepository-gar-semver.yaml
 # OCIRepository tracking a semver range from Artifact Registry
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-semver
@@ -242,7 +242,7 @@ Google Artifact Registry supports multiple locations. If you use artifacts acros
 ```yaml
 # ocirepository-gar-us.yaml
 # OCIRepository pulling from the US-Central1 region
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-us
@@ -258,7 +258,7 @@ spec:
 ```yaml
 # ocirepository-gar-eu.yaml
 # OCIRepository pulling from the Europe-West1 region
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-eu

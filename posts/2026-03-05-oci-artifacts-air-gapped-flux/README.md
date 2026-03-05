@@ -103,7 +103,7 @@ On the air-gapped cluster, create an OCIRepository resource pointing to the inte
 
 ```yaml
 # flux-system/my-app-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -135,7 +135,7 @@ Then reference it in the OCIRepository.
 
 ```yaml
 # flux-system/my-app-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

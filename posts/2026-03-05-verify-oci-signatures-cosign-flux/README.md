@@ -86,7 +86,7 @@ Create the OCIRepository resource with the `spec.verify` section configured to u
 
 ```yaml
 # ocirepository-verified.yaml -- OCIRepository with Cosign verification
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -143,7 +143,7 @@ For keyless verification, configure the OCIRepository to use the Cosign provider
 
 ```yaml
 # ocirepository-keyless.yaml -- OCIRepository with keyless Cosign verification
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests

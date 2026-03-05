@@ -142,7 +142,7 @@ Create OCIRepository resources for each component.
 
 ```yaml
 # oci-sources.yaml -- OCIRepository resources for all components
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: apps
@@ -156,7 +156,7 @@ spec:
   secretRef:
     name: oci-auth
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: infrastructure
@@ -247,7 +247,7 @@ Here is an example of the self-managing approach.
 
 ```yaml
 # flux-config OCIRepository -- Flux manages its own configuration via OCI
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: flux-config

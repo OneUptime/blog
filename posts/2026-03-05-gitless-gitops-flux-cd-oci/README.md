@@ -71,7 +71,7 @@ On the cluster side, you configure an `OCIRepository` source instead of a `GitRe
 
 ```yaml
 # OCIRepository source that pulls manifests from a container registry
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -141,7 +141,7 @@ Reference the secret in the OCIRepository.
 
 ```yaml
 # OCIRepository with authentication
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -159,7 +159,7 @@ For cloud-hosted registries like AWS ECR, GCP Artifact Registry, or Azure Contai
 
 ```yaml
 # Using AWS ECR with native provider authentication
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests

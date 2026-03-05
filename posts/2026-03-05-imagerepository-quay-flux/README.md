@@ -30,7 +30,7 @@ Many images on quay.io are public and do not require authentication.
 ```yaml
 # imagerepository-quay-public.yaml
 # Scan a public image on quay.io
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: prometheus
@@ -79,7 +79,7 @@ Reference the credentials Secret in the ImageRepository.
 ```yaml
 # imagerepository-quay-private.yaml
 # Scan a private Quay image with robot account authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-private-app
@@ -127,7 +127,7 @@ kubectl create secret docker-registry quay-self-hosted-credentials \
 ```yaml
 # imagerepository-quay-selfhosted.yaml
 # Scan a self-hosted Quay image
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -144,7 +144,7 @@ If the self-hosted instance uses a custom CA certificate, provide it via `certSe
 ```yaml
 # imagerepository-quay-selfhosted-tls.yaml
 # Scan self-hosted Quay with custom CA certificate
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -163,7 +163,7 @@ spec:
 ```yaml
 # imagerepository-quay-filtered.yaml
 # Scan Quay with tag exclusions
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

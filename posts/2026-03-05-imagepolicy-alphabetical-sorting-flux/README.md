@@ -33,7 +33,7 @@ The `order: asc` setting selects the tag that comes last alphabetically, which i
 ```yaml
 # imagepolicy-alphabetical.yaml
 # Select the alphabetically last (latest) tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -61,7 +61,7 @@ Use `order: desc` to select the tag that comes first alphabetically (the "earlie
 ```yaml
 # imagepolicy-alphabetical-desc.yaml
 # Select the alphabetically first (earliest) tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-earliest
@@ -82,7 +82,7 @@ Use `filterTags` to only consider tags that match a specific date format.
 ```yaml
 # imagepolicy-date-tags.yaml
 # Select the latest date-based tag (YYYY-MM-DD format)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-daily
@@ -106,7 +106,7 @@ If your date-based tags include a prefix, use `filterTags` to extract the sortab
 ```yaml
 # imagepolicy-prefixed-date.yaml
 # Select the latest tag with a 'release-' prefix followed by a date
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-release
@@ -130,7 +130,7 @@ Tags with full timestamps sort correctly alphabetically when they use a consiste
 ```yaml
 # imagepolicy-timestamp.yaml
 # Select the latest timestamp tag (YYYYMMDDHHMMSS format)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-timestamp
@@ -154,7 +154,7 @@ Some teams tag images with an environment prefix and date suffix.
 ```yaml
 # imagepolicy-env-date.yaml
 # Select the latest staging build by date
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-staging

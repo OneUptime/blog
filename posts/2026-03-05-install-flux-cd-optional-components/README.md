@@ -64,7 +64,7 @@ After installing the controller, create an ImageRepository resource to tell Flux
 
 ```yaml
 # image-repo.yaml - Tells Flux to scan a container registry for new image tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -81,7 +81,7 @@ Next, create an ImagePolicy to define which tags should be considered for update
 
 ```yaml
 # image-policy.yaml - Defines the policy for selecting the latest image tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -117,7 +117,7 @@ Create an ImageUpdateAutomation resource to configure how Git should be updated.
 
 ```yaml
 # image-update-automation.yaml - Configures automatic Git commits when new images are found
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

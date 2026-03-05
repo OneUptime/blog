@@ -32,7 +32,7 @@ Create a Bucket source that points to your S3-compatible storage:
 
 ```yaml
 # Bucket source pointing to an S3 bucket with Helm charts
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: helm-charts-bucket
@@ -119,7 +119,7 @@ MinIO is a popular self-hosted S3-compatible storage solution. Here is how to co
 
 ```yaml
 # Bucket source for MinIO
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: minio-charts
@@ -153,7 +153,7 @@ For GCS buckets, use the `gcp` provider:
 
 ```yaml
 # Bucket source for Google Cloud Storage
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: gcs-charts
@@ -188,7 +188,7 @@ For Azure Blob Storage:
 
 ```yaml
 # Bucket source for Azure Blob Storage
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: azure-charts
@@ -208,7 +208,7 @@ Here is a full working example with a Bucket source and HelmRelease:
 
 ```yaml
 # Bucket source
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: charts-bucket

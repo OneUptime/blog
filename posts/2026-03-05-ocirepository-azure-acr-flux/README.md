@@ -146,7 +146,7 @@ kubectl rollout status deployment/source-controller -n flux-system
 ```yaml
 # ocirepository-acr-workload-identity.yaml
 # OCIRepository configured to pull from ACR using Azure Workload Identity
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -206,7 +206,7 @@ kubectl create secret docker-registry acr-credentials \
 ```yaml
 # ocirepository-acr-secret.yaml
 # OCIRepository using a service principal secret for ACR authentication
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

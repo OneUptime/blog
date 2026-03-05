@@ -78,7 +78,7 @@ Create a Bucket source using the `generic` provider with the DigitalOcean Spaces
 
 ```yaml
 # flux-system/spaces-bucket-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -111,7 +111,7 @@ If you store manifests for multiple applications or environments in the same Spa
 
 ```yaml
 # flux-system/spaces-bucket-staging.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app-staging
@@ -145,7 +145,7 @@ Create separate Bucket sources for each environment.
 
 ```yaml
 # flux-system/spaces-production.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app-production
@@ -222,7 +222,7 @@ When running Flux on DigitalOcean Kubernetes, the Spaces endpoint is accessible 
 
 ```yaml
 # flux-system/spaces-internal.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app

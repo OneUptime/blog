@@ -34,7 +34,7 @@ Here is an ImageRepository with a 10-minute scan interval.
 ```yaml
 # imagerepository-interval.yaml
 # Scan the image every 10 minutes
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -59,7 +59,7 @@ Different environments and images warrant different intervals.
 
 ```yaml
 # Fast scan for production images with frequent releases
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app-prod
@@ -73,7 +73,7 @@ spec:
 
 ```yaml
 # Slow scan for stable third-party images
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx
@@ -87,7 +87,7 @@ spec:
 
 ```yaml
 # Moderate scan for development images
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app-dev
@@ -124,7 +124,7 @@ Combine longer intervals with exclusion lists to reduce the processing time for 
 ```yaml
 # imagerepository-optimized.yaml
 # Optimized scan with exclusion list and moderate interval
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -147,7 +147,7 @@ If you need to temporarily stop scanning an image, use the `suspend` field inste
 ```yaml
 # imagerepository-suspended.yaml
 # Temporarily suspend scanning
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

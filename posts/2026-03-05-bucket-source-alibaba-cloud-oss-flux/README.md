@@ -117,7 +117,7 @@ Create a Bucket source using the `generic` provider with the Alibaba Cloud OSS e
 
 ```yaml
 # flux-system/oss-bucket-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -150,7 +150,7 @@ If your Kubernetes cluster runs on Alibaba Cloud (ACK), use the internal endpoin
 
 ```yaml
 # flux-system/oss-bucket-internal.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -172,7 +172,7 @@ Scope the download to specific paths within the bucket.
 
 ```yaml
 # flux-system/oss-bucket-prefix.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app-production

@@ -63,7 +63,7 @@ Then create the Bucket resource.
 
 ```yaml
 # flux-system/bucket-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -99,7 +99,7 @@ By default, Flux downloads all files from the bucket root. You can use the `pref
 
 ```yaml
 # flux-system/bucket-source-prefix.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app-staging
@@ -122,7 +122,7 @@ You can exclude files from the bucket download using the `.sourceignore` file or
 
 ```yaml
 # flux-system/bucket-source-ignore.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -181,7 +181,7 @@ kubectl create secret generic bucket-tls \
 
 ```yaml
 # flux-system/bucket-source-tls.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -205,7 +205,7 @@ For development environments where the object storage runs over HTTP, set `insec
 
 ```yaml
 # flux-system/bucket-source-insecure.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app-dev

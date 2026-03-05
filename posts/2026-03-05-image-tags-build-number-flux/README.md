@@ -45,7 +45,7 @@ The ImageRepository tells Flux which container registry to scan for new tags.
 
 ```yaml
 # image-automation/image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -67,7 +67,7 @@ The ImagePolicy defines how Flux selects the latest image from the scanned tags.
 
 ```yaml
 # image-automation/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -136,7 +136,7 @@ Create an ImageUpdateAutomation resource to commit tag updates back to your Git 
 
 ```yaml
 # image-automation/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app

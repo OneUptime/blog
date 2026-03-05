@@ -27,7 +27,7 @@ The broadest range selects the latest available version.
 ```yaml
 # imagepolicy-semver-any.yaml
 # Select the latest semver tag regardless of major version
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -48,7 +48,7 @@ Lock to a specific major version to avoid breaking changes.
 ```yaml
 # imagepolicy-semver-major.yaml
 # Select the latest 1.x.x version
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -69,7 +69,7 @@ Lock to a specific minor version for maximum stability.
 ```yaml
 # imagepolicy-semver-minor.yaml
 # Select the latest 1.2.x version (patch updates only)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -92,7 +92,7 @@ The caret (`^`) operator allows minor and patch updates.
 ```yaml
 # imagepolicy-semver-caret.yaml
 # Allow minor and patch updates within major version 1
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -113,7 +113,7 @@ Combine comparison operators for precise control.
 ```yaml
 # imagepolicy-semver-range.yaml
 # Select versions between 1.5.0 (inclusive) and 2.0.0 (exclusive)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -134,7 +134,7 @@ Many projects use tags like `v1.2.3`. Use `filterTags` to strip the prefix befor
 ```yaml
 # imagepolicy-semver-vprefix.yaml
 # Handle 'v' prefixed semver tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -160,7 +160,7 @@ To include pre-release versions, use a range that explicitly matches them.
 ```yaml
 # imagepolicy-semver-prerelease.yaml
 # Include pre-release versions in the range
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -183,7 +183,7 @@ You can combine multiple ranges using the double-pipe (`||`) operator.
 ```yaml
 # imagepolicy-semver-or.yaml
 # Match either 1.x or 2.x versions
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

@@ -70,7 +70,7 @@ Create an OCIRepository that references the artifact by digest.
 
 ```yaml
 # ocirepository-digest.yaml -- OCIRepository pinned to a specific digest
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -205,7 +205,7 @@ For maximum security, combine digest pinning with Cosign signature verification.
 
 ```yaml
 # ocirepository-digest-verified.yaml -- Digest pinning + Cosign verification
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests-secure

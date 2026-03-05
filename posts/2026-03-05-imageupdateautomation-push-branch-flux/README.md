@@ -15,7 +15,7 @@ Flux CD's ImageUpdateAutomation controller can push automated image tag updates 
 The simplest configuration pushes image updates directly to the same branch that was checked out:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater
@@ -48,7 +48,7 @@ This is the fastest path to production. When Flux detects a new image tag, it up
 For teams that require code review or CI checks before merging, configure the push branch to differ from the checkout branch:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater
@@ -122,7 +122,7 @@ In multi-environment setups, you can use different push branches for each enviro
 
 ```yaml
 # Production - requires PR review
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater-prod
@@ -148,7 +148,7 @@ spec:
     strategy: Setters
 ---
 # Staging - direct push
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater-staging

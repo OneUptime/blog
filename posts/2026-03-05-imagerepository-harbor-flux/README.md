@@ -54,7 +54,7 @@ Reference the credentials Secret in the ImageRepository.
 ```yaml
 # imagerepository-harbor.yaml
 # Scan a Harbor image with authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -91,7 +91,7 @@ Then reference the certificate in the ImageRepository.
 ```yaml
 # imagerepository-harbor-tls.yaml
 # Scan Harbor with a custom CA certificate
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -114,7 +114,7 @@ If you have images across multiple Harbor projects, create separate ImageReposit
 ```yaml
 # imagerepository-harbor-multi.yaml
 # ImageRepository resources for different Harbor projects
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: frontend
@@ -125,7 +125,7 @@ spec:
   secretRef:
     name: harbor-web-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: backend-api
@@ -144,7 +144,7 @@ Harbor repositories often contain many tags. Use the exclusion list to filter ou
 ```yaml
 # imagerepository-harbor-filtered.yaml
 # Scan Harbor with tag exclusions
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

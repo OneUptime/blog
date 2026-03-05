@@ -68,7 +68,7 @@ Reference the secret in your OCIRepository resource.
 ```yaml
 # ocirepository-with-secret.yaml
 # OCIRepository that authenticates using a Docker config secret
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -126,7 +126,7 @@ imagePullSecrets:
 ```yaml
 # ocirepository-with-sa.yaml
 # OCIRepository using a service account for authentication
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -146,7 +146,7 @@ For cloud-hosted registries, Flux can use the provider's native authentication m
 ```yaml
 # ocirepository-provider-auth.yaml
 # OCIRepository using cloud provider authentication
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

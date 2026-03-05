@@ -261,7 +261,7 @@ These are two controllers that automate image updates:
 
 ```yaml
 # Scan a container registry for new tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -271,7 +271,7 @@ spec:
   image: ghcr.io/my-org/my-app
 ---
 # Define a policy for which tags to track
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -284,7 +284,7 @@ spec:
       range: ">=1.0.0"       # Track semver tags >= 1.0.0
 ---
 # Automatically update the Git repo when a new image is found
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app

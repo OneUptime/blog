@@ -84,7 +84,7 @@ Create the Bucket source with the `aws` provider.
 
 ```yaml
 # flux-system/s3-bucket-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -163,7 +163,7 @@ With IRSA configured, the Bucket source does not need a `secretRef`.
 
 ```yaml
 # flux-system/s3-bucket-source-irsa.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -184,7 +184,7 @@ If your bucket contains manifests for multiple applications or environments, use
 
 ```yaml
 # flux-system/s3-bucket-prefix.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app-production

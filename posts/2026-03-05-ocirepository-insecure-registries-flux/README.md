@@ -47,7 +47,7 @@ Then reference it in the OCIRepository.
 
 ```yaml
 # flux-system/oci-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -75,7 +75,7 @@ kubectl create secret generic registry-mtls \
 
 ```yaml
 # flux-system/oci-source-mtls.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-mtls
@@ -95,7 +95,7 @@ For registries running over plain HTTP (no TLS at all), set the `insecure` field
 
 ```yaml
 # flux-system/oci-source-insecure.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-dev
@@ -145,7 +145,7 @@ Configure Flux to pull from it.
 
 ```yaml
 # flux-system/local-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-local
@@ -164,7 +164,7 @@ Even insecure registries may require authentication. You can combine insecure ac
 
 ```yaml
 # flux-system/oci-source-insecure-auth.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-staging

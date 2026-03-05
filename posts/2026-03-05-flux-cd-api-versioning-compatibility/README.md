@@ -55,8 +55,8 @@ kind: HelmRelease
 apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 
-# Image Automation API - v1beta2 is the latest
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+# Image Automation API - v1 is stable
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 ```
 

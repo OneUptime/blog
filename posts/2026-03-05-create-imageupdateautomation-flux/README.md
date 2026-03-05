@@ -8,7 +8,7 @@ Description: Learn how to create an ImageUpdateAutomation resource in Flux to au
 
 ---
 
-Flux CD can automatically detect new container images and update your Git repository with the latest image tags. This is done through the image automation controllers, which scan container registries, evaluate policies, and commit changes back to Git. The ImageUpdateAutomation resource (from `image.toolkit.fluxcd.io/v1beta2`) is the key component that ties everything together by defining how and where Flux writes image tag updates.
+Flux CD can automatically detect new container images and update your Git repository with the latest image tags. This is done through the image automation controllers, which scan container registries, evaluate policies, and commit changes back to Git. The ImageUpdateAutomation resource (from `image.toolkit.fluxcd.io/v1`) is the key component that ties everything together by defining how and where Flux writes image tag updates.
 
 ## How Image Automation Works
 
@@ -37,7 +37,7 @@ flux install --components-extra=image-reflector-controller,image-automation-cont
 The ImageRepository tells Flux which container registry and image to scan:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -70,7 +70,7 @@ flux get image repository my-app
 The ImagePolicy defines how Flux selects the "latest" tag. For semantic versioning:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -86,7 +86,7 @@ spec:
 For numerical timestamps (common in CI/CD pipelines that tag images with build numbers):
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -139,7 +139,7 @@ image: ghcr.io/my-org/my-app:1.0.0 # {"$imagepolicy": "flux-system:my-app:tag"}
 Now create the ImageUpdateAutomation resource that commits changes to Git:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app-automation
@@ -247,4 +247,4 @@ flux get image update my-app-automation
 
 ## Summary
 
-The ImageUpdateAutomation resource in Flux (`image.toolkit.fluxcd.io/v1beta2`) automates the process of updating container image tags in your Git repository. By combining ImageRepository scanning, ImagePolicy selection, and ImageUpdateAutomation commits, you create a fully automated pipeline where pushing a new container image triggers an automatic update to your Kubernetes manifests. Use PR-based workflows for production environments to maintain human oversight over automated changes.
+The ImageUpdateAutomation resource in Flux (`image.toolkit.fluxcd.io/v1`) automates the process of updating container image tags in your Git repository. By combining ImageRepository scanning, ImagePolicy selection, and ImageUpdateAutomation commits, you create a fully automated pipeline where pushing a new container image triggers an automatic update to your Kubernetes manifests. Use PR-based workflows for production environments to maintain human oversight over automated changes.

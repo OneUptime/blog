@@ -15,7 +15,7 @@ The update strategy in Flux CD's ImageUpdateAutomation determines how the contro
 The Setters strategy uses marker comments in your YAML manifests to identify which image references should be updated. When the controller runs, it scans files in the specified path for these markers and replaces the associated values with the latest image selected by the corresponding ImagePolicy.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater
@@ -222,7 +222,7 @@ spec:
 You can create multiple ImageUpdateAutomation resources to manage different paths or different Git repositories independently:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: apps-updater
@@ -247,7 +247,7 @@ spec:
     path: ./apps
     strategy: Setters
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: infra-updater

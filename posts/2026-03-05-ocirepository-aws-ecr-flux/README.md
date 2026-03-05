@@ -110,7 +110,7 @@ Configure the OCIRepository to use the `aws` provider for automatic ECR authenti
 ```yaml
 # ocirepository-ecr-irsa.yaml
 # OCIRepository configured to pull from ECR using IRSA
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -197,7 +197,7 @@ spec:
 ```yaml
 # ocirepository-ecr-secret.yaml
 # OCIRepository using a refreshable secret for ECR authentication
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

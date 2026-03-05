@@ -157,7 +157,7 @@ Create the OCIRepository resource for your chosen approach.
 
 ```yaml
 # ocirepository-kustomize.yaml -- OCIRepository for Kustomize overlay artifacts
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -221,7 +221,7 @@ For deploying different overlays to different clusters, create an OCIRepository 
 
 ```yaml
 # Per-environment OCIRepository and Kustomization for staging
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-staging

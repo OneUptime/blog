@@ -121,7 +121,7 @@ patches:
 
 ```yaml
 # Use the AWS provider for ECR authentication via IRSA
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -198,7 +198,7 @@ patches:
 
 ```yaml
 # Source from Google Artifact Registry using Workload Identity
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -288,7 +288,7 @@ patches:
 
 ```yaml
 # Source from Azure Container Registry using Workload Identity
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

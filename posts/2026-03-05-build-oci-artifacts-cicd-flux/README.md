@@ -192,7 +192,7 @@ On the cluster side, configure an OCIRepository to pull from your registry.
 
 ```yaml
 # flux-system/oci-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

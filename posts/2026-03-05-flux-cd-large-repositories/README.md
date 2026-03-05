@@ -224,7 +224,7 @@ flux push artifact oci://ghcr.io/myorg/production-manifests:$(git rev-parse --sh
 
 ```yaml
 # On the cluster: pull the pre-built artifact instead of cloning the full repo
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: production-manifests

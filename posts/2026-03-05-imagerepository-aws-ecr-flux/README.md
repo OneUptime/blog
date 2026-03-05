@@ -28,7 +28,7 @@ Flux supports native ECR authentication using the `provider` field. This is the 
 ```yaml
 # imagerepository-ecr.yaml
 # Scan an AWS ECR image using native provider authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -131,7 +131,7 @@ Reference the Secret in the ImageRepository.
 ```yaml
 # imagerepository-ecr-static.yaml
 # Scan an ECR image using a static credentials secret (token expires in 12h)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -187,7 +187,7 @@ For images in the ECR Public Gallery, use the public endpoint.
 ```yaml
 # imagerepository-ecr-public.yaml
 # Scan a public ECR image
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: public-image

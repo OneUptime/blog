@@ -32,7 +32,7 @@ For public images, no authentication is required. However, Docker Hub enforces r
 ```yaml
 # imagerepository-nginx.yaml
 # Scan the official nginx image on Docker Hub
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx
@@ -71,7 +71,7 @@ Reference the credentials Secret in the ImageRepository.
 ```yaml
 # imagerepository-private-dockerhub.yaml
 # Scan a private Docker Hub image with authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-private-app
@@ -97,7 +97,7 @@ For images published under a Docker Hub user or organization namespace, use the 
 ```yaml
 # imagerepository-org.yaml
 # Scan an organization image on Docker Hub
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myorg-webapp
@@ -125,7 +125,7 @@ Docker Hub enforces pull rate limits. For unauthenticated users the limit is 100
 ```yaml
 # imagerepository-rate-limited.yaml
 # Scan Docker Hub with a longer interval to respect rate limits
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx

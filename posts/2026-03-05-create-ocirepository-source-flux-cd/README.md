@@ -32,7 +32,7 @@ flux check
 
 ## Understanding the OCIRepository Resource
 
-The `OCIRepository` resource belongs to the `source.toolkit.fluxcd.io/v1beta2` API group. It tells the Flux source-controller where to find OCI artifacts, how to authenticate, and how often to check for updates.
+The `OCIRepository` resource belongs to the `source.toolkit.fluxcd.io/v1` API group. It tells the Flux source-controller where to find OCI artifacts, how to authenticate, and how often to check for updates.
 
 Here is a diagram showing how OCIRepository fits into the Flux reconciliation pipeline.
 
@@ -52,7 +52,7 @@ The simplest OCIRepository definition requires a URL pointing to your OCI artifa
 ```yaml
 # ocirepository-basic.yaml
 # A minimal OCIRepository that pulls an artifact every 5 minutes
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -90,7 +90,7 @@ The `spec.ref` field controls which version of the artifact Flux pulls. You can 
 ```yaml
 # ocirepository-semver.yaml
 # OCIRepository that tracks a semantic version range
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-semver
@@ -106,7 +106,7 @@ spec:
 ```yaml
 # ocirepository-digest.yaml
 # OCIRepository pinned to an exact digest for reproducibility
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-pinned
@@ -173,7 +173,7 @@ You can configure the OCIRepository to ignore certain files within the artifact 
 ```yaml
 # ocirepository-ignore.yaml
 # OCIRepository with ignore rules to skip test files
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-filtered

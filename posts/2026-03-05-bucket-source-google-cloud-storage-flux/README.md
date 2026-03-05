@@ -65,7 +65,7 @@ Create the Bucket source with the `gcp` provider.
 
 ```yaml
 # flux-system/gcs-bucket-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -134,7 +134,7 @@ With Workload Identity configured, the Bucket source does not need a `secretRef`
 
 ```yaml
 # flux-system/gcs-bucket-workload-identity.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -154,7 +154,7 @@ Organize manifests by environment using bucket prefixes.
 
 ```yaml
 # flux-system/gcs-staging.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app-staging

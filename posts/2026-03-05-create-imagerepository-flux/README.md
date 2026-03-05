@@ -29,7 +29,7 @@ Here is a minimal ImageRepository manifest that scans a public Docker Hub image.
 ```yaml
 # imagerepository.yaml
 # Scan the nginx image on Docker Hub for available tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx
@@ -75,7 +75,7 @@ Then reference it in the ImageRepository.
 ```yaml
 # imagerepository-private.yaml
 # Scan a private image with registry credentials
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -126,7 +126,7 @@ You may want to exclude certain tags from being scanned. Use the `exclusionList`
 ```yaml
 # imagerepository-exclusions.yaml
 # Scan the nginx image but exclude tags matching specific patterns
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx
@@ -163,7 +163,7 @@ For a proper GitOps workflow, store the ImageRepository manifest in your cluster
 ```yaml
 # clusters/my-cluster/image-automation/imagerepository.yaml
 # ImageRepository for the application image
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

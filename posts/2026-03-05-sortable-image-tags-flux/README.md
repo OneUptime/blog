@@ -46,7 +46,7 @@ Configure the ImagePolicy with a semver range.
 ```yaml
 # image-policy-semver.yaml
 # Selects the latest tag matching the semver range
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -77,7 +77,7 @@ Use the numerical policy to select the highest build number.
 ```yaml
 # image-policy-build-number.yaml
 # Selects the tag with the highest numeric value
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -112,7 +112,7 @@ Use the numerical policy for Unix timestamps.
 ```yaml
 # image-policy-timestamp.yaml
 # Selects the most recent tag based on Unix timestamp
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -150,7 +150,7 @@ Use `filterTags` with a named capture group to extract the timestamp.
 ```yaml
 # image-policy-composite.yaml
 # Extracts the timestamp from composite tags for numerical sorting
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -187,7 +187,7 @@ Because the format starts with the year and progresses to smaller units, alphabe
 ```yaml
 # image-policy-date.yaml
 # Alphabetical sorting works for YYYYMMDD-HHMMSS formatted tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

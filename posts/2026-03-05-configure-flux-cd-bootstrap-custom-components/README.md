@@ -236,7 +236,7 @@ After adding the image automation controllers, configure them with an ImageRepos
 ```yaml
 # image-repo.yaml
 # Scan a container registry for new image tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -249,7 +249,7 @@ spec:
 ```yaml
 # image-policy.yaml
 # Define a policy for selecting the latest semver tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -265,7 +265,7 @@ spec:
 ```yaml
 # image-update.yaml
 # Automatically commit new image tags back to Git
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app

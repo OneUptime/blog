@@ -35,7 +35,7 @@ The most common policy selects the latest semantic version tag.
 ```yaml
 # imagepolicy-semver.yaml
 # Select the latest semver tag for the my-app image
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -69,7 +69,7 @@ Select the tag that sorts last alphabetically, which can be useful for date-base
 ```yaml
 # imagepolicy-alphabetical.yaml
 # Select the alphabetically last tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-alpha
@@ -90,7 +90,7 @@ Select the highest numerical tag.
 ```yaml
 # imagepolicy-numerical.yaml
 # Select the highest numerical tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-num
@@ -111,7 +111,7 @@ Use the `filterTags` field to limit which tags are considered by the policy.
 ```yaml
 # imagepolicy-filtered.yaml
 # Select the latest semver tag that starts with 'v'
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-filtered
@@ -163,7 +163,7 @@ For a GitOps workflow, commit the ImagePolicy manifest alongside your ImageRepos
 ```yaml
 # clusters/my-cluster/image-automation/imagepolicy.yaml
 # ImagePolicy for the application image
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

@@ -33,7 +33,7 @@ The `order: asc` setting selects the highest numeric value.
 ```yaml
 # imagepolicy-numerical.yaml
 # Select the highest numerical tag (latest build number)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -61,7 +61,7 @@ Use `order: desc` to select the lowest numeric value.
 ```yaml
 # imagepolicy-numerical-desc.yaml
 # Select the lowest numerical tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-oldest
@@ -82,7 +82,7 @@ Use `filterTags` to extract the numeric part from tags that have a prefix or suf
 ```yaml
 # imagepolicy-numerical-filtered.yaml
 # Extract build number from tags like 'build-123'
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-build
@@ -106,7 +106,7 @@ CI/CD systems like Jenkins, GitLab CI, and GitHub Actions often assign sequentia
 ```yaml
 # imagepolicy-ci-build.yaml
 # Select the latest CI build number
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-ci
@@ -130,7 +130,7 @@ Unix epoch timestamps are numeric and sort correctly with numerical ordering.
 ```yaml
 # imagepolicy-epoch.yaml
 # Select the latest epoch timestamp tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-epoch
@@ -154,7 +154,7 @@ Select the latest build for a specific environment.
 ```yaml
 # imagepolicy-env-build.yaml
 # Select the latest production build number
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-prod
@@ -197,7 +197,7 @@ Create separate policies for different environments using the same ImageReposito
 ```yaml
 # imagepolicy-multi-env.yaml
 # Production: latest build above 500
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-prod
@@ -213,7 +213,7 @@ spec:
       order: asc
 ---
 # Staging: latest build from any environment
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-staging

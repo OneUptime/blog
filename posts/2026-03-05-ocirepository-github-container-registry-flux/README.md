@@ -76,7 +76,7 @@ Create the OCIRepository resource that tells Flux where and how to pull the OCI 
 
 ```yaml
 # ocirepository-ghcr.yaml -- Flux OCIRepository pointing to GHCR
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests

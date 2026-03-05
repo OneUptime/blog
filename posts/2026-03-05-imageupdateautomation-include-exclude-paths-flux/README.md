@@ -19,7 +19,7 @@ In a typical GitOps repository, you may have manifests for multiple environments
 Before diving into path filtering, here is a basic ImageUpdateAutomation resource:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app-automation
@@ -52,7 +52,7 @@ The `update.path` field defines the root directory that Flux will scan for image
 To restrict image updates to specific subdirectories or files, you can use the `update.path` field in combination with multiple ImageUpdateAutomation resources. Each resource targets a different path:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-automation
@@ -85,7 +85,7 @@ This configuration tells Flux to only look for image policy markers within the `
 If you need to update images in multiple directories but exclude others, create separate ImageUpdateAutomation resources:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-automation
@@ -110,7 +110,7 @@ spec:
     path: ./clusters/staging
     strategy: Setters
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-automation
@@ -158,7 +158,7 @@ my-repo/
 To exclude the `infrastructure` directories and the `base` directory, set the update path to target only the `apps` subdirectories:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-apps-automation

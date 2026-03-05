@@ -41,7 +41,7 @@ Point the ImageRepository to the Secret using the `secretRef` field.
 ```yaml
 # imagerepository-auth.yaml
 # ImageRepository with authentication for a private registry
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -118,7 +118,7 @@ Then reference the ServiceAccount in the ImageRepository.
 ```yaml
 # imagerepository-sa.yaml
 # ImageRepository using a ServiceAccount for authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

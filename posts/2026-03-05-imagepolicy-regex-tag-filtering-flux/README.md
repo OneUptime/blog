@@ -33,7 +33,7 @@ Only consider tags that start with a specific prefix.
 ```yaml
 # imagepolicy-prefix-filter.yaml
 # Only consider tags starting with 'v'
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -65,7 +65,7 @@ Select tags that end with a specific suffix.
 ```yaml
 # imagepolicy-suffix-filter.yaml
 # Only consider tags ending with '-linux-amd64'
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-amd64
@@ -89,7 +89,7 @@ Select tags for a specific deployment environment.
 ```yaml
 # imagepolicy-env-filter.yaml
 # Only consider production-tagged images
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-prod
@@ -113,7 +113,7 @@ Extract a specific component from complex tags.
 ```yaml
 # imagepolicy-complex-filter.yaml
 # Extract version from tags like 'myapp-v1.2.3-abc1234-linux'
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -137,7 +137,7 @@ Match tags with different formats using the `|` operator.
 ```yaml
 # imagepolicy-alternation.yaml
 # Match tags with or without a 'v' prefix
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -163,7 +163,7 @@ For tags that encode the branch and build number.
 ```yaml
 # imagepolicy-branch-build.yaml
 # Select the latest main branch build
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-main
@@ -187,7 +187,7 @@ The `filterTags` pattern acts as an inclusion filter. Tags that do not match are
 ```yaml
 # imagepolicy-exclude-pattern.yaml
 # Match semver tags but exclude those with pre-release suffixes
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

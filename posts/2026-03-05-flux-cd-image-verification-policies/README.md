@@ -177,7 +177,7 @@ When using Flux image automation, add verification to ensure only signed images 
 ```yaml
 # image-policy-with-verification.yaml
 # Image policy that only promotes images matching a semver pattern
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: webapp

@@ -68,7 +68,7 @@ Create the Bucket source with the `azure` provider.
 
 ```yaml
 # flux-system/azure-bucket-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -115,7 +115,7 @@ kubectl create secret generic azure-sas-creds \
 
 ```yaml
 # flux-system/azure-bucket-sas.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app-sas
@@ -163,7 +163,7 @@ With Managed Identity configured, the Bucket source does not need a `secretRef`.
 
 ```yaml
 # flux-system/azure-bucket-managed-identity.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -183,7 +183,7 @@ Scope the downloaded files to a specific path prefix within the container.
 
 ```yaml
 # flux-system/azure-bucket-prefix.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app-production

@@ -32,7 +32,7 @@ Create an OCIRepository source that points to your OCI-hosted Helm chart:
 
 ```yaml
 # OCIRepository source for a Helm chart in an OCI registry
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-chart
@@ -49,7 +49,7 @@ For private registries, provide authentication:
 
 ```yaml
 # OCIRepository with authentication
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-chart
@@ -104,7 +104,7 @@ You can configure the OCIRepository to follow a semver range, automatically pick
 
 ```yaml
 # OCIRepository with semver range
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-chart
@@ -123,7 +123,7 @@ For maximum reproducibility, pin to a specific digest:
 
 ```yaml
 # OCIRepository pinned to a specific digest
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-chart
@@ -141,7 +141,7 @@ Here is a complete example that sets up an OCIRepository and a HelmRelease toget
 
 ```yaml
 # OCIRepository for nginx chart from a public OCI registry
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: nginx-chart
@@ -215,7 +215,7 @@ For cloud-managed registries, Flux supports provider-specific authentication:
 
 ```yaml
 # OCIRepository with AWS ECR authentication
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-chart

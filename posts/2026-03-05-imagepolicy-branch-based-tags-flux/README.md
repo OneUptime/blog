@@ -31,7 +31,7 @@ flux install --components-extra=image-reflector-controller,image-automation-cont
 You also need an ImageRepository configured to scan your container registry:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp
@@ -46,7 +46,7 @@ spec:
 To select only images tagged from the `main` branch, create an ImagePolicy with a `filterTags` pattern that matches the branch prefix:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp-production
@@ -69,7 +69,7 @@ This policy filters for tags starting with `main-`, extracts the date portion, a
 For a multi-environment setup, create distinct ImagePolicy resources for each branch. Here is the staging policy:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp-staging
@@ -88,7 +88,7 @@ spec:
 And the development policy:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp-develop
@@ -109,7 +109,7 @@ spec:
 If your CI system appends a build number instead of a date, you can use a numeric policy to select the highest build number:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp-production
@@ -168,7 +168,7 @@ Each environment's manifests reference the corresponding ImagePolicy, so Flux up
 Some teams use branch names with slashes like `feature/my-feature` or `release/v2.0`. Since slashes are not valid in Docker tags, CI systems typically replace them with dashes. Adjust your regex accordingly:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp-release
@@ -189,7 +189,7 @@ spec:
 To complete the automation loop, create an ImageUpdateAutomation resource that commits tag changes back to Git:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater

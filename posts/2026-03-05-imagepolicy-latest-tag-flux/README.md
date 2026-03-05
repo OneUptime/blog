@@ -38,7 +38,7 @@ The recommended approach is to tag images with semantic versions and use a SemVe
 ```yaml
 # imagepolicy-semver-recommended.yaml
 # Recommended: use semver tags instead of latest
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -59,7 +59,7 @@ If you cannot use SemVer, timestamp-based tags are a good alternative to `latest
 ```yaml
 # imagepolicy-timestamp-alt.yaml
 # Alternative to latest: use timestamp tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -83,7 +83,7 @@ Sequential build numbers are another good replacement for `latest`.
 ```yaml
 # imagepolicy-buildnum-alt.yaml
 # Alternative to latest: use build number tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -107,7 +107,7 @@ If your CI/CD pipeline produces unique tags for every build (e.g., Git SHA + tim
 ```yaml
 # imagepolicy-latest-build.yaml
 # Get the latest build using SHA-based tags with timestamps
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -158,7 +158,7 @@ If your registry contains a `latest` tag alongside versioned tags, exclude it fr
 ```yaml
 # imagerepository-no-latest.yaml
 # Exclude the latest tag from scan results
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

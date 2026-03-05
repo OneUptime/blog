@@ -185,7 +185,7 @@ When using IRSA, you do not need a `secretRef` on the ImageRepository. Instead, 
 ```yaml
 # image-repository-ecr-irsa.yaml
 # ImageRepository configured to use IRSA for ECR authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -205,7 +205,7 @@ If you are using the CronJob approach, reference the Docker registry secret in t
 ```yaml
 # image-repository-ecr-cronjob.yaml
 # ImageRepository using the CronJob-refreshed ECR credentials
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -224,7 +224,7 @@ Once ECR authentication is configured, the rest of the image automation pipeline
 ```yaml
 # image-policy.yaml
 # Select the latest semver tag from ECR
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

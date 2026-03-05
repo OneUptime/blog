@@ -33,7 +33,7 @@ ISO date format sorts correctly with alphabetical ordering because the most sign
 ```yaml
 # imagepolicy-iso-date.yaml
 # Select the latest ISO date tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -64,7 +64,7 @@ Compact date tags without separators also sort correctly alphabetically.
 ```yaml
 # imagepolicy-compact-date.yaml
 # Select the latest compact date tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-compact
@@ -88,7 +88,7 @@ Tags with full date and time information provide the most precise ordering.
 ```yaml
 # imagepolicy-full-timestamp.yaml
 # Select the latest full timestamp tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-precise
@@ -112,7 +112,7 @@ Unix epoch timestamps (seconds since 1970-01-01) are numeric and should use nume
 ```yaml
 # imagepolicy-epoch.yaml
 # Select the latest epoch timestamp tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-epoch
@@ -136,7 +136,7 @@ Many pipelines prepend a prefix to timestamp tags.
 ```yaml
 # imagepolicy-prefixed-timestamp.yaml
 # Select the latest tag with a 'release-' prefix and date suffix
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-release
@@ -160,7 +160,7 @@ Some tags combine a version and timestamp.
 ```yaml
 # imagepolicy-version-timestamp.yaml
 # Select the latest tag combining version and timestamp
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-versioned
@@ -184,7 +184,7 @@ When you have multiple builds per day, include the build number in the sort.
 ```yaml
 # imagepolicy-daily-builds.yaml
 # Select the latest daily build (date + build number)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-daily
@@ -208,7 +208,7 @@ To only consider recent tags, combine timestamp filtering with a pattern that li
 ```yaml
 # imagepolicy-recent-only.yaml
 # Only consider tags from 2026 onwards
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-recent

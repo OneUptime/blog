@@ -26,7 +26,7 @@ Define which container registry and repository the tenant uses.
 
 ```yaml
 # tenants/team-alpha/image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: frontend
@@ -45,7 +45,7 @@ Define a policy that selects which image tag to use. This example uses semver to
 
 ```yaml
 # tenants/team-alpha/image-policy-frontend.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: frontend
@@ -63,7 +63,7 @@ For tenants that use timestamp-based tags.
 
 ```yaml
 # tenants/team-alpha/image-policy-backend.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: backend
@@ -87,7 +87,7 @@ Set up automatic commits that update the image tags in the tenant's Git reposito
 
 ```yaml
 # tenants/team-alpha/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: team-alpha-auto-update
@@ -163,7 +163,7 @@ Use the ImageRepository to control which registries a tenant can pull from. Only
 ```yaml
 # tenants/team-alpha/approved-image-repos.yaml
 # Only these registries are scanned for team-alpha
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: frontend
@@ -172,7 +172,7 @@ spec:
   image: registry.example.com/team-alpha/frontend
   interval: 1m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: backend
@@ -197,7 +197,7 @@ Tenants may want different image policies for staging versus production.
 
 ```yaml
 # tenants/team-alpha/staging/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: frontend-staging
@@ -212,7 +212,7 @@ spec:
       range: ">=1.0.0-0"
 ---
 # tenants/team-alpha/production/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: frontend-production

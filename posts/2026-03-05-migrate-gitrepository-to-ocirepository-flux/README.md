@@ -33,7 +33,7 @@ Before migrating, understand the key differences between the two source types.
 | Reconciliation speed | Slower (full/partial clone) | Faster (artifact pull) |
 | Versioning | Branches, tags, commits | Tags, digests |
 | CI/CD coupling | Direct (reads from Git) | Decoupled (reads from registry) |
-| API version | source.toolkit.fluxcd.io/v1 | source.toolkit.fluxcd.io/v1beta2 |
+| API version | source.toolkit.fluxcd.io/v1 | source.toolkit.fluxcd.io/v1 |
 
 ## Step 1: Identify Your Current GitRepository Sources
 
@@ -127,7 +127,7 @@ And here is the equivalent OCIRepository.
 
 ```yaml
 # After: OCIRepository source
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

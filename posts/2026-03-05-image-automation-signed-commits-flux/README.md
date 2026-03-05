@@ -80,7 +80,7 @@ Update your ImageUpdateAutomation resource to reference the signing key secret.
 ```yaml
 # image-update-automation-signed.yaml
 # ImageUpdateAutomation configured to produce GPG-signed commits
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

@@ -36,7 +36,7 @@ Define which container registry Flux should scan.
 
 ```yaml
 # image-automation/image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -56,7 +56,7 @@ For tags like `20260305120000`, `20260305130000`:
 
 ```yaml
 # image-automation/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -79,7 +79,7 @@ The `alphabetical` policy with `order: asc` selects the tag that sorts last alph
 For tags like `2026-03-05T12-00-00`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -100,7 +100,7 @@ spec:
 For tags using Unix epoch seconds like `1709640000`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -123,7 +123,7 @@ For epoch timestamps, use the `numerical` policy since they are plain integers.
 Many teams combine a branch name or environment prefix with a timestamp. For tags like `main-20260305120000`:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -175,7 +175,7 @@ Set up the automation to commit tag changes back to your repository.
 
 ```yaml
 # image-automation/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app

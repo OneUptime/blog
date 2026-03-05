@@ -153,7 +153,7 @@ kubectl create secret generic oci-ca-cert \
 
 ```yaml
 # OCIRepository with custom CA certificate
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: internal-manifests

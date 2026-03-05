@@ -46,7 +46,7 @@ Reference the secret in the Bucket source.
 
 ```yaml
 # flux-system/bucket-generic-auth.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -74,7 +74,7 @@ kubectl create secret generic aws-bucket-creds \
 
 ```yaml
 # flux-system/bucket-aws-static.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -106,7 +106,7 @@ kubectl rollout restart deployment/source-controller -n flux-system
 
 ```yaml
 # flux-system/bucket-aws-irsa.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -133,7 +133,7 @@ kubectl create secret generic gcp-bucket-creds \
 
 ```yaml
 # flux-system/bucket-gcp-sa.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -162,7 +162,7 @@ kubectl rollout restart deployment/source-controller -n flux-system
 
 ```yaml
 # flux-system/bucket-gcp-wi.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -188,7 +188,7 @@ kubectl create secret generic azure-bucket-creds \
 
 ```yaml
 # flux-system/bucket-azure-key.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -213,7 +213,7 @@ kubectl create secret generic azure-sas-creds \
 
 ```yaml
 # flux-system/bucket-azure-sas.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -233,7 +233,7 @@ With Managed Identity enabled on AKS, no secret is needed.
 
 ```yaml
 # flux-system/bucket-azure-mi.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -270,7 +270,7 @@ kubectl create secret generic bucket-mtls \
 
 ```yaml
 # flux-system/bucket-tls.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app

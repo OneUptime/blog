@@ -167,7 +167,7 @@ images:
 To manage image updates per environment, create separate ImageUpdateAutomation resources with different update paths:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-automation
@@ -192,7 +192,7 @@ spec:
     path: ./overlays/staging
     strategy: Setters
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: production-automation

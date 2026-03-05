@@ -33,7 +33,7 @@ The recommended approach on GKE is to use the `provider: gcp` field.
 ```yaml
 # imagerepository-gcr.yaml
 # Scan a GCR image using native GCP provider authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -56,7 +56,7 @@ For Artifact Registry, use the Artifact Registry hostname.
 ```yaml
 # imagerepository-artifact-registry.yaml
 # Scan a Google Artifact Registry image using native GCP authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app-ar
@@ -150,7 +150,7 @@ Reference the Secret in the ImageRepository.
 ```yaml
 # imagerepository-gcr-key.yaml
 # Scan GCR using a service account key
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

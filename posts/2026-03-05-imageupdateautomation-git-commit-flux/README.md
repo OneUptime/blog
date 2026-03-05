@@ -15,7 +15,7 @@ Flux CD's ImageUpdateAutomation controller automates the process of updating con
 The commit settings live under `spec.git.commit` in the ImageUpdateAutomation resource. Here is the full structure:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater
@@ -170,7 +170,7 @@ When pushing to a different branch, the controller creates the branch from the c
 Here is a complete ImageUpdateAutomation resource demonstrating all Git commit settings:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater

@@ -25,7 +25,7 @@ Every container image that you want to automate needs its own ImageRepository.
 ```yaml
 # image-repositories.yaml
 # One ImageRepository per container image to scan
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -34,7 +34,7 @@ spec:
   image: ghcr.io/my-org/my-app
   interval: 5m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: envoy-proxy
@@ -43,7 +43,7 @@ spec:
   image: docker.io/envoyproxy/envoy
   interval: 30m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: db-migrator
@@ -60,7 +60,7 @@ Each image needs its own ImagePolicy to select the appropriate tag.
 ```yaml
 # image-policies.yaml
 # Separate policies allow different tag selection strategies per image
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -72,7 +72,7 @@ spec:
     semver:
       range: ">=1.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: envoy-proxy
@@ -86,7 +86,7 @@ spec:
     semver:
       range: "1.28.x"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: db-migrator
@@ -155,7 +155,7 @@ A single ImageUpdateAutomation resource handles all markers within its configure
 ```yaml
 # image-update-automation.yaml
 # Single automation resource handles all image policy markers in the path
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

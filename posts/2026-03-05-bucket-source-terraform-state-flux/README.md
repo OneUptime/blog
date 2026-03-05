@@ -153,7 +153,7 @@ Create a Bucket source that watches the S3 bucket where Terraform uploads manife
 
 ```yaml
 # flux-system/terraform-outputs-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: terraform-outputs
@@ -225,7 +225,7 @@ The same pattern works with Google Cloud Storage.
 
 ```yaml
 # flux-system/terraform-outputs-gcs.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: terraform-outputs
@@ -246,7 +246,7 @@ And with Azure Blob Storage.
 
 ```yaml
 # flux-system/terraform-outputs-azure.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: terraform-outputs

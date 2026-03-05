@@ -49,7 +49,7 @@ spec:
       image: registry.example.com/my-org/worker
       semverRange: ">=1.5.0 <2.0.0"
   resources:
-    - apiVersion: image.toolkit.fluxcd.io/v1beta2
+    - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImageRepository
       metadata:
         name: << .app >>
@@ -57,7 +57,7 @@ spec:
       spec:
         image: << .image >>
         interval: 5m
-    - apiVersion: image.toolkit.fluxcd.io/v1beta2
+    - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImagePolicy
       metadata:
         name: << .app >>
@@ -93,7 +93,7 @@ spec:
       tagPattern: '^build-(?P<build>[0-9]+)$'
       tagExtract: '$build'
   resources:
-    - apiVersion: image.toolkit.fluxcd.io/v1beta2
+    - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImageRepository
       metadata:
         name: << .app >>
@@ -101,7 +101,7 @@ spec:
       spec:
         image: << .image >>
         interval: 5m
-    - apiVersion: image.toolkit.fluxcd.io/v1beta2
+    - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImagePolicy
       metadata:
         name: << .app >>
@@ -123,7 +123,7 @@ A single ImageUpdateAutomation resource can handle updates for all image policie
 
 ```yaml
 # image-automation/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: all-apps
@@ -176,7 +176,7 @@ spec:
       image: registry.internal.com/my-org/internal-app
       secretName: internal-registry-creds
   resources:
-    - apiVersion: image.toolkit.fluxcd.io/v1beta2
+    - apiVersion: image.toolkit.fluxcd.io/v1
       kind: ImageRepository
       metadata:
         name: << .app >>

@@ -80,7 +80,7 @@ Create a Bucket source pointing to your MinIO instance. Use the `generic` provid
 
 ```yaml
 # flux-system/minio-bucket-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -136,7 +136,7 @@ Update the Bucket source to use TLS.
 
 ```yaml
 # flux-system/minio-bucket-tls.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app

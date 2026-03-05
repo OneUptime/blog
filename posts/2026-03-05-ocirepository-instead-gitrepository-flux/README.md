@@ -120,7 +120,7 @@ Replace the GitRepository with an OCIRepository.
 
 ```yaml
 # New OCIRepository configuration (replaces GitRepository)
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -199,7 +199,7 @@ For a zero-downtime migration, you can run both sources simultaneously with diff
 
 ```yaml
 # Temporary OCIRepository with a different name for testing
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests-oci

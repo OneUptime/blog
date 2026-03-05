@@ -43,7 +43,7 @@ First, create an ImageRepository to scan your container registry for available t
 ```yaml
 # image-repository.yaml
 # Tells Flux to scan this registry for new image tags every 5 minutes
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -58,7 +58,7 @@ Next, create an ImagePolicy that selects which tag should be considered the late
 ```yaml
 # image-policy.yaml
 # Selects the latest semver tag matching 1.x.x
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -136,7 +136,7 @@ You need an ImageUpdateAutomation resource to tell Flux where to push the update
 ```yaml
 # image-update-automation.yaml
 # Configures Flux to commit image tag updates to the main branch
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

@@ -187,7 +187,7 @@ Update the Bucket resource to reference the certificate.
 
 ```yaml
 # Add certSecretRef to the Bucket spec
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app
@@ -212,7 +212,7 @@ The storage endpoint runs HTTP but Flux is attempting HTTPS.
 Set `insecure: true` on the Bucket resource for HTTP endpoints.
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-app

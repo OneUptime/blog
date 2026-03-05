@@ -206,7 +206,7 @@ flux push artifact oci://ghcr.io/myorg/platform-bases/microservice:v1.2.0 \
 
 ```yaml
 # clusters/my-cluster/sources/microservice-base.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: microservice-base

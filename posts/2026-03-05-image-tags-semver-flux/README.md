@@ -33,7 +33,7 @@ flux bootstrap github \
 
 ```yaml
 # image-automation/image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -53,7 +53,7 @@ To always select the latest version regardless of major, minor, or patch level:
 
 ```yaml
 # image-automation/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -124,7 +124,7 @@ spec:
 Many registries use a `v` prefix on version tags (e.g., `v1.2.3`). Flux's `filterTags` can strip the prefix before applying the SemVer policy.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -189,7 +189,7 @@ spec:
 
 ```yaml
 # image-automation/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app

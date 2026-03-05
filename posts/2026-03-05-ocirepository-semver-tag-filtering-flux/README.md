@@ -72,7 +72,7 @@ flux list artifacts oci://registry.example.com/manifests/app
 
 ```yaml
 # ocirepository-any.yaml -- Match any version >= 1.0.0
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -89,7 +89,7 @@ spec:
 
 ```yaml
 # ocirepository-major.yaml -- Only allow 1.x.x versions
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -106,7 +106,7 @@ spec:
 
 ```yaml
 # ocirepository-minor.yaml -- Only allow 1.1.x versions
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -125,7 +125,7 @@ Flux supports the standard SemVer range operators.
 
 ```yaml
 # Tilde range: ~1.1.0 is equivalent to >=1.1.0 <1.2.0 (patch updates only)
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-tilde
@@ -139,7 +139,7 @@ spec:
 
 ```yaml
 # Caret range: ^1.1.0 is equivalent to >=1.1.0 <2.0.0 (minor + patch updates)
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-caret
@@ -178,7 +178,7 @@ flux push artifact oci://registry.example.com/manifests/app:1.2.0-rc.1 \
 
 ```yaml
 # OCIRepository that includes pre-release versions
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-with-prerelease
@@ -220,7 +220,7 @@ For production, use tight constraints and longer intervals.
 
 ```yaml
 # Production: only patch updates, check every 30 minutes
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-production
@@ -238,7 +238,7 @@ For staging, allow minor version updates with faster polling.
 
 ```yaml
 # Staging: minor and patch updates, check every 5 minutes
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-staging
@@ -256,7 +256,7 @@ For development, allow all versions.
 
 ```yaml
 # Development: any version, check every minute
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-dev

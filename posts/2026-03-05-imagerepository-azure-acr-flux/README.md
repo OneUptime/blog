@@ -28,7 +28,7 @@ The recommended approach on AKS is to use the `provider: azure` field, which int
 ```yaml
 # imagerepository-acr.yaml
 # Scan an Azure ACR image using native Azure provider authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -145,7 +145,7 @@ Reference the Secret in the ImageRepository.
 ```yaml
 # imagerepository-acr-admin.yaml
 # Scan ACR using admin credentials
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

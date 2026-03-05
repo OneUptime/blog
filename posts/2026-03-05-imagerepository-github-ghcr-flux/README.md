@@ -33,7 +33,7 @@ For public images, no authentication is needed.
 ```yaml
 # imagerepository-ghcr-public.yaml
 # Scan a public GHCR image
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-public-app
@@ -80,7 +80,7 @@ Reference the credentials Secret in the ImageRepository.
 ```yaml
 # imagerepository-ghcr-private.yaml
 # Scan a private GHCR image with authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-private-app
@@ -106,7 +106,7 @@ If you have multiple images in the same organization, create an ImageRepository 
 ```yaml
 # imagerepository-ghcr-multi.yaml
 # Multiple ImageRepository resources for different GHCR images
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: frontend
@@ -117,7 +117,7 @@ spec:
   secretRef:
     name: ghcr-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: backend
@@ -128,7 +128,7 @@ spec:
   secretRef:
     name: ghcr-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: worker
@@ -162,7 +162,7 @@ Filter out unwanted tags from the scan results.
 ```yaml
 # imagerepository-ghcr-filtered.yaml
 # Scan GHCR with tag exclusions
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

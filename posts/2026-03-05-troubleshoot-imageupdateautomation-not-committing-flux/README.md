@@ -79,7 +79,7 @@ The `spec.update.path` field restricts which directory is scanned for markers. I
 ```yaml
 # image-update-automation.yaml
 # Make sure the path covers the directory with your manifests
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

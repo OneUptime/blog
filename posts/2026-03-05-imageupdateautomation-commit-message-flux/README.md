@@ -15,7 +15,7 @@ Flux CD's ImageUpdateAutomation controller creates Git commits whenever it updat
 If you provide a simple string as the `messageTemplate`, all automated commits will use that static message:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater

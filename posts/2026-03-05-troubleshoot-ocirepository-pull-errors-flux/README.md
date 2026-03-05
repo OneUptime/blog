@@ -117,7 +117,7 @@ The key name in the secret must be `ca.crt`. Update the OCIRepository to referen
 
 ```yaml
 # OCIRepository with custom CA certificate
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -327,7 +327,7 @@ Increase the poll interval to reduce request frequency.
 
 ```yaml
 # Reduce pull frequency to avoid rate limits
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests

@@ -24,7 +24,7 @@ Every Git commit requires an author name and email. When Flux creates automated 
 The author identity is configured in the `spec.git.commit.author` field of the ImageUpdateAutomation resource:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater
@@ -98,7 +98,7 @@ Replace `123456` with the GitHub App's ID and `my-flux-app` with the app's slug 
 In multi-cluster setups, you may want each cluster's automation to have a distinct identity. This makes it easy to trace which cluster triggered a particular commit:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater

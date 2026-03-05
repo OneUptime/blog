@@ -66,7 +66,7 @@ kubectl create secret generic s3-bucket-creds \
 ```yaml
 # bucket-s3.yaml
 # Bucket source pointing to an AWS S3 bucket containing Helm charts
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: helm-charts-bucket
@@ -102,7 +102,7 @@ kubectl create secret generic minio-creds \
 ```yaml
 # bucket-minio.yaml
 # Bucket source pointing to a MinIO instance
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: minio-charts
@@ -127,7 +127,7 @@ For Google Cloud Storage, use the gcp provider.
 ```yaml
 # bucket-gcs.yaml
 # Bucket source pointing to a Google Cloud Storage bucket
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: gcs-charts

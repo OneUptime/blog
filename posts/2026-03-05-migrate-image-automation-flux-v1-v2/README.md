@@ -70,7 +70,7 @@ Flux v1 would scan all images referenced by annotated workloads automatically. I
 ```yaml
 # v1: No separate resource needed - scanning was implicit
 # v2: Create an ImageRepository for each image
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -109,7 +109,7 @@ Flux v1 used annotation values to define tag filtering. Here is how each v1 filt
 fluxcd.io/tag.my-app: semver:~1.0
 
 # v2 ImagePolicy
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -129,7 +129,7 @@ spec:
 fluxcd.io/tag.my-app: glob:main-*
 
 # v2 ImagePolicy (use filterTags + alphabetical)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -152,7 +152,7 @@ spec:
 fluxcd.io/tag.my-app: regexp:^build-[0-9]+$
 
 # v2 ImagePolicy
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -199,7 +199,7 @@ spec:
 In v1, Flux committed directly to the repo it was watching. In v2, you configure this behavior explicitly.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

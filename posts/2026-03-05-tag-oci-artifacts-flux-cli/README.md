@@ -104,7 +104,7 @@ In each cluster, the OCIRepository tracks its environment-specific tag.
 ```yaml
 # ocirepository-staging.yaml
 # OCIRepository in the staging cluster tracks the "staging" tag
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -119,7 +119,7 @@ spec:
 ```yaml
 # ocirepository-production.yaml
 # OCIRepository in the production cluster tracks the "production" tag
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

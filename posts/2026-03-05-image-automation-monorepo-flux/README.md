@@ -50,7 +50,7 @@ Create one ImageRepository per container image.
 ```yaml
 # image-repositories.yaml
 # Scan each application's container registry independently
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: frontend
@@ -59,7 +59,7 @@ spec:
   image: ghcr.io/my-org/frontend
   interval: 5m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: backend
@@ -68,7 +68,7 @@ spec:
   image: ghcr.io/my-org/backend
   interval: 5m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: worker
@@ -85,7 +85,7 @@ Create one ImagePolicy per application to select the latest tag.
 ```yaml
 # image-policies.yaml
 # Each policy resolves the latest semver tag for its application
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: frontend
@@ -97,7 +97,7 @@ spec:
     semver:
       range: ">=1.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: backend
@@ -109,7 +109,7 @@ spec:
     semver:
       range: ">=1.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: worker
@@ -187,7 +187,7 @@ Use a single ImageUpdateAutomation with the update path set to the root or the `
 ```yaml
 # image-update-automation-all.yaml
 # Single automation resource scanning the entire apps directory
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: all-apps
@@ -227,7 +227,7 @@ Create one ImageUpdateAutomation per application, each scoped to its specific di
 ```yaml
 # image-update-automation-frontend.yaml
 # Automation scoped to the frontend directory only
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: frontend
@@ -254,7 +254,7 @@ spec:
 ---
 # image-update-automation-backend.yaml
 # Automation scoped to the backend directory only
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: backend

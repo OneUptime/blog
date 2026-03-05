@@ -53,7 +53,7 @@ The most frequent cause is that no tags in the registry match the policy criteri
 ```yaml
 # image-policy-semver.yaml
 # This policy only matches tags that are valid semver in the 1.x.x range
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -93,7 +93,7 @@ When using a `filterTags` pattern, an overly restrictive regex can exclude every
 ```yaml
 # image-policy-filter.yaml
 # Uses filterTags to narrow down candidates before applying the policy
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -142,7 +142,7 @@ If you use a numerical policy, the extracted or raw tag values must be valid num
 ```yaml
 # image-policy-numerical.yaml
 # Selects the highest numeric tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

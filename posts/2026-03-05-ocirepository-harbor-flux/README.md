@@ -88,7 +88,7 @@ Create the OCIRepository resource pointing to your Harbor registry.
 
 ```yaml
 # ocirepository-harbor.yaml -- Flux OCIRepository pointing to Harbor
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -179,7 +179,7 @@ Harbor supports proxy cache projects that mirror remote registries. If you use a
 
 ```yaml
 # Using Harbor's proxy cache for upstream artifacts
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: upstream-manifests

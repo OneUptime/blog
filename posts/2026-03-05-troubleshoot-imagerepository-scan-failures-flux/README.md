@@ -54,7 +54,7 @@ Create or update a Docker registry secret and reference it in the ImageRepositor
 ```yaml
 # image-repository-with-secret.yaml
 # ImageRepository configured with registry authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -100,7 +100,7 @@ If your registry uses a self-signed certificate, you will see errors such as `x5
 ```yaml
 # image-repository-custom-ca.yaml
 # ImageRepository with a custom CA certificate for self-signed registries
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -148,7 +148,7 @@ Container registries impose rate limits on API calls. Docker Hub, for example, l
 ```yaml
 # image-repository-longer-interval.yaml
 # Increase the scan interval to reduce API calls and avoid rate limits
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

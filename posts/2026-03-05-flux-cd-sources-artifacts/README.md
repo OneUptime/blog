@@ -77,7 +77,7 @@ Fetches artifacts stored in OCI-compliant container registries. This is useful w
 
 ```yaml
 # An OCIRepository source pulling manifests from a container registry
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: webapp-manifests
@@ -147,7 +147,7 @@ Fetches artifacts from S3-compatible storage, Google Cloud Storage, or Azure Blo
 
 ```yaml
 # A Bucket source fetching from AWS S3
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: config-bucket
