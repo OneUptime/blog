@@ -2213,7 +2213,9 @@ function checkCodeValidation(postsDir: string[]): void {
 
   const validStatuses = new Set<string>(['validated', 'not-code-blog']);
   const errors: string[] = [];
+  const postsDirSet = new Set(postsDir);
 
+  // Check that every blog post has an entry
   for (const dir of postsDir) {
     const entry = codeValidate[dir];
     if (!entry) {
@@ -2223,6 +2225,44 @@ function checkCodeValidation(postsDir: string[]): void {
         `  - ${colors.red}${dir}${colors.reset}: invalid status "${entry.status}" (must be "validated" or "not-code-blog")`
       );
     }
+  }
+
+  // Check for extra entries in CodeValidate.json that don't have corresponding blog posts
+  const extraEntries: string[] = [];
+  for (const key of Object.keys(codeValidate)) {
+    if (!postsDirSet.has(key)) {
+      extraEntries.push(`  - ${colors.red}${key}${colors.reset}: no corresponding blog post directory found`);
+    }
+  }
+
+  if (extraEntries.length > 0) {
+    hasErrors = true;
+    console.log(
+      `${colors.red}${colors.bold}ERROR:${colors.reset} ${extraEntries.length} extra entr${extraEntries.length === 1 ? 'y' : 'ies'} in ${CODE_VALIDATE_JSON} with no matching blog post:\n`
+    );
+    for (const err of extraEntries) {
+      console.log(err);
+    }
+    console.log(
+      `\n${colors.bold}How to fix:${colors.reset}\n  Remove entries from ${CODE_VALIDATE_JSON} that do not have a corresponding directory in posts/.\n`
+    );
+  }
+
+  // Check that keys in CodeValidate.json are sorted alphabetically
+  const keys = Object.keys(codeValidate);
+  const sortedKeys = [...keys].sort();
+  const isOrdered = keys.every((key, i) => key === sortedKeys[i]);
+
+  if (!isOrdered) {
+    // Auto-fix: rewrite CodeValidate.json with sorted keys
+    const sorted: CodeValidateJson = {};
+    for (const key of sortedKeys) {
+      sorted[key] = codeValidate[key]!;
+    }
+    fs.writeFileSync(CODE_VALIDATE_JSON, JSON.stringify(sorted, null, 4) + '\n', 'utf-8');
+    logSuccess(`Sorted keys in ${CODE_VALIDATE_JSON} alphabetically (auto-fixed)`);
+  } else {
+    logSuccess(`Keys in ${CODE_VALIDATE_JSON} are properly sorted`);
   }
 
   if (errors.length > 0) {
@@ -2236,7 +2276,7 @@ function checkCodeValidation(postsDir: string[]): void {
     console.log(
       `\n${colors.bold}How to fix:${colors.reset}\n  Add an entry to ${CODE_VALIDATE_JSON} for each missing post with status "validated" or "not-code-blog".\n`
     );
-  } else {
+  } else if (extraEntries.length === 0) {
     logSuccess(`All ${postsDir.length} blog posts are accounted for in ${CODE_VALIDATE_JSON}`);
   }
 }
