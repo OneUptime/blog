@@ -39,7 +39,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/k6/helm-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: k6-operator

@@ -77,7 +77,7 @@ Deploy the Vault Secrets Operator using a HelmRelease resource.
 
 ```yaml
 # clusters/my-cluster/vault-secrets-operator/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vault-secrets-operator

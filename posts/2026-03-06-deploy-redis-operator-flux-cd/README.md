@@ -71,7 +71,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/databases/redis/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: redis-operator
@@ -383,7 +383,7 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: redis-operator
       namespace: redis

@@ -165,7 +165,7 @@ Ensure that Helm and Kustomize do not manage the same resources. If a HelmReleas
 
 ```yaml
 # Correct: Let HelmRelease manage the app
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -247,7 +247,7 @@ And exclude CRDs from Helm installations:
 
 ```yaml
 # helmrelease-skip-crds.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager

@@ -69,7 +69,7 @@ spec:
 ```yaml
 # infrastructure/istio/base-helmrelease.yaml
 # Install Istio base (CRDs and cluster-wide resources)
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istio-base
@@ -91,7 +91,7 @@ spec:
 ```yaml
 # infrastructure/istio/istiod-helmrelease.yaml
 # Install Istiod (Istio control plane)
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istiod
@@ -131,7 +131,7 @@ spec:
 ```yaml
 # infrastructure/istio/gateway-helmrelease.yaml
 # Install Istio Ingress Gateway
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istio-gateway
@@ -164,7 +164,7 @@ Flagger needs Prometheus to query Istio's telemetry metrics.
 ```yaml
 # infrastructure/monitoring/prometheus-helmrelease.yaml
 # Prometheus configured to scrape Istio metrics
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prometheus
@@ -216,7 +216,7 @@ spec:
 ```yaml
 # infrastructure/flagger/helmrelease.yaml
 # Flagger configured for Istio mesh provider
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger

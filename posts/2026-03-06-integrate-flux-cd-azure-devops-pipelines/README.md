@@ -218,7 +218,7 @@ Create the Flux `ImageRepository` resource to scan ACR for new images.
 
 ```yaml
 # clusters/my-cluster/image-repos/app-image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -239,7 +239,7 @@ Define the image selection policy for Flux.
 
 ```yaml
 # clusters/my-cluster/image-policies/app-image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -259,7 +259,7 @@ Set up Flux to automatically update deployment manifests when new images are fou
 
 ```yaml
 # clusters/my-cluster/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: azure-image-updates
@@ -347,7 +347,7 @@ spec:
   resources:
     - kind: ImageRepository
       name: my-app
-      apiVersion: image.toolkit.fluxcd.io/v1beta2
+      apiVersion: image.toolkit.fluxcd.io/v1
 ```
 
 Create the webhook in ACR:

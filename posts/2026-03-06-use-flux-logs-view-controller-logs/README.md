@@ -73,8 +73,8 @@ Focus on specific log levels to narrow your investigation:
 # Show only error-level logs
 flux logs --level=error
 
-# Show only warning-level logs
-flux logs --level=warn
+# Show debug-level logs
+flux logs --level=debug
 
 # Show info-level logs (default)
 flux logs --level=info
@@ -324,7 +324,7 @@ flux logs --kind=Kustomization --name=my-app --since=6h > /tmp/my-app-logs.txt
 | `--follow`, `-f` | Stream logs in real time |
 | `--tail` | Number of lines to show from the end |
 | `--since` | Show logs newer than a relative duration (e.g., 5m, 1h) |
-| `--level` | Filter by log level (info, warn, error) |
+| `--level` | Filter by log level (debug, info, error) |
 | `--kind` | Filter by resource kind (Kustomization, GitRepository, etc.) |
 | `--name` | Filter by resource name |
 | `--namespace` | Filter by resource namespace |

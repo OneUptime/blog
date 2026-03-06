@@ -70,7 +70,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/storage/openebs/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: openebs
@@ -298,7 +298,7 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: openebs
       namespace: openebs

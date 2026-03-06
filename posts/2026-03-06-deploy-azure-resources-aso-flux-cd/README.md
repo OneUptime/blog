@@ -50,7 +50,7 @@ spec:
 ---
 # aso-helmrelease.yaml
 # HelmRelease to install Azure Service Operator v2
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: azure-service-operator

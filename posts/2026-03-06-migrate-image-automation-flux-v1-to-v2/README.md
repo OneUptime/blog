@@ -103,7 +103,7 @@ Create an `ImageRepository` for each container image you want to track. This rep
 ```yaml
 # imagerepository.yaml
 # Scans the container registry for available tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -136,7 +136,7 @@ If you have multiple images to track, create an ImageRepository for each:
 ```yaml
 # imagerepositories.yaml
 # ImageRepository for the frontend application
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: frontend
@@ -146,7 +146,7 @@ spec:
   interval: 5m
 ---
 # ImageRepository for the backend API
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: backend-api
@@ -156,7 +156,7 @@ spec:
   interval: 5m
 ---
 # ImageRepository for the worker service
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: worker
@@ -173,7 +173,7 @@ Replace the Flux v1 tag filter annotations with `ImagePolicy` resources. These d
 ```yaml
 # imagepolicy-semver.yaml
 # Selects the latest image tag based on semver policy
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -195,7 +195,7 @@ Here are policy examples covering the most common Flux v1 annotation patterns:
 
 ```yaml
 # Semver policy: replaces fluxcd.io/tag.app: semver:~1.0
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-semver
@@ -208,7 +208,7 @@ spec:
       range: "~1.0"
 ---
 # Alphabetical policy: selects the latest tag alphabetically
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-alpha
@@ -221,7 +221,7 @@ spec:
       order: asc
 ---
 # Numerical policy: selects the highest numerical tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-numerical
@@ -235,7 +235,7 @@ spec:
 ---
 # Filter with regex extraction for timestamp-based tags
 # Matches tags like main-abc1234-1709712000
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-timestamp
@@ -303,7 +303,7 @@ This resource replaces the automatic commit functionality of Flux v1. It tells t
 ```yaml
 # imageupdateautomation.yaml
 # Configures automatic commits for image tag updates
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates

@@ -38,7 +38,7 @@ A typical Flux CD HelmRelease resource:
 
 ```yaml
 # helmrelease-example.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -289,7 +289,7 @@ done
 
 ```yaml
 # helmrelease-with-remediation.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

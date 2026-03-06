@@ -134,7 +134,7 @@ In your Flux configuration repository, create an `ImageRepository` resource that
 
 ```yaml
 # clusters/my-cluster/image-repositories/app-image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -168,7 +168,7 @@ The `ImagePolicy` resource defines how Flux selects the latest image tag.
 
 ```yaml
 # clusters/my-cluster/image-policies/app-image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -189,7 +189,7 @@ If you prefer semantic versioning, tag images with semver and update the policy:
 
 ```yaml
 # Alternative: semver-based image policy
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -209,7 +209,7 @@ Create an `ImageUpdateAutomation` resource so Flux can automatically update your
 
 ```yaml
 # clusters/my-cluster/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app-automation

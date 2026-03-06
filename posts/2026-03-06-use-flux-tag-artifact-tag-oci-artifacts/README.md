@@ -321,7 +321,7 @@ echo "All artifacts re-tagged from ${OLD_TAG} to ${NEW_TAG}"
 
 ```yaml
 # Track a specific environment tag
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-config
@@ -337,7 +337,7 @@ spec:
 
 ```yaml
 # Automatically pick up new semantic version tags
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-config

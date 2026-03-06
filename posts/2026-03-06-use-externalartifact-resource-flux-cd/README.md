@@ -4,29 +4,29 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: flux cd, externalartifact, gitops, kubernetes, artifacts, sources, best practices
 
-Description: A practical guide to using the ExternalArtifact resource in Flux CD for referencing artifacts from external systems not natively supported by Flux source controllers.
+Description: A practical guide to using the ExternalArtifact resource in Flux CD for referencing artifacts produced by external controllers and custom integrations not natively supported by Flux source controllers.
 
 ---
 
 ## Introduction
 
-Flux CD provides built-in source controllers for Git repositories, Helm charts, OCI registries, and S3 buckets. However, there are scenarios where your deployment artifacts come from external systems that Flux does not natively support. The ExternalArtifact resource bridges this gap by allowing you to reference artifacts produced by external CI/CD systems, build pipelines, or custom tooling, and use them as sources for Flux Kustomizations and HelmReleases.
+Flux CD provides built-in source controllers for Git repositories, Helm charts, OCI registries, and S3 buckets. However, there are scenarios where your deployment artifacts come from external systems that Flux does not natively support. The ExternalArtifact resource bridges this gap by providing a generic API that allows third-party controllers to produce and store artifact objects in the same way as Flux's own source-controller. Flux Kustomizations and HelmReleases can then reference these artifacts as sources.
 
 ## Prerequisites
 
-- Flux CD v2.4+ with ExternalArtifact support
+- Flux CD v2.5+ with ExternalArtifact support
 - A Kubernetes cluster with Flux installed
-- An external system that produces deployment artifacts
+- An external controller that produces artifacts (or you can manage ExternalArtifact status manually)
 
 ## What is ExternalArtifact
 
-ExternalArtifact is a Flux source type that represents an artifact whose lifecycle is managed outside of Flux. Instead of Flux pulling and reconciling the source, an external process pushes artifact metadata to the ExternalArtifact resource. Flux then uses this metadata to fetch and apply the artifact.
+ExternalArtifact is a Flux source type whose lifecycle is managed outside of Flux's source-controller. Instead of Flux pulling and reconciling the source, an external controller or process writes artifact metadata into the ExternalArtifact's `.status.artifact` field. Flux then uses this metadata to fetch and apply the artifact from the in-cluster storage URL.
 
 ```mermaid
 graph LR
-    A[External CI/CD] --> B[Build Artifact]
-    B --> C[Push to Storage]
-    C --> D[Update ExternalArtifact]
+    A[External Controller] --> B[Produces Artifact]
+    B --> C[Writes to Storage]
+    C --> D[Updates ExternalArtifact Status]
     D --> E[Flux Detects Change]
     E --> F[Flux Applies Artifact]
 ```
@@ -34,6 +34,8 @@ graph LR
 ## Basic ExternalArtifact Configuration
 
 ### Creating an ExternalArtifact Resource
+
+The ExternalArtifact spec contains an optional `sourceRef` that references the custom resource the artifact is based on:
 
 ```yaml
 # clusters/my-cluster/sources/external-artifact.yaml
@@ -43,12 +45,25 @@ metadata:
   name: my-app-artifact
   namespace: flux-system
 spec:
-  # URL where the artifact tarball can be downloaded
-  url: "https://artifacts.example.com/my-app/latest.tar.gz"
-  # Digest for integrity verification
-  digest: "sha256:abc123def456..."
-  # Content type of the artifact
-  contentType: "application/x-tar"
+  # Optional reference to the custom resource that produces this artifact
+  sourceRef:
+    apiVersion: builds.example.com/v1
+    kind: BuildArtifact
+    name: my-app-build
+```
+
+The artifact details are stored in the status by the external controller:
+
+```yaml
+# Status populated by the external controller
+status:
+  artifact:
+    digest: sha256:35d47c9db0eee6ffe08a404dfb416bee31b2b79eabc3f2eb26749163ce487f52
+    lastUpdateTime: "2026-03-06T10:30:00Z"
+    path: source/flux-system/my-app-artifact/35d47c9d.tar.gz
+    revision: v1.2.3@sha256:35d47c9db0eee6ffe08a404dfb416bee31b2b79eabc3f2eb26749163ce487f52
+    size: 20914
+    url: http://source-controller.flux-system.svc.cluster.internal./source/flux-system/my-app-artifact/35d47c9d.tar.gz
 ```
 
 ### Using ExternalArtifact with Kustomization
@@ -77,98 +92,61 @@ spec:
       namespace: default
 ```
 
-## Updating ExternalArtifact from CI/CD
+## Using ArtifactGenerator
 
-### Using kubectl from a CI Pipeline
+The ArtifactGenerator resource enables generating ExternalArtifacts from multiple Flux sources or splitting a single source into multiple artifacts:
 
-Update the ExternalArtifact when your CI pipeline produces a new artifact:
+```yaml
+# clusters/my-cluster/sources/artifact-generator.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: ArtifactGenerator
+metadata:
+  name: my-app-generator
+  namespace: flux-system
+spec:
+  # Generate an ExternalArtifact from a GitRepository sub-path
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./apps/my-app
+```
+
+## Updating ExternalArtifact from an External Controller
+
+An external controller manages the ExternalArtifact by writing artifact metadata to its status. Here is an example using kubectl to simulate what an external controller would do:
 
 ```bash
 #!/bin/bash
-# ci/update-artifact.sh
+# ci/update-artifact-status.sh
 
 # Variables from CI environment
-ARTIFACT_URL="https://artifacts.example.com/my-app/${BUILD_ID}.tar.gz"
+ARTIFACT_REVISION="v1.2.3"
 ARTIFACT_DIGEST="sha256:$(sha256sum artifact.tar.gz | cut -d' ' -f1)"
+ARTIFACT_PATH="source/flux-system/my-app-artifact/$(echo $ARTIFACT_DIGEST | cut -c8-15).tar.gz"
+ARTIFACT_SIZE=$(stat -f%z artifact.tar.gz 2>/dev/null || stat --printf="%s" artifact.tar.gz)
 
-# Update the ExternalArtifact resource
+# Update the ExternalArtifact status
 kubectl patch externalartifact my-app-artifact \
   -n flux-system \
   --type merge \
+  --subresource status \
   -p "{
-    \"spec\": {
-      \"url\": \"${ARTIFACT_URL}\",
-      \"digest\": \"${ARTIFACT_DIGEST}\"
+    \"status\": {
+      \"artifact\": {
+        \"digest\": \"${ARTIFACT_DIGEST}\",
+        \"lastUpdateTime\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"path\": \"${ARTIFACT_PATH}\",
+        \"revision\": \"${ARTIFACT_REVISION}@${ARTIFACT_DIGEST}\",
+        \"size\": ${ARTIFACT_SIZE},
+        \"url\": \"http://source-controller.flux-system.svc.cluster.internal./${ARTIFACT_PATH}\"
+      }
     }
   }"
 
-echo "Updated ExternalArtifact to ${ARTIFACT_URL}"
+echo "Updated ExternalArtifact status"
 ```
 
-### Using the Flux CLI
-
-```bash
-# Update artifact URL and digest
-flux reconcile source externalartifact my-app-artifact \
-  --namespace flux-system
-```
-
-### GitHub Actions Integration
-
-```yaml
-# .github/workflows/deploy.yaml
-name: Build and Deploy
-on:
-  push:
-    branches: [main]
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build manifests
-        run: |
-          # Generate Kubernetes manifests
-          kustomize build ./deploy > manifests.yaml
-          # Package as tarball
-          tar czf artifact.tar.gz manifests.yaml
-
-      - name: Upload artifact
-        run: |
-          # Upload to your artifact storage (S3, GCS, etc.)
-          aws s3 cp artifact.tar.gz \
-            s3://my-artifacts/my-app/${{ github.sha }}.tar.gz
-
-      - name: Calculate digest
-        id: digest
-        run: |
-          DIGEST="sha256:$(sha256sum artifact.tar.gz | cut -d' ' -f1)"
-          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
-
-      - name: Update ExternalArtifact
-        env:
-          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
-        run: |
-          echo "${KUBECONFIG_DATA}" | base64 -d > /tmp/kubeconfig
-          export KUBECONFIG=/tmp/kubeconfig
-
-          kubectl patch externalartifact my-app-artifact \
-            -n flux-system \
-            --type merge \
-            -p '{
-              "spec": {
-                "url": "https://my-artifacts.s3.amazonaws.com/my-app/${{ github.sha }}.tar.gz",
-                "digest": "${{ steps.digest.outputs.digest }}"
-              }
-            }'
-```
-
-## Advanced ExternalArtifact Patterns
-
-### Multiple Environments with ExternalArtifact
+## Multiple Environments with ExternalArtifact
 
 ```yaml
 # clusters/staging/sources/external-artifact.yaml
@@ -178,9 +156,10 @@ metadata:
   name: my-app-staging
   namespace: flux-system
 spec:
-  url: "https://artifacts.example.com/my-app/staging/latest.tar.gz"
-  digest: "sha256:staging-digest..."
-  contentType: "application/x-tar"
+  sourceRef:
+    apiVersion: builds.example.com/v1
+    kind: BuildArtifact
+    name: my-app-staging-build
 ---
 # clusters/production/sources/external-artifact.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -189,44 +168,13 @@ metadata:
   name: my-app-production
   namespace: flux-system
 spec:
-  url: "https://artifacts.example.com/my-app/production/latest.tar.gz"
-  digest: "sha256:production-digest..."
-  contentType: "application/x-tar"
+  sourceRef:
+    apiVersion: builds.example.com/v1
+    kind: BuildArtifact
+    name: my-app-production-build
 ```
 
-### ExternalArtifact with Authentication
-
-When your artifact storage requires authentication:
-
-```yaml
-# clusters/my-cluster/sources/external-artifact-auth.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: ExternalArtifact
-metadata:
-  name: private-artifact
-  namespace: flux-system
-spec:
-  url: "https://private-artifacts.example.com/my-app/latest.tar.gz"
-  digest: "sha256:abc123..."
-  contentType: "application/x-tar"
-  # Reference a secret with authentication credentials
-  secretRef:
-    name: artifact-auth
----
-# Secret with authentication for artifact download
-apiVersion: v1
-kind: Secret
-metadata:
-  name: artifact-auth
-  namespace: flux-system
-type: Opaque
-stringData:
-  # HTTP Basic Auth credentials
-  username: artifact-reader
-  password: "${ARTIFACT_PASSWORD}"
-```
-
-### ExternalArtifact with HelmRelease
+## ExternalArtifact with HelmRelease
 
 Use ExternalArtifact as a source for HelmReleases when charts come from non-standard locations:
 
@@ -238,11 +186,12 @@ metadata:
   name: custom-chart
   namespace: flux-system
 spec:
-  url: "https://builds.example.com/charts/my-chart-1.2.3.tgz"
-  digest: "sha256:chart-digest..."
-  contentType: "application/x-tar"
+  sourceRef:
+    apiVersion: charts.example.com/v1
+    kind: ChartBuild
+    name: my-chart-build
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -258,53 +207,6 @@ spec:
     image:
       repository: ghcr.io/myorg/my-app
       tag: v1.2.3
-```
-
-## Promotion Pipeline with ExternalArtifact
-
-Implement a promotion workflow where artifacts flow from dev to staging to production:
-
-```yaml
-# Promotion controller job
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: promote-to-staging
-  namespace: flux-system
-spec:
-  schedule: "0 */4 * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: artifact-promoter
-          containers:
-            - name: promoter
-              image: bitnami/kubectl:latest
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  # Get the current dev artifact details
-                  DEV_URL=$(kubectl get externalartifact my-app-dev \
-                    -n flux-system \
-                    -o jsonpath='{.spec.url}')
-                  DEV_DIGEST=$(kubectl get externalartifact my-app-dev \
-                    -n flux-system \
-                    -o jsonpath='{.spec.digest}')
-
-                  # Promote to staging by updating the staging artifact
-                  kubectl patch externalartifact my-app-staging \
-                    -n flux-system \
-                    --type merge \
-                    -p "{
-                      \"spec\": {
-                        \"url\": \"${DEV_URL}\",
-                        \"digest\": \"${DEV_DIGEST}\"
-                      }
-                    }"
-                  echo "Promoted dev artifact to staging"
-          restartPolicy: OnFailure
 ```
 
 ## RBAC for ExternalArtifact Management
@@ -327,6 +229,9 @@ rules:
   - apiGroups: ["source.toolkit.fluxcd.io"]
     resources: ["externalartifacts"]
     verbs: ["get", "list", "patch", "update"]
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["externalartifacts/status"]
+    verbs: ["get", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -396,38 +301,33 @@ Understanding when to use ExternalArtifact versus other Flux sources:
 
 ### Use ExternalArtifact When
 
-- Artifacts come from a custom build system
-- You need integration with legacy CI/CD pipelines
+- Artifacts are produced by a custom controller or build system
+- You need integration with third-party Kubernetes operators
 - The artifact source is not Git, OCI, Helm, or S3
-- You want external systems to control when Flux deploys
+- You want external controllers to manage artifact lifecycle
 
 ## Best Practices
 
 ### Always Include Digest Verification
 
-Never deploy an artifact without digest verification. The digest ensures that the artifact Flux downloads matches what your CI pipeline produced.
+The `.status.artifact.digest` field ensures integrity. External controllers should always set it so Flux can verify artifact contents.
 
-### Use Immutable Artifact URLs
+### Use Immutable Artifact Revisions
 
-Include the build ID or commit SHA in the artifact URL to ensure each version is unique and traceable:
-
-```
-https://artifacts.example.com/my-app/abc123def.tar.gz  # Good
-https://artifacts.example.com/my-app/latest.tar.gz      # Avoid
-```
+Include the build ID or commit SHA in the artifact revision to ensure each version is unique and traceable.
 
 ### Implement Artifact Retention
 
 Set up lifecycle policies on your artifact storage to clean up old artifacts. Keep artifacts for at least as long as you might need to roll back.
 
-### Secure the Update Path
+### Secure the Status Update Path
 
-Limit who and what can update ExternalArtifact resources. Use Kubernetes RBAC to restrict patch access to trusted CI/CD service accounts.
+Limit who and what can update ExternalArtifact status. Use Kubernetes RBAC to restrict status patch access to trusted controllers and service accounts.
 
-### Version Your Artifacts
+### Use ArtifactGenerator When Possible
 
-Include version information in the artifact metadata or URL to make it easy to trace which version is deployed in each environment.
+If your source is already a Flux source type (GitRepository, OCIRepository, etc.) but you need to split it into multiple artifacts, use ArtifactGenerator instead of manually managing ExternalArtifact status.
 
 ## Conclusion
 
-ExternalArtifact extends Flux CD's source capabilities to work with any artifact storage system. By decoupling artifact production from deployment, it enables integration with existing CI/CD pipelines while maintaining the GitOps reconciliation model. Whether you are migrating from a traditional deployment pipeline or integrating with a custom build system, ExternalArtifact provides the flexibility to bring external artifacts into your Flux CD workflow.
+ExternalArtifact extends Flux CD's source capabilities to work with any artifact-producing controller. By providing a generic API for artifact metadata, it enables integration with custom build systems and third-party operators while maintaining the GitOps reconciliation model. Whether you are building a custom controller or integrating with an existing system, ExternalArtifact provides the interoperability layer to bring external artifacts into your Flux CD workflow.

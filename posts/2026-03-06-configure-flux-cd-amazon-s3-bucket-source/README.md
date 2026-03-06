@@ -170,7 +170,7 @@ Now define the Flux Bucket resource that points to your S3 bucket.
 
 ```yaml
 # s3-bucket-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: s3-manifests
@@ -314,7 +314,7 @@ Then reference the secret in the Bucket resource:
 
 ```yaml
 # s3-bucket-source-static.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: s3-manifests

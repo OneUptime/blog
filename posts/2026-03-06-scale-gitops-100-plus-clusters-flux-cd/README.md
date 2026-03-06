@@ -336,7 +336,7 @@ At scale, managing secrets per cluster is impractical. Use a centralized secret 
 
 ```yaml
 # addons/external-secrets/helm-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-secrets
@@ -401,7 +401,7 @@ spec:
 ```yaml
 # addons/monitoring/prometheus-values.yaml
 # Prometheus configuration for fleet monitoring
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack

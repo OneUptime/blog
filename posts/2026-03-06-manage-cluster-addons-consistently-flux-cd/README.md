@@ -108,7 +108,7 @@ spec:
 ---
 # addons/base/cert-manager/helm-release.yaml
 # cert-manager for automated TLS certificate management
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -193,7 +193,7 @@ spec:
 ---
 # addons/base/ingress-nginx/helm-release.yaml
 # NGINX ingress controller for routing external traffic
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -251,7 +251,7 @@ spec:
 ---
 # addons/base/monitoring/helm-release.yaml
 # Full monitoring stack with Prometheus, Grafana, and Alertmanager
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack
@@ -343,7 +343,7 @@ spec:
 ---
 # addons/base/logging/helm-release.yaml
 # Fluent Bit for log collection and forwarding
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: fluent-bit
@@ -409,7 +409,7 @@ spec:
 ---
 # addons/base/policy-engine/helm-release.yaml
 # Kyverno policy engine for admission control
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kyverno

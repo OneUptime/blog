@@ -177,7 +177,7 @@ Jenkins typically builds images and updates tags inline. With Flux CD, use Image
 
 ```yaml
 # clusters/production/image-automation/my-app-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -187,7 +187,7 @@ spec:
   image: registry.example.com/my-app
   interval: 1m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -200,7 +200,7 @@ spec:
     numerical:
       order: asc
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app

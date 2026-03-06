@@ -216,7 +216,7 @@ kubectl get deployments -n flux-system
 
 ```yaml
 # image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: test-app
@@ -236,7 +236,7 @@ spec:
 
 ```yaml
 # image-policy-semver.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: test-app-semver
@@ -254,7 +254,7 @@ spec:
 
 ```yaml
 # image-policy-numerical.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: test-app-date
@@ -276,7 +276,7 @@ spec:
 
 ```yaml
 # image-policy-alpha.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: test-app-alpha
@@ -327,7 +327,7 @@ stringData:
 
 ```yaml
 # image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: test-app-update

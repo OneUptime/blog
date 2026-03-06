@@ -78,7 +78,7 @@ The Kubewarden controller is the core component that manages policy servers and 
 
 ```yaml
 # clusters/my-cluster/kubewarden/helm-release-controller.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kubewarden-controller
@@ -116,7 +116,7 @@ The defaults chart installs a default PolicyServer and recommended policies.
 
 ```yaml
 # clusters/my-cluster/kubewarden/helm-release-defaults.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kubewarden-defaults

@@ -304,7 +304,7 @@ spec:
 
 ```yaml
 # clusters/k0s-cluster/apps/monitoring-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack
@@ -396,7 +396,7 @@ spec:
   interval: 24h
   url: https://charts.containeroo.ch
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: local-path-provisioner

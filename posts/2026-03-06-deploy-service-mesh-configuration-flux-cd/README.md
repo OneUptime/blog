@@ -39,7 +39,7 @@ spec:
 
 ```yaml
 # infrastructure/service-mesh/istio-base.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istio-base
@@ -60,7 +60,7 @@ spec:
 
 ```yaml
 # infrastructure/service-mesh/istiod.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istiod
@@ -273,7 +273,7 @@ spec:
 
 ```yaml
 # infrastructure/service-mesh/linkerd-crds.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-crds
@@ -294,7 +294,7 @@ spec:
 
 ```yaml
 # infrastructure/service-mesh/linkerd-control-plane.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-control-plane

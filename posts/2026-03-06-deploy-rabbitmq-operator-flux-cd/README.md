@@ -70,7 +70,7 @@ Install the operator that will manage RabbitMQ cluster lifecycle.
 
 ```yaml
 # clusters/my-cluster/rabbitmq/operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: rabbitmq-cluster-operator
@@ -475,7 +475,7 @@ spec:
   wait: true
   timeout: 15m
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: rabbitmq-cluster-operator
       namespace: rabbitmq

@@ -259,7 +259,7 @@ Set up Flux CD to pull Timoni modules from your OCI registry.
 
 ```yaml
 # clusters/production/sources/timoni-modules.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-webapp-module
@@ -471,7 +471,7 @@ cosign sign ghcr.io/myorg/modules/my-webapp:1.0.0
 
 ```yaml
 # clusters/production/sources/verified-module.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: verified-webapp-module

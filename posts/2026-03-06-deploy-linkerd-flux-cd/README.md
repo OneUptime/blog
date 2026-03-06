@@ -134,7 +134,7 @@ Install the Linkerd CRDs as a separate HelmRelease:
 ```yaml
 # linkerd-crds.yaml
 # HelmRelease for Linkerd CRDs - must be installed first
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-crds
@@ -162,7 +162,7 @@ Deploy the Linkerd control plane:
 ```yaml
 # linkerd-control-plane.yaml
 # HelmRelease for the Linkerd control plane
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-control-plane
@@ -231,7 +231,7 @@ Deploy the Linkerd visualization dashboard:
 ```yaml
 # linkerd-viz.yaml
 # HelmRelease for the Linkerd Viz dashboard extension
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-viz
@@ -293,7 +293,7 @@ Add distributed tracing support:
 ```yaml
 # linkerd-jaeger.yaml
 # HelmRelease for the Linkerd Jaeger tracing extension
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: linkerd-jaeger

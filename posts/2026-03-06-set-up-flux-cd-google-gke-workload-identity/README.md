@@ -242,7 +242,7 @@ Set up Flux sources that use the GCP provider for authentication.
 ```yaml
 # oci-repository-gar.yaml
 # Pulls OCI artifacts from Google Artifact Registry using Workload Identity
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -279,7 +279,7 @@ Set up Flux image automation to scan images in Google Artifact Registry.
 ```yaml
 # image-repository.yaml
 # Scans Artifact Registry for new image tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -292,7 +292,7 @@ spec:
 ---
 # image-policy.yaml
 # Selects the latest semver tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

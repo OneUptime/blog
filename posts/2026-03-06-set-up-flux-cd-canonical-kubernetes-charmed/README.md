@@ -344,7 +344,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/ingress-nginx.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -444,7 +444,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/monitoring.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack

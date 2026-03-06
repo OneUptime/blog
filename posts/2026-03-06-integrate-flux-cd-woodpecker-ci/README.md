@@ -214,7 +214,7 @@ Instead of having Woodpecker CI update manifests directly, you can use Flux Imag
 ```yaml
 # clusters/my-cluster/image-registry.yaml
 # Tell Flux to scan the container registry for new tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp
@@ -229,7 +229,7 @@ spec:
 ```yaml
 # clusters/my-cluster/image-policy.yaml
 # Define which image tags Flux should use
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp
@@ -246,7 +246,7 @@ spec:
 ```yaml
 # clusters/my-cluster/image-update.yaml
 # Configure Flux to commit image updates back to Git
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: myapp

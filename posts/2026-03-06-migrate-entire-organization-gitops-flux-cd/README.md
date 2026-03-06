@@ -252,7 +252,7 @@ resources:
 
 ```yaml
 # infrastructure/controllers/kyverno/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kyverno
@@ -415,7 +415,7 @@ Replace CI-driven image updates with Flux image automation:
 
 ```yaml
 # clusters/production/image-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: fleet-infra

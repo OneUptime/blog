@@ -8,6 +8,8 @@ Description: A comprehensive guide to setting up Flagger with AWS App Mesh and F
 
 ---
 
+**Note: AWS App Mesh has been deprecated by AWS and will be discontinued on September 30, 2026. New customers can no longer onboard to App Mesh as of September 24, 2024. AWS recommends migrating to Amazon VPC Lattice (for EKS workloads) or Amazon ECS Service Connect. The information below remains accurate for existing App Mesh users during the transition period.**
+
 ## Introduction
 
 AWS App Mesh is a managed service mesh that provides application-level networking using the Envoy proxy. Flagger integrates with App Mesh to automate canary deployments by managing virtual nodes, virtual routers, and route weights. Combined with Flux for GitOps, you get a fully automated progressive delivery pipeline on AWS.
@@ -51,7 +53,7 @@ spec:
 
 ```yaml
 # appmesh-controller-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: appmesh-controller
@@ -114,7 +116,7 @@ spec:
 
 ```yaml
 # prometheus-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prometheus
@@ -171,7 +173,7 @@ spec:
 
 ```yaml
 # flagger-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger

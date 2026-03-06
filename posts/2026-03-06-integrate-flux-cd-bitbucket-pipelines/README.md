@@ -218,7 +218,7 @@ Set up Flux to scan the container registry for images pushed by Bitbucket Pipeli
 
 ```yaml
 # clusters/my-cluster/image-repos/app-image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -250,7 +250,7 @@ Configure Flux to select the right image tag from the registry.
 
 ```yaml
 # clusters/my-cluster/image-policies/app-image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -270,7 +270,7 @@ Set up Flux to commit updated image tags back to your Git repository.
 
 ```yaml
 # clusters/my-cluster/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: bitbucket-image-updates

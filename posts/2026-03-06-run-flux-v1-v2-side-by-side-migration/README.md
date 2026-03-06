@@ -305,7 +305,7 @@ Convert to Flux v2 image automation:
 
 ```yaml
 # clusters/my-cluster/flux-v2/image-automation/my-app.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -314,7 +314,7 @@ spec:
   image: registry.example.com/my-app
   interval: 1m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -326,7 +326,7 @@ spec:
     semver:
       range: "~1.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app

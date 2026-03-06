@@ -89,7 +89,7 @@ spec:
 
 ```yaml
 # infrastructure/tracing/tempo-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tempo
@@ -177,7 +177,7 @@ The OTel Collector acts as a central processing pipeline for traces.
 
 ```yaml
 # infrastructure/tracing/otel-collector-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: otel-collector
@@ -315,7 +315,7 @@ For sidecar-less collection, deploy a DaemonSet collector on each node.
 
 ```yaml
 # infrastructure/tracing/otel-daemonset-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: otel-collector-agent

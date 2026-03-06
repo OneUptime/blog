@@ -71,7 +71,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/databases/postgresql/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cloudnative-pg
@@ -387,7 +387,7 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: cloudnative-pg
       namespace: postgresql

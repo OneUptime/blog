@@ -109,7 +109,7 @@ Flux CD can automatically detect new container images and update your Git reposi
 
 ```yaml
 # Define which container registry to watch
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -122,7 +122,7 @@ spec:
     name: ghcr-credentials
 ---
 # Define a policy for selecting image tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -136,7 +136,7 @@ spec:
       range: ">=1.0.0"
 ---
 # Automate Git updates when new images are found
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app

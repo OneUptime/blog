@@ -76,7 +76,7 @@ Healthy output looks like this:
 > helmreleases.helm.toolkit.fluxcd.io/v2
 > helmrepositories.source.toolkit.fluxcd.io/v1
 > kustomizations.kustomize.toolkit.fluxcd.io/v1
-> ocirepositories.source.toolkit.fluxcd.io/v1beta2
+> ocirepositories.source.toolkit.fluxcd.io/v1
 > providers.notification.toolkit.fluxcd.io/v1beta3
 > receivers.notification.toolkit.fluxcd.io/v1
 > all checks passed

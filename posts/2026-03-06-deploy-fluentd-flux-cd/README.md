@@ -186,7 +186,7 @@ data:
 
 ```yaml
 # clusters/my-cluster/fluentd/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: fluentd
@@ -306,7 +306,7 @@ spec:
   wait: true
   timeout: 10m
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: fluentd
       namespace: fluentd

@@ -211,27 +211,27 @@ spec:
       namespace: flux-system
 ```
 
-## Step 5: Use Annotations to Control Events Per Resource
+## Step 5: Use Long Intervals and Suspend to Control Events Per Resource
 
-Flux supports annotations that control event generation on individual resources.
+For resources that rarely change, use long reconciliation intervals or suspend them entirely to reduce event noise.
 
 ```yaml
-# Disable events for a specific Kustomization
+# Use a long interval for a stable Kustomization
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
   name: common-configs
   namespace: flux-system
-  annotations:
-    # Disable reconciliation events for this resource
-    kustomize.toolkit.fluxcd.io/reconcile: "disabled"
 spec:
+  # Use a very long interval to reduce events for stable resources
   interval: 1h
   sourceRef:
     kind: GitRepository
     name: flux-system
   path: ./common
   prune: true
+  # You can also suspend the resource entirely if no changes are expected:
+  # flux suspend kustomization common-configs -n flux-system
 ```
 
 For HelmReleases that rarely change:

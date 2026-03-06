@@ -88,7 +88,7 @@ The SPIRE Server is the central authority that manages identities and issues SVI
 
 ```yaml
 # clusters/my-cluster/spire/spire-server-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: spire-server

@@ -69,7 +69,7 @@ Install the Strimzi Operator, which will watch for Kafka custom resources and ma
 
 ```yaml
 # clusters/my-cluster/strimzi/operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: strimzi-operator
@@ -455,7 +455,7 @@ spec:
   wait: true
   timeout: 20m
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: strimzi-operator
       namespace: strimzi

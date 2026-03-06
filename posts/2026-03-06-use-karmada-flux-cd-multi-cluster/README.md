@@ -75,7 +75,7 @@ spec:
   url: https://raw.githubusercontent.com/karmada-io/karmada/master/charts
 ---
 # HelmRelease to install Karmada via Flux
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: karmada

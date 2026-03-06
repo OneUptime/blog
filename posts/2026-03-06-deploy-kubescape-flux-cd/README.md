@@ -80,7 +80,7 @@ Deploy Kubescape with all scanning components enabled.
 ```yaml
 # kubescape-helmrelease.yaml
 # Deploys the Kubescape security platform via Flux CD
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kubescape

@@ -276,7 +276,7 @@ Configure Flux to accept webhooks from external approval systems.
 
 ```yaml
 # Webhook receiver that triggers reconciliation
-apiVersion: notification.toolkit.fluxcd.io/v1beta3
+apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
 metadata:
   name: approval-webhook

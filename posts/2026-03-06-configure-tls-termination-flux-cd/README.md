@@ -390,7 +390,7 @@ kubectl get secret app-tls-secret -n default -o yaml
 
 ```bash
 # Check NGINX ingress controller logs for TLS errors
-kubectl logs -n ingress-nginx deploy/nginx-ingress-controller | grep -i ssl
+kubectl logs -n ingress-nginx deploy/ingress-nginx-controller | grep -i ssl
 
 # Verify certificate chain
 openssl s_client -connect app.example.com:443 -showcerts

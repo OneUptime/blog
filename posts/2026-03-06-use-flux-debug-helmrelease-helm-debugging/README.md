@@ -102,7 +102,7 @@ HelmReleases can pull values from multiple sources. Use the debug command to ver
 
 ```yaml
 # helmrelease.yaml - Example with multiple value sources
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

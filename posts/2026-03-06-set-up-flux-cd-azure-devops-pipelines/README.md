@@ -225,7 +225,7 @@ Set up Flux resources to pull OCI artifacts from ACR.
 ```yaml
 # oci-repository.yaml
 # Configures Flux to watch an OCI repository in ACR for new artifacts
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-manifests
@@ -276,7 +276,7 @@ spec:
   resources:
     - kind: OCIRepository
       name: my-app-manifests
-      apiVersion: source.toolkit.fluxcd.io/v1beta2
+      apiVersion: source.toolkit.fluxcd.io/v1
 ```
 
 Create the webhook secret:
@@ -318,7 +318,7 @@ Set up different Flux sources for different environments based on branches.
 ```yaml
 # staging-source.yaml
 # Watches the staging tag for pre-production deployments
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-staging
@@ -332,7 +332,7 @@ spec:
 ---
 # production-source.yaml
 # Watches semver tags for production deployments
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-production

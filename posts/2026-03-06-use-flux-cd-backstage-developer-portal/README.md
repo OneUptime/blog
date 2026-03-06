@@ -98,7 +98,7 @@ kubernetes:
               plural: kustomizations
             # Flux HelmReleases
             - group: helm.toolkit.fluxcd.io
-              apiVersion: v1
+              apiVersion: v2
               plural: helmreleases
             # Flux GitRepositories
             - group: source.toolkit.fluxcd.io
@@ -395,7 +395,7 @@ Deploy Backstage itself using Flux CD:
 ```yaml
 # backstage-helmrelease.yaml
 # HelmRelease to deploy Backstage via Flux
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: backstage
@@ -468,7 +468,7 @@ data:
                   apiVersion: v1
                   plural: kustomizations
                 - group: helm.toolkit.fluxcd.io
-                  apiVersion: v1
+                  apiVersion: v2
                   plural: helmreleases
 ```
 

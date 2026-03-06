@@ -296,7 +296,7 @@ Use Flux Image Automation to trigger rolling updates automatically:
 
 ```yaml
 # clusters/my-cluster/image-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp
@@ -305,7 +305,7 @@ spec:
   image: myregistry.io/myapp
   interval: 5m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp
@@ -318,7 +318,7 @@ spec:
       # Automatically update to latest patch version
       range: ">=1.5.0 <2.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: myapp

@@ -64,7 +64,7 @@ spec:
   timeout: 1m
 ---
 # Define the Helm release
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nginx
@@ -150,7 +150,7 @@ spec:
 Flux CD offers powerful values management including referencing values from Kubernetes secrets and ConfigMaps.
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -285,7 +285,7 @@ spec:
 ### Flux CD: Automatic Remediation
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -366,7 +366,7 @@ spec:
     name: oci-registry-creds
 ---
 # HelmRelease using OCI source
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -407,7 +407,7 @@ spec:
 Flux CD supports post-rendering Helm output with Kustomize, which is a powerful feature not available in ArgoCD.
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

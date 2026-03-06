@@ -69,7 +69,7 @@ data:
   .dockerconfigjson: eyJhdXRocyI6eyJnaGNyLmlvIjp7InVzZXJuYW1lIjoiZmx1eCIsInBhc3N3b3JkIjoiZ2hwX3h4eCJ9fX0=
 ---
 # Reference the secret in the ImageRepository
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -117,7 +117,7 @@ kubectl get imagerepository -n flux-system my-app -o jsonpath='{.status.lastScan
 ### Fix: Reduce Scan Interval
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -157,7 +157,7 @@ kubectl get imagerepository -n flux-system my-app -o jsonpath='{.status.lastScan
 ### Fix: Adjust Exclusion Patterns
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -204,7 +204,7 @@ status:
 
 ```yaml
 # Wrong: tags in the registry are like "v1.2.3" but policy expects "1.2.3"
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -221,7 +221,7 @@ spec:
 ### Fix: Handle "v" Prefix in Tags
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -243,7 +243,7 @@ spec:
 ```yaml
 ---
 # Semver policy: selects the highest semantic version
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-semver
@@ -257,7 +257,7 @@ spec:
       range: "^1.0.0"
 ---
 # Alphabetical policy: selects the last tag alphabetically
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-alpha
@@ -274,7 +274,7 @@ spec:
       order: asc
 ---
 # Numerical policy: selects the highest numerical tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-numerical
@@ -307,7 +307,7 @@ kubectl describe imageupdateautomation -n flux-system my-app-automation
 ### Fix: Create ImageUpdateAutomation
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app-automation

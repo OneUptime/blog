@@ -248,7 +248,7 @@ In your Flux configuration repository, create an `ImageRepository` to scan for i
 
 ```yaml
 # clusters/my-cluster/image-repos/app-image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -280,7 +280,7 @@ Define the image selection policy for Flux.
 
 ```yaml
 # clusters/my-cluster/image-policies/app-image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -298,7 +298,7 @@ For commit SHA-based tagging:
 
 ```yaml
 # Alternative: commit SHA-based policy
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -319,7 +319,7 @@ Set up Flux to automatically commit updated image tags to your Git repository.
 
 ```yaml
 # clusters/my-cluster/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: drone-image-updates

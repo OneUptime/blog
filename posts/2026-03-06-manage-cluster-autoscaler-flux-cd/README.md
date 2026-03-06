@@ -45,7 +45,7 @@ Define a HelmRelease that deploys the Cluster Autoscaler with your desired confi
 
 ```yaml
 # clusters/my-cluster/autoscaler/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cluster-autoscaler
@@ -139,7 +139,7 @@ You can use Kustomize patches to adjust autoscaler settings per environment.
 
 ```yaml
 # infrastructure/autoscaler/overlays/production/patch.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cluster-autoscaler
@@ -259,7 +259,7 @@ If you manage clusters across multiple cloud providers, structure your Git repos
 
 ```yaml
 # clusters/gke-cluster/autoscaler/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cluster-autoscaler

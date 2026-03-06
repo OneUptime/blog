@@ -167,7 +167,7 @@ Set up Flux to pull manifests from the OCI artifact pushed by Cloud Build.
 ```yaml
 # clusters/my-cluster/my-app-source.yaml
 # Pull Kubernetes manifests from the OCI artifact in Artifact Registry
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-manifests
@@ -283,7 +283,7 @@ For container image updates, set up Flux image automation to watch Artifact Regi
 
 ```yaml
 # infrastructure/image-automation/image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -295,7 +295,7 @@ spec:
   provider: gcp
 ---
 # infrastructure/image-automation/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -309,7 +309,7 @@ spec:
       range: ">=1.0.0"
 ---
 # infrastructure/image-automation/image-update.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app

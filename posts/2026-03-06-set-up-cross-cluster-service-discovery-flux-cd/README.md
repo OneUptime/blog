@@ -60,7 +60,7 @@ spec:
 ---
 # infrastructure/submariner/broker/helm-release.yaml
 # Install the Submariner broker component
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: submariner-broker
@@ -88,7 +88,7 @@ Create a Flux Kustomization for each cluster that installs the Submariner operat
 ```yaml
 # infrastructure/submariner/member/helm-release.yaml
 # Install the Submariner operator on a member cluster
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: submariner-operator
@@ -206,7 +206,7 @@ spec:
 ---
 # infrastructure/istio/base/istiod.yaml
 # Install Istio control plane via Helm
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istiod

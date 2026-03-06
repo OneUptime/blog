@@ -74,7 +74,7 @@ For smaller deployments, VictoriaMetrics single-node mode provides a simple setu
 
 ```yaml
 # clusters/my-cluster/victoriametrics/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: victoriametrics
@@ -181,7 +181,7 @@ For larger deployments that require horizontal scaling, use VictoriaMetrics clus
 
 ```yaml
 # clusters/my-cluster/victoriametrics/helmrelease-cluster.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: victoriametrics-cluster
@@ -275,7 +275,7 @@ spec:
   timeout: 10m
   # Health checks to verify deployment succeeded
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: victoriametrics
       namespace: victoriametrics

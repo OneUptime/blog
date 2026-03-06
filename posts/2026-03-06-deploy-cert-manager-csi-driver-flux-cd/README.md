@@ -81,7 +81,7 @@ Install cert-manager as a prerequisite for the CSI driver.
 
 ```yaml
 # clusters/my-cluster/cert-manager/cert-manager-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -146,7 +146,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/cert-manager/csi-driver-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager-csi-driver

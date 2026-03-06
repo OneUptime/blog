@@ -57,7 +57,7 @@ helm template <release-name> <chart> --values values.yaml
 ### Fix
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -171,7 +171,7 @@ kubectl get namespace <target-namespace>
 Either create the namespace manually or let Flux create it:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -220,7 +220,7 @@ spec:
   prune: false  # Never prune CRDs
 ---
 # Step 2: Make HelmRelease depend on CRDs
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -266,7 +266,7 @@ kubectl logs -n flux-system deploy/helm-controller --tail=100 | grep -i "forbidd
 If using a custom service account for the HelmRelease:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -313,7 +313,7 @@ roleRef:
 Configure how Flux handles install failures:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

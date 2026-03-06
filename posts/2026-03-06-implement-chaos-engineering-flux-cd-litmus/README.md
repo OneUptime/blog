@@ -49,7 +49,7 @@ Create a HelmRelease to install the Litmus control plane:
 
 ```yaml
 # clusters/my-cluster/litmus/helm-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: litmus
@@ -88,7 +88,7 @@ The ChaosCenter agent connects your cluster to the Litmus control plane:
 
 ```yaml
 # clusters/my-cluster/litmus/chaos-agent.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: litmus-agent

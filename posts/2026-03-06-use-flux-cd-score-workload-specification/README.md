@@ -373,7 +373,7 @@ Combine Score with Flux image automation to automatically update workload images
 
 ```yaml
 # clusters/production/image-automation/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-service
@@ -389,7 +389,7 @@ spec:
 
 ```yaml
 # clusters/production/image-automation/image-update.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: score-image-update

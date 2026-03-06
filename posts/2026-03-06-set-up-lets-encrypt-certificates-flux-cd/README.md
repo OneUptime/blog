@@ -200,7 +200,7 @@ For AWS, the recommended approach is to use IRSA. Add this annotation to the cer
 
 ```yaml
 # Patch for cert-manager service account
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager

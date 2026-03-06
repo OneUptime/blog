@@ -104,7 +104,7 @@ spec:
             - --kube-api-burst=200
             - --requeue-dependency=5s
             # Each shard needs its own leader election ID
-            - --leader-elect=true
+            - --enable-leader-election=true
             - --leader-election-id=kustomize-controller-shard1
           resources:
             requests:
@@ -168,7 +168,7 @@ spec:
             - --kube-api-qps=100
             - --kube-api-burst=200
             - --requeue-dependency=5s
-            - --leader-elect=true
+            - --enable-leader-election=true
             # Unique leader election ID per shard
             - --leader-election-id=kustomize-controller-shard2
           resources:
@@ -236,7 +236,7 @@ spec:
             - --concurrent=6
             - --kube-api-qps=50
             - --kube-api-burst=100
-            - --leader-elect=true
+            - --enable-leader-election=true
             - --leader-election-id=source-controller-shard1
           volumeMounts:
             - name: data

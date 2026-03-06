@@ -197,7 +197,7 @@ In your Flux configuration repository, set up the `ImageRepository` to scan for 
 
 ```yaml
 # clusters/my-cluster/image-repos/app-image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -229,7 +229,7 @@ Define how Flux selects the correct image tag to deploy.
 
 ```yaml
 # clusters/my-cluster/image-policies/app-image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -247,7 +247,7 @@ For commit SHA-based tags, use an alphabetical policy instead:
 
 ```yaml
 # Alternative: commit SHA-based policy
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -269,7 +269,7 @@ Set up Flux to automatically update your Kubernetes manifests when new images ar
 
 ```yaml
 # clusters/my-cluster/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: jenkins-image-updates
@@ -351,7 +351,7 @@ spec:
   resources:
     - kind: ImageRepository
       name: my-app
-      apiVersion: image.toolkit.fluxcd.io/v1beta2
+      apiVersion: image.toolkit.fluxcd.io/v1
 ```
 
 Create the webhook token secret:

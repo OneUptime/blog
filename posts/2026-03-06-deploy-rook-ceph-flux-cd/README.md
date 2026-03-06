@@ -79,7 +79,7 @@ The operator manages the lifecycle of Ceph components in your cluster.
 
 ```yaml
 # clusters/my-cluster/storage/rook-ceph/helmrelease-operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: rook-ceph-operator
@@ -122,7 +122,7 @@ Configure the Ceph cluster using the rook-ceph-cluster Helm chart.
 
 ```yaml
 # clusters/my-cluster/storage/rook-ceph/helmrelease-cluster.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: rook-ceph-cluster
@@ -258,11 +258,11 @@ spec:
     name: flux-system
   # Health checks to verify the deployment
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: rook-ceph-operator
       namespace: rook-ceph
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: rook-ceph-cluster
       namespace: rook-ceph

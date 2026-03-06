@@ -245,7 +245,7 @@ Harness triggers that deploy on new artifact versions can be replaced with Flux 
 
 ```yaml
 # clusters/production/image-automation/my-service.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-service
@@ -258,7 +258,7 @@ spec:
     # Registry credentials previously stored in Harness connectors
     name: registry-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-service
@@ -271,7 +271,7 @@ spec:
     semver:
       range: ">=1.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: fleet-infra

@@ -186,7 +186,7 @@ Create a Flux Bucket resource that reads from the GCS bucket using Workload Iden
 ```yaml
 # bucket-source-gcs.yaml
 # Configures Flux to read manifests from a GCS bucket
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: gcs-manifests
@@ -233,7 +233,7 @@ gcloud storage hmac list \
 ```yaml
 # bucket-source-hmac.yaml
 # Uses HMAC keys for S3-compatible authentication to GCS
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: gcs-manifests-hmac
@@ -339,7 +339,7 @@ Set up different bucket prefixes or buckets for different environments.
 ```yaml
 # bucket-source-staging.yaml
 # Staging environment bucket source
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: gcs-staging
@@ -354,7 +354,7 @@ spec:
 ---
 # bucket-source-production.yaml
 # Production environment bucket source
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: gcs-production
@@ -431,7 +431,7 @@ spec:
   resources:
     - kind: Bucket
       name: gcs-manifests
-      apiVersion: source.toolkit.fluxcd.io/v1beta2
+      apiVersion: source.toolkit.fluxcd.io/v1
 ```
 
 ```bash

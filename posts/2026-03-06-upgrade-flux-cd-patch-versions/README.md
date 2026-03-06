@@ -142,7 +142,7 @@ You can configure Flux to automatically upgrade its own controller images for pa
 ```yaml
 # image-repo-source-controller.yaml
 # Track the source-controller image for new patches
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: source-controller
@@ -153,7 +153,7 @@ spec:
 ---
 # image-policy-source-controller.yaml
 # Only allow patch version updates within the current minor
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: source-controller
@@ -168,7 +168,7 @@ spec:
 ---
 # Repeat for each controller you want to auto-update
 # image-repo-kustomize-controller.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: kustomize-controller
@@ -177,7 +177,7 @@ spec:
   image: ghcr.io/fluxcd/kustomize-controller
   interval: 1h
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: kustomize-controller

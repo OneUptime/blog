@@ -75,7 +75,7 @@ spec:
 
 ```yaml
 # datadog-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: datadog
@@ -119,7 +119,7 @@ Install Flagger with your mesh provider. Datadog is configured per MetricTemplat
 
 ```yaml
 # flagger-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger
@@ -155,6 +155,8 @@ metadata:
 spec:
   provider:
     type: datadog
+    # Datadog API endpoint
+    address: https://api.datadoghq.com
     # Reference the secret containing Datadog credentials
     secretRef:
       name: datadog-credentials
@@ -181,6 +183,7 @@ metadata:
 spec:
   provider:
     type: datadog
+    address: https://api.datadoghq.com
     secretRef:
       name: datadog-credentials
   query: |
@@ -202,6 +205,7 @@ metadata:
 spec:
   provider:
     type: datadog
+    address: https://api.datadoghq.com
     secretRef:
       name: datadog-credentials
   query: |
@@ -229,6 +233,7 @@ metadata:
 spec:
   provider:
     type: datadog
+    address: https://api.datadoghq.com
     secretRef:
       name: datadog-credentials
   query: |
@@ -250,6 +255,7 @@ metadata:
 spec:
   provider:
     type: datadog
+    address: https://api.datadoghq.com
     secretRef:
       name: datadog-credentials
   query: |

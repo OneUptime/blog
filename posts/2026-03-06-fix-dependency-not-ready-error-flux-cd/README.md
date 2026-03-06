@@ -295,7 +295,7 @@ spec:
 For HelmRelease cross-namespace dependencies:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

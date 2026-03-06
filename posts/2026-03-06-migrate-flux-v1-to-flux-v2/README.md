@@ -150,7 +150,7 @@ spec:
     service:
       type: ClusterIP
 
-# Flux v2 HelmRelease (API: helm.toolkit.fluxcd.io/v1)
+# Flux v2 HelmRelease (API: helm.toolkit.fluxcd.io/v2)
 # Note: In v2, the chart source is defined separately
 ---
 # First, define the HelmRepository source
@@ -164,7 +164,7 @@ spec:
   url: https://charts.bitnami.com/bitnami
 ---
 # Then define the HelmRelease referencing the source
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nginx
@@ -198,7 +198,7 @@ spec:
 # Flux v2: Separate ImageRepository, ImagePolicy, and ImageUpdateAutomation
 ---
 # Scan the container registry for new tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: web-app
@@ -210,7 +210,7 @@ spec:
     name: registry-credentials
 ---
 # Define the policy for selecting image tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: web-app
@@ -224,7 +224,7 @@ spec:
       range: "~1.0"
 ---
 # Automate Git updates when new images are found
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

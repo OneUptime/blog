@@ -142,7 +142,7 @@ spec:
 
 ```yaml
 # ack-s3-controller.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ack-s3-controller
@@ -189,7 +189,7 @@ spec:
 
 ```yaml
 # ack-rds-controller.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ack-rds-controller

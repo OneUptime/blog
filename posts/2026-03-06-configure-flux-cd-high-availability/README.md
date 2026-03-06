@@ -71,7 +71,7 @@ patches:
                 args:
                   # Leader election ensures only one replica
                   # is actively reconciling at any time
-                  - --leader-elect=true
+                  - --enable-leader-election=true
                   - --log-level=info
                   - --log-encoding=json
             # Spread replicas across different nodes

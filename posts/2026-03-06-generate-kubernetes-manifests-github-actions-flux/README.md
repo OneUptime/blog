@@ -204,7 +204,7 @@ Set up Flux to pull and deploy the generated manifests from the OCI artifact.
 
 ```yaml
 # clusters/production/oci-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests

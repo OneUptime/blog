@@ -419,7 +419,7 @@ Variables can also be used in HelmRelease values.
 
 ```yaml
 # base/addons/ingress-nginx/helm-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx

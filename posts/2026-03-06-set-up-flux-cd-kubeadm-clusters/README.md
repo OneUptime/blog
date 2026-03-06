@@ -251,7 +251,7 @@ spec:
 
 ```yaml
 # infrastructure/storage/local-path.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: local-path-provisioner
@@ -297,7 +297,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/ingress.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -523,7 +523,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/metallb.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: metallb

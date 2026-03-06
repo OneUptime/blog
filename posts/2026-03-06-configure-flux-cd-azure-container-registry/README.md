@@ -120,7 +120,7 @@ metadata:
 
 ```yaml
 # File: sources/acr-managed-identity.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-charts
@@ -187,7 +187,7 @@ kubectl create secret docker-registry acr-token-secret \
 
 ```yaml
 # File: sources/acr-token-auth.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -239,7 +239,7 @@ kubectl create secret docker-registry acr-admin-secret \
 
 ```yaml
 # File: sources/acr-admin-auth.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests-dev
@@ -291,7 +291,7 @@ spec:
 
 ```yaml
 # File: releases/my-app-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

@@ -1,20 +1,20 @@
-# How to Use CEL Expressions for Job Completion Health in Flux
+# How to Use Health Checks for Job Completion in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, cel, jobs, health checks, kubernetes, gitops, batch processing
+Tags: flux cd, jobs, health checks, kubernetes, gitops, batch processing
 
-Description: A practical guide to writing CEL health check expressions for Kubernetes Jobs and CronJobs in Flux CD to validate batch workload completion.
+Description: A practical guide to configuring Kubernetes Job health checks in Flux CD to validate batch workload completion before proceeding with dependent resources.
 
 ---
 
 ## Introduction
 
-Kubernetes Jobs represent finite workloads that run to completion, such as database migrations, data processing tasks, and setup scripts. When deploying Jobs through Flux CD, you need health checks that understand Job-specific semantics: a Job is healthy when it completes successfully, not when it is running. CEL expressions let you define precise completion criteria for Jobs in your GitOps pipeline.
+Kubernetes Jobs represent finite workloads that run to completion, such as database migrations, data processing tasks, and setup scripts. When deploying Jobs through Flux CD, you need health checks that wait for successful completion before proceeding. Flux has built-in health check support for Jobs through the `.spec.healthChecks` field and the `.spec.wait` option, which understand Job-specific semantics: a Job is healthy when it completes successfully.
 
 ## Prerequisites
 
-- Flux CD v2.4+ with CEL health check support
+- Flux CD installed on a Kubernetes cluster
 - A Kubernetes cluster
 - kubectl access to your cluster
 
@@ -50,7 +50,9 @@ status:
   ready: 0
 ```
 
-## Basic Job Health CEL Expressions
+Flux uses the built-in kstatus library to assess Job health. A Job is considered healthy when the Complete condition is True, and unhealthy when the Failed condition is True.
+
+## Basic Job Health Checks
 
 ### Simple Completion Check
 
@@ -73,53 +75,26 @@ spec:
       kind: Job
       name: db-migrate
       namespace: default
-      cel:
-        # Job is healthy when the Complete condition is True
-        expression: >-
-          self.status.conditions.exists(c,
-            c.type == 'Complete' && c.status == 'True'
-          )
 ```
 
-### Completion with Failure Detection
-
-Detect failures explicitly to provide faster feedback:
+### Wait for All Resources Including Jobs
 
 ```yaml
-healthChecks:
-  - apiVersion: batch/v1
-    kind: Job
-    name: db-migrate
-    namespace: default
-    cel:
-      # Job must be complete and not failed
-      expression: >-
-        self.status.conditions.exists(c,
-          c.type == 'Complete' && c.status == 'True'
-        ) &&
-        !self.status.conditions.exists(c,
-          c.type == 'Failed' && c.status == 'True'
-        )
-```
-
-### Check Succeeded Count
-
-For Jobs with completions > 1:
-
-```yaml
-healthChecks:
-  - apiVersion: batch/v1
-    kind: Job
-    name: batch-processor
-    namespace: default
-    cel:
-      # All required completions must succeed
-      expression: >-
-        has(self.status.succeeded) &&
-        self.status.succeeded >= self.spec.completions &&
-        self.status.conditions.exists(c,
-          c.type == 'Complete' && c.status == 'True'
-        )
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: db-migration
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./migrations
+  prune: true
+  timeout: 15m
+  # Automatically health-check all applied resources
+  wait: true
 ```
 
 ## Job Definitions for Common Use Cases
@@ -203,17 +178,24 @@ spec:
 The corresponding health check:
 
 ```yaml
-healthChecks:
-  - apiVersion: batch/v1
-    kind: Job
-    name: data-processor
-    namespace: batch
-    cel:
-      # All 10 completions must succeed
-      expression: >-
-        has(self.status.succeeded) &&
-        self.status.succeeded == self.spec.completions &&
-        (!has(self.status.active) || self.status.active == 0)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: batch-processing
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./batch
+  prune: false
+  timeout: 30m
+  healthChecks:
+    - apiVersion: batch/v1
+      kind: Job
+      name: data-processor
+      namespace: batch
 ```
 
 ## Ordering Jobs with Flux Dependencies
@@ -240,11 +222,6 @@ spec:
       kind: Job
       name: db-migrate
       namespace: default
-      cel:
-        expression: >-
-          self.status.conditions.exists(c,
-            c.type == 'Complete' && c.status == 'True'
-          )
 ---
 # Step 2: Deploy application after migration succeeds
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -291,11 +268,6 @@ spec:
       kind: Job
       name: schema-migrate
       namespace: default
-      cel:
-        expression: >-
-          self.status.conditions.exists(c,
-            c.type == 'Complete' && c.status == 'True'
-          )
 ---
 # Step 2: Data migration (depends on schema being ready)
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -318,13 +290,6 @@ spec:
       kind: Job
       name: data-migrate
       namespace: default
-      cel:
-        expression: >-
-          has(self.status.succeeded) &&
-          self.status.succeeded >= 1 &&
-          self.status.conditions.exists(c,
-            c.type == 'Complete' && c.status == 'True'
-          )
 ---
 # Step 3: Seed data (depends on data migration)
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -347,11 +312,6 @@ spec:
       kind: Job
       name: seed-data
       namespace: default
-      cel:
-        expression: >-
-          self.status.conditions.exists(c,
-            c.type == 'Complete' && c.status == 'True'
-          )
 ```
 
 ## Handling Job Idempotency
@@ -463,10 +423,10 @@ Set `prune: false` on Kustomizations that manage Jobs, or use the annotation `ku
 
 Your Kustomization timeout must be longer than the expected Job duration. If a migration typically takes 5 minutes, set the timeout to at least 10 minutes to account for variability.
 
-### Use has() for Status Fields
+### Use wait: true for Simple Cases
 
-Job status fields like `succeeded`, `failed`, and `active` may not be present when the Job first starts. Always guard access with `has()`.
+If your Kustomization only manages Jobs and you want all of them health-checked, use `wait: true` instead of listing each Job individually.
 
 ## Conclusion
 
-CEL expressions enable Flux CD to properly track Job completion as a health signal. By writing completion-aware health checks, you can build reliable deployment pipelines that gate application rollouts on successful migrations, data processing, and setup tasks. The combination of Flux dependencies and Job health checks gives you a powerful mechanism for orchestrating complex deployment sequences.
+Flux CD has built-in support for tracking Job completion as a health signal through the `.spec.healthChecks` field. By configuring Job health checks, you can build reliable deployment pipelines that gate application rollouts on successful migrations, data processing, and setup tasks. The combination of Flux dependencies and Job health checks gives you a powerful mechanism for orchestrating complex deployment sequences.

@@ -80,7 +80,7 @@ flux create secret oci dockerhub-auth \
 
 ```yaml
 # Reference in an OCIRepository
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -108,7 +108,7 @@ flux create secret oci ghcr-auth \
 
 ```yaml
 # Reference in an OCIRepository
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-config
@@ -138,7 +138,7 @@ For automatic token refresh with ECR, use the provider field instead:
 ```yaml
 # ecr-oci-repository.yaml
 # Using the AWS provider for automatic credential refresh
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-config
@@ -166,7 +166,7 @@ For automatic authentication with GKE Workload Identity:
 
 ```yaml
 # gar-oci-repository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-config
@@ -194,7 +194,7 @@ For automatic authentication with Azure Workload Identity:
 
 ```yaml
 # acr-oci-repository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-config
@@ -310,7 +310,7 @@ flux create secret oci vendor-registry \
 ```yaml
 # Reference different secrets for different OCIRepositories
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: prod-config
@@ -323,7 +323,7 @@ spec:
   secretRef:
     name: prod-registry
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: staging-config

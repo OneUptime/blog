@@ -41,7 +41,7 @@ Calico is best deployed using the Tigera Operator, which manages the lifecycle o
 
 ```yaml
 # clusters/my-cluster/helm-releases/tigera-operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tigera-operator

@@ -82,7 +82,7 @@ Define the HelmRelease that deploys Apache Pulsar with all its components.
 ```yaml
 # pulsar-helmrelease.yaml
 # Deploys the full Apache Pulsar stack via Flux CD
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: pulsar

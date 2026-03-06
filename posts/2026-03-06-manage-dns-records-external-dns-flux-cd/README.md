@@ -75,7 +75,7 @@ spec:
 
 ```yaml
 # infrastructure/external-dns/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-dns
@@ -150,7 +150,7 @@ spec:
 
 ```yaml
 # infrastructure/external-dns/overlays/cloudflare/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-dns
@@ -315,7 +315,7 @@ Run multiple External-DNS instances for different DNS providers.
 
 ```yaml
 # infrastructure/external-dns/route53-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-dns-route53
@@ -344,7 +344,7 @@ spec:
       - service
 ---
 # infrastructure/external-dns/cloudflare-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-dns-cloudflare

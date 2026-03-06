@@ -72,7 +72,7 @@ Create the HelmRelease with production-ready configuration.
 
 ```yaml
 # clusters/production/volcano/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: volcano

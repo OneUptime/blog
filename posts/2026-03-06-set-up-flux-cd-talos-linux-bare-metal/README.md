@@ -252,7 +252,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/cilium.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cilium
@@ -417,7 +417,7 @@ You can manage Talos machine configuration updates through a GitOps workflow usi
 ```yaml
 # infrastructure/controllers/talos-ccm.yaml
 # Deploy the Talos Cloud Controller Manager
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: talos-ccm
@@ -445,7 +445,7 @@ Automate container image updates on your bare metal cluster:
 
 ```yaml
 # clusters/bare-metal/apps/image-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: web-app
@@ -454,7 +454,7 @@ spec:
   image: nginx
   interval: 5m
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: web-app

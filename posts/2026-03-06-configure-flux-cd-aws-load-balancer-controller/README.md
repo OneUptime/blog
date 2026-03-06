@@ -123,7 +123,7 @@ Deploy the AWS Load Balancer Controller using a Flux HelmRelease.
 
 ```yaml
 # aws-lb-controller-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: aws-load-balancer-controller

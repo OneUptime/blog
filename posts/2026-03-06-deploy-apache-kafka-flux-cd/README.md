@@ -67,7 +67,7 @@ Deploy Kafka with KRaft mode (no ZooKeeper dependency) for a simplified architec
 
 ```yaml
 # clusters/my-cluster/kafka/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kafka
@@ -305,7 +305,7 @@ spec:
   wait: true
   timeout: 15m
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: kafka
       namespace: kafka

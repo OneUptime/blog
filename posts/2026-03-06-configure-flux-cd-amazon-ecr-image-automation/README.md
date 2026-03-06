@@ -154,7 +154,7 @@ The ImageRepository resource tells Flux which ECR repository to scan:
 
 ```yaml
 # image-automation/image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -200,7 +200,7 @@ The ImagePolicy defines how Flux selects the latest image tag:
 
 ```yaml
 # image-automation/image-policy-semver.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -217,7 +217,7 @@ spec:
 
 ```yaml
 # image-automation/image-policy-timestamp.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -237,7 +237,7 @@ spec:
 
 ```yaml
 # image-automation/image-policy-alpha.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -270,7 +270,7 @@ The ImageUpdateAutomation resource tells Flux to commit image tag changes back t
 
 ```yaml
 # image-automation/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

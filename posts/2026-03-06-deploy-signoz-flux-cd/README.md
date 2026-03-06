@@ -70,7 +70,7 @@ Deploy Signoz with all its components through a HelmRelease resource.
 
 ```yaml
 # clusters/my-cluster/signoz/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: signoz
@@ -207,7 +207,7 @@ spec:
   wait: true
   timeout: 15m
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: signoz
       namespace: signoz

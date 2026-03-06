@@ -124,7 +124,7 @@ spec:
 
 ```yaml
 # oci-repo-with-proxy.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-artifacts
@@ -211,7 +211,7 @@ spec:
   proxySecretRef:
     name: git-proxy
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-artifacts

@@ -144,7 +144,7 @@ spec:
 
 ```yaml
 # File: clusters/my-cluster/aso/helm-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: azure-service-operator

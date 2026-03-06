@@ -323,7 +323,7 @@ OCI artifacts can be faster to fetch than Git repositories, especially for large
 
 ```yaml
 # OCIRepository for faster artifact delivery
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

@@ -77,7 +77,7 @@ Reference the secret in your ImageRepository:
 
 ```yaml
 # imagerepository-with-auth.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -98,7 +98,7 @@ spec:
 
 ```yaml
 # imagerepository-ecr.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -137,7 +137,7 @@ Ensure the image-reflector-controller has the correct IAM permissions:
 
 ```yaml
 # imagerepository-gar.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -153,7 +153,7 @@ spec:
 
 ```yaml
 # imagerepository-acr.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -202,7 +202,7 @@ kubectl create secret docker-registry dockerhub-creds \
 
 ```yaml
 # imagerepository-dockerhub.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx
@@ -221,7 +221,7 @@ Increase the interval to reduce the number of API calls:
 
 ```yaml
 # imagerepository-reduced-frequency.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx
@@ -240,7 +240,7 @@ Set up a pull-through cache to avoid hitting Docker Hub directly:
 
 ```yaml
 # imagerepository-mirror.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx
@@ -320,7 +320,7 @@ kubectl create secret generic registry-tls \
 
 ```yaml
 # imagerepository-custom-tls.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -353,7 +353,7 @@ kubectl describe imagepolicy <name> -n flux-system
 
 ```yaml
 # imagepolicy-semver.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -372,7 +372,7 @@ For non-semver tags, use alphabetical or numerical policies:
 
 ```yaml
 # imagepolicy-numerical.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -392,7 +392,7 @@ spec:
 
 ```yaml
 # imagepolicy-alphabetical.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -416,7 +416,7 @@ If your registry has tags like `latest`, `dev`, or `test` mixed with version tag
 
 ```yaml
 # imagerepository-with-exclusions.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -440,7 +440,7 @@ Here is a full end-to-end image automation setup:
 
 ```yaml
 # 1. ImageRepository: Scan the registry for tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -455,7 +455,7 @@ spec:
 
 ---
 # 2. ImagePolicy: Select the latest semver tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -469,7 +469,7 @@ spec:
 
 ---
 # 3. ImageUpdateAutomation: Update Git with the new image tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app

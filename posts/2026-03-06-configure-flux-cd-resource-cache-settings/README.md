@@ -204,7 +204,7 @@ patches:
 ```yaml
 # helmrelease-history-limit.yaml
 # Reducing Helm release history reduces memory and storage usage
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

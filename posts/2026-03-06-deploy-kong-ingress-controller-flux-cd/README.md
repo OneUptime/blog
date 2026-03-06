@@ -61,7 +61,7 @@ Create a HelmRelease resource to deploy Kong Ingress Controller with custom conf
 
 ```yaml
 # clusters/my-cluster/helm-releases/kong-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kong

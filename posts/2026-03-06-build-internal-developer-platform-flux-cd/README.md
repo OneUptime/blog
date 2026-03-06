@@ -299,7 +299,6 @@ spec:
   # Restrict deployments to the tenant's namespace only
   targetNamespace: team-alpha
   serviceAccountName: team-alpha-deployer
-  validation: client
   # Health checks ensure deployments are actually running
   healthChecks:
     - apiVersion: apps/v1

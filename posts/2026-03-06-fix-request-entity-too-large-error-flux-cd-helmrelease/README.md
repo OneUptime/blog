@@ -64,7 +64,7 @@ for item in data['items']:
 The most common fix is to limit how many release revisions Helm keeps:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -165,7 +165,7 @@ data:
 
 ```yaml
 # Split a monolithic chart into smaller, focused releases
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app-core
@@ -190,7 +190,7 @@ spec:
     ingress:
       enabled: false
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app-monitoring
@@ -253,7 +253,7 @@ Most managed Kubernetes services (EKS, GKE, AKS) do not allow changing etcd limi
 Use a post-renderer to strip comments, labels, or other unnecessary data before the release is stored:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -307,7 +307,7 @@ helm template my-app my-repo/my-chart \
 Here is a complete example showing all the recommended settings:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-large-app

@@ -80,7 +80,7 @@ Deploy Trivy Operator with comprehensive scanning enabled.
 ```yaml
 # trivy-helmrelease.yaml
 # Deploys Trivy Operator via Flux CD
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: trivy-operator

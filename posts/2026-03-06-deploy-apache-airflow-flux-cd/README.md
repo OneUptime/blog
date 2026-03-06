@@ -104,7 +104,7 @@ Create the HelmRelease with production configuration.
 
 ```yaml
 # clusters/production/airflow/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: airflow

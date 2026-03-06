@@ -240,7 +240,7 @@ spec:
 
 ```yaml
 # infrastructure/common/cert-manager.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -277,7 +277,7 @@ Configure AWS-specific infrastructure components:
 
 ```yaml
 # infrastructure/aws/ingress.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx

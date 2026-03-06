@@ -247,7 +247,7 @@ spec:
 
 ```yaml
 # infrastructure/aws/ebs-csi.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: aws-ebs-csi-driver
@@ -285,7 +285,7 @@ spec:
 
 ```yaml
 # infrastructure/aws/load-balancer-controller.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: aws-load-balancer-controller
@@ -487,7 +487,7 @@ Set up automated image updates from Amazon ECR:
 
 ```yaml
 # clusters/eksd/apps/image-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: eksd-app
@@ -497,7 +497,7 @@ spec:
   interval: 5m
   provider: aws
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: eksd-app
@@ -509,7 +509,7 @@ spec:
     semver:
       range: ">=1.0.0 <2.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: eksd-app-automation
@@ -550,7 +550,7 @@ spec:
   interval: 24h
   url: https://aws.github.io/eks-charts
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: aws-cloudwatch-metrics

@@ -167,7 +167,7 @@ spec:
 
 ```yaml
 # Production HelmRelease with stable version
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: production-app
@@ -185,7 +185,7 @@ spec:
         namespace: flux-system
 ---
 # Staging HelmRelease tracking latest
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: staging-app

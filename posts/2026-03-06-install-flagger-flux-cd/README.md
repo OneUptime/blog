@@ -73,7 +73,7 @@ Create the HelmRelease to install Flagger. The configuration depends on which se
 ```yaml
 # infrastructure/flagger/helmrelease.yaml
 # Install Flagger configured for NGINX Ingress Controller
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger
@@ -113,7 +113,7 @@ spec:
 ```yaml
 # infrastructure/flagger/helmrelease-istio.yaml
 # Install Flagger configured for Istio service mesh
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger
@@ -151,7 +151,7 @@ spec:
 ```yaml
 # infrastructure/flagger/helmrelease-linkerd.yaml
 # Install Flagger configured for Linkerd service mesh
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger
@@ -187,7 +187,7 @@ Flagger provides a Grafana dashboard for visualizing canary deployments.
 ```yaml
 # infrastructure/flagger/grafana-helmrelease.yaml
 # Install Flagger's Grafana dashboard
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger-grafana
@@ -329,7 +329,7 @@ spec:
 ```yaml
 # infrastructure/monitoring/helmrelease.yaml
 # Install Prometheus for Flagger metrics
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prometheus

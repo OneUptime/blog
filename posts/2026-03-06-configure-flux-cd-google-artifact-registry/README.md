@@ -99,7 +99,7 @@ Set up Flux to pull Kubernetes manifests stored as OCI artifacts in GAR.
 ```yaml
 # oci-repository-manifests.yaml
 # Pulls Kubernetes manifests packaged as OCI artifacts from GAR
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests
@@ -228,7 +228,7 @@ Set up Flux image scanning and automation for Docker images in GAR.
 ```yaml
 # image-repository-gar.yaml
 # Scans GAR for new Docker image tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -242,7 +242,7 @@ spec:
 ---
 # image-policy-semver.yaml
 # Selects the latest image tag matching a semver pattern
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -257,7 +257,7 @@ spec:
 ---
 # image-update-automation.yaml
 # Automatically updates image tags in Git when new images are found
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app
@@ -307,7 +307,7 @@ rm key.json
 ```yaml
 # oci-repository-with-secret.yaml
 # Uses a Kubernetes secret instead of Workload Identity
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests-secret
@@ -351,7 +351,7 @@ Configure Flux to pull from multiple GAR regions for resilience.
 ```yaml
 # oci-repository-us.yaml
 # Primary source from US region
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests-us
@@ -365,7 +365,7 @@ spec:
 ---
 # oci-repository-eu.yaml
 # Secondary source from EU region for European clusters
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests-eu

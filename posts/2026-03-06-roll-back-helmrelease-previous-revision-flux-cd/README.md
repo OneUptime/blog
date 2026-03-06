@@ -70,7 +70,7 @@ Instead of reverting, directly update the chart version to the previous working 
 
 ```yaml
 # clusters/production/apps/my-app/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -133,7 +133,7 @@ Set up HelmRelease remediation so Flux automatically rolls back on failure.
 
 ```yaml
 # clusters/production/apps/my-app/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -217,7 +217,7 @@ Sometimes the chart version is fine but the values caused the issue.
 
 ```yaml
 # clusters/production/apps/my-app/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

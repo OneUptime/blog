@@ -113,7 +113,7 @@ kubectl apply -f weave-gitops-secret.yaml
 ```yaml
 # weave-gitops-helmrelease.yaml
 # Deploys the Weave GitOps Dashboard via Flux HelmRelease
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: weave-gitops
@@ -309,7 +309,7 @@ For production environments, configure OIDC authentication:
 ```yaml
 # weave-gitops-oidc-values.yaml
 # HelmRelease values to enable OIDC authentication
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: weave-gitops

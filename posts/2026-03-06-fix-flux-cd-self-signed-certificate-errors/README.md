@@ -140,7 +140,7 @@ For OCI-based repositories (Helm charts stored in container registries):
 
 ```yaml
 # OCIRepository with custom CA
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: internal-oci

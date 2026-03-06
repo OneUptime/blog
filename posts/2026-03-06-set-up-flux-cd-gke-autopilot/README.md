@@ -323,7 +323,7 @@ Set up Flux image automation with Google Artifact Registry.
 ```yaml
 # infrastructure/image-automation/image-repository.yaml
 # Watch for new images in Artifact Registry
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: demo-app
@@ -336,7 +336,7 @@ spec:
 ---
 # infrastructure/image-automation/image-policy.yaml
 # Automatically select the latest semver tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: demo-app

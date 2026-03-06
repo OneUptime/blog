@@ -173,7 +173,7 @@ spec:
   interval: 24h
   url: https://charts.jetstack.io
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -216,7 +216,7 @@ spec:
   interval: 24h
   url: https://kubernetes.github.io/ingress-nginx
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -263,7 +263,7 @@ spec:
   interval: 24h
   url: https://charts.external-secrets.io
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-secrets
@@ -359,7 +359,7 @@ spec:
   interval: 24h
   url: https://prometheus-community.github.io/helm-charts
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack

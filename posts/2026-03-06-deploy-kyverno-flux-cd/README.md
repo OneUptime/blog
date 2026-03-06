@@ -60,7 +60,7 @@ Deploy Kyverno using a Flux HelmRelease with production-ready settings.
 
 ```yaml
 # infrastructure/kyverno/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kyverno

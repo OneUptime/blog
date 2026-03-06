@@ -47,12 +47,8 @@ The Flux Operator is a Kubernetes operator that manages Flux CD installations th
 ### Method 1: Helm Installation
 
 ```bash
-# Add the Flux Operator Helm repository
-helm repo add flux-operator https://controlplaneio-fluxcd.github.io/charts
-helm repo update
-
-# Install the Flux Operator
-helm install flux-operator flux-operator/flux-operator \
+# Install the Flux Operator from the OCI registry
+helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator \
   --namespace flux-system \
   --create-namespace
 ```
@@ -540,7 +536,7 @@ kubectl get fluxinstance flux -n flux-system \
   -o jsonpath='{.status.lastAppliedRevision}'
 
 # List available versions
-helm search repo flux-operator --versions
+helm show chart oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator
 ```
 
 ## Summary

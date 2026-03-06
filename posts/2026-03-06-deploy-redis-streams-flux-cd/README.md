@@ -97,7 +97,7 @@ Define the HelmRelease to deploy Redis with Streams-optimized configuration.
 ```yaml
 # redis-helmrelease.yaml
 # Deploys Redis with configuration optimized for Streams usage
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: redis

@@ -170,7 +170,7 @@ Navigate to HelmReleases to see all Helm-based deployments:
 
 ```yaml
 # Example HelmRelease detail in Freelens
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx

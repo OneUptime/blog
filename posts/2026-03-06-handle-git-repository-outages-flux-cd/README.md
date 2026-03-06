@@ -233,7 +233,7 @@ flux push artifact oci://ghcr.io/org/fleet-infra:latest \
 
 ```yaml
 # clusters/production/oci-source-backup.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: fleet-infra-oci

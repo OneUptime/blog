@@ -55,7 +55,7 @@ metadata:
 
 ```yaml
 # clusters/my-cluster/mimir/mimir.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: mimir-distributed

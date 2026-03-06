@@ -286,7 +286,7 @@ Now that managed identity is configured, set up an OCI repository source pointin
 
 ```yaml
 # File: clusters/aks-fluxcd-demo/sources/acr-oci-repo.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests

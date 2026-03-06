@@ -94,7 +94,7 @@ metadata:
 ---
 # ECR credentials are auto-refreshed when using IRSA
 # No manual secret rotation needed
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -126,7 +126,7 @@ stringData:
       }
     }
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -145,7 +145,7 @@ spec:
 
 ```yaml
 # image-repository-optimized.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -170,7 +170,7 @@ spec:
 
 ```yaml
 # image-policy-filtered.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -245,7 +245,7 @@ spec:
 
 ```yaml
 # image-repository-cached.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -278,7 +278,7 @@ spec:
   secretRef:
     name: dockerhub-credentials
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

@@ -136,7 +136,7 @@ Create the HelmRelease for the Aqua Server and Gateway.
 ```yaml
 # aqua-server-helmrelease.yaml
 # Deploys the Aqua Security server and gateway via Flux CD
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: aqua-server
@@ -237,7 +237,7 @@ Create the HelmRelease for the Aqua Enforcer DaemonSet.
 ```yaml
 # aqua-enforcer-helmrelease.yaml
 # Deploys Aqua Enforcer agents on all nodes via Flux CD
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: aqua-enforcer

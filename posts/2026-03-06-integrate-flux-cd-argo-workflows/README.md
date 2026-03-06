@@ -67,7 +67,7 @@ spec:
 ```yaml
 # infrastructure/argo-workflows/helmrelease.yaml
 # Install Argo Workflows via Helm
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: argo-workflows
@@ -104,7 +104,7 @@ Argo Events listens for Git webhooks and triggers Argo Workflows automatically.
 ```yaml
 # infrastructure/argo-events/helmrelease.yaml
 # Install Argo Events via Helm
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: argo-events

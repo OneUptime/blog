@@ -157,7 +157,7 @@ After creating the notation secret, configure your Flux image resources to use i
 
 ```yaml
 # image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -174,7 +174,7 @@ spec:
 
 ```yaml
 # image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -193,7 +193,7 @@ You can also use Notation verification with OCI repositories:
 
 ```yaml
 # oci-repository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-manifests

@@ -168,7 +168,7 @@ spec:
   interval: 1h
   url: https://charts.jetstack.io
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager-crds

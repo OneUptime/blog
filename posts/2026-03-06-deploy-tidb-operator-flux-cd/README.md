@@ -76,7 +76,7 @@ CRDs must be installed before the operator.
 
 ```yaml
 # clusters/my-cluster/databases/tidb/helmrelease-crds.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tidb-operator-crds
@@ -103,7 +103,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/databases/tidb/helmrelease-operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tidb-operator
@@ -444,7 +444,7 @@ spec:
     kind: GitRepository
     name: flux-system
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: tidb-operator
       namespace: tidb

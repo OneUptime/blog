@@ -50,7 +50,7 @@ spec:
   provider: generic
 ---
 # HelmRelease using OCI-based repository
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: redis
@@ -120,7 +120,7 @@ When HelmReleases pin exact chart versions, Flux can skip chart downloads if the
 
 ```yaml
 # Pin to exact version to maximize cache hits
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nginx-ingress
@@ -144,7 +144,7 @@ Compare with version ranges:
 
 ```yaml
 # Version range - may trigger unnecessary downloads on index refresh
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nginx-ingress-range
@@ -190,7 +190,7 @@ spec:
   provider: generic
 ---
 # All internal HelmReleases reference the same repository
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: app-a
@@ -206,7 +206,7 @@ spec:
         name: internal-oci
         namespace: flux-system
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: app-b
@@ -322,7 +322,7 @@ The HelmChart resource controls how individual charts are fetched. Use the `reco
 
 ```yaml
 # HelmRelease with optimized chart fetch strategy
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: grafana

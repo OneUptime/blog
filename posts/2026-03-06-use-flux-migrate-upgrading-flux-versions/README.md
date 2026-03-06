@@ -63,11 +63,11 @@ grep -r "v1beta1\|v1beta2\|v1alpha1" ./clusters/ --include="*.yaml"
 The `flux migrate` command scans your manifests and updates API versions:
 
 ```bash
-# Migrate manifests in a directory (dry-run by default)
-flux migrate ./clusters/production/
+# Migrate manifests in a directory (dry-run first)
+flux migrate -f ./clusters/production/ --dry-run
 
-# Apply the migration (writes changes to files)
-flux migrate ./clusters/production/ --write
+# Apply the migration (modifies files in place)
+flux migrate -f ./clusters/production/
 ```
 
 ## Migrating Specific Resource Types
@@ -230,12 +230,12 @@ echo ""
 
 # Step 5: Migrate manifests (dry-run first)
 echo "Step 5: Checking for API migrations (dry-run)..."
-flux migrate "${CLUSTER_PATH}" 2>&1 || echo "  No migrations needed."
+flux migrate -f "${CLUSTER_PATH}" --dry-run 2>&1 || echo "  No migrations needed."
 echo ""
 
 # Step 6: Apply migrations
 echo "Step 6: Apply API migrations..."
-flux migrate "${CLUSTER_PATH}" --write 2>&1 || echo "  No migrations needed."
+flux migrate -f "${CLUSTER_PATH}" --yes 2>&1 || echo "  No migrations needed."
 echo ""
 
 # Step 7: Upgrade cluster components
@@ -339,14 +339,14 @@ for DIR in ${DIRS}; do
   echo "Processing: ${DIR}" | tee -a "${LOG_FILE}"
 
   # Dry-run first
-  DRY_OUTPUT=$(flux migrate "${DIR}" 2>&1 || true)
+  DRY_OUTPUT=$(flux migrate -f "${DIR}" --dry-run 2>&1 || true)
 
   if echo "${DRY_OUTPUT}" | grep -q "migrated"; then
     echo "  Changes needed:" | tee -a "${LOG_FILE}"
     echo "${DRY_OUTPUT}" | tee -a "${LOG_FILE}"
 
     # Apply the migration
-    flux migrate "${DIR}" --write 2>&1 | tee -a "${LOG_FILE}"
+    flux migrate -f "${DIR}" --yes 2>&1 | tee -a "${LOG_FILE}"
     echo "  Migration applied." | tee -a "${LOG_FILE}"
   else
     echo "  No changes needed." | tee -a "${LOG_FILE}"
@@ -428,7 +428,7 @@ flux install
 ## Best Practices
 
 1. **Always backup first**: Export all Flux resources before migrating.
-2. **Use dry-run mode**: Run `flux migrate` without `--write` first to preview changes.
+2. **Use dry-run mode**: Run `flux migrate -f <path> --dry-run` first to preview changes.
 3. **Migrate in staging first**: Test migrations in non-production environments.
 4. **Upgrade CLI before controllers**: The new CLI understands both old and new APIs.
 5. **Read release notes**: Check for breaking changes before upgrading.

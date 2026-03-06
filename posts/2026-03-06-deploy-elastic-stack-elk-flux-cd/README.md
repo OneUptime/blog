@@ -68,7 +68,7 @@ Elasticsearch is the core storage and search engine. Deploy it first since other
 
 ```yaml
 # clusters/my-cluster/elastic-stack/elasticsearch.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: elasticsearch
@@ -141,7 +141,7 @@ Logstash processes and transforms log data before sending it to Elasticsearch.
 
 ```yaml
 # clusters/my-cluster/elastic-stack/logstash.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: logstash
@@ -255,7 +255,7 @@ Kibana provides the web interface for visualizing and exploring log data.
 
 ```yaml
 # clusters/my-cluster/elastic-stack/kibana.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kibana
@@ -360,11 +360,11 @@ spec:
   wait: true
   timeout: 20m
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: elasticsearch
       namespace: elastic-stack
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: kibana
       namespace: elastic-stack

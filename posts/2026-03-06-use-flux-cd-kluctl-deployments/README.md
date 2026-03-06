@@ -62,7 +62,7 @@ spec:
   interval: 1h
   url: https://kluctl.github.io/charts
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kluctl-controller

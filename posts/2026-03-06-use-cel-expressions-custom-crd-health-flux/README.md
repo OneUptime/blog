@@ -16,7 +16,7 @@ This guide provides ready-to-use CEL health check expressions for popular CRDs f
 
 ## Prerequisites
 
-- Flux CD v2.4+ with CEL health check support
+- Flux CD v2.5+ with CEL health check support
 - Kubernetes cluster with one or more operators installed
 - kubectl access to your cluster
 
@@ -45,41 +45,24 @@ Look for these common patterns in the status:
 
 ### Step 3: Write the Expression
 
-Start with the most specific check and add guards for optional fields.
+Flux uses the `.spec.healthCheckExprs` field for CEL-based health checks on custom resources. Each entry specifies an `apiVersion`, `kind`, and CEL expressions for `current` (healthy) and `failed` (unhealthy) states. The expressions match all resources of that kind managed by the Kustomization.
 
 ## Cert-Manager Resources
 
-### Certificate
+### Certificate and ClusterIssuer
 
 ```yaml
-healthChecks:
+healthCheckExprs:
+  # Certificate is ready when issued successfully
   - apiVersion: cert-manager.io/v1
     kind: Certificate
-    name: my-tls-cert
-    namespace: default
-    cel:
-      # Certificate is ready when issued successfully
-      expression: >-
-        has(self.status) &&
-        has(self.status.conditions) &&
-        self.status.conditions.exists(c,
-          c.type == 'Ready' && c.status == 'True'
-        )
-```
-
-### Issuer and ClusterIssuer
-
-```yaml
-healthChecks:
+    failed: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'False')
+    current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
+  # ClusterIssuer is healthy when ready to issue certificates
   - apiVersion: cert-manager.io/v1
     kind: ClusterIssuer
-    name: letsencrypt-prod
-    cel:
-      # Issuer is healthy when ready to issue certificates
-      expression: >-
-        self.status.conditions.exists(c,
-          c.type == 'Ready' && c.status == 'True'
-        )
+    failed: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'False')
+    current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
 ```
 
 ## Crossplane Resources
@@ -87,48 +70,22 @@ healthChecks:
 ### Managed Resources (AWS, GCP, Azure)
 
 ```yaml
-healthChecks:
-  # AWS RDS Instance
+healthCheckExprs:
+  # Crossplane managed resources need both Synced and Ready conditions
   - apiVersion: rds.aws.upbound.io/v1beta1
     kind: Instance
-    name: production-db
-    namespace: crossplane-system
-    cel:
-      # Crossplane resources need both Synced and Ready conditions
-      expression: >-
-        has(self.status) &&
-        has(self.status.conditions) &&
-        self.status.conditions.exists(c,
-          c.type == 'Ready' && c.status == 'True'
-        ) &&
-        self.status.conditions.exists(c,
-          c.type == 'Synced' && c.status == 'True'
-        )
+    failed: status.conditions.filter(e, e.type == 'Synced').all(e, e.status == 'False' && e.reason == 'ReconcileError')
+    current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
 ```
 
-### Composite Resources (XR)
+### Crossplane Provider
 
 ```yaml
-healthChecks:
-  - apiVersion: database.example.com/v1alpha1
-    kind: PostgreSQLInstance
-    name: my-db
-    namespace: default
-    cel:
-      # Composite resources should have all composed resources ready
-      expression: >-
-        has(self.status) &&
-        has(self.status.conditions) &&
-        self.status.conditions.exists(c,
-          c.type == 'Ready' && c.status == 'True'
-        ) &&
-        self.status.conditions.exists(c,
-          c.type == 'Synced' && c.status == 'True'
-        ) &&
-        (!has(self.status.conditions) ||
-         !self.status.conditions.exists(c,
-           c.type == 'LastAsyncOperation' && c.status == 'False'
-         ))
+healthCheckExprs:
+  - apiVersion: pkg.crossplane.io/v1
+    kind: Provider
+    failed: status.conditions.filter(e, e.type == 'Healthy').all(e, e.status == 'False')
+    current: status.conditions.filter(e, e.type == 'Healthy').all(e, e.status == 'True')
 ```
 
 ## Istio Resources
@@ -136,147 +93,66 @@ healthChecks:
 ### VirtualService and DestinationRule
 
 ```yaml
-healthChecks:
+healthCheckExprs:
   - apiVersion: networking.istio.io/v1
     kind: VirtualService
-    name: my-app-vs
-    namespace: default
-    cel:
-      # Istio resources are healthy when validation passes
-      expression: >-
-        has(self.status) &&
-        has(self.status.conditions) &&
-        self.status.conditions.exists(c,
-          c.type == 'Reconciled' && c.status == 'True'
-        )
+    failed: status.conditions.filter(e, e.type == 'Reconciled').all(e, e.status == 'False')
+    current: status.conditions.filter(e, e.type == 'Reconciled').all(e, e.status == 'True')
   - apiVersion: networking.istio.io/v1
     kind: DestinationRule
-    name: my-app-dr
-    namespace: default
-    cel:
-      expression: >-
-        has(self.status) &&
-        has(self.status.conditions) &&
-        self.status.conditions.exists(c,
-          c.type == 'Reconciled' && c.status == 'True'
-        )
+    failed: status.conditions.filter(e, e.type == 'Reconciled').all(e, e.status == 'False')
+    current: status.conditions.filter(e, e.type == 'Reconciled').all(e, e.status == 'True')
 ```
 
 ## Prometheus Operator Resources
 
-### ServiceMonitor and PrometheusRule
-
-```yaml
-healthChecks:
-  # ServiceMonitor does not have status, check it exists
-  # by verifying metadata fields
-  - apiVersion: monitoring.coreos.com/v1
-    kind: ServiceMonitor
-    name: my-app-monitor
-    namespace: monitoring
-    cel:
-      # ServiceMonitors are immediately valid once applied
-      # Check the resource exists and has expected labels
-      expression: >-
-        has(self.metadata.name) &&
-        self.metadata.name == 'my-app-monitor'
-```
-
 ### Prometheus Instance
 
 ```yaml
-healthChecks:
+healthCheckExprs:
   - apiVersion: monitoring.coreos.com/v1
     kind: Prometheus
-    name: prometheus
-    namespace: monitoring
-    cel:
-      # Prometheus instance is healthy when all shards are available
-      expression: >-
-        has(self.status) &&
-        has(self.status.conditions) &&
-        self.status.conditions.exists(c,
-          c.type == 'Available' && c.status == 'True'
-        ) &&
-        self.status.conditions.exists(c,
-          c.type == 'Reconciled' && c.status == 'True'
-        )
+    failed: status.conditions.filter(e, e.type == 'Available').all(e, e.status == 'False')
+    current: >-
+      status.conditions.filter(e, e.type == 'Available').all(e, e.status == 'True') &&
+      status.conditions.filter(e, e.type == 'Reconciled').all(e, e.status == 'True')
 ```
 
 ## Sealed Secrets
 
 ```yaml
-healthChecks:
+healthCheckExprs:
   - apiVersion: bitnami.com/v1alpha1
     kind: SealedSecret
-    name: app-secrets
-    namespace: default
-    cel:
-      # SealedSecret is healthy when it has been unsealed
-      expression: >-
-        has(self.status) &&
-        has(self.status.conditions) &&
-        self.status.conditions.exists(c,
-          c.type == 'Synced' && c.status == 'True'
-        )
+    failed: status.conditions.filter(e, e.type == 'Synced').all(e, e.status == 'False')
+    current: status.conditions.filter(e, e.type == 'Synced').all(e, e.status == 'True')
 ```
 
 ## Strimzi Kafka Operator
 
-### Kafka Cluster
+### Kafka Cluster and Topic
 
 ```yaml
-healthChecks:
+healthCheckExprs:
+  # Kafka cluster is healthy when all components are ready
   - apiVersion: kafka.strimzi.io/v1beta2
     kind: Kafka
-    name: my-cluster
-    namespace: kafka
-    cel:
-      # Kafka cluster is healthy when all components are ready
-      expression: >-
-        has(self.status) &&
-        has(self.status.conditions) &&
-        self.status.conditions.exists(c,
-          c.type == 'Ready' && c.status == 'True'
-        )
-```
-
-### Kafka Topic
-
-```yaml
-healthChecks:
+    failed: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'False')
+    current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
   - apiVersion: kafka.strimzi.io/v1beta2
     kind: KafkaTopic
-    name: my-topic
-    namespace: kafka
-    cel:
-      expression: >-
-        has(self.status) &&
-        has(self.status.conditions) &&
-        self.status.conditions.exists(c,
-          c.type == 'Ready' && c.status == 'True'
-        )
+    failed: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'False')
+    current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
 ```
 
 ## KEDA Scaled Objects
 
 ```yaml
-healthChecks:
+healthCheckExprs:
   - apiVersion: keda.sh/v1alpha1
     kind: ScaledObject
-    name: my-app-scaler
-    namespace: default
-    cel:
-      # ScaledObject is healthy when it is active and not in error
-      expression: >-
-        has(self.status) &&
-        has(self.status.conditions) &&
-        self.status.conditions.exists(c,
-          c.type == 'Ready' && c.status == 'True'
-        ) &&
-        !self.status.conditions.exists(c,
-          c.type == 'Fallback' && c.status == 'True'
-        )
+    failed: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'False')
+    current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
 ```
 
 ## Complete Multi-CRD Application Example
@@ -295,54 +171,34 @@ spec:
   path: ./apps/production
   prune: true
   timeout: 20m
+  # Standard health checks for built-in Kubernetes resources
   healthChecks:
-    # Application Deployment
     - apiVersion: apps/v1
       kind: Deployment
       name: web-app
       namespace: app
+  # CEL health check expressions for custom resources
+  healthCheckExprs:
     # TLS Certificate from cert-manager
     - apiVersion: cert-manager.io/v1
       kind: Certificate
-      name: web-app-tls
-      namespace: app
-      cel:
-        expression: >-
-          self.status.conditions.exists(c,
-            c.type == 'Ready' && c.status == 'True'
-          )
+      failed: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'False')
+      current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
     # Cloud database from Crossplane
     - apiVersion: rds.aws.upbound.io/v1beta1
       kind: Instance
-      name: app-database
-      namespace: crossplane-system
-      cel:
-        expression: >-
-          self.status.conditions.exists(c,
-            c.type == 'Ready' && c.status == 'True'
-          ) && self.status.conditions.exists(c,
-            c.type == 'Synced' && c.status == 'True'
-          )
+      failed: status.conditions.filter(e, e.type == 'Synced').all(e, e.status == 'False' && e.reason == 'ReconcileError')
+      current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
     # Kafka topic from Strimzi
     - apiVersion: kafka.strimzi.io/v1beta2
       kind: KafkaTopic
-      name: app-events
-      namespace: kafka
-      cel:
-        expression: >-
-          self.status.conditions.exists(c,
-            c.type == 'Ready' && c.status == 'True'
-          )
+      failed: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'False')
+      current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
     # Auto-scaler from KEDA
     - apiVersion: keda.sh/v1alpha1
       kind: ScaledObject
-      name: web-app-scaler
-      namespace: app
-      cel:
-        expression: >-
-          self.status.conditions.exists(c,
-            c.type == 'Ready' && c.status == 'True'
-          )
+      failed: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'False')
+      current: status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
 ```
 
 ## Debugging Custom CRD Health Checks
@@ -362,17 +218,17 @@ kubectl describe kustomization <name> -n flux-system | grep -A 5 "health check"
 
 ## Best Practices
 
-### Always Guard with has()
+### Use Both current and failed Expressions
 
-New resources may not have a status field initially. Always check `has(self.status)` before accessing nested status fields.
+Define both `current` (healthy) and `failed` (unhealthy) expressions. The `failed` expression provides faster feedback by detecting failure states without waiting for the health check timeout.
 
 ### Follow the Conditions Convention
 
 Most well-designed operators use the standard conditions pattern. Check for `Ready`, `Available`, or `Synced` conditions as the primary health signal.
 
-### Include observedGeneration When Available
+### Separate healthChecks and healthCheckExprs
 
-If the CRD supports `observedGeneration`, include it in your health check to avoid false positives from stale status.
+Use `.spec.healthChecks` for built-in Kubernetes resource types (Deployments, StatefulSets, Services) that Flux already understands. Use `.spec.healthCheckExprs` for custom resources that need CEL-based evaluation. Both fields can be used together in the same Kustomization.
 
 ### Document Your Health Checks
 

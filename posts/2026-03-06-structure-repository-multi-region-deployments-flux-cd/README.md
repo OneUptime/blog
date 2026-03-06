@@ -355,7 +355,7 @@ Some infrastructure components need region-specific configuration, like cloud lo
 ```yaml
 # regions/us-east-1/infrastructure/patches/ingress-annotations.yaml
 # AWS-specific annotations for US East load balancer
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx

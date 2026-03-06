@@ -67,7 +67,7 @@ spec:
 ```yaml
 # headlamp-helmrelease.yaml
 # HelmRelease to deploy Headlamp in the cluster
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: headlamp
@@ -248,7 +248,7 @@ For in-cluster installations, package the plugin as a ConfigMap:
 ```yaml
 # flux-plugin-deployment.yaml
 # Init container to install the Flux plugin
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: headlamp
@@ -390,7 +390,7 @@ For production use, configure OIDC instead of service account tokens:
 ```yaml
 # headlamp-oidc-values.yaml
 # HelmRelease values for OIDC authentication
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: headlamp

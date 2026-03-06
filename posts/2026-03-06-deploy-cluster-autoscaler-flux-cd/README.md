@@ -80,7 +80,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/cluster-autoscaler/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cluster-autoscaler
@@ -190,7 +190,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/cluster-autoscaler/helmrelease-gcp.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cluster-autoscaler
@@ -241,7 +241,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/cluster-autoscaler/helmrelease-azure.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cluster-autoscaler

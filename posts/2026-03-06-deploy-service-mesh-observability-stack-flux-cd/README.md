@@ -101,7 +101,7 @@ Deploy Prometheus with service mesh scraping configuration.
 
 ```yaml
 # infrastructure/observability/prometheus-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prometheus
@@ -188,7 +188,7 @@ Deploy Grafana with pre-configured service mesh dashboards.
 
 ```yaml
 # infrastructure/observability/grafana-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: grafana
@@ -288,7 +288,7 @@ Set up Jaeger to collect and visualize distributed traces.
 
 ```yaml
 # infrastructure/observability/jaeger-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: jaeger
@@ -393,7 +393,7 @@ Deploy Kiali to visualize service mesh topology and traffic.
 
 ```yaml
 # infrastructure/observability/kiali-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kiali

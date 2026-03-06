@@ -365,7 +365,7 @@ Use Flux image automation to automatically promote images from dev to staging.
 
 ```yaml
 # Watch for new images in the registry
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -375,7 +375,7 @@ spec:
   interval: 5m
 ---
 # Select images tagged with staging-ready prefix
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-staging
@@ -392,7 +392,7 @@ spec:
       order: asc
 ---
 # Auto-update the staging deployment
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-promotion

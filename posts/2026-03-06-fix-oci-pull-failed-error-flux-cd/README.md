@@ -66,7 +66,7 @@ Reference the secret in your OCIRepository:
 
 ```yaml
 # ocirepository-with-auth.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -122,7 +122,7 @@ For long-lived authentication, use an IAM role with the ECR credential provider:
 
 ```yaml
 # ecr-ocirepository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -139,7 +139,7 @@ spec:
 
 ```yaml
 # gar-ocirepository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -157,7 +157,7 @@ spec:
 
 ```yaml
 # acr-ocirepository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -192,7 +192,7 @@ oras repo tags registry.example.com/my-app
 
 ```yaml
 # ocirepository-corrected.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -243,7 +243,7 @@ kubectl get ocirepository my-app -n flux-system -o jsonpath='{.spec.ref.digest}'
 
 ```yaml
 # ocirepository-updated-digest.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -262,7 +262,7 @@ If digest management is problematic, switch to tags:
 
 ```yaml
 # ocirepository-tag-based.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -292,7 +292,7 @@ kubectl create secret generic oci-tls-certs \
 
 ```yaml
 # ocirepository-custom-tls.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -315,7 +315,7 @@ For development environments with self-signed certificates:
 
 ```yaml
 # ocirepository-insecure.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

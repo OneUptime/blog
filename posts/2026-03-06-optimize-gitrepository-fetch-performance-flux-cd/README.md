@@ -313,7 +313,7 @@ For maximum fetch performance, pre-build artifacts and push them as OCI images. 
 #   --revision="$(git rev-parse HEAD)"
 
 # OCIRepository for fast artifact delivery
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app

@@ -1,38 +1,43 @@
-# How to Use CEL Expressions for Deployment Health in Flux
+# How to Use Health Checks for Deployments in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, cel, deployments, health checks, kubernetes, gitops, monitoring
+Tags: flux cd, deployments, health checks, kubernetes, gitops, monitoring
 
-Description: A practical guide to using CEL expressions for fine-grained Deployment health checks in Flux CD Kustomizations beyond the default readiness logic.
+Description: A practical guide to configuring Deployment health checks in Flux CD Kustomizations to validate rollout completion before proceeding with dependent resources.
 
 ---
 
 ## Introduction
 
-Flux CD has built-in health checks for Kubernetes Deployments, but sometimes you need more control over what constitutes a "healthy" Deployment. CEL (Common Expression Language) expressions let you define custom health criteria such as minimum replica thresholds, specific condition checks, or generation-based validation. This guide shows you how to write CEL expressions tailored to Deployment health checking.
+Flux CD has built-in health checks for Kubernetes Deployments that verify rollout completion before marking a Kustomization as ready. By listing Deployments in the `.spec.healthChecks` field of a Kustomization, you ensure that Flux waits for pods to be available before proceeding with dependent resources. You can also use `.spec.wait` to automatically health-check all reconciled resources. This guide shows how to configure Deployment health checks effectively.
 
 ## Prerequisites
 
-- Flux CD v2.4+ with CEL health check support
+- Flux CD installed on a Kubernetes cluster
 - A Kubernetes cluster with Deployments managed by Flux
 - kubectl access to your cluster
 
-## Why Custom Health Checks for Deployments
+## Why Health Checks for Deployments
 
-The default Flux health check for Deployments waits for the rollout to complete. However, there are scenarios where you need more nuanced checks:
+The default Flux behavior is to apply resources and immediately mark the Kustomization as ready. Without health checks, downstream Kustomizations that depend on this one may start deploying before the Deployment is fully rolled out. Health checks prevent this by waiting for the Deployment rollout to complete.
 
-- Requiring a minimum number of ready replicas rather than all replicas
-- Checking that the deployment is not in a progressing-but-stuck state
-- Validating that specific conditions are met before proceeding
-- Ensuring the observed generation matches to avoid stale status
+Common scenarios where Deployment health checks are essential:
+
+- Gating downstream services on backend availability
+- Ensuring database migrations only run after the database proxy is ready
+- Validating that critical infrastructure components are available before deploying applications
 
 ## Understanding Deployment Status Fields
 
-Before writing CEL expressions, you need to understand the status fields available on a Deployment:
+Flux uses the built-in kstatus library to evaluate Deployment health. A Deployment is considered healthy when:
+
+- The observed generation matches the spec generation
+- All replicas are updated and available
+- No old replicas are pending termination
 
 ```yaml
-# Example Deployment status
+# Example Deployment status when healthy
 status:
   observedGeneration: 3
   replicas: 5
@@ -43,16 +48,14 @@ status:
     - type: Available
       status: "True"
       reason: MinimumReplicasAvailable
-      message: Deployment has minimum availability.
     - type: Progressing
       status: "True"
       reason: NewReplicaSetAvailable
-      message: ReplicaSet "my-app-abc123" has successfully progressed.
 ```
 
-## Basic Deployment Health CEL Expressions
+## Basic Deployment Health Checks
 
-### Standard Readiness Check
+### Explicit Health Check for a Single Deployment
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -67,126 +70,39 @@ spec:
     name: flux-system
   path: ./apps/my-app
   prune: true
+  timeout: 10m
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
       name: my-app
       namespace: default
-      cel:
-        # All replicas must be ready and available
-        expression: >-
-          self.status.conditions.exists(c,
-            c.type == 'Available' && c.status == 'True'
-          ) &&
-          self.status.readyReplicas == self.spec.replicas
 ```
 
-### Generation-Aware Health Check
+### Wait for All Reconciled Resources
 
-Ensure the Deployment controller has processed the latest spec before declaring it healthy:
-
-```yaml
-healthChecks:
-  - apiVersion: apps/v1
-    kind: Deployment
-    name: my-app
-    namespace: default
-    cel:
-      expression: >-
-        self.metadata.generation == self.status.observedGeneration &&
-        self.status.conditions.exists(c,
-          c.type == 'Available' && c.status == 'True'
-        ) &&
-        self.status.updatedReplicas == self.spec.replicas &&
-        self.status.readyReplicas == self.spec.replicas
-```
-
-## Advanced Deployment Health Patterns
-
-### Minimum Ready Replicas
-
-For large Deployments, you might not need all replicas ready to consider the deployment healthy:
+Instead of listing individual resources, you can use `wait: true` to health-check all resources applied by the Kustomization:
 
 ```yaml
-healthChecks:
-  - apiVersion: apps/v1
-    kind: Deployment
-    name: high-availability-app
-    namespace: default
-    cel:
-      # Healthy when at least 80% of replicas are ready
-      expression: >-
-        has(self.status.readyReplicas) &&
-        self.status.readyReplicas * 100 / self.spec.replicas >= 80 &&
-        self.status.conditions.exists(c,
-          c.type == 'Available' && c.status == 'True'
-        )
-```
-
-### Detect Stuck Rollouts
-
-A Deployment can appear to be progressing but actually be stuck. Detect this by checking both Progressing and Available conditions:
-
-```yaml
-healthChecks:
-  - apiVersion: apps/v1
-    kind: Deployment
-    name: my-app
-    namespace: default
-    cel:
-      # Healthy only when fully rolled out and not stuck progressing
-      expression: >-
-        self.metadata.generation == self.status.observedGeneration &&
-        self.status.conditions.exists(c,
-          c.type == 'Available' && c.status == 'True'
-        ) &&
-        self.status.conditions.exists(c,
-          c.type == 'Progressing' &&
-          c.status == 'True' &&
-          c.reason == 'NewReplicaSetAvailable'
-        )
-```
-
-### Ensure No Unavailable Replicas
-
-```yaml
-healthChecks:
-  - apiVersion: apps/v1
-    kind: Deployment
-    name: critical-app
-    namespace: default
-    cel:
-      # No replicas should be unavailable
-      expression: >-
-        self.metadata.generation == self.status.observedGeneration &&
-        (!has(self.status.unavailableReplicas) ||
-         self.status.unavailableReplicas == 0) &&
-        self.status.readyReplicas == self.spec.replicas
-```
-
-### Minimum Absolute Ready Count
-
-For services that need at least N instances regardless of spec:
-
-```yaml
-healthChecks:
-  - apiVersion: apps/v1
-    kind: Deployment
-    name: api-gateway
-    namespace: default
-    cel:
-      # At least 3 replicas must be ready regardless of desired count
-      expression: >-
-        has(self.status.readyReplicas) &&
-        self.status.readyReplicas >= 3 &&
-        self.status.conditions.exists(c,
-          c.type == 'Available' && c.status == 'True'
-        )
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./apps/my-app
+  prune: true
+  timeout: 10m
+  # Wait for all applied resources to be healthy
+  wait: true
 ```
 
 ## Multi-Deployment Health Checks
 
-When your application consists of multiple Deployments, check them all:
+When your application consists of multiple Deployments, list them all:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -203,34 +119,18 @@ spec:
   prune: true
   timeout: 10m
   healthChecks:
-    # Frontend must have all replicas ready
     - apiVersion: apps/v1
       kind: Deployment
       name: frontend
       namespace: app
-      cel:
-        expression: >-
-          self.metadata.generation == self.status.observedGeneration &&
-          self.status.readyReplicas == self.spec.replicas
-    # API can tolerate some unavailability during rollout
     - apiVersion: apps/v1
       kind: Deployment
       name: api-server
       namespace: app
-      cel:
-        expression: >-
-          self.metadata.generation == self.status.observedGeneration &&
-          has(self.status.readyReplicas) &&
-          self.status.readyReplicas * 100 / self.spec.replicas >= 75
-    # Background worker just needs at least one replica
     - apiVersion: apps/v1
       kind: Deployment
       name: worker
       namespace: app
-      cel:
-        expression: >-
-          has(self.status.readyReplicas) &&
-          self.status.readyReplicas >= 1
 ```
 
 ## Combining Health Checks with Rollout Strategies
@@ -289,26 +189,30 @@ spec:
               memory: 256Mi
 ```
 
-The corresponding CEL health check:
+The corresponding Kustomization health check:
 
 ```yaml
-healthChecks:
-  - apiVersion: apps/v1
-    kind: Deployment
-    name: my-app
-    namespace: default
-    cel:
-      # Ensure rolling update completed successfully
-      expression: >-
-        self.metadata.generation == self.status.observedGeneration &&
-        self.status.updatedReplicas == self.spec.replicas &&
-        self.status.readyReplicas == self.spec.replicas &&
-        self.status.conditions.exists(c,
-          c.type == 'Progressing' &&
-          c.status == 'True' &&
-          c.reason == 'NewReplicaSetAvailable'
-        )
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./apps/my-app
+  prune: true
+  timeout: 10m
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: my-app
+      namespace: default
 ```
+
+Flux will wait until the Deployment rollout completes, meaning all replicas are updated, ready, and available before marking the Kustomization as ready.
 
 ## Using Health Checks for Deployment Dependencies
 
@@ -328,15 +232,12 @@ spec:
     name: flux-system
   path: ./apps/database
   prune: true
+  timeout: 10m
   healthChecks:
     - apiVersion: apps/v1
       kind: Deployment
       name: postgres
       namespace: database
-      cel:
-        expression: >-
-          self.metadata.generation == self.status.observedGeneration &&
-          self.status.readyReplicas == self.spec.replicas
 ---
 # Then deploy the application that depends on the database
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -358,10 +259,6 @@ spec:
       kind: Deployment
       name: backend
       namespace: app
-      cel:
-        expression: >-
-          self.metadata.generation == self.status.observedGeneration &&
-          self.status.readyReplicas == self.spec.replicas
 ```
 
 ## Debugging Deployment Health Checks
@@ -378,30 +275,34 @@ kubectl get kustomization my-app -n flux-system -o yaml | grep -A 20 "conditions
 
 ### Common Issues
 
-1. **readyReplicas field missing**: When a Deployment has zero ready replicas, the `readyReplicas` field may not exist. Always use `has(self.status.readyReplicas)` before accessing it.
+1. **Timeout too short**: Complex Deployments with slow-starting containers may need a longer timeout on the Kustomization. Set `spec.timeout` to account for image pull times, init container execution, and readiness probe delays.
 
-2. **Generation mismatch during rollout**: The observed generation updates after the controller processes the spec, not after the rollout completes. Use it alongside condition checks.
+2. **Readiness probes not configured**: Without readiness probes, Kubernetes considers pods ready as soon as the container starts. Ensure your Deployments define meaningful readiness probes.
 
-3. **Timeout too short**: Complex Deployments with slow-starting containers may need a longer timeout on the Kustomization.
+3. **Insufficient resources**: If pods cannot be scheduled due to resource constraints, the rollout will hang until the health check timeout expires.
 
 ## Best Practices
-
-### Always Check observed Generation
-
-This prevents false positives where stale status from a previous generation shows as healthy.
-
-### Use has() for Optional Numeric Fields
-
-Fields like `readyReplicas`, `updatedReplicas`, and `unavailableReplicas` are omitted when their value is zero.
 
 ### Set Appropriate Timeouts
 
 Match your Kustomization timeout to the expected rollout duration plus a buffer. Account for image pull times, init container execution, and readiness probe delays.
 
+### Use wait: true for Simple Cases
+
+If all resources in a Kustomization need health checking, use `wait: true` instead of listing each resource individually. This automatically covers any new resources added later.
+
 ### Combine with Flux Notifications
 
 Set up alerts for health check failures so your team is notified when deployments fail to become healthy.
 
+### Configure Readiness Probes
+
+Flux health checks for Deployments rely on Kubernetes readiness status. Ensure your Deployments have properly configured readiness probes that reflect actual application readiness.
+
+### Use dependsOn for Ordering
+
+When Deployments depend on other services, split them into separate Kustomizations and use `dependsOn` to enforce deployment order with health gates.
+
 ## Conclusion
 
-CEL expressions give you precise control over what "healthy" means for your Deployments in Flux CD. By going beyond the default health check logic, you can implement percentage-based readiness, stuck rollout detection, and generation-aware validation that matches your application's actual requirements.
+Flux CD provides built-in health checking for Deployments through the `.spec.healthChecks` field and the `.spec.wait` option. By configuring health checks, you ensure that Flux waits for rollouts to complete before proceeding with dependent resources. Combined with Kubernetes readiness probes and Flux dependency ordering, health checks give you reliable control over deployment sequencing in your GitOps workflow.

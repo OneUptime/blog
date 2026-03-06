@@ -37,7 +37,7 @@ spec:
 
 ```yaml
 # infrastructure/ingress/nginx-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -113,7 +113,7 @@ First, install cert-manager with Flux:
 
 ```yaml
 # infrastructure/cert-manager/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager

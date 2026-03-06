@@ -58,7 +58,7 @@ Install the Istio base chart which contains the CRDs:
 ```yaml
 # istio-base.yaml
 # HelmRelease for Istio base CRDs - must be installed first
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istio-base
@@ -88,7 +88,7 @@ Deploy the Istio control plane (istiod):
 ```yaml
 # istiod.yaml
 # HelmRelease for istiod - the Istio control plane
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istiod
@@ -160,7 +160,7 @@ Deploy the Istio Ingress Gateway:
 ```yaml
 # istio-ingress.yaml
 # HelmRelease for Istio Ingress Gateway
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: istio-ingress

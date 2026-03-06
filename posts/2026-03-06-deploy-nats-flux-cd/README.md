@@ -78,7 +78,7 @@ Define the `HelmRelease` resource that tells Flux CD how to deploy NATS using th
 ```yaml
 # nats-helmrelease.yaml
 # Deploys NATS using the official Helm chart via Flux CD
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: nats

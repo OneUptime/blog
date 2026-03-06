@@ -393,7 +393,7 @@ spec:
   interval: 1h
   url: https://helm.datadoghq.com
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: datadog-agent

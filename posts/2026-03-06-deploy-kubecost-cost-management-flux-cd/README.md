@@ -138,7 +138,7 @@ Define the HelmRelease resource that tells Flux CD how to deploy Kubecost.
 
 ```yaml
 # clusters/production/kubecost/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kubecost

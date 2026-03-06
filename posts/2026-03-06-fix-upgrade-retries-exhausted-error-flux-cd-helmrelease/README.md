@@ -58,7 +58,7 @@ Common immutable fields include:
 ### Fix: Force Resource Replacement
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -122,7 +122,7 @@ flux reconcile helmrelease <name> -n <namespace>
 ### Fix: Disable Hooks During Upgrade
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -160,7 +160,7 @@ flux get helmreleases -n <namespace>
 ### Fix: Adopt Existing Resources
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -220,7 +220,7 @@ kubectl patch deployment helm-controller -n flux-system --type=json \
 Proper remediation configuration is critical for handling upgrade failures gracefully:
 
 ```yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app
@@ -375,7 +375,7 @@ helm upgrade <release-name> <chart> \
 
 ```yaml
 # Recommended production HelmRelease template
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: my-app

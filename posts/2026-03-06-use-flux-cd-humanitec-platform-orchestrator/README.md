@@ -113,7 +113,7 @@ spec:
   url: https://charts.humanitec.io
   interval: 1h
 ---
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: humanitec-agent

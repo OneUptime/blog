@@ -39,7 +39,7 @@ Flux CD's image automation controllers automatically detect new container image 
 ```yaml
 # clusters/production/image-automation/image-repos.yaml
 # ImageRepository tells Flux which container registries to scan
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: api-server
@@ -53,7 +53,7 @@ spec:
   secretRef:
     name: registry-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: worker
@@ -64,7 +64,7 @@ spec:
   secretRef:
     name: registry-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: frontend
@@ -81,7 +81,7 @@ spec:
 ```yaml
 # clusters/production/image-automation/image-policies.yaml
 # ImagePolicy defines which image tags are considered for updates
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-server
@@ -98,7 +98,7 @@ spec:
     pattern: '^(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$'
     extract: '$version'
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: worker
@@ -114,7 +114,7 @@ spec:
     pattern: '^(?P<version>[0-9]+\.[0-9]+\.[0-9]+)$'
     extract: '$version'
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: frontend
@@ -137,7 +137,7 @@ spec:
 ```yaml
 # clusters/production/image-automation/image-update.yaml
 # ImageUpdateAutomation commits image updates back to Git
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

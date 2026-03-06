@@ -247,7 +247,7 @@ jobs:
 
 ```yaml
 # image-automation/image-repo-primary.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app-primary
@@ -259,7 +259,7 @@ spec:
     name: primary-registry-creds
 ---
 # image-automation/image-repo-backup.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app-backup

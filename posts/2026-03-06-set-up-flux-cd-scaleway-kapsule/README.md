@@ -153,7 +153,7 @@ spec:
   url: https://kubernetes.github.io/ingress-nginx
 ---
 # infrastructure/ingress/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -333,7 +333,7 @@ spec:
 
 ```yaml
 # infrastructure/image-automation/image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: api-service
@@ -345,7 +345,7 @@ spec:
     name: scr-credentials
 ---
 # infrastructure/image-automation/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-service
@@ -358,7 +358,7 @@ spec:
       range: ">=1.0.0"
 ---
 # infrastructure/image-automation/image-update.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system
@@ -398,7 +398,7 @@ spec:
   url: https://charts.jetstack.io
 ---
 # infrastructure/cert-manager/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager

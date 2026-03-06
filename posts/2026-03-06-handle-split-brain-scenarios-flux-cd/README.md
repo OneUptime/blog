@@ -108,7 +108,7 @@ Run image automation on only one cluster to prevent conflicting Git updates.
 ```yaml
 # clusters/cluster-a/image-automation.yaml
 # Only Cluster A runs image automation
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updater
@@ -136,7 +136,7 @@ spec:
 # clusters/cluster-b/image-automation.yaml
 # Cluster B does NOT run image automation
 # It only runs the image reflector to track available tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app

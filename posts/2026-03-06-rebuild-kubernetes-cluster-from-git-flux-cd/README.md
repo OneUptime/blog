@@ -269,7 +269,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/cert-manager/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -301,7 +301,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/ingress-nginx/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -339,7 +339,7 @@ spec:
 
 ```yaml
 # platform/databases/postgresql/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: postgresql

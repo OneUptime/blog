@@ -227,7 +227,7 @@ Set up Flux to scan GHCR and automatically update deployments when new images ar
 
 ```yaml
 # clusters/production/image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -244,7 +244,7 @@ Match the image policy to your tagging strategy:
 ```yaml
 # For semver tags
 # clusters/production/image-policy-semver.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -261,7 +261,7 @@ spec:
 ```yaml
 # For timestamp-based tags
 # clusters/production/image-policy-timestamp.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -300,7 +300,7 @@ Configure Flux to commit image tag updates back to your Git repository:
 
 ```yaml
 # clusters/production/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

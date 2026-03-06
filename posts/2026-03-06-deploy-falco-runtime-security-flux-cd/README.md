@@ -82,7 +82,7 @@ Deploy Falco using the official Helm chart.
 ```yaml
 # falco-helmrelease.yaml
 # Deploys Falco runtime security via Flux CD
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: falco
@@ -202,7 +202,7 @@ Deploy Falcosidekick to forward Falco alerts to various destinations.
 ```yaml
 # falcosidekick-helmrelease.yaml
 # Deploys Falcosidekick for alert forwarding
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: falcosidekick

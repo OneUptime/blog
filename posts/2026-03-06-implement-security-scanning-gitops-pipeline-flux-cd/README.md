@@ -56,7 +56,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/security/kyverno/helm-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kyverno
@@ -245,7 +245,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/security/trivy/helm-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: trivy-operator

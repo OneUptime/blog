@@ -223,7 +223,7 @@ metadata:
 
 ```yaml
 # File: clusters/my-cluster/sources/azure-blob-bucket.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: azure-manifests
@@ -280,7 +280,7 @@ kubectl create secret generic azure-blob-sas \
 
 ```yaml
 # File: clusters/my-cluster/sources/azure-blob-sas.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: azure-manifests-sas
@@ -310,7 +310,7 @@ kubectl create secret generic azure-blob-key \
 
 ```yaml
 # File: clusters/my-cluster/sources/azure-blob-key.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: azure-manifests-key

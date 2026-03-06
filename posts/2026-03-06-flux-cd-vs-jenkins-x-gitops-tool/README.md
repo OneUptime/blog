@@ -175,7 +175,7 @@ Flux CD handles only the deployment side. You need a separate CI system for buil
 #           docker push ghcr.io/my-org/my-app:${{ github.sha }}
 
 # Flux detects and deploys the new image
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app

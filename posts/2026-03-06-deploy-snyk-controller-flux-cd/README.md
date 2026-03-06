@@ -133,7 +133,7 @@ Deploy the Snyk Controller using the Helm chart.
 ```yaml
 # snyk-helmrelease.yaml
 # Deploys the Snyk Controller (snyk-monitor) via Flux CD
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: snyk-monitor

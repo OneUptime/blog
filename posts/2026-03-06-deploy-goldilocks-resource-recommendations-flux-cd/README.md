@@ -95,7 +95,7 @@ Goldilocks requires VPA to generate recommendations. Deploy VPA in recommendatio
 
 ```yaml
 # clusters/my-cluster/goldilocks/vpa-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vpa
@@ -145,7 +145,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/goldilocks/goldilocks-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: goldilocks

@@ -60,7 +60,7 @@ Flux CD requires setting up three resources: an ImageRepository to scan, an Imag
 
 ```yaml
 # Step 1: Define the image repository to scan
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -79,7 +79,7 @@ spec:
     - "^dev-"
 ---
 # Step 2: Define the image policy for tag selection
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -95,7 +95,7 @@ spec:
       range: ">=2.0.0 <3.0.0"
 ---
 # Step 3: Configure automated Git updates
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app-automation
@@ -216,7 +216,7 @@ spec:
 
 ```yaml
 # Semver-based selection
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: app-semver
@@ -230,7 +230,7 @@ spec:
       range: "~2.x"
 ---
 # Alphabetical sorting (useful for date-based tags)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: app-alphabetical
@@ -249,7 +249,7 @@ spec:
     extract: "$ts"
 ---
 # Numeric sorting for build numbers
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: app-numeric
@@ -302,7 +302,7 @@ data:
   .dockerconfigjson: <base64-encoded-config>
 ---
 # Reference the secret in the ImageRepository
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-private-app
@@ -315,7 +315,7 @@ spec:
 ---
 # For AWS ECR, use a CronJob or IRSA for token refresh
 # Flux also supports provider-specific auth
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: ecr-app
@@ -363,7 +363,7 @@ data:
 Flux CD always writes back to Git, maintaining a pure GitOps workflow:
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-automation

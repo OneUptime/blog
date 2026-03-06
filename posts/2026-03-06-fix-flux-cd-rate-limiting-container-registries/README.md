@@ -61,7 +61,7 @@ Reference the secret in your ImageRepository:
 
 ```yaml
 # ImageRepository with Docker Hub authentication
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -80,7 +80,7 @@ Reduce the frequency of registry scans to stay within rate limits.
 
 ```yaml
 # Before: scanning every 1 minute (aggressive)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -91,7 +91,7 @@ spec:
   interval: 1m
 ---
 # After: scanning every 30 minutes (conservative)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -122,7 +122,7 @@ Limit which tags are scanned to reduce API calls.
 
 ```yaml
 # ImageRepository with tag filtering
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -234,7 +234,7 @@ Configure Flux to use the ECR cache:
 
 ```yaml
 # ImageRepository pointing to ECR pull-through cache
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: nginx
@@ -252,7 +252,7 @@ ECR tokens expire every 12 hours. Flux needs fresh tokens to avoid authenticatio
 
 ```yaml
 # ImageRepository with AWS provider for automatic token refresh
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-ecr-app
@@ -282,7 +282,7 @@ metadata:
 
 ```yaml
 # ImageRepository with GCP provider
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-gcr-app
@@ -336,7 +336,7 @@ Distribute load across multiple registries to avoid single-source rate limits.
 
 ```yaml
 # Use GitHub Container Registry as an alternative
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app-ghcr

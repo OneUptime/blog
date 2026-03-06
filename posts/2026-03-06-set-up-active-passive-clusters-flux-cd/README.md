@@ -238,7 +238,7 @@ spec:
 
 ```yaml
 # clusters/base/infrastructure/external-dns/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-dns

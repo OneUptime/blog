@@ -61,7 +61,7 @@ Create a HelmRelease resource to deploy the kube-prometheus-stack chart, which i
 
 ```yaml
 # clusters/my-cluster/monitoring/prometheus-operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack

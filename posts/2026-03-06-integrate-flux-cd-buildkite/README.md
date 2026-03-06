@@ -263,7 +263,7 @@ Set up Flux to scan for images pushed by Buildkite.
 
 ```yaml
 # clusters/my-cluster/image-repos/app-image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -295,7 +295,7 @@ Define how Flux selects the latest image tag.
 
 ```yaml
 # clusters/my-cluster/image-policies/app-image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -315,7 +315,7 @@ Set up Flux to automatically update deployment manifests.
 
 ```yaml
 # clusters/my-cluster/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: buildkite-image-updates
@@ -403,7 +403,7 @@ spec:
   resources:
     - kind: ImageRepository
       name: my-app
-      apiVersion: image.toolkit.fluxcd.io/v1beta2
+      apiVersion: image.toolkit.fluxcd.io/v1
 ```
 
 Add a notification step to your Buildkite pipeline:

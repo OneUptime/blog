@@ -108,7 +108,7 @@ Create the HelmRelease with full configuration for the workflow controller and s
 
 ```yaml
 # clusters/production/argo-workflows/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: argo-workflows

@@ -56,7 +56,7 @@ spec:
 
 ```yaml
 # infrastructure/serverless/openfaas-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: openfaas
@@ -160,7 +160,7 @@ spec:
 
 ```yaml
 # infrastructure/serverless/keda-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: keda

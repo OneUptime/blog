@@ -188,7 +188,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/ingress.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -225,7 +225,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/cert-manager.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -443,7 +443,7 @@ Set up monitoring that works alongside Platform9's built-in monitoring:
 
 ```yaml
 # infrastructure/controllers/monitoring.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack

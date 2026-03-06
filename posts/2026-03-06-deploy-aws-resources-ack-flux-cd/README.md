@@ -71,7 +71,7 @@ spec:
   url: https://aws-controllers-k8s.github.io/community/helm
 ---
 # HelmRelease to install the ACK S3 controller
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ack-s3-controller
@@ -103,7 +103,7 @@ Install controllers for other AWS services you need:
 ```yaml
 # ack-rds-controller.yaml
 # HelmRelease for the ACK RDS controller
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ack-rds-controller
@@ -127,7 +127,7 @@ spec:
 ---
 # ack-ec2-controller.yaml
 # HelmRelease for the ACK EC2 controller
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ack-ec2-controller

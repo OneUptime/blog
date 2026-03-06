@@ -86,7 +86,7 @@ spec:
   url: https://helm.goharbor.io
 ---
 # infrastructure/harbor/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: harbor
@@ -334,7 +334,7 @@ spec:
   url: https://kubernetes.github.io/ingress-nginx
 ---
 # infrastructure/ingress/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -366,7 +366,7 @@ spec:
 
 ```yaml
 # infrastructure/image-automation/image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: web-app
@@ -378,7 +378,7 @@ spec:
     name: harbor-credentials
 ---
 # infrastructure/image-automation/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: web-app
@@ -391,7 +391,7 @@ spec:
       range: ">=1.0.0"
 ---
 # infrastructure/image-automation/image-update.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

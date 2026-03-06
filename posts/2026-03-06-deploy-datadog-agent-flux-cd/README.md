@@ -94,7 +94,7 @@ Deploy the Datadog Agent with comprehensive monitoring features enabled.
 
 ```yaml
 # clusters/my-cluster/datadog/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: datadog-agent
@@ -255,7 +255,7 @@ spec:
     secretRef:
       name: sops-gpg
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: datadog-agent
       namespace: datadog

@@ -72,7 +72,7 @@ The kube-prometheus-stack Helm chart bundles Prometheus, Grafana, Alertmanager, 
 
 ```yaml
 # infrastructure/monitoring/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack

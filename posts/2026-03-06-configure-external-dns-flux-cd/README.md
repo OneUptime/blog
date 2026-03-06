@@ -102,7 +102,7 @@ stringData:
 
 ```yaml
 # clusters/my-cluster/helm-releases/external-dns-aws.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-dns
@@ -175,7 +175,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/helm-releases/external-dns-cloudflare.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-dns

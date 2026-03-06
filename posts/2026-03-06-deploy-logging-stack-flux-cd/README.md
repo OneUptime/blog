@@ -81,7 +81,7 @@ Deploy Loki in single-binary mode for smaller clusters or microservices mode for
 
 ```yaml
 # infrastructure/logging/loki-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: loki
@@ -181,7 +181,7 @@ Promtail collects logs from all pods on each node and ships them to Loki.
 
 ```yaml
 # infrastructure/logging/promtail-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: promtail
@@ -369,7 +369,7 @@ For production workloads, deploy Loki in microservices mode for better scalabili
 
 ```yaml
 # infrastructure/logging/overlays/production/loki-patch.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: loki

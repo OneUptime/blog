@@ -56,7 +56,7 @@ For production environments, deploy Tempo in distributed (microservices) mode.
 
 ```yaml
 # clusters/my-cluster/tracing/tempo.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tempo-distributed

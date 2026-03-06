@@ -238,7 +238,7 @@ metadata:
 
 ```yaml
 # infrastructure/controllers/base/cert-manager/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -284,7 +284,7 @@ metadata:
 
 ```yaml
 # infrastructure/controllers/base/ingress-nginx/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -324,7 +324,7 @@ patches:
 
 ```yaml
 # infrastructure/controllers/production/patches/ingress-ha.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx

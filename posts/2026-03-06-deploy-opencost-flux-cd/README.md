@@ -82,7 +82,7 @@ OpenCost depends on Prometheus for metrics. Deploy it if you do not already have
 
 ```yaml
 # clusters/production/opencost/prometheus-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: prometheus
@@ -143,7 +143,7 @@ Create the HelmRelease for OpenCost with full configuration.
 
 ```yaml
 # clusters/production/opencost/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: opencost

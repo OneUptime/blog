@@ -201,7 +201,7 @@ Set up image scanning for the GitLab Container Registry:
 
 ```yaml
 # clusters/production/image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -215,7 +215,7 @@ spec:
 
 ---
 # clusters/production/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -232,7 +232,7 @@ Configure an OCI source for manifests pushed from GitLab CI:
 
 ```yaml
 # clusters/production/oci-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-manifests
@@ -271,7 +271,7 @@ spec:
       apiVersion: source.toolkit.fluxcd.io/v1
     - kind: OCIRepository
       name: my-app-manifests
-      apiVersion: source.toolkit.fluxcd.io/v1beta2
+      apiVersion: source.toolkit.fluxcd.io/v1
 ```
 
 Create the webhook secret:

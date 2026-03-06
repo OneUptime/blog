@@ -70,7 +70,7 @@ Deploy Elasticsearch as the trace storage backend.
 
 ```yaml
 # clusters/my-cluster/jaeger/elasticsearch.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: elasticsearch
@@ -136,7 +136,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/jaeger/operator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: jaeger-operator

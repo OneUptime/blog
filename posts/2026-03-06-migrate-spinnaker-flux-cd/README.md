@@ -143,7 +143,7 @@ Spinnaker's Docker Registry trigger is replaced by Flux image automation.
 ```yaml
 # image-automation/my-app-repo.yaml
 # Scan the container registry for new tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -156,7 +156,7 @@ spec:
 ---
 # image-automation/my-app-policy.yaml
 # Select the latest semver tag
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -170,7 +170,7 @@ spec:
 ---
 # image-automation/automation.yaml
 # Commit image updates back to Git
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: my-app-automation

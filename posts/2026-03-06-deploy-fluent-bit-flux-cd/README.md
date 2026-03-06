@@ -65,7 +65,7 @@ Deploy Fluent Bit with a comprehensive configuration for Kubernetes log collecti
 
 ```yaml
 # clusters/my-cluster/fluent-bit/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: fluent-bit
@@ -291,7 +291,7 @@ spec:
   wait: true
   timeout: 10m
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: fluent-bit
       namespace: fluent-bit

@@ -148,7 +148,7 @@ Set up Flux to scan ICR for new image tags.
 
 ```yaml
 # clusters/iks-production/image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -166,7 +166,7 @@ Define an image update policy:
 
 ```yaml
 # clusters/iks-production/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -184,7 +184,7 @@ Set up image update automation to commit tag changes back to Git:
 
 ```yaml
 # clusters/iks-production/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

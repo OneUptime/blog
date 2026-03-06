@@ -39,7 +39,7 @@ First, set up the image repository and policy for scanning:
 
 ```yaml
 # clusters/production/image-repository.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -52,7 +52,7 @@ spec:
 
 ---
 # clusters/production/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -71,7 +71,7 @@ Instead of pushing directly to main, configure Flux image update automation to p
 
 ```yaml
 # clusters/production/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates

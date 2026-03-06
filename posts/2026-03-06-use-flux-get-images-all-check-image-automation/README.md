@@ -146,7 +146,7 @@ flux get images policy my-app -n flux-system -o yaml
 
 ```yaml
 # Example ImagePolicy with semver filtering
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -162,7 +162,7 @@ spec:
 
 ```yaml
 # Example ImagePolicy with alphabetical ordering
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app-staging

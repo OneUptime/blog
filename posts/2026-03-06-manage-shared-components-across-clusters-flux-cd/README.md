@@ -132,7 +132,7 @@ metadata:
 ```yaml
 # infrastructure/shared/cert-manager/helmrelease.yaml
 # cert-manager HelmRelease with default values for all clusters
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -166,7 +166,7 @@ spec:
 ```yaml
 # infrastructure/shared/ingress-nginx/helmrelease.yaml
 # Ingress NGINX controller shared across all clusters
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -193,7 +193,7 @@ spec:
 ```yaml
 # infrastructure/shared/monitoring/helmrelease.yaml
 # Prometheus monitoring stack shared across clusters
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kube-prometheus-stack
@@ -293,7 +293,7 @@ patches:
 ```yaml
 # infrastructure/cluster-specific/cluster-a/patches/ingress-replicas.yaml
 # Cluster A handles more traffic, so it needs more ingress replicas
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx

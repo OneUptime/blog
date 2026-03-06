@@ -224,7 +224,7 @@ Create the Flux `ImageRepository` to scan for images in Artifact Registry.
 
 ```yaml
 # clusters/my-cluster/image-repos/app-image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -245,7 +245,7 @@ Define the policy for selecting the latest image tag.
 
 ```yaml
 # clusters/my-cluster/image-policies/app-image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -265,7 +265,7 @@ Set up Flux to automatically commit updated image tags.
 
 ```yaml
 # clusters/my-cluster/image-update-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: gcb-image-updates
@@ -361,7 +361,7 @@ spec:
   resources:
     - kind: ImageRepository
       name: my-app
-      apiVersion: image.toolkit.fluxcd.io/v1beta2
+      apiVersion: image.toolkit.fluxcd.io/v1
 ```
 
 ## Verify and Troubleshoot

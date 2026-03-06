@@ -120,7 +120,7 @@ metadata:
 
 ```yaml
 # infrastructure/base/cert-manager/helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -171,7 +171,7 @@ patches:
 
 ```yaml
 # infrastructure/production/patches/cert-manager-values.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager

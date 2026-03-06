@@ -264,7 +264,7 @@ spec:
 ```yaml
 # port-exporter-helmrelease.yaml
 # HelmRelease to deploy the Port Kubernetes exporter
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: port-k8s-exporter
@@ -336,7 +336,7 @@ spec:
                   source: '.spec.sourceRef.name + "-" + .metadata.namespace'
 
       # Map Flux HelmReleases to Port entities
-      - kind: helm.toolkit.fluxcd.io/v1/HelmRelease
+      - kind: helm.toolkit.fluxcd.io/v2/HelmRelease
         selector:
           query: "true"
         port:

@@ -169,7 +169,7 @@ Set up Flux to pull manifests from the OCI artifact you pushed.
 
 ```yaml
 # clusters/production/oci-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-manifests
@@ -235,7 +235,7 @@ spec:
   resources:
     - kind: OCIRepository
       name: my-app-manifests
-      apiVersion: source.toolkit.fluxcd.io/v1beta2
+      apiVersion: source.toolkit.fluxcd.io/v1
 ```
 
 Create the webhook secret:

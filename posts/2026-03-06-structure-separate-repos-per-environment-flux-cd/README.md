@@ -200,7 +200,7 @@ kind: Kustomization
 patches:
   # Use minimal resources in development
   - patch: |
-      apiVersion: helm.toolkit.fluxcd.io/v1
+      apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       metadata:
         name: ingress-nginx
@@ -226,7 +226,7 @@ kind: Kustomization
 patches:
   # High availability settings for production
   - patch: |
-      apiVersion: helm.toolkit.fluxcd.io/v1
+      apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       metadata:
         name: ingress-nginx

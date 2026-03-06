@@ -36,7 +36,7 @@ A healthy ImageRepository should show a "LastScanResult" with a scan time and ta
 
 ```yaml
 # Example healthy ImageRepository
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: my-app
@@ -74,7 +74,7 @@ Look for the `status.latestImage` field. If it is empty, the policy cannot resol
 
 ```yaml
 # Example ImagePolicy using semver
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -105,7 +105,7 @@ This is where most problems occur. The ImageUpdateAutomation resource controls h
 
 ```yaml
 # A properly configured ImageUpdateAutomation
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system
@@ -277,7 +277,7 @@ Common error messages and their meanings:
 If you use a separate branch for image updates (common in production), configure the push branch and set up branch protection accordingly.
 
 ```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: flux-system

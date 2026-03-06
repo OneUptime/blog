@@ -351,7 +351,7 @@ Image automation controllers push commits to Git, which counts against write rat
 
 ```yaml
 # ImageUpdateAutomation with batched commits
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: image-updates

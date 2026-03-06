@@ -534,7 +534,7 @@ Configure image automation to progressively update environments.
 ```yaml
 # clusters/development/image-policy.yaml
 # Development tracks all new builds including pre-release tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: payment-service-dev
@@ -554,7 +554,7 @@ spec:
 ```yaml
 # clusters/staging/image-policy.yaml
 # Staging only accepts release candidate tags
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: payment-service-staging

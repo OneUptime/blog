@@ -372,7 +372,7 @@ Automate the promotion of image tags from staging to production using Flux image
 ```yaml
 # clusters/staging/image-automation.yaml
 # ImageRepository to scan for new container images
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: api-server
@@ -384,7 +384,7 @@ spec:
     name: registry-credentials
 ---
 # ImagePolicy to select the latest release candidate for staging
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: api-server-staging
@@ -401,7 +401,7 @@ spec:
       range: ">=2.0.0-rc0"
 ---
 # ImageUpdateAutomation to update the staging overlay automatically
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: staging-auto-update

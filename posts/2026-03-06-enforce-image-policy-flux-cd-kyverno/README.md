@@ -69,7 +69,7 @@ spec:
 
 ```yaml
 # clusters/my-cluster/kyverno/helm-release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: kyverno

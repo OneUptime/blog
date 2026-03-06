@@ -152,7 +152,7 @@ Many Helm charts include CRDs. Use the HelmRelease CRD install policy to manage 
 ```yaml
 # infrastructure/controllers/cert-manager/helmrelease.yaml
 # Let Helm manage CRD installation via the HelmRelease
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -237,7 +237,7 @@ resources:
 ```yaml
 # infrastructure/controllers/cert-manager/helmrelease.yaml
 # cert-manager controller - CRDs are managed separately
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager

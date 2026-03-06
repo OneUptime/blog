@@ -58,7 +58,7 @@ spec:
 ```yaml
 # infrastructure/ingress-nginx/base-values.yaml
 # Base HelmRelease for ingress-nginx shared across clusters
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -154,7 +154,7 @@ Deploy ExternalDNS to automatically create DNS records pointing to each cluster'
 ```yaml
 # infrastructure/external-dns/helm-release.yaml
 # ExternalDNS automatically manages DNS records based on Ingress resources
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: external-dns

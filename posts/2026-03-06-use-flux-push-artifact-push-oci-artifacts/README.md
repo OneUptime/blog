@@ -257,7 +257,7 @@ Once you have pushed an artifact, create an `OCIRepository` resource to consume 
 
 ```yaml
 # oci-repository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-manifests

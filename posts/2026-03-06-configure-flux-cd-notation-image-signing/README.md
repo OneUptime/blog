@@ -124,7 +124,7 @@ Define a verification policy that tells Flux which images to verify and which ke
 
 ```yaml
 # clusters/my-cluster/image-verification/notation-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: notation-verification
@@ -201,7 +201,7 @@ Set up the ImageRepository to scan for new tags and verify signatures:
 
 ```yaml
 # clusters/my-cluster/image-verification/image-repo.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: myapp-repo
@@ -231,7 +231,7 @@ Configure Flux to automatically update image tags, but only for verified images:
 
 ```yaml
 # clusters/my-cluster/image-verification/image-policy.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: myapp-policy
@@ -249,7 +249,7 @@ spec:
     extract: '$version'
 ---
 # clusters/my-cluster/image-verification/image-update.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: myapp-update

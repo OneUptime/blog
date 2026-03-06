@@ -66,7 +66,7 @@ The Vector Agent runs as a DaemonSet on every node, collecting logs and host met
 
 ```yaml
 # clusters/my-cluster/vector/vector-agent.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vector-agent
@@ -208,7 +208,7 @@ The Aggregator receives data from agents, applies additional transformations, an
 
 ```yaml
 # clusters/my-cluster/vector/vector-aggregator.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vector-aggregator
@@ -377,11 +377,11 @@ spec:
   wait: true
   timeout: 10m
   healthChecks:
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: vector-agent
       namespace: vector
-    - apiVersion: helm.toolkit.fluxcd.io/v1
+    - apiVersion: helm.toolkit.fluxcd.io/v2
       kind: HelmRelease
       name: vector-aggregator
       namespace: vector

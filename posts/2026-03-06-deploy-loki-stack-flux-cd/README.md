@@ -56,7 +56,7 @@ For production use, deploy Loki in its microservices (scalable) mode with object
 
 ```yaml
 # clusters/my-cluster/logging/loki.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: loki
@@ -195,7 +195,7 @@ Promtail is the agent that ships logs from your nodes to Loki.
 
 ```yaml
 # clusters/my-cluster/logging/promtail.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: promtail

@@ -51,7 +51,7 @@ metadata:
 
 ```yaml
 # clusters/my-cluster/helm-releases/cilium-helmrelease.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cilium
@@ -154,9 +154,10 @@ spec:
   endpointSelector:
     matchLabels:
       app: my-app
-  ingress:
-    # Deny all ingress by default
-    - {}
+  ingressDeny:
+    # Deny all ingress traffic
+    - fromEntities:
+        - all
 ```
 
 ### Allow Specific Traffic

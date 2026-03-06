@@ -112,7 +112,7 @@ spec:
 
 ```yaml
 # infrastructure/appmesh/controller.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: appmesh-controller
@@ -373,7 +373,7 @@ spec:
 
 ```yaml
 # infrastructure/flagger/flagger.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: flagger

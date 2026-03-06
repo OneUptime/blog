@@ -92,7 +92,7 @@ Define the Bucket Source to pull Terraform configurations from your S3 bucket:
 ```yaml
 # terraform-bucket-source.yaml
 # Flux CD Bucket Source that watches the S3 bucket for Terraform configs
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: terraform-state
@@ -128,7 +128,7 @@ Install the Terraform Controller for Flux CD using the official Helm chart:
 ```yaml
 # tf-controller-helmrelease.yaml
 # HelmRelease to install the Terraform Controller
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: tf-controller
@@ -268,7 +268,7 @@ If you prefer a self-hosted solution, configure MinIO as the bucket backend:
 ```yaml
 # minio-bucket-source.yaml
 # Bucket Source configured for MinIO instead of AWS S3
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: terraform-state-minio

@@ -127,7 +127,7 @@ resources:
 ```yaml
 # base/infrastructure/cert-manager/helmrelease.yaml
 # cert-manager with default settings for all clusters
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager

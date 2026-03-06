@@ -320,7 +320,7 @@ kubectl exec -n flux-system deployment/source-controller -- \
 
 ```yaml
 # ecr-source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-manifests

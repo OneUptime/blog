@@ -222,7 +222,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/ingress.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: ingress-nginx
@@ -257,7 +257,7 @@ spec:
 
 ```yaml
 # infrastructure/controllers/cert-manager.yaml
-apiVersion: helm.toolkit.fluxcd.io/v1
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
@@ -456,7 +456,7 @@ Set up automated container image updates for your TKG workloads:
 
 ```yaml
 # clusters/tkg-workload/apps/image-automation.yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: tanzu-app
@@ -468,7 +468,7 @@ spec:
   secretRef:
     name: harbor-credentials
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: tanzu-app
@@ -480,7 +480,7 @@ spec:
     semver:
       range: ">=1.0.0 <2.0.0"
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta1
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: tanzu-app-automation

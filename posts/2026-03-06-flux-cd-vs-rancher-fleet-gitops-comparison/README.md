@@ -420,7 +420,7 @@ Features available in Flux CD but not in Fleet:
 
 ```yaml
 # 1. Image Automation (not available in Fleet)
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: my-app
@@ -453,7 +453,7 @@ spec:
 
 ---
 # 3. OCI Artifact Sources
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: manifests
