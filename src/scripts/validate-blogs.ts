@@ -2080,13 +2080,19 @@ function checkTagCasing(blogsJson: BlogEntry[]): void {
   if (badTags.size > 0) {
     hasErrors = true;
     console.log(
-      `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${badTags.size} tag${badTags.size === 1 ? '' : 's'} starting with lowercase that ${badTags.size === 1 ? 'is' : 'are'} not in ${LOWERCASE_TAG_ALLOWLIST_JSON}:\n`
+      `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${badTags.size} tag${badTags.size === 1 ? '' : 's'} starting with a lowercase letter that ${badTags.size === 1 ? 'is' : 'are'} not in ${LOWERCASE_TAG_ALLOWLIST_JSON}:\n`
     );
     for (const [tag, posts] of badTags) {
       console.log(`  - ${colors.red}${tag}${colors.reset} (used in: ${posts.join(', ')})`);
     }
     console.log(
-      `\n${colors.yellow}FIX:${colors.reset} Either capitalize the tag properly or add it to ${LOWERCASE_TAG_ALLOWLIST_JSON} if it is a legitimate technical term.\n`
+      `\n${colors.yellow}FIX:${colors.reset} Tags should start with an uppercase letter (e.g. "Cloud Resources" instead of "cloud resources").`
+    );
+    console.log(
+      `     If this tag is a legitimate lowercase technical term (e.g. a CLI command, package name, or identifier like "kubectl", "gRPC", "useEffect"),`
+    );
+    console.log(
+      `     add it to ${LOWERCASE_TAG_ALLOWLIST_JSON} to suppress this error.\n`
     );
   } else {
     logSuccess('All tags have proper casing (or are in the lowercase allowlist)');
