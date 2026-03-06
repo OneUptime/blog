@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, rabbitmq, operator, message queue, amqp, gitops, kubernetes, messaging
+Tags: Flux CD, RabbitMQ, Operator, Message Queue, AMQP, GitOps, Kubernetes, Messaging
 
 Description: A practical guide to deploying the RabbitMQ Cluster Operator on Kubernetes using Flux CD for Kubernetes-native RabbitMQ cluster management.
 
@@ -24,7 +24,7 @@ This guide covers deploying the RabbitMQ Cluster Operator using Flux CD, creatin
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     rabbitmq/

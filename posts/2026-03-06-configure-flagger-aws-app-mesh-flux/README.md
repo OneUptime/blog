@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, aws, app mesh, progressive delivery, canary, kubernetes, gitops, eks
+Tags: flux, flagger, AWS, App Mesh, Progressive Delivery, Canary, Kubernetes, GitOps, EKS
 
 Description: A comprehensive guide to setting up Flagger with AWS App Mesh and Flux for automated canary deployments on Amazon EKS.
 

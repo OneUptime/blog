@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, graphite, metrics, canary, kubernetes, gitops, monitoring
+Tags: flux, flagger, graphite, Metrics, Canary, Kubernetes, GitOps, Monitoring
 
 Description: Learn how to integrate Graphite as a metrics provider for Flagger canary analysis in Flux-managed Kubernetes clusters.
 

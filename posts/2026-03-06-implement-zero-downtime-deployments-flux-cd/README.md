@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, zero downtime, rolling updates, canary, blue-green
+Tags: Flux CD, GitOps, Kubernetes, Zero Downtime, Rolling Updates, Canary, Blue-Green
 
 Description: A practical guide to implementing zero-downtime deployments with Flux CD using rolling updates, canary releases, and blue-green strategies.
 
 ---
 
-Zero-downtime deployments ensure your users never experience an outage during a release. Kubernetes provides the building blocks — rolling updates, readiness probes, and pod disruption budgets. Flux CD orchestrates these through GitOps. This guide shows how to configure each strategy.
+Zero-downtime deployments ensure your users never experience an outage during a release. Kubernetes provides the building blocks - rolling updates, readiness probes, and pod disruption budgets. Flux CD orchestrates these through GitOps. This guide shows how to configure each strategy.
 
 ## Prerequisites for Zero-Downtime
 
@@ -241,7 +241,7 @@ spec:
 ```
 
 ```yaml
-# The deployment remains standard — Flagger manages the canary
+# The deployment remains standard - Flagger manages the canary
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -295,7 +295,7 @@ spec:
     interval: 1m
     # Number of checks before switching traffic
     iterations: 10
-    # No gradual traffic shift — instant switch
+    # No gradual traffic shift - instant switch
     threshold: 2
     metrics:
       - name: request-success-rate

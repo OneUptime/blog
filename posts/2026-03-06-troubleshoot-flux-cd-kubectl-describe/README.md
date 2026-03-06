@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, troubleshooting, kubectl, kubernetes, gitops, debugging
+Tags: Flux CD, Troubleshooting, kubectl, Kubernetes, GitOps, Debugging
 
 Description: Learn how to use kubectl describe to inspect Flux CD resources, interpret conditions and events, and quickly diagnose reconciliation failures.
 
@@ -25,7 +25,7 @@ kubectl describe gitrepository fleet-infra -n flux-system
 
 Key sections to look for in the output:
 
-```
+```yaml
 Name:         fleet-infra
 Namespace:    flux-system
 Labels:       kustomize.toolkit.fluxcd.io/name=flux-system
@@ -70,7 +70,7 @@ kubectl describe kustomization my-app -n flux-system
 
 Example output with a failure:
 
-```
+```python
 Status:
   Conditions:
     Last Transition Time:  2026-03-06T10:05:00Z
@@ -102,7 +102,7 @@ Events:
 kubectl describe helmrepository bitnami -n flux-system
 ```
 
-```
+```yaml
 Status:
   Conditions:
     Last Transition Time:  2026-03-06T09:00:00Z
@@ -127,7 +127,7 @@ kubectl describe helmrelease nginx -n default
 
 Example output with a failure:
 
-```
+```yaml
 Status:
   Conditions:
     Last Transition Time:  2026-03-06T10:10:00Z
@@ -178,7 +178,7 @@ This is useful when the chart itself cannot be fetched from the repository.
 kubectl describe imagerepository my-app -n flux-system
 ```
 
-```
+```yaml
 Status:
   Canonical Image Name:  docker.io/myorg/my-app
   Conditions:
@@ -199,7 +199,7 @@ Status:
 kubectl describe imagepolicy my-app -n flux-system
 ```
 
-```
+```yaml
 Status:
   Conditions:
     Last Transition Time:  2026-03-06T10:00:00Z

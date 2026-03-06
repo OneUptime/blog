@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, aws waf, web application firewall, alb, security, kubernetes, gitops
+Tags: Flux CD, AWS WAF, Web Application Firewall, ALB, Security, Kubernetes, GitOps
 
 Description: Deploy and manage AWS WAF rules and Web ACLs through Flux CD for GitOps-driven web application security on Kubernetes.
 

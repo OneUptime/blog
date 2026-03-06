@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, cluster overrides, multi-cluster, gitops, kubernetes, kustomize
+Tags: Flux CD, cluster overrides, Multi-Cluster, GitOps, Kubernetes, Kustomize
 
 Description: Learn how to apply cluster-specific overrides on top of shared configurations in Flux CD to handle per-cluster differences in a multi-cluster setup.
 
@@ -24,7 +24,7 @@ Common scenarios requiring overrides:
 
 ## Repository Structure
 
-```
+```text
 fleet-repo/
   base/
     apps/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, infrastructure, applications, dependency management
+Tags: Flux CD, GitOps, Kubernetes, Infrastructure, Application, Dependency Management
 
 Description: A practical guide to managing both infrastructure components and application workloads in a unified Flux CD GitOps workflow with proper dependency ordering.
 
@@ -36,7 +36,7 @@ graph TD
 
 Organize your repository to reflect the dependency layers.
 
-```
+```text
 fleet-infra/
 ├── clusters/
 │   ├── staging/

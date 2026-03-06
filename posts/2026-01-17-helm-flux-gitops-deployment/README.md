@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, GitOps, Flux, CI/CD, Automation
+Tags: Helm, Kubernetes, DevOps, GitOps, flux, CI/CD, Automation
 
 Description: Complete guide to implementing GitOps workflows using Flux with Helm for declarative, Git-based Kubernetes deployments.
 

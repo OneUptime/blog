@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, bootstrap, private repository, gitops, kubernetes, troubleshooting, ssh, deploy keys
+Tags: Flux CD, Bootstrap, Private Repository, GitOps, Kubernetes, Troubleshooting, SSH, Deploy Keys
 
 Description: A practical guide to resolving Flux CD bootstrap failures when working with private Git repositories, covering SSH keys, personal access tokens, and team permissions.
 

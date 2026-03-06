@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, logging, loki, promtail, grafana, kubernetes, gitops, observability
+Tags: Flux CD, Logging, Loki, Promtail, Grafana, Kubernetes, GitOps, Observability
 
 Description: Learn how to deploy a production-grade logging stack with Loki, Promtail, and Grafana using Flux CD and GitOps workflows.
 
@@ -39,7 +39,7 @@ graph LR
 
 ## Repository Structure
 
-```
+```text
 infrastructure/
   logging/
     namespace.yaml

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, secret rotation, kubernetes, gitops, security, sops, sealed secrets, external secrets
+Tags: Flux CD, Secret Rotation, Kubernetes, GitOps, Security, SOPS, Sealed Secrets, External Secrets
 
 Description: A practical guide to implementing automated secret rotation in Kubernetes using Flux CD with External Secrets Operator, SOPS, and scheduled rotation workflows.
 

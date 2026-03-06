@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, talos linux, bare metal, kubernetes, gitops, immutable os, continuous delivery
+Tags: Flux CD, Talos Linux, Bare Metal, Kubernetes, GitOps, Immutable OS, Continuous Delivery
 
 Description: A step-by-step guide to deploying Flux CD on Talos Linux bare metal clusters for a fully immutable, GitOps-driven Kubernetes platform.
 

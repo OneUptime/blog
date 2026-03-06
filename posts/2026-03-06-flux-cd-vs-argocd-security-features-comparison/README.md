@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, argocd, security, gitops, kubernetes, rbac, comparison, secrets, encryption
+Tags: Flux CD, ArgoCD, Security, GitOps, Kubernetes, RBAC, Comparison, Secret, Encryption
 
 Description: A comprehensive comparison of security features in Flux CD and ArgoCD, covering RBAC, secret management, supply chain security, multi-tenancy, and compliance capabilities.
 

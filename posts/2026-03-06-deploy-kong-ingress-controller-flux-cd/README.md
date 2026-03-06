@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kong, ingress controller, kubernetes, gitops, networking
+Tags: Flux CD, Kong, Ingress Controller, Kubernetes, GitOps, Networking
 
 Description: A practical guide to deploying and managing Kong Ingress Controller in Kubernetes using Flux CD for GitOps-driven ingress management.
 

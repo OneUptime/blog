@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, opentelemetry, otel, kubernetes, gitops, traces, metrics, logs, observability
+Tags: Flux CD, OpenTelemetry, OTEL, Kubernetes, GitOps, Traces, Metrics, Logs, Observability
 
 Description: A practical guide to deploying the OpenTelemetry Collector on Kubernetes using Flux CD for unified telemetry collection.
 

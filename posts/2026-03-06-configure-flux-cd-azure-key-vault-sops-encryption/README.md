@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, azure, key-vault, sops, encryption, gitops, kubernetes, secrets
+Tags: flux-cd, Azure, key-vault, SOPS, Encryption, GitOps, Kubernetes, Secret
 
 Description: A practical guide to encrypting Kubernetes secrets with SOPS and Azure Key Vault, integrated with Flux CD for secure GitOps secret management.
 

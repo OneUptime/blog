@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitlab ci, container images, ci/cd, gitops, kubernetes, docker
+Tags: Flux CD, GitLab CI, Container Images, CI/CD, GitOps, Kubernetes, Docker
 
 Description: A practical guide to building and pushing container images with GitLab CI and automating deployments with Flux CD.
 

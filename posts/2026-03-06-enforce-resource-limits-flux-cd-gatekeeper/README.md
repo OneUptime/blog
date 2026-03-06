@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gatekeeper, opa, resource limits, kubernetes, gitops, policy
+Tags: Flux CD, Gatekeeper, OPA, Resource Limits, Kubernetes, GitOps, Policy
 
 Description: A practical guide to enforcing CPU and memory resource limits in Kubernetes using OPA Gatekeeper managed through Flux CD.
 

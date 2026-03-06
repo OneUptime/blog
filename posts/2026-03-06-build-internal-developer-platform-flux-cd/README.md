@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Internal Developer Platform, IDP, Platform Engineering
+Tags: Flux CD, GitOps, Kubernetes, Internal Developer Platform, IdP, Platform Engineering
 
 Description: Learn how to build a self-service internal developer platform using Flux CD as the GitOps engine for automated deployments and environment management.
 

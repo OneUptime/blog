@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, repository structure, applications, gitops, kubernetes, microservices, ci-cd
+Tags: Flux CD, Repository Structure, Application, GitOps, Kubernetes, Microservices, ci-cd
 
 Description: A practical guide to organizing a separate Git repository per application for Flux CD, ideal for microservices architectures with independent deployment lifecycles.
 
@@ -45,7 +45,7 @@ graph TD
 
 Each application repository contains both the source code and Kubernetes manifests:
 
-```
+```text
 my-web-app/
 ├── src/                          # Application source code
 │   ├── main.go

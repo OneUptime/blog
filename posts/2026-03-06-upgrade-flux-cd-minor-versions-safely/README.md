@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, upgrade, kubernetes, gitops, minor version, best practices, cluster management
+Tags: Flux CD, Upgrade, Kubernetes, GitOps, minor version, Best Practices, Cluster Management
 
 Description: A comprehensive guide to safely upgrading Flux CD between minor versions with pre-checks, testing strategies, and rollback plans.
 

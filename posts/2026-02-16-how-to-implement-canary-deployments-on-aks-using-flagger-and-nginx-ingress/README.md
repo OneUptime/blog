@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Canary Deployment, Flagger, NGINX Ingress, Kubernetes, Progressive Delivery, DevOps
+Tags: AKS, Canary Deployment, flagger, NGINX Ingress, Kubernetes, Progressive Delivery, DevOps
 
 Description: Step-by-step guide to implementing automated canary deployments on AKS using Flagger with NGINX Ingress for safe, progressive rollouts.
 

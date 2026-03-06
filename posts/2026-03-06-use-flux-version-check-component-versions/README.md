@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, version, upgrade, compatibility
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Version, Upgrade, Compatibility
 
 Description: Learn how to use the flux version command to check Flux CD component versions, identify version mismatches, and plan upgrades.
 
@@ -31,7 +31,7 @@ flux version
 
 Example output:
 
-```
+```yaml
 flux: v2.4.0
 helm-controller: v0.37.4
 kustomize-controller: v1.2.2
@@ -52,7 +52,7 @@ flux version --client
 
 Output:
 
-```
+```yaml
 flux: v2.4.0
 ```
 

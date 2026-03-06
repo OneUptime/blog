@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, change management, itil, governance
+Tags: Flux CD, GitOps, Kubernetes, Change Management, ITIL, Governance
 
 Description: A practical guide to implementing structured change management processes with Flux CD using GitOps principles.
 

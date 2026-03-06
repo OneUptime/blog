@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gcp, config connector, gitops, kubernetes, iac, google cloud
+Tags: Flux CD, GCP, Config Connector, GitOps, Kubernetes, IaC, Google Cloud
 
 Description: Learn how to deploy and manage GCP resources using Config Connector integrated with Flux CD for GitOps-driven cloud infrastructure management.
 

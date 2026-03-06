@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, rke2, rancher, kubernetes, gitops, continuous delivery, security, fips
+Tags: Flux CD, RKE2, Rancher, Kubernetes, GitOps, Continuous Delivery, Security, FIPS
 
 Description: A practical guide to deploying Flux CD on RKE2, the security-focused Kubernetes distribution from Rancher, with FIPS compliance considerations.
 

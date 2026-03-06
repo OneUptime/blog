@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, circleci, ci/cd, gitops, kubernetes, container images, docker
+Tags: Flux CD, CircleCI, CI/CD, GitOps, Kubernetes, Container Images, Docker
 
 Description: Learn how to integrate CircleCI pipelines with Flux CD to automate container image builds and GitOps-based Kubernetes deployments.
 

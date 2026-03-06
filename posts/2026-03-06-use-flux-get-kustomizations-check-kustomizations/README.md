@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, cli, kustomization, gitops, kubernetes, flux-get, troubleshooting, reconciliation
+Tags: flux, CLI, Kustomization, GitOps, Kubernetes, flux-get, Troubleshooting, Reconciliation
 
 Description: A comprehensive guide to using flux get kustomizations to monitor, inspect, and troubleshoot Flux Kustomization resources in your cluster.
 
@@ -38,7 +38,7 @@ flux get ks -A
 
 Sample output:
 
-```
+```text
 NAMESPACE    NAME            REVISION              SUSPENDED  READY  MESSAGE
 flux-system  flux-system     main@sha1:abc1234f    False      True   Applied revision: main@sha1:abc1234f
 flux-system  infrastructure  main@sha1:abc1234f    False      True   Applied revision: main@sha1:abc1234f
@@ -63,7 +63,7 @@ Each column provides critical information:
 
 The revision format tells you exactly what is deployed:
 
-```
+```text
 main@sha1:abc1234f     -> Branch "main", commit abc1234f
 v1.2.3@sha1:def5678a   -> Tag "v1.2.3", commit def5678a
 ```

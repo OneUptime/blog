@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, image automation, migration, kubernetes, gitops, container images, continuous deployment
+Tags: Flux CD, Image Automation, Migration, Kubernetes, GitOps, Container Images, Continuous Deployment
 
 Description: A step-by-step guide to migrating your image update automation workflows from Flux v1 to the Flux v2 Image Automation Controllers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, cluster autoscaler, kubernetes, node scaling, gitops, aws, gcp, azure
+Tags: Flux CD, Cluster Autoscaler, Kubernetes, Node Scaling, GitOps, AWS, GCP, Azure
 
 Description: A practical guide to deploying the Kubernetes Cluster Autoscaler using Flux CD for automatic node scaling across cloud providers.
 
@@ -39,7 +39,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     cluster-autoscaler/

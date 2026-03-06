@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, tree, kustomization, visualization, devops
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, tree, Kustomization, Visualization, DevOps
 
 Description: A practical guide to using the flux tree kustomization command to visualize the resource hierarchy managed by a Flux CD Kustomization.
 
@@ -66,7 +66,7 @@ flux tree kustomization apps
 
 Sample output:
 
-```
+```text
 Kustomization/apps
 ├── Namespace/my-app
 ├── ServiceAccount/my-app/my-app-sa
@@ -101,7 +101,7 @@ flux tree kustomization flux-system
 
 Sample output with nested kustomizations:
 
-```
+```text
 Kustomization/flux-system
 ├── Kustomization/infrastructure
 │   ├── Namespace/cert-manager
@@ -130,7 +130,7 @@ flux tree kustomization apps --compact
 
 Output with status:
 
-```
+```text
 Kustomization/apps
 ├── Namespace/my-app - Current
 ├── ServiceAccount/my-app/my-app-sa - Current
@@ -279,13 +279,13 @@ done
 
 The tree output follows a consistent format:
 
-```
+```text
 ResourceKind/Namespace/Name
 ```
 
 For cluster-scoped resources (like Namespaces), the format is:
 
-```
+```text
 ResourceKind/Name
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, migration, flux v1, flux v2, gitops, kubernetes, upgrade
+Tags: Flux CD, Migration, flux v1, flux v2, GitOps, Kubernetes, Upgrade
 
 Description: A step-by-step guide to migrating from Flux v1 (Flux Legacy) to Flux v2, covering resource mapping, repository restructuring, and cutover strategies.
 

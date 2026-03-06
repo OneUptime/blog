@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, horizontal pod autoscaler, hpa, gitops, autoscaling
+Tags: Flux CD, Kubernetes, Horizontal Pod Autoscaler, HPA, GitOps, Autoscaling
 
 Description: Learn how to manage Horizontal Pod Autoscalers through Flux CD for automated, GitOps-driven scaling of your Kubernetes workloads.
 

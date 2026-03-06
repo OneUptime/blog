@@ -1,10 +1,10 @@
-# How to Fix "not ready" Error in Flux CD GitRepository
+# How to Fix 'not ready' Error in Flux CD GitRepository
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitrepository, not ready, troubleshooting, kubernetes, gitops
+Tags: Flux CD, GitRepository, Not Ready, Troubleshooting, Kubernetes, GitOps
 
-Description: A practical guide to diagnosing and fixing the "not ready" error in Flux CD GitRepository resources with step-by-step solutions.
+Description: A practical guide to diagnosing and fixing the 'not ready' error in Flux CD GitRepository resources with step-by-step solutions.
 
 ---
 

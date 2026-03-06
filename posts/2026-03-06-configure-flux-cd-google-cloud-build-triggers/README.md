@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, google cloud build, gcp, ci/cd, gitops, oci, webhooks, kubernetes
+Tags: Flux CD, Google Cloud Build, GCP, CI/CD, GitOps, OCI, Webhook, Kubernetes
 
 Description: A practical guide to integrating Google Cloud Build with Flux CD using OCI artifacts, webhook receivers, and automated image updates.
 

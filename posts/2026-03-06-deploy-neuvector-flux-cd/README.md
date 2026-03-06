@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, neuvector, container security, kubernetes, gitops, network security, zero trust
+Tags: Flux CD, neuvector, Container Security, Kubernetes, GitOps, Network Security, Zero Trust
 
 Description: A practical guide to deploying NeuVector full lifecycle container security platform on Kubernetes using Flux CD for GitOps-driven security.
 

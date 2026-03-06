@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kyverno, policies, gitops, kubernetes, security, compliance, policy-as-code
+Tags: Flux CD, Kyverno, Policies, GitOps, Kubernetes, Security, Compliance, Policy-as-Code
 
 Description: Learn how to organize, test, and manage Kyverno policies at scale using Flux CD for enterprise-grade policy-as-code workflows.
 
@@ -27,7 +27,7 @@ Before you begin, ensure you have:
 
 Organize policies into a structured repository layout.
 
-```
+```text
 policies/
   base/
     validation/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, resource tagging, kubernetes, gitops, labels, annotations, governance
+Tags: Flux CD, resource tagging, Kubernetes, GitOps, Labels, Annotations, Governance
 
 Description: A practical guide to implementing and enforcing consistent resource tagging and labeling standards across Kubernetes clusters using Flux CD.
 

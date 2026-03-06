@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, cloudwatch, aws, canary, metrics, kubernetes, gitops
+Tags: flux, flagger, CloudWatch, AWS, Canary, Metrics, Kubernetes, GitOps
 
 Description: A practical guide to integrating AWS CloudWatch metrics with Flagger for automated canary analysis in Flux-managed Kubernetes clusters.
 

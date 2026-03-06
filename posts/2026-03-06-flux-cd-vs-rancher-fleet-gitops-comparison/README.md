@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, rancher fleet, gitops, kubernetes, comparison, multi-cluster, deployment, rancher
+Tags: Flux CD, rancher fleet, GitOps, Kubernetes, Comparison, Multi-Cluster, Deployment, Rancher
 
 Description: A detailed comparison of Flux CD and Rancher Fleet for GitOps-based Kubernetes deployments, covering multi-cluster management, configuration approaches, and integration with the Rancher ecosystem.
 

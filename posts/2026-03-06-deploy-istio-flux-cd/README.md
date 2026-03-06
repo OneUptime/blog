@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, istio, service mesh, gitops, kubernetes, networking, security
+Tags: Flux CD, Istio, Service Mesh, GitOps, Kubernetes, Networking, Security
 
 Description: Learn how to deploy and manage Istio service mesh on Kubernetes using Flux CD for a fully GitOps-driven service mesh installation and configuration.
 

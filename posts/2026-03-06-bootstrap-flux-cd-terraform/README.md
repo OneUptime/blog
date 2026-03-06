@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, terraform, gitops, kubernetes, infrastructure as code, bootstrap
+Tags: Flux CD, Terraform, GitOps, Kubernetes, Infrastructure as Code, Bootstrap
 
 Description: A practical guide to bootstrapping Flux CD on Kubernetes clusters using Terraform for repeatable and automated GitOps setup.
 

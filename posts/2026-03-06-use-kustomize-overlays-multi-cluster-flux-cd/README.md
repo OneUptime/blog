@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kustomize, overlays, multi-cluster, gitops, kubernetes
+Tags: Flux CD, Kustomize, Overlay, Multi-Cluster, GitOps, Kubernetes
 
 Description: Learn how to use Kustomize overlays to manage Kubernetes configurations across multiple clusters with Flux CD, maintaining DRY principles while allowing per-cluster customization.
 
@@ -37,7 +37,7 @@ graph TD
 
 ## Repository Structure
 
-```
+```text
 fleet-repo/
   base/
     apps/

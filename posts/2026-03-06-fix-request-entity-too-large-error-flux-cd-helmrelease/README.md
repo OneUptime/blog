@@ -1,10 +1,10 @@
-# How to Fix "request entity too large" Error in Flux CD HelmRelease
+# How to Fix 'request entity too large' Error in Flux CD HelmRelease
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, helmrelease, request entity too large, helm, secret size, troubleshooting, kubernetes, gitops
+Tags: Flux CD, HelmRelease, Request Entity Too Large, Helm, secret size, Troubleshooting, Kubernetes, GitOps
 
-Description: A guide to resolving the "request entity too large" error in Flux CD HelmRelease caused by Helm release secret size limits in etcd.
+Description: A guide to resolving the 'request entity too large' error in Flux CD HelmRelease caused by Helm release secret size limits in etcd.
 
 ---
 
@@ -26,14 +26,14 @@ kubectl describe helmrelease <name> -n <namespace>
 
 The error message looks like:
 
-```
+```yaml
 Helm install failed: create: failed to create: Secret "sh.helm.release.v1.my-app.v1" is invalid:
 data: Too long: must have at most 1048576 bytes
 ```
 
 Or:
 
-```
+```text
 request entity too large: limit is 3145728
 ```
 

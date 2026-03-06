@@ -36,7 +36,7 @@ brew install yq  # macOS
 
 A typical Flux CD repository structure:
 
-```
+```text
 fleet-repo/
 ├── clusters/
 │   ├── production/

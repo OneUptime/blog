@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, azure-devops, gitops, kubernetes, git, ssh, https
+Tags: flux-cd, azure-devops, GitOps, Kubernetes, Git, SSH, HTTPS
 
 Description: Learn how to connect Flux CD to Azure DevOps Git repositories using SSH keys, HTTPS with PAT tokens, and configure branch policies for safe GitOps workflows.
 
@@ -24,7 +24,7 @@ Azure DevOps Repos is a popular choice for teams already using the Azure ecosyst
 
 Azure DevOps supports two URL formats for Git operations:
 
-```
+```json
 # SSH format
 git@ssh.dev.azure.com:v3/{organization}/{project}/{repository}
 

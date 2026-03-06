@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, prometheus, prometheus operator, kubernetes, gitops, monitoring, observability
+Tags: Flux CD, Prometheus, Prometheus Operator, Kubernetes, GitOps, Monitoring, Observability
 
 Description: A practical guide to deploying and managing Prometheus Operator on Kubernetes using Flux CD and GitOps principles.
 

@@ -1,4 +1,4 @@
-# How to Fix "forbidden" RBAC Error in Flux CD
+# How to Fix 'forbidden' RBAC Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -26,7 +26,7 @@ kubectl describe kustomization <name> -n flux-system
 
 Typical error messages:
 
-```
+```yaml
 Status:
   Conditions:
     - Type: Ready
@@ -38,7 +38,7 @@ Status:
 
 Or for cluster-scoped resources:
 
-```
+```yaml
 Message: 'clusterroles.rbac.authorization.k8s.io is forbidden: User "system:serviceaccount:flux-system:kustomize-controller"
   cannot create resource "clusterroles" in API group "rbac.authorization.k8s.io" at the cluster scope'
 ```

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Flagger, Progressive Delivery
+Tags: Kubernetes, flagger, Progressive Delivery
 
 Description: Learn how to use Flagger to automate canary deployments with metric analysis, automatic promotion on success, and automatic rollback on failure for safer Kubernetes releases.
 

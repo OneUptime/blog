@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, failover, disaster recovery, multi-cluster, gitops, kubernetes, high availability
+Tags: Flux CD, Failover, Disaster Recovery, Multi-Cluster, GitOps, Kubernetes, High Availability
 
 Description: Learn how to implement cluster failover strategies using Flux CD GitOps to ensure application availability during cluster outages.
 

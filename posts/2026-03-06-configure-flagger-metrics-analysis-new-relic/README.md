@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, new relic, metrics, progressive delivery, canary, kubernetes, gitops, observability
+Tags: flux, flagger, New Relic, Metrics, Progressive Delivery, Canary, Kubernetes, GitOps, Observability
 
 Description: A practical guide to configuring Flagger metrics analysis with New Relic for canary deployment validation using NRQL queries and the New Relic API.
 
@@ -432,7 +432,7 @@ graph TD
 
 You can create a New Relic dashboard specifically for canary deployments:
 
-```
+```text
 NRQL queries for your dashboard:
 
 -- Canary vs Primary Error Rate Comparison

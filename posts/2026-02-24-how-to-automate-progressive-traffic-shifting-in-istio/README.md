@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Progressive Delivery, Traffic Shifting, Automation, Flagger, Kubernetes
+Tags: Istio, Progressive Delivery, Traffic Shifting, Automation, flagger, Kubernetes
 
 Description: Automate progressive traffic shifting in Istio using Flagger and custom scripts to safely roll out new service versions without manual intervention.
 

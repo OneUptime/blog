@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, resourcesets, dynamic resources, gitops, kubernetes, templating, automation
+Tags: Flux CD, ResourceSets, Dynamic Resources, GitOps, Kubernetes, Templating, Automation
 
 Description: Learn how to use Flux CD ResourceSets to dynamically generate Kubernetes resources from templates and data sources, reducing repetitive manifests across environments.
 

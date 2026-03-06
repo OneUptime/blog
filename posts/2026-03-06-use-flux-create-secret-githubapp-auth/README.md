@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, github, github-app, secret, authentication, gitops, kubernetes
+Tags: flux, fluxcd, GitHub, github-app, Secret, Authentication, GitOps, Kubernetes
 
 Description: A practical guide to configuring GitHub App authentication for Flux using the flux create secret githubapp command.
 
@@ -58,7 +58,7 @@ Key benefits:
 2. Navigate to Developer settings > GitHub Apps > New GitHub App
 3. Configure the following settings:
 
-```
+```yaml
 App Name: flux-gitops-bot
 Homepage URL: https://fluxcd.io
 Webhook: Deactivate (uncheck "Active")

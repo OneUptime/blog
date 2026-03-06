@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, tracing, tempo, opentelemetry, jaeger, kubernetes, gitops, observability
+Tags: Flux CD, Tracing, Tempo, OpenTelemetry, Jaeger, Kubernetes, GitOps, Observability
 
 Description: A hands-on guide to deploying a distributed tracing stack with Grafana Tempo and OpenTelemetry Collector using Flux CD.
 
@@ -40,7 +40,7 @@ graph LR
 
 ## Repository Structure
 
-```
+```text
 infrastructure/
   tracing/
     namespace.yaml

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, install, deployment, setup
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Install, Deployment, Setup
 
 Description: Learn how to use the flux install command to deploy Flux CD components without the bootstrap process, giving you full control over the installation.
 

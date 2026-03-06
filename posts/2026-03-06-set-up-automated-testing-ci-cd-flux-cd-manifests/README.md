@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, ci/cd, automated testing, github actions, kubernetes, gitops, validation
+Tags: Flux CD, CI/CD, Automated Testing, GitHub Actions, Kubernetes, GitOps, Validation
 
 Description: A complete guide to setting up automated testing pipelines for Flux CD manifests using GitHub Actions, covering syntax, schema, build, and integration testing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, git submodules, gitops, kubernetes, repository patterns
+Tags: Flux CD, Git Submodules, GitOps, Kubernetes, Repository Pattern
 
 Description: Learn how to use Git submodules with Flux CD to manage shared configurations and reusable components across multiple repositories.
 
@@ -278,7 +278,7 @@ Flux will detect the change in the fleet repository and automatically pull the u
 
 Here is the recommended directory layout when using submodules with Flux CD:
 
-```
+```text
 fleet-repo/
   .gitmodules              # Git submodule configuration
   shared/                  # Submodule: shared-configs repo

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, google cloud, gke, workload identity, gitops, kubernetes, iam, artifact registry
+Tags: Flux CD, Google Cloud, GKE, Workload Identity, GitOps, Kubernetes, IAM, Artifact Registry
 
 Description: A comprehensive guide to setting up Flux CD on Google Kubernetes Engine with Workload Identity Federation for secure, keyless authentication to GCP services.
 

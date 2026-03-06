@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, zipkin, kubernetes, gitops, tracing, distributed tracing, observability
+Tags: Flux CD, Zipkin, Kubernetes, GitOps, Tracing, Distributed Tracing, Observability
 
 Description: A practical guide to deploying Zipkin distributed tracing on Kubernetes using Flux CD for GitOps-managed trace collection and visualization.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, postgresql, kubernetes, database, gitops, cloudnative-pg, operator, postgres
+Tags: Flux CD, PostgreSQL, Kubernetes, Database, GitOps, cloudnative-pg, Operator, postgres
 
 Description: A practical guide to deploying the CloudNativePG PostgreSQL operator on Kubernetes using Flux CD for GitOps-managed database infrastructure.
 
@@ -26,7 +26,7 @@ Before you begin, ensure you have:
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     databases/

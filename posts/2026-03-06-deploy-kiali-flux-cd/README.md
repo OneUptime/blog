@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kiali, kubernetes, gitops, service mesh, istio, observability, visualization
+Tags: Flux CD, Kiali, Kubernetes, GitOps, Service Mesh, Istio, Observability, Visualization
 
 Description: A practical guide to deploying Kiali service mesh observability dashboard on Kubernetes using Flux CD and GitOps workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, snyk, vulnerability scanning, kubernetes, gitops, security, devsecops
+Tags: Flux CD, Snyk, Vulnerability Scanning, Kubernetes, GitOps, Security, DevSecOps
 
 Description: A practical guide to deploying the Snyk Controller on Kubernetes using Flux CD for continuous container image vulnerability monitoring.
 

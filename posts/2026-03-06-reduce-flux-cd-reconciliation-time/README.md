@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, gitops, reconciliation, performance tuning, latency optimization
+Tags: Flux CD, Kubernetes, GitOps, Reconciliation, Performance Tuning, Latency Optimization
 
 Description: A practical guide to reducing Flux CD reconciliation time through source optimization, parallel processing, dependency management, and caching strategies.
 

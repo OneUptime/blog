@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, raspberry pi, arm, badger, database, embedded, gitops, kubernetes, troubleshooting
+Tags: Flux CD, Raspberry Pi, ARM, badger, Database, Embedded, GitOps, Kubernetes, Troubleshooting
 
 Description: A troubleshooting guide for resolving Badger database errors when running Flux CD on Raspberry Pi and other ARM-based or resource-constrained devices.
 
@@ -21,7 +21,7 @@ Flux CD's source-controller uses Badger, an embedded key-value database, to cach
 
 Common error messages:
 
-```
+```yaml
 badger: Value log truncate required
 badger: MANIFEST has unsupported version
 panic: runtime error: invalid memory address or nil pointer dereference

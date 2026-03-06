@@ -1,10 +1,10 @@
-# How to Fix "kustomize build failed" Error in Flux CD
+# How to Fix 'kustomize build failed' Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kustomize, build failed, troubleshooting, kubernetes, gitops, yaml
+Tags: Flux CD, Kustomize, build failed, Troubleshooting, Kubernetes, GitOps, YAML
 
-Description: A practical guide to diagnosing and fixing "kustomize build failed" errors in Flux CD Kustomization resources with local testing techniques.
+Description: A practical guide to diagnosing and fixing 'kustomize build failed' errors in Flux CD Kustomization resources with local testing techniques.
 
 ---
 
@@ -26,11 +26,11 @@ kubectl describe kustomization <name> -n flux-system
 
 Typical error messages include:
 
-```
+```text
 kustomize build failed: accumulating resources: ...
 ```
 
-```
+```text
 kustomize build failed: yaml: line X: did not find expected key
 ```
 
@@ -42,7 +42,7 @@ YAML syntax errors are the most frequent cause of build failures.
 
 Look for the line number in the error message:
 
-```
+```text
 kustomize build failed: yaml: line 15: mapping values are not allowed in this context
 ```
 
@@ -115,7 +115,7 @@ kubectl get kustomization <name> -n flux-system -o jsonpath='{.spec.path}'
 
 The error will look like:
 
-```
+```text
 kustomize build failed: unable to find one of 'kustomization.yaml', 'kustomization.yml' or 'Kustomization' in directory '...'
 ```
 
@@ -162,7 +162,7 @@ When `kustomization.yaml` references files that do not exist.
 
 The error message will specify which resource could not be found:
 
-```
+```python
 kustomize build failed: accumulating resources: accumulating resources from 'missing-file.yaml': evalsymlink failure on '/tmp/.../missing-file.yaml'
 ```
 
@@ -227,7 +227,7 @@ Incorrectly formatted patches will cause build failures.
 
 ### Diagnosing
 
-```
+```text
 kustomize build failed: trouble configuring builtin PatchTransformer with config: ...
 ```
 
@@ -285,7 +285,7 @@ Including the same resource twice causes kustomize to fail.
 
 ### Diagnosing
 
-```
+```text
 kustomize build failed: accumulating resources: may not add resource with an already registered id: Deployment.v1.apps/my-app.default
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, external-dns, dns, kubernetes, gitops, route53, cloudflare
+Tags: Flux CD, External-DNS, DNS, Kubernetes, GitOps, Route53, Cloudflare
 
 Description: Learn how to automate DNS record management using External-DNS deployed and configured through Flux CD.
 
@@ -35,7 +35,7 @@ External-DNS watches Kubernetes resources for hostname annotations and creates c
 
 ## Repository Structure
 
-```
+```text
 infrastructure/
   external-dns/
     namespace.yaml

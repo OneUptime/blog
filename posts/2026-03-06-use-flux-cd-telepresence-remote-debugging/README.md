@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, telepresence, remote debugging, kubernetes, gitops, development
+Tags: Flux CD, Telepresence, Remote Debugging, Kubernetes, GitOps, Development
 
 Description: Learn how to use Telepresence with Flux CD-managed clusters to debug services remotely by intercepting live traffic on your local machine.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, webhooks, validation, canary, kubernetes, gitops, testing
+Tags: flux, flagger, Webhook, Validation, Canary, Kubernetes, GitOps, Testing
 
 Description: A comprehensive guide to setting up Flagger webhooks for custom validation logic during canary deployments in Flux-managed clusters.
 

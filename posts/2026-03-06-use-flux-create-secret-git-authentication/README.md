@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, git, secret, authentication, gitops, kubernetes, ssh, https
+Tags: flux, fluxcd, Git, Secret, Authentication, GitOps, Kubernetes, SSH, HTTPS
 
 Description: A practical guide to creating Git authentication secrets with the flux create secret git command for secure repository access.
 

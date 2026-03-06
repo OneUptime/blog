@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Crossplane, Kubernetes, Cloud Resources, Infrastructure as Code, AWS, GCP, Azure, DevOps
+Tags: Docker, Crossplane, Kubernetes, cloud resources, Infrastructure as Code, AWS, GCP, Azure, DevOps
 
 Description: Learn how to run Crossplane in a local Docker-based Kubernetes cluster to manage cloud resources declaratively.
 

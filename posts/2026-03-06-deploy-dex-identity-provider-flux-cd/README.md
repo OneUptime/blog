@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, dex, identity provider, oidc, kubernetes, authentication, security, gitops
+Tags: Flux CD, Dex, Identity Provider, OIDC, Kubernetes, Authentication, Security, GitOps
 
 Description: A practical guide to deploying Dex as an OpenID Connect identity provider on Kubernetes using Flux CD for centralized authentication.
 
@@ -23,7 +23,7 @@ This guide walks through deploying Dex, configuring identity connectors, and int
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     dex/

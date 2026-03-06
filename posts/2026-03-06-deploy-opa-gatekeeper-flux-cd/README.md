@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, opa, gatekeeper, policy engine, gitops, kubernetes, security, admission control
+Tags: Flux CD, OPA, Gatekeeper, Policy Engine, GitOps, Kubernetes, Security, Admission Control
 
 Description: A step-by-step guide to deploying OPA Gatekeeper as a Kubernetes policy engine using Flux CD for GitOps-driven policy enforcement.
 

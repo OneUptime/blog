@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, amazon sqs, aws, message queue, kubernetes, gitops, ack
+Tags: Flux CD, Amazon SQS, AWS, Message Queue, Kubernetes, GitOps, ack
 
 Description: A practical guide to deploying the AWS Controllers for Kubernetes (ACK) SQS Controller with Flux CD to manage Amazon SQS queues via GitOps.
 

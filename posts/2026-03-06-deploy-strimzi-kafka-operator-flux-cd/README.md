@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, strimzi, kafka, operator, message queue, streaming, gitops, kubernetes
+Tags: Flux CD, Strimzi, Kafka, Operator, Message Queue, Streaming, GitOps, Kubernetes
 
 Description: A comprehensive guide to deploying the Strimzi Kafka Operator on Kubernetes using Flux CD for Kubernetes-native Kafka cluster management.
 
@@ -24,7 +24,7 @@ This guide covers deploying the Strimzi Operator using Flux CD, creating a Kafka
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     strimzi/

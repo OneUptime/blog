@@ -1,10 +1,10 @@
-# How to Fix "install retries exhausted" Error in Flux CD HelmRelease
+# How to Fix 'install retries exhausted' Error in Flux CD HelmRelease
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, helmrelease, install retries exhausted, helm, troubleshooting, kubernetes, gitops
+Tags: Flux CD, HelmRelease, install retries exhausted, Helm, Troubleshooting, Kubernetes, GitOps
 
-Description: A step-by-step guide to resolving the "install retries exhausted" error in Flux CD HelmRelease resources with remediation strategies.
+Description: A step-by-step guide to resolving the 'install retries exhausted' error in Flux CD HelmRelease resources with remediation strategies.
 
 ---
 
@@ -29,13 +29,13 @@ kubectl logs -n flux-system deploy/helm-controller --tail=100 | grep <release-na
 
 The error message looks like:
 
-```
+```text
 install retries exhausted
 ```
 
 Or more specifically:
 
-```
+```text
 Helm install failed: <underlying error>
 install retries exhausted, no remediation configured
 ```

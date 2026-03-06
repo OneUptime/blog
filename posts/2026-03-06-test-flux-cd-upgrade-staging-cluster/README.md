@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, upgrade, staging, testing, kubernetes, gitops
+Tags: Flux CD, Upgrade, Staging, Testing, Kubernetes, GitOps
 
 Description: A practical guide to safely testing Flux CD version upgrades in a staging cluster before rolling out to production.
 

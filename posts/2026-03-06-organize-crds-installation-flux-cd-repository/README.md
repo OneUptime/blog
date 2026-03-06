@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, crds, custom resource definitions, dependency management
+Tags: Flux CD, GitOps, Kubernetes, CRD, Custom Resource Definitions, Dependency Management
 
 Description: Learn how to properly organize and manage Custom Resource Definition (CRD) installation in your Flux CD repository to avoid ordering issues and ensure reliable deployments.
 
@@ -20,7 +20,7 @@ When Flux tries to apply a set of manifests, it needs CRDs to exist before it ca
 
 Consider this failure scenario:
 
-```
+```yaml
 # This will fail because the Certificate CR is applied
 # before the cert-manager CRDs are registered
 Error: unable to recognize "certificate.yaml":
@@ -31,7 +31,7 @@ Error: unable to recognize "certificate.yaml":
 
 The solution is to separate CRDs into their own Flux Kustomization with a dependency chain.
 
-```
+```text
 fleet-repo/
 ├── crds/
 │   ├── kustomization.yaml

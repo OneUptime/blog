@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, pull request, validation, ci/cd, github actions, kubernetes
+Tags: Flux CD, GitOps, Pull Requests, Validation, CI/CD, GitHub Actions, Kubernetes
 
 Description: A comprehensive guide to implementing automated pull request validation for Flux CD GitOps repositories to catch errors before merging.
 
@@ -23,7 +23,7 @@ Without PR validation, a single malformed YAML file or misconfigured Kustomizati
 
 ## Repository Structure
 
-```
+```text
 clusters/
   staging/
     flux-system/

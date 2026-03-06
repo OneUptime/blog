@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, git outage, disaster recovery, gitops, kubernetes, availability
+Tags: Flux CD, git outage, Disaster Recovery, GitOps, Kubernetes, Availability
 
 Description: A practical guide to keeping your Flux CD deployments running when your Git repository becomes unavailable.
 

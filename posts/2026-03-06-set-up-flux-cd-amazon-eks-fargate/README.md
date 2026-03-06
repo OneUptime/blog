@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, amazon eks, fargate, serverless, gitops, kubernetes, aws
+Tags: Flux CD, amazon eks, Fargate, Serverless, GitOps, Kubernetes, AWS
 
 Description: A step-by-step guide to deploying and running Flux CD controllers on Amazon EKS Fargate for a fully serverless GitOps workflow.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, high availability, kubernetes, gitops, reliability, production
+Tags: Flux CD, High Availability, Kubernetes, GitOps, Reliability, Production
 
 Description: A step-by-step guide to configuring Flux CD for high availability in production Kubernetes clusters.
 

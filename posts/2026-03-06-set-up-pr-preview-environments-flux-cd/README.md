@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, preview environments, pull requests, gitops, kubernetes, ci/cd, development workflow
+Tags: Flux CD, Preview Environments, Pull Requests, GitOps, Kubernetes, CI/CD, Development Workflow
 
 Description: Learn how to create ephemeral preview environments for every pull request using Flux CD and GitOps principles.
 

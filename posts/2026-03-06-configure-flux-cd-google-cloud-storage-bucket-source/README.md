@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, google cloud, cloud storage, gcs, bucket, gitops, kubernetes, workload identity, hmac
+Tags: Flux CD, Google Cloud, Cloud Storage, GCS, Bucket, GitOps, Kubernetes, Workload Identity, HMAC
 
 Description: A practical guide to configuring Flux CD to use Google Cloud Storage buckets as a source for Kubernetes manifests, including HMAC key authentication and Workload Identity.
 

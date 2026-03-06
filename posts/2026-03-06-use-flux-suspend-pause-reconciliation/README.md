@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, suspend, reconciliation, devops
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Suspend, Reconciliation, DevOps
 
 Description: A practical guide to using the flux suspend command to pause reconciliation of Flux CD resources in your Kubernetes cluster.
 
@@ -73,7 +73,7 @@ flux suspend kustomization my-app
 
 Expected output:
 
-```
+```text
 > suspending kustomization my-app in flux-system namespace
 > kustomization suspended
 ```
@@ -87,7 +87,7 @@ flux get kustomization my-app
 
 The output will show `True` in the `SUSPENDED` column:
 
-```
+```text
 NAME    REVISION        SUSPENDED  READY  MESSAGE
 my-app  main@sha1:abc   True       True   Applied revision: main@sha1:abc
 ```

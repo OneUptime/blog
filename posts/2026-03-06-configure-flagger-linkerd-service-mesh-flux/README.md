@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, linkerd, service mesh, progressive delivery, canary, kubernetes, gitops
+Tags: flux, flagger, Linkerd, Service Mesh, Progressive Delivery, Canary, Kubernetes, GitOps
 
 Description: A practical guide to setting up Flagger with Linkerd service mesh and Flux for automated canary deployments in Kubernetes.
 

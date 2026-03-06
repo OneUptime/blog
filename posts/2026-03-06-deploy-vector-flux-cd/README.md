@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, vector, logging, metrics, observability, gitops, kubernetes, data pipeline
+Tags: Flux CD, Vector, Logging, Metrics, Observability, GitOps, Kubernetes, Data Pipeline
 
 Description: A practical guide to deploying Vector on Kubernetes using Flux CD for high-performance observability data collection, transformation, and routing.
 
@@ -23,7 +23,7 @@ This guide covers deploying Vector in both Agent (DaemonSet) and Aggregator (Sta
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     vector/

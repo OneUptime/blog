@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, azure, azure-policy, gatekeeper, kubernetes, compliance, opa, gitops
+Tags: flux-cd, Azure, azure-policy, Gatekeeper, Kubernetes, Compliance, OPA, GitOps
 
 Description: Learn how to integrate Azure Policy for Kubernetes with Flux CD to enforce compliance, use Gatekeeper constraints, and ensure GitOps deployments meet organizational standards.
 

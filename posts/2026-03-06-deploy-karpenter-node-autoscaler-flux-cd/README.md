@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, karpenter, node autoscaling, kubernetes, aws, gitops, cost optimization
+Tags: Flux CD, Karpenter, Node Autoscaling, Kubernetes, AWS, GitOps, Cost Optimization
 
 Description: A practical guide to deploying Karpenter for intelligent node autoscaling on AWS EKS using Flux CD for GitOps-driven infrastructure scaling.
 
@@ -40,7 +40,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     karpenter/

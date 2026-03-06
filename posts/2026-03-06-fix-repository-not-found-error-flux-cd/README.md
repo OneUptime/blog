@@ -1,10 +1,10 @@
-# How to Fix "repository not found" Error in Flux CD
+# How to Fix 'repository not found' Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, repository not found, gitrepository, troubleshooting, kubernetes, gitops
+Tags: Flux CD, repository not found, GitRepository, Troubleshooting, Kubernetes, GitOps
 
-Description: A comprehensive troubleshooting guide for resolving the "repository not found" error in Flux CD GitRepository resources.
+Description: A comprehensive troubleshooting guide for resolving the 'repository not found' error in Flux CD GitRepository resources.
 
 ---
 
@@ -16,13 +16,13 @@ The "repository not found" error in Flux CD is a frustrating problem that can ap
 
 When Flux CD cannot locate a Git repository, you will see an error like:
 
-```
+```text
 failed to checkout and determine revision: repository not found
 ```
 
 Or from GitHub specifically:
 
-```
+```python
 ERROR: Repository not found.
 fatal: Could not read from remote repository.
 ```

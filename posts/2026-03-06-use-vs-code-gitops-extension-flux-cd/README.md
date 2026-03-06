@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, vs code, gitops, extension, ide, developer tools, kubernetes
+Tags: Flux CD, VS Code, GitOps, Extensions, IDE, Developer Tools, Kubernetes
 
 Description: A practical guide to installing and using the VS Code GitOps Extension to manage Flux CD resources directly from your IDE.
 

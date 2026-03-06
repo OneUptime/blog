@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, troubleshooting, kubernetes events, debugging, gitops, monitoring
+Tags: Flux CD, Troubleshooting, kubernetes events, Debugging, GitOps, Monitoring
 
 Description: Learn how to use Kubernetes events to diagnose Flux CD issues by filtering, correlating, and analyzing event data from controllers and resources.
 

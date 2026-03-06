@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, velero, backup, disaster recovery, kubernetes, gitops, restore
+Tags: Flux CD, Velero, Backup, Disaster Recovery, Kubernetes, GitOps, Restore
 
 Description: A practical guide to deploying and managing Velero for Kubernetes cluster backups using Flux CD and GitOps principles.
 
@@ -35,7 +35,7 @@ graph LR
 
 ## Repository Structure
 
-```
+```text
 infrastructure/
   velero/
     namespace.yaml

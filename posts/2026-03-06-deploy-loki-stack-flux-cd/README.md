@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, loki, grafana loki, kubernetes, gitops, logging, observability, promtail
+Tags: Flux CD, Loki, Grafana Loki, Kubernetes, GitOps, Logging, Observability, Promtail
 
 Description: A practical guide to deploying the Grafana Loki logging stack on Kubernetes using Flux CD for GitOps-managed log aggregation.
 

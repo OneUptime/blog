@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, thanos, kubernetes, gitops, metrics, long-term storage, prometheus, observability
+Tags: Flux CD, Thanos, Kubernetes, GitOps, Metrics, Long-Term Storage, Prometheus, Observability
 
 Description: A practical guide to deploying Thanos for highly available Prometheus with long-term storage on Kubernetes using Flux CD.
 

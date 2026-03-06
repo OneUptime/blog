@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, istio, destinationrule, service mesh, gitops, traffic management, load balancing
+Tags: Flux CD, Istio, DestinationRule, Service Mesh, GitOps, Traffic Management, Load Balancing
 
 Description: Learn how to manage Istio DestinationRule resources with Flux CD for GitOps-driven load balancing, circuit breaking, and connection pool management.
 

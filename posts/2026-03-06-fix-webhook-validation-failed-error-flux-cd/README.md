@@ -1,8 +1,8 @@
-# How to Fix "webhook validation failed" Error in Flux CD
+# How to Fix 'webhook validation failed' Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Webhooks, Admission Controllers, Troubleshooting, Kubernetes, Cert-Manager, OPA
+Tags: Flux CD, Webhook, Admission Controller, Troubleshooting, Kubernetes, cert-manager, OPA
 
 Description: A step-by-step guide to diagnosing and resolving webhook validation failures in Flux CD, covering admission webhooks, cert-manager integration, and OPA policy issues.
 
@@ -26,7 +26,7 @@ kubectl describe kustomization <name> -n flux-system
 
 Typical error messages:
 
-```
+```yaml
 Status:
   Conditions:
     - Type: Ready
@@ -39,7 +39,7 @@ Status:
 
 Or for policy rejections:
 
-```
+```yaml
 Message: 'admission webhook "validation.gatekeeper.sh" denied the request:
   [container-must-have-limits] container "my-app" does not have resource limits'
 ```

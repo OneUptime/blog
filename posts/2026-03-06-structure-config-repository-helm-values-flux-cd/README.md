@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, helm, helm values, gitops, repository structure, kubernetes
+Tags: Flux CD, Helm, Helm Values, GitOps, Repository Structure, Kubernetes
 
 Description: Learn how to organize your Git repository to manage Helm chart values effectively with Flux CD across multiple environments and applications.
 
@@ -33,7 +33,7 @@ A good structure provides clear separation, easy diffing between environments, a
 
 Here is the recommended directory structure for managing Helm values with Flux CD:
 
-```
+```text
 fleet-repo/
   helm/
     sources/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, environment management, directory structure, devops
+Tags: Flux CD, GitOps, Kubernetes, Environment Management, Directory Structure, DevOps
 
 Description: Learn how to organize your Flux CD repository using an environment-based directory structure for clean separation of dev, staging, and production configurations.
 
@@ -27,7 +27,7 @@ Managing multiple environments (development, staging, production) in a single re
 
 Here is the recommended directory structure for environment-based Flux CD repositories:
 
-```
+```text
 fleet-repo/
 ├── base/
 │   ├── kustomization.yaml

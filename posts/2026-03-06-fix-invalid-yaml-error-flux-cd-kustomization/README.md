@@ -1,4 +1,4 @@
-# How to Fix "invalid YAML" Error in Flux CD Kustomization
+# How to Fix 'invalid YAML' Error in Flux CD Kustomization
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -26,7 +26,7 @@ kubectl describe kustomization <name> -n flux-system
 
 Typical error messages:
 
-```
+```yaml
 Status:
   Conditions:
     - Type: Ready
@@ -37,7 +37,7 @@ Status:
 
 Or:
 
-```
+```yaml
 Message: "yaml: line 23: mapping values are not allowed in this context"
 ```
 

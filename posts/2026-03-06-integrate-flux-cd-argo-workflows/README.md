@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, argo workflows, ci/cd, gitops, kubernetes, continuous integration, workflow automation
+Tags: Flux CD, Argo Workflows, CI/CD, GitOps, Kubernetes, Continuous Integration, Workflow Automation
 
 Description: A step-by-step guide to combining Argo Workflows for CI pipeline orchestration with Flux CD for GitOps-based continuous delivery.
 

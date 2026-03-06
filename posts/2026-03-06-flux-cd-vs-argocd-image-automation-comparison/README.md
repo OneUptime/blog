@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, argocd, image automation, gitops, kubernetes, container images, comparison, ci/cd
+Tags: Flux CD, ArgoCD, Image Automation, GitOps, Kubernetes, Container Images, Comparison, CI/CD
 
 Description: A comprehensive comparison of image automation capabilities in Flux CD and ArgoCD, covering image scanning, update policies, and automated deployment workflows.
 

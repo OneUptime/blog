@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, vault, secrets operator, kubernetes, security, gitops, hashicorp
+Tags: Flux CD, Vault, secrets operator, Kubernetes, Security, GitOps, HashiCorp
 
 Description: A practical guide to deploying and configuring the HashiCorp Vault Secrets Operator on Kubernetes using Flux CD for GitOps-driven secret management.
 
@@ -27,7 +27,7 @@ Before getting started, ensure you have:
 
 Organize your GitOps repository with the following structure:
 
-```
+```text
 clusters/
   my-cluster/
     vault-secrets-operator/

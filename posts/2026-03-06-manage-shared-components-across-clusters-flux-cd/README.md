@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, shared components, multi-cluster, infrastructure
+Tags: Flux CD, GitOps, Kubernetes, shared components, Multi-Cluster, Infrastructure
 
 Description: Learn how to define and manage shared infrastructure components like monitoring, ingress, and cert-manager across multiple Kubernetes clusters using Flux CD.
 
@@ -25,7 +25,7 @@ Without a shared component strategy, you end up with:
 
 ## Repository Structure for Shared Components
 
-```
+```text
 fleet-repo/
 ├── infrastructure/
 │   ├── sources/

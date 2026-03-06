@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, gitops, git api, rate limiting, github, gitlab, performance
+Tags: Flux CD, Kubernetes, GitOps, git api, Rate Limiting, GitHub, GitLab, Performance
 
 Description: A practical guide to reducing Git API calls from Flux CD to avoid rate limiting, lower costs, and improve overall performance when using GitHub, GitLab, or Bitbucket.
 

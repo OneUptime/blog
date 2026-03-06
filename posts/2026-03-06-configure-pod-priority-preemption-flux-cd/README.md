@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, pod priority, preemption, kubernetes, scheduling, resource management, gitops
+Tags: Flux CD, Pod Priority, Preemption, Kubernetes, Scheduling, Resource Management, GitOps
 
 Description: A practical guide to configuring Pod Priority and Preemption on Kubernetes using Flux CD for workload scheduling control and resource guarantees.
 
@@ -36,7 +36,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     priority-classes/

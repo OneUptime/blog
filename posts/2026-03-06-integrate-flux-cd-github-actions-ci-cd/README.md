@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, github actions, ci/cd, gitops, oci artifacts, kubernetes, automation
+Tags: Flux CD, GitHub Actions, CI/CD, GitOps, oci artifacts, Kubernetes, Automation
 
 Description: A comprehensive guide to building an end-to-end CI/CD pipeline by integrating Flux CD with GitHub Actions, covering build workflows, OCI artifacts, and webhook triggers.
 

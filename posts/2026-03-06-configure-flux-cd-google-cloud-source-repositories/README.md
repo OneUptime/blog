@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, google cloud, cloud source repositories, git, gitops, kubernetes, ssh, https, service account
+Tags: Flux CD, Google Cloud, Cloud Source Repositories, Git, GitOps, Kubernetes, SSH, HTTPS, Service Account
 
 Description: A practical guide to configuring Flux CD to use Google Cloud Source Repositories as a Git source with SSH, HTTPS, and service account authentication methods.
 

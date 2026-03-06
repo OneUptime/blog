@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, aws codepipeline, codebuild, ci/cd, gitops, kubernetes, ecr, eks
+Tags: Flux CD, AWS CodePipeline, CodeBuild, CI/CD, GitOps, Kubernetes, ECR, EKS
 
 Description: A practical guide to integrating AWS CodePipeline and CodeBuild with Flux CD for automated container builds and GitOps deployments on EKS.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, GitOps, Flux, ArgoCD, Multi-Cluster
+Tags: Talos Linux, Kubernetes, GitOps, flux, ArgoCD, Multi-Cluster
 
 Description: A practical guide to implementing GitOps workflows across multiple Talos Linux clusters using Flux CD and ArgoCD for consistent, auditable deployments.
 

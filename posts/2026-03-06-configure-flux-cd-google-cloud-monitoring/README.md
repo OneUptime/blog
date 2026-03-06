@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, google cloud monitoring, gcp, prometheus, kubernetes, gitops, observability
+Tags: Flux CD, Google Cloud Monitoring, GCP, Prometheus, Kubernetes, GitOps, Observability
 
 Description: A practical guide to integrating Flux CD metrics with Google Cloud Monitoring using the Prometheus-to-GCM pipeline on GKE.
 

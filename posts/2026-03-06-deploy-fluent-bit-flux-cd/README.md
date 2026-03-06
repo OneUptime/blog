@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, fluent bit, logging, log collection, gitops, kubernetes, observability, lightweight
+Tags: Flux CD, Fluent Bit, Logging, Log Collection, GitOps, Kubernetes, Observability, Lightweight
 
 Description: A step-by-step guide to deploying Fluent Bit on Kubernetes using Flux CD for lightweight, high-performance log collection and forwarding.
 
@@ -23,7 +23,7 @@ This guide covers deploying Fluent Bit as a DaemonSet using Flux CD, configuring
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     fluent-bit/

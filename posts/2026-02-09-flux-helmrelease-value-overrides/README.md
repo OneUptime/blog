@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Flux, Helm, GitOps, Configuration Management, Kubernetes
+Tags: flux, Helm, GitOps, Configuration Management, Kubernetes
 
 Description: Learn how to use Flux HelmRelease resources with strategic merge patches, JSON patches, and values references to manage environment-specific Helm chart configurations without duplicating values files.
 

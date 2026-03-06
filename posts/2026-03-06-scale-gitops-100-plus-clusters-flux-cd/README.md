@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, scaling, multi-cluster, gitops, kubernetes, fleet management
+Tags: Flux CD, Scaling, Multi-Cluster, GitOps, Kubernetes, Fleet Management
 
 Description: Strategies and best practices for scaling Flux CD GitOps operations to manage over 100 Kubernetes clusters efficiently.
 
@@ -37,7 +37,7 @@ A monolithic repository becomes unwieldy at scale. Use a multi-repo approach wit
 
 ### Recommended Multi-Repo Layout
 
-```
+```text
 # Repository 1: fleet-platform
 # Contains platform-level configurations shared across all clusters
 fleet-platform/

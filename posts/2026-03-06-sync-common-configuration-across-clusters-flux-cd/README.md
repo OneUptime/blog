@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, multi-cluster, common configuration, gitops, kubernetes, shared resources
+Tags: Flux CD, Multi-Cluster, common configuration, GitOps, Kubernetes, shared resources
 
 Description: Learn how to define and synchronize common Kubernetes configurations across multiple clusters using Flux CD for consistent infrastructure management.
 
@@ -26,7 +26,7 @@ Typical configurations that should be identical or near-identical across all clu
 
 ## Repository Structure
 
-```
+```text
 fleet-repo/
   common/
     security/

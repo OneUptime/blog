@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, istio, gateway, service mesh, gitops, ingress, tls, kubernetes
+Tags: Flux CD, Istio, Gateway, Service Mesh, GitOps, Ingress, TLS, Kubernetes
 
 Description: Learn how to manage Istio Gateway resources with Flux CD for GitOps-driven ingress configuration, TLS termination, and multi-domain routing.
 

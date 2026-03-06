@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, conftest, opa, rego, policy testing, kubernetes, gitops, compliance
+Tags: Flux CD, Conftest, OPA, Rego, Policy Testing, Kubernetes, GitOps, Compliance
 
 Description: Learn how to use Conftest and Open Policy Agent (OPA) Rego policies to enforce organizational standards on Flux CD manifests before deployment.
 
@@ -33,7 +33,7 @@ conftest --version
 
 ## Project Structure
 
-```
+```text
 policy/
   base/
     containers.rego

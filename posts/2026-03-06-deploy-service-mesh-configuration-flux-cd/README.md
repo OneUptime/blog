@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, service mesh, istio, linkerd, gitops, traffic management
+Tags: Flux CD, Kubernetes, Service Mesh, Istio, Linkerd, GitOps, Traffic Management
 
 Description: A practical guide to deploying and managing service mesh configurations using Flux CD for secure, observable, and reliable microservice communication.
 

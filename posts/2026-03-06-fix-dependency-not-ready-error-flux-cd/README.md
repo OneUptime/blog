@@ -1,10 +1,10 @@
-# How to Fix "dependency not ready" Error in Flux CD
+# How to Fix 'dependency not ready' Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, dependency not ready, kustomization, helmrelease, troubleshooting, kubernetes, gitops
+Tags: Flux CD, dependency not ready, Kustomization, HelmRelease, Troubleshooting, Kubernetes, GitOps
 
-Description: A practical guide to resolving "dependency not ready" errors in Flux CD by fixing dependency ordering, circular dependencies, and failed upstream resources.
+Description: A practical guide to resolving 'dependency not ready' errors in Flux CD by fixing dependency ordering, circular dependencies, and failed upstream resources.
 
 ---
 
@@ -27,13 +27,13 @@ kubectl describe kustomization <name> -n flux-system
 
 The error message looks like:
 
-```
+```text
 dependency 'flux-system/infrastructure' is not ready
 ```
 
 Or:
 
-```
+```text
 dependency 'flux-system/cert-manager' is not ready: HelmRelease 'flux-system/cert-manager' is not ready
 ```
 

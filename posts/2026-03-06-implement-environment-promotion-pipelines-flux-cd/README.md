@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, environment promotion, ci/cd, pipelines
+Tags: Flux CD, GitOps, Kubernetes, Environment Promotion, CI/CD, Pipelines
 
 Description: A practical guide to implementing environment promotion pipelines with Flux CD to safely move changes from dev through staging to production.
 
 ---
 
-Environment promotion is the process of moving a change through a sequence of environments — typically dev, staging, and production. With Flux CD, promotion happens through Git. This guide shows how to build robust promotion pipelines that ensure changes are validated at each stage before moving forward.
+Environment promotion is the process of moving a change through a sequence of environments - typically dev, staging, and production. With Flux CD, promotion happens through Git. This guide shows how to build robust promotion pipelines that ensure changes are validated at each stage before moving forward.
 
 ## Promotion Strategy Overview
 
@@ -192,7 +192,7 @@ spec:
     name: fleet-infra
   path: ./apps/dev
   prune: true
-  # Dev doesn't need health checks — fast iteration
+  # Dev doesn't need health checks - fast iteration
   wait: false
 ```
 

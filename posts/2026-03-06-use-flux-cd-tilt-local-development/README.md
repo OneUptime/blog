@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, tilt, local development, kubernetes, gitops, developer experience
+Tags: Flux CD, Tilt, Local Development, Kubernetes, GitOps, Developer Experience
 
 Description: Learn how to combine Flux CD with Tilt to create a seamless local development workflow that mirrors your production GitOps pipeline.
 
@@ -42,7 +42,7 @@ tilt version
 
 Structure your repository so Tilt and Flux CD share the same manifests:
 
-```
+```text
 repo/
   apps/
     frontend/

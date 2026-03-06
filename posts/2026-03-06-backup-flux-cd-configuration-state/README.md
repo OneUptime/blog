@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, backup, disaster recovery, kubernetes, gitops, velero, state management
+Tags: Flux CD, Backup, Disaster Recovery, Kubernetes, GitOps, Velero, State Management
 
 Description: A practical guide to backing up Flux CD configuration, secrets, and state to ensure recoverability in case of cluster failures.
 

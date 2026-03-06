@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, rate limiting, docker hub, ecr, container registry, gitops, kubernetes, troubleshooting
+Tags: Flux CD, Rate Limiting, Docker Hub, ECR, Container Registry, GitOps, Kubernetes, Troubleshooting
 
 Description: A practical guide to diagnosing and mitigating container registry rate limiting issues in Flux CD, covering Docker Hub limits, ECR throttling, and pull-through cache strategies.
 
@@ -37,7 +37,7 @@ kubectl logs -n flux-system deployment/image-reflector-controller | grep -i "rat
 
 Common rate limit error messages:
 
-```
+```yaml
 429 Too Many Requests
 toomanyrequests: You have reached your pull rate limit
 TOOMANYREQUESTS: Rate exceeded

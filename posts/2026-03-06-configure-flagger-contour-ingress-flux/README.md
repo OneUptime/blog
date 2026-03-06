@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, contour, ingress, progressive delivery, canary, kubernetes, gitops, httpproxy
+Tags: flux, flagger, Contour, Ingress, Progressive Delivery, Canary, Kubernetes, GitOps, httpproxy
 
 Description: A practical guide to configuring Flagger with Contour Ingress Controller and Flux for progressive canary deployments using HTTPProxy traffic splitting.
 

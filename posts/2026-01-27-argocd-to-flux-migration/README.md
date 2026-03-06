@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, GitOps, ArgoCD, Flux, Migration, CI/CD, DevOps
+Tags: Kubernetes, GitOps, ArgoCD, flux, Migration, CI/CD, DevOps
 
 Description: A comprehensive guide to migrating your GitOps workflows from ArgoCD to Flux, covering concept mapping, application conversion, secrets migration, and strategies for a smooth zero-downtime transition.
 

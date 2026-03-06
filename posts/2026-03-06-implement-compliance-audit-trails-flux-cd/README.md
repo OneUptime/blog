@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, compliance, audit trails, security, governance
+Tags: Flux CD, GitOps, Kubernetes, Compliance, Audit Trail, Security, Governance
 
 Description: A practical guide to implementing compliance controls and audit trails using Flux CD and GitOps for regulated environments.
 
@@ -12,7 +12,7 @@ Regulated industries need to demonstrate who changed what, when, and why. Tradit
 
 ## Git as an Immutable Audit Trail
 
-Every change in a GitOps workflow is a Git commit. Git provides cryptographic integrity — every commit hash depends on the content and all preceding commits. This makes the audit trail tamper-evident.
+Every change in a GitOps workflow is a Git commit. Git provides cryptographic integrity - every commit hash depends on the content and all preceding commits. This makes the audit trail tamper-evident.
 
 ```bash
 # Every deployment has a traceable history

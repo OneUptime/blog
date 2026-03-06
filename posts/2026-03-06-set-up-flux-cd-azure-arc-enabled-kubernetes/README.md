@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, azure, azure-arc, kubernetes, gitops, hybrid-cloud, multi-cluster
+Tags: flux-cd, Azure, azure-arc, Kubernetes, GitOps, hybrid-cloud, Multi-Cluster
 
 Description: A step-by-step guide to setting up Flux CD on Azure Arc-enabled Kubernetes clusters for hybrid and multi-cloud GitOps management.
 
@@ -225,7 +225,7 @@ Manage multiple clusters from a single Git repository using cluster-specific pat
 
 ### Repository Structure
 
-```
+```text
 fleet-infra/
   infrastructure/
     base/                    # Shared across all clusters
@@ -474,7 +474,7 @@ kubectl logs -n flux-system deployment/kustomize-controller --tail=100
 
 Ensure your cluster can reach these Azure endpoints:
 
-```
+```yaml
 # Required outbound endpoints for Azure Arc
 https://management.azure.com
 https://<region>.dp.kubernetesconfiguration.azure.com

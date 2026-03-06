@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, aws, ack, gitops, kubernetes, iac, cloud resources
+Tags: Flux CD, AWS, ack, GitOps, Kubernetes, IaC, cloud resources
 
 Description: Learn how to deploy and manage AWS resources using AWS Controllers for Kubernetes (ACK) integrated with Flux CD for GitOps-driven cloud infrastructure.
 

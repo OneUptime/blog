@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, influxdb, metrics, canary, kubernetes, gitops, time-series
+Tags: flux, flagger, InfluxDB, Metrics, Canary, Kubernetes, GitOps, Time-Series
 
 Description: Step-by-step guide to using InfluxDB as a metrics provider for Flagger canary analysis in Flux-managed Kubernetes environments.
 
@@ -327,7 +327,7 @@ kubectl get canary my-app -n default -w
 
 Expected output during a successful canary:
 
-```
+```text
 NAME     STATUS        WEIGHT   LASTTRANSITIONTIME
 my-app   Progressing   0        2026-03-06T10:00:00Z
 my-app   Progressing   10       2026-03-06T10:01:00Z

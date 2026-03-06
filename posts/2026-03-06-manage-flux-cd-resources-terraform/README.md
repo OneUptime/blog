@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, terraform, gitops, kubernetes, resource management, infrastructure as code
+Tags: Flux CD, Terraform, GitOps, Kubernetes, Resource Management, Infrastructure as Code
 
 Description: Learn how to create and manage Flux CD custom resources like GitRepositories, Kustomizations, and HelmReleases using Terraform.
 

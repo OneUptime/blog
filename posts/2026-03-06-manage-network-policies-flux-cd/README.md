@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, network policies, gitops, security, zero trust, calico
+Tags: Flux CD, Kubernetes, Network Policies, GitOps, Security, Zero Trust, Calico
 
 Description: A practical guide to managing Kubernetes Network Policies with Flux CD for implementing zero-trust network security in your clusters.
 

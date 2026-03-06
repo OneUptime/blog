@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, flux operator, kubernetes, gitops, multi-tenancy, operator, management
+Tags: Flux CD, flux operator, Kubernetes, GitOps, Multi-Tenancy, Operator, Management
 
 Description: A practical guide to using the Flux Operator for deploying, managing, and upgrading multiple Flux CD instances across Kubernetes clusters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, platform engineering, team management, multi-tenancy
+Tags: Flux CD, GitOps, Kubernetes, Platform Engineering, Team Management, Multi-Tenancy
 
 Description: Learn how to structure your Flux CD repository to support platform engineering teams managing shared infrastructure while enabling application teams to self-serve.
 
@@ -36,7 +36,7 @@ graph TD
 
 ## Repository Structure
 
-```
+```text
 platform-repo/
 ├── clusters/
 │   ├── production/
@@ -387,7 +387,7 @@ spec:
 
 Each team manages their own repository with a simple structure.
 
-```
+```text
 team-frontend-apps/
 ├── production/
 │   ├── kustomization.yaml

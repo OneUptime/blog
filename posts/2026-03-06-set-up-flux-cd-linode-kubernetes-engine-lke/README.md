@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, linode, lke, akamai, kubernetes, gitops, container registry
+Tags: Flux CD, Linode, LKE, Akamai, Kubernetes, GitOps, Container Registry
 
 Description: A practical guide to bootstrapping Flux CD on Linode Kubernetes Engine with container registry integration and GitOps workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: argocd, flux cd, gitops, kubernetes, decision guide, comparison
+Tags: ArgoCD, Flux CD, GitOps, Kubernetes, decision guide, Comparison
 
 Description: A practical decision guide for when ArgoCD is the better GitOps choice over Flux CD for your Kubernetes deployments.
 
@@ -198,7 +198,7 @@ spec:
 
 ## Choose ArgoCD When You Need Sync Windows
 
-ArgoCD supports sync windows — time-based policies that control when applications can or cannot sync. This is valuable for organizations with change management windows.
+ArgoCD supports sync windows - time-based policies that control when applications can or cannot sync. This is valuable for organizations with change management windows.
 
 ```yaml
 # AppProject with sync windows
@@ -238,7 +238,7 @@ spec:
 
 ## Choose ArgoCD When You Want Resource Hooks
 
-ArgoCD provides resource hooks that let you run jobs at specific points during the sync lifecycle — before sync, after sync, on sync failure, and more.
+ArgoCD provides resource hooks that let you run jobs at specific points during the sync lifecycle - before sync, after sync, on sync failure, and more.
 
 ```yaml
 # Pre-sync database migration job

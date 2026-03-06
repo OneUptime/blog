@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, configmaps, configuration management, gitops, kustomize
+Tags: Flux CD, Kubernetes, ConfigMap, Configuration Management, GitOps, Kustomize
 
 Description: A practical guide to managing Kubernetes ConfigMaps with Flux CD, including templating, environment-specific configs, and automatic rollouts on config changes.
 
@@ -22,7 +22,7 @@ This guide covers practical patterns for managing ConfigMaps with Flux CD, inclu
 
 ## Repository Structure
 
-```
+```text
 clusters/
   production/
     apps.yaml

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, opencost, cost management, kubernetes, gitops, helm, cncf, monitoring
+Tags: Flux CD, opencost, Cost Management, Kubernetes, GitOps, Helm, CNCF, Monitoring
 
 Description: A step-by-step guide to deploying OpenCost, the open-source CNCF cost monitoring tool, using Flux CD for GitOps-driven cost visibility.
 
@@ -23,7 +23,7 @@ This guide covers deploying OpenCost alongside Prometheus, configuring custom pr
 
 ## Repository Structure
 
-```
+```text
 clusters/
   production/
     opencost/

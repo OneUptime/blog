@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, envsubst, variables, templating, configuration
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, envsubst, Variables, Templating, Configuration
 
 Description: Learn how to use the flux envsubst command to perform variable substitution in Kubernetes manifests for environment-specific configurations.
 

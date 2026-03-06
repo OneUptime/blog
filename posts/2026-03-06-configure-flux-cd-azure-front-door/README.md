@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, azure, front door, waf, cdn, kubernetes, gitops, routing, load balancing
+Tags: Flux CD, Azure, Front Door, WAF, CDN, Kubernetes, GitOps, Routing, Load Balancing
 
 Description: A practical guide to deploying and managing Azure Front Door configurations through Flux CD with GitOps, including routing rules, WAF policies, and SSL termination.
 

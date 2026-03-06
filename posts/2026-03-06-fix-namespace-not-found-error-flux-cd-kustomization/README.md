@@ -1,10 +1,10 @@
-# How to Fix "namespace not found" Error in Flux CD Kustomization
+# How to Fix 'namespace not found' Error in Flux CD Kustomization
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kustomization, Namespaces, Dependencies, GitOps, Troubleshooting, Kubernetes
+Tags: Flux CD, Kustomization, Namespace, Dependencies, GitOps, Troubleshooting, Kubernetes
 
-Description: A practical guide to resolving "namespace not found" errors in Flux CD Kustomizations by setting up proper dependency ordering and namespace creation strategies.
+Description: A practical guide to resolving 'namespace not found' errors in Flux CD Kustomizations by setting up proper dependency ordering and namespace creation strategies.
 
 ---
 
@@ -26,7 +26,7 @@ kubectl describe kustomization <name> -n flux-system
 
 The error typically looks like:
 
-```
+```yaml
 Status:
   Conditions:
     - Type: Ready
@@ -41,7 +41,7 @@ Or in the kustomize-controller logs:
 kubectl logs -n flux-system deploy/kustomize-controller --tail=50
 ```
 
-```
+```text
 failed to apply resources: namespaces "my-app" not found
 ```
 
@@ -326,7 +326,7 @@ spec:
 
 Here is a recommended directory structure that avoids namespace ordering issues:
 
-```
+```text
 repository/
   clusters/
     my-cluster/

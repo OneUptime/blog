@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, aws load balancer controller, alb, nlb, kubernetes, gitops, helm
+Tags: Flux CD, aws load balancer controller, ALB, NLB, Kubernetes, GitOps, Helm
 
 Description: Learn how to deploy and manage the AWS Load Balancer Controller using Flux CD HelmRelease for automated ALB and NLB provisioning.
 

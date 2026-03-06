@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, service discovery, multi-cluster, kubernetes, service mesh, gitops
+Tags: Flux CD, Service Discovery, Multi-Cluster, Kubernetes, Service Mesh, GitOps
 
 Description: A step-by-step guide to enabling cross-cluster service discovery using Flux CD with tools like Submariner and Istio multi-cluster.
 
@@ -152,7 +152,7 @@ spec:
 
 Once exported, the service becomes accessible from other clusters using the DNS name:
 
-```
+```text
 backend-api.production.svc.clusterset.local
 ```
 

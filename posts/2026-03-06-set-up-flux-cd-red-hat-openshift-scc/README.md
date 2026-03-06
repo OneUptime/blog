@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, openshift, security context constraints, scc, kubernetes, gitops, red hat, continuous delivery
+Tags: Flux CD, OpenShift, Security Context Constraints, SCC, Kubernetes, GitOps, Red Hat, Continuous Delivery
 
 Description: A detailed guide to deploying Flux CD on Red Hat OpenShift while properly configuring Security Context Constraints for secure GitOps operations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, oci, artifacts, list, gitops, kubernetes, container-registry, inventory
+Tags: flux, fluxcd, OCI, Artifacts, Lists, GitOps, Kubernetes, container-registry, Inventory
 
 Description: A practical guide to listing and inspecting OCI artifacts in container registries using the flux list artifacts command.
 
@@ -44,7 +44,7 @@ The output typically includes:
 
 ### Example Output
 
-```
+```yaml
 ARTIFACT                                         DIGEST                                                                   LAST UPDATED
 oci://ghcr.io/myorg/app-config:v1.0.0           sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2  2026-03-01T10:00:00Z
 oci://ghcr.io/myorg/app-config:v1.1.0           sha256:b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3  2026-03-03T14:30:00Z

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubescape, kubernetes security, gitops, compliance, security posture
+Tags: Flux CD, Kubescape, Kubernetes Security, GitOps, Compliance, Security Posture
 
 Description: A practical guide to deploying Kubescape on Kubernetes using Flux CD for continuous security posture management and compliance scanning.
 

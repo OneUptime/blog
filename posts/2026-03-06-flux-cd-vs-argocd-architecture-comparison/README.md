@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, argocd, gitops, kubernetes, architecture, comparison, devops
+Tags: Flux CD, ArgoCD, GitOps, Kubernetes, Architecture, Comparison, DevOps
 
 Description: A detailed architectural comparison between Flux CD and ArgoCD, examining their design philosophies, component structures, and how they implement GitOps on Kubernetes.
 

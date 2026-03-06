@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, cert-manager, kubernetes, gitops, tls, certificates, ssl, networking
+Tags: Flux CD, cert-manager, Kubernetes, GitOps, TLS, Certificates, SSL, Networking
 
 Description: A comprehensive guide to deploying and configuring cert-manager in Kubernetes using Flux CD for automated TLS certificate management.
 

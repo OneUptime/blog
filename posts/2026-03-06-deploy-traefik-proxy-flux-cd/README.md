@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, traefik, proxy, kubernetes, gitops, ingress, networking
+Tags: Flux CD, Traefik, Proxy, Kubernetes, GitOps, Ingress, Networking
 
 Description: Learn how to deploy and configure Traefik Proxy as your Kubernetes ingress controller using Flux CD for GitOps-based management.
 
@@ -26,7 +26,7 @@ Before starting, ensure you have:
 
 ## Repository Structure
 
-```
+```text
 clusters/
   production/
     infrastructure/

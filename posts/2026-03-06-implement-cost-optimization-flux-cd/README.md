@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, cost optimization, kubernetes, gitops, resource management, finops
+Tags: Flux CD, Cost Optimization, Kubernetes, GitOps, Resource Management, FinOps
 
 Description: A practical guide to implementing cost optimization strategies for Kubernetes workloads using Flux CD and GitOps principles.
 

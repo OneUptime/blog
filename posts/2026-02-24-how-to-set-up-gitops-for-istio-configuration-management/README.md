@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, GitOps, ArgoCD, Flux, Configuration Management
+Tags: Istio, GitOps, ArgoCD, flux, Configuration Management
 
 Description: How to manage Istio configuration using GitOps principles with ArgoCD or Flux for reliable, auditable mesh management.
 

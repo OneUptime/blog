@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, observability, service mesh, gitops, kubernetes, prometheus, grafana, jaeger, tracing
+Tags: Flux CD, Observability, Service Mesh, GitOps, Kubernetes, Prometheus, Grafana, Jaeger, Tracing
 
 Description: Deploy a complete observability stack for service mesh monitoring including metrics, tracing, and logging using Flux CD.
 

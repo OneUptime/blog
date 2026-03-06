@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, gitops, memory optimization, performance tuning, resource management
+Tags: Flux CD, Kubernetes, GitOps, Memory Optimization, Performance Tuning, Resource Management
 
 Description: A practical guide to reducing memory consumption of Flux CD controllers in Kubernetes clusters through resource limits, caching strategies, and configuration tuning.
 

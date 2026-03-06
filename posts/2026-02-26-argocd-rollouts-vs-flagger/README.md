@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Argo Rollouts, Flagger
+Tags: ArgoCD, GitOps, Kubernetes, Argo Rollouts, flagger
 
 Description: A head-to-head comparison of Argo Rollouts and Flagger for progressive delivery on Kubernetes, covering canary deployments, analysis, and integration patterns.
 

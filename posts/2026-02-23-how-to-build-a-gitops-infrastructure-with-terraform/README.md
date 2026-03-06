@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GitOps, ArgoCD, Flux, Kubernetes, CI/CD, Infrastructure as Code
+Tags: Terraform, GitOps, ArgoCD, flux, Kubernetes, CI/CD, Infrastructure as Code
 
 Description: Learn how to build a GitOps infrastructure using Terraform with ArgoCD or Flux for automated Kubernetes deployments driven by Git repositories.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, goldilocks, resource recommendations, kubernetes, vpa, cost optimization, gitops
+Tags: Flux CD, Goldilocks, resource recommendations, Kubernetes, VPA, Cost Optimization, GitOps
 
 Description: A practical guide to deploying Goldilocks on Kubernetes using Flux CD for visualizing resource recommendations and right-sizing workloads.
 
@@ -38,7 +38,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     goldilocks/

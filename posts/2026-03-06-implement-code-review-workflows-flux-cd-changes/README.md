@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, code review, gitops, pull requests, kubernetes, ci/cd, workflows
+Tags: Flux CD, Code Review, GitOps, Pull Requests, Kubernetes, CI/CD, Workflow
 
 Description: A practical guide to designing and implementing effective code review workflows for Flux CD infrastructure changes using pull requests, automated checks, and approval gates.
 

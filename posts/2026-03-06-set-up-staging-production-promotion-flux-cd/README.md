@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, staging, production, promotion, gitops, kubernetes, deployment pipeline, environment management
+Tags: Flux CD, Staging, Production, Promotion, GitOps, Kubernetes, Deployment Pipeline, Environment Management
 
 Description: A comprehensive guide to setting up a staging-to-production promotion workflow using Flux CD with gated approvals and health checks.
 
@@ -40,7 +40,7 @@ graph LR
 
 Organize your manifests repository with base, staging, and production overlays.
 
-```
+```text
 k8s-manifests/
   apps/
     myapp/
@@ -456,7 +456,7 @@ gh api repos/myorg/k8s-manifests/rulesets \
 
 Add a CODEOWNERS file to require specific team members to approve production changes:
 
-```
+```text
 # CODEOWNERS
 # Require platform team review for production changes
 apps/*/overlays/production/ @myorg/platform-team

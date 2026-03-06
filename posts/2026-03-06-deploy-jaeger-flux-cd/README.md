@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, jaeger, kubernetes, gitops, tracing, distributed tracing, observability, elasticsearch
+Tags: Flux CD, Jaeger, Kubernetes, GitOps, Tracing, Distributed Tracing, Observability, Elasticsearch
 
 Description: A practical guide to deploying Jaeger distributed tracing on Kubernetes using Flux CD for GitOps-managed trace collection and analysis.
 

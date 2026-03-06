@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, create, resources, automation
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, create, Resources, Automation
 
 Description: Learn how to use the flux create command to generate Flux CD resource definitions directly from the command line without writing YAML by hand.
 

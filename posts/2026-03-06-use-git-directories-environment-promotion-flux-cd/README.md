@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, directory-based promotion, environment management, kustomize
+Tags: Flux CD, GitOps, Kubernetes, directory-based promotion, Environment Management, Kustomize
 
 Description: Learn how to use directory-based promotion to manage environment progression in Flux CD, keeping all environments visible on a single branch.
 
@@ -26,7 +26,7 @@ Compared to branch-based and tag-based approaches, directory-based promotion off
 
 ## Repository Structure
 
-```
+```text
 fleet-repo/
 ├── base/
 │   ├── kustomization.yaml

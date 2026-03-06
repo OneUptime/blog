@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, GitOps, Collector, Configuration, ArgoCD, FluxCD, DevOps
+Tags: OpenTelemetry, GitOps, Collector, Configuration, ArgoCD, fluxcd, DevOps
 
 Description: Learn how to manage OpenTelemetry Collector configurations using GitOps principles with version control, automated deployment, and rollback capabilities.
 

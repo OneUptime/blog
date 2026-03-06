@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HelmRelease, Helm, Kubernetes, Troubleshooting, GitOps, Semver, Chart Versions
+Tags: Flux CD, HelmRelease, Helm, Kubernetes, Troubleshooting, GitOps, SemVer, Chart Versions
 
 Description: A practical guide to fixing Flux CD when it does not detect or install new Helm chart versions, covering version constraints, semver ranges, chart repository caching, and HelmRepository configuration.
 

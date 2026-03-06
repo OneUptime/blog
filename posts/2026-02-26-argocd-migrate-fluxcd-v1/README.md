@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, FluxCD, Migration
+Tags: ArgoCD, GitOps, Kubernetes, fluxcd, Migration
 
 Description: Learn how to migrate from the deprecated FluxCD v1 to ArgoCD with a step-by-step guide covering concept mapping, manifest conversion, and zero-downtime cutover.
 

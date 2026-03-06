@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, rollback, upgrade, kubernetes, gitops, disaster recovery, troubleshooting
+Tags: Flux CD, Rollback, Upgrade, Kubernetes, GitOps, Disaster Recovery, Troubleshooting
 
 Description: A practical guide to diagnosing and rolling back failed Flux CD upgrades to restore your GitOps platform to a working state.
 

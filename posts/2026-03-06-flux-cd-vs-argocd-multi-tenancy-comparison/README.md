@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, argocd, gitops, kubernetes, multi-tenancy, rbac, security, comparison
+Tags: Flux CD, ArgoCD, GitOps, Kubernetes, Multi-Tenancy, RBAC, Security, Comparison
 
 Description: A detailed comparison of how Flux CD and ArgoCD implement multi-tenancy, covering isolation models, RBAC, namespace management, and team-based access control.
 

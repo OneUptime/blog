@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, resume, reconciliation, devops
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Resume, Reconciliation, DevOps
 
 Description: A practical guide to using the flux resume command to resume reconciliation of previously suspended Flux CD resources.
 
@@ -85,7 +85,7 @@ flux resume kustomization my-app
 
 Expected output:
 
-```
+```text
 > resuming kustomization my-app in flux-system namespace
 > kustomization resumed
 > applied revision main@sha1:def456
@@ -100,7 +100,7 @@ flux get kustomization my-app
 
 Output:
 
-```
+```text
 NAME    REVISION            SUSPENDED  READY  MESSAGE
 my-app  main@sha1:def456    False      True   Applied revision: main@sha1:def456
 ```

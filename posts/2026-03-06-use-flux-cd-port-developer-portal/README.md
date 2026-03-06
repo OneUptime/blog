@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, port, developer portal, kubernetes, gitops, internal developer platform, service catalog
+Tags: Flux CD, Port, Developer Portal, Kubernetes, GitOps, Internal Developer Platform, Service Catalog
 
 Description: A practical guide to integrating Flux CD with Port developer portal for unified service catalog management and GitOps deployment visibility.
 

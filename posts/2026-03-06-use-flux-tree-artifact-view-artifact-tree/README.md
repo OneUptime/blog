@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, tree, artifact, oci, source, devops
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, tree, Artifacts, OCI, sources, DevOps
 
 Description: A practical guide to using the flux tree artifact command to view and explore the contents of OCI artifacts stored by Flux CD sources.
 
@@ -60,7 +60,7 @@ flux tree artifact gitrepository my-repo
 
 Sample output:
 
-```
+```text
 GitRepository/my-repo
 ├── clusters/
 │   └── production/
@@ -126,7 +126,7 @@ flux tree artifact helmchart my-chart --namespace flux-system
 
 The tree output shows the complete file hierarchy inside the artifact:
 
-```
+```text
 GitRepository/my-repo
 ├── apps/                          # Directory
 │   ├── base/                      # Nested directory
@@ -210,7 +210,7 @@ flux tree artifact helmchart my-app-chart
 
 Sample output for a Helm chart:
 
-```
+```text
 HelmChart/my-app-chart
 ├── Chart.yaml
 ├── values.yaml

@@ -1,10 +1,10 @@
-# How to Fix "chart not found" Error in Flux CD HelmRelease
+# How to Fix 'chart not found' Error in Flux CD HelmRelease
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, HelmRelease, Helm, Kubernetes, Troubleshooting, GitOps, Chart Not Found
 
-Description: A practical guide to diagnosing and fixing the "chart not found" error in Flux CD HelmRelease resources, covering wrong chart names, repository URLs, and version constraints.
+Description: A practical guide to diagnosing and fixing the 'chart not found' error in Flux CD HelmRelease resources, covering wrong chart names, repository URLs, and version constraints.
 
 ---
 

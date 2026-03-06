@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, octopus deploy, migration, continuous deployment, gitops, kubernetes
+Tags: Flux CD, Octopus Deploy, Migration, Continuous Deployment, GitOps, Kubernetes
 
 Description: A practical guide to migrating Kubernetes deployments from Octopus Deploy to Flux CD with a GitOps-first approach.
 

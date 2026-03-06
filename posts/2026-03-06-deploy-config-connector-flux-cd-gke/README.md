@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, config connector, gke, gcp, gitops, kubernetes, infrastructure as code
+Tags: Flux CD, Config Connector, GKE, GCP, GitOps, Kubernetes, Infrastructure as Code
 
 Description: A step-by-step guide to deploying and managing GCP resources using Config Connector and Flux CD on Google Kubernetes Engine.
 

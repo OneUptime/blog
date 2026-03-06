@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, verification, health-check, troubleshooting
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Verification, health-check, Troubleshooting
 
 Description: Learn how to use the flux check command to verify your Flux CD installation, diagnose issues, and ensure all components are running correctly.
 
@@ -56,7 +56,7 @@ flux check
 
 Healthy output looks like this:
 
-```
+```text
 > checking prerequisites
 > Kubernetes 1.28.5 >=1.25.0-0
 > checking controllers
@@ -93,7 +93,7 @@ flux check --pre
 
 This is useful for pre-flight checks before running `flux bootstrap` or `flux install`:
 
-```
+```text
 > checking prerequisites
 > Kubernetes 1.28.5 >=1.25.0-0
 > prerequisites checks passed

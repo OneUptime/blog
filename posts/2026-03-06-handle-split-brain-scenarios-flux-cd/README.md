@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, split-brain, multi-cluster, disaster recovery, kubernetes, gitops
+Tags: Flux CD, Split-Brain, Multi-Cluster, Disaster Recovery, Kubernetes, GitOps
 
 Description: A practical guide to preventing, detecting, and resolving split-brain scenarios in multi-cluster Flux CD deployments.
 

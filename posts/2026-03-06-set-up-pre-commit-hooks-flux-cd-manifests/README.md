@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, pre-commit, git hooks, validation, kubernetes, gitops, developer experience
+Tags: Flux CD, Pre-Commit, Git Hooks, Validation, Kubernetes, GitOps, Developer Experience
 
 Description: Learn how to configure pre-commit hooks that validate Flux CD manifests before they are committed, catching errors at the earliest stage.
 

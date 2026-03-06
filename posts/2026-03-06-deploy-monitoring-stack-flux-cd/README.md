@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, monitoring, prometheus, grafana, kubernetes, gitops, observability
+Tags: Flux CD, Monitoring, Prometheus, Grafana, Kubernetes, GitOps, Observability
 
 Description: A comprehensive guide to deploying a full monitoring stack with Prometheus, Grafana, and Alertmanager using Flux CD.
 
@@ -23,7 +23,7 @@ This guide walks through deploying the kube-prometheus-stack using Flux CD with 
 
 ## Repository Structure
 
-```
+```text
 infrastructure/
   monitoring/
     namespace.yaml

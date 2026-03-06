@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, ingress, multi-cluster, kubernetes, gitops, load balancing
+Tags: Flux CD, Ingress, Multi-Cluster, Kubernetes, GitOps, Load Balancing
 
 Description: Learn how to configure and manage ingress across multiple Kubernetes clusters using Flux CD for consistent traffic routing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, consul, consul connect, service mesh, gitops, kubernetes, hashicorp
+Tags: Flux CD, Consul, Consul Connect, Service Mesh, GitOps, Kubernetes, HashiCorp
 
 Description: A practical guide to deploying HashiCorp Consul Connect service mesh on Kubernetes using Flux CD and GitOps workflows.
 

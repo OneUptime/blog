@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, argocd, gitops, kubernetes, decision guide, comparison
+Tags: Flux CD, ArgoCD, GitOps, Kubernetes, decision guide, Comparison
 
 Description: A practical decision guide for choosing Flux CD over ArgoCD based on architecture, team needs, and deployment patterns.
 
@@ -16,7 +16,7 @@ Before comparing features, it helps to understand how each tool is built.
 
 Flux CD follows a composable, controller-based architecture. Each component (source-controller, kustomize-controller, helm-controller, notification-controller, image-automation-controller) runs independently. You can install only what you need.
 
-ArgoCD follows a monolithic application-server architecture. It provides a unified API server, a repo server, and a UI — all tightly coupled.
+ArgoCD follows a monolithic application-server architecture. It provides a unified API server, a repo server, and a UI - all tightly coupled.
 
 ```mermaid
 graph TD
@@ -105,7 +105,7 @@ flux resume kustomization apps
 
 ## Choose Flux CD When You Need Image Automation
 
-Flux CD can automatically detect new container images and update your Git repository. This closes the GitOps loop completely — no external CI pipeline needed to bump image tags.
+Flux CD can automatically detect new container images and update your Git repository. This closes the GitOps loop completely - no external CI pipeline needed to bump image tags.
 
 ```yaml
 # Define which container registry to watch
@@ -242,7 +242,7 @@ spec:
 
 ## Choose Flux CD When Security Is a Priority
 
-Flux CD has a minimal attack surface. It runs inside the cluster with no externally exposed API server or UI. There are no stored credentials for cluster access — Flux uses in-cluster service accounts.
+Flux CD has a minimal attack surface. It runs inside the cluster with no externally exposed API server or UI. There are no stored credentials for cluster access - Flux uses in-cluster service accounts.
 
 ```yaml
 # Restrict Flux's permissions using a service account

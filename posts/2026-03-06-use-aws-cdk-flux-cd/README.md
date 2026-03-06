@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, aws cdk, gitops, kubernetes, eks, infrastructure as code
+Tags: Flux CD, AWS CDK, GitOps, Kubernetes, EKS, Infrastructure as Code
 
 Description: A practical guide to integrating AWS CDK with Flux CD to provision EKS clusters and bootstrap GitOps-driven application delivery.
 

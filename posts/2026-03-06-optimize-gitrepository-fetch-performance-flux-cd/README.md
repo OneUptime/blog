@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, gitops, git, performance tuning, source controller, repository optimization
+Tags: Flux CD, Kubernetes, GitOps, Git, Performance Tuning, Source Controller, repository optimization
 
 Description: A practical guide to optimizing GitRepository fetch performance in Flux CD through shallow clones, ignore patterns, caching, authentication tuning, and artifact management.
 

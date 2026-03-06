@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, aws, codecommit, gitops, kubernetes, iam, git
+Tags: Flux CD, AWS, CodeCommit, GitOps, Kubernetes, IAM, Git
 
 Description: Learn how to configure Flux CD to use AWS CodeCommit as a Git source, including HTTPS with IAM credentials, SSH key authentication, and git-remote-codecommit setup.
 

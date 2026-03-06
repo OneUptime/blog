@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, git branches, environment promotion, ci/cd
+Tags: Flux CD, GitOps, Kubernetes, Git Branches, Environment Promotion, CI/CD
 
 Description: Learn how to use Git branches as the mechanism for promoting deployments across development, staging, and production environments with Flux CD.
 
@@ -41,7 +41,7 @@ gitGraph
 
 With branch-based promotion, the directory structure on each branch is identical. The differences come from the content of the files on each branch.
 
-```
+```text
 fleet-repo/
 ├── infrastructure/
 │   ├── sources/

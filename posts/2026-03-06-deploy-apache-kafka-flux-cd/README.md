@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, apache kafka, message queue, streaming, gitops, kubernetes, event streaming
+Tags: Flux CD, Apache Kafka, Message Queue, Streaming, GitOps, Kubernetes, Event Streaming
 
 Description: A practical guide to deploying Apache Kafka on Kubernetes using Flux CD for GitOps-managed event streaming and message queuing.
 
@@ -24,7 +24,7 @@ This guide covers deploying Apache Kafka on Kubernetes using the Bitnami Helm ch
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     kafka/

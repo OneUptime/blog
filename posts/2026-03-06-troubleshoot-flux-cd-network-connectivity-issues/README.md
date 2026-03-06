@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, troubleshooting, networking, kubernetes, dns, firewall, proxy, gitops
+Tags: Flux CD, Troubleshooting, Networking, Kubernetes, DNS, Firewall, Proxy, GitOps
 
 Description: Learn how to diagnose and fix network connectivity issues in Flux CD, including DNS resolution failures, firewall blocks, proxy configuration, and network policies.
 
@@ -14,7 +14,7 @@ Network connectivity problems are among the most common causes of Flux CD failur
 
 Before diving into diagnostics, here are the typical error messages that indicate network problems:
 
-```
+```text
 # DNS resolution failure
 failed to checkout and determine revision: unable to clone: dial tcp: lookup github.com: no such host
 

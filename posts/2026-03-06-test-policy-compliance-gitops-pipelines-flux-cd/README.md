@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, policy compliance, gitops, testing, ci/cd, kyverno, gatekeeper, security
+Tags: Flux CD, Policy Compliance, GitOps, Testing, CI/CD, Kyverno, Gatekeeper, Security
 
 Description: A comprehensive guide to implementing automated policy compliance testing in GitOps pipelines powered by Flux CD.
 

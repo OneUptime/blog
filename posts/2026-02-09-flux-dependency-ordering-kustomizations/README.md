@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Flux, GitOps, Kubernetes, Kustomize, Deployment Strategy
+Tags: flux, GitOps, Kubernetes, Kustomize, Deployment Strategy
 
 Description: Learn how to configure Flux Kustomization dependencies to ensure infrastructure components deploy in the correct order for safe and reliable cluster rollouts.
 

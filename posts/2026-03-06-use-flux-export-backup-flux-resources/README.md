@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, backup, export, kubernetes, disaster-recovery, cli
+Tags: flux, fluxcd, GitOps, Backup, Export, Kubernetes, Disaster-Recovery, CLI
 
 Description: Learn how to use the flux export command to backup all your Flux CD resources for disaster recovery and migration purposes.
 

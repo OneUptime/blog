@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, google cloud, secret manager, external secrets operator, gitops, kubernetes, workload identity, security
+Tags: Flux CD, Google Cloud, Secret Manager, External Secrets Operator, GitOps, Kubernetes, Workload Identity, Security
 
 Description: A step-by-step guide to integrating Flux CD with Google Secret Manager using External Secrets Operator for automated secret synchronization in Kubernetes.
 

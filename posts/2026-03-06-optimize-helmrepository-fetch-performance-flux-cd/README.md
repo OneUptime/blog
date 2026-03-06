@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, gitops, helm, performance tuning, helm repository, chart caching
+Tags: Flux CD, Kubernetes, GitOps, Helm, Performance Tuning, Helm Repository, chart caching
 
 Description: A practical guide to optimizing HelmRepository fetch performance in Flux CD through caching, OCI registries, interval tuning, and index optimization.
 

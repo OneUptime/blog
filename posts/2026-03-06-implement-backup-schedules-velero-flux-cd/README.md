@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, velero, backup, disaster recovery, kubernetes, gitops, restore
+Tags: Flux CD, Velero, Backup, Disaster Recovery, Kubernetes, GitOps, Restore
 
 Description: A practical guide to implementing automated Kubernetes backup schedules using Velero managed by Flux CD for reliable disaster recovery.
 

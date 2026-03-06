@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, trace, dependencies, debugging, devops
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Traces, Dependencies, Debugging, DevOps
 
 Description: A practical guide to using the flux trace command to trace the dependency chain and ownership of Kubernetes resources managed by Flux CD.
 
@@ -68,7 +68,7 @@ flux trace deployment my-app --namespace default
 
 Sample output:
 
-```
+```yaml
 Object:        Deployment/my-app
 Namespace:     default
 Status:        Managed by Flux
@@ -122,7 +122,7 @@ flux trace deployment nginx-controller --namespace ingress
 
 Sample output for a Helm-managed resource:
 
-```
+```yaml
 Object:         Deployment/nginx-controller
 Namespace:      ingress
 Status:         Managed by Flux
@@ -237,7 +237,7 @@ flux trace deployment manual-deployment --namespace default
 
 Output:
 
-```
+```yaml
 Object:        Deployment/manual-deployment
 Namespace:     default
 Status:        Not managed by Flux

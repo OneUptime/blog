@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, proxy, http proxy, https proxy, gitops, kubernetes, troubleshooting, corporate network
+Tags: Flux CD, Proxy, HTTP Proxy, HTTPS Proxy, GitOps, Kubernetes, Troubleshooting, Corporate Network
 
 Description: A detailed guide to configuring Flux CD to work behind HTTP/HTTPS proxies, including proxy authentication, NO_PROXY settings, and proxy secret configuration.
 
@@ -37,7 +37,7 @@ kubectl logs -n flux-system deployment/image-reflector-controller | grep -i "tim
 
 Typical error messages when proxy is needed but not configured:
 
-```
+```text
 dial tcp: i/o timeout
 connection refused
 context deadline exceeded

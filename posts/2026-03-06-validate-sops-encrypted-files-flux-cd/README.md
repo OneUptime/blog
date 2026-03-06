@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, sops, encryption, secrets, validation, gitops, kubernetes
+Tags: Flux CD, SOPS, Encryption, Secret, Validation, GitOps, Kubernetes
 
 Description: A practical guide to validating SOPS-encrypted secret files used in Flux CD GitOps workflows to prevent deployment failures.
 

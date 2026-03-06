@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, webhook, receiver, gitops, kubernetes, troubleshooting, reconciliation
+Tags: Flux CD, Webhook, Receiver, GitOps, Kubernetes, Troubleshooting, Reconciliation
 
 Description: A comprehensive troubleshooting guide for Flux CD webhook receivers that fail to trigger reconciliation when receiving push events from Git providers.
 

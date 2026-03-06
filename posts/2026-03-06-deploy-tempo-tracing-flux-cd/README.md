@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, tempo, grafana tempo, kubernetes, gitops, tracing, distributed tracing, observability
+Tags: Flux CD, Tempo, Grafana Tempo, Kubernetes, GitOps, Tracing, Distributed Tracing, Observability
 
 Description: A practical guide to deploying Grafana Tempo for distributed tracing on Kubernetes using Flux CD and GitOps workflows.
 

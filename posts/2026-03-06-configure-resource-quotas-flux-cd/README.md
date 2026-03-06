@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, resource quotas, kubernetes, gitops, namespace management, resource governance
+Tags: Flux CD, Resource Quota, Kubernetes, GitOps, Namespace Management, resource governance
 
 Description: Learn how to enforce resource consumption limits across Kubernetes namespaces using Resource Quotas managed through Flux CD.
 
@@ -33,7 +33,7 @@ Resource Quotas operate at the namespace level and can limit:
 
 Organize your resource quota configurations in a clear directory structure.
 
-```
+```text
 infrastructure/
   resource-quotas/
     base/

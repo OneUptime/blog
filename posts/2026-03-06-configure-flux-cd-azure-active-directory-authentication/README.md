@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, azure, active directory, entra id, rbac, kubernetes, gitops, authentication
+Tags: Flux CD, Azure, Active Directory, Entra ID, RBAC, Kubernetes, GitOps, Authentication
 
 Description: A practical guide to integrating Flux CD with Azure Active Directory (Entra ID) for secure, group-based RBAC authentication on AKS clusters.
 

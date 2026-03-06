@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, flux build, offline validation, kustomize, gitops, kubernetes, ci/cd
+Tags: Flux CD, flux build, offline validation, Kustomize, GitOps, Kubernetes, CI/CD
 
 Description: Learn how to use the flux build command to validate Kustomization resources offline without connecting to a live Kubernetes cluster.
 
@@ -26,7 +26,7 @@ The `flux build` command processes a Kustomization resource, resolves all overla
 
 Suppose you have the following directory structure:
 
-```
+```text
 clusters/
   production/
     kustomization.yaml

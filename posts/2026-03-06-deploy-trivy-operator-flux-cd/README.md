@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, trivy, vulnerability scanning, kubernetes, gitops, security, container security
+Tags: Flux CD, Trivy, Vulnerability Scanning, Kubernetes, GitOps, Security, Container Security
 
 Description: A practical guide to deploying Trivy Operator on Kubernetes using Flux CD for automated vulnerability scanning and compliance checks.
 

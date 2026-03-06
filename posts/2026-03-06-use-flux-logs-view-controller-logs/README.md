@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, logs, debugging, monitoring, devops
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Logs, Debugging, Monitoring, DevOps
 
 Description: A practical guide to using the flux logs command to view and filter Flux CD controller logs for debugging and monitoring.
 
@@ -59,7 +59,7 @@ This outputs a combined log stream from all controllers running in the `flux-sys
 
 Sample output:
 
-```
+```text
 2026-03-06T10:15:32.123Z info source-controller - stored artifact for 'flux-system/my-repo'
 2026-03-06T10:15:33.456Z info kustomize-controller - reconciliation finished in 1.2s
 2026-03-06T10:15:34.789Z info helm-controller - release reconciliation succeeded
@@ -250,7 +250,7 @@ Common log messages and their meanings:
 
 ### Source Controller Messages
 
-```
+```text
 # Successful artifact storage
 stored artifact for 'flux-system/my-repo'
 
@@ -263,7 +263,7 @@ failed to checkout and determine revision: authentication required
 
 ### Kustomize Controller Messages
 
-```
+```text
 # Successful reconciliation
 reconciliation finished in 1.2s, next run in 10m0s
 
@@ -276,7 +276,7 @@ dependency 'flux-system/infrastructure' is not ready
 
 ### Helm Controller Messages
 
-```
+```text
 # Successful release
 release reconciliation succeeded
 

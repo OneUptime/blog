@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, variable substitution, multi-cluster, configuration, gitops, kubernetes, kustomize
+Tags: Flux CD, Variable Substitution, Multi-Cluster, Configuration, GitOps, Kubernetes, Kustomize
 
 Description: Learn how to use Flux CD's postBuild variable substitution to manage cluster-specific configurations from a single set of base manifests.
 

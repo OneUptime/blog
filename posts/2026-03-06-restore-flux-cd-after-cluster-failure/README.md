@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, restore, disaster recovery, kubernetes, gitops, cluster recovery
+Tags: Flux CD, Restore, Disaster Recovery, Kubernetes, GitOps, Cluster Recovery
 
 Description: A step-by-step guide to restoring Flux CD and all managed workloads after a complete or partial Kubernetes cluster failure.
 

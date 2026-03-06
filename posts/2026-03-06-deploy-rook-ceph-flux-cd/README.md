@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, rook-ceph, kubernetes, storage, gitops, ceph, persistent storage
+Tags: Flux CD, Rook-Ceph, Kubernetes, Storage, GitOps, Ceph, Persistent Storage
 
 Description: A practical guide to deploying Rook-Ceph distributed storage on Kubernetes using Flux CD and GitOps principles.
 
@@ -28,7 +28,7 @@ Before you begin, ensure you have the following:
 
 Organize your GitOps repository with the following structure for the Rook-Ceph deployment:
 
-```
+```text
 clusters/
   my-cluster/
     storage/

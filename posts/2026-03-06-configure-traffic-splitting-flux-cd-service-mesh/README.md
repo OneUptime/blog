@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, traffic splitting, service mesh, gitops, kubernetes, canary, istio, linkerd
+Tags: Flux CD, Traffic Splitting, Service Mesh, GitOps, Kubernetes, Canary, Istio, Linkerd
 
 Description: A practical guide to implementing traffic splitting strategies for canary deployments and A/B testing using Flux CD with various service meshes.
 

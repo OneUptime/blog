@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, apache airflow, kubernetes, gitops, helm, data pipelines, workflow orchestration
+Tags: Flux CD, Apache Airflow, Kubernetes, GitOps, Helm, Data Pipeline, Workflow Orchestration
 
 Description: A comprehensive guide to deploying Apache Airflow on Kubernetes using Flux CD for GitOps-managed data pipeline orchestration.
 
@@ -24,7 +24,7 @@ This guide covers deploying Airflow with the KubernetesExecutor, Git-sync for DA
 
 ## Repository Structure
 
-```
+```text
 clusters/
   production/
     airflow/

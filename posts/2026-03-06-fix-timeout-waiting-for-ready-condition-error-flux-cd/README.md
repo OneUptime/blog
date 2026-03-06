@@ -1,8 +1,8 @@
-# How to Fix "timeout waiting for ready condition" Error in Flux CD
+# How to Fix 'timeout waiting for ready condition' Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Timeout, Health Checks, Troubleshooting, Kubernetes, GitOps, Deployments
+Tags: Flux CD, Timeout, Health Check, Troubleshooting, Kubernetes, GitOps, Deployment
 
 Description: A comprehensive guide to diagnosing and resolving timeout errors in Flux CD when resources take too long to become ready, covering timeout configuration, resource constraints, and deployment issues.
 
@@ -26,7 +26,7 @@ kubectl describe kustomization <name> -n flux-system
 
 The error typically looks like:
 
-```
+```yaml
 Status:
   Conditions:
     - Type: Ready
@@ -42,7 +42,7 @@ For HelmReleases:
 kubectl describe helmrelease <name> -n flux-system
 ```
 
-```
+```yaml
 Message: "timeout waiting for ready condition on deployments/my-app"
 ```
 

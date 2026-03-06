@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, helmrelease, rollback, helm, kubernetes, gitops
+Tags: Flux CD, HelmRelease, Rollback, Helm, Kubernetes, GitOps
 
 Description: A step-by-step guide to rolling back HelmRelease resources to a previous revision in Flux CD.
 

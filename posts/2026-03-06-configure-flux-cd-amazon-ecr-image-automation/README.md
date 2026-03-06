@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, aws, ecr, image automation, kubernetes, gitops, irsa
+Tags: Flux CD, AWS, ECR, Image Automation, Kubernetes, GitOps, IRSA
 
 Description: Learn how to configure Flux CD image automation with Amazon ECR, including IRSA authentication, image scanning, automatic tag updates, and ECR token refresh.
 
@@ -180,7 +180,7 @@ kubectl describe imagerepository my-app -n flux-system
 
 Expected output:
 
-```
+```yaml
 Status:
   Canonical Image Name:  123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app
   Last Scan Result:

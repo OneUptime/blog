@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, terraform cloud, gitops, kubernetes, infrastructure as code, automation
+Tags: Flux CD, Terraform Cloud, GitOps, Kubernetes, Infrastructure as Code, Automation
 
 Description: Learn how to integrate Terraform Cloud with Flux CD to create a unified workflow for provisioning cloud infrastructure and deploying Kubernetes workloads.
 

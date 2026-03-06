@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, mimir, grafana mimir, kubernetes, gitops, metrics, long-term storage, observability
+Tags: Flux CD, Mimir, Grafana Mimir, Kubernetes, GitOps, Metrics, Long-Term Storage, Observability
 
 Description: A practical guide to deploying Grafana Mimir for scalable long-term metrics storage on Kubernetes using Flux CD.
 

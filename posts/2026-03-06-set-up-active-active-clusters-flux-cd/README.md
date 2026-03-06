@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, active-active, multi-cluster, high availability, kubernetes, gitops
+Tags: Flux CD, Active-Active, Multi-Cluster, High Availability, Kubernetes, GitOps
 
 Description: A practical guide to setting up active-active Kubernetes clusters with Flux CD for zero-downtime deployments.
 

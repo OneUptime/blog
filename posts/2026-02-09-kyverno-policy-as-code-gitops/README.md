@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kyverno, GitOps, Policy as Code, ArgoCD, FluxCD
+Tags: Kubernetes, Kyverno, GitOps, Policy as Code, ArgoCD, fluxcd
 
 Description: Learn how to manage Kyverno policies as code in Git repositories, integrate with GitOps tools like ArgoCD and FluxCD, implement approval workflows for policy changes.
 

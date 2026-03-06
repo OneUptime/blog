@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, coredns, kubernetes, gitops, networking, dns, service discovery
+Tags: Flux CD, CoreDNS, Kubernetes, GitOps, Networking, DNS, Service Discovery
 
 Description: A practical guide to managing and customizing CoreDNS configuration in Kubernetes using Flux CD for GitOps-driven DNS management.
 

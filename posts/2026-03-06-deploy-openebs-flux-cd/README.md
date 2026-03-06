@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, openebs, kubernetes, storage, gitops, container-attached storage, cstor, mayastor
+Tags: Flux CD, OpenEBS, Kubernetes, Storage, GitOps, container-attached storage, cStor, Mayastor
 
 Description: A comprehensive guide to deploying OpenEBS container-attached storage on Kubernetes using Flux CD for GitOps-based storage management.
 
@@ -26,7 +26,7 @@ Before you begin, ensure you have:
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     storage/

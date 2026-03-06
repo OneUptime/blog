@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, helm, migration, kubernetes, gitops, helmrelease, chart management
+Tags: Flux CD, Helm, Migration, Kubernetes, GitOps, HelmRelease, Chart Management
 
 Description: A practical guide to migrating Helm chart deployments from the Helm CLI to declarative Flux CD HelmRelease resources.
 

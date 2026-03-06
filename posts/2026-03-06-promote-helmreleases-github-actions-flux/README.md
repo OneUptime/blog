@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, github actions, helm, helmrelease, promotion, staging, production, gitops
+Tags: Flux CD, GitHub Actions, Helm, HelmRelease, Promotion, Staging, Production, GitOps
 
 Description: Learn how to implement a staging-to-production promotion workflow for HelmReleases using GitHub Actions and Flux CD with PR-based approvals.
 
@@ -25,7 +25,7 @@ This guide covers setting up a multi-environment Flux configuration with HelmRel
 
 Organize your Flux configuration repository to support multiple environments:
 
-```
+```text
 flux-config/
   clusters/
     staging/

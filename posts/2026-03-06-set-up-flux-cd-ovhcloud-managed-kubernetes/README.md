@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, ovhcloud, ovh, kubernetes, gitops, harbor, container registry
+Tags: Flux CD, OVHcloud, OVH, Kubernetes, GitOps, Harbor, Container Registry
 
 Description: A practical guide to bootstrapping Flux CD on OVHcloud Managed Kubernetes with Harbor registry integration and GitOps workflows.
 

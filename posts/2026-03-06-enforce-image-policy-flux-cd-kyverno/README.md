@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kyverno, image policy, kubernetes, gitops, security, container images
+Tags: Flux CD, Kyverno, Image Policy, Kubernetes, GitOps, Security, Container Images
 
 Description: A step-by-step guide to enforcing container image policies in Kubernetes using Kyverno and Flux CD for GitOps-driven security.
 

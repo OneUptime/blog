@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, argocd, performance, scalability, gitops, kubernetes, comparison, multi-cluster
+Tags: Flux CD, ArgoCD, Performance, Scalability, GitOps, Kubernetes, Comparison, Multi-Cluster
 
 Description: A thorough comparison of performance characteristics and scalability features between Flux CD and ArgoCD, including resource usage, reconciliation speed, and multi-cluster management.
 

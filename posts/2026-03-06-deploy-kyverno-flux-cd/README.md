@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kyverno, policy engine, gitops, kubernetes, security, admission control
+Tags: Flux CD, Kyverno, Policy Engine, GitOps, Kubernetes, Security, Admission Control
 
 Description: A practical guide to deploying Kyverno as a Kubernetes-native policy engine using Flux CD for GitOps-driven policy management.
 

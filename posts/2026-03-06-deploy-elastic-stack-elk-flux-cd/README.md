@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, elastic stack, elk, elasticsearch, logstash, kibana, gitops, kubernetes, logging, observability
+Tags: Flux CD, Elastic Stack, ELK, Elasticsearch, Logstash, Kibana, GitOps, Kubernetes, Logging, Observability
 
 Description: A comprehensive guide to deploying the Elastic Stack (Elasticsearch, Logstash, and Kibana) on Kubernetes using Flux CD for GitOps-managed log aggregation and analysis.
 
@@ -24,7 +24,7 @@ This guide walks through deploying each component of the Elastic Stack on Kubern
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     elastic-stack/

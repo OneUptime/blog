@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, serverless, gitops, openfaas, keda, scale-to-zero
+Tags: Flux CD, Kubernetes, Serverless, GitOps, OpenFaaS, KEDA, Scale-to-Zero
 
 Description: Learn how to deploy and manage serverless workloads on Kubernetes using Flux CD with tools like OpenFaaS, KEDA, and native Kubernetes patterns.
 

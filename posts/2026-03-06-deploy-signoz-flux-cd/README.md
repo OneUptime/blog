@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, signoz, observability, tracing, metrics, logs, gitops, kubernetes, opentelemetry
+Tags: Flux CD, SigNoz, Observability, Tracing, Metrics, Logs, GitOps, Kubernetes, OpenTelemetry
 
 Description: A step-by-step guide to deploying Signoz, an open-source observability platform, on Kubernetes using Flux CD and GitOps principles.
 
@@ -26,7 +26,7 @@ Before starting, ensure you have:
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     signoz/

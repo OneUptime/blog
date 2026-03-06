@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes jobs, post-deployment, hooks, gitops, kubernetes
+Tags: Flux CD, kubernetes jobs, Post-Deployment, Hooks, GitOps, Kubernetes
 
 Description: A practical guide to running Kubernetes Jobs as post-deployment tasks using Flux CD dependencies and health checks.
 

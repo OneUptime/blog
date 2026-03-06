@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, gitops, scaling, large clusters, multi-tenancy, performance
+Tags: Flux CD, Kubernetes, GitOps, Scaling, Large Clusters, Multi-Tenancy, Performance
 
 Description: A practical guide to scaling Flux CD for clusters managing hundreds or thousands of resources through sharding, multi-tenancy, repository structuring, and resource optimization.
 

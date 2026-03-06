@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, gateway api, gitops, traffic management, httproute
+Tags: Flux CD, Kubernetes, Gateway API, GitOps, Traffic Management, HTTPRoute
 
 Description: Learn how to deploy and manage Kubernetes Gateway API resources using Flux CD for advanced traffic routing, load balancing, and multi-tenant networking.
 

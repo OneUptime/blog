@@ -1,8 +1,8 @@
-# How to Migrate Image Automation from Flux v1 to v2
+# Migrate Image Automation from Flux v1 to v2: Quick Start Guide
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Image Automation, Migration, Flux v1, Flux v2
+Tags: Flux CD, GitOps, Kubernetes, Image Automation, Migration, flux v1, flux v2
 
 Description: Learn how to migrate your image update automation from Flux v1 to Flux v2, including mapping annotations to image policies and update automation resources.
 

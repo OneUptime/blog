@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kustomize, debugging, troubleshooting, gitops, kubernetes, kustomization
+Tags: Flux CD, Kustomize, Debugging, Troubleshooting, GitOps, Kubernetes, Kustomization
 
 Description: A practical guide to using the flux debug kustomization command to diagnose and fix Kustomize build and deployment issues in Flux CD.
 

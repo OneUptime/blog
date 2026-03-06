@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, amazon cloudwatch, container insights, monitoring, metrics, kubernetes, aws, observability
+Tags: Flux CD, Amazon CloudWatch, Container Insights, Monitoring, Metrics, Kubernetes, AWS, Observability
 
 Description: Set up Amazon CloudWatch monitoring for Flux CD controllers including Container Insights, custom metrics, and alerting dashboards.
 
@@ -422,7 +422,7 @@ Create saved queries in CloudWatch Logs Insights for Flux troubleshooting.
 # Use in CloudWatch Logs Insights with log group: /aws/containerinsights/my-cluster/application
 ```
 
-```
+```text
 # CloudWatch Logs Insights query for Flux errors
 fields @timestamp, @message, kubernetes.pod_name
 | filter kubernetes.namespace_name = "flux-system"
@@ -431,7 +431,7 @@ fields @timestamp, @message, kubernetes.pod_name
 | limit 50
 ```
 
-```
+```text
 # CloudWatch Logs Insights query for reconciliation events
 fields @timestamp, @message, kubernetes.pod_name
 | filter kubernetes.namespace_name = "flux-system"

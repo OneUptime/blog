@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, runbook, on-call, incident response, kubernetes, gitops, operations, sre
+Tags: Flux CD, Runbook, On-Call, Incident Response, Kubernetes, GitOps, Operations, SRE
 
 Description: A complete runbook template for on-call engineers managing Flux CD deployments, covering common incidents, troubleshooting procedures, escalation paths, and emergency procedures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, crossplane, gitops, kubernetes, infrastructure as code, cloud resources
+Tags: Flux CD, Crossplane, GitOps, Kubernetes, Infrastructure as Code, cloud resources
 
 Description: Learn how to combine Crossplane and Flux CD to provision and manage cloud infrastructure resources using Kubernetes-native GitOps workflows.
 

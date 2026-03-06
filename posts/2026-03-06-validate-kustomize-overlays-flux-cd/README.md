@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kustomize, overlays, validation, kubernetes, gitops, testing
+Tags: Flux CD, Kustomize, Overlay, Validation, Kubernetes, GitOps, Testing
 
 Description: Learn how to validate Kustomize overlays used in Flux CD to ensure they render correctly across all environments before deployment.
 
@@ -19,7 +19,7 @@ Kustomize overlays are the backbone of environment-specific configurations in Fl
 
 ## Typical Overlay Structure
 
-```
+```text
 infrastructure/
   base/
     kustomization.yaml

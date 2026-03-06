@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, platform engineering, infrastructure, helm, kustomize, monitoring
+Tags: Flux CD, GitOps, Kubernetes, Platform Engineering, Infrastructure, Helm, Kustomize, Monitoring
 
 Description: A comprehensive guide to building a production-ready GitOps platform with Flux CD from scratch, covering cluster bootstrap, repository structure, secrets, monitoring, and multi-environment management.
 

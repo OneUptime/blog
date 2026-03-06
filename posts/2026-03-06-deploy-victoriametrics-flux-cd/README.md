@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, victoriametrics, monitoring, metrics, gitops, kubernetes, observability
+Tags: Flux CD, VictoriaMetrics, Monitoring, Metrics, GitOps, Kubernetes, Observability
 
 Description: A practical guide to deploying VictoriaMetrics on Kubernetes using Flux CD for GitOps-driven metrics collection and monitoring.
 
@@ -27,7 +27,7 @@ Before you begin, make sure you have the following in place:
 
 Organize your GitOps repository with the following structure for VictoriaMetrics:
 
-```
+```text
 clusters/
   my-cluster/
     victoriametrics/

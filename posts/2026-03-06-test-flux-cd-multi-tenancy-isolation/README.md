@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, multi-tenancy, isolation, testing, kubernetes, rbac, security, gitops
+Tags: Flux CD, Multi-Tenancy, Isolation, Testing, Kubernetes, RBAC, Security, GitOps
 
 Description: A practical guide to testing and validating multi-tenancy isolation in Flux CD to ensure tenant workloads are properly separated and secured.
 

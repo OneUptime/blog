@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, calico, kubernetes, gitops, networking, cni, network policy, security
+Tags: Flux CD, Calico, Kubernetes, GitOps, Networking, CNI, Network Policy, Security
 
 Description: A hands-on guide to deploying and managing Project Calico in Kubernetes using Flux CD for GitOps-driven network policy enforcement.
 

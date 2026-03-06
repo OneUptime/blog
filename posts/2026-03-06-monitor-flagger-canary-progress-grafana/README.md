@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, canary, grafana, monitoring, prometheus, kubernetes, dashboards
+Tags: flux, flagger, Canary, Grafana, Monitoring, Prometheus, Kubernetes, Dashboard
 
 Description: A step-by-step guide to setting up Grafana dashboards for monitoring Flagger canary deployment progress in a Flux CD managed cluster.
 

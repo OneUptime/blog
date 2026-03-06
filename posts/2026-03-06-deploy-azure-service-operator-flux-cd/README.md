@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, azure, azure-service-operator, gitops, kubernetes, infrastructure-as-code, aso
+Tags: flux-cd, Azure, azure-service-operator, GitOps, Kubernetes, Infrastructure-as-Code, aso
 
 Description: Learn how to install Azure Service Operator v2 via Flux CD and manage Azure resources like databases, storage accounts, and more through GitOps.
 

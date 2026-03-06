@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, cli, image-automation, image-policy, image-repository, gitops, kubernetes, flux-get
+Tags: flux, CLI, image-automation, image-policy, image-repository, GitOps, Kubernetes, flux-get
 
 Description: A practical guide to using flux get images commands to monitor and troubleshoot Flux image automation including repositories, policies, and update automation.
 
@@ -58,7 +58,7 @@ flux get images all -A
 
 Sample output:
 
-```
+```text
 NAME                                          LAST SCAN                 SUSPENDED  READY  MESSAGE
 imagerepository/my-app                        2026-03-06T10:30:00Z      False      True   successful scan: found 25 tags
 imagerepository/nginx                         2026-03-06T10:29:00Z      False      True   successful scan: found 142 tags

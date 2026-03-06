@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, training, team onboarding, kubernetes, developer experience, workflows
+Tags: Flux CD, GitOps, Training, Team Onboarding, Kubernetes, Developer Experience, Workflow
 
 Description: A practical guide to training your development team on Flux CD GitOps workflows, including training curriculum, hands-on exercises, common workflows, and troubleshooting skills.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, cli, cluster-status, gitops, kubernetes, flux-get, troubleshooting
+Tags: flux, CLI, cluster-status, GitOps, Kubernetes, flux-get, Troubleshooting
 
 Description: A comprehensive guide to using the flux get all command to check the status of all Flux resources in your Kubernetes cluster.
 
@@ -58,7 +58,7 @@ flux get all -A --status-selector ready=false
 
 The `flux get all` command groups resources by type. Here is what typical output looks like:
 
-```
+```text
 NAME                        REVISION        SUSPENDED  READY  MESSAGE
 gitrepository/flux-system   main@sha1:abc1  False      True   stored artifact for revision 'main@sha1:abc1234'
 gitrepository/my-app        main@sha1:def5  False      True   stored artifact for revision 'main@sha1:def5678'

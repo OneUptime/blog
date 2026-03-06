@@ -1,10 +1,10 @@
-# How to Fix "resource already exists" Error in Flux CD
+# How to Fix 'resource already exists' Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Troubleshooting, Kubernetes, Field Manager, Server-Side Apply
 
-Description: A practical guide to resolving "resource already exists" errors in Flux CD caused by field manager conflicts, manually created resources, and server-side apply issues.
+Description: A practical guide to resolving 'resource already exists' errors in Flux CD caused by field manager conflicts, manually created resources, and server-side apply issues.
 
 ---
 
@@ -26,7 +26,7 @@ kubectl describe kustomization <name> -n flux-system
 
 Common error messages include:
 
-```
+```yaml
 Status:
   Conditions:
     - Type: Ready
@@ -37,7 +37,7 @@ Status:
 
 Or for field manager conflicts:
 
-```
+```yaml
 Message: 'Apply failed: conflict with "kubectl-client-side-apply" using apps/v1:
   .spec.replicas'
 ```

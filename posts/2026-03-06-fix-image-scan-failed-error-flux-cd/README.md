@@ -1,4 +1,4 @@
-# How to Fix "image scan failed" Error in Flux CD
+# How to Fix 'image scan failed' Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -35,7 +35,7 @@ kubectl describe imagerepository <name> -n flux-system
 
 Common error messages:
 
-```
+```yaml
 Status:
   Conditions:
     - Type: Ready
@@ -47,7 +47,7 @@ Status:
 
 Or for rate-limited registries:
 
-```
+```yaml
 Message: "failed to scan image 'docker.io/library/nginx': unexpected status code 429:
   Too Many Requests: You have reached your pull rate limit"
 ```

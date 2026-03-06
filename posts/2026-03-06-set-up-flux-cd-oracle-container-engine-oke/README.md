@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, oracle cloud, oke, kubernetes, gitops, ocir, oci vault
+Tags: Flux CD, Oracle Cloud, OKE, Kubernetes, GitOps, ocir, oci vault
 
 Description: A step-by-step guide to setting up Flux CD on Oracle Container Engine for Kubernetes (OKE) with OCIR registry integration and OCI Vault for secrets management.
 

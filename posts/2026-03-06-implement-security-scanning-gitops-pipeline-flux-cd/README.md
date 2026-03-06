@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, security scanning, gitops, kubernetes, trivy, kubeaudit, policy, best practices
+Tags: Flux CD, Security Scanning, GitOps, Kubernetes, Trivy, kubeaudit, Policy, Best Practices
 
 Description: A practical guide to integrating security scanning tools into your Flux CD GitOps pipeline for continuous security validation of Kubernetes manifests and configurations.
 

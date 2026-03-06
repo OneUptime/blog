@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubeflow, kubernetes, gitops, machine learning, mlops, helm
+Tags: Flux CD, Kubeflow, Kubernetes, GitOps, Machine Learning, MLOps, Helm
 
 Description: A practical guide to deploying Kubeflow on Kubernetes using Flux CD for GitOps-managed machine learning platform operations.
 
@@ -24,7 +24,7 @@ This guide covers deploying Kubeflow's core components including Pipelines, Note
 
 ## Repository Structure
 
-```
+```text
 clusters/
   production/
     kubeflow/

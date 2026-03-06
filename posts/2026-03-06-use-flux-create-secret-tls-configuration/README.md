@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, tls, secret, certificates, gitops, kubernetes, security, https
+Tags: flux, fluxcd, TLS, Secret, Certificates, GitOps, Kubernetes, Security, HTTPS
 
 Description: A practical guide to creating TLS secrets with the flux create secret tls command for secure communication in GitOps workflows.
 

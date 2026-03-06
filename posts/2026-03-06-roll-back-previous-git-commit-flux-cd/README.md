@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, rollback, git revert, kubernetes, gitops, deployment
+Tags: Flux CD, Rollback, git revert, Kubernetes, GitOps, Deployment
 
 Description: A step-by-step guide to rolling back Flux CD deployments by reverting to a previous Git commit.
 

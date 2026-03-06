@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, amazon eks, karpenter, autoscaling, node provisioning, kubernetes, gitops
+Tags: Flux CD, amazon eks, Karpenter, Autoscaling, Node Provisioning, Kubernetes, GitOps
 
 Description: Deploy and manage Karpenter on Amazon EKS using Flux CD for GitOps-driven node autoscaling with NodePool and EC2NodeClass configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, statefulsets, stateful applications, gitops, databases
+Tags: Flux CD, Kubernetes, StatefulSet, Stateful Applications, GitOps, Database
 
 Description: A practical guide to deploying and managing stateful applications like databases and message queues using Flux CD and StatefulSets.
 
@@ -22,7 +22,7 @@ This guide covers practical patterns for deploying stateful applications with Fl
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     infrastructure.yaml

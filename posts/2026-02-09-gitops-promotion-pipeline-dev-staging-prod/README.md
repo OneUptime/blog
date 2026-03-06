@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitOps, Flux, ArgoCD, Promotion Pipeline, Multi-Environment
+Tags: GitOps, flux, ArgoCD, Promotion Pipeline, Multi-Environment
 
 Description: Learn how to implement a GitOps promotion pipeline that automatically or manually promotes application versions across development, staging, and production environments using Git branches, tags.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, git tags, release promotion, semantic versioning
+Tags: Flux CD, GitOps, Kubernetes, Git Tags, release promotion, Semantic Versioning
 
 Description: Learn how to use Git tags as release markers for promoting deployments across environments with Flux CD, enabling precise version control and rollback capabilities.
 
@@ -40,7 +40,7 @@ graph LR
 
 The repository uses a single branch with tags marking release points.
 
-```
+```text
 fleet-repo/
 ├── infrastructure/
 │   ├── sources/

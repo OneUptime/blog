@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, migration, kubernetes, organization, devops, transformation, strategy
+Tags: Flux CD, GitOps, Migration, Kubernetes, Organizations, DevOps, Transformation, Strategy
 
 Description: A practical guide to migrating an entire organization from traditional deployment workflows to GitOps with Flux CD, covering planning, phased rollout, team adoption, and common pitfalls.
 

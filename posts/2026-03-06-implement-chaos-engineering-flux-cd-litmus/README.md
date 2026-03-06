@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, chaos engineering, litmus, kubernetes, gitops, resilience, best practices
+Tags: Flux CD, Chaos Engineering, Litmus, Kubernetes, GitOps, Resilience, Best Practices
 
 Description: A practical guide to integrating LitmusChaos with Flux CD for automated chaos engineering experiments in your GitOps pipeline.
 

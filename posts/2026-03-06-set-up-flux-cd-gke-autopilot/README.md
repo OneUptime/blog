@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gke autopilot, gcp, kubernetes, gitops, google cloud
+Tags: Flux CD, GKE Autopilot, GCP, Kubernetes, GitOps, Google Cloud
 
 Description: A practical guide to installing and configuring Flux CD on GKE Autopilot, addressing resource constraints and Autopilot-specific limitations.
 

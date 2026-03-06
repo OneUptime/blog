@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Weave GitOps, Flux, GitOps, Kubernetes
+Tags: Istio, Weave GitOps, flux, GitOps, Kubernetes
 
 Description: How to manage Istio traffic routing and policies through Weave GitOps and Flux for fully declarative GitOps-driven service mesh management.
 

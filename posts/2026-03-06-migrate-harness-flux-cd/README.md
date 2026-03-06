@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, harness, migration, continuous deployment, gitops, kubernetes
+Tags: Flux CD, Harness, Migration, Continuous Deployment, GitOps, Kubernetes
 
 Description: A step-by-step guide to migrating your Kubernetes deployments from Harness CD to Flux CD for a GitOps-native workflow.
 

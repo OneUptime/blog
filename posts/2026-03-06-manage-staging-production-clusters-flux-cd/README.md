@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, staging, production, gitops, kubernetes, cluster management
+Tags: Flux CD, Staging, Production, GitOps, Kubernetes, Cluster Management
 
 Description: Learn how to manage staging and production Kubernetes clusters with Flux CD, including environment promotion, gating, and safe rollout strategies.
 
@@ -32,7 +32,7 @@ graph LR
 
 ## Repository Structure
 
-```
+```text
 fleet-repo/
   base/
     apps/

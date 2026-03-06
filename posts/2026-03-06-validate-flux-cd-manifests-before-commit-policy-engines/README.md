@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, policy engines, validation, pre-commit, ci/cd, kyverno, gatekeeper, gitops
+Tags: Flux CD, Policy Engine, Validation, Pre-Commit, CI/CD, Kyverno, Gatekeeper, GitOps
 
 Description: A practical guide to validating Flux CD manifests against policy engines before committing to Git, catching policy violations early in the development workflow.
 

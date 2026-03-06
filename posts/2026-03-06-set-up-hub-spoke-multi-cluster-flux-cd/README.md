@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, multi-cluster, hub-and-spoke, gitops, kubernetes
+Tags: Flux CD, Multi-Cluster, Hub-and-Spoke, GitOps, Kubernetes
 
 Description: A practical guide to setting up a hub-and-spoke multi-cluster architecture using Flux CD for centralized GitOps management.
 
@@ -157,7 +157,7 @@ kubectl --context=hub-cluster apply -f spoke-1-kubeconfig.yaml
 
 Organize your Git repository to clearly separate hub and spoke configurations:
 
-```
+```text
 fleet-config/
   clusters/
     hub/

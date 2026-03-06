@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, troubleshooting, kubernetes, controller pods, debugging, gitops
+Tags: Flux CD, Troubleshooting, Kubernetes, controller pods, Debugging, GitOps
 
 Description: Learn how to inspect Flux CD controller pods, analyze logs, check restart counts, and monitor resource usage to diagnose controller-level issues.
 
@@ -45,7 +45,7 @@ NODE:.spec.nodeName
 
 Expected healthy output:
 
-```
+```text
 NAME                                           READY   STATUS    RESTARTS   AGE
 helm-controller-6f4d8b5c97-xk2jm              1/1     Running   0          2d
 kustomize-controller-7b8c9d5f6-lm4np           1/1     Running   0          2d

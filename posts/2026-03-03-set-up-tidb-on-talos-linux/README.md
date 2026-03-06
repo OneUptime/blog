@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, TiDB, Kubernetes, Distributed Database, NewSQL, DevOps
+Tags: Talos Linux, TiDB, Kubernetes, Distributed Database, newSQL, DevOps
 
 Description: Deploy TiDB distributed NewSQL database on Talos Linux using the TiDB Operator for scalable, MySQL-compatible database workloads.
 

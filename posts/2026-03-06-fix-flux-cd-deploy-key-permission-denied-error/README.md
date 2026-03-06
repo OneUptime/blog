@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, deploy key, ssh, permission denied, gitops, kubernetes, troubleshooting
+Tags: Flux CD, Deploy Keys, SSH, Permission Denied, GitOps, Kubernetes, Troubleshooting
 
 Description: A hands-on guide to diagnosing and resolving SSH deploy key permission denied errors in Flux CD, covering key formats, access levels, and key management.
 
@@ -37,7 +37,7 @@ kubectl get gitrepository flux-system -n flux-system \
 
 Common error messages:
 
-```
+```bash
 ssh: handshake failed: ssh: unable to authenticate
 git clone: Permission denied (publickey)
 authentication required but no callback set

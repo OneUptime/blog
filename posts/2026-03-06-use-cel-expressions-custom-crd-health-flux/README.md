@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, cel, crd, custom resources, health checks, kubernetes, gitops, operators
+Tags: Flux CD, CEL, CRD, Custom Resource, Health Check, Kubernetes, GitOps, Operator
 
 Description: A practical guide to writing CEL health check expressions for custom CRDs from popular Kubernetes operators in Flux CD Kustomizations.
 

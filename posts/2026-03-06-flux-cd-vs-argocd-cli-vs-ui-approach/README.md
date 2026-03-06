@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, argocd, gitops, kubernetes, cli, ui, developer experience, comparison
+Tags: Flux CD, ArgoCD, GitOps, Kubernetes, CLI, UI, Developer Experience, Comparison
 
 Description: A detailed comparison of the CLI-first approach of Flux CD versus the UI-centric approach of ArgoCD, covering workflows, developer experience, and operational trade-offs.
 

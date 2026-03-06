@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, keda, autoscaling, event-driven, kubernetes, gitops, scaling
+Tags: Flux CD, KEDA, Autoscaling, Event-Driven, Kubernetes, GitOps, Scaling
 
 Description: A practical guide to deploying KEDA for event-driven autoscaling on Kubernetes using Flux CD to scale workloads based on external metrics.
 
@@ -40,7 +40,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     keda/

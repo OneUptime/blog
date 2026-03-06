@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitOps, Kubernetes, CI/CD, DevOps, ArgoCD, Flux, Git, Automation
+Tags: GitOps, Kubernetes, CI/CD, DevOps, ArgoCD, flux, Git, Automation
 
 Description: A practical guide to implementing and managing GitOps workflows for Kubernetes deployments, covering repository structure, branching strategies, and reconciliation patterns.
 

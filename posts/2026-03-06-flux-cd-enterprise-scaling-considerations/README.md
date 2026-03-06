@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, enterprise, scaling, multi-tenant, best practices
+Tags: Flux CD, GitOps, Kubernetes, Enterprise, Scaling, Multi-Tenant, Best Practices
 
 Description: A guide to scaling Flux CD for enterprise environments with multi-cluster, multi-tenant, and high-availability considerations.
 
@@ -152,7 +152,7 @@ spec:
     name: team-alpha-repo
   path: ./apps
   prune: true
-  # Run as the tenant service account — enforces RBAC
+  # Run as the tenant service account - enforces RBAC
   serviceAccountName: team-alpha-reconciler
   # Confine all resources to the tenant namespace
   targetNamespace: team-alpha
@@ -458,4 +458,4 @@ spec:
 6. Monitor Flux controllers with Prometheus and alert on reconciliation failures.
 7. Route notifications to the right teams using severity-based alerting.
 
-Enterprise adoption of Flux CD is not just about installing it — it requires planning around tenancy, performance, and operational visibility.
+Enterprise adoption of Flux CD is not just about installing it - it requires planning around tenancy, performance, and operational visibility.

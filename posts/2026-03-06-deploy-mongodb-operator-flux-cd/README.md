@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, mongodb, kubernetes, database, gitops, operator, percona, replica set
+Tags: Flux CD, MongoDB, Kubernetes, Database, GitOps, Operator, Percona, Replica Set
 
 Description: A practical guide to deploying the Percona Operator for MongoDB on Kubernetes using Flux CD for GitOps-driven MongoDB cluster management.
 
@@ -26,7 +26,7 @@ Before you begin, ensure you have:
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     databases/

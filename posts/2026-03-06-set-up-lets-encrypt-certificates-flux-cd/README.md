@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, lets encrypt, kubernetes, gitops, tls, certificates, acme, cert-manager
+Tags: Flux CD, lets encrypt, Kubernetes, GitOps, TLS, Certificates, ACME, cert-manager
 
 Description: A step-by-step guide to setting up automatic Let's Encrypt certificate issuance and renewal in Kubernetes using Flux CD.
 

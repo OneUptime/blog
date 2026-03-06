@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, tls, self-signed certificate, ca bundle, gitops, kubernetes, troubleshooting, cert-manager
+Tags: Flux CD, TLS, Self-Signed Certificates, ca bundle, GitOps, Kubernetes, Troubleshooting, cert-manager
 
 Description: A step-by-step guide to resolving TLS certificate verification errors in Flux CD when working with self-signed certificates, private CAs, and TLS-intercepting proxies.
 
@@ -16,7 +16,7 @@ Flux CD controllers verify TLS certificates by default. If your internal service
 
 Common error messages:
 
-```
+```yaml
 x509: certificate signed by unknown authority
 x509: certificate has expired or is not yet valid
 tls: failed to verify certificate: x509: certificate signed by unknown authority

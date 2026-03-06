@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, stats, statistics, monitoring, devops
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Stats, Statistics, Monitoring, DevOps
 
 Description: A practical guide to using the flux stats command to view reconciliation statistics and health metrics for Flux CD resources in your cluster.
 
@@ -62,7 +62,7 @@ flux stats
 
 Sample output:
 
-```
+```text
 RECONCILERS             RUNNING   FAILING   SUSPENDED   STORAGE
 Kustomization           12        1         2           -
 HelmRelease             8         0         1           -
@@ -270,7 +270,7 @@ flux get helmreleases --all-namespaces 2>/dev/null | grep "True" || echo "  None
 
 A healthy cluster typically shows:
 
-```
+```text
 RECONCILERS             RUNNING   FAILING   SUSPENDED   STORAGE
 Kustomization           12        0         0           -
 HelmRelease             8         0         0           -
@@ -283,7 +283,7 @@ All resources are running, none are failing, and none are unexpectedly suspended
 
 A cluster with problems might show:
 
-```
+```text
 RECONCILERS             RUNNING   FAILING   SUSPENDED   STORAGE
 Kustomization           10        2         0           -
 HelmRelease             6         2         0           -
@@ -307,7 +307,7 @@ flux get sources all --all-namespaces --status-selector ready=false
 
 During maintenance, expect to see suspended resources:
 
-```
+```text
 RECONCILERS             RUNNING   FAILING   SUSPENDED   STORAGE
 Kustomization           5         0         7           -
 HelmRelease             3         0         5           -

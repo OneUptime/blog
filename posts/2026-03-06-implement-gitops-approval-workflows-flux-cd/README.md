@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, approval workflows, pull requests, ci/cd
+Tags: Flux CD, GitOps, Kubernetes, Approval Workflow, Pull Requests, CI/CD
 
 Description: A practical guide to implementing approval workflows with Flux CD using Git-based review processes and gating mechanisms.
 
 ---
 
-GitOps means Git is the source of truth. That also means Git's collaboration features — pull requests, reviews, and branch protections — become your deployment approval workflow. This guide shows how to implement structured approval workflows with Flux CD.
+GitOps means Git is the source of truth. That also means Git's collaboration features - pull requests, reviews, and branch protections - become your deployment approval workflow. This guide shows how to implement structured approval workflows with Flux CD.
 
 ## The Approval Model
 
@@ -60,7 +60,7 @@ Use CODEOWNERS to automatically assign reviewers based on which files are change
 # Production cluster configs require platform team approval
 /clusters/production/           @my-org/platform-team @my-org/sre-team
 
-# Staging is more relaxed — team leads can approve
+# Staging is more relaxed - team leads can approve
 /clusters/staging/              @my-org/team-leads
 
 # Flux system configuration requires admin approval
@@ -125,7 +125,7 @@ jobs:
 ```
 
 ```yaml
-# policies/deployment.rego — OPA policy for deployments
+# policies/deployment.rego - OPA policy for deployments
 package kubernetes.deployment
 
 # Deny deployments without resource limits
@@ -215,7 +215,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  # Suspend reconciliation — changes won't be applied
+  # Suspend reconciliation - changes won't be applied
   suspend: true
   sourceRef:
     kind: GitRepository

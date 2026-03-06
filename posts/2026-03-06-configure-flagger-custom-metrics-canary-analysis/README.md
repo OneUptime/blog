@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, custom-metrics, canary, prometheus, kubernetes, gitops, observability
+Tags: flux, flagger, custom-metrics, Canary, Prometheus, Kubernetes, GitOps, Observability
 
 Description: A detailed guide to creating and using custom metrics for Flagger canary analysis with Prometheus in Flux-managed Kubernetes clusters.
 
@@ -56,7 +56,7 @@ spec:
 
 Example metrics your application might expose:
 
-```
+```json
 # Application-specific latency histogram
 http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="0.1"} 2400
 http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="0.5"} 2900

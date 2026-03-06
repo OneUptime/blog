@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, multi-cluster, gitops, kubernetes, cluster management
+Tags: Flux CD, Multi-Cluster, GitOps, Kubernetes, Cluster Management
 
 Description: A comprehensive guide to setting up Flux CD for managing multiple Kubernetes clusters from a single Git repository using GitOps principles.
 
@@ -39,7 +39,7 @@ graph TB
 
 Organize the repository to clearly separate shared resources from cluster-specific ones.
 
-```
+```text
 fleet-repo/
   infrastructure/
     controllers/

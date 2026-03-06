@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, repository structure, environments, gitops, kubernetes, multi-environment, best practices
+Tags: Flux CD, Repository Structure, Environment, GitOps, Kubernetes, Multi-Environment, Best Practices
 
 Description: A practical guide to organizing separate Git repositories per environment for Flux CD, with strategies for promotion, consistency, and access control.
 
@@ -28,7 +28,7 @@ This pattern works well when:
 
 You will create the following repositories:
 
-```
+```text
 fleet-infra-dev        # Development environment configurations
 fleet-infra-staging    # Staging environment configurations
 fleet-infra-production # Production environment configurations
@@ -39,7 +39,7 @@ fleet-infra-base       # Shared base configurations (optional)
 
 The base repository contains shared templates and configurations:
 
-```
+```text
 fleet-infra-base/
 ├── infrastructure/
 │   ├── cert-manager/
@@ -73,7 +73,7 @@ fleet-infra-base/
 
 Each environment repo follows a consistent structure:
 
-```
+```text
 fleet-infra-production/
 ├── clusters/
 │   ├── prod-us-east-1/

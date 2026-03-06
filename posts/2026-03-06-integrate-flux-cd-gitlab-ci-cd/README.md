@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitlab, ci/cd, gitops, container registry, gitlab ci, kubernetes, webhook
+Tags: Flux CD, GitLab, CI/CD, GitOps, Container Registry, GitLab CI, Kubernetes, Webhook
 
 Description: A step-by-step guide to integrating Flux CD with GitLab CI/CD pipelines, covering container registry integration, webhook triggers, and end-to-end deployment automation.
 

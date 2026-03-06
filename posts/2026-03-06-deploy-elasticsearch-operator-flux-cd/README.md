@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, elasticsearch, kubernetes, database, gitops, operator, elastic cloud, ECK, search
+Tags: Flux CD, Elasticsearch, Kubernetes, Database, GitOps, Operator, Elastic Cloud, ECK, Search
 
 Description: A comprehensive guide to deploying the Elastic Cloud on Kubernetes (ECK) operator using Flux CD for GitOps-managed Elasticsearch clusters.
 
@@ -27,7 +27,7 @@ Before you begin, ensure you have:
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     databases/

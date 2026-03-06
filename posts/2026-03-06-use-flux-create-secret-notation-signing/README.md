@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, notation, signing, secrets, security, gitops, kubernetes
+Tags: Flux CD, notation, Signing, Secret, Security, GitOps, Kubernetes
 
 Description: A practical guide to using the flux create secret notation command to configure Notation signing verification for container images in Flux CD.
 

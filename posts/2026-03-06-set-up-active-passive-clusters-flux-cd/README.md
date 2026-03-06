@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, active-passive, disaster recovery, multi-cluster, kubernetes, gitops
+Tags: Flux CD, Active-Passive, Disaster Recovery, Multi-Cluster, Kubernetes, GitOps
 
 Description: A practical guide to setting up active-passive Kubernetes clusters with Flux CD for disaster recovery.
 

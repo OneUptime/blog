@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, discord, alerting, notifications, canary, kubernetes, gitops
+Tags: flux, flagger, Discord, Alerting, Notifications, Canary, Kubernetes, GitOps
 
 Description: Set up Discord webhook notifications for Flagger canary deployment events in Flux-managed Kubernetes clusters.
 
@@ -34,7 +34,7 @@ Create a webhook in your Discord server.
 7. Click "Copy Webhook URL"
 
 The webhook URL will look like:
-```
+```yaml
 https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz
 ```
 

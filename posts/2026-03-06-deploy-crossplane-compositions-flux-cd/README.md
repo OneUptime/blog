@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, crossplane, compositions, gitops, kubernetes, platform engineering
+Tags: Flux CD, Crossplane, Composition, GitOps, Kubernetes, Platform Engineering
 
 Description: Learn how to build and deploy Crossplane Compositions through Flux CD to create self-service infrastructure APIs for your development teams.
 

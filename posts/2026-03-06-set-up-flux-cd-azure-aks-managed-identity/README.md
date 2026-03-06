@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, azure, aks, managed-identity, gitops, kubernetes, rbac
+Tags: flux-cd, Azure, AKS, managed-identity, GitOps, Kubernetes, RBAC
 
 Description: A step-by-step guide to deploying Flux CD on Azure Kubernetes Service using managed identities for secure, passwordless authentication.
 

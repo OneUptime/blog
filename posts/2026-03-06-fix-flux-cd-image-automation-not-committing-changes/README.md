@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, image automation, gitops, kubernetes, troubleshooting, image update automation
+Tags: Flux CD, Image Automation, GitOps, Kubernetes, Troubleshooting, image update automation
 
 Description: A practical guide to diagnosing and fixing Flux CD ImageUpdateAutomation issues where image updates are detected but never committed back to your Git repository.
 

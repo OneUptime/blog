@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, FluxCD, GitOps, Kubernetes
+Tags: OpenTelemetry, fluxcd, GitOps, Kubernetes
 
 Description: Set up FluxCD to continuously reconcile OpenTelemetry Collector configurations from a Git repository to your Kubernetes clusters.
 

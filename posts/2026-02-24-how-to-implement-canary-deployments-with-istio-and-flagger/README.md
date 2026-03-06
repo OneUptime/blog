@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Canary Deployment, Flagger, Progressive Delivery
+Tags: Istio, Kubernetes, Canary Deployment, flagger, Progressive Delivery
 
 Description: Step-by-step guide to implementing automated canary deployments using Istio for traffic splitting and Flagger for progressive delivery automation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, oci, artifacts, push, gitops, kubernetes, container-registry
+Tags: flux, fluxcd, OCI, Artifacts, Push, GitOps, Kubernetes, container-registry
 
 Description: A practical guide to pushing OCI artifacts using the flux push artifact command for GitOps workflows.
 

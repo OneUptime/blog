@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, cert-manager, csi driver, kubernetes, tls, certificates, security, gitops
+Tags: Flux CD, cert-manager, CSI Driver, Kubernetes, TLS, Certificates, Security, GitOps
 
 Description: A practical guide to deploying the cert-manager CSI driver on Kubernetes using Flux CD for automatic in-pod TLS certificate provisioning.
 
@@ -36,7 +36,7 @@ graph LR
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     cert-manager/

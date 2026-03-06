@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubecost, cost management, kubernetes, gitops, helm, monitoring
+Tags: Flux CD, Kubecost, Cost Management, Kubernetes, GitOps, Helm, Monitoring
 
 Description: A practical guide to deploying Kubecost for Kubernetes cost management using Flux CD and GitOps principles.
 
@@ -27,7 +27,7 @@ Before getting started, ensure you have the following:
 
 Organize your GitOps repository with the following structure:
 
-```
+```text
 clusters/
   production/
     kubecost/

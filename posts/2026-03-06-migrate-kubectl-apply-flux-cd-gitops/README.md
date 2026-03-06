@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubectl, migration, kubernetes, gitops, deployment, infrastructure as code
+Tags: Flux CD, kubectl, Migration, Kubernetes, GitOps, Deployment, Infrastructure as Code
 
 Description: A step-by-step guide to migrating from manual kubectl apply workflows to automated Flux CD GitOps-based deployment.
 

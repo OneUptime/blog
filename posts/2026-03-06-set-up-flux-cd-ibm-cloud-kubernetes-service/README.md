@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, ibm cloud, iks, kubernetes, gitops, ibm container registry
+Tags: Flux CD, IBM Cloud, IKS, Kubernetes, GitOps, ibm container registry
 
 Description: A complete guide to deploying Flux CD on IBM Cloud Kubernetes Service (IKS) with IBM Container Registry integration for a production-ready GitOps workflow.
 
@@ -134,7 +134,7 @@ kubectl get pods -n flux-system
 
 Expected output:
 
-```
+```text
 NAME                                       READY   STATUS    RESTARTS   AGE
 helm-controller-xxx                        1/1     Running   0          2m
 kustomize-controller-xxx                   1/1     Running   0          2m

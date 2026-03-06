@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kyverno, labels, kubernetes, gitops, policy, governance
+Tags: Flux CD, Kyverno, Labels, Kubernetes, GitOps, Policy, Governance
 
 Description: Learn how to enforce consistent Kubernetes labeling standards using Kyverno policies managed through Flux CD for better resource organization.
 

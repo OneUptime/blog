@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, canonical kubernetes, charmed kubernetes, juju, gitops, ubuntu, continuous delivery
+Tags: Flux CD, canonical kubernetes, charmed kubernetes, juju, GitOps, Ubuntu, Continuous Delivery
 
 Description: A comprehensive guide to deploying Flux CD on Canonical's Charmed Kubernetes, leveraging Juju for cluster management and Flux for GitOps workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, google cloud, artifact registry, oci, helm, docker, gitops, kubernetes, workload identity
+Tags: Flux CD, Google Cloud, Artifact Registry, OCI, Helm, Docker, GitOps, Kubernetes, Workload Identity
 
 Description: A step-by-step guide to configuring Flux CD to pull Docker images, Helm charts, and OCI artifacts from Google Artifact Registry using Workload Identity.
 

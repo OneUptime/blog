@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, jenkins, container images, ci/cd, gitops, kubernetes, docker, pipeline
+Tags: Flux CD, Jenkins, Container Images, CI/CD, GitOps, Kubernetes, Docker, Pipelines
 
 Description: A step-by-step guide to integrating Jenkins pipelines with Flux CD for automated container image building and GitOps deployments.
 

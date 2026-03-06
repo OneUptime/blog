@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, istio, virtualservice, service mesh, gitops, traffic management, kubernetes
+Tags: Flux CD, Istio, VirtualService, Service Mesh, GitOps, Traffic Management, Kubernetes
 
 Description: Learn how to manage Istio VirtualService resources with Flux CD for GitOps-driven traffic routing, canary deployments, and advanced traffic management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, uninstall, cleanup, cluster-management
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Uninstall, Cleanup, cluster-management
 
 Description: Learn how to use the flux uninstall command to safely and completely remove Flux CD from your Kubernetes cluster.
 
@@ -60,13 +60,13 @@ flux uninstall
 
 You will see a confirmation prompt:
 
-```
+```text
 Are you sure you want to delete Flux and its custom resource definitions: y
 ```
 
 After confirmation, the command proceeds:
 
-```
+```text
 > deleting components in flux-system namespace
 > Deployment/flux-system/helm-controller deleted
 > Deployment/flux-system/kustomize-controller deleted

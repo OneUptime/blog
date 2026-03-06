@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, karmada, multi-cluster, gitops, kubernetes, federation
+Tags: Flux CD, Karmada, Multi-Cluster, GitOps, Kubernetes, Federation
 
 Description: Learn how to combine Karmada's multi-cluster orchestration with Flux CD's GitOps capabilities for powerful multi-cluster management.
 
@@ -420,7 +420,7 @@ spec:
 
 Here is the recommended repository structure for a Flux + Karmada setup:
 
-```
+```text
 fleet-config/
   clusters/
     karmada/

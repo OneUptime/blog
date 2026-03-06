@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, cli, sources, gitops, kubernetes, flux-get, git-repository, helm-repository, oci
+Tags: flux, CLI, sources, GitOps, Kubernetes, flux-get, git-repository, helm-repository, OCI
 
 Description: A practical guide to using flux get sources commands to monitor and troubleshoot all source types in your Flux CD managed cluster.
 
@@ -32,7 +32,7 @@ flux get sources all -A
 
 Sample output:
 
-```
+```text
 NAME                              REVISION          SUSPENDED  READY  MESSAGE
 gitrepository/flux-system         main@sha1:abc123  False      True   stored artifact for revision 'main@sha1:abc1234'
 gitrepository/my-app              main@sha1:def456  False      True   stored artifact for revision 'main@sha1:def4567'
@@ -115,7 +115,7 @@ flux get sources chart -A
 
 Sample output:
 
-```
+```text
 NAME                                REVISION  SUSPENDED  READY  MESSAGE
 helmchart/flux-system-nginx         4.8.3     False      True   pulled 'nginx' chart with version '4.8.3'
 helmchart/flux-system-prometheus    45.0.0    False      True   pulled 'prometheus' chart with version '45.0.0'

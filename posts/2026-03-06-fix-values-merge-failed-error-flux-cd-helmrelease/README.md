@@ -1,10 +1,10 @@
-# How to Fix "values merge failed" Error in Flux CD HelmRelease
+# How to Fix 'values merge failed' Error in Flux CD HelmRelease
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, HelmRelease, Helm, Kubernetes, Troubleshooting, GitOps, Values Merge
 
-Description: A step-by-step guide to diagnosing and resolving the "values merge failed" error in Flux CD HelmRelease, covering values syntax issues, ConfigMap/Secret references, and schema validation.
+Description: A step-by-step guide to diagnosing and resolving the 'values merge failed' error in Flux CD HelmRelease, covering values syntax issues, ConfigMap/Secret references, and schema validation.
 
 ---
 

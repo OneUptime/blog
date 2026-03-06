@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, falco, runtime security, kubernetes, gitops, security, container security
+Tags: Flux CD, Falco, Runtime Security, Kubernetes, GitOps, Security, Container Security
 
 Description: A practical guide to deploying Falco runtime security on Kubernetes using Flux CD for GitOps-driven threat detection and response.
 

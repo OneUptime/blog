@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, repository structure, teams, gitops, kubernetes, multi-tenant, rbac
+Tags: Flux CD, Repository Structure, Team, GitOps, Kubernetes, Multi-Tenant, RBAC
 
 Description: A practical guide to organizing Git repositories per team for Flux CD, enabling team autonomy while maintaining platform-level governance.
 
@@ -43,7 +43,7 @@ graph TD
 
 ### Platform Repository (managed by platform team)
 
-```
+```text
 fleet-platform/
 ├── clusters/
 │   ├── production/
@@ -73,7 +73,7 @@ fleet-platform/
 
 ### Team Repository (managed by each team)
 
-```
+```text
 team-frontend/
 ├── apps/
 │   ├── base/

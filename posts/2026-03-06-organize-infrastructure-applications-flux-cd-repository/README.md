@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, infrastructure, applications, repository structure, gitops, kubernetes, separation of concerns
+Tags: Flux CD, Infrastructure, Application, Repository Structure, GitOps, Kubernetes, separation of concerns
 
 Description: A practical guide to separating infrastructure and application layers in a Flux CD repository for clear ownership, ordered deployments, and maintainable GitOps.
 
@@ -37,7 +37,7 @@ graph TD
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   ├── production/

@@ -1,8 +1,8 @@
-# How to Fix "SOPS decryption failed" Error in Flux CD
+# How to Fix 'SOPS decryption failed' Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, SOPS, Secrets, Encryption, GitOps, Troubleshooting, Kubernetes
+Tags: Flux CD, SOPS, Secret, Encryption, GitOps, Troubleshooting, Kubernetes
 
 Description: A step-by-step guide to diagnosing and resolving SOPS decryption failures in Flux CD, covering Age keys, GPG keys, and common configuration mistakes.
 
@@ -26,7 +26,7 @@ kubectl describe kustomization <name> -n flux-system
 
 You will typically see an error like:
 
-```
+```yaml
 Status:
   Conditions:
     - Type: Ready
@@ -69,7 +69,7 @@ kubectl create secret generic sops-age \
 
 The age key file should look like this:
 
-```
+```text
 # created: 2026-01-01T00:00:00Z
 # public key: age1abc123...
 AGE-SECRET-KEY-1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQ

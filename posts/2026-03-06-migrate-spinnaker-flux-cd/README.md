@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, spinnaker, migration, kubernetes, gitops, continuous delivery, deployment pipeline
+Tags: Flux CD, Spinnaker, Migration, Kubernetes, GitOps, Continuous Delivery, Deployment Pipeline
 
 Description: A comprehensive guide to migrating your Kubernetes deployment workflows from Spinnaker to Flux CD GitOps.
 

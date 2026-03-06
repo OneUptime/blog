@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, dependency updates, automation, renovate, dependabot, helm, kubernetes, gitops
+Tags: Flux CD, dependency updates, Automation, Renovate, Dependabot, Helm, Kubernetes, GitOps
 
 Description: A practical guide to automating Helm chart, container image, and infrastructure dependency updates in Flux CD repositories using Renovate and image automation controllers.
 

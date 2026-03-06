@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, redis, kubernetes, database, gitops, operator, redis-cluster, sentinel, caching
+Tags: Flux CD, Redis, Kubernetes, Database, GitOps, Operator, redis-cluster, Sentinel, Caching
 
 Description: A step-by-step guide to deploying the Redis Operator on Kubernetes using Flux CD for GitOps-managed Redis clusters with high availability.
 
@@ -26,7 +26,7 @@ Before you begin, ensure you have:
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     databases/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, cluster provisioning, gitops, kubernetes, multi-cluster, application deployment
+Tags: Flux CD, Cluster Provisioning, GitOps, Kubernetes, Multi-Cluster, Application Deployment
 
 Description: A complete guide to using Flux CD as the single control plane for both cluster provisioning and application deployment across your infrastructure.
 
@@ -25,7 +25,7 @@ This guide demonstrates a complete workflow from cluster creation to running app
 
 Organize your Git repository to separate concerns clearly.
 
-```
+```text
 fleet-infra/
 ├── clusters/
 │   ├── management/           # Management cluster config

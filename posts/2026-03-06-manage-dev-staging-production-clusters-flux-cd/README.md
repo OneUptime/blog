@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, development, staging, production, gitops, kubernetes, multi-environment
+Tags: Flux CD, Development, Staging, Production, GitOps, Kubernetes, Multi-Environment
 
 Description: Learn how to manage three-tier environments with Flux CD, covering progressive delivery from development through staging to production clusters.
 
@@ -37,7 +37,7 @@ graph LR
 
 ## Repository Structure
 
-```
+```text
 fleet-repo/
   base/
     apps/

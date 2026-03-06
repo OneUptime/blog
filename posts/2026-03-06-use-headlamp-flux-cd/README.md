@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, headlamp, dashboard, kubernetes, gitops, ui, cncf
+Tags: Flux CD, headlamp, Dashboard, Kubernetes, GitOps, UI, CNCF
 
 Description: A practical guide to using Headlamp as a Kubernetes dashboard with Flux CD plugin support for managing GitOps workflows.
 

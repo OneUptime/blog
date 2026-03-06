@@ -1,10 +1,10 @@
-# How to Fix "conflict" Error When Multiple Kustomizations Manage Same Resource
+# How to Fix 'conflict' Error When Multiple Kustomizations Manage Same Resource
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, Kustomization, Kubernetes, Troubleshooting, GitOps, Server-Side Apply, Conflict Resolution
 
-Description: A guide to resolving field ownership conflicts when multiple Flux CD Kustomizations attempt to manage the same Kubernetes resource, covering server-side apply, force configuration, and resource splitting.
+Description: A guide to resolving field ownership conflicts when multiple Flux CD Kustomizations manage the same Kubernetes resource using server-side apply and force configuration.
 
 ---
 
@@ -229,7 +229,7 @@ The cleanest approach is to ensure each resource is managed by exactly one Kusto
 
 ### Repository Structure
 
-```
+```text
 clusters/
   production/
     infrastructure.yaml    # Kustomization for infra

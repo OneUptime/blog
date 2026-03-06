@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, github actions, kubernetes manifests, kustomize, oci artifacts, ci/cd, manifest generation
+Tags: Flux CD, GitHub Actions, kubernetes manifests, Kustomize, oci artifacts, CI/CD, Manifest Generation
 
 Description: A practical guide to generating Kubernetes manifests in GitHub Actions CI pipelines and delivering them to Flux CD via OCI artifacts and kustomize overlays.
 

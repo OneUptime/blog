@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, monorepo, gitops, repository structure, kubernetes, best practices
+Tags: Flux CD, Monorepo, GitOps, Repository Structure, Kubernetes, Best Practices
 
 Description: A practical guide to structuring a monorepo for Flux CD GitOps, covering directory layout, multi-cluster support, and separation of concerns.
 
@@ -27,7 +27,7 @@ A monorepo works well when:
 
 Here is the top-level layout for a Flux CD monorepo:
 
-```
+```text
 flux-platform/
 ├── clusters/
 │   ├── production/
@@ -263,7 +263,7 @@ spec:
 
 For organizations running multiple production clusters, extend the clusters directory:
 
-```
+```text
 clusters/
 ├── production-us-east-1/
 │   ├── flux-system/
@@ -349,7 +349,7 @@ spec:
 
 Store encrypted secrets alongside the configurations they belong to:
 
-```
+```text
 infrastructure/
 ├── base/
 │   └── external-secrets/

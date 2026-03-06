@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, rollback, gitops, deployment strategy, kubernetes, disaster recovery
+Tags: Flux CD, Rollback, GitOps, Deployment Strategy, Kubernetes, Disaster Recovery
 
 Description: A comprehensive guide to implementing rollback strategies in Flux CD for safe and reliable Kubernetes deployments.
 

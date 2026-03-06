@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, cluster management, directory structure, multi-cluster, gitops, kubernetes, best practices
+Tags: Flux CD, Cluster Management, Directory Structure, Multi-Cluster, GitOps, Kubernetes, Best Practices
 
 Description: A practical guide to organizing your Flux CD repository around cluster directories for managing multiple Kubernetes clusters with clear separation and consistent deployments.
 
@@ -32,7 +32,7 @@ graph TD
 
 ## Basic Cluster Directory Layout
 
-```
+```text
 clusters/
 ├── production-us-east-1/
 │   ├── flux-system/
@@ -174,7 +174,7 @@ data:
 
 Some clusters need additional resources or different configurations. Use cluster-specific overlays:
 
-```
+```text
 clusters/
 ├── production-us-east-1/
 │   ├── flux-system/
@@ -208,7 +208,7 @@ spec:
 
 For organizations with clusters in multiple regions, use a naming convention that encodes the environment and region:
 
-```
+```text
 clusters/
 ├── prod-us-east-1/
 ├── prod-us-west-2/
@@ -243,7 +243,7 @@ data:
 
 For organizations with different cluster tiers (critical vs non-critical):
 
-```
+```text
 clusters/
 ├── tier-1/                    # Mission-critical production clusters
 │   ├── prod-primary/
@@ -292,7 +292,7 @@ spec:
 
 To reduce duplication across similar clusters, use a cluster template pattern:
 
-```
+```text
 clusters/
 ├── _templates/
 │   ├── production-cluster/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, breaking changes, upgrade, kubernetes, gitops, api migration, compatibility
+Tags: Flux CD, Breaking Changes, Upgrade, Kubernetes, GitOps, api migration, Compatibility
 
 Description: A detailed guide to identifying, preparing for, and resolving breaking changes when upgrading Flux CD to new major or minor versions.
 

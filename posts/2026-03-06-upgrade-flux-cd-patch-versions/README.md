@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, upgrade, patch version, kubernetes, gitops, maintenance, security patches
+Tags: Flux CD, Upgrade, patch version, Kubernetes, GitOps, Maintenance, security patches
 
 Description: A practical guide to upgrading Flux CD patch versions for bug fixes and security updates with minimal disruption.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, helm, migration, kubernetes, gitops, helm operator, helm controller
+Tags: Flux CD, Helm, Migration, Kubernetes, GitOps, helm operator, helm controller
 
 Description: A practical guide to migrating your Helm-based workloads from the legacy Flux Helm Operator to the Flux v2 Helm Controller.
 

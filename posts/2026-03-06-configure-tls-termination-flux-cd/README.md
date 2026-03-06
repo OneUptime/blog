@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, tls termination, kubernetes, gitops, networking, ssl, ingress, security
+Tags: Flux CD, TLS Termination, Kubernetes, GitOps, Networking, SSL, Ingress, Security
 
 Description: A detailed guide to configuring TLS termination strategies in Kubernetes using Flux CD for secure, GitOps-managed HTTPS traffic handling.
 

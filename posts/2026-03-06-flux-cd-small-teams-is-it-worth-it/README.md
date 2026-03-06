@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, small teams, devops, decision guide
+Tags: Flux CD, GitOps, Kubernetes, Small Teams, DevOps, decision guide
 
 Description: An honest assessment of whether Flux CD is worth adopting for small teams with limited DevOps resources.
 
@@ -16,10 +16,10 @@ For this guide, a small team is 2-10 engineers managing 1-3 Kubernetes clusters 
 
 ## The Real Cost of Adoption
 
-Setting up Flux CD takes about 1-2 hours for a basic installation. The learning curve is steeper — expect 1-2 weeks before the team is comfortable.
+Setting up Flux CD takes about 1-2 hours for a basic installation. The learning curve is steeper - expect 1-2 weeks before the team is comfortable.
 
 ```bash
-# Bootstrap Flux — this is the entire installation
+# Bootstrap Flux - this is the entire installation
 flux bootstrap github \
   --owner=my-org \
   --repository=fleet-infra \
@@ -75,7 +75,7 @@ spec:
 
 ### Automatic Drift Detection and Correction
 
-Someone on the team runs a manual kubectl command to fix a production issue. Without Flux, that change is untracked and will be overwritten by the next deploy — or worse, it will persist and cause confusion.
+Someone on the team runs a manual kubectl command to fix a production issue. Without Flux, that change is untracked and will be overwritten by the next deploy - or worse, it will persist and cause confusion.
 
 ```yaml
 # Flux continuously reconciles desired state from Git
@@ -128,7 +128,7 @@ spec:
 ```
 
 ```yaml
-# .sops.yaml — configure which files to encrypt
+# .sops.yaml - configure which files to encrypt
 creation_rules:
   # Encrypt all secret files with an age key
   - path_regex: .*.secret.yaml

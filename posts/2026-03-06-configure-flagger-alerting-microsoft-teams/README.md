@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, microsoft-teams, alerting, notifications, canary, kubernetes, gitops
+Tags: flux, flagger, microsoft-teams, Alerting, Notifications, Canary, Kubernetes, GitOps
 
 Description: How to set up Microsoft Teams notifications for Flagger canary deployments in Flux-managed Kubernetes clusters.
 
@@ -35,12 +35,12 @@ Create an incoming webhook connector in your Microsoft Teams channel.
 8. Copy the webhook URL
 
 The webhook URL will look like:
-```
+```yaml
 https://outlook.office.com/webhook/GUID@GUID/IncomingWebhook/GUID/GUID
 ```
 
 For Teams using Workflows (Power Automate), the URL format may differ:
-```
+```yaml
 https://prod-XX.westus.logic.azure.com:443/workflows/GUID/triggers/manual/paths/invoke?...
 ```
 

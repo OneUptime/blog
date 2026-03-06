@@ -1,10 +1,10 @@
-# How to Fix "health check failed" Error in Flux CD Kustomization
+# How to Fix 'health check failed' Error in Flux CD Kustomization
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, health check, kustomization, troubleshooting, kubernetes, gitops, readiness
+Tags: Flux CD, Health Check, Kustomization, Troubleshooting, Kubernetes, GitOps, Readiness
 
-Description: A detailed guide to diagnosing and resolving "health check failed" errors in Flux CD Kustomization resources caused by pod crashes, readiness probes, and timeouts.
+Description: A detailed guide to diagnosing and resolving 'health check failed' errors in Flux CD Kustomization resources caused by pod crashes, readiness probes, and timeouts.
 
 ---
 
@@ -26,11 +26,11 @@ kubectl describe kustomization <name> -n flux-system
 
 Typical error messages include:
 
-```
+```text
 Health check failed after 5m0s: Deployment/my-namespace/my-app: unhealthy
 ```
 
-```
+```text
 Health check failed after 5m0s: timeout waiting for: [Deployment/my-namespace/my-app status: 'InProgress']
 ```
 

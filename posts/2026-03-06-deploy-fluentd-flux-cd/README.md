@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, fluentd, logging, log aggregation, gitops, kubernetes, observability
+Tags: Flux CD, Fluentd, Logging, Log Aggregation, GitOps, Kubernetes, Observability
 
 Description: A practical guide to deploying Fluentd on Kubernetes using Flux CD for GitOps-managed log collection, transformation, and forwarding.
 
@@ -24,7 +24,7 @@ This guide covers deploying Fluentd as a DaemonSet on Kubernetes using Flux CD, 
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     fluentd/

@@ -1,10 +1,10 @@
-# How to Use Health Checks for Deployments in Flux
+# How to Use CEL Expressions for Deployment Health in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, deployments, health checks, kubernetes, gitops, monitoring
+Tags: Flux CD, CEL, Deployment, Health Check, Kubernetes, GitOps, Monitoring
 
-Description: A practical guide to configuring Deployment health checks in Flux CD Kustomizations to validate rollout completion before proceeding with dependent resources.
+Description: A practical guide to using CEL expressions for fine-grained Deployment health checks in Flux CD Kustomizations beyond the default readiness logic.
 
 ---
 

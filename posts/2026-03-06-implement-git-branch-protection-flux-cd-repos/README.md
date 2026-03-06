@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, git, branch protection, gitops, security, github, gitlab
+Tags: Flux CD, Git, Branch Protection, GitOps, Security, GitHub, GitLab
 
 Description: A practical guide to implementing Git branch protection rules for Flux CD repositories to prevent unauthorized changes to your Kubernetes infrastructure.
 

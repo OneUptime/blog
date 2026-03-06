@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, knative, serverless, gitops, event-driven
+Tags: Flux CD, Kubernetes, Knative, Serverless, GitOps, Event-Driven
 
 Description: A comprehensive guide to deploying and managing Knative Serving and Eventing resources using Flux CD for serverless workloads on Kubernetes.
 

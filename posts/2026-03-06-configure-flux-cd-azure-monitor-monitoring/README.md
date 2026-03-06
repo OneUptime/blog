@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, azure, azure-monitor, container-insights, monitoring, kubernetes, prometheus, grafana
+Tags: flux-cd, Azure, azure-monitor, container-insights, Monitoring, Kubernetes, Prometheus, Grafana
 
 Description: Learn how to monitor Flux CD deployments using Azure Monitor Container Insights, custom metrics, and alerting for GitOps reconciliation health.
 
@@ -207,7 +207,7 @@ spec:
 
 Flux CD exposes several important Prometheus metrics:
 
-```
+```text
 # Reconciliation metrics
 gotk_reconcile_condition       # Current condition of reconciliation (Ready/True/False)
 gotk_reconcile_duration_seconds # Time taken for reconciliation

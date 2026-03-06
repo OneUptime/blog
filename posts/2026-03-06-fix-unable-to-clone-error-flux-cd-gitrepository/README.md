@@ -1,10 +1,10 @@
-# How to Fix "unable to clone" Error in Flux CD GitRepository
+# How to Fix 'unable to clone' Error in Flux CD GitRepository
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Troubleshooting, Git, SSH, Kubernetes
 
-Description: A practical guide to diagnosing and fixing the "unable to clone" error in Flux CD GitRepository resources, covering SSH host keys, firewalls, and proxy configuration.
+Description: A practical guide to diagnosing and fixing the 'unable to clone' error in Flux CD GitRepository resources, covering SSH host keys, firewalls, and proxy configuration.
 
 ---
 
@@ -28,7 +28,7 @@ kubectl describe gitrepository <name> -n flux-system
 
 You will typically see a message like:
 
-```
+```yaml
 Status:
   Conditions:
     - Type: Ready

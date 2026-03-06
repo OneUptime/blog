@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitOps, Observability, Prometheus, Flux, ArgoCD
+Tags: GitOps, Observability, Prometheus, flux, ArgoCD
 
 Description: Learn how to monitor GitOps reconciliation with Prometheus metrics from Flux and ArgoCD to track deployment health, sync failures, and reconciliation performance.
 

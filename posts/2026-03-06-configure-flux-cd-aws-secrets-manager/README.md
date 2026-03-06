@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, aws, secrets manager, external secrets, kubernetes, gitops, security
+Tags: Flux CD, AWS, Secrets Manager, External Secrets, Kubernetes, GitOps, Security
 
 Description: Learn how to integrate Flux CD with AWS Secrets Manager using the External Secrets Operator to securely sync secrets from AWS into Kubernetes.
 

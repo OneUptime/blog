@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, grafana, grafana operator, kubernetes, gitops, dashboards, observability
+Tags: Flux CD, Grafana, grafana operator, Kubernetes, GitOps, Dashboard, Observability
 
 Description: A practical guide to deploying Grafana Operator on Kubernetes using Flux CD for GitOps-managed dashboards and data sources.
 

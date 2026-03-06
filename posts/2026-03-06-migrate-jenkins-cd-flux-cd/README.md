@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, jenkins, migration, continuous deployment, gitops, kubernetes
+Tags: Flux CD, Jenkins, Migration, Continuous Deployment, GitOps, Kubernetes
 
 Description: A practical guide to migrating your continuous deployment pipelines from Jenkins to Flux CD using GitOps principles.
 

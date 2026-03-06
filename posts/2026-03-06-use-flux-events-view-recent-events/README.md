@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, cli, events, monitoring, debugging, devops
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Events, Monitoring, Debugging, DevOps
 
 Description: A practical guide to using the flux events command to view and analyze recent events from Flux CD resources in your Kubernetes cluster.
 
@@ -55,7 +55,7 @@ flux events
 
 Sample output:
 
-```
+```text
 LAST SEEN   TYPE     REASON              OBJECT                          MESSAGE
 2m ago      Normal   ReconciliationSucceeded   Kustomization/my-app     Reconciliation finished in 1.2s
 3m ago      Normal   NewArtifact               GitRepository/my-repo    stored artifact for commit 'abc123'
@@ -202,7 +202,7 @@ flux reconcile helmrelease my-service
 
 Expected event sequence for a successful Helm release:
 
-```
+```text
 LAST SEEN   TYPE     REASON              OBJECT                    MESSAGE
 1s ago      Normal   Progressing         HelmRelease/my-service    reconciliation in progress
 5s ago      Normal   UpgradeSucceeded    HelmRelease/my-service    upgrade succeeded
@@ -223,7 +223,7 @@ flux events --for GitRepository/my-repo --types=Warning
 
 Common issues revealed by events:
 
-```
+```text
 # Authentication failure
 Warning  ArtifactFailed  GitRepository/my-repo  failed to checkout: authentication required
 

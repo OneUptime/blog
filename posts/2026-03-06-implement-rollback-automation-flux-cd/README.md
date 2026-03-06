@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, rollback, automation, disaster recovery
+Tags: Flux CD, GitOps, Kubernetes, Rollback, Automation, Disaster Recovery
 
 Description: A practical guide to implementing automated and manual rollback strategies with Flux CD to recover quickly from failed deployments.
 
 ---
 
-Failed deployments happen. The difference between a minor inconvenience and a major outage is how fast you can roll back. Flux CD provides multiple rollback mechanisms — from automatic Helm rollbacks to Git reverts. This guide covers how to implement each approach.
+Failed deployments happen. The difference between a minor inconvenience and a major outage is how fast you can roll back. Flux CD provides multiple rollback mechanisms - from automatic Helm rollbacks to Git reverts. This guide covers how to implement each approach.
 
 ## Rollback Philosophy in GitOps
 
@@ -57,7 +57,7 @@ spec:
     remediation:
       # Retry installation up to 3 times
       retries: 3
-  # Upgrade remediation — this is where rollback happens
+  # Upgrade remediation - this is where rollback happens
   upgrade:
     remediation:
       # Retry the upgrade up to 3 times
@@ -255,7 +255,7 @@ metadata:
 spec:
   providerRef:
     name: slack-rollbacks
-  # Alert on errors — these include failed reconciliations
+  # Alert on errors - these include failed reconciliations
   eventSeverity: error
   eventSources:
     - kind: HelmRelease
@@ -271,7 +271,7 @@ Create a standardized rollback procedure for your team.
 
 ```bash
 #!/bin/bash
-# rollback.sh — Standardized rollback script
+# rollback.sh - Standardized rollback script
 # Usage: ./rollback.sh <commit-to-revert>
 
 set -euo pipefail
@@ -347,7 +347,7 @@ spec:
   values:
     image:
       repository: ghcr.io/my-org/my-app
-      # Pin to an exact image tag — never use 'latest'
+      # Pin to an exact image tag - never use 'latest'
       tag: "2.0.0"
 ```
 
@@ -398,7 +398,7 @@ flux events --for kustomization/staging-apps
 ## Best Practices
 
 1. Always use `remediateLastFailure: true` on HelmReleases for automatic rollback.
-2. Never use `latest` image tags — pin exact versions so rollbacks have a clear target.
+2. Never use `latest` image tags - pin exact versions so rollbacks have a clear target.
 3. Use Git reverts for rollbacks instead of force-pushing or deleting commits.
 4. Configure health checks on all production Kustomizations with appropriate timeouts.
 5. Set up rollback notifications so the team is immediately aware of issues.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, ingress, nginx, gitops, tls, load balancing
+Tags: Flux CD, Kubernetes, Ingress, NGINX, GitOps, TLS, Load Balancing
 
 Description: A practical guide to managing Kubernetes Ingress resources with Flux CD, covering NGINX Ingress Controller setup, TLS, and advanced routing patterns.
 

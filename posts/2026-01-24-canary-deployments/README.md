@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Canary Deployment, Kubernetes, Progressive Delivery, Argo Rollouts, Flagger, DevOps, CI/CD
+Tags: Canary Deployment, Kubernetes, Progressive Delivery, Argo Rollouts, flagger, DevOps, CI/CD
 
 Description: A complete guide to configuring canary deployments in Kubernetes using native resources, Argo Rollouts, and Flagger for safe, automated progressive delivery.
 

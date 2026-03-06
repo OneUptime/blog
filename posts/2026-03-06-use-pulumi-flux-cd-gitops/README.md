@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, pulumi, gitops, kubernetes, infrastructure as code, typescript
+Tags: Flux CD, Pulumi, GitOps, Kubernetes, Infrastructure as Code, TypeScript
 
 Description: A step-by-step guide to integrating Pulumi with Flux CD to manage both infrastructure provisioning and GitOps-driven application delivery.
 

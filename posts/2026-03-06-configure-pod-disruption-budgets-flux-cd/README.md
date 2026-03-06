@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, pod disruption budgets, gitops, high availability, pdb
+Tags: Flux CD, Kubernetes, Pod Disruption Budget, GitOps, High Availability, PDB
 
 Description: A practical guide to managing Pod Disruption Budgets through Flux CD for safe cluster maintenance and high availability.
 

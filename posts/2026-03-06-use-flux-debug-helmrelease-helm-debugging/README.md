@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, helm, debugging, helmrelease, troubleshooting, gitops, kubernetes
+Tags: Flux CD, Helm, Debugging, HelmRelease, Troubleshooting, GitOps, Kubernetes
 
 Description: A practical guide to using the flux debug helmrelease command to diagnose and resolve Helm release issues in Flux CD.
 

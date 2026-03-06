@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, nats, message queue, kubernetes, gitops, messaging
+Tags: Flux CD, NATS, Message Queue, Kubernetes, GitOps, Messaging
 
 Description: A practical guide to deploying NATS messaging system on Kubernetes using Flux CD and GitOps principles.
 

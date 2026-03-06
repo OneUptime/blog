@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, digitalocean, doks, docr, kubernetes, gitops, container registry
+Tags: Flux CD, DigitalOcean, DOKS, DOCR, Kubernetes, GitOps, Container Registry
 
 Description: A step-by-step guide to bootstrapping Flux CD on DigitalOcean Kubernetes with DigitalOcean Container Registry integration.
 

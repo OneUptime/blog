@@ -1,10 +1,10 @@
-# How to Fix "upgrade retries exhausted" Error in Flux CD HelmRelease
+# How to Fix 'upgrade retries exhausted' Error in Flux CD HelmRelease
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, helmrelease, upgrade retries exhausted, helm, rollback, troubleshooting, kubernetes, gitops
+Tags: Flux CD, HelmRelease, upgrade retries exhausted, Helm, Rollback, Troubleshooting, Kubernetes, GitOps
 
-Description: A practical guide to resolving the "upgrade retries exhausted" error in Flux CD HelmRelease with rollback and remediation strategies.
+Description: A practical guide to resolving the 'upgrade retries exhausted' error in Flux CD HelmRelease with rollback and remediation strategies.
 
 ---
 
@@ -29,13 +29,13 @@ helm history <release-name> -n <namespace>
 
 The error typically looks like:
 
-```
+```text
 upgrade retries exhausted
 ```
 
 With an underlying message such as:
 
-```
+```text
 Helm upgrade failed: cannot patch "my-deployment" with kind Deployment: ...
 ```
 

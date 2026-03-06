@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, cli, reconcile, sync, gitops, kubernetes, troubleshooting, force-sync
+Tags: flux, CLI, Reconcile, Sync, GitOps, Kubernetes, Troubleshooting, force-sync
 
 Description: A comprehensive guide to using the flux reconcile command to force synchronization of Flux resources including sources, kustomizations, helm releases, and image automation.
 

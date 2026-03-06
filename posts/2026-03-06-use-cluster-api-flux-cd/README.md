@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, cluster api, gitops, kubernetes, multi-cluster, infrastructure as code
+Tags: Flux CD, Cluster API, GitOps, Kubernetes, Multi-Cluster, Infrastructure as Code
 
 Description: Learn how to use Cluster API (CAPI) with Flux CD to declaratively provision and manage Kubernetes clusters through GitOps workflows.
 

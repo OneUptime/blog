@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, datadog, metrics, progressive delivery, canary, kubernetes, gitops, monitoring
+Tags: flux, flagger, Datadog, Metrics, Progressive Delivery, Canary, Kubernetes, GitOps, Monitoring
 
 Description: A step-by-step guide to configuring Flagger metrics analysis with Datadog for canary deployment validation using Datadog queries and API integration.
 

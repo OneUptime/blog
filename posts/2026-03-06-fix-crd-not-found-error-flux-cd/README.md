@@ -1,10 +1,10 @@
-# How to Fix "CRD not found" Error in Flux CD
+# How to Fix 'CRD not found' Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, CRD, CustomResourceDefinition, Kubernetes, Troubleshooting, GitOps, Kustomization
 
-Description: A practical guide to resolving "CRD not found" errors in Flux CD by configuring proper installation ordering and dependencies between Kustomizations.
+Description: A practical guide to resolving 'CRD not found' errors in Flux CD by configuring proper installation ordering and dependencies between Kustomizations.
 
 ---
 

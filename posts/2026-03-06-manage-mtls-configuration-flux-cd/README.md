@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, mtls, tls, service mesh, gitops, kubernetes, security, certificates
+Tags: Flux CD, mTLS, TLS, Service Mesh, GitOps, Kubernetes, Security, Certificates
 
 Description: A comprehensive guide to managing mutual TLS configuration across service meshes using Flux CD for automated certificate lifecycle management.
 

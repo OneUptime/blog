@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, eks distro, eks-d, kubernetes, gitops, aws, continuous delivery, self-managed
+Tags: Flux CD, eks distro, eks-d, Kubernetes, GitOps, AWS, Continuous Delivery, self-managed
 
 Description: A step-by-step guide to deploying Flux CD on Amazon EKS Distro for GitOps-driven application delivery on self-managed AWS-compatible Kubernetes clusters.
 

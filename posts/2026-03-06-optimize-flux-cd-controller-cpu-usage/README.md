@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, gitops, cpu optimization, performance tuning, resource management
+Tags: Flux CD, Kubernetes, GitOps, CPU Optimization, Performance Tuning, Resource Management
 
 Description: A practical guide to reducing CPU consumption of Flux CD controllers through reconciliation tuning, concurrency limits, and efficient resource configuration.
 

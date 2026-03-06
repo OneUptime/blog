@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, externalartifact, gitops, kubernetes, artifacts, sources, best practices
+Tags: Flux CD, externalartifact, GitOps, Kubernetes, Artifacts, sources, Best Practices
 
-Description: A practical guide to using the ExternalArtifact resource in Flux CD for referencing artifacts produced by external controllers and custom integrations not natively supported by Flux source controllers.
+Description: A practical guide to using the ExternalArtifact resource in Flux CD for referencing artifacts from external systems not natively supported by Flux source controllers.
 
 ---
 

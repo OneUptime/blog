@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, freelens, kubernetes, cluster management, gitops, desktop, ide
+Tags: Flux CD, freelens, Kubernetes, Cluster Management, GitOps, Desktop, IDE
 
 Description: A practical guide to using Freelens as a desktop Kubernetes IDE alongside Flux CD for visual cluster management and GitOps monitoring.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, troubleshooting, logging, kubernetes, gitops, debugging
+Tags: Flux CD, Troubleshooting, Logging, Kubernetes, GitOps, Debugging
 
 Description: Learn how to increase log verbosity in Flux CD controllers to diagnose and resolve issues faster with detailed debug output.
 

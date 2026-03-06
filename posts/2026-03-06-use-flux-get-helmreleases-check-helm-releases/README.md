@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, cli, helm, helmrelease, gitops, kubernetes, flux-get, troubleshooting
+Tags: flux, CLI, Helm, HelmRelease, GitOps, Kubernetes, flux-get, Troubleshooting
 
 Description: A practical guide to using flux get helmreleases to monitor, inspect, and troubleshoot Helm releases managed by Flux CD.
 
@@ -38,7 +38,7 @@ flux get hr -A
 
 Sample output:
 
-```
+```text
 NAMESPACE    NAME          REVISION  SUSPENDED  READY  MESSAGE
 flux-system  nginx         4.8.3     False      True   Helm install succeeded
 flux-system  prometheus    45.0.0    False      True   Helm upgrade succeeded

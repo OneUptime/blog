@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, argocd, ecosystem, community, gitops, kubernetes, comparison, cncf, open source
+Tags: Flux CD, ArgoCD, ecosystem, Community, GitOps, Kubernetes, Comparison, CNCF, Open Source
 
 Description: A comprehensive comparison of the ecosystem and community around Flux CD and ArgoCD, covering governance, adoption, integrations, extensions, and community support.
 
@@ -36,7 +36,7 @@ Both projects have achieved CNCF Graduated status, which means they have met the
 
 ### Flux CD CNCF Journey
 
-```
+```yaml
 Sandbox: July 2019
 Incubating: March 2021
 Graduated: November 2022
@@ -46,7 +46,7 @@ Flux CD was one of the pioneering GitOps tools, originally created by Weaveworks
 
 ### ArgoCD CNCF Journey
 
-```
+```yaml
 Incubating: April 2020
 Graduated: December 2022
 ```

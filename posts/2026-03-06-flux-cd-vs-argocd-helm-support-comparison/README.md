@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, argocd, helm, gitops, kubernetes, comparison, helm charts, deployment
+Tags: Flux CD, ArgoCD, Helm, GitOps, Kubernetes, Comparison, Helm Charts, Deployment
 
 Description: A detailed comparison of Helm chart support in Flux CD and ArgoCD, covering chart management, values handling, lifecycle hooks, and deployment strategies.
 

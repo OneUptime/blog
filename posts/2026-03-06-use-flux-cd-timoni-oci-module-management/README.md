@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, timoni, oci, module management, kubernetes, gitops, cue
+Tags: Flux CD, timoni, OCI, Module Management, Kubernetes, GitOps, cue
 
 Description: Learn how to use Timoni with Flux CD to manage OCI-based Kubernetes modules using CUE language for type-safe configuration.
 

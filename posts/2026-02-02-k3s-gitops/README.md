@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, GitOps, Kubernetes, ArgoCD, Flux, DevOps, CI/CD, Infrastructure as Code, Lightweight Kubernetes
+Tags: K3s, GitOps, Kubernetes, ArgoCD, flux, DevOps, CI/CD, Infrastructure as Code, Lightweight Kubernetes
 
 Description: Learn how to implement GitOps workflows with K3s, the lightweight Kubernetes distribution.
 

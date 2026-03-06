@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, flux cd, blue-green mirroring, traffic mirroring, progressive delivery, kubernetes, gitops, istio
+Tags: flagger, Flux CD, blue-green mirroring, Traffic Mirroring, Progressive Delivery, Kubernetes, GitOps, Istio
 
 Description: A step-by-step guide to configuring blue-green deployments with traffic mirroring using Flagger and Flux CD for risk-free production testing.
 

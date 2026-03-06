@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kustomize, base, overlays, repository structure, gitops, kubernetes
+Tags: Flux CD, Kustomize, Base, Overlay, Repository Structure, GitOps, Kubernetes
 
 Description: A practical guide to organizing Kustomize base and overlay directories in a Flux CD repository for clean, maintainable multi-environment deployments.
 
@@ -30,7 +30,7 @@ The base contains the canonical resource definitions. Overlays reference the bas
 
 ## Basic Directory Structure
 
-```
+```text
 repository/
 ├── apps/
 │   ├── base/
@@ -246,7 +246,7 @@ spec:
 
 For complex applications, you can create intermediate bases that layer on top of each other:
 
-```
+```text
 apps/
 ├── base/
 │   └── my-app/              # Core application resources

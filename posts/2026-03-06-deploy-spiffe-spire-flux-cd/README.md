@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, spiffe, spire, kubernetes, security, zero trust, service identity, gitops
+Tags: Flux CD, SPIFFE, SPIRE, Kubernetes, Security, Zero Trust, Service Identity, GitOps
 
 Description: A practical guide to deploying SPIFFE/SPIRE on Kubernetes using Flux CD for workload identity and zero-trust service authentication.
 
@@ -41,7 +41,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 clusters/
   my-cluster/
     spire/

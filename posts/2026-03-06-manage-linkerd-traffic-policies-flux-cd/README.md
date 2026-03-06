@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, linkerd, traffic policy, service mesh, gitops, traffic management, kubernetes
+Tags: Flux CD, Linkerd, Traffic Policy, Service Mesh, GitOps, Traffic Management, Kubernetes
 
 Description: Learn how to manage Linkerd traffic policies with Flux CD for GitOps-driven traffic splitting, retries, timeouts, and authorization policies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, namespaces, resource organization, multi-tenancy
+Tags: Flux CD, GitOps, Kubernetes, Namespace, Resource Organization, Multi-Tenancy
 
 Description: Learn how to organize and manage Kubernetes namespace creation in your Flux CD repository with proper labeling, resource quotas, and dependency ordering.
 
@@ -18,7 +18,7 @@ This guide covers several strategies for organizing namespace creation in your F
 
 Flux CD applies resources from a Kustomization in a specific order, but if a namespace does not exist when Flux tries to create a resource in it, the deployment fails:
 
-```
+```yaml
 Error: namespaces "monitoring" not found
 ```
 
@@ -26,7 +26,7 @@ There are several ways to handle this, and this guide covers them all.
 
 ## Repository Structure
 
-```
+```text
 fleet-repo/
 ├── namespaces/
 │   ├── kustomization.yaml
@@ -170,7 +170,7 @@ spec:
 
 An alternative is to colocate namespace manifests with the resources that use them.
 
-```
+```text
 fleet-repo/
 ├── infrastructure/
 │   ├── cert-manager/

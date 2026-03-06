@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, certificate rotation, tls, cert-manager, kubernetes, gitops, security
+Tags: Flux CD, Certificate Rotation, TLS, cert-manager, Kubernetes, GitOps, Security
 
 Description: A practical guide to implementing automated TLS certificate rotation in Kubernetes using Flux CD and cert-manager for seamless certificate lifecycle management.
 

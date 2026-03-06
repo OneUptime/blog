@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, gitops, kubernetes, multi-region, deployment strategy, high availability
+Tags: Flux CD, GitOps, Kubernetes, Multi-Region, Deployment Strategy, High Availability
 
 Description: Learn how to organize your Flux CD Git repository for deploying applications across multiple geographic regions with region-specific configurations.
 
@@ -26,7 +26,7 @@ Multi-region setups introduce complexity around:
 
 ## Recommended Repository Structure
 
-```
+```text
 fleet-repo/
 ├── base/
 │   ├── apps/

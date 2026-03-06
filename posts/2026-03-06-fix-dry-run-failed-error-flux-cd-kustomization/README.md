@@ -1,10 +1,10 @@
-# How to Fix "dry-run failed" Error in Flux CD Kustomization
+# How to Fix 'dry-run failed' Error in Flux CD Kustomization
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kustomization, dry-run failed, server-side apply, troubleshooting, kubernetes, gitops, crds
+Tags: Flux CD, Kustomization, dry-run failed, Server-Side Apply, Troubleshooting, Kubernetes, GitOps, CRD
 
-Description: A comprehensive guide to resolving "dry-run failed" errors in Flux CD Kustomization caused by missing CRDs, API version mismatches, and RBAC issues.
+Description: A comprehensive guide to resolving 'dry-run failed' errors in Flux CD Kustomization caused by missing CRDs, API version mismatches, and RBAC issues.
 
 ---
 
@@ -29,13 +29,13 @@ kubectl logs -n flux-system deploy/kustomize-controller --tail=100
 
 The error typically appears as:
 
-```
+```text
 dry-run failed: no matches for kind "MyCustomResource" in version "example.com/v1alpha1"
 ```
 
 Or:
 
-```
+```text
 dry-run failed: the server could not find the requested resource
 ```
 
@@ -309,7 +309,7 @@ When multiple controllers manage the same field, server-side apply can report co
 
 ### Diagnosing
 
-```
+```yaml
 dry-run failed: Apply failed with 1 conflict: conflict with "helm-controller" using apps/v1: .spec.replicas
 ```
 

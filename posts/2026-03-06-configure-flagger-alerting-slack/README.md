@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, slack, alerting, notifications, canary, kubernetes, gitops
+Tags: flux, flagger, Slack, Alerting, Notifications, Canary, Kubernetes, GitOps
 
 Description: A practical guide to setting up Slack notifications for Flagger canary deployment events in Flux-managed Kubernetes clusters.
 
@@ -35,7 +35,7 @@ First, create an incoming webhook in your Slack workspace.
 8. Copy the webhook URL
 
 The webhook URL will look like:
-```
+```yaml
 https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, woodpecker ci, ci/cd, gitops, kubernetes, continuous integration, continuous delivery
+Tags: Flux CD, Woodpecker CI, CI/CD, GitOps, Kubernetes, Continuous Integration, Continuous Delivery
 
 Description: A practical guide to integrating Flux CD with Woodpecker CI for a complete GitOps-based CI/CD pipeline on Kubernetes.
 

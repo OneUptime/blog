@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, linkerd, service mesh, gitops, kubernetes, security, observability
+Tags: Flux CD, Linkerd, Service Mesh, GitOps, Kubernetes, Security, Observability
 
 Description: Learn how to deploy and manage the Linkerd service mesh on Kubernetes using Flux CD for a fully GitOps-driven lightweight service mesh installation.
 

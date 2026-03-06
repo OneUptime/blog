@@ -1,10 +1,10 @@
-# How to Fix "authentication required" Error in Flux CD
+# How to Fix 'authentication required' Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, authentication, ssh, https, github, troubleshooting, kubernetes, gitops
+Tags: Flux CD, Authentication, SSH, HTTPS, GitHub, Troubleshooting, Kubernetes, GitOps
 
-Description: Step-by-step guide to resolving the "authentication required" error in Flux CD when accessing Git repositories and Helm registries.
+Description: Step-by-step guide to resolving the 'authentication required' error in Flux CD when accessing Git repositories and Helm registries.
 
 ---
 
@@ -24,13 +24,13 @@ kubectl describe gitrepository <name> -n flux-system
 
 The error message usually looks like:
 
-```
+```text
 failed to checkout and determine revision: authentication required
 ```
 
 Or for Helm:
 
-```
+```text
 failed to fetch Helm repository index: 401 Unauthorized
 ```
 

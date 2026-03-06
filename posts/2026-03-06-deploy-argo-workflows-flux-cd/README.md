@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, argo workflows, kubernetes, gitops, helm, workflow engine, ci/cd
+Tags: Flux CD, Argo Workflows, Kubernetes, GitOps, Helm, workflow engine, CI/CD
 
 Description: A practical guide to deploying Argo Workflows on Kubernetes using Flux CD for GitOps-managed workflow orchestration.
 
@@ -23,7 +23,7 @@ This guide covers the full deployment of Argo Workflows, including the server, c
 
 ## Repository Structure
 
-```
+```text
 clusters/
   production/
     argo-workflows/

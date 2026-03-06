@@ -1,4 +1,4 @@
-# How to Fix "OCI pull failed" Error in Flux CD
+# How to Fix 'OCI pull failed' Error in Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -26,7 +26,7 @@ kubectl describe ocirepository <name> -n flux-system
 
 Common error messages:
 
-```
+```python
 Status:
   Conditions:
     - Type: Ready
@@ -42,7 +42,7 @@ Or for Helm charts stored in OCI registries:
 kubectl describe helmrepository <name> -n flux-system
 ```
 
-```
+```yaml
 Message: "failed to login to OCI registry 'oci://registry.example.com/charts':
   GET https://registry.example.com/v2/: denied: access forbidden"
 ```

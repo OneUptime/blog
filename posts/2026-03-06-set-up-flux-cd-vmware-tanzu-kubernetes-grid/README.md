@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, vmware tanzu, tkg, kubernetes, gitops, continuous delivery, vsphere
+Tags: Flux CD, VMware Tanzu, TKG, Kubernetes, GitOps, Continuous Delivery, vSphere
 
 Description: A practical guide to deploying Flux CD on VMware Tanzu Kubernetes Grid for enterprise GitOps workflows on vSphere infrastructure.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, alibaba cloud, ack, kubernetes, gitops, alibaba container registry
+Tags: Flux CD, Alibaba Cloud, ack, Kubernetes, GitOps, alibaba container registry
 
 Description: A practical guide to deploying Flux CD on Alibaba Cloud Container Service for Kubernetes (ACK) with Alibaba Container Registry integration.
 

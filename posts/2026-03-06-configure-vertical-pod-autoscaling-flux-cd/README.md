@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, kubernetes, vertical pod autoscaler, vpa, gitops, resource management
+Tags: Flux CD, Kubernetes, Vertical Pod Autoscaler, VPA, GitOps, Resource Management
 
 Description: A practical guide to deploying and managing Vertical Pod Autoscalers with Flux CD for optimal resource allocation in Kubernetes.
 

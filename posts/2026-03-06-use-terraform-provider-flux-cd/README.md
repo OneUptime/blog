@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, terraform, infrastructure as code, gitops, kubernetes, iac integration
+Tags: Flux CD, Terraform, Infrastructure as Code, GitOps, Kubernetes, iac integration
 
 Description: A comprehensive guide to using the Terraform provider for Flux CD to bootstrap and manage Flux installations as part of your infrastructure as code workflow.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux cd, vultr, vke, kubernetes, gitops, container registry, cloud
+Tags: Flux CD, Vultr, vke, Kubernetes, GitOps, Container Registry, Cloud
 
 Description: A step-by-step guide to bootstrapping Flux CD on Vultr Kubernetes Engine with Vultr Container Registry integration.
 
