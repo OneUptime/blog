@@ -357,31 +357,46 @@ Proactive alerting catches Vault issues before they cascade into application fai
 
 The following alert rules cover the most important Vault failure scenarios:
 
+**Important note on sealed Vault nodes:** When a Vault node is rebooted and remains sealed for an extended period, it may stop exposing metrics like `vault_core_unsealed` and `vault_core_active` entirely. This means alerts using expressions like `vault_core_unsealed == 0` will resolve on their own because the metric disappears rather than returning `0`. The `absent()` function also does not help here because it only fires when **all** time series for a metric are gone — if you have a three-node cluster and only one node loses the metric, `absent()` will not trigger.
+
+To handle this edge case, the alert rules below use a combined expression: the original condition **or** a check for instances that Prometheus can still scrape (`up == 1`) but are no longer reporting the expected metric. This ensures you get alerted whether the metric reports `0` or vanishes completely.
+
 ```yaml
 # vault-alerts.yml
 groups:
   - name: vault-critical
     rules:
-      # Alert immediately if any node becomes sealed
+      # Alert immediately if any node becomes sealed.
+      # The second clause catches nodes where the metric disappears
+      # entirely (e.g. after a reboot while sealed).
       - alert: VaultSealed
-        expr: vault_core_unsealed == 0
+        expr: >
+          vault_core_unsealed == 0
+          or
+          (up{job="vault"} == 1 unless on(instance, job) vault_core_unsealed)
         for: 0m
         labels:
           severity: critical
         annotations:
           summary: "Vault instance {{ $labels.instance }} is sealed"
-          description: "Vault node has been sealed. Immediate action required to unseal."
+          description: "Vault node is sealed or no longer exposing seal metrics. Immediate action required to unseal."
           runbook_url: "https://wiki.example.com/runbooks/vault-sealed"
 
-      # Alert if no active leader exists
+      # Alert if no active leader exists.
+      # Uses absent() as a fallback — if every node stops reporting
+      # vault_core_active, the sum() expression returns nothing
+      # instead of 0, so absent() catches the total-loss scenario.
       - alert: VaultNoLeader
-        expr: sum(vault_core_active) == 0
+        expr: >
+          sum(vault_core_active) == 0
+          or
+          absent(vault_core_active{job="vault"})
         for: 1m
         labels:
           severity: critical
         annotations:
           summary: "No active Vault leader"
-          description: "No Vault node is currently active. HA failover may have failed."
+          description: "No Vault node is currently active. HA failover may have failed or all nodes may have lost the metric."
 
       # Alert on multiple active nodes (split brain)
       - alert: VaultSplitBrain
