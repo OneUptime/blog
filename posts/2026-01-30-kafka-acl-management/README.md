@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kafka, Security, ACLs, Authorization
+Tags: Kafka, Security, ACL, Authorization
 
 Description: A comprehensive guide to building a Kafka ACL management system, covering lifecycle management, automation with Infrastructure-as-Code, multi-tenant governance, and monitoring strategies.
 

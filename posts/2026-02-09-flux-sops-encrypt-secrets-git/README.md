@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: flux, SOPS, Secrets Management, GitOps, Kubernetes Security
+Tags: Flux, SOPS, Secrets Management, GitOps, Kubernetes Security
 
 Description: Learn how to securely store encrypted Kubernetes secrets in Git using Flux and SOPS with support for AWS KMS, Azure Key Vault, and GCP KMS.
 

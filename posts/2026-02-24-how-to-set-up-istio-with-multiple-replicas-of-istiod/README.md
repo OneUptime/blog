@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Istiod, Replicas, High Availability, Kubernetes
+Tags: Istio, Istiod, Replica, High Availability, Kubernetes
 
 Description: A step-by-step guide to running multiple Istiod replicas for redundancy and how proxies distribute across control plane instances.
 

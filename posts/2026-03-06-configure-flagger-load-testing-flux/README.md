@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, Flagger, Load-testing, Canary, Kubernetes, GitOps, Performance, Testing
+Tags: Flux, Flagger, Load-testing, Canary, Kubernetes, GitOps, Performance, Testing
 
 Description: Learn how to set up automated load testing for Flagger canary deployments using built-in and external load testing tools with Flux.
 

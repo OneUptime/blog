@@ -103,8 +103,8 @@
 - ACID Transactions
 - ack
 - Acknowledgments
+- ACL
 - ACL Mask
-- ACLs
 - ACM
 - ACME
 - ACPI
@@ -4788,7 +4788,7 @@
 - Fluentd
 - FluentValidation
 - Flutter
-- flux
+- Flux
 - flux build
 - Flux CD
 - Flux CLI
@@ -6541,7 +6541,7 @@
 - kubeaudit
 - Kubebuilder
 - kubeconfig
-- Kubeconform
+- kubeconform
 - Kubecost
 - kubectl
 - kubectl Provider
@@ -9894,9 +9894,9 @@
 - ReplacingMergeTree
 - Replatform
 - Replay
+- Replica
 - Replica Placement
 - Replica Set
-- Replicas
 - Replicated Storage
 - Replicated Volume
 - Replication

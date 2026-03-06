@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, flux, Kustomize, GitOps, CI/CD, DevOps, Automation
+Tags: Kubernetes, Flux, Kustomize, GitOps, CI/CD, DevOps, Automation
 
 Description: A comprehensive guide to using Flux with Kustomize for GitOps-driven Kubernetes deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, Flagger, Canary, Database, Migration, Kubernetes, GitOps, Progressive-delivery
+Tags: Flux, Flagger, Canary, Database, Migration, Kubernetes, GitOps, Progressive-delivery
 
 Description: Learn how to safely perform database migrations using Flagger canary deployments in a Flux CD environment with backward-compatible schema changes.
 

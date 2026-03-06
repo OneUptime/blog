@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Security, ACLs, RBAC, Authentication, Authorization
+Tags: Redis, Security, ACL, RBAC, Authentication, Authorization
 
 Description: Learn how to secure Redis using Access Control Lists (ACLs) to implement role-based access control, limit command permissions, and restrict key access patterns.
 

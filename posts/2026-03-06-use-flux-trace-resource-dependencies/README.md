@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Traces, Dependencies, Debugging, DevOps
+Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Traces, Dependencies, Debugging, DevOps
 
 Description: A practical guide to using the flux trace command to trace the dependency chain and ownership of Kubernetes resources managed by Flux CD.
 

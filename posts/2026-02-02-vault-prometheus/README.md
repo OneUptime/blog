@@ -357,7 +357,7 @@ Proactive alerting catches Vault issues before they cascade into application fai
 
 The following alert rules cover the most important Vault failure scenarios:
 
-**Important note on sealed Vault nodes:** When a Vault node is rebooted and remains sealed for an extended period, it may stop exposing metrics like `vault_core_unsealed` and `vault_core_active` entirely. This means alerts using expressions like `vault_core_unsealed == 0` will resolve on their own because the metric disappears rather than returning `0`. The `absent()` function also does not help here because it only fires when **all** time series for a metric are gone — if you have a three-node cluster and only one node loses the metric, `absent()` will not trigger.
+**Important note on sealed Vault nodes:** When a Vault node is rebooted and remains sealed for an extended period, it may stop exposing metrics like `vault_core_unsealed` and `vault_core_active` entirely. This means alerts using expressions like `vault_core_unsealed == 0` will resolve on their own because the metric disappears rather than returning `0`. The `absent()` function also does not help here because it only fires when **all** time series for a metric are gone - if you have a three-node cluster and only one node loses the metric, `absent()` will not trigger.
 
 To handle this edge case, the alert rules below use a combined expression: the original condition **or** a check for instances that Prometheus can still scrape (`up == 1`) but are no longer reporting the expected metric. This ensures you get alerted whether the metric reports `0` or vanishes completely.
 
@@ -383,7 +383,7 @@ groups:
           runbook_url: "https://wiki.example.com/runbooks/vault-sealed"
 
       # Alert if no active leader exists.
-      # Uses absent() as a fallback — if every node stops reporting
+      # Uses absent() as a fallback - if every node stops reporting
       # vault_core_active, the sum() expression returns nothing
       # instead of 0, so absent() catches the total-loss scenario.
       - alert: VaultNoLeader

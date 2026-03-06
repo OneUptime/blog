@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, GitOps, flux, Continuous Deployment, Kubernetes, Azure, Infrastructure as Code
+Tags: AKS, GitOps, Flux, Continuous Deployment, Kubernetes, Azure, Infrastructure as Code
 
 Description: Step-by-step tutorial on setting up Flux v2 for GitOps-based continuous deployment on AKS clusters with automated reconciliation.
 

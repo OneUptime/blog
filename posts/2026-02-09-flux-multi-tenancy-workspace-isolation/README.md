@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: flux, GitOps, Multi-Tenancy, RBAC, Kubernetes
+Tags: Flux, GitOps, Multi-Tenancy, RBAC, Kubernetes
 
 Description: Learn how to configure Flux for multi-tenant Kubernetes environments with proper workspace isolation, RBAC controls, and tenant-specific Git repositories for secure self-service deployments.
 

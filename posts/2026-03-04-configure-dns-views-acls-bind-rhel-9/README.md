@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, BIND, DNS Views, ACLs, Linux
+Tags: RHEL, BIND, DNS Views, ACL, Linux
 
 Description: Master BIND's view and ACL features on RHEL to control DNS access and serve different responses based on client identity.
 

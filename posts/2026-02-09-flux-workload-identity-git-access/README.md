@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: flux, Workload Identity, Security, AWS, Azure, GCP
+Tags: Flux, Workload Identity, Security, AWS, Azure, GCP
 
 Description: Learn how to use cloud workload identity federation with Flux to access Git repositories securely without storing long-lived credentials or SSH keys.
 

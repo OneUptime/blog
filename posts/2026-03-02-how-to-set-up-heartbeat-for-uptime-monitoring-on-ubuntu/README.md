@@ -49,7 +49,7 @@ Edit `/etc/heartbeat/heartbeat.yml` to set up Elasticsearch output:
 
 # Heartbeat identity
 name: "heartbeat-monitor-01"
-tags: ["synthetic", "production"]
+tags: [Ubuntu, Monitoring, Heartbeat, Uptime, Elasticsearch]
 
 # Where to send data
 output.elasticsearch:

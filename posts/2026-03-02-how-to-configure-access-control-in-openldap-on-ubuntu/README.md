@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, OpenLDAP, Security, ACLs, LDAP
+Tags: Ubuntu, OpenLDAP, Security, ACL, LDAP
 
 Description: Configure OpenLDAP access control lists (ACLs) on Ubuntu to restrict who can read, write, and modify directory entries and attributes.
 

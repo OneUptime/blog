@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Stats, Statistics, Monitoring, DevOps
+Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Stats, Statistics, Monitoring, DevOps
 
 Description: A practical guide to using the flux stats command to view reconciliation statistics and health metrics for Flux CD resources in your cluster.
 

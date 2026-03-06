@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Data Lake Storage, ACLs, POSIX Permissions, Security, Access Control, Gen2
+Tags: Azure, Data Lake Storage, ACL, POSIX Permissions, Security, Access Control, Gen2
 
 Description: A practical guide to configuring POSIX-style access control lists and permissions on Azure Data Lake Storage Gen2 files and directories.
 

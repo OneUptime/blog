@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Events, Monitoring, Debugging, DevOps
+Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Events, Monitoring, Debugging, DevOps
 
 Description: A practical guide to using the flux events command to view and analyze recent events from Flux CD resources in your Kubernetes cluster.
 

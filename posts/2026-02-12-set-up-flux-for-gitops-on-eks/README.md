@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, EKS, Kubernetes, flux, GitOps
+Tags: AWS, EKS, Kubernetes, Flux, GitOps
 
 Description: A step-by-step guide to setting up Flux CD on Amazon EKS for automated GitOps deployments, including Helm integration and multi-cluster management.
 

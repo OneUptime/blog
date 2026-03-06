@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, WebFlux, Reactive, Mono, flux
+Tags: Java, Spring Boot, WebFlux, Reactive, Mono, Flux
 
 Description: A practical guide to building reactive applications with Spring WebFlux using Mono and Flux for non-blocking I/O.
 

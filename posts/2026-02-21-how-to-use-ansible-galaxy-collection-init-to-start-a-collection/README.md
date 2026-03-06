@@ -66,7 +66,7 @@ authors:
 description: your collection description
 license:
   - GPL-2.0-or-later
-tags: []
+tags: [Ansible, Ansible Galaxy, Collections, Development]
 dependencies: {}
 repository: http://example.com/repository
 documentation: http://docs.example.com

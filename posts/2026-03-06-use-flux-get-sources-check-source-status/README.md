@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, CLI, Sources, GitOps, Kubernetes, flux-get, git-repository, helm-repository, OCI
+Tags: Flux, CLI, Sources, GitOps, Kubernetes, flux-get, git-repository, helm-repository, OCI
 
 Description: A practical guide to using flux get sources commands to monitor and troubleshoot all source types in your Flux CD managed cluster.
 

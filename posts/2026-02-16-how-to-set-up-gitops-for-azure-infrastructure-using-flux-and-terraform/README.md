@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitOps, Azure, flux, Terraform, Kubernetes, Infrastructure as Code, CI/CD
+Tags: GitOps, Azure, Flux, Terraform, Kubernetes, Infrastructure as Code, CI/CD
 
 Description: Set up a GitOps workflow for Azure infrastructure using Flux CD and Terraform to enable declarative, git-driven infrastructure management with automated reconciliation.
 

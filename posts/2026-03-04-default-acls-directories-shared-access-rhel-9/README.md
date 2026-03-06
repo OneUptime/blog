@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, ACLs, Default ACLs, Shared Access, Linux
+Tags: RHEL, ACL, Default ACLs, Shared Access, Linux
 
 Description: Configure default ACLs on directories in RHEL so that new files and subdirectories automatically inherit the correct permissions for shared team access.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kubeconform, Validation, CI/CD, Schema Validation
+Tags: Kubernetes, kubeconform, Validation, CI/CD, Schema Validation
 
 Description: Learn how to use Kubeconform to validate Kubernetes manifests against schemas in CI/CD pipelines, catching configuration errors before deployment and ensuring manifest correctness.
 

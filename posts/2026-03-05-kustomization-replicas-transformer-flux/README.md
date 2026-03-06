@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, Kustomization, Replicas, Scaling
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, Kustomization, Replica, Scaling
 
 Description: Learn how to use the replicas field in kustomization.yaml to override replica counts for Deployments and StatefulSets across different environments managed by Flux CD.
 

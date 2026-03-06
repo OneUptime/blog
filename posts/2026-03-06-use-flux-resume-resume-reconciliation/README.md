@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Resume, Reconciliation, DevOps
+Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Resume, Reconciliation, DevOps
 
 Description: A practical guide to using the flux resume command to resume reconciliation of previously suspended Flux CD resources.
 

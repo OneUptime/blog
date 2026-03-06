@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Version, Upgrade, Compatibility
+Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Version, Upgrade, Compatibility
 
 Description: Learn how to use the flux version command to check Flux CD component versions, identify version mismatches, and plan upgrades.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, flux, GitOps, Kubernetes, DevOps, Infrastructure as Code, CI/CD
+Tags: Terraform, Flux, GitOps, Kubernetes, DevOps, Infrastructure as Code, CI/CD
 
 Description: Learn how to combine Terraform for infrastructure provisioning with Flux CD for GitOps-based continuous delivery on Kubernetes clusters.
 

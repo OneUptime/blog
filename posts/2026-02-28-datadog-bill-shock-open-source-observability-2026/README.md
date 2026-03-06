@@ -4,7 +4,7 @@ Author: [mallersjamie](https://www.github.com/mallersjamie)
 
 Tags: Observability, Open Source, Monitoring, Comparison, DevOps
 
-Description: Datadog bills are spiraling out of control for mid-market teams. Here is what a modern open source observability stack looks like in 2026, what it actually costs to run, and when it makes sense to switch.
+Description: Datadog bills are spiraling out of control for mid-market teams. Here is what a modern open source observability stack looks like in 2026, what it actually costs to run, and when it makes sense to...
 
 If you've opened a Datadog invoice recently and felt your stomach drop, you're not alone. "Datadog bill shock" has become such a common experience that it's practically a rite of passage for engineering teams scaling past their first few services.
 

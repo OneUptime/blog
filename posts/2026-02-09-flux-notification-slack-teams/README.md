@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: flux, Notifications, Slack, Microsoft Teams, GitOps
+Tags: Flux, Notifications, Slack, Microsoft Teams, GitOps
 
 Description: Learn how to set up Flux notification controller to send deployment alerts, reconciliation failures, and drift detection events to Slack, Microsoft Teams.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, Flagger, Troubleshooting, Canary, Rollback, Kubernetes, GitOps, Debugging
+Tags: Flux, Flagger, Troubleshooting, Canary, Rollback, Kubernetes, GitOps, Debugging
 
 Description: A comprehensive troubleshooting guide for diagnosing and resolving Flagger canary rollback issues in Flux-managed Kubernetes clusters.
 

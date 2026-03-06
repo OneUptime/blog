@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, HAProxy, ACLs, Routing, Linux
+Tags: RHEL, HAProxy, ACL, Routing, Linux
 
 Description: How to use HAProxy ACLs on RHEL to route traffic based on URL paths, headers, cookies, and other request properties.
 

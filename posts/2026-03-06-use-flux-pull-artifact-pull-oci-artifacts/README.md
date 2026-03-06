@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, OCI, Artifacts, pull, GitOps, Kubernetes, container-registry
+Tags: Flux, fluxcd, OCI, Artifacts, pull, GitOps, Kubernetes, container-registry
 
 Description: A practical guide to pulling OCI artifacts using the flux pull artifact command for local inspection and debugging.
 

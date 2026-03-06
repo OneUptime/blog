@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, CLI, Helm, HelmRelease, GitOps, Kubernetes, flux-get, Troubleshooting
+Tags: Flux, CLI, Helm, HelmRelease, GitOps, Kubernetes, flux-get, Troubleshooting
 
 Description: A practical guide to using flux get helmreleases to monitor, inspect, and troubleshoot Helm releases managed by Flux CD.
 

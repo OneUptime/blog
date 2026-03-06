@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: flux, GitOps, Image Automation, CI/CD, Kubernetes
+Tags: Flux, GitOps, Image Automation, CI/CD, Kubernetes
 
 Description: Learn how to set up Flux image automation to automatically detect new container image tags, update Git manifests.
 

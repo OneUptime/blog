@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Consul, ACLs, Security, HashiCorp, Access Control
+Tags: Consul, ACL, Security, HashiCorp, Access Control
 
 Description: Learn how to configure Consul's Access Control List (ACL) system to secure your service mesh, including token management, policy creation, and role-based access control.
 

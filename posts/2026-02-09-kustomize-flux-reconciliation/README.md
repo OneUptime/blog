@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kustomize, flux, GitOps
+Tags: Kubernetes, Kustomize, Flux, GitOps
 
 Description: Learn how to integrate Kustomize with Flux CD for continuous GitOps reconciliation enabling automated deployments and self-healing Kubernetes infrastructure.
 

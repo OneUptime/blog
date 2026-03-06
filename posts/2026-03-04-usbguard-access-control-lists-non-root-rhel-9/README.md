@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, USBGuard, ACLs, Linux
+Tags: RHEL, USBGuard, ACL, Linux
 
 Description: Configure USBGuard IPC access control lists on RHEL to allow non-root users and groups to manage USB device authorization without full root access.
 

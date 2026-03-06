@@ -224,7 +224,7 @@ fields:
 fields_under_root: true
 
 # Add tags
-tags: ["ubuntu", "web-tier"]
+tags: [Ubuntu, Monitoring, Elasticsearch, Metricbeat, Observability]
 ```
 
 ## Reducing Cardinality and Resource Usage

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitOps, flux, Rollback, Disaster Recovery, Git
+Tags: GitOps, Flux, Rollback, Disaster Recovery, Git
 
 Description: Learn how to implement safe and auditable rollback strategies in GitOps workflows using Git revert commands with Flux for quick disaster recovery.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, File Permissions, ACLs, Security, System Administration
+Tags: Ubuntu, File Permissions, ACL, Security, System Administration
 
 Description: Master extended Access Control Lists (ACLs) on Ubuntu using setfacl and getfacl to grant precise file permissions beyond the standard owner/group/other model.
 

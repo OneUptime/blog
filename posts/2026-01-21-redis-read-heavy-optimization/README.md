@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Performance, Read Optimization, Caching, Replicas, Scalability, High Throughput
+Tags: Redis, Performance, Read Optimization, Caching, Replica, Scalability, High Throughput
 
 Description: A comprehensive guide to optimizing Redis for read-heavy workloads, covering replica read scaling, caching strategies, data structure selection, client-side caching.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Azure, AKS, GitOps, flux
+Tags: Kubernetes, Azure, AKS, GitOps, Flux
 
 Description: Learn how to enable and configure the AKS GitOps extension with Flux CD for declarative cluster management, automated deployments, and multi-cluster configuration synchronization.
 

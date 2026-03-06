@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, Flagger, InfluxDB, Metrics, Canary, Kubernetes, GitOps, Time-Series
+Tags: Flux, Flagger, InfluxDB, Metrics, Canary, Kubernetes, GitOps, Time-Series
 
 Description: Step-by-step guide to using InfluxDB as a metrics provider for Flagger canary analysis in Flux-managed Kubernetes environments.
 

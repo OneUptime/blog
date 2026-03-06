@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Shards, Replicas, Scaling, Architecture, Performance
+Tags: Elasticsearch, Shards, Replica, Scaling, Architecture, Performance
 
 Description: A comprehensive guide to understanding shards and replicas in Elasticsearch.
 

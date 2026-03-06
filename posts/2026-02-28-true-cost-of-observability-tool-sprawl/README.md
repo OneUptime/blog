@@ -1,4 +1,4 @@
-# The True Cost of Observability Tool Sprawl
+# The True Cost of Observability Tool Sprawl in 2026
 
 Author: [mallersjamie](https://www.github.com/mallersjamie)
 

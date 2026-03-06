@@ -64,7 +64,7 @@ setup.kibana:
 
 # General settings
 name: "prod-webserver-01"  # How this host appears in events
-tags: ["production", "web-tier"]
+tags: [Ubuntu, Security, Auditbeat, Elasticsearch, Monitoring]
 
 fields:
   environment: production

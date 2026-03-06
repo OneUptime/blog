@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, GitOps, Kubernetes, CLI, Logs, Debugging, Monitoring, DevOps
+Tags: Flux, fluxcd, GitOps, Kubernetes, CLI, Logs, Debugging, Monitoring, DevOps
 
 Description: A practical guide to using the flux logs command to view and filter Flux CD controller logs for debugging and monitoring.
 

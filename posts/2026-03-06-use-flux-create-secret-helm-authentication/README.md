@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, Helm, Secret, Authentication, GitOps, Kubernetes, chart-repository
+Tags: Flux, fluxcd, Helm, Secret, Authentication, GitOps, Kubernetes, chart-repository
 
 Description: A practical guide to creating Helm repository authentication secrets with the flux create secret helm command.
 
