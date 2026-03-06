@@ -53,7 +53,7 @@ curl -X POST https://factory.talos.dev/schematics \
   }'
 
 # The response gives you a schematic ID
-# Use it: factory.talos.dev/installer/<schematic-id>:v1.7.0
+# Use it: factory.talos.dev/installer/<schematic-id>:v1.9.0
 ```
 
 For proprietary NVIDIA drivers (needed for older GPUs), use the non-free modules instead:
@@ -84,7 +84,7 @@ Use the custom installer image when provisioning the node:
 machine:
   type: worker
   install:
-    image: factory.talos.dev/installer/<schematic-id>:v1.7.0
+    image: factory.talos.dev/installer/<schematic-id>:v1.9.0
     disk: /dev/sda
   kernel:
     modules:
@@ -99,7 +99,7 @@ machine:
 ```bash
 # Upgrade with NVIDIA extensions
 talosctl -n 192.168.1.20 upgrade \
-  --image factory.talos.dev/installer/<schematic-with-nvidia>:v1.7.0
+  --image factory.talos.dev/installer/<schematic-with-nvidia>:v1.9.0
 ```
 
 ## Step 3: Configure Kernel Modules
@@ -141,7 +141,7 @@ machine:
                   runtime_type = "io.containerd.runc.v2"
                   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
                     BinaryName = "/usr/bin/nvidia-container-runtime"
-      path: /etc/cri/conf.d/20-nvidia.toml
+      path: /var/cri/conf.d/20-nvidia.toml
       permissions: 0644
       op: create
 ```
@@ -155,7 +155,7 @@ talosctl -n 192.168.1.20 patch machineconfig -p '[
     "path": "/machine/files/-",
     "value": {
       "content": "[plugins]\n  [plugins.\"io.containerd.grpc.v1.cri\"]\n    [plugins.\"io.containerd.grpc.v1.cri\".containerd]\n      default_runtime_name = \"nvidia\"\n      [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes]\n        [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.nvidia]\n          privileged_without_host_devices = false\n          runtime_engine = \"\"\n          runtime_root = \"\"\n          runtime_type = \"io.containerd.runc.v2\"\n          [plugins.\"io.containerd.grpc.v1.cri\".containerd.runtimes.nvidia.options]\n            BinaryName = \"/usr/bin/nvidia-container-runtime\"\n",
-      "path": "/etc/cri/conf.d/20-nvidia.toml",
+      "path": "/var/cri/conf.d/20-nvidia.toml",
       "permissions": 420,
       "op": "create"
     }
@@ -291,7 +291,7 @@ talosctl -n 192.168.1.20 get extensions -o yaml
 
 ```bash
 # Check containerd configuration
-talosctl -n 192.168.1.20 read /etc/cri/conf.d/20-nvidia.toml
+talosctl -n 192.168.1.20 read /var/cri/conf.d/20-nvidia.toml
 
 # Check containerd logs
 talosctl -n 192.168.1.20 logs containerd | grep -i nvidia

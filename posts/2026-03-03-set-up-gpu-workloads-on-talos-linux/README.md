@@ -120,7 +120,7 @@ machine:
                   runtime_type = "io.containerd.runc.v2"
                   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
                     BinaryName = "/usr/bin/nvidia-container-runtime"
-      path: /etc/cri/conf.d/20-nvidia.toml
+      path: /var/cri/conf.d/20-nvidia.toml
       op: create
 ```
 

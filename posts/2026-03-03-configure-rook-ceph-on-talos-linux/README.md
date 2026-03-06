@@ -43,7 +43,7 @@ machine:
         [Service]
         LimitNOFILE=1048576
       permissions: 0o644
-      path: /etc/cri/conf.d/rook-limits.conf
+      path: /var/cri/conf.d/rook-limits.conf
 ```
 
 Apply the configuration to your nodes:

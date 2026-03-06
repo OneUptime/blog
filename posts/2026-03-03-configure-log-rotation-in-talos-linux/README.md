@@ -98,7 +98,7 @@ machine:
     - content: |
         [plugins."io.containerd.grpc.v1.cri"]
           max_container_log_line_size = 16384
-      path: /etc/cri/conf.d/20-customization.toml
+      path: /var/cri/conf.d/20-customization.toml
       op: create
 ```
 

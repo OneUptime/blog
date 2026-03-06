@@ -107,7 +107,7 @@ machine:
           type = "snapshot"
           address = "/run/containerd-stargz-grpc/containerd-stargz-grpc.sock"
       permissions: 0o644
-      path: /etc/cri/conf.d/stargz.toml
+      path: /var/cri/conf.d/stargz.toml
       op: create
 ```
 

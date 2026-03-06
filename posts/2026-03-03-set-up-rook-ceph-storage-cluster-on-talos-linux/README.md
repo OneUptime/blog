@@ -48,7 +48,7 @@ machine:
         [plugins."io.containerd.grpc.v1.cri"]
           enable_unprivileged_ports = true
           enable_unprivileged_icmp = true
-      path: /etc/cri/conf.d/20-customization.part
+      path: /var/cri/conf.d/20-customization.part
       op: create
   kubelet:
     extraMounts:

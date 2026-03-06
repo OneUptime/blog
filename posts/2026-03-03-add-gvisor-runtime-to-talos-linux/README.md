@@ -309,7 +309,7 @@ machine:
           TypeUrl = "io.containerd.runsc.v1.options"
           ConfigPath = "/etc/gvisor/runsc.toml"
       permissions: 0o644
-      path: /etc/cri/conf.d/gvisor.toml
+      path: /var/cri/conf.d/gvisor.toml
       op: create
 ```
 

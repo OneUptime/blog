@@ -179,7 +179,7 @@ machine:
     - content: |
         [plugins."io.containerd.grpc.v1.cri"]
           max_container_log_line_size = 65536
-      path: /etc/cri/conf.d/20-max-log-line.toml
+      path: /var/cri/conf.d/20-max-log-line.toml
       op: create
 ```
 
