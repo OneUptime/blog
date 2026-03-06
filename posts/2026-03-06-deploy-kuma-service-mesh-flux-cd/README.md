@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, kuma, Service Mesh, GitOps, Kubernetes, Envoy, CNCF
+Tags: Flux CD, Kuma, Service Mesh, GitOps, Kubernetes, Envoy, CNCF
 
 Description: A step-by-step guide to deploying and managing the Kuma service mesh on Kubernetes using Flux CD for GitOps-driven operations.
 

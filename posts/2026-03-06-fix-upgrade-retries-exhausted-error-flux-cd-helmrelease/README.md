@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HelmRelease, upgrade retries exhausted, Helm, Rollback, Troubleshooting, Kubernetes, GitOps
+Tags: Flux CD, HelmRelease, Upgrade retries exhausted, Helm, Rollback, Troubleshooting, Kubernetes, GitOps
 
 Description: A practical guide to resolving the 'upgrade retries exhausted' error in Flux CD HelmRelease with rollback and remediation strategies.
 

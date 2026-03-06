@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Job Queue, GitOps, kueue, Batch Processing, Scheduling
+Tags: Flux CD, Kubernetes, Job Queue, GitOps, Kueue, Batch Processing, Scheduling
 
 Description: A practical guide to deploying and managing Kubernetes job queues using Kueue and Flux CD for GitOps-driven batch workload management.
 

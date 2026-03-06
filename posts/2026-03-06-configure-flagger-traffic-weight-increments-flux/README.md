@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, Canary, traffic, weight, increments, Kubernetes, progressive-delivery
+Tags: flux, Flagger, Canary, Traffic, Weight, Increments, Kubernetes, Progressive-delivery
 
 Description: A practical guide to configuring traffic weight increments for Flagger canary deployments in Flux CD to control the pace of progressive delivery.
 

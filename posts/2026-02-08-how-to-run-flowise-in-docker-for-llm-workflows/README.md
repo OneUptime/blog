@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, flowise, LLM, LangChain, Workflow, Chatbot, AI, Docker Compose
+Tags: Docker, Flowise, LLM, LangChain, Workflow, Chatbot, AI, Docker Compose
 
 Description: Deploy Flowise in Docker to build LLM workflows and chatbots with a visual drag-and-drop interface powered by LangChain and LlamaIndex.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, amazon eks, eks add-ons, GitOps, Kubernetes, AWS, vpc-cni, CoreDNS, kube-proxy
+Tags: Flux CD, Amazon eks, Eks add-ons, GitOps, Kubernetes, AWS, vpc-cni, CoreDNS, kube-proxy
 
 Description: Manage Amazon EKS add-ons lifecycle through Flux CD for consistent, version-controlled cluster configuration using GitOps.
 

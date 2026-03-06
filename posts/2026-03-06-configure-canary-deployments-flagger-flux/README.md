@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, Flux CD, Canary Deployment, Progressive Delivery, Kubernetes, GitOps, Traffic Shifting
+Tags: Flagger, Flux CD, Canary Deployment, Progressive Delivery, Kubernetes, GitOps, Traffic Shifting
 
 Description: Learn how to configure automated canary deployments with Flagger and Flux CD to gradually roll out new versions with traffic shifting and metric analysis.
 

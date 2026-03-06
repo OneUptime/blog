@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Next.js, App Router, React, Containerization, Multi-Stage Build, standalone
+Tags: Docker, Next.js, App Router, React, Containerization, Multi-Stage Build, Standalone
 
 Description: Complete guide to containerizing a Next.js 14+ App Router application with optimized Docker builds
 

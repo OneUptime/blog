@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Nextcloud, file-sharing, Self-Hosted, cloud-storage, docker-compose
+Tags: Docker, Nextcloud, File-sharing, Self-Hosted, Cloud-storage, docker-compose
 
 Description: Step-by-step guide to deploying Nextcloud with Docker Compose for self-hosted file sharing, sync, and collaboration.
 

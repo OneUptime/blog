@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Storage, graph driver, layer store, Overlay2, Volumes, Containers
+Tags: Docker, Storage, Graph driver, Layer store, Overlay2, Volumes, Containers
 
 Description: Understand Docker's storage architecture including graph drivers, the layer store, content-addressable storage, and how volumes work under the hood.
 

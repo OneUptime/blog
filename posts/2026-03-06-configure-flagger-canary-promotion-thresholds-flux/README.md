@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, Canary, Promotion, Thresholds, Kubernetes, GitOps, progressive-delivery
+Tags: flux, Flagger, Canary, Promotion, Thresholds, Kubernetes, GitOps, Progressive-delivery
 
 Description: A practical guide to configuring Flagger canary promotion thresholds in Flux CD to control when canary deployments are promoted to production.
 

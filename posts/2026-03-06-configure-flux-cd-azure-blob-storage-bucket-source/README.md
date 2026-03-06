@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, Azure, blob-storage, Bucket, GitOps, Kubernetes, managed-identity, sas-token
+Tags: flux-cd, Azure, Blob-storage, Bucket, GitOps, Kubernetes, Managed-identity, Sas-token
 
 Description: Learn how to use Azure Blob Storage as a Flux CD Bucket source for delivering Kubernetes manifests, with managed identity and SAS token authentication options.
 

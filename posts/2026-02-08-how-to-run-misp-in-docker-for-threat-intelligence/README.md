@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, misp, Threat Intelligence, Security, IoC, Containerization, cybersecurity
+Tags: Docker, Misp, Threat Intelligence, Security, IoC, Containerization, Cybersecurity
 
 Description: Deploy MISP threat intelligence platform in Docker to share, store, and correlate indicators of compromise across your security team.
 

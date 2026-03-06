@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, rate-limiting, NGINX, Traefik, ddos-protection, Throttling, Security
+Tags: Kubernetes, Ingress, Rate-limiting, NGINX, Traefik, Ddos-protection, Throttling, Security
 
 Description: A practical guide to implementing rate limiting at the Kubernetes ingress level using NGINX annotations, Traefik middleware, and best practices for DDoS protection.
 

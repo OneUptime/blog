@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, OPA, Gatekeeper, constraint templates, Rego, GitOps, Kubernetes, Policy
+Tags: Flux CD, OPA, Gatekeeper, Constraint templates, Rego, GitOps, Kubernetes, Policy
 
 Description: Learn how to create, organize, and manage OPA Gatekeeper ConstraintTemplates using Flux CD for scalable policy-as-code workflows.
 

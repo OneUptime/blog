@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Feature Flags, flagd, A/B Testing, Performance Metrics
+Tags: OpenTelemetry, Feature Flags, Flagd, A/B Testing, Performance Metrics
 
 Description: Use OpenTelemetry and flagd to connect feature flag variants with performance data, letting you measure the real impact of A/B tests.
 

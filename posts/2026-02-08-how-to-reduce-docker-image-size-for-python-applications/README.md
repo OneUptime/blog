@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Python, Image Optimization, Multi-Stage Build, slim images, Production
+Tags: Docker, Python, Image Optimization, Multi-Stage Build, Slim images, Production
 
 Description: Practical techniques to shrink Python Docker images from over 1GB down to under 100MB
 

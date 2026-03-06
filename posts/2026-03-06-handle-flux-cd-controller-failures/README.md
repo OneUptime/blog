@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, controller failures, Disaster Recovery, Kubernetes, GitOps, Reliability
+Tags: Flux CD, Controller failures, Disaster Recovery, Kubernetes, GitOps, Reliability
 
 Description: A practical guide to detecting, recovering from, and preventing Flux CD controller failures in production Kubernetes clusters.
 

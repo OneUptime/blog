@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, humanitec, platform orchestrator, Kubernetes, GitOps, Internal Developer Platform, IdP
+Tags: Flux CD, Humanitec, Platform orchestrator, Kubernetes, GitOps, Internal Developer Platform, IdP
 
 Description: A practical guide to integrating Flux CD with the Humanitec Platform Orchestrator for building an enterprise-grade internal developer platform.
 

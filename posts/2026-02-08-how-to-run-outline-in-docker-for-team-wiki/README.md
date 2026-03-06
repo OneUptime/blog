@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Outline, Wiki, team-collaboration, Self-Hosted, Documentation
+Tags: Docker, Outline, Wiki, Team-collaboration, Self-Hosted, Documentation
 
 Description: Deploy Outline wiki in Docker for a fast, beautiful team knowledge base with real-time collaboration and Slack integration.
 

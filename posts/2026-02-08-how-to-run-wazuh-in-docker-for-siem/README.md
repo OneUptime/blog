@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Wazuh, SIEM, Security Monitoring, Intrusion Detection, Containerization, cybersecurity
+Tags: Docker, Wazuh, SIEM, Security Monitoring, Intrusion Detection, Containerization, Cybersecurity
 
 Description: Set up Wazuh SIEM platform in Docker for host-based intrusion detection, log analysis, and security monitoring across your infrastructure.
 

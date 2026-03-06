@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Sharding, Horizontal Scaling, controller instances, Multi-Tenant
+Tags: Flux CD, Kubernetes, GitOps, Sharding, Horizontal Scaling, Controller instances, Multi-Tenant
 
 Description: A practical guide to configuring Flux CD controller sharding to distribute reconciliation workload across multiple instances using label selectors and dedicated deployments.
 

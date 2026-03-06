@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, passbolt, password-manager, team-security, Self-Hosted, GPG
+Tags: Docker, Passbolt, Password-manager, Team-security, Self-Hosted, GPG
 
 Description: Deploy Passbolt in Docker for secure team password sharing with GPG encryption, RBAC, and audit logging capabilities.
 

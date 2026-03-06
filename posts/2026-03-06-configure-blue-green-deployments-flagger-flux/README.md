@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, Flux CD, Blue-Green Deployment, Progressive Delivery, Kubernetes, GitOps, Zero Downtime
+Tags: Flagger, Flux CD, Blue-Green Deployment, Progressive Delivery, Kubernetes, GitOps, Zero Downtime
 
 Description: A practical guide to configuring blue-green deployments with Flagger and Flux CD for zero-downtime releases with instant traffic switching.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, flagger, Progressive Delivery, Canary, Blue-Green
+Tags: Flux CD, GitOps, Kubernetes, Flagger, Progressive Delivery, Canary, Blue-Green
 
 Description: An in-depth guide to progressive delivery with Flux CD and Flagger, covering canary releases, blue-green deployments, and automated rollback based on metrics.
 

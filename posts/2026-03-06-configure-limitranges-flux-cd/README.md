@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, LimitRange, Kubernetes, GitOps, Resource Management, namespace policies
+Tags: Flux CD, LimitRange, Kubernetes, GitOps, Resource Management, Namespace policies
 
 Description: A practical guide to configuring Kubernetes LimitRanges with Flux CD to enforce default resource constraints and prevent resource abuse.
 

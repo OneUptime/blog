@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Nuxt, Vue.js, Containerization, nitro, Multi-Stage Build
+Tags: Docker, Nuxt, Vue.js, Containerization, Nitro, Multi-Stage Build
 
 Description: Complete Docker setup for Nuxt 3 applications with Nitro server and optimized production images
 

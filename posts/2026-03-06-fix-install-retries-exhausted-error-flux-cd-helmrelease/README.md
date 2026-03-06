@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HelmRelease, install retries exhausted, Helm, Troubleshooting, Kubernetes, GitOps
+Tags: Flux CD, HelmRelease, Install retries exhausted, Helm, Troubleshooting, Kubernetes, GitOps
 
 Description: A step-by-step guide to resolving the 'install retries exhausted' error in Flux CD HelmRelease resources with remediation strategies.
 

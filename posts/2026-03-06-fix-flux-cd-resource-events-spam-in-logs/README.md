@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Events, Logging, spam, noise, GitOps, Kubernetes, Troubleshooting, log verbosity
+Tags: Flux CD, Events, Logging, Spam, Noise, GitOps, Kubernetes, Troubleshooting, Log verbosity
 
 Description: A practical guide to reducing Flux CD event noise and log spam by configuring event filtering, log verbosity, and reconciliation annotations.
 

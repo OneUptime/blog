@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Database, RDS, DynamoDB, Aurora, Redshift, decision guide
+Tags: AWS, Database, RDS, DynamoDB, Aurora, Redshift, Decision guide
 
 Description: A practical decision guide for choosing the right AWS database service for your workload and requirements
 

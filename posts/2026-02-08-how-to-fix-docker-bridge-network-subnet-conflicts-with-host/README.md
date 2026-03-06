@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Networking, Bridge Network, subnet conflict, IP Address, Troubleshooting, Linux
+Tags: Docker, Networking, Bridge Network, Subnet conflict, IP Address, Troubleshooting, Linux
 
 Description: Resolve Docker bridge network subnet conflicts with your host or corporate network by configuring custom address pools and network ranges.
 

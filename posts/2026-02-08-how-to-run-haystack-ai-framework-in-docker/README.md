@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, haystack, ai framework, RAG, LLM, NLP, Search, Docker Compose
+Tags: Docker, Haystack, Ai framework, RAG, LLM, NLP, Search, Docker Compose
 
 Description: Deploy the Haystack AI framework in Docker to build retrieval-augmented generation (RAG) pipelines, semantic search, and question answering systems.
 

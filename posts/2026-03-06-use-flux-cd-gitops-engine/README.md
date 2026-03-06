@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, gitops engine, Kubernetes, GitOps, Reconciliation, Automation, library
+Tags: Flux CD, Gitops engine, Kubernetes, GitOps, Reconciliation, Automation, Library
 
 Description: A practical guide to understanding and using the GitOps Engine library with Flux CD for building custom GitOps controllers and automation.
 

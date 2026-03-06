@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, Concurrency, Performance Tuning, controller configuration
+Tags: Flux CD, Kubernetes, GitOps, Concurrency, Performance Tuning, Controller configuration
 
 Description: A practical guide to configuring and tuning concurrency settings across Flux CD controllers to balance throughput, resource usage, and reconciliation speed.
 

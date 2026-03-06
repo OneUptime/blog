@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, GitOps, Kubernetes, CLI, tree, Artifacts, OCI, sources, DevOps
+Tags: flux, fluxcd, GitOps, Kubernetes, CLI, tree, Artifacts, OCI, Sources, DevOps
 
 Description: A practical guide to using the flux tree artifact command to view and explore the contents of OCI artifacts stored by Flux CD sources.
 

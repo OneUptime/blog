@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, reconciliation intervals, Performance Tuning, Drift Detection
+Tags: Flux CD, Kubernetes, GitOps, Reconciliation intervals, Performance Tuning, Drift Detection
 
 Description: A practical guide to configuring reconciliation intervals in Flux CD to balance drift detection speed, resource consumption, and API server load.
 

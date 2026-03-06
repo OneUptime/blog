@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TypeScript, Type Assertion, Type Casting, Type Safety, as keyword, angle bracket syntax
+Tags: TypeScript, Type Assertion, Type Casting, Type Safety, As keyword, Angle bracket syntax
 
 Description: Learn the difference between type assertions and type casting in TypeScript and when to use each approach safely.
 

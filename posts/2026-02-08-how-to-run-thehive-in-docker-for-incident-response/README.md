@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, thehive, Incident Response, Security, SOAR, Containerization, cybersecurity
+Tags: Docker, Thehive, Incident Response, Security, SOAR, Containerization, Cybersecurity
 
 Description: Learn how to deploy TheHive incident response platform in Docker for streamlined security operations and case management.
 

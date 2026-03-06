@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Git Tags, release promotion, Semantic Versioning
+Tags: Flux CD, GitOps, Kubernetes, Git Tags, Release promotion, Semantic Versioning
 
 Description: Learn how to use Git tags as release markers for promoting deployments across environments with Flux CD, enabling precise version control and rollback capabilities.
 

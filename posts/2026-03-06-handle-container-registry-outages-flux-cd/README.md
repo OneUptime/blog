@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Container Registry, outage, Disaster Recovery, Kubernetes, GitOps
+Tags: Flux CD, Container Registry, Outage, Disaster Recovery, Kubernetes, GitOps
 
 Description: A practical guide to keeping Flux CD deployments functional when container registries become unavailable.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitHub Actions, Container Images, Docker, GHCR, multi-arch, CI/CD
+Tags: Flux CD, GitHub Actions, Container Images, Docker, GHCR, Multi-arch, CI/CD
 
 Description: Learn how to build and push container images with GitHub Actions using multi-arch builds, tagging strategies, and GHCR integration for Flux CD deployments.
 

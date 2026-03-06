@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, aqua security, Container Security, Kubernetes, GitOps, Runtime Protection, Vulnerability Management
+Tags: Flux CD, Aqua security, Container Security, Kubernetes, GitOps, Runtime Protection, Vulnerability Management
 
 Description: A practical guide to deploying Aqua Security platform on Kubernetes using Flux CD for comprehensive cloud-native security management.
 

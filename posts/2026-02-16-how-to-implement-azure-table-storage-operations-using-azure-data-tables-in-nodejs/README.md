@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Table Storage, Node.js, data-tables, SDK, NoSQL, Cloud Storage, JavaScript
+Tags: Azure Table Storage, Node.js, Data-tables, SDK, NoSQL, Cloud Storage, JavaScript
 
 Description: Implement Azure Table Storage operations using the @azure/data-tables SDK in Node.js for lightweight structured data storage with efficient querying.
 

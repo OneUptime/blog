@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, kubewarden, Policy Engine, Kubernetes, GitOps, Security
+Tags: Flux CD, Kubewarden, Policy Engine, Kubernetes, GitOps, Security
 
 Description: A practical guide to deploying and managing Kubewarden policy engine using Flux CD for GitOps-driven policy enforcement in Kubernetes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, jan ai, LLM, local chat, AI, Self-Hosted, Docker Compose, Privacy
+Tags: Docker, Jan ai, LLM, Local chat, AI, Self-Hosted, Docker Compose, Privacy
 
 Description: Deploy Jan AI in Docker for a private, offline-capable local LLM chat application with model management and OpenAI-compatible API support.
 

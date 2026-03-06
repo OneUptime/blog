@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, source watcher, Custom Controllers, Kubernetes, GitOps, controller development, Operator
+Tags: Flux CD, Source watcher, Custom Controllers, Kubernetes, GitOps, Controller development, Operator
 
 Description: Learn how to build custom Kubernetes controllers that watch Flux CD source artifacts and react to changes, extending your GitOps pipeline with custom automation.
 

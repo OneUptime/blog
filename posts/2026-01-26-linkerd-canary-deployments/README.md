@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Linkerd, Canary Deployment, Kubernetes, Service Mesh, Progressive Delivery, flagger, Traffic Management
+Tags: Linkerd, Canary Deployment, Kubernetes, Service Mesh, Progressive Delivery, Flagger, Traffic Management
 
 Description: A practical guide to implementing canary deployments with Linkerd and Flagger for safe, automated progressive rollouts in Kubernetes.
 

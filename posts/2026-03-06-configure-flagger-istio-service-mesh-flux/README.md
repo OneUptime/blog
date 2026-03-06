@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, Flux CD, Istio, Service Mesh, Progressive Delivery, Kubernetes, GitOps, Traffic Management
+Tags: Flagger, Flux CD, Istio, Service Mesh, Progressive Delivery, Kubernetes, GitOps, Traffic Management
 
 Description: A comprehensive guide to configuring Flagger with Istio service mesh and Flux CD for advanced progressive delivery with traffic management.
 

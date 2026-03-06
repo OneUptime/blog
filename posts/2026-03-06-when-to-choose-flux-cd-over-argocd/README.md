@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ArgoCD, GitOps, Kubernetes, decision guide, Comparison
+Tags: Flux CD, ArgoCD, GitOps, Kubernetes, Decision guide, Comparison
 
 Description: A practical decision guide for choosing Flux CD over ArgoCD based on architecture, team needs, and deployment patterns.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ArgoCD, ecosystem, Community, GitOps, Kubernetes, Comparison, CNCF, Open Source
+Tags: Flux CD, ArgoCD, Ecosystem, Community, GitOps, Kubernetes, Comparison, CNCF, Open Source
 
 Description: A comprehensive comparison of the ecosystem and community around Flux CD and ArgoCD, covering governance, adoption, integrations, extensions, and community support.
 

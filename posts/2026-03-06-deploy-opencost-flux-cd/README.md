@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, opencost, Cost Management, Kubernetes, GitOps, Helm, CNCF, Monitoring
+Tags: Flux CD, Opencost, Cost Management, Kubernetes, GitOps, Helm, CNCF, Monitoring
 
 Description: A step-by-step guide to deploying OpenCost, the open-source CNCF cost monitoring tool, using Flux CD for GitOps-driven cost visibility.
 

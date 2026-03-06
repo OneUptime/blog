@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, directory-based promotion, Environment Management, Kustomize
+Tags: Flux CD, GitOps, Kubernetes, Directory-based promotion, Environment Management, Kustomize
 
 Description: Learn how to use directory-based promotion to manage environment progression in Flux CD, keeping all environments visible on a single branch.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: HAProxy, Kubernetes, High-Availability, load-balancing, Keepalived, tls-termination, Failover
+Tags: HAProxy, Kubernetes, High-Availability, Load-balancing, Keepalived, Tls-termination, Failover
 
 Description: A comprehensive guide to setting up HAProxy as a highly available load balancer in front of your Kubernetes cluster with health checks, failover, and TLS termination.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, CLI, cluster-status, GitOps, Kubernetes, flux-get, Troubleshooting
+Tags: flux, CLI, Cluster-status, GitOps, Kubernetes, flux-get, Troubleshooting
 
 Description: A comprehensive guide to using the flux get all command to check the status of all Flux resources in your Kubernetes cluster.
 

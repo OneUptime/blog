@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Rate Limiting, Token Bucket, Sliding Window, API, Security, governor, Performance
+Tags: Rust, Rate Limiting, Token Bucket, Sliding Window, API, Security, Governor, Performance
 
 Description: Learn how to implement rate limiting in Rust without external services like Redis. This guide covers token bucket and sliding window algorithms in pure Rust using the governor crate.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, flagger, Progressive Delivery, Kubernetes, Canary, Service Mesh
+Tags: Istio, Flagger, Progressive Delivery, Kubernetes, Canary, Service Mesh
 
 Description: How to set up automated progressive delivery using Flagger with Istio for canary deployments, automated traffic shifting, metric analysis, and rollback.
 

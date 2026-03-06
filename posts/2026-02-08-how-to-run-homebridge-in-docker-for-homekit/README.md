@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, homebridge, homekit, Apple, smart-home, IoT, Self-Hosted
+Tags: Docker, Homebridge, Homekit, Apple, Smart-home, IoT, Self-Hosted
 
 Description: Deploy Homebridge in Docker to expose non-HomeKit smart devices to Apple HomeKit for Siri control and automation.
 

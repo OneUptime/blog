@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, score, workload specification, Kubernetes, GitOps, Platform Engineering
+Tags: Flux CD, Score, Workload specification, Kubernetes, GitOps, Platform Engineering
 
 Description: Learn how to combine Flux CD with Score to create platform-agnostic workload specifications that deploy seamlessly to Kubernetes.
 

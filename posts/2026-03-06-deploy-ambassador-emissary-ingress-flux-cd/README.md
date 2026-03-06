@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Ambassador, emissary ingress, Kubernetes, GitOps, Networking, API Gateway
+Tags: Flux CD, Ambassador, Emissary ingress, Kubernetes, GitOps, Networking, API Gateway
 
 Description: A step-by-step guide to deploying Emissary Ingress (formerly Ambassador) in Kubernetes using Flux CD for GitOps-based API gateway management.
 

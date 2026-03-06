@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, Slack, Alerting, Notifications, Canary, Kubernetes, GitOps
+Tags: flux, Flagger, Slack, Alerting, Notifications, Canary, Kubernetes, GitOps
 
 Description: A practical guide to setting up Slack notifications for Flagger canary deployment events in Flux-managed Kubernetes clusters.
 

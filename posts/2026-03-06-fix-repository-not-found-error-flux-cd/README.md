@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, repository not found, GitRepository, Troubleshooting, Kubernetes, GitOps
+Tags: Flux CD, Repository not found, GitRepository, Troubleshooting, Kubernetes, GitOps
 
 Description: A comprehensive troubleshooting guide for resolving the 'repository not found' error in Flux CD GitRepository resources.
 

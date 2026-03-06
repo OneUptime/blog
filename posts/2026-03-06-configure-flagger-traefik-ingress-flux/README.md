@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, Traefik, Ingress, Progressive Delivery, Canary, Kubernetes, GitOps
+Tags: flux, Flagger, Traefik, Ingress, Progressive Delivery, Canary, Kubernetes, GitOps
 
 Description: Learn how to set up Flagger with Traefik Ingress Controller and Flux for progressive canary deployments using TraefikService weighted routing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Captive Portal, Networking, WiFi, nodogsplash
+Tags: Ubuntu, Captive Portal, Networking, WiFi, Nodogsplash
 
 Description: Set up a captive portal on Ubuntu using nodogsplash, creating a WiFi network that redirects unauthenticated users to a login or terms-of-service page before granting internet access.
 

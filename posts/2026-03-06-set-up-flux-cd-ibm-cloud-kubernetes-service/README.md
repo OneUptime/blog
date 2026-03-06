@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, IBM Cloud, IKS, Kubernetes, GitOps, ibm container registry
+Tags: Flux CD, IBM Cloud, IKS, Kubernetes, GitOps, Ibm container registry
 
 Description: A complete guide to deploying Flux CD on IBM Cloud Kubernetes Service (IKS) with IBM Container Registry integration for a production-ready GitOps workflow.
 

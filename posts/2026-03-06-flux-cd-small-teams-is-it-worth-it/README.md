@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Small Teams, DevOps, decision guide
+Tags: Flux CD, GitOps, Kubernetes, Small Teams, DevOps, Decision guide
 
 Description: An honest assessment of whether Flux CD is worth adopting for small teams with limited DevOps resources.
 

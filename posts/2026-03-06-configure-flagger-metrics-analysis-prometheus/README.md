@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, Prometheus, Metrics, Progressive Delivery, Canary, Kubernetes, GitOps, Observability
+Tags: flux, Flagger, Prometheus, Metrics, Progressive Delivery, Canary, Kubernetes, GitOps, Observability
 
 Description: A detailed guide to configuring Flagger metrics analysis with Prometheus for canary deployment validation including built-in and custom metric templates.
 

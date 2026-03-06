@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, Flux CD, Progressive Delivery, Canary Deployment, Kubernetes, GitOps, Service Mesh
+Tags: Flagger, Flux CD, Progressive Delivery, Canary Deployment, Kubernetes, GitOps, Service Mesh
 
 Description: A step-by-step guide to installing and configuring Flagger with Flux CD for progressive delivery on Kubernetes.
 

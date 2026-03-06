@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Skaffold, Kubernetes, GitOps, Development Workflow, ci cd
+Tags: Flux CD, Skaffold, Kubernetes, GitOps, Development Workflow, Ci cd
 
 Description: Learn how to combine Skaffold for local development with Flux CD for production GitOps to create a seamless development-to-production workflow.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Progressive Delivery, Canary, flagger, Kubernetes
+Tags: Istio, Progressive Delivery, Canary, Flagger, Kubernetes
 
 Description: Implement automated progressive delivery with Istio using canary releases, blue-green deployments, and automated rollback based on metrics.
 

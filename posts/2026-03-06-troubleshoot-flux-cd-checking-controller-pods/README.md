@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Troubleshooting, Kubernetes, controller pods, Debugging, GitOps
+Tags: Flux CD, Troubleshooting, Kubernetes, Controller pods, Debugging, GitOps
 
 Description: Learn how to inspect Flux CD controller pods, analyze logs, check restart counts, and monitor resource usage to diagnose controller-level issues.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, Gateway API, Progressive Delivery, Canary, Kubernetes, GitOps, HTTPRoute
+Tags: flux, Flagger, Gateway API, Progressive Delivery, Canary, Kubernetes, GitOps, HTTPRoute
 
 Description: A practical guide to configuring Flagger with the Kubernetes Gateway API and Flux for progressive canary deployments using HTTPRoute traffic splitting.
 

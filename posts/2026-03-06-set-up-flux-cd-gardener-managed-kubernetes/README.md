@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Gardener, Kubernetes, GitOps, SAP, managed kubernetes, Continuous Delivery, Multi-Cloud
+Tags: Flux CD, Gardener, Kubernetes, GitOps, SAP, Managed kubernetes, Continuous Delivery, Multi-Cloud
 
 Description: A practical guide to deploying Flux CD on SAP Gardener managed Kubernetes clusters for GitOps-driven application delivery across multiple cloud providers.
 

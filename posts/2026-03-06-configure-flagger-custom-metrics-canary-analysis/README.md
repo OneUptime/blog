@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, custom-metrics, Canary, Prometheus, Kubernetes, GitOps, Observability
+Tags: flux, Flagger, custom-metrics, Canary, Prometheus, Kubernetes, GitOps, Observability
 
 Description: A detailed guide to creating and using custom metrics for Flagger canary analysis with Prometheus in Flux-managed Kubernetes clusters.
 

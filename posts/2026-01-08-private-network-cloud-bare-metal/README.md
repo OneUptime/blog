@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: hybrid-cloud, VPN, IPsec, private-networking, bare-metal, cloud-connectivity, direct-connect, Routing
+Tags: Hybrid-cloud, VPN, IPsec, Private-networking, Bare-metal, Cloud-connectivity, Direct-connect, Routing
 
 Description: A comprehensive guide to establishing secure private network connectivity between cloud providers and on-premises bare metal infrastructure for hybrid cloud deployments.
 

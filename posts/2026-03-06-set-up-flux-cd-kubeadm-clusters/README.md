@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, kubeadm, Kubernetes, GitOps, Continuous Delivery, self-managed, Bare Metal
+Tags: Flux CD, kubeadm, Kubernetes, GitOps, Continuous Delivery, Self-managed, Bare Metal
 
 Description: A hands-on guide to installing Flux CD on self-managed Kubernetes clusters bootstrapped with kubeadm for GitOps-driven deployments.
 

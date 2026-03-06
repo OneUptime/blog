@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Unix Socket, ipc, Containers, Volumes, inter-process communication, Performance
+Tags: Docker, Unix Socket, ipc, Containers, Volumes, Inter-process communication, Performance
 
 Description: Learn how to use Unix sockets for fast, low-latency communication between Docker containers on the same host.
 

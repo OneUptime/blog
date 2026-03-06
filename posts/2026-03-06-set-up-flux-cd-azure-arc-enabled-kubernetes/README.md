@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux-cd, Azure, azure-arc, Kubernetes, GitOps, hybrid-cloud, Multi-Cluster
+Tags: flux-cd, Azure, azure-arc, Kubernetes, GitOps, Hybrid-cloud, Multi-Cluster
 
 Description: A step-by-step guide to setting up Flux CD on Azure Arc-enabled Kubernetes clusters for hybrid and multi-cloud GitOps management.
 

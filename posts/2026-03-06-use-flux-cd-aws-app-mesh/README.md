@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, AWS App Mesh, Service Mesh, Canary Deployment, flagger, Kubernetes, GitOps
+Tags: Flux CD, AWS App Mesh, Service Mesh, Canary Deployment, Flagger, Kubernetes, GitOps
 
 Description: Deploy and manage AWS App Mesh with Flux CD, including virtual services configuration and progressive delivery with Flagger.
 

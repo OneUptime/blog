@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Build, DNS, could not resolve host, Troubleshooting, Networking, Dockerfile
+Tags: Docker, Build, DNS, Could not resolve host, Troubleshooting, Networking, Dockerfile
 
 Description: Fix Docker build failures caused by DNS resolution errors with practical solutions for daemon configuration, build arguments, and network settings.
 

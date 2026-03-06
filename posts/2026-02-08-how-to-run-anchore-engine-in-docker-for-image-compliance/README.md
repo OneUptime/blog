@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, anchore, Image Scanning, Compliance, Vulnerability Scanning, Container Security, DevSecOps
+Tags: Docker, Anchore, Image Scanning, Compliance, Vulnerability Scanning, Container Security, DevSecOps
 
 Description: Deploy Anchore Engine in Docker to scan container images for vulnerabilities, enforce compliance policies, and secure your CI/CD pipeline.
 

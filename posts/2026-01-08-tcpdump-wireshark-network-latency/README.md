@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: tcpdump, Wireshark, Network Latency, Packet Analysis, Troubleshooting, TCP, Networking, Performance, timing analysis
+Tags: tcpdump, Wireshark, Network Latency, Packet Analysis, Troubleshooting, TCP, Networking, Performance, Timing analysis
 
 Description: A practical guide to capturing and analyzing network traffic with tcpdump and Wireshark to identify and resolve latency issues in distributed systems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, photoprism, photos, Self-Hosted, AI, image-management
+Tags: Docker, Photoprism, Photos, Self-Hosted, AI, image-management
 
 Description: Set up PhotoPrism in Docker to organize and browse your photo library with AI-powered face recognition and auto-tagging.
 

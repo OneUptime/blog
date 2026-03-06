@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kustomization, dry-run failed, Server-Side Apply, Troubleshooting, Kubernetes, GitOps, CRD
+Tags: Flux CD, Kustomization, Dry-run failed, Server-Side Apply, Troubleshooting, Kubernetes, GitOps, CRD
 
 Description: A comprehensive guide to resolving 'dry-run failed' errors in Flux CD Kustomization caused by missing CRDs, API version mismatches, and RBAC issues.
 

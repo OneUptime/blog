@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, SBOM, Compliance, Supply Chain Security, Syft, Trivy, software bill of materials
+Tags: Docker, SBOM, Compliance, Supply Chain Security, Syft, Trivy, Software bill of materials
 
 Description: Generate and manage Software Bills of Materials (SBOMs) for Docker containers to meet regulatory compliance requirements.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, tautulli, Plex, Monitoring, Analytics, Self-Hosted, media-server
+Tags: Docker, Tautulli, Plex, Monitoring, Analytics, Self-Hosted, Media-server
 
 Description: Deploy Tautulli in Docker to monitor your Plex Media Server with detailed analytics, stream tracking, and custom notifications.
 

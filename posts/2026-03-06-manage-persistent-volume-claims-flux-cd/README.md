@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, persistent volume claims, PVC, Storage, GitOps
+Tags: Flux CD, Kubernetes, Persistent volume claims, PVC, Storage, GitOps
 
 Description: A practical guide to managing Kubernetes PersistentVolumeClaims and storage resources with Flux CD in a GitOps workflow.
 

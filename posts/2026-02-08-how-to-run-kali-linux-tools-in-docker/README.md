@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Kali Linux, Penetration Testing, security tools, Ethical Hacking, Containerization
+Tags: Docker, Kali Linux, Penetration Testing, Security tools, Ethical Hacking, Containerization
 
 Description: Run Kali Linux penetration testing tools in Docker containers for lightweight, portable security assessments without a full VM.
 

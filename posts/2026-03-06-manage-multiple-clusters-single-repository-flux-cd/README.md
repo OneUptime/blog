@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Multi-Cluster, Fleet Management, centralized management
+Tags: Flux CD, GitOps, Kubernetes, Multi-Cluster, Fleet Management, Centralized management
 
 Description: Learn how to manage multiple Kubernetes clusters from a single Git repository using Flux CD with cluster-specific configurations and shared components.
 

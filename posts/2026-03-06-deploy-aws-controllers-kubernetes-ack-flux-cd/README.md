@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ack, aws controllers for kubernetes, GitOps, S3, RDS, Kubernetes, AWS
+Tags: Flux CD, ack, Aws controllers for kubernetes, GitOps, S3, RDS, Kubernetes, AWS
 
 Description: Deploy AWS Controllers for Kubernetes using Flux CD to manage AWS resources like S3 buckets and RDS instances through GitOps.
 

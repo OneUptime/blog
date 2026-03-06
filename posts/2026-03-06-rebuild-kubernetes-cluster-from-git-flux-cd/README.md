@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, GitOps, cluster rebuild, Infrastructure as Code, Disaster Recovery
+Tags: Flux CD, Kubernetes, GitOps, Cluster rebuild, Infrastructure as Code, Disaster Recovery
 
 Description: A complete guide to rebuilding an entire Kubernetes cluster from scratch using only your Git repository and Flux CD.
 

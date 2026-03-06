@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, aws sso, IAM Identity Center, RBAC, Authentication, Kubernetes, GitOps
+Tags: Flux CD, Aws sso, IAM Identity Center, RBAC, Authentication, Kubernetes, GitOps
 
 Description: Configure Flux CD on Amazon EKS with AWS SSO (IAM Identity Center) for centralized authentication and role-based access control.
 

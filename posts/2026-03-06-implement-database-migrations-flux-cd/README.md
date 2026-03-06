@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Database Migration, kubernetes jobs, GitOps, Kubernetes, Schema Management
+Tags: Flux CD, Database Migration, Kubernetes jobs, GitOps, Kubernetes, Schema Management
 
 Description: A practical guide to running database schema migrations as part of your Flux CD GitOps workflow using Kubernetes Jobs.
 

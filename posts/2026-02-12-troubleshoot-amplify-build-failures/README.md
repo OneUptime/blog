@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, Troubleshooting, CI/CD, Debugging, build error, DevOps
+Tags: AWS, Amplify, Troubleshooting, CI/CD, Debugging, Build error, DevOps
 
 Description: Diagnose and fix the most common AWS Amplify build failures including dependency issues, memory limits, and configuration errors
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, comfyui, stable diffusion, Image Generation, AI, GPU, Docker Compose
+Tags: Docker, Comfyui, Stable diffusion, Image Generation, AI, GPU, Docker Compose
 
 Description: Deploy ComfyUI in Docker for node-based AI image generation workflows using Stable Diffusion, SDXL, and other diffusion models.
 

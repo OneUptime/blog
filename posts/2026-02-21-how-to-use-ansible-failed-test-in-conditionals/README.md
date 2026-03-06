@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Conditional, failed Test, Error Handling, Jinja2 Tests
+Tags: Ansible, Conditional, Failed Test, Error Handling, Jinja2 Tests
 
 Description: Learn how to use the Ansible failed test in when clauses to build resilient playbooks that handle task failures gracefully.
 

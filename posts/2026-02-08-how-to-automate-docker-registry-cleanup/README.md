@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Registry, Cleanup, Automation, Garbage Collection, retention policy, DevOps
+Tags: Docker, Registry, Cleanup, Automation, Garbage Collection, Retention policy, DevOps
 
 Description: Automate Docker registry cleanup with retention policies, tag management, and garbage collection to control storage costs and maintain order.
 

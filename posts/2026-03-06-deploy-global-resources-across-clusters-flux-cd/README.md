@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Multi-Cluster, global resources, GitOps, Kubernetes, Kustomize
+Tags: Flux CD, Multi-Cluster, Global resources, GitOps, Kubernetes, Kustomize
 
 Description: A practical guide to deploying and managing global resources like namespaces, RBAC, network policies, and security policies consistently across all clusters using Flux CD.
 

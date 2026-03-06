@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HelmRelease, Request Entity Too Large, Helm, secret size, Troubleshooting, Kubernetes, GitOps
+Tags: Flux CD, HelmRelease, Request Entity Too Large, Helm, Secret size, Troubleshooting, Kubernetes, GitOps
 
 Description: A guide to resolving the 'request entity too large' error in Flux CD HelmRelease caused by Helm release secret size limits in etcd.
 

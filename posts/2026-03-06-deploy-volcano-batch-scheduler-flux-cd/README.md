@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Volcano, batch scheduler, Kubernetes, GitOps, Helm, HPC, Machine Learning
+Tags: Flux CD, Volcano, Batch scheduler, Kubernetes, GitOps, Helm, HPC, Machine Learning
 
 Description: A practical guide to deploying the Volcano batch scheduling system on Kubernetes using Flux CD for high-performance computing and ML workloads.
 

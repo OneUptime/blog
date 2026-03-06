@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, dependency not ready, Kustomization, HelmRelease, Troubleshooting, Kubernetes, GitOps
+Tags: Flux CD, Dependency not ready, Kustomization, HelmRelease, Troubleshooting, Kubernetes, GitOps
 
 Description: A practical guide to resolving 'dependency not ready' errors in Flux CD by fixing dependency ordering, circular dependencies, and failed upstream resources.
 

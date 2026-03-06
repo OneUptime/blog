@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kustomize, build failed, Troubleshooting, Kubernetes, GitOps, YAML
+Tags: Flux CD, Kustomize, Build failed, Troubleshooting, Kubernetes, GitOps, YAML
 
 Description: A practical guide to diagnosing and fixing 'kustomize build failed' errors in Flux CD Kustomization resources with local testing techniques.
 

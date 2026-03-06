@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, overseerr, Plex, media-server, Self-Hosted, media-management
+Tags: Docker, Overseerr, Plex, Media-server, Self-Hosted, Media-management
 
 Description: Deploy Overseerr in Docker to let users request movies and TV shows that automatically get added to your media server library.
 

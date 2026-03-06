@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, NGINX, Ingress, Progressive Delivery, Canary, Kubernetes, GitOps
+Tags: flux, Flagger, NGINX, Ingress, Progressive Delivery, Canary, Kubernetes, GitOps
 
 Description: A step-by-step guide to setting up Flagger with NGINX Ingress Controller and Flux for automated canary deployments using ingress-level traffic splitting.
 

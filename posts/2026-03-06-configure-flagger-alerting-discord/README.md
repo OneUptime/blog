@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flagger, Discord, Alerting, Notifications, Canary, Kubernetes, GitOps
+Tags: flux, Flagger, Discord, Alerting, Notifications, Canary, Kubernetes, GitOps
 
 Description: Set up Discord webhook notifications for Flagger canary deployment events in Flux-managed Kubernetes clusters.
 

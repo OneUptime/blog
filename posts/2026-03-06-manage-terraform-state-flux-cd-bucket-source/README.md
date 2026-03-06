@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Terraform, bucket source, IaC, GitOps, State Management, Kubernetes
+Tags: Flux CD, Terraform, Bucket source, IaC, GitOps, State Management, Kubernetes
 
 Description: Learn how to manage Terraform state files using Flux CD Bucket Source for GitOps-driven infrastructure as code workflows.
 

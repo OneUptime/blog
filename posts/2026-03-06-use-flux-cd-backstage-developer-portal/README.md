@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Backstage, Developer Portal, Kubernetes, GitOps, Internal Developer Platform, spotify
+Tags: Flux CD, Backstage, Developer Portal, Kubernetes, GitOps, Internal Developer Platform, Spotify
 
 Description: A practical guide to integrating Flux CD with the Backstage developer portal for unified service catalog and GitOps visibility.
 

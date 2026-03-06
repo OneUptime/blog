@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, home-assistant, smart-home, IoT, Automation, Self-Hosted
+Tags: Docker, Home-assistant, Smart-home, IoT, Automation, Self-Hosted
 
 Description: Complete guide to running Home Assistant in Docker for smart home automation with device integrations and custom dashboards.
 

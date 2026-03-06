@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, wikijs, knowledge-base, Documentation, Self-Hosted, Wiki
+Tags: Docker, Wikijs, Knowledge-base, Documentation, Self-Hosted, Wiki
 
 Description: Deploy Wiki.js in Docker to create a modern, feature-rich knowledge base with Git sync, Markdown support, and powerful search.
 
