@@ -37,6 +37,7 @@
  * 31. Tag normalization — Detect near-duplicate tags across posts (e.g., "Docker" vs "docker" vs "Dockers")
  * 32. social-media.png dimensions — Verify the image is the expected size (1200x630)
  * 33. CodeValidate.json coverage — Every post must have an entry with status "validated" or "not-code-blog"
+ * 34. Tag casing — Tags must not start with lowercase unless listed in LowercaseTagAllowlist.json
  *
  * Run with: npm run validate
  */
@@ -50,6 +51,7 @@ const POSTS_DIR = 'posts';
 const BLOGS_JSON = 'Blogs.json';
 const AUTHORS_JSON = 'Authors.json';
 const CODE_VALIDATE_JSON = 'CodeValidate.json';
+const LOWERCASE_TAG_ALLOWLIST_JSON = 'LowercaseTagAllowlist.json';
 const TAGS_MD = 'Tags.md';
 const MIN_DESCRIPTION_LENGTH = 50;
 const MAX_TITLE_LENGTH = 80;
@@ -2041,6 +2043,56 @@ function checkRelativeLinkValidation(postsDir: string[]): void {
  * - Case-inconsistent tags (e.g., "Docker" vs "docker")
  * - Singular/plural variants (e.g., "Docker" vs "Dockers")
  */
+/**
+ * Check that tags do not start with a lowercase letter unless they are
+ * in the LowercaseTagAllowlist.json file (known technical terms, commands, etc.).
+ */
+function checkTagCasing(blogsJson: BlogEntry[]): void {
+  logHeader('Checking tag casing (no new lowercase tags)');
+
+  // Load the allowlist
+  let allowlist: Set<string>;
+  try {
+    const raw = fs.readFileSync(LOWERCASE_TAG_ALLOWLIST_JSON, 'utf8');
+    const parsed = JSON.parse(raw) as string[];
+    allowlist = new Set(parsed);
+  } catch {
+    logError(`Failed to read ${LOWERCASE_TAG_ALLOWLIST_JSON}. Please ensure it exists.`);
+    hasErrors = true;
+    return;
+  }
+
+  // Collect all unique tags that start with lowercase and are not in the allowlist
+  const badTags = new Map<string, string[]>(); // tag -> list of posts using it
+
+  for (const blog of blogsJson) {
+    if (!blog.tags) continue;
+    for (const tag of blog.tags) {
+      const firstChar = tag.charAt(0);
+      if (firstChar >= 'a' && firstChar <= 'z' && !allowlist.has(tag)) {
+        const posts = badTags.get(tag) || [];
+        posts.push(blog.post);
+        badTags.set(tag, posts);
+      }
+    }
+  }
+
+  if (badTags.size > 0) {
+    hasErrors = true;
+    console.log(
+      `${colors.red}${colors.bold}ERROR:${colors.reset} Found ${badTags.size} tag${badTags.size === 1 ? '' : 's'} starting with lowercase that ${badTags.size === 1 ? 'is' : 'are'} not in ${LOWERCASE_TAG_ALLOWLIST_JSON}:\n`
+    );
+    for (const [tag, posts] of badTags) {
+      console.log(`  - ${colors.red}${tag}${colors.reset} (used in: ${posts.join(', ')})`);
+    }
+    console.log(
+      `\n${colors.yellow}FIX:${colors.reset} Either capitalize the tag properly or add it to ${LOWERCASE_TAG_ALLOWLIST_JSON} if it is a legitimate technical term.\n`
+    );
+  } else {
+    logSuccess('All tags have proper casing (or are in the lowercase allowlist)');
+  }
+}
+
 function checkTagNormalization(blogsJson: BlogEntry[]): void {
   logHeader('Checking for near-duplicate tags across posts');
 
@@ -2374,6 +2426,9 @@ function main(): void {
 
   // Check relative link validation
   checkRelativeLinkValidation(postsDir);
+
+  // Check tag casing (no new lowercase tags without allowlist)
+  checkTagCasing(sortedBlogs);
 
   // Check tag normalization across posts
   checkTagNormalization(sortedBlogs);
