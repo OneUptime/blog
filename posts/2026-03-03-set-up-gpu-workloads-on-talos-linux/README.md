@@ -40,7 +40,7 @@ Talos provides official NVIDIA extensions. First, check which extensions are ava
 crane ls ghcr.io/siderolabs/nvidia-open-gpu-kernel-modules
 ```
 
-To add the NVIDIA extensions, you need to either generate a custom Talos image or add them through machine configuration. The recommended approach is generating a custom installer image:
+To add the NVIDIA extensions, Talos needs them included in the boot assets or installer image. For a new cluster, build your boot assets with the required extensions. For an existing installed node, build a custom installer image and use it during an upgrade or reinstall. This is why a custom image is recommended: Talos does not install GPU drivers after boot with a package manager, and the NVIDIA kernel modules and container toolkit need to match the Talos release.
 
 ```bash
 # Generate a custom Talos installer with NVIDIA extensions
@@ -74,20 +74,12 @@ machine:
       - name: nvidia_modeset
   sysctls:
     net.core.bpf_jit_harden: "1"
-  kubelet:
-    extraMounts:
-      - destination: /usr/local/nvidia
-        type: bind
-        source: /usr/local/nvidia
-        options:
-          - bind
-          - ro
 ```
 
 Apply the patch:
 
 ```bash
-talosctl apply-config --patch @gpu-machine-patch.yaml --nodes <gpu-node-ip>
+talosctl patch mc --patch @gpu-machine-patch.yaml --nodes <gpu-node-ip>
 ```
 
 After applying, verify that the NVIDIA modules are loaded:
@@ -99,9 +91,13 @@ talosctl -n <gpu-node-ip> dmesg | grep -i nvidia
 
 You should see messages indicating that the NVIDIA driver has been initialized and that GPU devices have been detected.
 
-## Configuring the NVIDIA Container Runtime
+Do not add `machine.kubelet.extraMounts` for `/usr/local/nvidia` here. Talos' supported NVIDIA setup does not require that mount, and on immutable nodes it can prevent kubelet from starting because Talos will try to create that destination on a read-only filesystem.
 
-The NVIDIA container toolkit needs to be configured in the containerd settings. Add this to your machine configuration:
+## Optional: Set NVIDIA as the Default Runtime
+
+You do not need to change the default runtime to run GPU workloads on Talos. The recommended pattern is to use a `RuntimeClass` and set `runtimeClassName: nvidia` only on GPU workloads.
+
+If you run dedicated GPU nodes and want every pod on those nodes to use the NVIDIA runtime by default, add this optional machine configuration patch:
 
 ```yaml
 # containerd-nvidia-patch.yaml
@@ -109,25 +105,34 @@ machine:
   files:
     - content: |
         [plugins]
-          [plugins."io.containerd.grpc.v1.cri"]
-            [plugins."io.containerd.grpc.v1.cri".containerd]
+          [plugins."io.containerd.cri.v1.runtime"]
+            [plugins."io.containerd.cri.v1.runtime".containerd]
               default_runtime_name = "nvidia"
-              [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
-                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
-                  privileged_without_host_devices = false
-                  runtime_engine = ""
-                  runtime_root = ""
-                  runtime_type = "io.containerd.runc.v2"
-                  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
-                    BinaryName = "/usr/bin/nvidia-container-runtime"
-      path: /var/cri/conf.d/20-nvidia.toml
+      path: /etc/cri/conf.d/20-customization.part
       op: create
 ```
 
 Apply this patch:
 
 ```bash
-talosctl apply-config --patch @containerd-nvidia-patch.yaml --nodes <gpu-node-ip>
+talosctl patch mc --patch @containerd-nvidia-patch.yaml --nodes <gpu-node-ip>
+```
+
+## Creating the NVIDIA RuntimeClass
+
+Create a Kubernetes `RuntimeClass` so GPU workloads can explicitly request the NVIDIA runtime:
+
+```yaml
+# nvidia-runtimeclass.yaml
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: nvidia
+handler: nvidia
+```
+
+```bash
+kubectl apply -f nvidia-runtimeclass.yaml
 ```
 
 ## Installing the NVIDIA Device Plugin
@@ -145,6 +150,8 @@ helm install nvidia-device-plugin nvdp/nvidia-device-plugin \
   --set runtimeClassName=nvidia \
   --set deviceListStrategy=envvar
 ```
+
+If you did not set the NVIDIA runtime as the default runtime on the node, use `runtimeClassName: nvidia` in your GPU pod specs.
 
 After the device plugin is running, verify that the GPU is reported as an allocatable resource:
 
@@ -167,6 +174,7 @@ metadata:
   name: gpu-test
 spec:
   restartPolicy: OnFailure
+  runtimeClassName: nvidia
   containers:
     - name: cuda-test
       image: nvidia/cuda:12.2.0-base-ubuntu22.04
