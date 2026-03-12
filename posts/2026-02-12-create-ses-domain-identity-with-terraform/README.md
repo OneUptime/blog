@@ -184,7 +184,7 @@ resource "aws_route53_record" "mail_from_mx" {
   ttl     = 600
 
   records = [
-    "10 feedback-smtp.${var.aws_region}.amazonaws.com"
+    "10 feedback-smtp.${var.aws_region}.amazonses.com"
   ]
 }
 

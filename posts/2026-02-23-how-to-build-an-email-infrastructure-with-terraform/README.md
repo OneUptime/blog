@@ -120,7 +120,7 @@ resource "aws_route53_record" "mail_from_mx" {
   name    = "bounce.${var.domain_name}"
   type    = "MX"
   ttl     = 600
-  records = ["10 feedback-smtp.${var.region}.amazonaws.com"]
+  records = ["10 feedback-smtp.${var.region}.amazonses.com"]
 }
 
 # SPF for custom MAIL FROM
