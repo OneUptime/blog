@@ -53,6 +53,7 @@
 - AAA
 - AArch64
 - Ab testing
+- ab-testing
 - ABAC
 - Abandonment
 - Aborted
@@ -1469,6 +1470,7 @@
 - Branch Protection
 - Branch Tagging
 - Branch Tracking
+- branch-protection
 - Branches
 - Branching
 - Branching Strategy
@@ -1596,6 +1598,7 @@
 - Bundle
 - Bundle Size
 - Bundler
+- bundles
 - Bundling
 - Burn Rate
 - Burp Suite
@@ -1662,11 +1665,13 @@
 - Callback
 - Callback Plugins
 - Calling SDK
+- calver
 - Campaigns
 - Canaries
 - Canary
 - Canary Analysis
 - Canary Deployment
+- Canary Deployments
 - Canary Monitoring
 - Canary Promotion
 - Canary Release
@@ -2175,6 +2180,7 @@
 - Cluster Operations
 - Cluster overrides
 - Cluster Peering
+- Cluster Profiles
 - Cluster Provisioning
 - Cluster rebuild
 - Cluster Recovery
@@ -2306,6 +2312,7 @@
 - Commit Messages
 - Commit SHA
 - Commit Status
+- commit-message
 - CommitFailedException
 - Committed Use Discounts
 - Common Bugs
@@ -2435,6 +2442,9 @@
 - Configuration Validation
 - Configuration Validator
 - Configuration Versions
+- confirm-promotion
+- confirm-rollout
+- confirm-traffic-increase
 - Conflict Errors
 - Conflict Resolution
 - Conflicts
@@ -2443,6 +2453,7 @@
 - confluent-kafka
 - Conformance
 - Conformance Packs
+- conformance testing
 - Conformed Dimensions
 - Conftest
 - Congestion Control
@@ -2636,6 +2647,7 @@
 - Continuous Testing
 - Continuous Training
 - Continuous Verification
+- continuous-deployment
 - Contour
 - Contract Testing
 - Contract Tests
@@ -2666,6 +2678,7 @@
 - ControllerAdvice
 - ControlMaster
 - ControlPersist
+- controlplane
 - ControlZ
 - Conventional Commits
 - Conventions
@@ -2787,6 +2800,7 @@
 - Crawlers
 - CRC
 - CRD
+- CRDs
 - CRDT
 - Create
 - Create React App
@@ -2813,6 +2827,7 @@
 - Cron Jobs
 - cron.yaml
 - CronJob
+- CronJobs
 - crontab
 - Cross Product
 - Cross-Account
@@ -2908,6 +2923,7 @@
 - Current Values
 - Cursor
 - Cursor-based pagination
+- custom
 - Custom Access Levels
 - CUSTOM Action
 - Custom Agents
@@ -2966,6 +2982,7 @@
 - Custom Logs
 - Custom Machine Types
 - Custom Markers
+- Custom Messages
 - Custom Metering
 - Custom Metrics
 - Custom Mode
@@ -2985,10 +3002,12 @@
 - Custom Profiles
 - Custom Propagator
 - Custom Provider
+- custom queries
 - Custom Ranking
 - Custom Receiver
 - Custom Resource
 - Custom Resource Definitions
+- custom resources
 - Custom Response
 - Custom Roles
 - Custom Routing
@@ -3019,6 +3038,7 @@
 - Custom Voice
 - Custom Widgets
 - custom-metrics
+- custom-sources
 - Customer Analytics
 - Customer Data Platform
 - Customer Experience
@@ -3048,6 +3068,7 @@
 - daemon.json
 - Daemons
 - DaemonSet
+- daemonsets
 - DAG
 - Dagger
 - DAM
@@ -3263,6 +3284,7 @@
 - Database Management
 - Database Migration
 - Database Migration Service
+- Database Migrations
 - Database Monitoring
 - Database Operators
 - Database Optimization
@@ -3326,6 +3348,7 @@
 - Date Sharding
 - Date Shifting
 - Date Time
+- date-tags
 - datetime
 - DAX
 - DBA
@@ -3464,6 +3487,7 @@
 - Deployment Annotations
 - Deployment Approvals
 - Deployment Automation
+- Deployment Error
 - Deployment Freeze
 - Deployment Frequency
 - Deployment Gates
@@ -3488,6 +3512,7 @@
 - Deployment Tracking
 - Deployment Verification
 - Deployment Workflow
+- deployments
 - Deprecation
 - Deref
 - Derive
@@ -3641,6 +3666,7 @@
 - DISA
 - DISA STIG
 - Disable
+- disableHooks
 - disableWait
 - Disaster Recovery
 - Disaster-Recovery
@@ -3882,6 +3908,7 @@
 - DoD
 - DoH
 - DOKS
+- dollar-sign
 - DOM
 - Domain
 - Domain Configuration
@@ -4339,6 +4366,7 @@
 - Eureka
 - European Cloud
 - Evaluation
+- event
 - Event Analysis
 - Event Bus
 - Event Capture
@@ -4415,6 +4443,7 @@
 - Exchange
 - Exchange API
 - Exchange Types
+- exclude-paths
 - Exclusion
 - Exclusion Filters
 - Exclusion List
@@ -4799,7 +4828,10 @@
 - flux v2
 - flux-cd
 - flux-get
+- flux-operator
+- flux-tree
 - fluxcd
+- FluxInstance
 - Fly.io
 - Flyway
 - fmt.Errorf
@@ -4941,6 +4973,7 @@
 - Gaming
 - Gang Scheduling
 - Garbage Collection
+- garbage-collection
 - Gardener
 - Gatekeeper
 - Gates
@@ -5068,7 +5101,10 @@
 - Git Tags
 - Git Webhooks
 - Git Workflows
+- git-author
+- git-email
 - git-repository
+- git-sync
 - Gitea
 - GitHub
 - GitHub Actions
@@ -5142,6 +5178,7 @@
 - Go pprof
 - Go Templates
 - Go-Kit
+- go-template
 - go:embed
 - go.mod
 - GoAccess
@@ -5432,6 +5469,7 @@
 - Health Check
 - Health Check Rewriting
 - Health Checking
+- Health Checks
 - Health Dashboard
 - Health Data
 - Health Diagnostics
@@ -5482,6 +5520,7 @@
 - Hetzner
 - Hetzner Cloud
 - Hexagonal Architecture
+- hey
 - HGET
 - Hibernate
 - Hibernate Envers
@@ -5837,6 +5876,7 @@
 - image-management
 - image-policy
 - image-repository
+- image-tags
 - ImageMagick
 - Imagen
 - ImagePolicy
@@ -5857,6 +5897,7 @@
 - Immutable Fields
 - Immutable Infrastructure
 - Immutable OS
+- Immutable Resources
 - Immutable Rules
 - Immutable Storage
 - Immutable Vault
@@ -5907,6 +5948,7 @@
 - Include
 - Include Paths
 - Include Tasks
+- include-paths
 - Inclusive Design
 - Incoming Email
 - Incoming Request
@@ -5966,6 +6008,7 @@
 - InfiniBand
 - Infinite Scroll
 - InfluxDB
+- info
 - Info Metrics
 - Information Retrieval
 - Information Schema
@@ -6008,6 +6051,7 @@
 - INI Files
 - Init
 - Init Container
+- Init Containers
 - Init Process
 - Init System
 - Initialization
@@ -6265,6 +6309,7 @@
 - ItemProcessor
 - Iteration
 - Iteration Paths
+- iterations
 - Iterator
 - itertools
 - ITIL
@@ -6439,6 +6484,7 @@
 - Keep-Alive
 - keepalive
 - Keepalived
+- keepHistory
 - Kendra
 - Kerberos
 - Kernel
@@ -6868,6 +6914,7 @@
 - Load Distribution
 - Load Management
 - Load Shedding
+- load tester
 - Load Testing
 - Load-balancer
 - Load-balancing
@@ -6904,6 +6951,7 @@
 - Local Values
 - Local Volume Driver
 - Local Zones
+- local-development
 - local-exec
 - Localai
 - Locale
@@ -7207,6 +7255,7 @@
 - Max Instances
 - Max Surge
 - Max Unavailable
+- max weight
 - max_allowed_packet
 - max_connections
 - max.poll.interval.ms
@@ -7289,6 +7338,7 @@
 - Merge Keys
 - Merge Request
 - merge_maps
+- merge-requests
 - Merged APIs
 - MergeTree
 - Mermaid Diagrams
@@ -7554,6 +7604,7 @@
 - Module Types
 - Module Utilities
 - Module Versioning
+- module-management
 - ModuleNotFoundError
 - Modules
 - Molecule
@@ -7670,6 +7721,7 @@
 - Multi-Platform
 - Multi-Platform Builds
 - Multi-Platform Testing
+- multi-port
 - Multi-Primary
 - Multi-Project
 - Multi-Project Pipelines
@@ -8111,10 +8163,12 @@
 - Note-Taking
 - Notebook
 - Notebook Orchestration
+- notification
 - Notification Channels
 - Notification Controller
 - Notification Hub
 - Notification Policies
+- notification-controller
 - Notifications
 - NOTIFY
 - NotLeaderForPartition
@@ -8224,6 +8278,7 @@
 - OCI Images
 - OCI Registry
 - Oci vault
+- oci-sync
 - ocir
 - OCIRepository
 - OCR
@@ -8408,6 +8463,7 @@
 - Orleans
 - ORM
 - Orphan containers
+- orphaned-resources
 - Ory Hydra
 - os
 - OS Disk
@@ -8656,6 +8712,7 @@
 - Path Units
 - Path-Based
 - Path-Based Routing
+- path-filtering
 - pathlib
 - Patient Engagement
 - Patient Portal
@@ -8759,8 +8816,10 @@
 - Persistent Storage
 - Persistent volume claims
 - Persistent Volumes
+- persistent-storage
 - PersistentVolume
 - PersistentVolumeClaim
+- PersistentVolumeClaims
 - Personal Access Tokens
 - Personalization
 - Personalize
@@ -9060,6 +9119,7 @@
 - Post Rendering
 - POST Requests
 - Post-Build
+- Post-Build Substitution
 - Post-Deployment
 - Post-Deployment Verification
 - Post-Install
@@ -9067,6 +9127,8 @@
 - Post-Mortem
 - Post-Processing
 - Post-Renderer
+- post-renderers
+- post-rollout
 - Post-Tasks
 - Postal
 - Postconditions
@@ -9101,6 +9163,7 @@
 - Pre-aggregation
 - Pre-Commit
 - Pre-Commit Hooks
+- Pre-Delete
 - Pre-Deployment
 - Pre-Deployment Gates
 - Pre-Deployment Validation
@@ -9111,6 +9174,8 @@
 - Pre-Processing
 - Pre-Pull
 - Pre-Pulling
+- pre-release
+- pre-rollout
 - Pre-Tasks
 - Pre-Trained Models
 - Pre-Upgrade
@@ -9153,6 +9218,7 @@
 - Preview
 - Preview Deployments
 - Preview Environments
+- preview-environments
 - Price Optimization
 - Pricing
 - Pricing Calculator
@@ -9413,6 +9479,7 @@
 - Pull Request Testing
 - Pull Requests
 - Pull-Based
+- pull-requests
 - Pull-Through Cache
 - Pull-to-Refresh
 - Pulp
@@ -9665,6 +9732,7 @@
 - Readiness Probe
 - ReadOnlyRootFilesystem
 - ReadWriteMany
+- Ready Unknown
 - Real Browser Testing
 - Real User Monitoring
 - Real-Time
@@ -9801,6 +9869,7 @@
 - Registry
 - Registry Mirror
 - REGISTRY_ONLY
+- registry-scanning
 - Rego
 - Regression
 - Regression Detection
@@ -9832,6 +9901,7 @@
 - Release Pipelines
 - Release promotion
 - Release Tracking
+- Releases
 - Relevance
 - Reliability
 - Reliability Engineering
@@ -9890,6 +9960,7 @@
 - renice
 - Renovate
 - REPL
+- Replace
 - replace Function
 - ReplacingMergeTree
 - Replatform
@@ -9931,6 +10002,7 @@
 - Request Coalescing
 - Request Context
 - Request Deduplication
+- request duration
 - Request Entity Too Large
 - Request Handling
 - Request Headers
@@ -9946,6 +10018,7 @@
 - Request Routing
 - Request Scoping
 - Request Size
+- request success rate
 - Request Timeout
 - Request Tracking
 - Request Transformation
@@ -10051,8 +10124,10 @@
 - Resource Usage
 - Resource Utilization
 - Resource-Management
+- resource-ordering
 - ResourceQuota
 - Resources
+- resourceset
 - ResourceSets
 - ResourceVersion
 - Response
@@ -10133,6 +10208,7 @@
 - Reverse Proxy
 - Reverse-proxy
 - Revert
+- revert-on-delete
 - Review
 - Review Apps
 - Review workflow
@@ -10475,6 +10551,7 @@
 - Script Module
 - Scripted Fields
 - Scripting
+- scripts
 - Scroll
 - Scroll API
 - Scrum
@@ -10532,6 +10609,7 @@
 - Secret Synchronization
 - Secret Versioning
 - SecretDelivery
+- secrets
 - Secrets Detection
 - Secrets Encryption
 - Secrets Management
@@ -10772,6 +10850,7 @@
 - Service Worker
 - Service-Discovery
 - Service-Linked Roles
+- service-mesh
 - Service-to-Service
 - ServiceAccount
 - ServiceBus
@@ -10784,6 +10863,7 @@
 - ServiceNow
 - ServiceNow Cloud Observability
 - Services
+- serving
 - SES
 - Session Affinity
 - Session Analysis
@@ -10811,6 +10891,7 @@
 - set_stats
 - SETBIT
 - setfacl
+- setifnotpresent
 - Sets
 - Settings Management
 - Setup
@@ -10821,6 +10902,7 @@
 - sFlow
 - SFTP
 - SGID
+- sha
 - SHA-1
 - SHA-256
 - SHA1
@@ -10920,6 +11002,7 @@
 - Signed Cookies
 - Signed Policy Documents
 - Signed URLs
+- signed-commits
 - Signer
 - Signing
 - SigNoz
@@ -10964,6 +11047,7 @@
 - Skillsets
 - Skip
 - Skip Indexes
+- skip-analysis
 - Skipper
 - Skopeo
 - SkuNotAvailable
@@ -11111,6 +11195,8 @@
 - Source watcher
 - Source-Based
 - Source-Based Routing
+- source-composition
+- source-kind
 - Sources
 - SOX
 - SOX Compliance
@@ -11373,6 +11459,7 @@
 - Stateful Apps
 - Stateful Processing
 - StatefulSet
+- statefulsets
 - Stateless Architecture
 - Static
 - Static Analysis
@@ -11411,6 +11498,7 @@
 - Stemming
 - Step Functions
 - Step Mode
+- step weight
 - Step-Up Authentication
 - Stick Tables
 - Sticky Bit
@@ -11573,6 +11661,7 @@
 - Subsets
 - Subshells
 - substituteFrom
+- substitution
 - Substitution Variables
 - Subtitles
 - Subuid
@@ -11763,6 +11852,7 @@
 - Tag Sorting
 - Tag Templates
 - Tag Tracking
+- tag-pattern
 - Tagging
 - Tagging Strategy
 - Tags
@@ -12048,6 +12138,7 @@
 - Threat Modeling
 - Threat Prevention
 - Threat Protection
+- threshold
 - Threshold Tuning
 - Thresholds
 - Thrift
@@ -12176,6 +12267,7 @@
 - Token Storage
 - Token Usage
 - Token Validation
+- token-refresh
 - tokenbf_v1
 - Tokenization
 - Tokenizers
@@ -12268,6 +12360,7 @@
 - Trading Platform
 - Trading Strategy
 - Traefik
+- TraefikService
 - Traffic
 - Traffic Access Control
 - Traffic Analysis
@@ -12280,6 +12373,7 @@
 - Traffic Filtering
 - Traffic Flow
 - Traffic Forecasting
+- traffic generation
 - Traffic Inspection
 - Traffic Interception
 - Traffic Management
@@ -12302,6 +12396,7 @@
 - Traffic Volume
 - Traffic-Management
 - TrafficManagement
+- trafficsplit
 - Training
 - Training Data
 - Training Pipeline
@@ -12547,6 +12642,7 @@
 - Update Management
 - Update Strategies
 - Update Strategy
+- update-strategy
 - Updates
 - UPG
 - Upgrade
@@ -13057,6 +13153,7 @@
 - Web Vitals
 - Web Workers
 - Web-application-firewall
+- web-ui
 - Web3
 - WebApplicationFactory
 - WebAssembly
@@ -13072,6 +13169,7 @@
 - Webhook Development
 - Webhook Security
 - Webhook Triggers
+- webhooks
 - WebJobs
 - Webmail
 - Webmin

@@ -165,7 +165,7 @@ In a typical monorepo with 20 services receiving 50 commits per day, switching f
 
 ## ArtifactGenerator is Event-Driven
 
-ArtifactGenerator does not use a `spec.interval` field — it is event-driven and triggers only when a referenced source produces a new revision. There is no need to tune per-service intervals; the source (e.g., GitRepository) controls the polling interval, and the ArtifactGenerator reacts to source changes automatically:
+ArtifactGenerator does not use a `spec.interval` field - it is event-driven and triggers only when a referenced source produces a new revision. There is no need to tune per-service intervals; the source (e.g., GitRepository) controls the polling interval, and the ArtifactGenerator reacts to source changes automatically:
 
 ```yaml
 # Event-driven service (no interval needed - ArtifactGenerator is event-driven)
