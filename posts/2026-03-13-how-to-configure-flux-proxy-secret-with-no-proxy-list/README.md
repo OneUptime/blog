@@ -177,25 +177,25 @@ kubectl logs -n flux-system deploy/source-controller --tail=100
 
 ### AWS Environment
 
-```
+```text
 NO_PROXY="169.254.169.254,.ec2.internal,.amazonaws.com,10.0.0.0/8,.cluster.local,.svc,localhost,127.0.0.1"
 ```
 
 ### GCP Environment
 
-```
+```text
 NO_PROXY="169.254.169.254,metadata.google.internal,.googleapis.com,10.0.0.0/8,.cluster.local,.svc,localhost,127.0.0.1"
 ```
 
 ### Azure Environment
 
-```
+```text
 NO_PROXY="169.254.169.254,.azure.com,.windows.net,10.0.0.0/8,.cluster.local,.svc,localhost,127.0.0.1"
 ```
 
 ### On-Premises Environment
 
-```
+```text
 NO_PROXY=".corp.example.com,.internal.example.com,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.cluster.local,.svc,localhost,127.0.0.1"
 ```
 
