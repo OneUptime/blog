@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Container, Dependencies, Service Discovery, Container Orchestration
+Tags: Kubernetes, Init Containers, Dependencies, Service Discovery, Container Orchestration
 
 Description: Master the use of Kubernetes init containers to ensure service dependencies are ready before your application starts, preventing startup failures and race conditions in distributed systems.
 

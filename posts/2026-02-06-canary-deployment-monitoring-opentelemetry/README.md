@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Canary Deployment, Monitoring, Progressive Delivery, Kubernetes, Metrics, Deployment
+Tags: OpenTelemetry, Canary Deployments, Monitoring, Progressive Delivery, Kubernetes, Metrics, Deployments
 
 Description: Learn how to monitor canary deployments using OpenTelemetry metrics and traces to automatically detect regressions and safely roll out new versions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, artifactgenerator, monorepo, performance, gitops, kubernetes
+Tags: Flux, fluxcd, artifactgenerator, Monorepo, Performance, GitOps, Kubernetes
 
 Description: Learn how to use ArtifactGenerator to improve Flux reconciliation performance in monorepo setups by reducing unnecessary operations.
 

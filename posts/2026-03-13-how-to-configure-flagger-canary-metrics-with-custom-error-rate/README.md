@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, metrics, error rate, prometheus, kubernetes, progressive delivery, custom metrics
+Tags: Flagger, Canary, Metrics, Error Rate, Prometheus, Kubernetes, Progressive Delivery, Custom Metrics
 
 Description: Learn how to define and use a custom error rate metric in Flagger canary analysis with MetricTemplate resources and Prometheus queries.
 

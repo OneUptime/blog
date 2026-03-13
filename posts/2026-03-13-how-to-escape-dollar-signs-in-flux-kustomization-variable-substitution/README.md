@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, kustomization, substitution, escaping, dollar-sign
+Tags: Flux, fluxcd, GitOps, Kubernetes, Kustomization, Substitution, Escaping, Dollar-Sign
 
 Description: Learn how to properly escape dollar signs in Flux Kustomization manifests to prevent unintended variable substitution when your application config requires literal dollar sign characters.
 

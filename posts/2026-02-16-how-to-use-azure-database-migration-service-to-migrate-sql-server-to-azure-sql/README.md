@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Database Migration, SQL Server, Azure SQL, DMS, Azure Database Migration Service, Cloud Migration
+Tags: Azure, Database Migrations, SQL Server, Azure SQL, DMS, Azure Database Migration Service, Cloud Migration
 
 Description: A complete walkthrough of using Azure Database Migration Service to migrate an on-premises SQL Server database to Azure SQL Database.
 

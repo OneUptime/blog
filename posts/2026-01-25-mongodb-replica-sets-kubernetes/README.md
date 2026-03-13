@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: MongoDB, Kubernetes, StatefulSet, Replica Set, DevOps, Database
+Tags: MongoDB, Kubernetes, StatefulSets, Replica Set, DevOps, Database
 
 Description: A step-by-step guide to deploying MongoDB replica sets on Kubernetes using StatefulSets, including storage configuration, service discovery, and production considerations.
 

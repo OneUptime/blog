@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Deployment, Incident Correlation, Change Management
+Tags: OpenTelemetry, Deployments, Incident Correlation, Change Management
 
 Description: Automatically link production incidents to recent deployments using OpenTelemetry resource attributes and deployment event tracking.
 

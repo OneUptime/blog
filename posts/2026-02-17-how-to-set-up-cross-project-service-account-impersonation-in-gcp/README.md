@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, IAM, Service Account, Impersonation, Security
+Tags: GCP, IAM, Service Accounts, Impersonation, Security
 
 Description: Step-by-step instructions for configuring service account impersonation across GCP projects, allowing workloads in one project to act as a service account in another without sharing keys.
 

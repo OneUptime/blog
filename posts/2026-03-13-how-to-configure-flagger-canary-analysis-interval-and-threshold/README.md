@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, analysis, interval, threshold, kubernetes, progressive delivery
+Tags: Flagger, Canary, Analysis, Interval, Threshold, Kubernetes, Progressive Delivery
 
 Description: Learn how to tune Flagger's canary analysis interval and failure threshold to balance deployment speed with safety for your workloads.
 
@@ -53,7 +53,7 @@ When a metric check fails, Flagger increments an internal failure counter. If an
 
 The total time Flagger waits before rolling back a failing canary is approximately:
 
-```
+```text
 rollback_time = interval * threshold
 ```
 

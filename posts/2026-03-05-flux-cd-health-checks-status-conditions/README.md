@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Health Check, Status Conditions, Monitoring
+Tags: Flux CD, GitOps, Kubernetes, Health Checks, Status Conditions, Monitoring
 
 Description: Learn how Flux CD health checks and status conditions work to provide visibility into the state of your GitOps reconciliation pipeline.
 

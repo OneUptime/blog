@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Webhook, Admission Control
+Tags: Kubernetes, Webhooks, Admission Control
 
 Description: Learn how to build a single webhook server that handles multiple admission webhook configurations for different resources, operations, and validation logic in Kubernetes.
 

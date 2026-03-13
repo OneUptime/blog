@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Microservices, Deployment, Architecture, DevOps
+Tags: Ansible, Microservices, Deployments, Architecture, DevOps
 
 Description: Deploy and manage a microservices architecture using Ansible with service discovery, inter-service communication, and rolling updates.
 

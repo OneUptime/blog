@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Webhook, FastAPI, Flask, API Development, Event-Driven
+Tags: Python, Webhooks, FastAPI, Flask, API Development, Event-Driven
 
 Description: Learn how to build production-ready webhook handlers in Python using FastAPI and Flask. This guide covers signature verification, idempotency, async processing, and error handling patterns.
 

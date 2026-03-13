@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, SCT, Database Migration, Schema Conversion
+Tags: AWS, SCT, Database Migrations, Schema Conversion
 
 Description: A practical guide to using the AWS Schema Conversion Tool for database migrations, covering schema analysis, conversion, manual fixes, and integration with DMS.
 

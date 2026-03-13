@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, Docker, Containers, Multi-Stage Build, DevOps, Deployment
+Tags: React, Docker, Containers, Multi-Stage Build, DevOps, Deployments
 
 Description: Learn to containerize React applications using multi-stage Docker builds to create optimized, production-ready images that are smaller, more secure, and faster to deploy.
 

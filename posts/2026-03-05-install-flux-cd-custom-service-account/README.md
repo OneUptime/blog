@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Service Account, RBAC, Security
+Tags: Flux CD, GitOps, Kubernetes, Service Accounts, RBAC, Security
 
 Description: Learn how to configure Flux CD controllers to use custom Kubernetes service accounts for fine-grained access control and integration with cloud IAM systems.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, itertools, Iteration, Performance, Functional Programming, Data Processing
+Tags: Python, itertools, Iterations, Performance, Functional Programming, Data Processing
 
 Description: Master Python's itertools module for efficient iteration patterns. Learn to use permutations, combinations, groupby, chain, and other powerful tools with practical examples.
 

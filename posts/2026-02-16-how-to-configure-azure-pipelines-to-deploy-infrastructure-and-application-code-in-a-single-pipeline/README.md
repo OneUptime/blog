@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Pipelines, Infrastructure as Code, Bicep, CI/CD, DevOps, Deployment, Azure
+Tags: Azure Pipelines, Infrastructure as Code, Bicep, CI/CD, DevOps, Deployments, Azure
 
 Description: Build a single Azure Pipeline that deploys both infrastructure changes and application code in the right order with proper dependency management.
 

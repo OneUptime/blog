@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secret, SOPS, GPG, Encryption
+Tags: Flux CD, GitOps, Kubernetes, Secrets, SOPS, GPG, Encryption
 
 Description: Learn how to encrypt Kubernetes secrets using SOPS with GPG keys for secure GitOps secret management with Flux CD.
 

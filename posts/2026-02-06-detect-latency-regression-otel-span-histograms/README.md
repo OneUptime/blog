@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Latency Regression, Span Duration, Histogram, Deployment
+Tags: OpenTelemetry, Latency Regression, Span Duration, Histogram, Deployments
 
 Description: Compare OpenTelemetry span duration histograms across deployments to detect latency regressions using statistical methods and PromQL.
 

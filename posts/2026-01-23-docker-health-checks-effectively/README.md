@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Health Check, Monitoring, DevOps, Reliability
+Tags: Docker, Health Checks, Monitoring, DevOps, Reliability
 
 Description: Implement effective Docker health checks that accurately reflect container readiness, handle dependencies gracefully, and integrate with orchestration systems for automatic recovery.
 

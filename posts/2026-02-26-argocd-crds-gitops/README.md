@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, CRD, Custom Resource
+Tags: ArgoCD, GitOps, Kubernetes, CRDs, Custom Resources
 
 Description: Learn how to manage Custom Resource Definitions and their instances in ArgoCD GitOps workflows, including ordering, sync waves, and common pitfalls to avoid.
 

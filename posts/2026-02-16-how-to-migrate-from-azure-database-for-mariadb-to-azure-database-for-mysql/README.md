@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, MariaDB, MySQL, Migration, Database Migration, Flexible Server, Cloud Database
+Tags: Azure, MariaDB, MySQL, Migration, Database Migrations, Flexible Server, Cloud Database
 
 Description: Step-by-step guide to migrating from Azure Database for MariaDB to Azure Database for MySQL Flexible Server before MariaDB reaches end of life.
 

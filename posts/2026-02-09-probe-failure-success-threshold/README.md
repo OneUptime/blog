@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Check, Configuration
+Tags: Kubernetes, Health Checks, Configuration
 
 Description: Tune probe failure and success thresholds to balance fast failure detection with tolerance for transient issues, preventing unnecessary restarts and service disruptions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, IAM, Service Account, Security, Google Cloud
+Tags: GCP, IAM, Service Accounts, Security, Google Cloud
 
 Description: Resolve permission denied errors when trying to impersonate a service account across different Google Cloud projects using proper IAM configuration.
 

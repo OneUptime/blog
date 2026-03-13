@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Envoy, Gateway API, Kubernetes, Ingress, Networking
+Tags: Envoy, Gateway API, Kubernetes, Ingresses, Networking
 
 Description: Learn how to deploy Envoy as a Gateway API implementation for standardized, role-oriented ingress management in Kubernetes with advanced traffic routing and policy features.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, StatefulSet, Topology
+Tags: Kubernetes, StatefulSets, Topology
 
 Description: Learn how to apply Pod Topology Spread Constraints to StatefulSets for high availability.
 

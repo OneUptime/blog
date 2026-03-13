@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, ASP.NET Core, Webhook, API Integration, Event-Driven, Security, Background Processing
+Tags: .NET, ASP.NET Core, Webhooks, API Integration, Event-Driven, Security, Background Processing
 
 Description: Learn how to build secure and reliable webhook handlers in .NET, including signature verification, idempotent processing, retry handling, and background job processing patterns.
 

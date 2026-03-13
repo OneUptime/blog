@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRD, Schema Validation
+Tags: Kubernetes, CRDs, Schema Validation
 
 Description: Learn how to create Custom Resource Definitions with structural schema validation in Kubernetes to ensure data integrity and type safety for your custom resources.
 

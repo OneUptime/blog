@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, Health Check, Monitoring
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, Health Checks, Monitoring
 
 Description: Learn how to configure health checks in a Flux Kustomization to verify that deployed resources reach a healthy state after reconciliation.
 

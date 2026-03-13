@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Istio, Traffic Management, Canary, Blue-Green, Deployment
+Tags: Istio, Traffic Management, Canary, Blue-Green, Deployments
 
 Description: Learn how to use Istio VirtualService and DestinationRule for traffic splitting, canary deployments, and blue-green releases.
 

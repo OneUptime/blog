@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, Traefik, Ingress, Load Balancing
+Tags: Kubernetes, MetalLB, Traefik, Ingresses, Load Balancing
 
 Description: Learn how to deploy MetalLB with Traefik Ingress Controller for a lightweight bare-metal ingress solution.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DMS, MySQL, Aurora, Database Migration, Replication
+Tags: AWS, DMS, MySQL, Aurora, Database Migrations, Replication
 
 Description: Step-by-step guide to using AWS Database Migration Service to migrate from MySQL to Aurora MySQL with minimal downtime using CDC replication.
 

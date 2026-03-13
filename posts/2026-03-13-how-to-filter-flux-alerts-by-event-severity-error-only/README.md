@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, alerts, severity, error, gitops, kubernetes, notification-controller
+Tags: Flux, fluxcd, Alerts, Severity, Error, GitOps, Kubernetes, Notification-Controller
 
 Description: Learn how to configure Flux CD alerts that only fire on error events, keeping your notification channels focused on failures that need attention.
 

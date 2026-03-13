@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Apps, Traffic Splitting, Blue-Green, Canary, Deployment, DevOps
+Tags: Azure, Container Apps, Traffic Splitting, Blue-Green, Canary, Deployments, DevOps
 
 Description: Learn how to configure traffic splitting between multiple revisions in Azure Container Apps for canary deployments and gradual rollouts.
 

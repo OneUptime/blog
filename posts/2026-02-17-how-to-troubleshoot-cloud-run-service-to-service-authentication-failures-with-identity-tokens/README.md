@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Authentication, Identity Tokens, Service Account, IAM
+Tags: GCP, Cloud Run, Authentication, Identity Tokens, Service Accounts, IAM
 
 Description: Troubleshoot Cloud Run service-to-service authentication failures involving identity tokens, audience mismatches, and service account permissions.
 

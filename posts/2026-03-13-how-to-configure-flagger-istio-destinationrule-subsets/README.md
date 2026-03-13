@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, istio, destinationrule, subsets, canary, kubernetes, progressive delivery, traffic policy
+Tags: Flagger, Istio, DestinationRule, Subsets, Canary, Kubernetes, Progressive Delivery, Traffic Policy
 
 Description: Learn how Flagger manages Istio DestinationRule subsets during canary deployments and how to configure traffic policies for primary and canary workloads.
 

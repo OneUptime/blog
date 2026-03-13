@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, MERGE, DML, Upsert, Data Deduplication
+Tags: GCP, BigQuery, Merge, DML, Upsert, Data Deduplication
 
 Description: Fix BigQuery MERGE statement errors caused by non-deterministic matches where multiple source rows match a single target row, with deduplication strategies.
 

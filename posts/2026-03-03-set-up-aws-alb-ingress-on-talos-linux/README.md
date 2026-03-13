@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, AWS, ALB, Ingress, Kubernetes, Load Balancer
+Tags: Talos Linux, AWS, ALB, Ingresses, Kubernetes, Load Balancer
 
 Description: Complete guide to deploying the AWS Load Balancer Controller on Talos Linux for Application Load Balancer ingress support.
 

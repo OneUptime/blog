@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, Kubernetes, ConfigMap, Secret, Configuration, Linux
+Tags: RHEL, Kubernetes, ConfigMap, Secrets, Configuration, Linux
 
 Description: Learn how to create, manage, and use Kubernetes ConfigMaps and Secrets on RHEL for application configuration, including volume mounts, environment variables, encryption at rest, and external...
 

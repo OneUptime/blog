@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Deno, Serverless, Edge Computing, Deployment
+Tags: Deno, Serverless, Edge Computing, Deployments
 
 Description: A comprehensive guide to building and deploying serverless applications with Deno Deploy, covering edge functions, KV storage, database connections, and production best practices.
 

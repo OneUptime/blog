@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, Kubernetes, GitOps, Sync Waves, Hooks, DevOps, Deployment, CI/CD
+Tags: ArgoCD, Kubernetes, GitOps, Sync Waves, Hooks, DevOps, Deployments, CI/CD
 
 Description: A comprehensive guide to implementing ArgoCD sync waves for controlling deployment order, including resource ordering, hooks, phases, and complex multi-tier deployment scenarios.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, kubernetes, multi-service, istio, progressive delivery
+Tags: Flagger, Canary, Kubernetes, Multi-Service, Istio, Progressive Delivery
 
 Description: Learn how to coordinate canary deployments across multiple interdependent services using Flagger and Istio.
 

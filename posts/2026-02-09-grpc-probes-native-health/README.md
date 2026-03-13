@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, gRPC, Health Check
+Tags: Kubernetes, gRPC, Health Checks
 
 Description: Implement Kubernetes gRPC health probes using the standard gRPC health checking protocol for microservices, enabling native health checks without HTTP endpoints or custom scripts.
 

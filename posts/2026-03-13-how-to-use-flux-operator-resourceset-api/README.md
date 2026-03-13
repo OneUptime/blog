@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flux-operator, resourceset, kubernetes, gitops, templating
+Tags: Flux, Flux-Operator, ResourceSets, Kubernetes, GitOps, Templating
 
 Description: Learn how to use the Flux Operator ResourceSet API to dynamically generate Kubernetes resources from templates and input data.
 

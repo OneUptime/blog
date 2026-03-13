@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, linkerd, eks, aws, canary, kubernetes, service-mesh
+Tags: Flagger, Linkerd, EKS, AWS, Canary, Kubernetes, Service-Mesh
 
 Description: A step-by-step guide to setting up Flagger with Linkerd on Amazon EKS for lightweight canary deployments.
 

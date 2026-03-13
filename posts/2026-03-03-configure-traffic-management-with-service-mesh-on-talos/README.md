@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Service Mesh, Traffic Management, Kubernetes, Canary Deployment
+Tags: Talos Linux, Service Mesh, Traffic Management, Kubernetes, Canary Deployments
 
 Description: Learn how to use service mesh traffic management features on Talos Linux for canary deployments, traffic splitting, and advanced routing.
 

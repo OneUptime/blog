@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Multi-Region, Collector, Deployment, High Availability, Global Infrastructure
+Tags: OpenTelemetry, Multi-Region, Collector, Deployments, High Availability, Global Infrastructure
 
 Description: Learn how to deploy and configure OpenTelemetry Collectors across multiple geographic regions for high availability and low latency telemetry collection.
 

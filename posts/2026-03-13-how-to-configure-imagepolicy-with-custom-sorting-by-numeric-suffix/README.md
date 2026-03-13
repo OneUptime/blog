@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, image-policy, kubernetes, gitops, sorting
+Tags: Flux, fluxcd, image-policy, Kubernetes, GitOps, Sorting
 
 Description: Learn how to configure Flux CD ImagePolicy to sort image tags by a numeric suffix such as build numbers or Unix timestamps.
 

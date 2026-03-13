@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Sync Hooks, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Sync Hooks, Deployments
 
 Description: Learn how to use the Skip hook annotation in ArgoCD to exclude specific resources from sync operations while keeping them in your Git repository.
 

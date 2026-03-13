@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Header Routing, Traffic Management, VirtualService, Canary Deployment
+Tags: Istio, Header Routing, Traffic Management, VirtualService, Canary Deployments
 
 Description: How to route traffic based on HTTP headers and transform those headers in Istio for canary deployments, A/B testing, and multi-tenant routing.
 

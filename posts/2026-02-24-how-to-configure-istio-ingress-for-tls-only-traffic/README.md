@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, TLS, Ingress, Kubernetes, Security, Service Mesh
+Tags: Istio, TLS, Ingresses, Kubernetes, Security, Service Mesh
 
 Description: How to configure Istio's ingress gateway to only accept TLS-encrypted traffic and reject plaintext HTTP connections.
 

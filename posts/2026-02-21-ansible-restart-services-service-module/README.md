@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Services, Linux, Deployment, Configuration Management
+Tags: Ansible, Services, Linux, Deployments, Configuration Management
 
 Description: Learn the best practices for restarting services with Ansible, including handler patterns, rolling restarts, health checks, and graceful reload strategies.
 

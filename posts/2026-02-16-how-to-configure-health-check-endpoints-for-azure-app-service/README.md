@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, App Service, Health Check, Monitoring, Reliability, Load Balancing, Cloud Computing
+Tags: Azure, App Service, Health Checks, Monitoring, Reliability, Load Balancing, Cloud Computing
 
 Description: How to configure and implement health check endpoints for Azure App Service to automatically detect and replace unhealthy instances.
 

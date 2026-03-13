@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, ArgoCD, GitOps, Secret, Security, DevOps, Vault, External Secrets
+Tags: Kubernetes, ArgoCD, GitOps, Secrets, Security, DevOps, Vault, External Secrets
 
 Description: A comprehensive guide to managing secrets in ArgoCD, covering Sealed Secrets, External Secrets Operator, Vault integration, SOPS, and best practices for secure GitOps workflows.
 

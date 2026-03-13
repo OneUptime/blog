@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, GCP, Ingress
+Tags: ArgoCD, GitOps, Kubernetes, GCP, Ingresses
 
 Description: Learn how to expose ArgoCD on Google Kubernetes Engine using the GCE Ingress Controller with Google-managed SSL certificates and Cloud Armor.
 

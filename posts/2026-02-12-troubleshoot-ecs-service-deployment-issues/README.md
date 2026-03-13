@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Troubleshooting, Deployment, DevOps
+Tags: AWS, ECS, Troubleshooting, Deployments, DevOps
 
 Description: Learn how to diagnose and fix common ECS service deployment issues including stuck deployments, rolling update failures, and task placement problems.
 

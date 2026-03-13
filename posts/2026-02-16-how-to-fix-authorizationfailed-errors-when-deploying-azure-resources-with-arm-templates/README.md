@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, ARM Templates, Authorization, RBAC, Troubleshooting, Infrastructure as Code, Deployment
+Tags: Azure, ARM Templates, Authorization, RBAC, Troubleshooting, Infrastructure as Code, Deployments
 
 Description: Learn how to diagnose and resolve AuthorizationFailed errors during Azure ARM template deployments with RBAC troubleshooting techniques.
 

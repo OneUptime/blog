@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway, YAML, Cheat Sheet, Ingress, Kubernetes
+Tags: Istio, Gateway, YAML, Cheat Sheet, Ingresses, Kubernetes
 
 Description: Complete cheat sheet for writing Istio Gateway YAML with examples for HTTP, HTTPS, TLS passthrough, and multi-host configurations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, kustomization, secrets, substitution, optional
+Tags: Flux, fluxcd, GitOps, Kubernetes, Kustomization, Secrets, Substitution, Optional
 
 Description: Learn how to use optional Secret references in Flux post-build substitution for flexible and resilient configuration of sensitive values.
 

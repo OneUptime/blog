@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: GitOps, Deployment, Kubernetes, DevOps
+Tags: GitOps, Deployments, Kubernetes, DevOps
 
 Description: A practical guide to structuring GitOps repositories, implementing sync strategies, and managing multiple environments with ArgoCD and Flux.
 

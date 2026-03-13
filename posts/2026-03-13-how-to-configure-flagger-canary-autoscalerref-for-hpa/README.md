@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, hpa, autoscaling, kubernetes
+Tags: Flagger, Canary, HPA, Autoscaling, Kubernetes
 
 Description: Learn how to integrate Flagger canary deployments with Horizontal Pod Autoscaler (HPA) using the autoscalerRef field for automatic scaling during progressive delivery.
 

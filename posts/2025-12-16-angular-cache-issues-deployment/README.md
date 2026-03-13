@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NGINX, Angular, Caching, Deployment, Web Development
+Tags: NGINX, Angular, Caching, Deployments, Web Development
 
 Description: Learn how to configure Nginx to properly handle Angular application caching after deployments, ensuring users always get the latest version while maintaining optimal performance.
 

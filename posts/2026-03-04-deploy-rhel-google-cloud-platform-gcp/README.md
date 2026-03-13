@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Google Cloud, GCP, Cloud, Deployment, Linux
+Tags: RHEL, Google Cloud, GCP, Cloud, Deployments, Linux
 
 Description: Deploy RHEL virtual machines on Google Cloud Platform using official images, including instance configuration, networking, and startup scripts.
 

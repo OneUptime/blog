@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Kubernetes, Operator, Deployment, K8s, Automation
+Tags: OpenTelemetry, Collector, Kubernetes, Operator, Deployments, K8s, Automation
 
 Description: Master deploying OpenTelemetry Collectors using the Kubernetes Operator for automated management, configuration updates, and scaling with custom resources.
 

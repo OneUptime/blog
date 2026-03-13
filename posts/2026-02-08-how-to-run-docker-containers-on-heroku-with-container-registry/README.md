@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Heroku, Container Registry, PaaS, Cloud, Deployment, DevOps, CI/CD
+Tags: Docker, Heroku, Container Registry, PaaS, Cloud, Deployments, DevOps, CI/CD
 
 Description: A complete guide to deploying Docker containers on Heroku using the Container Registry, including multi-process apps and CI/CD integration.
 

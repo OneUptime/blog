@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Health Check, Monitoring, DevOps, Reliability
+Tags: Ansible, Health Checks, Monitoring, DevOps, Reliability
 
 Description: Implement application health checks with Ansible including HTTP probes, service verification, dependency checks, and automated recovery.
 

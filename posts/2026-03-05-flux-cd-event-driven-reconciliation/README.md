@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Event-Driven, Reconciliation, Webhook, Notifications
+Tags: Flux CD, GitOps, Kubernetes, Event-Driven, Reconciliation, Webhooks, Notifications
 
 Description: Learn how Flux CD combines interval-based polling with event-driven reconciliation to respond to changes in your Git repositories and cluster state.
 

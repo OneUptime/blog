@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Envoy, Connection Draining, Kubernetes, Deployment
+Tags: Istio, Envoy, Connection Draining, Kubernetes, Deployments
 
 Description: How to configure Envoy proxy connection draining in Istio to handle graceful pod termination and zero-downtime deployments.
 

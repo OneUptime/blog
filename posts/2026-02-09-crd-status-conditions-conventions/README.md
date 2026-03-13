@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRD, Status Conditions
+Tags: Kubernetes, CRDs, Status Conditions
 
 Description: Learn how to implement status conditions in your custom resources following Kubernetes conventions, providing consistent and informative status reporting for better observability.
 

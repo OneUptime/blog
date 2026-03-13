@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Rollback, Deployment, StatefulSet, Helm, GitOps, Disaster Recovery
+Tags: Kubernetes, Rollback, Deployments, StatefulSets, Helm, GitOps, Disaster Recovery
 
 Description: Learn comprehensive rollback strategies for Kubernetes deployments including kubectl rollout undo, Helm rollbacks, stateful application recovery, and GitOps-based reversions.
 

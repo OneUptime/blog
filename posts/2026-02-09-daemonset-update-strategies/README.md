@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Update Strategies, Rolling Updates, Deployment
+Tags: Kubernetes, DaemonSets, Update Strategies, Rolling Updates, Deployments
 
 Description: Master Kubernetes DaemonSet update strategies including RollingUpdate and OnDelete patterns for safe, controlled updates of node-level agents and services.
 

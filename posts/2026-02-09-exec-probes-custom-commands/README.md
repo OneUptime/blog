@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Check, Exec Probes
+Tags: Kubernetes, Health Checks, Exec Probes
 
 Description: Implement Kubernetes exec probes with custom shell commands and scripts to perform application-specific health checks that verify complex dependencies and internal state.
 

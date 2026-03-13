@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Ingress, Gateway, Troubleshooting, Service Mesh, Networking
+Tags: Istio, Kubernetes, Ingresses, Gateway, Troubleshooting, Service Mesh, Networking
 
 Description: Learn how to diagnose and fix common Istio ingress issues including 404 errors, connection refused, TLS problems, and routing failures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vue.js, Azure, Static Web Apps, Authentication, Deployment, JavaScript, Security
+Tags: Vue.js, Azure, Static Web Apps, Authentication, Deployments, JavaScript, Security
 
 Description: Deploy a Vue.js application to Azure Static Web Apps and implement custom authentication with role-based access control.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Health Check, Probe, Reliability, DevOps
+Tags: Terraform, Kubernetes, Health Checks, Probe, Reliability, DevOps
 
 Description: Learn how to configure Kubernetes liveness, readiness, and startup probes in Terraform to ensure your applications are healthy, properly receiving traffic, and gracefully handling failures.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Vue.js, S3, CloudFront, Deployment
+Tags: AWS, Vue.js, S3, CloudFront, Deployments
 
 Description: A practical guide to deploying Vue.js applications to AWS S3 with CloudFront CDN for global content delivery, HTTPS, and cache optimization.
 

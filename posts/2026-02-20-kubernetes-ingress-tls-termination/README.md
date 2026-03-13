@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, TLS, SSL, Security
+Tags: Kubernetes, Ingresses, TLS, SSL, Security
 
 Description: Learn how to configure TLS termination at the Kubernetes Ingress controller including certificate management and HTTPS redirects.
 

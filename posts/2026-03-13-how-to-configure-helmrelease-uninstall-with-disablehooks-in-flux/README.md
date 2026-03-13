@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Uninstall, Hooks, disableHooks
+Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Uninstall, Hooks, DisableHooks
 
 Description: Learn how to configure the disableHooks option for HelmRelease uninstall operations in Flux CD to skip hook execution during cleanup.
 

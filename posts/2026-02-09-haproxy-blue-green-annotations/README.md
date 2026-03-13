@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, HAProxy, Deployment
+Tags: Kubernetes, HAProxy, Deployments
 
 Description: Learn how to implement blue-green deployments using HAProxy Ingress Controller annotations for zero-downtime releases, traffic switching, and safe production rollouts in Kubernetes environments.
 

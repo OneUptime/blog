@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, update-strategy, setifnotpresent, gitops, kubernetes
+Tags: Flux, image-automation, Update-Strategy, Setifnotpresent, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImageUpdateAutomation with the SetIfNotPresent update strategy to only set image tags when they are not already defined.
 

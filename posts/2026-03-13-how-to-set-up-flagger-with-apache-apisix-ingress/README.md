@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, apisix, ingress, canary, kubernetes, progressive delivery, traffic splitting
+Tags: Flagger, APISIX, Ingresses, Canary, Kubernetes, Progressive Delivery, Traffic Splitting
 
 Description: Learn how to set up Flagger with Apache APISIX ingress controller for progressive canary deployments with automatic traffic management.
 

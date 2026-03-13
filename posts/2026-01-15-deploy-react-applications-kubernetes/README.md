@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, Kubernetes, Deployment, DevOps, Containers, Infrastructure
+Tags: React, Kubernetes, Deployments, DevOps, Containers, Infrastructure
 
 Description: A comprehensive guide to containerizing React applications and deploying them to Kubernetes with production-ready configurations, Ingress setup, and best practices.
 

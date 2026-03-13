@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, Helm, Post-Renderer, HelmRelease
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, Helm, Post-Renderers, HelmRelease
 
 Description: Learn how to combine Flux Kustomization overlays with Helm post-renderers to customize Helm chart output without forking charts.
 

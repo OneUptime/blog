@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, PostgreSQL, Database Migration, AWS RDS
+Tags: GCP, Cloud SQL, PostgreSQL, Database Migrations, AWS RDS
 
 Description: Migrate your Amazon RDS PostgreSQL databases to Google Cloud SQL using the Database Migration Service for continuous replication and minimal downtime.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, artifactgenerator, helm, gitops, kubernetes, monorepo
+Tags: Flux, fluxcd, artifactgenerator, Helm, GitOps, Kubernetes, Monorepo
 
 Description: Learn how to use the Flux 2.8 ArtifactGenerator to extract Helm charts from monorepos and Git repositories for efficient reconciliation.
 
@@ -25,7 +25,7 @@ When you store Helm charts in a monorepo alongside application code, infrastruct
 
 A typical monorepo structure looks like this:
 
-```
+```text
 my-monorepo/
   apps/
     frontend/
@@ -201,7 +201,7 @@ kubectl get artifactgenerators -n flux-system
 
 Expected output:
 
-```
+```text
 NAME              READY   STATUS                  AGE
 frontend-chart    True    Artifact generated       5m
 backend-chart     True    Artifact generated       5m

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, SOPS, Secret, Encryption, GitOps, Troubleshooting, Kubernetes
+Tags: Flux CD, SOPS, Secrets, Encryption, GitOps, Troubleshooting, Kubernetes
 
 Description: A step-by-step guide to diagnosing and resolving SOPS decryption failures in Flux CD, covering Age keys, GPG keys, and common configuration mistakes.
 

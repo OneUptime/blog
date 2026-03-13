@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, timoni, cli, module-management
+Tags: Flux, Kubernetes, GitOps, Timoni, CLI, Module-Management
 
 Description: A complete guide to installing the Timoni CLI and using it to manage Flux modules for Kubernetes deployments.
 
@@ -111,7 +111,7 @@ timoni --help
 
 Expected output structure:
 
-```
+```text
 A package manager for Kubernetes powered by CUE.
 
 Usage:
@@ -150,7 +150,7 @@ ls -la ./flux-git-sync/
 
 A typical module contains:
 
-```
+```text
 flux-git-sync/
   cue.mod/
     module.cue

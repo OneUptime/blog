@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Flask, Python, Deployment, Elastic Beanstalk
+Tags: AWS, Flask, Python, Deployments, Elastic Beanstalk
 
 Description: A complete guide to deploying Flask applications on AWS using Elastic Beanstalk, EC2, and containerized approaches with practical code examples.
 

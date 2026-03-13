@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Smoke Testing, Quality Assurance, Testing Strategy, CI/CD, Deployment, DevOps, Automation
+Tags: Smoke Testing, Quality Assurance, Testing Strategy, CI/CD, Deployments, DevOps, Automation
 
 Description: A comprehensive guide to implementing effective smoke tests that catch critical failures quickly without slowing down your deployment pipeline.
 

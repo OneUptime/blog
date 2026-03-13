@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Container, Pre-Flight Checks, Pod Lifecycle, Dependencies, DevOps
+Tags: Kubernetes, Init Containers, Pre-Flight Checks, Pod Lifecycle, Dependencies, DevOps
 
 Description: Learn how to use Kubernetes init containers for dependency checks, database migrations, configuration loading, and ensuring prerequisites before your main application starts.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Deployment, CI/CD
+Tags: ArgoCD, GitOps, Kubernetes, Deployments, CI/CD
 
 Description: Learn how to switch between branch tracking, tag tracking, commit pinning, and semver strategies in ArgoCD for different environments and use cases.
 

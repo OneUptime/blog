@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Source Controller, GitRepository, Tag Tracking, Release
+Tags: Flux CD, GitOps, Kubernetes, Source Controller, GitRepository, Tag Tracking, Releases
 
 Description: Learn how to configure Flux CD GitRepository sources to track specific Git tags for stable, version-pinned deployments.
 

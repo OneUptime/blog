@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Git, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Git, Deployments
 
 Description: Learn how to pin an ArgoCD application to a specific Git commit SHA for maximum deployment control and reproducibility.
 

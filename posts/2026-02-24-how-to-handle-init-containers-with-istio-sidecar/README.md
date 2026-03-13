@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Init Container, Sidecar, Networking
+Tags: Istio, Kubernetes, Init Containers, Sidecar, Networking
 
 Description: How to handle Kubernetes init containers when Istio sidecar injection is enabled, including networking issues, ordering problems, and practical workarounds.
 

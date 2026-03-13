@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flux-operator, resourceset, preview-environments, pull-requests, github, kubernetes, gitops
+Tags: Flux, Flux-Operator, ResourceSets, Preview-Environments, Pull-Requests, GitHub, Kubernetes, GitOps
 
 Description: Learn how to use Flux Operator ResourceSet to automatically create and destroy preview environments for GitHub pull requests.
 
@@ -217,7 +217,7 @@ To prevent preview environments from consuming too many cluster resources, add R
 
 For the preview URLs to work, configure a wildcard DNS record:
 
-```
+```text
 *.preview.example.com -> <ingress-controller-ip>
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Plugins, Webhook, Notifications, Callback
+Tags: Ansible, Plugins, Webhooks, Notifications, Callback
 
 Description: Build an Ansible callback plugin that sends real-time webhook notifications to Slack, Teams, or any HTTP endpoint during playbook runs.
 

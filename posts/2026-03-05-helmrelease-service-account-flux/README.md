@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Service Account, RBAC, Security
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Service Accounts, RBAC, Security
 
 Description: Learn how to configure a custom service account for Helm operations in a Flux CD HelmRelease to enforce least-privilege access control.
 

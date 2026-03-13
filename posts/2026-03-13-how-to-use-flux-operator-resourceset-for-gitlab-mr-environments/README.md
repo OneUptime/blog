@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flux-operator, resourceset, gitlab, merge-requests, preview-environments, kubernetes, gitops
+Tags: Flux, Flux-Operator, ResourceSets, GitLab, Merge-Requests, Preview-Environments, Kubernetes, GitOps
 
 Description: Learn how to use Flux Operator ResourceSet to automatically provision and tear down preview environments for GitLab merge requests.
 

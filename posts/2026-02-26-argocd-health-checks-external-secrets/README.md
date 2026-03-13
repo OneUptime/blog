@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, External Secrets, Health Check
+Tags: ArgoCD, GitOps, Kubernetes, External Secrets, Health Checks
 
 Description: Learn how to configure ArgoCD health checks for External Secrets Operator resources to detect secret sync failures and provider connectivity issues.
 

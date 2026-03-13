@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: gRPC, Kubernetes, Ingress, NGINX, Traefik, TLS, HTTP/2, Load Balancing, API Gateway
+Tags: gRPC, Kubernetes, Ingresses, NGINX, Traefik, TLS, HTTP/2, Load Balancing, API Gateway
 
 Description: Learn how to expose gRPC services externally using Kubernetes Ingress controllers with NGINX and Traefik, including TLS termination and HTTP/2 backend configuration.
 

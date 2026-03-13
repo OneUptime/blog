@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, Deployment, Rolling Updates, DevOps
+Tags: AWS, ECS, Deployments, Rolling Updates, DevOps
 
 Description: Master ECS rolling update deployment configuration to achieve zero-downtime deployments with fine-tuned control over update speed and safety
 

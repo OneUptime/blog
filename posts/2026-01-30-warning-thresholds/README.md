@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Monitoring, Thresholds, SRE, Alerting
+Tags: Monitoring, Threshold, SRE, Alerting
 
 Description: Learn how to set effective warning thresholds for early problem detection.
 

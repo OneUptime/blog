@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Git, Deployment, CI/CD
+Tags: Ansible, Git, Deployments, CI/CD
 
 Description: Learn how to use the Ansible git module for application deployment including build steps, service restarts, rolling updates, and zero-downtime strategies.
 

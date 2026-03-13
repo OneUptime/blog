@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Multi-Cluster, Ingress, Kubernetes, Load Balancing
+Tags: Istio, Multi-Cluster, Ingresses, Kubernetes, Load Balancing
 
 Description: How to configure Istio ingress gateways across multiple clusters to handle external traffic with global load balancing.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, imagepolicy, git, sha, gitops, kubernetes
+Tags: Flux, image-automation, ImagePolicy, Git, Sha, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImagePolicy to track container image tags that combine Git branch names and commit SHA hashes.
 

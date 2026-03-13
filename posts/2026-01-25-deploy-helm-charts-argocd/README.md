@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, Helm, Kubernetes, GitOps, Charts, Deployment
+Tags: ArgoCD, Helm, Kubernetes, GitOps, Charts, Deployments
 
 Description: A complete guide to deploying Helm charts using ArgoCD, covering chart sources, value files, parameter overrides, and advanced patterns for production deployments.
 

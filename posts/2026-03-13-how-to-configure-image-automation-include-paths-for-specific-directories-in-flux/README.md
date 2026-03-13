@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, include-paths, gitops, kubernetes
+Tags: Flux, image-automation, Include-Paths, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImageUpdateAutomation to only scan and update image tags in specific directories using include paths.
 
@@ -25,7 +25,7 @@ This guide shows you how to configure include paths in Flux ImageUpdateAutomatio
 
 Consider a repository with the following structure:
 
-```
+```text
 ├── clusters/
 │   ├── staging/
 │   │   ├── apps/

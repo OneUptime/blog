@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, PM2, Node.js, Process Manager, Deployment
+Tags: RHEL, PM2, Node.js, Process Manager, Deployments
 
 Description: Learn how to install and configure PM2 on RHEL to manage Node.js applications with automatic restarts, clustering, and log management.
 

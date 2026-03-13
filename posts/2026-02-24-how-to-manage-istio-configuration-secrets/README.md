@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Secret, Security, Kubernetes, Configuration
+Tags: Istio, Secrets, Security, Kubernetes, Configuration
 
 Description: How to securely manage secrets used in Istio configuration including TLS certificates, JWT keys, and external service credentials.
 

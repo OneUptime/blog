@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker Compose, Deployment, Containers, DevOps
+Tags: Ansible, Docker Compose, Deployments, Containers, DevOps
 
 Description: Manage Docker Compose based deployments with Ansible for templated configurations, multi-environment support, and automated deployment workflows.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Go, Golang, Deployment, DevOps
+Tags: Ubuntu, Go, Golang, Deployments, DevOps
 
 Description: Build optimized Go binaries on Ubuntu, strip debug symbols, create deployment packages, and set up systemd services for production Go applications.
 

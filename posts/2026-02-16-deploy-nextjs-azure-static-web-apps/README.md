@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Next.js, Azure, Static Web Apps, Deployment, React, CI/CD, GitHub Actions
+Tags: Next.js, Azure, Static Web Apps, Deployments, React, CI/CD, GitHub Actions
 
 Description: Deploy a Next.js application to Azure Static Web Apps with automatic CI/CD through GitHub Actions and API routes support.
 

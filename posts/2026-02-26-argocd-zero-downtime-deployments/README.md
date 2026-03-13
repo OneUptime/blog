@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Zero Downtime, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Zero Downtime, Deployments
 
 Description: A practical guide to achieving zero-downtime deployments with ArgoCD covering rolling updates, readiness probes, PDB configuration, and traffic management strategies.
 

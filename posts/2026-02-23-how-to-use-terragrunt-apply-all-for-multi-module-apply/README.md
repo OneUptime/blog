@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Terragrunt, Infrastructure as Code, DevOps, Deployment, Multi-Module, Automation
+Tags: Terraform, Terragrunt, Infrastructure as Code, DevOps, Deployments, Multi-Module, Automation
 
 Description: Learn how to use Terragrunt apply-all and run-all apply to deploy infrastructure changes across multiple modules safely with dependency ordering and error handling.
 

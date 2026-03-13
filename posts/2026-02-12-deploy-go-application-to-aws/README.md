@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Go, Golang, Deployment, ECS
+Tags: AWS, Go, Golang, Deployments, ECS
 
 Description: Practical guide to deploying Go applications on AWS using ECS Fargate, Lambda, and EC2 with container builds, CI/CD pipelines, and production configurations.
 

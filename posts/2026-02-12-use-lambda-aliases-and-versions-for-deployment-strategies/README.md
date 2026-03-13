@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lambda, Deployment, Versioning, Serverless
+Tags: AWS, Lambda, Deployments, Versioning, Serverless
 
 Description: Master Lambda versions and aliases to implement safe deployment strategies including blue-green deployments, traffic shifting, and instant rollbacks.
 

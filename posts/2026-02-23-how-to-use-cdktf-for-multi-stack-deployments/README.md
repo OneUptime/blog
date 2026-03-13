@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CDKTF, Multi-Stack, Deployment, Infrastructure as Code
+Tags: Terraform, CDKTF, Multi-Stack, Deployments, Infrastructure as Code
 
 Description: Learn how to design, organize, and deploy multi-stack CDKTF architectures for complex infrastructure spanning multiple environments, regions, and services.
 

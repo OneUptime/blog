@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployment, Versioning
+Tags: Kubernetes, Deployments, Versioning
 
 Description: Learn how to use Kubernetes pod template hash for precise version tracking, understanding deployment revisions, and debugging rollout issues by identifying exact pod configurations.
 

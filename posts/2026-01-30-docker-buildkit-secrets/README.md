@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, BuildKit, Secret, Security, DevOps
+Tags: Docker, BuildKit, Secrets, Security, DevOps
 
 Description: Securely handle sensitive data during Docker builds using BuildKit secrets, SSH forwarding, and mount types without leaking credentials into image layers.
 

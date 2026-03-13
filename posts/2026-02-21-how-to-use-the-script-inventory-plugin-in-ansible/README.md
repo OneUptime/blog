@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Inventory Plugin, Script, Dynamic Inventory, Python
+Tags: Ansible, Inventory Plugin, Scripts, Dynamic Inventory, Python
 
 Description: Learn how to use the Ansible script inventory plugin to run custom executable scripts that generate inventory data dynamically.
 

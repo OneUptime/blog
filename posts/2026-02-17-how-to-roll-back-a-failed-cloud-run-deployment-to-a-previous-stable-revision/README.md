@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Deployment, Rollback, Revision Management
+Tags: GCP, Cloud Run, Deployments, Rollback, Revision Management
 
 Description: Learn how to quickly roll back a failed Cloud Run deployment to a previous stable revision using gcloud CLI and traffic splitting strategies.
 

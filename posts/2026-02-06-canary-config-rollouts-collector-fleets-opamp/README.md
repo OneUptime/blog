@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, OpAMP, Canary Deployment, Configuration Management
+Tags: OpenTelemetry, OpAMP, Canary Deployments, Configuration Management
 
 Description: Implement canary-style configuration rollouts for your OpenTelemetry Collector fleet using OpAMP to catch problems before they hit production.
 

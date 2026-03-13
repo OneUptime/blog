@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Edge Computing, Multi-Cluster, Mesh Federation, Deployment
+Tags: Istio, Edge Computing, Multi-Cluster, Mesh Federation, Deployments
 
 Description: How to set up Istio across multiple edge clusters with independent control planes while maintaining unified service mesh capabilities.
 

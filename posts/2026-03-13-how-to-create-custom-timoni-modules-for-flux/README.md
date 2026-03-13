@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, timoni, cue, modules, custom
+Tags: Flux, Kubernetes, GitOps, Timoni, cue, Modules, Custom
 
 Description: A step-by-step guide to creating custom Timoni modules that generate Flux resources for your organization's deployment patterns.
 
@@ -32,7 +32,7 @@ cd my-flux-app
 
 This generates the module structure:
 
-```
+```cue
 my-flux-app/
   cue.mod/
     module.cue

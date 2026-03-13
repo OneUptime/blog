@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, Deployment, Workloads, Getting Started
+Tags: Talos Linux, Kubernetes, Deployments, Workloads, Getting Started
 
 Description: Walk through deploying your first application on a Talos Linux Kubernetes cluster, from simple pods to full deployments with services.
 

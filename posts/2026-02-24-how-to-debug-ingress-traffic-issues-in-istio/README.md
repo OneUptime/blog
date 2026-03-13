@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ingress, Debugging, Gateway, Traffic Management
+Tags: Istio, Ingresses, Debugging, Gateway, Traffic Management
 
 Description: Complete troubleshooting guide for Istio ingress traffic issues covering Gateway configuration, VirtualService routing, TLS termination, and load balancer setup.
 

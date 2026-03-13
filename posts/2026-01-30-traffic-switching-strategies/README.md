@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Deployment, DevOps, Kubernetes, Traffic Management
+Tags: Deployments, DevOps, Kubernetes, Traffic Management
 
 Description: Learn how to implement traffic switching strategies for zero-downtime deployments, A/B testing, and gradual rollouts using load balancers, service meshes, and DNS.
 

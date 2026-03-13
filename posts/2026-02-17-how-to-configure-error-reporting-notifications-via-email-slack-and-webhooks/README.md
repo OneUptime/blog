@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Error Reporting, Notifications, Slack, Webhook, Monitoring
+Tags: GCP, Cloud Error Reporting, Notifications, Slack, Webhooks, Monitoring
 
 Description: Learn how to set up Google Cloud Error Reporting notifications through email, Slack, and webhooks so your team gets alerted when new errors appear in production.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Webhook, Event Ingestion
+Tags: OpenTelemetry, Collector, Webhooks, Event Ingestion
 
 Description: Configure the OpenTelemetry Collector webhook receiver to accept external event data via HTTP and convert it into logs and traces.
 

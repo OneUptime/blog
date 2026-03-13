@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Embed, Static Files, Web Server, Deployment
+Tags: Go, Golang, Embed, Static Files, Web Server, Deployments
 
 Description: A practical guide to using Go's embed package to bundle static files and templates into your binary.
 

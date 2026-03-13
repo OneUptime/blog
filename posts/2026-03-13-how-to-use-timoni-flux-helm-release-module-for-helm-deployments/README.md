@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, timoni, helm, helmrelease
+Tags: Flux, Kubernetes, GitOps, Timoni, Helm, HelmRelease
 
 Description: Learn how to use the Timoni flux-helm-release module to manage Helm-based deployments through Flux with type-safe configuration.
 

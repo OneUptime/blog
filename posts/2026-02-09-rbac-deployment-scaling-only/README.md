@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, Deployment, Scaling, Operations
+Tags: Kubernetes, RBAC, Deployments, Scaling, Operations
 
 Description: Learn how to create RBAC roles that allow users to scale deployments up and down without granting full edit permissions that could modify container images or other critical configuration.
 

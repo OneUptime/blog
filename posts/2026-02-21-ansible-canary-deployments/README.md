@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Canary Deployment, CI/CD, DevOps
+Tags: Ansible, Canary Deployments, CI/CD, DevOps
 
 Description: Learn how to implement canary deployments using Ansible to gradually roll out changes and reduce deployment risk in production.
 

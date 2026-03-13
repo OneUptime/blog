@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Health Check, Kubernetes
+Tags: ArgoCD, GitOps, Health Checks, Kubernetes
 
 Description: Learn how to create custom health checks in ArgoCD for Kubernetes resources, CRDs, and complex applications using Lua scripts and ConfigMap configuration.
 

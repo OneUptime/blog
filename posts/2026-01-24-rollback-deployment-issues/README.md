@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DevOps, Rollback, Deployment, Troubleshooting, GitOps, CI/CD
+Tags: Kubernetes, DevOps, Rollback, Deployments, Troubleshooting, GitOps, CI/CD
 
 Description: Learn how to diagnose and fix common rollback failures in Kubernetes and other deployment systems, including stuck rollbacks, data compatibility issues, and failed health checks.
 

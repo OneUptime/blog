@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, GKE, Ingress, Multi-Cluster, Load Balancing, Gateway API
+Tags: Kubernetes, GKE, Ingresses, Multi-Cluster, Load Balancing, Gateway API
 
 Description: Learn how to configure GKE Multi-Cluster Gateway for global load balancing and intelligent traffic routing across multiple Google Kubernetes Engine clusters.
 

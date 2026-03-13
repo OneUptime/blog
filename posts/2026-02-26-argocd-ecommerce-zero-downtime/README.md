@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, E-Commerce, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, E-Commerce, Deployments
 
 Description: Configure ArgoCD for e-commerce platforms with zero-downtime deployments, change freezes for peak shopping seasons, and progressive rollout strategies.
 

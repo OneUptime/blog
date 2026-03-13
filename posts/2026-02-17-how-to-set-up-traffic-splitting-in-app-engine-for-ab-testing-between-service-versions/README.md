@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, App Engine, Traffic Splitting, A/B Testing, Deployment, Canary Release
+Tags: GCP, App Engine, Traffic Splitting, A/B Testing, Deployments, Canary Release
 
 Description: Learn how to use App Engine traffic splitting to run A/B tests and canary deployments by routing percentages of traffic between different service versions.
 

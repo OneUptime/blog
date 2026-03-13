@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, Routing, NGINX, Networking
+Tags: Kubernetes, Ingresses, Routing, NGINX, Networking
 
 Description: Master Kubernetes Ingress path types including Exact, Prefix, and ImplementationSpecific to configure precise URL routing rules for your applications and avoid common routing conflicts.
 

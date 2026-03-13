@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, timoni, bundles, multi-module
+Tags: Flux, Kubernetes, GitOps, Timoni, Bundles, Multi-Module
 
 Description: Learn how to use Timoni bundles to orchestrate multiple Flux modules for complex multi-component Kubernetes deployments.
 

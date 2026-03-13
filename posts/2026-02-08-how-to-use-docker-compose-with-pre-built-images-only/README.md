@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker Compose, Docker Images, Deployment, CI/CD, DevOps, Production
+Tags: Docker Compose, Docker Images, Deployments, CI/CD, DevOps, Production
 
 Description: Learn how to configure Docker Compose for production deployments that use only pre-built images with no local builds.
 

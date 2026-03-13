@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HelmRelease, CRD, Kubernetes, GitOps, Helm
+Tags: Flux CD, HelmRelease, CRDs, Kubernetes, GitOps, Helm
 
 Description: Learn how to configure the Skip CRD installation policy in Flux HelmRelease to prevent Helm from managing CRDs and handle them separately.
 
@@ -72,7 +72,7 @@ With this configuration, Flux will not attempt to install or update any CRDs fou
 
 When you skip CRD installation in the HelmRelease, you need to install CRDs through another mechanism. A Flux Kustomization is the recommended approach. First, add the CRD manifests to your Git repository:
 
-```
+```text
 clusters/
   my-cluster/
     cert-manager/

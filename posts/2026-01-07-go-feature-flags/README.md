@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Feature Flags, A/B Testing, DevOps, Release
+Tags: Go, Feature Flags, A/B Testing, DevOps, Releases
 
 Description: Implement feature flags in Go for gradual rollouts, A/B testing, and safe deployments with both custom and third-party solutions.
 

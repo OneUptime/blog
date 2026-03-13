@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Database, Migration, Blue-Green, Deployment
+Tags: Database, Migration, Blue-Green, Deployments
 
 Description: Learn to build database migration coordination for zero-downtime schema changes.
 

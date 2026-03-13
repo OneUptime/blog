@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Lists, Iteration, ZIP, Loops
+Tags: Python, Lists, Iterations, ZIP, Loops
 
 Description: Learn how to iterate over multiple lists simultaneously in Python using zip, enumerate, and itertools for efficient parallel processing.
 

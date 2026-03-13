@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: etcd, Kubernetes, Backup, CronJob, S3
+Tags: etcd, Kubernetes, Backup, CronJobs, S3
 
 Description: Learn how to automate etcd backups with Kubernetes CronJobs and S3 storage. Complete guide covering snapshot creation, encryption, retention policies, and monitoring.
 

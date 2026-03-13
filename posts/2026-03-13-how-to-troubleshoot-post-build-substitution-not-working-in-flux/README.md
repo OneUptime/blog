@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, kustomization, post-build, substitution, troubleshooting, debugging
+Tags: Flux, fluxcd, GitOps, Kubernetes, Kustomization, Post-Build, Substitution, Troubleshooting, Debugging
 
 Description: A comprehensive troubleshooting guide for diagnosing and fixing post-build variable substitution issues in Flux Kustomizations.
 

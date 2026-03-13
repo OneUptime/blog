@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, Docker, Containerization, DevOps, Deployment
+Tags: Rust, Docker, Containerization, DevOps, Deployments
 
 Description: A practical guide to containerizing Rust applications with Docker using multi-stage builds and optimization techniques.
 

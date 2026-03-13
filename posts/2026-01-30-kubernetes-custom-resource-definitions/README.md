@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, CRD, Extensions, Operator
+Tags: Kubernetes, CRDs, Extensions, Operator
 
 Description: Define Kubernetes Custom Resource Definitions (CRDs) with schema validation, versioning, and conversion webhooks for extending the Kubernetes API.
 

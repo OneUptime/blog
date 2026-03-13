@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Database Migration, DevOps
+Tags: ArgoCD, GitOps, Kubernetes, Database Migrations, DevOps
 
 Description: Learn practical approaches to handling database schema migrations in GitOps workflows with ArgoCD, including PreSync hooks, init containers, and migration job patterns.
 

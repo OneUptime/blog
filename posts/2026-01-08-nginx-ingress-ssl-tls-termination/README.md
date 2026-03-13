@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NGINX, Ingress, Kubernetes, SSL, TLS, cert-manager, Lets-encrypt, Security, HTTPS
+Tags: NGINX, Ingresses, Kubernetes, SSL, TLS, cert-manager, Lets-encrypt, Security, HTTPS
 
 Description: A comprehensive guide to deploying NGINX Ingress Controller with automated SSL/TLS certificate management using cert-manager and Let's Encrypt.
 

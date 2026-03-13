@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, Troubleshooting, NGINX, Networking, TLS, DevOps
+Tags: Kubernetes, Ingresses, Troubleshooting, NGINX, Networking, TLS, DevOps
 
 Description: Learn how to diagnose and fix Kubernetes Ingress issues including 404 errors, TLS problems, routing failures, and ingress controller configuration problems.
 

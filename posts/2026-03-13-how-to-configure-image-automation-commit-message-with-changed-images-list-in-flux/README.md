@@ -1,8 +1,8 @@
-# How to Configure Image Automation Commit Message with Changed Images List in Flux
+# Configure Image Automation Commit Message with Changed Images in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, commit-message, changelog, gitops, kubernetes
+Tags: Flux, image-automation, Commit-Message, Changelog, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImageUpdateAutomation commit messages to include a detailed list of all changed container images.
 
@@ -70,7 +70,7 @@ spec:
 
 This produces a commit message like:
 
-```
+```text
 chore: update container images
 
 Changed images:
@@ -103,7 +103,7 @@ spec:
 
 This produces:
 
-```
+```yaml
 chore: update container images
 
 Deployment/api:
@@ -140,7 +140,7 @@ spec:
 
 This produces:
 
-```
+```yaml
 chore: update container images
 
 clusters/production/apps/api/deployment.yaml:

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, resourceset, web-ui, monitoring, gitops, kubernetes
+Tags: Flux, fluxcd, ResourceSets, Web-Ui, Monitoring, GitOps, Kubernetes
 
 Description: Learn how to monitor ResourceSet resources using the Flux 2.8 Web UI for visibility into templated multi-instance deployments.
 

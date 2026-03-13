@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PHP, Laravel, Envoy, Deployment, DevOps, SSH
+Tags: PHP, Laravel, Envoy, Deployments, DevOps, SSH
 
 Description: A comprehensive guide to deploying Laravel applications using Laravel Envoy. Learn SSH-based deployments, zero-downtime strategies, and automation workflows for reliable production releases.
 

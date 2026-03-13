@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, AWS, Ingress
+Tags: ArgoCD, GitOps, Kubernetes, AWS, Ingresses
 
 Description: Complete guide to exposing ArgoCD through AWS Application Load Balancer Ingress Controller on EKS with HTTPS, gRPC, and WAF integration.
 

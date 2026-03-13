@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderer, Tolerations, Taints, Scheduling
+Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderers, Tolerations, Taints, Scheduling
 
 Description: Learn how to add tolerations to Helm chart workloads using Flux post-renderers so pods can be scheduled on tainted nodes.
 

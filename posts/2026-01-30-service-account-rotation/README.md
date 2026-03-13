@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Security, Service Account, Kubernetes, Rotation
+Tags: Security, Service Accounts, Kubernetes, Rotation
 
 Description: Learn to implement service account rotation for workload identity management.
 

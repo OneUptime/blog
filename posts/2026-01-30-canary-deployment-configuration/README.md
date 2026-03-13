@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Canary Deployment, DevOps, Release Management, Progressive Delivery, Kubernetes
+Tags: Canary Deployments, DevOps, Release Management, Progressive Delivery, Kubernetes
 
 Description: Configure canary deployments with traffic percentage control, metrics analysis, automatic rollback triggers, and progressive rollout strategies.
 

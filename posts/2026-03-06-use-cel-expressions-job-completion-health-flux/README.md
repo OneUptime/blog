@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, CEL, Jobs, Health Check, Kubernetes, GitOps, Batch Processing
+Tags: Flux CD, CEL, Jobs, Health Checks, Kubernetes, GitOps, Batch Processing
 
 Description: A practical guide to writing CEL health check expressions for Kubernetes Jobs and CronJobs in Flux CD to validate batch workload completion.
 

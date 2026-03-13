@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Load Balancer, Traffic Management, Canary Deployment, Weighted Routing
+Tags: GCP, Load Balancer, Traffic Management, Canary Deployments, Weighted Routing
 
 Description: Step-by-step guide to configuring weighted traffic distribution across backend services on Google Cloud Load Balancer for canary deployments and gradual rollouts.
 

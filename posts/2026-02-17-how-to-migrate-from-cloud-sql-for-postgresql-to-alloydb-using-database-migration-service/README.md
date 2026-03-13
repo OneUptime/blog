@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, AlloyDB, Cloud SQL, PostgreSQL, Database Migration, DMS
+Tags: GCP, AlloyDB, Cloud SQL, PostgreSQL, Database Migrations, DMS
 
 Description: A complete guide to migrating from Cloud SQL for PostgreSQL to AlloyDB using Google Cloud Database Migration Service with minimal downtime.
 

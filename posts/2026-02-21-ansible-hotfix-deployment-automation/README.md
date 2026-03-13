@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Hotfix, Deployment, Incident Response
+Tags: Ansible, Hotfix, Deployments, Incident Response
 
 Description: Deploy critical hotfixes to production quickly and safely with Ansible playbooks that streamline the emergency deployment process.
 

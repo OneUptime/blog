@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Jobs, CronJob, Batch Processing
+Tags: Ansible, Kubernetes, Jobs, CronJobs, Batch Processing
 
 Description: Create and manage Kubernetes Jobs and CronJobs with Ansible for database migrations, batch processing, scheduled backups, and cleanup tasks.
 

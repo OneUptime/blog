@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, CI/CD, Pipelines, DevOps, Deployment
+Tags: AWS, Amplify, CI/CD, Pipelines, DevOps, Deployments
 
 Description: Configure custom CI/CD pipelines for AWS Amplify applications using CodePipeline, GitHub Actions, or custom build specifications.
 

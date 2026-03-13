@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Traffic Shaping, Traffic Management, VirtualService, Canary Deployment
+Tags: Istio, Traffic Shaping, Traffic Management, VirtualService, Canary Deployments
 
 Description: How to implement traffic shaping in Istio using weighted routing, traffic mirroring, fault injection, and gradual rollout strategies.
 

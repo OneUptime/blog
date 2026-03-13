@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GKE, Kubernetes, PersistentVolumeClaim, Storage, Persistent Disk, Troubleshooting, GCP
+Tags: GKE, Kubernetes, PersistentVolumeClaims, Storage, Persistent Disk, Troubleshooting, GCP
 
 Description: Troubleshoot and resolve PersistentVolumeClaims stuck in Pending state in GKE, covering storage class issues, zone mismatches, quota limits, and provisioner problems.
 

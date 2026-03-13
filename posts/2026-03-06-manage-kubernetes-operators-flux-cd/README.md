@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes Operator, GitOps, Helm, CRD, Lifecycle Management
+Tags: Flux CD, Kubernetes Operator, GitOps, Helm, CRDs, Lifecycle Management
 
 Description: A practical guide to installing, upgrading, and managing Kubernetes Operators using Flux CD with proper CRD handling and dependency ordering.
 

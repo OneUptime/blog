@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Security, Vulnerability Scanning, Compliance
+Tags: Kubernetes, DaemonSets, Security, Vulnerability Scanning, Compliance
 
 Description: Learn how to deploy security scanning agents using Kubernetes DaemonSets to perform continuous vulnerability assessment, compliance checking, and threat detection across all cluster nodes.
 

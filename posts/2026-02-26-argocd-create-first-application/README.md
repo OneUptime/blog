@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Deployment, Beginner
+Tags: ArgoCD, GitOps, Kubernetes, Deployments, Beginner
 
 Description: A beginner-friendly guide to creating your first ArgoCD application, from connecting a Git repository to deploying and syncing a Kubernetes workload.
 

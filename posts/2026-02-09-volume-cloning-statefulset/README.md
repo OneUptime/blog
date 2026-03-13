@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, StatefulSet, VolumeCloning, Scaling
+Tags: Kubernetes, StatefulSets, VolumeCloning, Scaling
 
 Description: Learn how to leverage volume cloning to rapidly scale StatefulSets with pre-populated data, enabling faster replica creation and consistent data initialization across pods.
 

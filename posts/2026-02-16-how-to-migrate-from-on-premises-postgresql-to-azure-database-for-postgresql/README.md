@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, PostgreSQL, Migration, Cloud Migration, Database Migration, DMS, pg_dump
+Tags: Azure, PostgreSQL, Migration, Cloud Migration, Database Migrations, DMS, pg_dump
 
 Description: A complete guide to migrating your on-premises PostgreSQL database to Azure Database for PostgreSQL Flexible Server with multiple approaches and minimal downtime.
 

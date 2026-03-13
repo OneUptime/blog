@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, RBAC, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, RBAC, Deployments
 
 Description: Learn how to configure ArgoCD RBAC to grant deploy and sync access to specific applications while keeping other apps locked down for different teams.
 

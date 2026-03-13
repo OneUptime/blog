@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Spring Boot, Health Check, Kubernetes, Java
+Tags: Istio, Spring Boot, Health Checks, Kubernetes, Java
 
 Description: Detailed guide on configuring Spring Boot Actuator health checks to work properly with Istio sidecar proxies and Kubernetes probes.
 

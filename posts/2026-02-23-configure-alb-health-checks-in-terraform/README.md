@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ALB, Health Check, Load Balancing
+Tags: Terraform, AWS, ALB, Health Checks, Load Balancing
 
 Description: A detailed guide to configuring ALB health checks in Terraform, including HTTP/HTTPS checks, custom health check paths, matcher codes, and troubleshooting unhealthy targets.
 

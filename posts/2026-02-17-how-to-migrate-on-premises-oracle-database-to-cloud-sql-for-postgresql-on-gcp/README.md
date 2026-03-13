@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, PostgreSQL, Oracle, Database Migration
+Tags: GCP, Cloud SQL, PostgreSQL, Oracle, Database Migrations
 
 Description: A step-by-step guide for migrating an on-premises Oracle database to Cloud SQL for PostgreSQL on Google Cloud Platform.
 

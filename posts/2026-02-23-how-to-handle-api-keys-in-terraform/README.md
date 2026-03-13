@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, API Key, Security, Secret, IaC, DevOps
+Tags: Terraform, API Key, Security, Secrets, IaC, DevOps
 
 Description: Learn the best practices for handling API keys in Terraform configurations, including secure storage, retrieval from secret managers, rotation strategies, and common anti-patterns to avoid.
 

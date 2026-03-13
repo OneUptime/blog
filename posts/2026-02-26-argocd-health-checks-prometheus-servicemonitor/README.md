@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Prometheus, Health Check
+Tags: ArgoCD, GitOps, Kubernetes, Prometheus, Health Checks
 
 Description: Learn how to configure ArgoCD health checks for Prometheus Operator resources including ServiceMonitor, PodMonitor, PrometheusRule, and Alertmanager.
 

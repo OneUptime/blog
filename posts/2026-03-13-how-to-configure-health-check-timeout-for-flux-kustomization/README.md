@@ -89,7 +89,7 @@ For Deployment rollouts, calculate the timeout based on:
 
 Example calculation for a Deployment with 5 replicas, `maxUnavailable: 1`, 30-second readiness probe delay:
 
-```
+```text
 Time per pod = image pull (30s) + init containers (0s) + readiness delay (30s) + probe checks (20s) = ~80s
 Total with maxUnavailable: 1 = 5 pods * 80s = 400s ≈ 7 minutes
 Add 50% buffer = ~10 minutes
@@ -116,7 +116,7 @@ spec:
 
 StatefulSets update one pod at a time, making them inherently slower:
 
-```
+```text
 Time per pod = image pull (30s) + init (60s) + readiness (30s) + stabilize (30s) = ~150s
 3 replicas * 150s = 450s ≈ 8 minutes
 Add 50% buffer = ~12 minutes

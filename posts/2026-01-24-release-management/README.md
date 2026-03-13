@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Release Management, CI/CD, DevOps, Deployment, GitOps, Automation
+Tags: Release Management, CI/CD, DevOps, Deployments, GitOps, Automation
 
 Description: A practical guide to implementing effective release management processes, including versioning strategies, deployment pipelines, rollback procedures, and release automation.
 

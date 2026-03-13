@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Database, StatefulSet, QoS, Resource Management
+Tags: Kubernetes, Database, StatefulSets, QoS, Resource Management
 
 Description: Configure resource limits and Quality of Service classes for database StatefulSets on Kubernetes to ensure performance, prevent resource contention, and optimize cluster utilization.
 

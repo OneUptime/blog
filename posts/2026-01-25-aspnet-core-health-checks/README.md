@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: .NET, ASP.NET Core, Health Check, C#, Kubernetes, Observability, Monitoring, Reliability
+Tags: .NET, ASP.NET Core, Health Checks, C#, Kubernetes, Observability, Monitoring, Reliability
 
 Description: Learn how to implement health probes in ASP.NET Core using the built-in health checks framework.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Microservices, Deployment
+Tags: Ansible, Python, Microservices, Deployments
 
 Description: Deploy multiple Python microservices with Ansible including service discovery, health checks, and coordinated rolling updates.
 

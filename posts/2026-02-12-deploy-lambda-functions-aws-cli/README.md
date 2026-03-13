@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lambda, CLI, Serverless, Deployment
+Tags: AWS, Lambda, CLI, Serverless, Deployments
 
 Description: A comprehensive guide to deploying, updating, and managing AWS Lambda functions using the AWS CLI for repeatable, scriptable deployments.
 

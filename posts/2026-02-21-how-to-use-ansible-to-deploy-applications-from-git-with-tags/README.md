@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Git, Deployment, Release Management
+Tags: Ansible, Git, Deployments, Release Management
 
 Description: Learn how to use Ansible for tag-based application deployments from Git with build steps, database migrations, service restarts, and automated rollbacks.
 

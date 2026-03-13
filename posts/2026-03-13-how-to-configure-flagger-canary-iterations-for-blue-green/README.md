@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, blue-green, iterations, kubernetes, progressive delivery
+Tags: Flagger, Canary, Blue-Green, Iterations, Kubernetes, Progressive Delivery
 
 Description: Learn how to configure Flagger's iterations parameter for blue-green deployments where traffic switches entirely from the old version to the new version after validation.
 
@@ -160,7 +160,7 @@ spec:
 
 The number of iterations determines how long the canary version is tested before promotion:
 
-```
+```text
 total_analysis_time = interval * iterations
 ```
 
@@ -230,7 +230,7 @@ kubectl logs -n flagger-system deploy/flagger -f | grep backend-api
 
 During a blue-green rollout, the canary status will show:
 
-```
+```text
 NAME          STATUS        WEIGHT   LASTTRANSITIONTIME
 backend-api   Progressing   0        2026-03-13T10:00:00Z
 ```

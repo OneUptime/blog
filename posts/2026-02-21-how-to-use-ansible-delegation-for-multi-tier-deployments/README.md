@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Delegation, Deployment, Multi-Tier Architecture
+Tags: Ansible, Delegation, Deployments, Multi-Tier Architecture
 
 Description: Learn how to use Ansible delegation to coordinate deployments across multiple application tiers including web, app, and database layers.
 

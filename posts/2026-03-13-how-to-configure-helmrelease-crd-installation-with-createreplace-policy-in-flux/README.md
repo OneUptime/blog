@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HelmRelease, CRD, Kubernetes, GitOps, Helm
+Tags: Flux CD, HelmRelease, CRDs, Kubernetes, GitOps, Helm
 
 Description: Learn how to configure the CreateReplace CRD installation policy in Flux HelmRelease to manage Custom Resource Definitions during Helm chart installations and upgrades.
 
@@ -142,7 +142,7 @@ kubectl get crds | grep cert-manager
 
 You should see output similar to:
 
-```
+```text
 certificaterequests.cert-manager.io    2026-03-13T10:00:00Z
 certificates.cert-manager.io           2026-03-13T10:00:00Z
 challenges.acme.cert-manager.io        2026-03-13T10:00:00Z

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, ServiceMesh, Ingress
+Tags: Istio, Kubernetes, ServiceMesh, Ingresses
 
 Description: A comprehensive guide to configuring Istio Gateway for advanced ingress traffic management with TLS termination, multi-host routing, and CORS policies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Deployment, Traffic Draining, Zero Downtime, Kubernetes, Service Mesh
+Tags: Istio, Deployments, Traffic Draining, Zero Downtime, Kubernetes, Service Mesh
 
 Description: Configure proper traffic draining in Istio during deployments to achieve zero-downtime releases by handling in-flight requests and connection termination gracefully.
 

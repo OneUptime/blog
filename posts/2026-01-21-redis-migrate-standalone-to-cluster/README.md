@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Migration, Cluster, Sharding, Database Migration, DevOps, Production, Scaling
+Tags: Redis, Migration, Cluster, Sharding, Database Migrations, DevOps, Production, Scaling
 
 Description: A comprehensive guide to migrating from standalone Redis to Redis Cluster. Learn data migration strategies, client code changes, and step-by-step migration procedures with minimal downtime.
 

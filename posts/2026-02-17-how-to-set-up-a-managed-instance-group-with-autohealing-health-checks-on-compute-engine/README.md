@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, Managed Instance Group, Autohealing, Health Check
+Tags: GCP, Compute Engine, Managed Instance Group, Autohealing, Health Checks
 
 Description: Step-by-step guide to setting up a managed instance group with autohealing health checks on GCP Compute Engine to keep your application running smoothly.
 

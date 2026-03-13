@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Monitoring, Logging, Node
+Tags: Kubernetes, DaemonSets, Monitoring, Logging, Node
 
 Description: Learn how to use Kubernetes DaemonSets for deploying node-level services like log collectors, monitoring agents, and network plugins.
 

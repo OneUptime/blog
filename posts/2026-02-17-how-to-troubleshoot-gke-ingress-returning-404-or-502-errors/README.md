@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GKE, Kubernetes, Ingress, Load Balancing, Troubleshooting, HTTP Errors, GCP
+Tags: GKE, Kubernetes, Ingresses, Load Balancing, Troubleshooting, HTTP Errors, GCP
 
 Description: A hands-on guide to diagnosing and fixing 404 and 502 errors from GKE Ingress resources, covering health checks, backend configuration, and load balancer setup.
 

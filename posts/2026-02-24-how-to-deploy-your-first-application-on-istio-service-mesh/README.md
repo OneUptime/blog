@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Deployment, Kubernetes, Beginner, Service Mesh
+Tags: Istio, Deployments, Kubernetes, Beginner, Service Mesh
 
 Description: A beginner-friendly guide to deploying your first real application on Istio with sidecar injection, traffic routing, and basic observability.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Istio, Health Check
+Tags: ArgoCD, GitOps, Kubernetes, Istio, Health Checks
 
 Description: Learn how to configure ArgoCD health checks for Istio VirtualService, Gateway, DestinationRule, and other Istio networking resources.
 

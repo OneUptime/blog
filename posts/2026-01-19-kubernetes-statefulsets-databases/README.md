@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, StatefulSet, Database, PostgreSQL, MySQL, MongoDB, Persistent Storage
+Tags: Kubernetes, StatefulSets, Database, PostgreSQL, MySQL, MongoDB, Persistent Storage
 
 Description: Learn how to properly run stateful databases in Kubernetes using StatefulSets with stable network identities, persistent storage, and ordered deployment for MySQL, PostgreSQL, and MongoDB.
 

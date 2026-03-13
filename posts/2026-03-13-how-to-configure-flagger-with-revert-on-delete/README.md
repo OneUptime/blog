@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, revert-on-delete, kubernetes, cleanup
+Tags: Flagger, Canary, Revert-On-Delete, Kubernetes, Cleanup
 
 Description: Learn how to use Flagger's revertOnDeletion flag to automatically restore the original deployment when a Canary resource is deleted.
 

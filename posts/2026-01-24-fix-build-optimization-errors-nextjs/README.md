@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Next.js, Build Optimization, Performance, Webpack, Production, Deployment, Troubleshooting
+Tags: Next.js, Build Optimization, Performance, Webpack, Production, Deployments, Troubleshooting
 
 Description: A practical guide to diagnosing and resolving build optimization errors in Next.js applications for successful production deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Release Jobs, CI/CD, DevOps, Versioning, Deployment
+Tags: GitLab CI, Release Jobs, CI/CD, DevOps, Versioning, Deployments
 
 Description: Learn how to configure release jobs in GitLab CI with proper job settings, environment variables, conditional rules, and advanced configuration patterns for automated software releases.
 

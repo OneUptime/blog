@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Swarm, Ingress, Networking, Load Balancing, Routing Mesh, DevOps
+Tags: Docker, Docker Swarm, Ingresses, Networking, Load Balancing, Routing Mesh, DevOps
 
 Description: Configure Docker Swarm ingress networking with the routing mesh, overlay networks, and external load balancers.
 

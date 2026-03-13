@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Callback Plugins, Notifications, Webhook, Automation
+Tags: Ansible, Callback Plugins, Notifications, Webhooks, Automation
 
 Description: Build custom Ansible notification callback plugins that send alerts to Microsoft Teams, Discord, PagerDuty, OpsGenie, or any webhook-based service.
 

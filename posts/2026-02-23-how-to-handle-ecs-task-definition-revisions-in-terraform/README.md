@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, ECS, Task Definition, Revisions, Deployment, Infrastructure as Code
+Tags: Terraform, AWS, ECS, Task Definition, Revisions, Deployments, Infrastructure as Code
 
 Description: Learn how to manage ECS task definition revisions with Terraform including strategies for updating containers, handling rollbacks, and managing revision history.
 

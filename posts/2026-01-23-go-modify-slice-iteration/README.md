@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Slices, Iteration, Range, Pointers, Common Mistakes
+Tags: Go, Golang, Slices, Iterations, Range, Pointers, Common Mistakes
 
 Description: Learn why modifying slice elements during iteration in Go doesn't work as expected and discover the correct patterns to update values in place.
 

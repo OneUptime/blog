@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Istio, Canary Deployment, Traffic Splitting, GKE
+Tags: GCP, Istio, Canary Deployments, Traffic Splitting, GKE
 
 Description: Learn how to implement canary deployments on GKE using Istio traffic splitting to gradually roll out new service versions with automated traffic management and rollback.
 

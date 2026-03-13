@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Check, Performance
+Tags: Kubernetes, Health Checks, Performance
 
 Description: Configure probe periodSeconds to balance fast failure detection with resource usage, choosing appropriate health check intervals based on application characteristics and SLA requirements.
 

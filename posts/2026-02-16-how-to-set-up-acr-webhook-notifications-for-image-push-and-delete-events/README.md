@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ACR, Webhook, Container Registry, Azure, CI/CD, Notifications, Automation
+Tags: ACR, Webhooks, Container Registry, Azure, CI/CD, Notifications, Automation
 
 Description: Learn how to configure Azure Container Registry webhooks to trigger actions on image push, delete, quarantine, and chart push events.
 

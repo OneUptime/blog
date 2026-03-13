@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, CronJob, Scheduled Tasks, GitOps, Batch Processing
+Tags: Flux CD, Kubernetes, CronJobs, Scheduled Tasks, GitOps, Batch Processing
 
 Description: A practical guide to deploying and managing Kubernetes CronJobs with Flux CD for scheduled tasks, batch processing, and maintenance operations.
 

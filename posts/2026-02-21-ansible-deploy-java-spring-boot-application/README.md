@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Java, Spring Boot, Deployment, DevOps
+Tags: Ansible, Java, Spring Boot, Deployments, DevOps
 
 Description: Deploy Java Spring Boot applications with Ansible including JDK installation, systemd service setup, and Nginx reverse proxy.
 

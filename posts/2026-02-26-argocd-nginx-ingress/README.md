@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, NGINX, Ingress
+Tags: ArgoCD, GitOps, Kubernetes, NGINX, Ingresses
 
 Description: Learn how to expose ArgoCD server through Nginx Ingress Controller with proper TLS, gRPC support, and authentication for production Kubernetes clusters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Spinnaker, Deployment, DevOps, CI/CD, Infrastructure as Code, Continuous Delivery
+Tags: Terraform, Spinnaker, Deployments, DevOps, CI/CD, Infrastructure as Code, Continuous Delivery
 
 Description: Learn how to combine Terraform for infrastructure provisioning with Spinnaker for multi-cloud application deployment and advanced release strategies.
 

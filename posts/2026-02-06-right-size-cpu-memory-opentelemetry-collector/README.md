@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Deployment, Performance, Resource Management, CPU, Memory
+Tags: OpenTelemetry, Collector, Deployments, Performance, Resource Management, CPU, Memory
 
 Description: Learn how to properly size CPU and memory resources for OpenTelemetry Collector deployments based on throughput, processing requirements, and production best practices.
 

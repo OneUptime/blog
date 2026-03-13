@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Node.js, Deployment, DevOps, JavaScript
+Tags: Ansible, Node.js, Deployments, DevOps, JavaScript
 
 Description: Automate Node.js application deployment with Ansible including environment setup, process management, and zero-downtime releases.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Kubernetes, Ingress, SSL, HTTPS, Load Balancing
+Tags: GCP, GKE, Kubernetes, Ingresses, SSL, HTTPS, Load Balancing
 
 Description: A complete guide to setting up GKE Ingress with Google-managed SSL certificates so your Kubernetes services are automatically served over HTTPS with zero cert management.
 

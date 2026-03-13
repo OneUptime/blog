@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Prometheus, CI/CD, Monitoring, Deployment
+Tags: Kubernetes, Prometheus, CI/CD, Monitoring, Deployments
 
 Description: Implement intelligent deployment gates that query Prometheus metrics to validate application health and performance before promoting deployments through CI/CD stages with automated rollback on.
 

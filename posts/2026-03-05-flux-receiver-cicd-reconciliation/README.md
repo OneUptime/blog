@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, CI/CD, Receiver, Webhook, Reconciliation
+Tags: Flux CD, GitOps, Kubernetes, CI/CD, Receiver, Webhooks, Reconciliation
 
 Description: Learn how to configure Flux Receivers to trigger immediate reconciliation from CI/CD pipelines, bridging the gap between build and deploy.
 

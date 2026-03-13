@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, DaemonSet, Monitoring, DevOps
+Tags: Ansible, Kubernetes, DaemonSets, Monitoring, DevOps
 
 Description: Learn how to create and manage Kubernetes DaemonSets with Ansible for node-level agents like log collectors, monitoring exporters, and network plugins.
 

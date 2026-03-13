@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, Health Check, Kubernetes, Monitoring, GitOps, Custom Resource
+Tags: ArgoCD, Health Checks, Kubernetes, Monitoring, GitOps, Custom Resources
 
 Description: Learn how to configure and customize health checks in ArgoCD to accurately assess application health, including built-in checks, custom health scripts, and integration with custom resources.
 

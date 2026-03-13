@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Circuit Breaker, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Circuit Breaker, Deployments
 
 Description: Learn how to implement circuit breaker patterns for Kubernetes deployments with ArgoCD to automatically halt rollouts when error thresholds are exceeded.
 

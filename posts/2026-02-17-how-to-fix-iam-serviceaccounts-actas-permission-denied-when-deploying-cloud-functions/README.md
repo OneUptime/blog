@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Functions, IAM, Service Account, Permissions
+Tags: GCP, Cloud Functions, IAM, Service Accounts, Permissions
 
 Description: Fix the iam.serviceAccounts.actAs permission denied error that occurs when deploying Google Cloud Functions, with step-by-step instructions for granting the right IAM roles.
 

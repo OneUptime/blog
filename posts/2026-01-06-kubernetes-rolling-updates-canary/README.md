@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Release, Canary Deployment, Rolling Updates, DevOps, Reliability
+Tags: Kubernetes, Releases, Canary Deployments, Rolling Updates, DevOps, Reliability
 
 Description: A practical guide to implementing safe deployment strategies in Kubernetes, including rolling updates, canary deployments, blue-green deployments, and automated rollbacks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Migration, Canary Deployment, Traffic Management, Service Mesh
+Tags: Kubernetes, Migration, Canary Deployments, Traffic Management, Service Mesh
 
 Description: Master the art of zero-downtime Kubernetes cluster migrations using canary traffic shifting strategies to progressively move workloads between clusters with full rollback capabilities.
 

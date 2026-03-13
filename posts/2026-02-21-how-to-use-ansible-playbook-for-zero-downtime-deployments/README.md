@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Zero-Downtime, Deployment, DevOps, Rolling Updates
+Tags: Ansible, Zero-Downtime, Deployments, DevOps, Rolling Updates
 
 Description: Learn how to implement zero-downtime deployments with Ansible using rolling updates, serial execution, health checks, and load balancer management.
 

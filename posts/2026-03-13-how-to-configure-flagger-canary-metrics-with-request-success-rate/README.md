@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, metrics, request success rate, kubernetes, progressive delivery
+Tags: Flagger, Canary, Metrics, Request Success Rate, Kubernetes, Progressive Delivery
 
 Description: Learn how to configure Flagger's built-in request-success-rate metric to ensure your canary deployments meet reliability thresholds before promotion.
 
@@ -25,7 +25,7 @@ Flagger provides `request-success-rate` as a built-in metric that works out of t
 
 The request success rate metric calculates the percentage of requests that do not return a 5xx status code:
 
-```
+```text
 success_rate = (total_requests - 5xx_requests) / total_requests * 100
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, gitops, git, branching, kubernetes
+Tags: Flux, image-automation, GitOps, Git, Branching, Kubernetes
 
 Description: Learn how to configure Flux ImageUpdateAutomation to commit image tag updates to a separate branch from the one it checks out.
 

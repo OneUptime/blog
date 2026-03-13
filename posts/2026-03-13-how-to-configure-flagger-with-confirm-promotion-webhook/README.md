@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, webhook, confirm-promotion, kubernetes, progressive delivery, gates, approval
+Tags: Flagger, Canary, Webhooks, Confirm-Promotion, Kubernetes, Progressive Delivery, Gates, Approval
 
 Description: Learn how to configure a confirm-promotion webhook in Flagger to add a manual or automated approval gate before a canary is promoted to production.
 

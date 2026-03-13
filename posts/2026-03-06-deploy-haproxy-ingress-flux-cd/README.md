@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HAProxy, Ingress, Kubernetes, GitOps, Networking, Load Balancing
+Tags: Flux CD, HAProxy, Ingresses, Kubernetes, GitOps, Networking, Load Balancing
 
 Description: Learn how to deploy HAProxy Ingress Controller with Flux CD for high-performance load balancing and ingress management in Kubernetes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, kustomization, configmap, substitution, optional
+Tags: Flux, fluxcd, GitOps, Kubernetes, Kustomization, ConfigMap, Substitution, Optional
 
 Description: Learn how to use the optional flag for ConfigMap references in Flux post-build substitution so that missing ConfigMaps do not block reconciliation.
 
@@ -46,7 +46,7 @@ spec:
 
 If `team-overrides` does not exist on the cluster, the entire Kustomization fails with an error like:
 
-```
+```text
 SubstitutionFailed: configmaps "team-overrides" not found
 ```
 

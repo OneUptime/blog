@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Elastic Beanstalk, PaaS, Deployment, Infrastructure as Code
+Tags: Terraform, AWS, Elastic Beanstalk, PaaS, Deployments, Infrastructure as Code
 
 Description: Complete guide to creating AWS Elastic Beanstalk applications and environments with Terraform, including auto-scaling, load balancing, and environment configuration.
 

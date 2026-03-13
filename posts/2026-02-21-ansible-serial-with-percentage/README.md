@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, SERIAL, Percentage, Rolling Updates, Deployment
+Tags: Ansible, SERIAL, Percentage, Rolling Updates, Deployments
 
 Description: Use Ansible serial with percentage values to create inventory-size-aware rolling updates that automatically scale batch sizes to your fleet.
 

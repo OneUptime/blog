@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, kustomization, web-ui, monitoring, gitops, kubernetes
+Tags: Flux, fluxcd, Kustomization, Web-Ui, Monitoring, GitOps, Kubernetes
 
 Description: Learn how to monitor Kustomization resources using the Flux 2.8 Web UI for real-time visibility into your GitOps reconciliation pipeline.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ingress, Network Policies, Kubernetes, Gateway
+Tags: Istio, Ingresses, Network Policies, Kubernetes, Gateway
 
 Description: Configure and secure ingress traffic into your Kubernetes cluster using Istio gateways, authorization policies, and TLS settings.
 

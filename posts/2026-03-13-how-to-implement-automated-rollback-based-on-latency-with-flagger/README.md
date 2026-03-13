@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, kubernetes, rollback, latency, progressive delivery
+Tags: Flagger, Canary, Kubernetes, Rollback, Latency, Progressive Delivery
 
 Description: Learn how to configure Flagger to automatically roll back canary deployments when response latency exceeds acceptable thresholds.
 

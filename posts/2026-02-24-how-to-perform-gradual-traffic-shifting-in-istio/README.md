@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, Traffic Management, Canary Deployment, Kubernetes
+Tags: Istio, Service Mesh, Traffic Management, Canary Deployments, Kubernetes
 
 Description: Step-by-step guide to gradually shifting traffic between service versions in Istio using weighted routing in VirtualService configurations.
 

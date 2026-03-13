@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Microservices, Database, PersistentVolumeClaim, Architecture
+Tags: Kubernetes, Microservices, Database, PersistentVolumeClaims, Architecture
 
 Description: Implement the database per microservice pattern on Kubernetes using separate PersistentVolumeClaims for data isolation, including StatefulSet configurations, storage classes, and backup strategies.
 

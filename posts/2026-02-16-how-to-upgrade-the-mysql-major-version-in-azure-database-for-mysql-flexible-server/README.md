@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, MySQL, Version Upgrade, Flexible Server, Database Migration, MySQL 8.0, Maintenance
+Tags: Azure, MySQL, Version Upgrade, Flexible Server, Database Migrations, MySQL 8.0, Maintenance
 
 Description: A practical guide to upgrading from MySQL 5.7 to 8.0 on Azure Database for MySQL Flexible Server with minimal risk and downtime.
 

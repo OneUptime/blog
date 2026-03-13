@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Rust, Actix, Web Services, Deployment, Linux
+Tags: RHEL, Rust, Actix, Web Services, Deployments, Linux
 
 Description: Build a high-performance web service using Rust and the Actix Web framework, then deploy it on RHEL with systemd and Nginx.
 

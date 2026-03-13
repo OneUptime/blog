@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Networking, DNS, StatefulSet
+Tags: Kubernetes, Networking, DNS, StatefulSets
 
 Description: Implement headless services in Kubernetes for direct pod addressing, StatefulSet DNS, and service discovery without load balancing.
 

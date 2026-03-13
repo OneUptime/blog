@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Container, Certificates, TLS, Security
+Tags: Kubernetes, Init Containers, Certificates, TLS, Security
 
 Description: Learn how to use init containers to generate TLS certificates before application startup, ensuring secure communication is ready from the first request.
 

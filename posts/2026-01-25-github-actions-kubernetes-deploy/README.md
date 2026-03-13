@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, Kubernetes, Deployment, CI/CD, DevOps, Container Orchestration
+Tags: GitHub Actions, Kubernetes, Deployments, CI/CD, DevOps, Container Orchestration
 
 Description: Learn how to deploy applications to Kubernetes clusters using GitHub Actions.
 

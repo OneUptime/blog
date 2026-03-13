@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Archive Provider, ZIP, Lambda, Infrastructure as Code, Deployment
+Tags: Terraform, Archive Provider, ZIP, Lambda, Infrastructure as Code, Deployments
 
 Description: Learn how to use the Terraform archive provider to create ZIP files for Lambda deployments, packaging source code, bundling configuration files, and creating deployment artifacts.
 

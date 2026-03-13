@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, kustomization, post-build, substitution, nested
+Tags: Flux, fluxcd, GitOps, Kubernetes, Kustomization, Post-Build, Substitution, Nested
 
 Description: Learn how post-build variable substitution works with nested Flux Kustomizations, including variable inheritance, scoping rules, and best practices for complex deployments.
 
@@ -23,7 +23,7 @@ Flux allows you to create hierarchies of Kustomization resources where a parent 
 
 A parent Kustomization can deploy child Kustomization resources. The parent points to a path in your Git repository that contains child Kustomization YAML files. When Flux reconciles the parent, it creates the child Kustomization resources on the cluster, which then independently reconcile their own paths.
 
-```
+```text
 Parent Kustomization (clusters/production/)
 ├── Child Kustomization: apps (apps/base/)
 ├── Child Kustomization: monitoring (monitoring/base/)
@@ -232,7 +232,7 @@ spec:
 
 For deeply nested structures, the same rules apply. Each level must explicitly configure its own `postBuild`. Here is a three-level example:
 
-```
+```text
 Level 1: platform (defines CLUSTER_NAME, ENVIRONMENT)
   └── Level 2: apps (inherits CLUSTER_NAME, adds APP_NAMESPACE)
         └── Level 3: web-app (inherits all, adds REPLICAS)

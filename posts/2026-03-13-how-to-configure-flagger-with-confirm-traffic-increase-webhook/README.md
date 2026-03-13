@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, webhook, confirm-traffic-increase, kubernetes, progressive delivery, traffic management
+Tags: Flagger, Canary, Webhooks, Confirm-Traffic-Increase, Kubernetes, Progressive Delivery, Traffic Management
 
 Description: Learn how to configure a confirm-traffic-increase webhook in Flagger to gate each traffic weight increase during canary analysis.
 

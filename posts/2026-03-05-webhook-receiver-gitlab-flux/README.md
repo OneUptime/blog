@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Webhook, GitLab, Receiver
+Tags: Flux CD, GitOps, Kubernetes, Webhooks, GitLab, Receiver
 
 Description: Learn how to configure a Flux Receiver to accept GitLab webhooks and trigger immediate reconciliation on push events.
 

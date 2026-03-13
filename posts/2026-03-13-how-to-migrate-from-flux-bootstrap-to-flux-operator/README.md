@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, flux-operator, migration
+Tags: Flux, Kubernetes, GitOps, Flux-Operator, Migration
 
 Description: A step-by-step guide to migrating your existing Flux Bootstrap installation to the Flux Operator for declarative lifecycle management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Flux, Flagger, Canary Deployment, Progressive Delivery, GitOps
+Tags: Flux, Flagger, Canary Deployments, Progressive Delivery, GitOps
 
 Description: Learn how to implement automated canary deployments using Flux and Flagger to gradually roll out changes with automated rollback based on metrics.
 

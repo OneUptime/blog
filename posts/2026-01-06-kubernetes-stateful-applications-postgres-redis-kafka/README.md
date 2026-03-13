@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, StatefulSet, PostgreSQL, Redis, Kafka, Database, DevOps
+Tags: Kubernetes, StatefulSets, PostgreSQL, Redis, Kafka, Database, DevOps
 
 Description: A comprehensive guide to running stateful applications in Kubernetes, including PostgreSQL databases, Redis clusters, and Apache Kafka, with production-ready configurations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Machine Learning, Pipelines, MLOps, Model Training, Deployment, Python
+Tags: Azure, Machine Learning, Pipelines, MLOps, Model Training, Deployments, Python
 
 Description: Build an end-to-end Azure Machine Learning pipeline that handles data preparation, model training, evaluation, and deployment as a real-time endpoint.
 

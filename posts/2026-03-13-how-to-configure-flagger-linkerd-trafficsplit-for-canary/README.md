@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, linkerd, trafficsplit, canary, kubernetes, progressive delivery, service mesh, SMI
+Tags: Flagger, Linkerd, Trafficsplit, Canary, Kubernetes, Progressive Delivery, Service Mesh, SMI
 
 Description: Learn how Flagger manages Linkerd TrafficSplit resources for progressive canary traffic shifting and how to configure the routing behavior.
 

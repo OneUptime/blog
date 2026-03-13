@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Next.js, Amplify, Deployment
+Tags: AWS, Next.js, Amplify, Deployments
 
 Description: Learn how to deploy Next.js applications to AWS Amplify with automatic builds, custom domains, environment variables, and SSR support.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, DevOps, Secret
+Tags: Kubernetes, Security, DevOps, Secrets
 
 Description: Implement secure secrets management in Kubernetes with encryption at rest, external secret stores, rotation strategies, and RBAC controls.
 

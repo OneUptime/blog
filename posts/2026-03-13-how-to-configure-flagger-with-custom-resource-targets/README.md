@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, kubernetes, custom resources, progressive delivery
+Tags: Flagger, Canary, Kubernetes, Custom Resources, Progressive Delivery
 
 Description: Learn how to configure Flagger to perform canary deployments on custom resources beyond standard Deployments, including DaemonSets and custom controllers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Git, Deployment, CI/CD, DevOps
+Tags: Ansible, Git, Deployments, CI/CD, DevOps
 
 Description: Deploy applications using Git with Ansible including branch management, deploy keys, rollback support, and release versioning.
 

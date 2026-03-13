@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway, Routing, Troubleshooting, Ingress
+Tags: Istio, Gateway, Routing, Troubleshooting, Ingresses
 
 Description: Diagnose and fix Istio ingress gateway routing failures including misconfigured Gateways, VirtualService binding issues, and TLS termination problems.
 

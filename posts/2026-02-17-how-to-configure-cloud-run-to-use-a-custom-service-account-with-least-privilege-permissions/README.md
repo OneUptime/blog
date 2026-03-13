@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Service Account, IAM, Security, Least Privilege, Google Cloud
+Tags: GCP, Cloud Run, Service Accounts, IAM, Security, Least Privilege, Google Cloud
 
 Description: Learn how to create and configure a custom service account for Cloud Run with least-privilege permissions instead of using the overprivileged default account.
 

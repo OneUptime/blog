@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Next.js, Docker, Deployment, Google Cloud
+Tags: GCP, Cloud Run, Next.js, Docker, Deployments, Google Cloud
 
 Description: Step-by-step guide to deploying a Next.js 14 App Router application to Google Cloud Run using standalone output mode for optimized Docker images.
 

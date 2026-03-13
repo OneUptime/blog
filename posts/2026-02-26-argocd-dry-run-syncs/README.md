@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Deployment, Testing
+Tags: ArgoCD, GitOps, Kubernetes, Deployments, Testing
 
 Description: Learn how to implement dry-run syncs in ArgoCD to preview what changes will be applied before actually syncing, reducing deployment risk.
 

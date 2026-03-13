@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, kubernetes, statefulsets, progressive delivery
+Tags: Flagger, Canary, Kubernetes, StatefulSets, Progressive Delivery
 
 Description: Learn how to configure a Flagger Canary resource for Kubernetes StatefulSets to safely roll out updates to stateful applications like databases and caches.
 
@@ -243,7 +243,7 @@ kubectl get pods -n cache -l app=redis
 
 Expected output during analysis:
 
-```
+```text
 NAME     STATUS        WEIGHT   LASTTRANSITIONTIME
 redis    Progressing   0        2026-03-13T10:15:00Z
 ```

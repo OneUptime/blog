@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Operator, Webhook, Performance
+Tags: OpenTelemetry, Operator, Webhooks, Performance
 
 Description: Fix webhook timeout errors in the OpenTelemetry Operator caused by slow API server responses in large Kubernetes clusters.
 

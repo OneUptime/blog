@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway, Headers, Ingress, Traffic Management
+Tags: Istio, Gateway, Headers, Ingresses, Traffic Management
 
 Description: How to inject custom HTTP headers at the Istio ingress gateway for security, routing, and operational purposes across all backend services.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, AWS RDS, Database Migration, Zero Downtime
+Tags: GCP, Cloud SQL, AWS RDS, Database Migrations, Zero Downtime
 
 Description: Step-by-step guide to planning and executing a zero-downtime database migration from AWS RDS to Google Cloud SQL using continuous replication and cutover strategies.
 

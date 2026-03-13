@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, Troubleshooting
+Tags: Kubernetes, Ingresses, Troubleshooting
 
 Description: Learn how to debug and fix 502 Bad Gateway errors in Kubernetes Ingress caused by backend pod unavailability, including upstream connection failures and timeout issues.
 

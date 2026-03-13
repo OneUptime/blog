@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Deployment, Canary, Performance Comparison
+Tags: OpenTelemetry, Deployments, Canary, Performance Comparison
 
 Description: Compare API performance metrics between blue-green and canary deployment versions using OpenTelemetry attributes and trace analysis.
 

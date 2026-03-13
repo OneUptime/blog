@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, artifactgenerator, flux-tree, visualization
+Tags: Flux, Kubernetes, GitOps, artifactgenerator, Flux-Tree, Visualization
 
 Description: Learn how to use the flux tree command with ArtifactGenerator resources to visualize source dependencies and deployment relationships.
 
@@ -35,7 +35,7 @@ flux tree artifactgenerator app-production -n flux-system
 
 This produces output similar to:
 
-```
+```text
 ArtifactGenerator/flux-system/app-production
 ├── GitRepository/flux-system/platform-base (input: base)
 │   └── url: https://github.com/your-org/platform-base
@@ -55,7 +55,7 @@ flux tree artifactgenerator -A
 
 Sample output:
 
-```
+```text
 NAMESPACE    NAME                  READY  INPUTS  CONSUMERS
 flux-system  app-production        True   2       1
 flux-system  backend-staging       True   3       2
@@ -79,7 +79,7 @@ flux tree kustomization app-deployment -n flux-system
 
 Output showing the full chain:
 
-```
+```text
 Kustomization/flux-system/app-deployment
 ├── ArtifactGenerator/flux-system/app-production (source)
 │   ├── GitRepository/flux-system/platform-base (input)
@@ -108,7 +108,7 @@ For a specific generator that is not ready:
 flux tree artifactgenerator observability-stack -n flux-system --verbose
 ```
 
-```
+```text
 ArtifactGenerator/flux-system/observability-stack
 ├── HelmChart/flux-system/kube-prometheus-stack (input: prometheus)
 │   ├── Status: True
@@ -182,7 +182,7 @@ When ArtifactGenerators reference sources across namespaces, the tree shows the 
 flux tree artifactgenerator multi-tenant-app -n tenant-a
 ```
 
-```
+```text
 ArtifactGenerator/tenant-a/multi-tenant-app
 ├── GitRepository/flux-system/shared-platform (input: platform)
 │   └── CrossNamespaceRef: allowed by policy

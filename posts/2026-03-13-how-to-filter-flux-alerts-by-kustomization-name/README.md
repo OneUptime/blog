@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, kustomization, alerts, gitops, kubernetes, notification-controller
+Tags: Flux, fluxcd, Kustomization, Alerts, GitOps, Kubernetes, Notification-Controller
 
 Description: Learn how to configure Flux CD alerts that only trigger for specific Kustomization resources by name, reducing notification noise in your GitOps workflow.
 
@@ -131,7 +131,7 @@ kubectl get alerts -n flux-system
 
 You should see output similar to:
 
-```
+```text
 NAME                 AGE   READY   STATUS
 frontend-alert       30s   True    Initialized
 ```

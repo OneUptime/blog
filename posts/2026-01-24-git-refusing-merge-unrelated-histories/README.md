@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Git, Version Control, Troubleshooting, MERGE, DevOps
+Tags: Git, Version Control, Troubleshooting, Merge, DevOps
 
 Description: Learn why git refuses to merge unrelated histories and how to safely combine repositories that do not share a common ancestor.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Jobs, Database, Migration, Deployment
+Tags: Kubernetes, Jobs, Database, Migration, Deployments
 
 Description: Learn how to safely run database migration jobs before application deployments using Kubernetes init containers, Helm hooks, and deployment strategies to ensure zero-downtime updates.
 

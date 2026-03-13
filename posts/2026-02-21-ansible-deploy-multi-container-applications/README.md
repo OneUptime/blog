@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Deployment, Multi-Container, DevOps
+Tags: Ansible, Docker, Deployments, Multi-Container, DevOps
 
 Description: Deploy and orchestrate multi-container applications using Ansible with proper networking, dependencies, and health verification.
 

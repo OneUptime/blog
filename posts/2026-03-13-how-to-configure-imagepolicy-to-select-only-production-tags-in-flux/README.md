@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, image-policy, kubernetes, gitops, production
+Tags: Flux, fluxcd, image-policy, Kubernetes, GitOps, Production
 
 Description: Learn how to configure Flux CD ImagePolicy to select only production-ready image tags for automated deployments.
 
@@ -167,7 +167,7 @@ kubectl -n flux-system get imagepolicy my-app-prod
 
 Expected output:
 
-```
+```text
 NAME           LATESTIMAGE
 my-app-prod    registry.example.com/my-app:prod-v1.5.0
 ```

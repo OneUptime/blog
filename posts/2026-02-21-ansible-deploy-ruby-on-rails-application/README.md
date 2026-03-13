@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Ruby on Rails, Deployment, Puma, DevOps
+Tags: Ansible, Ruby on Rails, Deployments, Puma, DevOps
 
 Description: Automate Ruby on Rails deployment with Ansible covering rbenv, Puma, Nginx, database migrations, and asset compilation.
 

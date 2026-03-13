@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, App Engine, Flask, Python, Deployment
+Tags: GCP, App Engine, Flask, Python, Deployments
 
 Description: A practical guide to deploying Python Flask applications on Google App Engine Standard Environment with step-by-step instructions and configuration tips.
 

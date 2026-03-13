@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployment, Rolling Updates, DevOps
+Tags: Kubernetes, Deployments, Rolling Updates, DevOps
 
 Description: Learn to implement rolling update parameters for zero-downtime Kubernetes deployments.
 

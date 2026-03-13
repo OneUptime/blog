@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Container Orchestration, DevOps, K8s Tutorial
+Tags: Kubernetes, DaemonSets, Container Orchestration, DevOps, K8s Tutorial
 
 Description: A complete guide to Kubernetes DaemonSets - learn how to create, configure, update, and troubleshoot DaemonSets to run pods on every node in your cluster.
 

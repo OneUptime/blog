@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Blue-Green, Deployment, DevOps, Zero-Downtime
+Tags: Ansible, Blue-Green, Deployments, DevOps, Zero-Downtime
 
 Description: Implement blue-green deployment infrastructure with Ansible including environment provisioning, traffic switching, and rollback capabilities.
 

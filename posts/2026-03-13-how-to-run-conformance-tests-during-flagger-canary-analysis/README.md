@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, conformance testing, kubernetes, progressive delivery, webhooks, testing
+Tags: Flagger, Canary, Conformance Testing, Kubernetes, Progressive Delivery, Webhooks, Testing
 
 Description: Learn how to integrate conformance tests into Flagger canary analysis to validate API contracts, functionality, and behavior before promotion.
 

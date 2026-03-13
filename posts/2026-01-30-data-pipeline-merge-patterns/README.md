@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Data Pipeline, MERGE, SQL, Delta Lake
+Tags: Data Pipeline, Merge, SQL, Delta Lake
 
 Description: Learn to create merge patterns for complex insert, update, and delete operations in a single statement.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Git, Deployment, Force Pull
+Tags: Ansible, Git, Deployments, Force Pull
 
 Description: Learn how to use the Ansible git module with force pull to handle dirty working directories, discarding local changes for clean deployments every time.
 

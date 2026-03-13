@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Flagger, Canary Deployment, Automated Rollback, Progressive Delivery
+Tags: Kubernetes, Flagger, Canary Deployments, Automated Rollback, Progressive Delivery
 
 Description: Learn how to configure Flagger for automated canary analysis with rollback capabilities, using metrics-driven decisions to safely deploy applications on Kubernetes.
 

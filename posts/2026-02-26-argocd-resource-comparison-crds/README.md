@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Custom Resource
+Tags: ArgoCD, GitOps, Kubernetes, Custom Resources
 
 Description: Learn how to handle resource comparison challenges for Custom Resource Definitions in ArgoCD, including status field management, operator-managed fields, and diff normalization for CRDs.
 

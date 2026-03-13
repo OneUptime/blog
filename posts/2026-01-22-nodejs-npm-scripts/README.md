@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: NodeJS, npm, Script, Automation, DevOps
+Tags: NodeJS, npm, Scripts, Automation, DevOps
 
 Description: Learn how to use npm scripts to automate tasks including running commands, chaining scripts, using environment variables, and creating cross-platform build processes.
 

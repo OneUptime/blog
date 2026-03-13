@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ingress, Multi-Tenancy, Gateway, Networking
+Tags: Istio, Ingresses, Multi-Tenancy, Gateway, Networking
 
 Description: Configure per-tenant ingress routing in Istio using dedicated gateways, shared gateways with tenant routing, and subdomain-based approaches.
 

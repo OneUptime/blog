@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, CEL, Deployment, Health Check, Kubernetes, GitOps, Monitoring
+Tags: Flux CD, CEL, Deployments, Health Checks, Kubernetes, GitOps, Monitoring
 
 Description: A practical guide to using CEL expressions for fine-grained Deployment health checks in Flux CD Kustomizations beyond the default readiness logic.
 

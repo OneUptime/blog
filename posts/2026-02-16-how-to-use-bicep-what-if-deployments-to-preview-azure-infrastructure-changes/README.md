@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Bicep, What-If, Deployment, Infrastructure as Code, DevOps, Preview
+Tags: Azure, Bicep, What-If, Deployments, Infrastructure as Code, DevOps, Preview
 
 Description: Use Bicep what-if deployments to preview infrastructure changes before applying them, reducing risk and improving deployment confidence.
 

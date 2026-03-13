@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Spring Boot, Actuator, Health Check, Kubernetes
+Tags: GCP, Cloud Run, Spring Boot, Actuator, Health Checks, Kubernetes
 
 Description: Configure Spring Boot Actuator health checks to work with Cloud Run startup and liveness probes for reliable container lifecycle management and zero-downtime deployments.
 

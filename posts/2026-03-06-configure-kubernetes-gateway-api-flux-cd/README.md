@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Gateway API, Kubernetes, GitOps, Networking, Ingress, HTTPRoute
+Tags: Flux CD, Gateway API, Kubernetes, GitOps, Networking, Ingresses, HTTPRoute
 
 Description: A comprehensive guide to configuring the Kubernetes Gateway API using Flux CD for modern, standards-based traffic management.
 

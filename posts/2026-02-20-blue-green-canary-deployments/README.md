@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Deployment, Blue-Green, Canary, Kubernetes, CI/CD
+Tags: Deployments, Blue-Green, Canary, Kubernetes, CI/CD
 
 Description: Learn how to implement blue-green and canary deployment strategies on Kubernetes for zero-downtime releases.
 

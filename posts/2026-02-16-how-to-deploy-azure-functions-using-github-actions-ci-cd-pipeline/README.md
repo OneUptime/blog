@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Functions, GitHub Actions, CI/CD, DevOps, Azure, Deployment, Automation
+Tags: Azure Functions, GitHub Actions, CI/CD, DevOps, Azure, Deployments, Automation
 
 Description: Step-by-step guide to setting up a complete CI/CD pipeline for Azure Functions using GitHub Actions with build, test, and deploy stages.
 

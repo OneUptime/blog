@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Traffic Migration, Canary Deployment, Feature Flags, DevOps
+Tags: Go, Traffic Migration, Canary Deployments, Feature Flags, DevOps
 
 Description: A hands-on guide to safely migrating traffic between service versions in Go using weighted routing, feature flags, and canary deployments - with production-ready code examples.
 

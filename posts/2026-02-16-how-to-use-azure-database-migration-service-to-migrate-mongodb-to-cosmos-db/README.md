@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, MongoDB, Cosmos DB, Database Migration, DMS, Azure Database Migration Service, NoSQL
+Tags: Azure, MongoDB, Cosmos DB, Database Migrations, DMS, Azure Database Migration Service, NoSQL
 
 Description: A step-by-step guide to migrating MongoDB databases to Azure Cosmos DB for MongoDB using Azure Database Migration Service.
 

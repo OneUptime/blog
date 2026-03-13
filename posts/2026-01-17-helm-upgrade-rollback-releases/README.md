@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Release, Rollback
+Tags: Helm, Kubernetes, DevOps, Releases, Rollback
 
 Description: Master Helm upgrade strategies, atomic upgrades, rollback procedures, and version history management for safe production deployments.
 

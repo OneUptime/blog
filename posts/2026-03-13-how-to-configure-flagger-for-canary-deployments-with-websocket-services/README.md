@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, kubernetes, websocket, istio, progressive delivery
+Tags: Flagger, Canary, Kubernetes, WebSocket, Istio, Progressive Delivery
 
 Description: Learn how to configure Flagger canary deployments for WebSocket services, handling persistent connections and proper traffic shifting with Istio.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployment, Troubleshooting
+Tags: Kubernetes, Deployments, Troubleshooting
 
 Description: Learn how to diagnose and fix Kubernetes Deployments with ReplicaSets stuck at zero available replicas, including pod scheduling failures, image pull errors, and resource constraints.
 

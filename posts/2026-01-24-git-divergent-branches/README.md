@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Git, Version Control, Troubleshooting, DevOps, Branching, MERGE, Rebase
+Tags: Git, Version Control, Troubleshooting, DevOps, Branching, Merge, Rebase
 
 Description: Learn how to resolve Git divergent branches errors when your local and remote branches have diverged and need reconciliation.
 

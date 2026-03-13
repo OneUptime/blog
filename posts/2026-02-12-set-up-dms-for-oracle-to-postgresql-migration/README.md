@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DMS, Oracle, PostgreSQL, Database Migration, Schema Conversion
+Tags: AWS, DMS, Oracle, PostgreSQL, Database Migrations, Schema Conversion
 
 Description: Migrate from Oracle to PostgreSQL using AWS DMS and SCT with practical guidance on schema conversion, data migration, and handling Oracle-specific features.
 

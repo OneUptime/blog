@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Pipeline Triggers, Automation, CI/CD, API, Webhook
+Tags: GitLab CI, Pipeline Triggers, Automation, CI/CD, API, Webhooks
 
 Description: Learn how to trigger GitLab CI pipelines programmatically using triggers, webhooks, and the API for cross-project automation, scheduled builds, and external integrations.
 

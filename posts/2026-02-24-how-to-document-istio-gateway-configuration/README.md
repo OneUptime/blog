@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway, Documentation, TLS, Ingress
+Tags: Istio, Gateway, Documentation, TLS, Ingresses
 
 Description: Create clear documentation for Istio Gateway configurations including TLS settings, host routing, and integration with VirtualServices.
 

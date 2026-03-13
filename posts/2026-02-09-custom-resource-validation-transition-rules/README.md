@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRD, Validation
+Tags: Kubernetes, CRDs, Validation
 
 Description: Learn how to use CEL transition rules in Custom Resource Definitions to validate state changes, enforce update constraints, and prevent invalid modifications to your custom resources.
 

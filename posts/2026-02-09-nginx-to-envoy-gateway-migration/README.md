@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, NGINX, Envoy Gateway, Ingress, Service Mesh
+Tags: Kubernetes, NGINX, Envoy Gateway, Ingresses, Service Mesh
 
 Description: Step-by-step migration from NGINX Ingress Controller to Envoy Gateway for advanced traffic management, observability, and Gateway API support with minimal downtime.
 

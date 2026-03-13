@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Ingress
+Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Ingresses
 
 Description: Diagnose and fix redirect loop issues when accessing ArgoCD through an ingress controller, covering TLS mismatches and proxy configuration.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, ArgoCD, GitOps, Deployment
+Tags: Helm, Kubernetes, DevOps, ArgoCD, GitOps, Deployments
 
 Description: Learn how to implement GitOps deployments using Helm charts with ArgoCD for automated, declarative Kubernetes application delivery.
 

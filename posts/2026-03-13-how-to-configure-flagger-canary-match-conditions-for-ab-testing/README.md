@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, ab-testing, match conditions, kubernetes, progressive delivery
+Tags: Flagger, Canary, Ab-Testing, Match Conditions, Kubernetes, Progressive Delivery
 
 Description: Learn how to configure Flagger's match conditions to route specific users or requests to the canary version for A/B testing scenarios.
 

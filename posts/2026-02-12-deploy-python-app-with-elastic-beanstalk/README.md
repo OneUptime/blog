@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Elastic Beanstalk, Python, Deployment, Cloud
+Tags: AWS, Elastic Beanstalk, Python, Deployments, Cloud
 
 Description: Learn how to deploy a Python application to AWS Elastic Beanstalk from scratch, covering project setup, configuration files, database connections, and production best practices.
 

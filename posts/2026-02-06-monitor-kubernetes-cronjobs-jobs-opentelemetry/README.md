@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, CronJob, Jobs, Monitoring, Observability
+Tags: OpenTelemetry, Kubernetes, CronJobs, Jobs, Monitoring, Observability
 
 Description: A practical guide to monitoring Kubernetes CronJobs and Jobs using OpenTelemetry for traces, metrics, and logs to catch failures before they become incidents.
 

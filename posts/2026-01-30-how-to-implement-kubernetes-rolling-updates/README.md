@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployment, Rolling Updates, DevOps
+Tags: Kubernetes, Deployments, Rolling Updates, DevOps
 
 Description: Learn how to configure and manage Kubernetes rolling updates for zero-downtime deployments with rollback capabilities.
 

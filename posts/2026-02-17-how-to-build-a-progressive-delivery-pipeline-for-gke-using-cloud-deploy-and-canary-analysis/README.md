@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Deploy, GKE, Canary Deployment, Progressive Delivery
+Tags: GCP, Cloud Deploy, GKE, Canary Deployments, Progressive Delivery
 
 Description: Learn how to build a progressive delivery pipeline for GKE using Google Cloud Deploy with automated canary analysis for safe production rollouts.
 

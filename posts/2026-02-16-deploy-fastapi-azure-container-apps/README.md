@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, FastAPI, Python, Container Apps, Docker, Serverless, Deployment
+Tags: Azure, FastAPI, Python, Container Apps, Docker, Serverless, Deployments
 
 Description: Learn how to containerize a FastAPI application and deploy it to Azure Container Apps with auto-scaling and ingress configuration.
 

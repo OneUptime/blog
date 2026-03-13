@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway API, Kubernetes, Networking, Ingress
+Tags: Istio, Gateway API, Kubernetes, Networking, Ingresses
 
 Description: A complete guide to using the Kubernetes Gateway API with Istio, including installation, creating gateways, configuring routes, and understanding the differences from Istio's classic APIs.
 

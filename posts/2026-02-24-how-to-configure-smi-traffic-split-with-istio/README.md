@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, SMI, Traffic Split, Canary Deployment, Kubernetes
+Tags: Istio, SMI, Traffic Split, Canary Deployments, Kubernetes
 
 Description: Step-by-step guide to configuring SMI Traffic Split with Istio for canary deployments, blue-green releases, and gradual traffic shifting between service versions.
 

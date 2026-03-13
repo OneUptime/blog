@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Git, Submodules, Deployment
+Tags: Ansible, Git, Submodules, Deployments
 
 Description: Learn how to use the Ansible git module with Git submodules for cloning repositories that include shared libraries, themes, or dependencies as submodules.
 

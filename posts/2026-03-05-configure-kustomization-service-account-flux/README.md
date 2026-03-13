@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, Service Account, RBAC, Multi-Tenancy
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, Service Accounts, RBAC, Multi-Tenancy
 
 Description: Learn how to use spec.serviceAccountName in a Flux Kustomization to control RBAC permissions and limit what resources Flux can manage in a multi-tenancy setup.
 

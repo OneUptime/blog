@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Kubernetes, HTTP Routing, Ingress, Azure, Development, DNS
+Tags: AKS, Kubernetes, HTTP Routing, Ingresses, Azure, Development, DNS
 
 Description: Learn how to set up the AKS HTTP application routing add-on to quickly expose services with automatic DNS in development environments.
 

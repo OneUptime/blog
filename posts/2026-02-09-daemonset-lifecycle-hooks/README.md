@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Lifecycle
+Tags: Kubernetes, DaemonSets, Lifecycle
 
 Description: Learn how to use PostStart and PreStop lifecycle hooks in DaemonSets to ensure graceful startup and shutdown during rolling updates.
 

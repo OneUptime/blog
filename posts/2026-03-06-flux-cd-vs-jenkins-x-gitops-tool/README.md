@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Jenkins X, GitOps, Kubernetes, Comparison, CI/CD, Deployment, Continuous Delivery
+Tags: Flux CD, Jenkins X, GitOps, Kubernetes, Comparison, CI/CD, Deployments, Continuous Delivery
 
 Description: A detailed comparison of Flux CD and Jenkins X as GitOps tools, covering their approaches to continuous delivery, developer experience, and Kubernetes-native workflows.
 

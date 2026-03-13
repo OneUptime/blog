@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, API Gateway, Ingress, Migration, Traffic Management
+Tags: Istio, API Gateway, Ingresses, Migration, Traffic Management
 
 Description: Replace your existing API gateway like Kong, Ambassador, or NGINX Ingress with Istio's ingress gateway for unified traffic management across your service mesh.
 

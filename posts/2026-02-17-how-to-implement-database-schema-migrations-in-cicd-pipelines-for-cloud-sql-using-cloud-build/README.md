@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, Cloud Build, CI/CD, Database Migration, DevOps
+Tags: GCP, Cloud SQL, Cloud Build, CI/CD, Database Migrations, DevOps
 
 Description: Learn how to automate database schema migrations in your CI/CD pipelines for Cloud SQL instances using Google Cloud Build with practical examples and best practices.
 

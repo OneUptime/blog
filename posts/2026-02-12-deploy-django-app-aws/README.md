@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Django, Python, Deployment
+Tags: AWS, Django, Python, Deployments
 
 Description: A comprehensive guide to deploying a Django application to AWS, covering EC2 with Gunicorn and Nginx, Elastic Beanstalk, ECS Fargate, and production configuration tips.
 

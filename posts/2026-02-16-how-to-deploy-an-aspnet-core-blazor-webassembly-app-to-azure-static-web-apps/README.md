@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Blazor WebAssembly, Azure Static Web Apps, ASP.NET Core, C#, WebAssembly, Deployment, GitHub Actions
+Tags: Blazor WebAssembly, Azure Static Web Apps, ASP.NET Core, C#, WebAssembly, Deployments, GitHub Actions
 
 Description: Learn how to build a Blazor WebAssembly application and deploy it to Azure Static Web Apps with automatic CI/CD through GitHub Actions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DMS, Schema Conversion Tool, Database Migration, Heterogeneous Migration
+Tags: AWS, DMS, Schema Conversion Tool, Database Migrations, Heterogeneous Migration
 
 Description: Learn how to use AWS Schema Conversion Tool to translate database schemas between different engine types during migration
 

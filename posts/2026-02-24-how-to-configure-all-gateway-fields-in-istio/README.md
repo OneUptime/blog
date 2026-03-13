@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway, Ingress, TLS, Kubernetes, Networking
+Tags: Istio, Gateway, Ingresses, TLS, Kubernetes, Networking
 
 Description: A thorough reference for every field in the Istio Gateway resource including server configurations, TLS modes, port settings, and selector options.
 

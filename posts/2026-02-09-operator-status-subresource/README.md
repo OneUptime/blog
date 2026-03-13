@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes Operator, Status Subresource, Custom Resource, API, Go
+Tags: Kubernetes Operator, Status Subresource, Custom Resources, API, Go
 
 Description: A detailed guide to implementing the status subresource pattern in Kubernetes custom resources, covering API design, controller updates, RBAC configuration, and best practices for status reporting.
 

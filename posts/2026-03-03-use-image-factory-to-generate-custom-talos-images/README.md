@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Image Factory, Custom Images, Kubernetes, Deployment
+Tags: Talos Linux, Image Factory, Custom Images, Kubernetes, Deployments
 
 Description: Learn how to use Sidero Labs Image Factory to generate custom Talos Linux images with system extensions, kernel arguments, and platform-specific formats.
 

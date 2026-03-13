@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, Kubernetes, HAProxy, Ingress, Load Balancing, Linux
+Tags: RHEL, Kubernetes, HAProxy, Ingresses, Load Balancing, Linux
 
 Description: Learn how to install and configure the HAProxy Ingress Controller for Kubernetes on RHEL, covering deployment, TLS termination, rate limiting, and production-ready tuning.
 

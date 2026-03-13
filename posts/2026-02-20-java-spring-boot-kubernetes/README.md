@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, Kubernetes, Deployment, Cloud Native
+Tags: Java, Spring Boot, Kubernetes, Deployments, Cloud Native
 
 Description: Step-by-step guide to deploying Spring Boot applications on Kubernetes with health checks, config, and scaling.
 

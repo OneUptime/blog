@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Authorization, Service Account, Security, Kubernetes, mTLS
+Tags: Istio, Authorization, Service Accounts, Security, Kubernetes, mTLS
 
 Description: How to use Kubernetes service accounts with Istio authorization policies to implement fine-grained, identity-based access control between services.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Webhook, Admission Controller, Troubleshooting, Kubernetes, cert-manager, OPA
+Tags: Flux CD, Webhooks, Admission Controller, Troubleshooting, Kubernetes, cert-manager, OPA
 
 Description: A step-by-step guide to diagnosing and resolving webhook validation failures in Flux CD, covering admission webhooks, cert-manager integration, and OPA policy issues.
 

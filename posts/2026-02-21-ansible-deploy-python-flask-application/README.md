@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Flask, Python, Deployment, DevOps
+Tags: Ansible, Flask, Python, Deployments, DevOps
 
 Description: Learn how to automate the deployment of a Python Flask application using Ansible playbooks with Gunicorn and Nginx.
 

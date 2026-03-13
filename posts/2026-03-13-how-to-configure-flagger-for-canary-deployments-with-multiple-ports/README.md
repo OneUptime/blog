@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, kubernetes, multi-port, service mesh, progressive delivery
+Tags: Flagger, Canary, Kubernetes, Multi-Port, Service Mesh, Progressive Delivery
 
 Description: Learn how to configure Flagger canary deployments for services that expose multiple ports, including HTTP, metrics, and admin endpoints.
 
@@ -116,7 +116,7 @@ kubectl get services -l app=multi-port-app
 
 You should see output similar to:
 
-```
+```text
 NAME                      TYPE        CLUSTER-IP       PORT(S)
 multi-port-app            ClusterIP   10.96.100.1      8080/TCP,9090/TCP,8081/TCP
 multi-port-app-canary     ClusterIP   10.96.100.2      8080/TCP,9090/TCP,8081/TCP

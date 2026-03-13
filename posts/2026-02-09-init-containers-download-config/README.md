@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Container, Configuration Management, Secret, External Configuration
+Tags: Kubernetes, Init Containers, Configuration Management, Secrets, External Configuration
 
 Description: Learn how to use init containers to fetch configuration from external sources like S3, Vault, or configuration servers before your application starts, enabling dynamic configuration management.
 

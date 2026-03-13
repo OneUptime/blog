@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployment, Zero Downtime
+Tags: Kubernetes, Deployments, Zero Downtime
 
 Description: Learn how to configure maxSurge and maxUnavailable in Kubernetes rolling updates to control deployment speed, resource usage, and availability during application updates.
 

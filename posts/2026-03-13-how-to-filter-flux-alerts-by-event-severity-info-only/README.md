@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, alerts, severity, info, gitops, kubernetes, notification-controller
+Tags: Flux, fluxcd, Alerts, Severity, Info, GitOps, Kubernetes, Notification-Controller
 
 Description: Learn how to configure Flux CD alerts that capture both info and error severity events, providing full visibility into your GitOps reconciliation pipeline.
 

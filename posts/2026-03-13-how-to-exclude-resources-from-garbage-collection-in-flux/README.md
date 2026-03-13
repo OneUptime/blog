@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, garbage-collection, pruning, kustomization, kubernetes
+Tags: Flux, fluxcd, GitOps, Garbage-Collection, Pruning, Kustomization, Kubernetes
 
 Description: Learn how to exclude specific resources from Flux garbage collection to prevent accidental deletion of critical cluster resources.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Passwordless Authentication, Workload Identity, Service Account, Google Cloud Security
+Tags: GCP, Passwordless Authentication, Workload Identity, Service Accounts, Google Cloud Security
 
 Description: Learn how to set up passwordless authentication for Google Cloud workloads using workload identity federation, eliminating the need for service account keys.
 

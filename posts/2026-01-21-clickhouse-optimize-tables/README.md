@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ClickHouse, Optimization, OPTIMIZE TABLE, MERGE, Storage Efficiency
+Tags: ClickHouse, Optimization, OPTIMIZE TABLE, Merge, Storage Efficiency
 
 Description: A comprehensive guide to compacting and optimizing ClickHouse tables, covering OPTIMIZE TABLE operations, merge management, and storage efficiency best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, Ingress, NGINX, Monitoring, Metrics, Tracing
+Tags: OpenTelemetry, Kubernetes, Ingresses, NGINX, Monitoring, Metrics, Tracing
 
 Description: Learn how to monitor Kubernetes Ingress controller performance using OpenTelemetry for metrics collection, distributed tracing, and log analysis.
 

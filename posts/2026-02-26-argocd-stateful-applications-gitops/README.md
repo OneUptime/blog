@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, StatefulSet, Persistent Storage
+Tags: ArgoCD, GitOps, Kubernetes, StatefulSets, Persistent Storage
 
 Description: Learn how to manage stateful applications like databases, message queues, and caches in GitOps workflows with ArgoCD, including PVC handling and backup strategies.
 

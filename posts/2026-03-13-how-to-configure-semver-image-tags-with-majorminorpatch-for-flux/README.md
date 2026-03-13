@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, semver, image-automation, imagepolicy, gitops, kubernetes
+Tags: Flux, SemVer, image-automation, ImagePolicy, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImagePolicy to track container image tags following the Major.Minor.Patch semantic versioning pattern.
 

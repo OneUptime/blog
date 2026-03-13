@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, DaemonSet, Node Management
+Tags: ArgoCD, GitOps, Kubernetes, DaemonSets, Node Management
 
 Description: Learn how to deploy and manage Kubernetes DaemonSets with ArgoCD for node-level workloads like log collectors, monitoring agents, and network plugins.
 

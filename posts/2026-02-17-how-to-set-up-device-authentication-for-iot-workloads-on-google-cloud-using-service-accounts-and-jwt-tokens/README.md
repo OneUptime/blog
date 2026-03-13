@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, IoT, Authentication, JWT, Service Account
+Tags: GCP, IoT, Authentication, JWT, Service Accounts
 
 Description: Implement secure device authentication for IoT workloads on Google Cloud using service accounts, JWT tokens, and certificate-based identity.
 

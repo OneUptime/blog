@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud, Service Account, Authentication, IAM, Security, DevOps
+Tags: GCP, Google Cloud, Service Accounts, Authentication, IAM, Security, DevOps
 
 Description: Learn how to diagnose and fix common service account key errors in Google Cloud Platform, including authentication failures, permission issues, and key management best practices.
 

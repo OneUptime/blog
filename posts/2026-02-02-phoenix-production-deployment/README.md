@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Elixir, Phoenix, Deployment, Production, DevOps
+Tags: Elixir, Phoenix, Deployments, Production, DevOps
 
 Description: A comprehensive guide to deploying Phoenix applications to production.
 

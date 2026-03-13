@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Azure, Application Gateway, Ingress, AGIC, Kubernetes, GitOps, WAF, Load Balancing
+Tags: Flux CD, Azure, Application Gateway, Ingresses, AGIC, Kubernetes, GitOps, WAF, Load Balancing
 
 Description: A hands-on guide to deploying and managing Azure Application Gateway Ingress Controller (AGIC) with Flux CD for GitOps-driven ingress management on AKS.
 

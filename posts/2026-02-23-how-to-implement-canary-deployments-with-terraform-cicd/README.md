@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Canary Deployment, CI/CD, DevOps, Infrastructure as Code, Progressive Delivery
+Tags: Terraform, Canary Deployments, CI/CD, DevOps, Infrastructure as Code, Progressive Delivery
 
 Description: Learn how to implement canary deployment patterns with Terraform CI/CD pipelines using weighted routing, health monitoring, automated promotion, and rollback mechanisms.
 

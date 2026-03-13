@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Feature Flags, Deployment, DevOps, Release Management
+Tags: Feature Flags, Deployments, DevOps, Release Management
 
 Description: Deploy features safely with feature flags for gradual rollouts, A/B testing, and instant rollbacks without redeployment.
 

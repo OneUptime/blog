@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, CRD, Health Check
+Tags: ArgoCD, GitOps, Kubernetes, CRDs, Health Checks
 
 Description: Learn how to configure ArgoCD health checks for Custom Resource Definitions so custom resources report accurate health status instead of defaulting to Healthy.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Deployments
 
 Description: Learn how to create a custom restart deployment action in ArgoCD that lets you perform rolling restarts directly from the ArgoCD UI or CLI without modifying Git or using kubectl.
 

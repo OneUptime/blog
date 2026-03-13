@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Deployment, Monitoring, Canary, Observability
+Tags: Istio, Deployments, Monitoring, Canary, Observability
 
 Description: Learn how to use Istio metrics and traffic management to analyze the impact of deployments on service health, latency, and error rates in real time.
 

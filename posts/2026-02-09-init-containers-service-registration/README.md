@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Container, Service Discovery
+Tags: Kubernetes, Init Containers, Service Discovery
 
 Description: Learn how to use init containers to register pods with external service discovery systems like Consul, etcd, or custom registries before application startup.
 

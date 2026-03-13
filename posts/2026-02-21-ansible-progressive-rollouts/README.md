@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Progressive Rollout, Canary, Deployment, DevOps
+Tags: Ansible, Progressive Rollout, Canary, Deployments, DevOps
 
 Description: Implement progressive rollouts with Ansible using canary deployments, incremental batch sizing, health checks, and automated rollback on failure.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, App Service, Node.js, GitHub Actions, CI/CD, Deployment, DevOps
+Tags: Azure, App Service, Node.js, GitHub Actions, CI/CD, Deployments, DevOps
 
 Description: A step-by-step guide to setting up automated deployments of a Node.js application to Azure App Service using GitHub Actions.
 

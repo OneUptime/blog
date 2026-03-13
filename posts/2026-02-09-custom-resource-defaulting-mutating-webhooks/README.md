@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Webhook, CRD
+Tags: Kubernetes, Webhooks, CRDs
 
 Description: Learn how to use mutating webhooks to automatically set default values for custom resource fields, providing a better user experience and ensuring consistency across your CRDs.
 

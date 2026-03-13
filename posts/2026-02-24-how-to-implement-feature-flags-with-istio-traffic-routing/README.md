@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Feature Flags, Traffic Routing, Kubernetes, Deployment
+Tags: Istio, Feature Flags, Traffic Routing, Kubernetes, Deployments
 
 Description: Learn how to use Istio's traffic routing as a feature flag system to control which users see new features without code-level feature flag libraries.
 

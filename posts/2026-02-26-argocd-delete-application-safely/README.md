@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Application Management, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Application Management, Deployments
 
 Description: Learn how to delete ArgoCD applications safely using cascade and non-cascade deletion, finalizers, CLI commands, and UI options to avoid losing critical Kubernetes resources.
 

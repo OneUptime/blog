@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud Firestore, Azure Cosmos DB, NoSQL, Database Migration, Cloud Migration
+Tags: GCP, Google Cloud Firestore, Azure Cosmos DB, NoSQL, Database Migrations, Cloud Migration
 
 Description: Learn how to migrate your Azure Cosmos DB databases to Google Cloud Firestore in Native Mode, covering data modeling differences, export strategies, and query translation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Database Migration, PreSync Hooks
+Tags: ArgoCD, GitOps, Kubernetes, Database Migrations, PreSync Hooks
 
 Description: Learn how to configure ArgoCD PreSync hooks to run database migrations before application deployment ensuring schema compatibility with new code.
 

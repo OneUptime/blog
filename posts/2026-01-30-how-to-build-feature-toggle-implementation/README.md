@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Feature Toggle, Software Engineering, DevOps, Deployment
+Tags: Feature Toggle, Software Engineering, DevOps, Deployments
 
 Description: Build a production-ready feature toggle system from scratch with targeting rules, percentage rollouts, and real-time updates. Includes TypeScript and Python implementations.
 

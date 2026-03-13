@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Traffic Management, Scheduling, Service Mesh, Kubernetes, CronJob
+Tags: Istio, Traffic Management, Scheduling, Service Mesh, Kubernetes, CronJobs
 
 Description: A practical guide to implementing time-based traffic shifting in Istio using CronJobs and VirtualService weight adjustments for day and night routing strategies.
 

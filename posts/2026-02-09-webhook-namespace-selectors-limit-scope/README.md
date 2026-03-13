@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Webhook, Namespace
+Tags: Kubernetes, Webhooks, Namespace
 
 Description: Learn how to use namespace selectors in webhook configurations to control which namespaces trigger your admission webhooks, improving performance and avoiding unintended side effects.
 

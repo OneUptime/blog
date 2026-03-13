@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Pulumi, Secret, Infrastructure as Code, DevOps, Security
+Tags: Pulumi, Secrets, Infrastructure as Code, DevOps, Security
 
 Description: Learn how to securely manage secrets in Pulumi using built-in encryption, external secret providers, and best practices for production deployments.
 

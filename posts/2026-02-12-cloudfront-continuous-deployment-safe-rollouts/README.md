@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CloudFront, Deployment, CDN, DevOps
+Tags: AWS, CloudFront, Deployments, CDN, DevOps
 
 Description: Learn how to use CloudFront continuous deployment to safely test configuration changes with a staging distribution before promoting to production.
 

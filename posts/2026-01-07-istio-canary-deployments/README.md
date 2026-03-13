@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Canary Deployment, Service Mesh, Kubernetes, DevOps
+Tags: Istio, Canary Deployments, Service Mesh, Kubernetes, DevOps
 
 Description: A guide to implementing safe canary deployments using Istio traffic management.
 

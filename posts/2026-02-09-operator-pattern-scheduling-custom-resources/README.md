@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operator, Custom Resource
+Tags: Kubernetes, Operator, Custom Resources
 
 Description: Learn how to build Kubernetes operators that manage scheduling-related custom resources, automating complex scheduling decisions and creating higher-level abstractions for workload placement.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, IAM, Security, Least Privilege, Access Control, Service Account
+Tags: GCP, IAM, Security, Least Privilege, Access Control, Service Accounts
 
 Description: Implement the principle of least privilege in a new GCP project by configuring granular IAM roles, managing service accounts properly, and auditing permissions regularly.
 

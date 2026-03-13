@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Jenkins, GitHub, Webhook, CI/CD, Automation
+Tags: RHEL, Jenkins, GitHub, Webhooks, CI/CD, Automation
 
 Description: Set up GitHub webhooks to trigger Jenkins builds automatically on push events, enabling a seamless CI/CD workflow on RHEL.
 

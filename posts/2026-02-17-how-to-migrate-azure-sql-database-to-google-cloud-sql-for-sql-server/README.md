@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud SQL, Azure SQL Database, SQL Server, Database Migration, Cloud Migration
+Tags: GCP, Google Cloud SQL, Azure SQL Database, SQL Server, Database Migrations, Cloud Migration
 
 Description: A complete guide to migrating Azure SQL Database instances to Google Cloud SQL for SQL Server, including BACPAC export, schema migration, and data transfer strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Data Pipeline, Upsert, MERGE, Data Integration
+Tags: Data Pipeline, Upsert, Merge, Data Integration
 
 Description: Learn to implement upsert patterns for efficiently handling insert-or-update operations in data pipelines.
 

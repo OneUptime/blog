@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, StatefulSet, Database, DevOps
+Tags: Ansible, Kubernetes, StatefulSets, Database, DevOps
 
 Description: A practical guide to managing Kubernetes StatefulSets with Ansible for stateful applications like databases, message queues, and distributed systems.
 

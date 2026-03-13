@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, istio, gke, gcp, canary, kubernetes, service-mesh
+Tags: Flagger, Istio, GKE, GCP, Canary, Kubernetes, Service-Mesh
 
 Description: A step-by-step guide to setting up Flagger with Istio on Google Kubernetes Engine for automated canary deployments.
 

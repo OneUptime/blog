@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployment, Monitoring
+Tags: Kubernetes, Deployments, Monitoring
 
 Description: Learn how to use Kubernetes deployment conditions to monitor rollout health, detect failures early, and build automated responses to deployment issues for more reliable releases.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Database Migration, DevOps, Deployment
+Tags: Ansible, Database Migrations, DevOps, Deployments
 
 Description: Learn how to safely automate database schema migrations using Ansible playbooks with rollback support and pre-migration checks.
 

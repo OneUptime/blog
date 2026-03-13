@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Resource Management, QoS, Performance
+Tags: Kubernetes, DaemonSets, Resource Management, QoS, Performance
 
 Description: Learn how to set appropriate CPU and memory limits for DaemonSets to prevent node resource exhaustion while ensuring critical node-level services remain responsive under load.
 

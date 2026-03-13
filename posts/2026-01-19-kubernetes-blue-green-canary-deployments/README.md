@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Blue-Green, Canary, Deployment, Progressive Delivery, DevOps
+Tags: Kubernetes, Blue-Green, Canary, Deployments, Progressive Delivery, DevOps
 
 Description: Learn how to implement blue-green and canary deployment strategies in Kubernetes for safe, zero-downtime releases with easy rollback capabilities.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Blue-Green Deployment, Zero Downtime, Deployment, DevOps, CI/CD
+Tags: Kubernetes, Blue-Green Deployment, Zero Downtime, Deployments, DevOps, CI/CD
 
 Description: Learn how to implement blue-green deployments in Kubernetes for zero-downtime releases.
 

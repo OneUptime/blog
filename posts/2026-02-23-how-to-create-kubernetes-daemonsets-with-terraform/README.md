@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, DaemonSet, Infrastructure as Code, Monitoring, Logging
+Tags: Terraform, Kubernetes, DaemonSets, Infrastructure as Code, Monitoring, Logging
 
 Description: How to create Kubernetes DaemonSets with Terraform to run pods on every node for logging, monitoring, and system-level tasks.
 

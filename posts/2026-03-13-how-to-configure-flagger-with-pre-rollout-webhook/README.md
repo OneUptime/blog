@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, webhook, pre-rollout, kubernetes, progressive delivery, testing
+Tags: Flagger, Canary, Webhooks, Pre-Rollout, Kubernetes, Progressive Delivery, Testing
 
 Description: Learn how to configure pre-rollout webhooks in Flagger to run smoke tests, database migrations, or readiness checks before canary traffic shifting begins.
 

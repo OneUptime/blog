@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Secret, Security, Docker Swarm, Docker Compose
+Tags: Docker, Secrets, Security, Docker Swarm, Docker Compose
 
 Description: Learn how to securely manage sensitive data like passwords, API keys, and certificates using Docker Secrets in Swarm mode and Docker Compose for both development and production environments.
 

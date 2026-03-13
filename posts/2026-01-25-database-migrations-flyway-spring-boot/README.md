@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, Flyway, Database Migration, Schema
+Tags: Java, Spring Boot, Flyway, Database Migrations, Schema
 
 Description: Learn how to implement reliable database migrations in Spring Boot applications using Flyway.
 

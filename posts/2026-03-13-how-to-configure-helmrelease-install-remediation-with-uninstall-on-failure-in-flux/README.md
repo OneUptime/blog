@@ -1,4 +1,4 @@
-# How to Configure HelmRelease Install Remediation with Uninstall on Failure in Flux
+# HelmRelease Install Remediation with Uninstall on Failure in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

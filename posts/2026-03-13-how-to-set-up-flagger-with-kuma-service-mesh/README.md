@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, kuma, service mesh, canary, kubernetes, progressive delivery, traffic routing
+Tags: Flagger, Kuma, Service Mesh, Canary, Kubernetes, Progressive Delivery, Traffic Routing
 
 Description: Learn how to set up Flagger with Kuma service mesh for progressive canary deployments with automatic traffic management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secret, SOPS, Azure Key Vault, Encryption
+Tags: Flux CD, GitOps, Kubernetes, Secrets, SOPS, Azure Key Vault, Encryption
 
 Description: Learn how to encrypt Kubernetes secrets using SOPS with Azure Key Vault for secure GitOps workflows with Flux CD on AKS.
 

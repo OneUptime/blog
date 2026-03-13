@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, TLS Termination, Sidecar, Ingress, Kubernetes, Security
+Tags: Istio, TLS Termination, Sidecar, Ingresses, Kubernetes, Security
 
 Description: Configure TLS termination at the Istio sidecar proxy level instead of the ingress gateway for fine-grained encryption control per service.
 

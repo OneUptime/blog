@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, AWS, CI/CD, Deployment, OIDC, CloudFormation, ECS, S3
+Tags: GitHub Actions, AWS, CI/CD, Deployments, OIDC, CloudFormation, ECS, S3
 
 Description: Learn how to deploy applications to AWS from GitHub Actions using OIDC authentication, including deployments to S3, ECS, Lambda, and EC2 with best practices for secure, automated cloud deployments.
 

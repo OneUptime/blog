@@ -300,7 +300,7 @@ spec:
 
 Store your cluster profiles in a Git repository and apply them through GitOps. Organize profiles by cluster type and environment.
 
-```
+```text
 fleet-infra/
   clusters/
     dev/

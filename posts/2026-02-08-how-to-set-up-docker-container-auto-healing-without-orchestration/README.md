@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Auto-Healing, Health Check, Production, Reliability, DevOps
+Tags: Docker, Auto-Healing, Health Checks, Production, Reliability, DevOps
 
 Description: Implement automatic container recovery and self-healing for Docker without Kubernetes using health checks and custom watchdog scripts.
 

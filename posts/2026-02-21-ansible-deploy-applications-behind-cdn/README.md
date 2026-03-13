@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, CDN, CloudFront, Deployment, Performance
+Tags: Ansible, CDN, CloudFront, Deployments, Performance
 
 Description: Deploy web applications behind a CDN with Ansible including CloudFront configuration, cache invalidation, and origin server setup.
 

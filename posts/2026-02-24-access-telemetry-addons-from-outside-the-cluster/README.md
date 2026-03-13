@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Telemetry, Kubernetes, Ingress, Observability
+Tags: Istio, Telemetry, Kubernetes, Ingresses, Observability
 
 Description: Multiple methods for accessing Istio telemetry addons like Grafana, Kiali, and Jaeger from outside the Kubernetes cluster.
 

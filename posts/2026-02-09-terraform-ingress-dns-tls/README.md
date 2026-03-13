@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Ingress
+Tags: Terraform, Kubernetes, Ingresses
 
 Description: Learn how to create Terraform modules that provision Kubernetes Ingress resources with automated DNS configuration via Route53 or CloudDNS and TLS certificate management through cert-manager for.
 

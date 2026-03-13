@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Policy, Troubleshooting, Governance, Compliance, ARM, Deployment
+Tags: Azure Policy, Troubleshooting, Governance, Compliance, ARM, Deployments
 
 Description: Diagnose and resolve RequestDisallowedByPolicy errors in Azure by identifying which policies block your deployments and how to request exemptions.
 

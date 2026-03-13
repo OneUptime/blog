@@ -1,4 +1,4 @@
-# How to Configure Custom Health Checks for PersistentVolumeClaims in Flux Kustomization
+# Custom Health Checks for PersistentVolumeClaims in Flux Kustomization
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

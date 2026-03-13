@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, KServe, Canary Deployment, Prometheus, Model Serving
+Tags: Kubernetes, KServe, Canary Deployments, Prometheus, Model Serving
 
 Description: Implement canary model rollouts with KServe and Prometheus metrics to safely deploy new model versions with automated rollback based on performance monitoring.
 

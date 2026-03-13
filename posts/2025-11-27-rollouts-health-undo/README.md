@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Release, DevOps, Reliability
+Tags: Kubernetes, Releases, DevOps, Reliability
 
 Description: Use Deployment strategies, `kubectl rollout`, and health probes to ship safely-and revert instantly when something looks wrong.
 

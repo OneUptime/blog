@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HTTP Provider, API, Health Check, Infrastructure as Code
+Tags: Terraform, HTTP Provider, API, Health Checks, Infrastructure as Code
 
 Description: Learn how to use the Terraform HTTP provider to make API calls, perform health checks, fetch remote configuration, and validate endpoints during infrastructure deployment.
 

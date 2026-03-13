@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, VirtualService, Gateway, Ingress, Traffic Management
+Tags: Istio, VirtualService, Gateway, Ingresses, Traffic Management
 
 Description: Learn how to bind Istio VirtualService to specific Gateways to control which routing rules apply to external vs internal traffic.
 

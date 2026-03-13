@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Health Check, Kubernetes, Security
+Tags: Istio, mTLS, Health Checks, Kubernetes, Security
 
 Description: Configure Istio to handle Kubernetes health check probes correctly when strict mTLS is enabled, preventing probe failures and pod restarts.
 

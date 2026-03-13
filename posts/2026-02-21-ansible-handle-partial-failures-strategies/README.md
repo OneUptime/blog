@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Error Handling, Strategy, Partial Failures, Deployment
+Tags: Ansible, Error Handling, Strategy, Partial Failures, Deployments
 
 Description: Handle partial failures in Ansible deployments using strategy plugins, rescue blocks, max_fail_percentage, and recovery patterns to maintain fleet consistency.
 

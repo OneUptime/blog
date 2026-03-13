@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Deploy, Canary Deployment, DevOps, GKE
+Tags: GCP, Cloud Deploy, Canary Deployments, DevOps, GKE
 
 Description: Learn how to configure percentage-based canary deployments in Google Cloud Deploy to gradually roll out new versions and reduce deployment risk.
 

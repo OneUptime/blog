@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, Vault, Kubernetes, Secret, Sidecar, HashiCorp, Linux
+Tags: RHEL, Vault, Kubernetes, Secrets, Sidecar, HashiCorp, Linux
 
 Description: Learn how to deploy the HashiCorp Vault Agent Injector as a sidecar in Kubernetes on RHEL to automatically inject secrets into pods using annotations, without modifying application code.
 

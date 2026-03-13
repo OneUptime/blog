@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Tekton, Kubernetes, CI/CD, GitOps, DevOps, Automation, Webhook, GitHub, GitLab
+Tags: Tekton, Kubernetes, CI/CD, GitOps, DevOps, Automation, Webhooks, GitHub, GitLab
 
 Description: A complete guide to using Tekton Triggers to automatically start CI/CD pipelines from external events like Git pushes, pull requests, and webhooks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Security, Secret, DevOps, Open Source
+Tags: Ubuntu, Security, Secrets, DevOps, Open Source
 
 Description: Learn how to deploy and configure Infisical for self-hosted secret management on Ubuntu, including CLI setup, environment configuration, and application integration.
 

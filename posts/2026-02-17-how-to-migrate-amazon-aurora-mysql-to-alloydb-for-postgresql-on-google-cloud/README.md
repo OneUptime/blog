@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, AlloyDB, Amazon Aurora, MySQL, PostgreSQL, Database Migration, Cloud Migration
+Tags: GCP, AlloyDB, Amazon Aurora, MySQL, PostgreSQL, Database Migrations, Cloud Migration
 
 Description: A comprehensive guide to migrating from Amazon Aurora MySQL to AlloyDB for PostgreSQL on Google Cloud, including schema conversion, data migration, and application changes.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Check, Readiness Probe
+Tags: Kubernetes, Health Checks, Readiness Probe
 
 Description: Configure Kubernetes readiness probes to control when pods receive traffic, ensuring users only reach healthy backends and enabling zero-downtime deployments.
 

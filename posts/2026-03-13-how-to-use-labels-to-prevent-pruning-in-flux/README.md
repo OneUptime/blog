@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, labels, pruning, garbage-collection, kubernetes
+Tags: Flux, fluxcd, GitOps, Labels, Pruning, Garbage-Collection, Kubernetes
 
 Description: Learn how to use Kubernetes labels strategically to prevent Flux from pruning specific resources during garbage collection.
 
@@ -92,7 +92,7 @@ With this configuration, any resource carrying the `flux.oneuptime.com/no-prune:
 
 For multi-environment setups, you can define base labels and apply patches in each environment overlay:
 
-```
+```text
 ├── base/
 │   ├── kustomization.yaml
 │   ├── deployment.yaml

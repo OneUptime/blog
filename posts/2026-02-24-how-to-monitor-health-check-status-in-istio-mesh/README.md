@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Health Check, Monitoring, Prometheus, Kubernetes
+Tags: Istio, Health Checks, Monitoring, Prometheus, Kubernetes
 
 Description: Monitor the health check status of services in your Istio mesh using Prometheus metrics, Envoy stats, and Kubernetes events for proactive issue detection.
 

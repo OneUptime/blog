@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, kubernetes, rollback, error rate, progressive delivery
+Tags: Flagger, Canary, Kubernetes, Rollback, Error Rate, Progressive Delivery
 
 Description: Learn how to configure Flagger to automatically roll back canary deployments when the error rate exceeds a defined threshold.
 
@@ -217,7 +217,7 @@ kubectl describe canary my-app
 
 Look for events like:
 
-```
+```text
 Warning  Synced  2m  flagger  Halt my-app.default advancement success rate 95.24% < 99%
 Warning  Synced  1m  flagger  Rolling back my-app.default failed checks threshold reached 3
 Warning  Synced  30s flagger  Canary failed! Scaling down my-app.default

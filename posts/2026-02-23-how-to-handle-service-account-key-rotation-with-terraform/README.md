@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, AWS, Security, Service Account, Key Rotation, Infrastructure as Code
+Tags: Terraform, GCP, AWS, Security, Service Accounts, Key Rotation, Infrastructure as Code
 
 Description: Learn how to implement automated service account key rotation using Terraform to maintain security and reduce the risk of compromised credentials.
 

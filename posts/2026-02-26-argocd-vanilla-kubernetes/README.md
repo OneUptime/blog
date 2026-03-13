@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Deployments
 
 Description: Learn how to set up and use ArgoCD with a standard upstream Kubernetes cluster, covering installation, configuration, and best practices for vanilla K8s environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Secret, Security, Swarm
+Tags: Ansible, Docker, Secrets, Security, Swarm
 
 Description: Manage Docker Swarm secrets with Ansible to securely distribute passwords, API keys, and certificates to containers.
 

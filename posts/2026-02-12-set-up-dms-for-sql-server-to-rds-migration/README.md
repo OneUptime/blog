@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DMS, SQL Server, RDS, Database Migration, Replication
+Tags: AWS, DMS, SQL Server, RDS, Database Migrations, Replication
 
 Description: Migrate from on-premises SQL Server to Amazon RDS for SQL Server using AWS DMS with full load and CDC for minimal-downtime migration.
 

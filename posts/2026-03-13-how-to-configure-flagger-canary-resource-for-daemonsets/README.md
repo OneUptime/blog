@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, kubernetes, daemonsets, progressive delivery
+Tags: Flagger, Canary, Kubernetes, DaemonSets, Progressive Delivery
 
 Description: Learn how to configure a Flagger Canary resource to automate progressive delivery for Kubernetes DaemonSets using node-level rollouts.
 

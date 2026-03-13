@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ALB, Load Balancing, Canary Deployment, Blue-Green, Target Groups
+Tags: AWS, ALB, Load Balancing, Canary Deployments, Blue-Green, Target Groups
 
 Description: Learn how to configure weighted target groups on Application Load Balancer for canary deployments, blue-green deployments, and gradual traffic shifting.
 

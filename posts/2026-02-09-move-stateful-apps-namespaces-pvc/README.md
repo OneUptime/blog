@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Stateful Applications, PersistentVolumeClaim, Namespace Migration
+Tags: Kubernetes, Stateful Applications, PersistentVolumeClaims, Namespace Migration
 
 Description: Learn practical techniques to migrate stateful applications across Kubernetes namespaces while preserving PVC data integrity, including cloning strategies and zero-downtime approaches.
 

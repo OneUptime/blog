@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CDK, Custom Resource, Lambda
+Tags: AWS, CDK, Custom Resources, Lambda
 
 Description: Learn how to use AWS CDK custom resources to provision infrastructure that CloudFormation doesn't natively support, with practical examples and error handling patterns.
 

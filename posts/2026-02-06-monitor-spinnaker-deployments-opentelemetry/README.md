@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Spinnaker, Deployment, Monitoring, CI/CD, Tracing, Kubernetes
+Tags: OpenTelemetry, Spinnaker, Deployments, Monitoring, CI/CD, Tracing, Kubernetes
 
 Description: Learn how to monitor Spinnaker deployment pipelines with OpenTelemetry for better visibility into multi-stage rollouts.
 

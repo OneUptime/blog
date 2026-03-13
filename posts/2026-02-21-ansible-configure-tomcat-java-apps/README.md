@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Tomcat, Java, Deployment, DevOps
+Tags: Ansible, Tomcat, Java, Deployments, DevOps
 
 Description: Configure Apache Tomcat for Java web applications using Ansible with JVM tuning, WAR deployment, and security hardening.
 

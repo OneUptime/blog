@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, kubectl Provider, CRD, Kubernetes, Infrastructure as Code
+Tags: Terraform, kubectl Provider, CRDs, Kubernetes, Infrastructure as Code
 
 Description: Learn how to use the Terraform kubectl provider to apply Custom Resource Definitions and raw Kubernetes manifests directly from Terraform configurations.
 

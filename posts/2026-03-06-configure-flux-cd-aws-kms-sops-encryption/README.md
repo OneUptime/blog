@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, AWS, KMS, SOPS, Encryption, Secret, Kubernetes, GitOps, Security
+Tags: Flux CD, AWS, KMS, SOPS, Encryption, Secrets, Kubernetes, GitOps, Security
 
 Description: Learn how to configure Flux CD with Mozilla SOPS and AWS KMS to encrypt secrets in Git and decrypt them automatically during deployment.
 

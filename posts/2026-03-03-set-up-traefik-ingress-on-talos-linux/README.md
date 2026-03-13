@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Traefik, Ingress, Kubernetes, Reverse Proxy
+Tags: Talos Linux, Traefik, Ingresses, Kubernetes, Reverse Proxy
 
 Description: Learn how to deploy Traefik as an ingress controller on Talos Linux with automatic service discovery and routing capabilities.
 

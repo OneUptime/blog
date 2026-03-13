@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, namespace, alerts, gitops, kubernetes, notification-controller
+Tags: Flux, fluxcd, Namespace, Alerts, GitOps, Kubernetes, Notification-Controller
 
 Description: Learn how to scope Flux CD alerts to specific Kubernetes namespaces, enabling environment-based and team-based notification routing.
 
@@ -221,7 +221,7 @@ Check your alerts are ready:
 kubectl get alerts -n flux-system
 ```
 
-```
+```text
 NAME              AGE   READY   STATUS
 prod-alerts       15s   True    Initialized
 staging-alerts    15s   True    Initialized

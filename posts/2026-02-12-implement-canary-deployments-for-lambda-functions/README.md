@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lambda, Canary Deployment, CodeDeploy, Serverless
+Tags: AWS, Lambda, Canary Deployments, CodeDeploy, Serverless
 
 Description: Implement automated canary deployments for AWS Lambda functions using CodeDeploy and SAM with automatic rollback based on CloudWatch alarms.
 

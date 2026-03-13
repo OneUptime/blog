@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Multi-Cluster, Deployment, DevOps
+Tags: Ansible, Kubernetes, Multi-Cluster, Deployments, DevOps
 
 Description: Deploy applications across multiple Kubernetes clusters using Ansible inventory groups, kubeconfig contexts, and parallel execution strategies.
 

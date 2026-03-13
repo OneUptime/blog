@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, TLS, Ingress, HTTPS, Kubernetes, Security
+Tags: Talos Linux, TLS, Ingresses, HTTPS, Kubernetes, Security
 
 Description: Learn how to configure TLS termination at the ingress layer on Talos Linux to secure external traffic to your Kubernetes services.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderer, Container Images, Kustomize
+Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderers, Container Images, Kustomize
 
 Description: Learn how to use Flux post-renderers to override container images in Helm chart resources for custom registries and image versions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, StatefulSet, Kubernetes, Service Mesh, Troubleshooting
+Tags: Istio, StatefulSets, Kubernetes, Service Mesh, Troubleshooting
 
 Description: How to troubleshoot and resolve common issues when running Kubernetes StatefulSets with Istio sidecar injection enabled.
 

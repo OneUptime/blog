@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Istio, Service Mesh, Kubernetes, Canary Deployment, Traffic Splitting, Progressive Delivery
+Tags: Istio, Service Mesh, Kubernetes, Canary Deployments, Traffic Splitting, Progressive Delivery
 
 Description: A comprehensive guide to implementing canary deployments with Istio, including traffic splitting, header-based routing, and automated rollout strategies.
 

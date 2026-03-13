@@ -53,7 +53,7 @@
 - AAA
 - AArch64
 - Ab testing
-- ab-testing
+- Ab-Testing
 - ABAC
 - Abandonment
 - Aborted
@@ -1470,7 +1470,7 @@
 - Branch Protection
 - Branch Tagging
 - Branch Tracking
-- branch-protection
+- Branch-Protection
 - Branches
 - Branching
 - Branching Strategy
@@ -1595,10 +1595,9 @@
 - Bull Board
 - BullMQ
 - Bun
-- Bundle
 - Bundle Size
 - Bundler
-- bundles
+- Bundles
 - Bundling
 - Burn Rate
 - Burp Suite
@@ -1665,12 +1664,11 @@
 - Callback
 - Callback Plugins
 - Calling SDK
-- calver
+- Calver
 - Campaigns
 - Canaries
 - Canary
 - Canary Analysis
-- Canary Deployment
 - Canary Deployments
 - Canary Monitoring
 - Canary Promotion
@@ -2312,7 +2310,7 @@
 - Commit Messages
 - Commit SHA
 - Commit Status
-- commit-message
+- Commit-Message
 - CommitFailedException
 - Committed Use Discounts
 - Common Bugs
@@ -2442,9 +2440,9 @@
 - Configuration Validation
 - Configuration Validator
 - Configuration Versions
-- confirm-promotion
-- confirm-rollout
-- confirm-traffic-increase
+- Confirm-Promotion
+- Confirm-Rollout
+- Confirm-Traffic-Increase
 - Conflict Errors
 - Conflict Resolution
 - Conflicts
@@ -2453,7 +2451,7 @@
 - confluent-kafka
 - Conformance
 - Conformance Packs
-- conformance testing
+- Conformance Testing
 - Conformed Dimensions
 - Conftest
 - Congestion Control
@@ -2647,7 +2645,7 @@
 - Continuous Testing
 - Continuous Training
 - Continuous Verification
-- continuous-deployment
+- Continuous-Deployment
 - Contour
 - Contract Testing
 - Contract Tests
@@ -2678,7 +2676,7 @@
 - ControllerAdvice
 - ControlMaster
 - ControlPersist
-- controlplane
+- Controlplane
 - ControlZ
 - Conventional Commits
 - Conventions
@@ -2799,7 +2797,6 @@
 - Crates
 - Crawlers
 - CRC
-- CRD
 - CRDs
 - CRDT
 - Create
@@ -2826,7 +2823,6 @@
 - Cron Alternative
 - Cron Jobs
 - cron.yaml
-- CronJob
 - CronJobs
 - crontab
 - Cross Product
@@ -2923,7 +2919,7 @@
 - Current Values
 - Cursor
 - Cursor-based pagination
-- custom
+- Custom
 - Custom Access Levels
 - CUSTOM Action
 - Custom Agents
@@ -3002,12 +2998,11 @@
 - Custom Profiles
 - Custom Propagator
 - Custom Provider
-- custom queries
+- Custom Queries
 - Custom Ranking
 - Custom Receiver
-- Custom Resource
 - Custom Resource Definitions
-- custom resources
+- Custom Resources
 - Custom Response
 - Custom Roles
 - Custom Routing
@@ -3038,7 +3033,6 @@
 - Custom Voice
 - Custom Widgets
 - custom-metrics
-- custom-sources
 - Customer Analytics
 - Customer Data Platform
 - Customer Experience
@@ -3067,8 +3061,7 @@
 - daemon_reload
 - daemon.json
 - Daemons
-- DaemonSet
-- daemonsets
+- DaemonSets
 - DAG
 - Dagger
 - DAM
@@ -3282,7 +3275,6 @@
 - Database Mail
 - Database Maintenance
 - Database Management
-- Database Migration
 - Database Migration Service
 - Database Migrations
 - Database Monitoring
@@ -3348,7 +3340,7 @@
 - Date Sharding
 - Date Shifting
 - Date Time
-- date-tags
+- Date-Tags
 - datetime
 - DAX
 - DBA
@@ -3483,7 +3475,6 @@
 - Deploy
 - Deploy Keys
 - DeployIfNotExists
-- Deployment
 - Deployment Annotations
 - Deployment Approvals
 - Deployment Automation
@@ -3512,7 +3503,7 @@
 - Deployment Tracking
 - Deployment Verification
 - Deployment Workflow
-- deployments
+- Deployments
 - Deprecation
 - Deref
 - Derive
@@ -3666,7 +3657,7 @@
 - DISA
 - DISA STIG
 - Disable
-- disableHooks
+- DisableHooks
 - disableWait
 - Disaster Recovery
 - Disaster-Recovery
@@ -3908,7 +3899,7 @@
 - DoD
 - DoH
 - DOKS
-- dollar-sign
+- Dollar-Sign
 - DOM
 - Domain
 - Domain Configuration
@@ -4366,7 +4357,6 @@
 - Eureka
 - European Cloud
 - Evaluation
-- event
 - Event Analysis
 - Event Bus
 - Event Capture
@@ -4443,7 +4433,7 @@
 - Exchange
 - Exchange API
 - Exchange Types
-- exclude-paths
+- Exclude-Paths
 - Exclusion
 - Exclusion Filters
 - Exclusion List
@@ -4823,13 +4813,13 @@
 - Flux CLI
 - flux debug
 - flux diff
-- Flux operator
+- Flux Operator
 - flux v1
 - flux v2
 - flux-cd
 - flux-get
-- flux-operator
-- flux-tree
+- Flux-Operator
+- Flux-Tree
 - fluxcd
 - FluxInstance
 - Fly.io
@@ -4973,7 +4963,7 @@
 - Gaming
 - Gang Scheduling
 - Garbage Collection
-- garbage-collection
+- Garbage-Collection
 - Gardener
 - Gatekeeper
 - Gates
@@ -5101,10 +5091,10 @@
 - Git Tags
 - Git Webhooks
 - Git Workflows
-- git-author
-- git-email
+- Git-Author
+- Git-Email
 - git-repository
-- git-sync
+- Git-Sync
 - Gitea
 - GitHub
 - GitHub Actions
@@ -5156,7 +5146,7 @@
 - Global View
 - GlobalSign
 - Gloo
-- Gloo edge
+- Gloo Edge
 - Glossaries
 - Glue
 - GlusterFS
@@ -5178,7 +5168,7 @@
 - Go pprof
 - Go Templates
 - Go-Kit
-- go-template
+- Go-Template
 - go:embed
 - go.mod
 - GoAccess
@@ -5466,7 +5456,6 @@
 - Headless Service
 - Health
 - Health Apps
-- Health Check
 - Health Check Rewriting
 - Health Checking
 - Health Checks
@@ -5520,7 +5509,7 @@
 - Hetzner
 - Hetzner Cloud
 - Hexagonal Architecture
-- hey
+- Hey
 - HGET
 - Hibernate
 - Hibernate Envers
@@ -5701,7 +5690,7 @@
 - HttpClient
 - HTTPD
 - HTTPie
-- httpproxy
+- HTTPProxy
 - HTTPRoute
 - HTTPRouteGroup
 - HTTPS
@@ -5876,7 +5865,7 @@
 - image-management
 - image-policy
 - image-repository
-- image-tags
+- Image-Tags
 - ImageMagick
 - Imagen
 - ImagePolicy
@@ -5948,7 +5937,7 @@
 - Include
 - Include Paths
 - Include Tasks
-- include-paths
+- Include-Paths
 - Inclusive Design
 - Incoming Email
 - Incoming Request
@@ -6008,7 +5997,7 @@
 - InfiniBand
 - Infinite Scroll
 - InfluxDB
-- info
+- Info
 - Info Metrics
 - Information Retrieval
 - Information Schema
@@ -6036,7 +6025,6 @@
 - Ingester
 - Ingestion
 - Ingestion Keys
-- Ingress
 - Ingress Controller
 - Ingress Controls
 - Ingress Gateway
@@ -6044,13 +6032,13 @@
 - Ingress Rules
 - Ingress Security
 - Ingress-NGINX
+- Ingresses
 - IngressRoute
 - Inheritance
 - Inhibition
 - INI
 - INI Files
 - Init
-- Init Container
 - Init Containers
 - Init Process
 - Init System
@@ -6064,6 +6052,7 @@
 - Inline Manifests
 - Inline Patches
 - Inline Signing
+- Inline Variables
 - InnoDB
 - InnoDB Cluster
 - Innovation
@@ -6307,9 +6296,8 @@
 - Item Storage
 - Item Writer
 - ItemProcessor
-- Iteration
 - Iteration Paths
-- iterations
+- Iterations
 - Iterator
 - itertools
 - ITIL
@@ -6484,7 +6472,7 @@
 - Keep-Alive
 - keepalive
 - Keepalived
-- keepHistory
+- KeepHistory
 - Kendra
 - Kerberos
 - Kernel
@@ -6914,7 +6902,7 @@
 - Load Distribution
 - Load Management
 - Load Shedding
-- load tester
+- Load Tester
 - Load Testing
 - Load-balancer
 - Load-balancing
@@ -6951,7 +6939,7 @@
 - Local Values
 - Local Volume Driver
 - Local Zones
-- local-development
+- Local-Development
 - local-exec
 - Localai
 - Locale
@@ -7255,7 +7243,7 @@
 - Max Instances
 - Max Surge
 - Max Unavailable
-- max weight
+- Max Weight
 - max_allowed_packet
 - max_connections
 - max.poll.interval.ms
@@ -7332,13 +7320,13 @@
 - Memorystore
 - memtest86
 - Meraki
-- MERGE
+- Merge
 - Merge Conflicts
 - Merge Generator
 - Merge Keys
 - Merge Request
 - merge_maps
-- merge-requests
+- Merge-Requests
 - Merged APIs
 - MergeTree
 - Mermaid Diagrams
@@ -7604,7 +7592,7 @@
 - Module Types
 - Module Utilities
 - Module Versioning
-- module-management
+- Module-Management
 - ModuleNotFoundError
 - Modules
 - Molecule
@@ -7671,7 +7659,7 @@
 - Multi-Agent
 - Multi-Agent Systems
 - Multi-app
-- Multi-arch
+- Multi-Arch
 - Multi-Architecture
 - Multi-AZ
 - Multi-Backend
@@ -7721,7 +7709,7 @@
 - Multi-Platform
 - Multi-Platform Builds
 - Multi-Platform Testing
-- multi-port
+- Multi-Port
 - Multi-Primary
 - Multi-Project
 - Multi-Project Pipelines
@@ -8118,7 +8106,7 @@
 - Node Scaling
 - Node Scheduling
 - Node Selection
-- Node Selector
+- Node Selectors
 - Node Services
 - Node Shutdown
 - Node Status
@@ -8163,12 +8151,11 @@
 - Note-Taking
 - Notebook
 - Notebook Orchestration
-- notification
 - Notification Channels
 - Notification Controller
 - Notification Hub
 - Notification Policies
-- notification-controller
+- Notification-Controller
 - Notifications
 - NOTIFY
 - NotLeaderForPartition
@@ -8278,7 +8265,7 @@
 - OCI Images
 - OCI Registry
 - Oci vault
-- oci-sync
+- Oci-Sync
 - ocir
 - OCIRepository
 - OCR
@@ -8463,7 +8450,7 @@
 - Orleans
 - ORM
 - Orphan containers
-- orphaned-resources
+- Orphaned-Resources
 - Ory Hydra
 - os
 - OS Disk
@@ -8712,7 +8699,7 @@
 - Path Units
 - Path-Based
 - Path-Based Routing
-- path-filtering
+- Path-Filtering
 - pathlib
 - Patient Engagement
 - Patient Portal
@@ -8816,9 +8803,8 @@
 - Persistent Storage
 - Persistent volume claims
 - Persistent Volumes
-- persistent-storage
+- Persistent-Storage
 - PersistentVolume
-- PersistentVolumeClaim
 - PersistentVolumeClaims
 - Personal Access Tokens
 - Personalization
@@ -9126,9 +9112,8 @@
 - Post-Installation
 - Post-Mortem
 - Post-Processing
-- Post-Renderer
-- post-renderers
-- post-rollout
+- Post-Renderers
+- Post-Rollout
 - Post-Tasks
 - Postal
 - Postconditions
@@ -9174,8 +9159,8 @@
 - Pre-Processing
 - Pre-Pull
 - Pre-Pulling
-- pre-release
-- pre-rollout
+- Pre-Release
+- Pre-Rollout
 - Pre-Tasks
 - Pre-Trained Models
 - Pre-Upgrade
@@ -9218,7 +9203,7 @@
 - Preview
 - Preview Deployments
 - Preview Environments
-- preview-environments
+- Preview-Environments
 - Price Optimization
 - Pricing
 - Pricing Calculator
@@ -9479,7 +9464,7 @@
 - Pull Request Testing
 - Pull Requests
 - Pull-Based
-- pull-requests
+- Pull-Requests
 - Pull-Through Cache
 - Pull-to-Refresh
 - Pulp
@@ -9869,7 +9854,6 @@
 - Registry
 - Registry Mirror
 - REGISTRY_ONLY
-- registry-scanning
 - Rego
 - Regression
 - Regression Detection
@@ -9889,7 +9873,6 @@
 - Relational Database
 - Relationships
 - Relay
-- Release
 - Release Annotations
 - Release Automation
 - Release Channels
@@ -10002,7 +9985,7 @@
 - Request Coalescing
 - Request Context
 - Request Deduplication
-- request duration
+- Request Duration
 - Request Entity Too Large
 - Request Handling
 - Request Headers
@@ -10018,7 +10001,7 @@
 - Request Routing
 - Request Scoping
 - Request Size
-- request success rate
+- Request Success Rate
 - Request Timeout
 - Request Tracking
 - Request Transformation
@@ -10124,10 +10107,9 @@
 - Resource Usage
 - Resource Utilization
 - Resource-Management
-- resource-ordering
+- Resource-Ordering
 - ResourceQuota
 - Resources
-- resourceset
 - ResourceSets
 - ResourceVersion
 - Response
@@ -10208,7 +10190,7 @@
 - Reverse Proxy
 - Reverse-proxy
 - Revert
-- revert-on-delete
+- Revert-On-Delete
 - Review
 - Review Apps
 - Review workflow
@@ -10546,12 +10528,11 @@
 - Screenshot Comparison
 - Screenshot Testing
 - Screenshots
-- Script
 - Script Execution
 - Script Module
 - Scripted Fields
 - Scripting
-- scripts
+- Scripts
 - Scroll
 - Scroll API
 - Scrum
@@ -10597,7 +10578,6 @@
 - Secondary Index
 - Secondary Indexes
 - Secondary Region
-- Secret
 - Secret Distribution
 - Secret Encryption
 - Secret Injection
@@ -10609,7 +10589,7 @@
 - Secret Synchronization
 - Secret Versioning
 - SecretDelivery
-- secrets
+- Secrets
 - Secrets Detection
 - Secrets Encryption
 - Secrets Management
@@ -10638,8 +10618,8 @@
 - Security Benchmarks
 - Security Center
 - Security Command Center
-- Security Context
 - Security Context Constraints
+- Security Contexts
 - Security Correlation
 - Security Dashboards
 - Security Events
@@ -10782,11 +10762,11 @@
 - Serverless SQL Pool
 - Serverless VPC Access
 - ServerSpec
-- Service Account
 - Service Account Auth
 - Service Account Impersonation
 - Service Account Keys
 - Service Account Tokens
+- Service Accounts
 - Service Authentication
 - Service Binding
 - Service Bus
@@ -10850,7 +10830,7 @@
 - Service Worker
 - Service-Discovery
 - Service-Linked Roles
-- service-mesh
+- Service-Mesh
 - Service-to-Service
 - ServiceAccount
 - ServiceBus
@@ -10863,7 +10843,7 @@
 - ServiceNow
 - ServiceNow Cloud Observability
 - Services
-- serving
+- Serving
 - SES
 - Session Affinity
 - Session Analysis
@@ -10891,7 +10871,7 @@
 - set_stats
 - SETBIT
 - setfacl
-- setifnotpresent
+- Setifnotpresent
 - Sets
 - Settings Management
 - Setup
@@ -10902,7 +10882,7 @@
 - sFlow
 - SFTP
 - SGID
-- sha
+- Sha
 - SHA-1
 - SHA-256
 - SHA1
@@ -11002,7 +10982,7 @@
 - Signed Cookies
 - Signed Policy Documents
 - Signed URLs
-- signed-commits
+- Signed-Commits
 - Signer
 - Signing
 - SigNoz
@@ -11047,7 +11027,7 @@
 - Skillsets
 - Skip
 - Skip Indexes
-- skip-analysis
+- Skip-Analysis
 - Skipper
 - Skopeo
 - SkuNotAvailable
@@ -11195,8 +11175,7 @@
 - Source watcher
 - Source-Based
 - Source-Based Routing
-- source-composition
-- source-kind
+- Source-Kind
 - Sources
 - SOX
 - SOX Compliance
@@ -11458,8 +11437,7 @@
 - Stateful Applications
 - Stateful Apps
 - Stateful Processing
-- StatefulSet
-- statefulsets
+- StatefulSets
 - Stateless Architecture
 - Static
 - Static Analysis
@@ -11498,7 +11476,7 @@
 - Stemming
 - Step Functions
 - Step Mode
-- step weight
+- Step Weight
 - Step-Up Authentication
 - Stick Tables
 - Sticky Bit
@@ -11661,7 +11639,7 @@
 - Subsets
 - Subshells
 - substituteFrom
-- substitution
+- Substitution
 - Substitution Variables
 - Subtitles
 - Subuid
@@ -11852,7 +11830,7 @@
 - Tag Sorting
 - Tag Templates
 - Tag Tracking
-- tag-pattern
+- Tag-Pattern
 - Tagging
 - Tagging Strategy
 - Tags
@@ -12138,9 +12116,8 @@
 - Threat Modeling
 - Threat Prevention
 - Threat Protection
-- threshold
+- Threshold
 - Threshold Tuning
-- Thresholds
 - Thrift
 - Throttle
 - Throttling
@@ -12267,7 +12244,6 @@
 - Token Storage
 - Token Usage
 - Token Validation
-- token-refresh
 - tokenbf_v1
 - Tokenization
 - Tokenizers
@@ -12373,7 +12349,7 @@
 - Traffic Filtering
 - Traffic Flow
 - Traffic Forecasting
-- traffic generation
+- Traffic Generation
 - Traffic Inspection
 - Traffic Interception
 - Traffic Management
@@ -12396,7 +12372,7 @@
 - Traffic Volume
 - Traffic-Management
 - TrafficManagement
-- trafficsplit
+- Trafficsplit
 - Training
 - Training Data
 - Training Pipeline
@@ -12642,7 +12618,7 @@
 - Update Management
 - Update Strategies
 - Update Strategy
-- update-strategy
+- Update-Strategy
 - Updates
 - UPG
 - Upgrade
@@ -13153,7 +13129,7 @@
 - Web Vitals
 - Web Workers
 - Web-application-firewall
-- web-ui
+- Web-Ui
 - Web3
 - WebApplicationFactory
 - WebAssembly
@@ -13164,12 +13140,11 @@
 - WebDriver
 - Webex
 - WebFlux
-- Webhook
 - Webhook Authentication
 - Webhook Development
 - Webhook Security
 - Webhook Triggers
-- webhooks
+- Webhooks
 - WebJobs
 - Webmail
 - Webmin

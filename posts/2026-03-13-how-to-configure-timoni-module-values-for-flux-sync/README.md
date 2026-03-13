@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, timoni, values, configuration
+Tags: Flux, Kubernetes, GitOps, Timoni, Values, Configuration
 
 Description: A practical guide to configuring Timoni module values for Flux sync operations, covering value types, defaults, overrides, and validation.
 
@@ -253,7 +253,7 @@ timoni build test oci://ghcr.io/stefanprodan/modules/flux-git-sync \
 
 If values violate the schema, Timoni reports specific errors:
 
-```
+```text
 Error: values.git.url: invalid value "not-a-url"
   (does not match =~"^(https|ssh)://")
 ```

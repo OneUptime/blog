@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, OpenAI, GPT-4, AI, Cloud, Deployment, Machine Learning
+Tags: Azure, OpenAI, GPT-4, AI, Cloud, Deployments, Machine Learning
 
 Description: Step-by-step guide to deploying a GPT-4 model in Azure OpenAI Service through the Azure Portal with configuration tips and best practices.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Ingress, Networking, DevOps
+Tags: Ansible, Kubernetes, Ingresses, Networking, DevOps
 
 Description: Step-by-step guide to creating Kubernetes Ingress resources with Ansible, covering path-based routing, TLS termination, and multiple ingress controllers.
 

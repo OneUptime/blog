@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Helm, Kubernetes, Deployment, Charts
+Tags: RHEL, Helm, Kubernetes, Deployments, Charts
 
 Description: Learn how to create a custom Helm chart on RHEL and deploy your application to Kubernetes with configurable values.
 

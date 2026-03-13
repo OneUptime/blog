@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, branch-protection, github, gitops, kubernetes, security
+Tags: Flux, image-automation, Branch-Protection, GitHub, GitOps, Kubernetes, Security
 
 Description: Learn how to configure Flux ImageUpdateAutomation to work with Git branch protection rules that require reviews, status checks, or signed commits.
 

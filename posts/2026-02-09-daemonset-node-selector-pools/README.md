@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Node Selector, Node Pool, Scheduling
+Tags: Kubernetes, DaemonSets, Node Selectors, Node Pool, Scheduling
 
 Description: Learn how to use node selectors with Kubernetes DaemonSets to deploy workloads only on specific node pools, enabling targeted deployment of specialized agents and services.
 

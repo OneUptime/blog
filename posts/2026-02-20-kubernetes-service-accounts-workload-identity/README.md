@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Service Account, Workload Identity, Security, IAM
+Tags: Kubernetes, Service Accounts, Workload Identity, Security, IAM
 
 Description: Learn how to use Kubernetes service accounts for pod identity, token projection, and workload identity federation with cloud providers.
 

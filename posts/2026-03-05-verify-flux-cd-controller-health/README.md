@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Health Check, Monitoring, Observability
+Tags: Flux CD, GitOps, Kubernetes, Health Checks, Monitoring, Observability
 
 Description: Learn how to verify the health and readiness of Flux CD controllers using CLI commands, Kubernetes probes, metrics, and automated monitoring.
 

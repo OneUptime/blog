@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, gpg, signed-commits, security, gitops, kubernetes
+Tags: Flux, image-automation, GPG, Signed-Commits, Security, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImageUpdateAutomation to create GPG-signed commits for image tag updates to satisfy security and compliance requirements.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, UI, Health Check
+Tags: ArgoCD, GitOps, Kubernetes, UI, Health Checks
 
 Description: Learn how to interpret the health and sync status icons in the ArgoCD UI dashboard to quickly assess application state and identify problems.
 

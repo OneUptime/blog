@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, PromQL, Filtering, Queries, Monitoring, Metrics, Thresholds, Observability
+Tags: Prometheus, PromQL, Filtering, Queries, Monitoring, Metrics, Threshold, Observability
 
 Description: Learn how to filter Prometheus query results by metric values using comparison operators, topk, bottomk, and threshold filtering.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Canary Deployment, GitOps, Traffic Splitting, NGINX Ingress
+Tags: Flux CD, Kubernetes, Canary Deployments, GitOps, Traffic Splitting, NGINX Ingress
 
 Description: A practical guide to implementing manual canary deployments with Flux CD without using Flagger, using native Kubernetes resources and ingress controllers.
 

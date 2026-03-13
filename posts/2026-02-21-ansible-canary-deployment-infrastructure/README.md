@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Canary, Deployment, DevOps, Infrastructure
+Tags: Ansible, Canary, Deployments, DevOps, Infrastructure
 
 Description: Build canary deployment infrastructure with Ansible for gradual rollouts with traffic splitting, metrics comparison, and automated promotion.
 

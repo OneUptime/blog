@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, BigQuery, SQL, MERGE, Data Engineering
+Tags: GCP, BigQuery, SQL, Merge, Data Engineering
 
 Description: A practical guide to using BigQuery MERGE statements for upsert operations, including patterns for incremental loading, CDC processing, and SCD management.
 

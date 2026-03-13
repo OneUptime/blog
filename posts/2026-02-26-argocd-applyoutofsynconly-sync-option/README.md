@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Sync Options, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Sync Options, Deployments
 
 Description: Learn how to use the ApplyOutOfSyncOnly sync option in ArgoCD to only apply resources that are actually out of sync, reducing deployment time and minimizing risk.
 

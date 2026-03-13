@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenShift, Kubernetes, DevOps, Containers, Red Hat, Deployment, CI/CD
+Tags: OpenShift, Kubernetes, DevOps, Containers, Red Hat, Deployments, CI/CD
 
 Description: A practical guide to deploying applications on OpenShift, covering the oc CLI, deployment strategies, source-to-image builds, routes, configuration management, health checks, and scaling.
 

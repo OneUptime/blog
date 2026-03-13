@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Memorystore, Redis, Azure Migration, Caching, Database Migration
+Tags: GCP, Memorystore, Redis, Azure Migration, Caching, Database Migrations
 
 Description: Step-by-step instructions for migrating your Azure Cache for Redis instances to Google Cloud Memorystore for Redis with minimal downtime.
 

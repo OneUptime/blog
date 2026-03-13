@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenShift, Kubernetes, Routes, TLS, Edge Termination, Passthrough, Reencrypt, Ingress, DevOps
+Tags: OpenShift, Kubernetes, Routes, TLS, Edge Termination, Passthrough, Reencrypt, Ingresses, DevOps
 
 Description: A practical guide to configuring OpenShift Routes for exposing applications with different TLS termination strategies, custom domains, and production-ready settings.
 

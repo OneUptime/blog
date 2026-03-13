@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Deploy, Custom Targets, DevOps, Deployment
+Tags: GCP, Cloud Deploy, Custom Targets, DevOps, Deployments
 
 Description: Learn how to use Cloud Deploy custom targets to deploy applications to destinations beyond GKE and Cloud Run, including VMs, third-party platforms, and custom infrastructure.
 

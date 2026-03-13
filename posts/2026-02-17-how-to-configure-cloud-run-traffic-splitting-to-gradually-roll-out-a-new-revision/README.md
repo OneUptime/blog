@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Traffic Splitting, Canary Deployment, DevOps
+Tags: GCP, Cloud Run, Traffic Splitting, Canary Deployments, DevOps
 
 Description: A practical guide to using Cloud Run traffic splitting for canary deployments, gradual rollouts, and A/B testing by directing percentages of traffic to different service revisions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Webhook, cert-manager, TLS
+Tags: Kubernetes, Webhooks, cert-manager, TLS
 
 Description: Learn how to use cert-manager to automatically generate, renew, and inject TLS certificates for admission webhooks in Kubernetes clusters.
 

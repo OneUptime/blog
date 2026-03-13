@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Argo Rollouts, Canary Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Argo Rollouts, Canary Deployments
 
 Description: Learn how to implement canary deployments using ArgoCD and Argo Rollouts with gradual traffic shifting, analysis, and automated rollback.
 

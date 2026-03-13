@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Load Balancer, Health Check, Backend Service, Troubleshooting
+Tags: GCP, Load Balancer, Health Checks, Backend Service, Troubleshooting
 
 Description: Diagnose and fix health check failures in Google Cloud load balancers, covering firewall rules, health check configuration, backend service settings, and common misconfigurations.
 

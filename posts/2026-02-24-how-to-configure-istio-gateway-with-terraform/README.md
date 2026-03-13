@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Terraform, Gateway, Ingress, Kubernetes
+Tags: Istio, Terraform, Gateway, Ingresses, Kubernetes
 
 Description: Step-by-step guide to configuring Istio Gateway resources with Terraform including TLS termination, multi-host routing, and SNI passthrough.
 

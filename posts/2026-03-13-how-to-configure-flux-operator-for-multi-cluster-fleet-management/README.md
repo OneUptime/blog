@@ -27,7 +27,7 @@ Before you begin, ensure you have:
 
 In a multi-cluster fleet architecture, each cluster runs the Flux Operator and has a FluxInstance resource that defines its Flux configuration. A central Git repository contains the FluxInstance definitions for all clusters, organized by environment or cluster name.
 
-```
+```text
 fleet-repo/
   base/
     flux-instance.yaml          # Base FluxInstance template

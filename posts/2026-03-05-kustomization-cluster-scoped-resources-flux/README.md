@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Kustomize, Cluster-Scoped, RBAC, CRD, Namespace
+Tags: Flux CD, GitOps, Kubernetes, Kustomize, Cluster-Scoped, RBAC, CRDs, Namespace
 
 Description: Learn how to manage cluster-scoped Kubernetes resources like ClusterRoles, Namespaces, and CRDs using Flux Kustomizations.
 

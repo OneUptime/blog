@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Kong, Ingress
+Tags: Kubernetes, Kong, Ingresses
 
 Description: Learn how to configure Kong Ingress Controller with rate limiting and authentication plugins to secure and protect your Kubernetes services from abuse and unauthorized access.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Ingress, VirtualService, Traffic Management
+Tags: Istio, Kubernetes, Ingresses, VirtualService, Traffic Management
 
 Description: A practical comparison of Istio VirtualService and Kubernetes Ingress resources explaining when to use each for routing external and internal traffic in your cluster.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Bot Service, Microsoft Teams, Bot Framework, Deployment, Teams Apps, Conversational AI, Azure
+Tags: Azure Bot Service, Microsoft Teams, Bot Framework, Deployments, Teams Apps, Conversational AI, Azure
 
 Description: Complete guide to deploying an Azure Bot Service bot to Microsoft Teams including app manifest configuration and admin approval.
 

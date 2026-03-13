@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Priority Class, QoS, Resource Management
+Tags: Kubernetes, DaemonSets, Priority Class, QoS, Resource Management
 
 Description: Learn how to configure priorityClassName in Kubernetes DaemonSets to protect critical system components from eviction and ensure infrastructure services remain operational during resource pressure.
 

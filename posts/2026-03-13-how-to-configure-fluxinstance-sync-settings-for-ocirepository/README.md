@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flux-operator, fluxinstance, ocirepository, oci, sync, kubernetes, gitops
+Tags: Flux, Flux-Operator, FluxInstance, OCIRepository, OCI, Sync, Kubernetes, GitOps
 
 Description: Learn how to configure FluxInstance sync settings with an OCIRepository source to pull cluster manifests from OCI-compliant container registries.
 

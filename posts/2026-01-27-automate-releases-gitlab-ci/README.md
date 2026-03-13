@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Release, Automation, Semantic Versioning, CI/CD, DevOps
+Tags: GitLab CI, Releases, Automation, Semantic Versioning, CI/CD, DevOps
 
 Description: Learn how to automate releases in GitLab CI with automatic version bumping, changelog generation, artifact publishing, and release notes creation.
 

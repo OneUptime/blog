@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway API, Kubernetes, Ingress, Networking
+Tags: Istio, Gateway API, Kubernetes, Ingresses, Networking
 
 Description: Step-by-step guide to creating Gateway resources using the Kubernetes Gateway API with Istio, covering listeners, TLS configuration, multi-protocol gateways, and resource management.
 

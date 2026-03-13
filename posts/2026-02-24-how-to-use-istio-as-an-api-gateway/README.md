@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, API Gateway, Kubernetes, Ingress, Traffic Management
+Tags: Istio, API Gateway, Kubernetes, Ingresses, Traffic Management
 
 Description: Configure Istio's ingress gateway to function as a full API gateway with routing, authentication, rate limiting, and request transformation.
 

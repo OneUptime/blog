@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Capacity Planning, Thresholds, SRE, Infrastructure
+Tags: Capacity Planning, Threshold, SRE, Infrastructure
 
 Description: Learn how to define capacity thresholds for proactive resource management.
 

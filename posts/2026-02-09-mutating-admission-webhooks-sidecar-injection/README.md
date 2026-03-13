@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Webhook, Sidecar, Admission Control
+Tags: Kubernetes, Webhooks, Sidecar, Admission Control
 
 Description: Learn how to implement mutating admission webhooks in Go to automatically inject sidecar containers into pods for logging, monitoring, and service mesh functionality.
 

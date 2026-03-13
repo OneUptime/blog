@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, StatefulSet, Service Mesh, Networking
+Tags: Istio, Kubernetes, StatefulSets, Service Mesh, Networking
 
 Description: How to configure Istio to work correctly with Kubernetes StatefulSet workloads including headless services, stable network identities, and ordered deployments.
 

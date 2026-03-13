@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, AWS, AMI, EC2, Kubernetes, Deployment
+Tags: Talos Linux, AWS, AMI, EC2, Kubernetes, Deployments
 
 Description: Learn how to find, select, and use official pre-built Talos Linux AMIs to quickly deploy Kubernetes clusters on AWS EC2.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Production Release, Deployment, DevOps
+Tags: Ansible, Production Release, Deployments, DevOps
 
 Description: Automate production releases with Ansible using blue-green deployments, canary releases, and comprehensive pre and post deployment verification.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, AWS, Azure, Google Cloud, Cloud, Linux, Deployment
+Tags: RHEL, AWS, Azure, Google Cloud, Cloud, Linux, Deployments
 
 Description: A practical guide to deploying Red Hat Enterprise Linux 9 across the three major cloud providers, covering image selection, instance launch, subscription management, and cloud-init configuration.
 

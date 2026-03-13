@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Canary Deployment, Prometheus
+Tags: ArgoCD, GitOps, Kubernetes, Canary Deployments, Prometheus
 
 Description: Learn how to implement automated canary analysis with ArgoCD and Prometheus using Argo Rollouts for data-driven deployment decisions based on real-time metrics.
 

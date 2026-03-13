@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DMS, Database Migration, Replication, Cloud
+Tags: AWS, DMS, Database Migrations, Replication, Cloud
 
 Description: Learn how to set up AWS Database Migration Service for ongoing data replication between databases, covering source and target configuration, CDC, monitoring, and troubleshooting.
 

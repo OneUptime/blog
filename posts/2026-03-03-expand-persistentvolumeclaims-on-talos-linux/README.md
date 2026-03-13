@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, PersistentVolumeClaim, Storage, Volume Expansion
+Tags: Talos Linux, Kubernetes, PersistentVolumeClaims, Storage, Volume Expansion
 
 Description: Step-by-step guide to expanding PersistentVolumeClaims on Talos Linux without downtime or data loss.
 

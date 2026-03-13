@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Rolling Updates, Deployment, GitOps, Zero Downtime
+Tags: Flux CD, Kubernetes, Rolling Updates, Deployments, GitOps, Zero Downtime
 
 Description: A practical guide to implementing zero-downtime rolling updates in Kubernetes using Flux CD with proper health checks, resource budgets, and rollback strategies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, envsubst, testing, post-build, substitution, local-development
+Tags: Flux, fluxcd, GitOps, Kubernetes, envsubst, Testing, Post-Build, Substitution, Local-Development
 
 Description: Learn how to use the flux envsubst command to locally test and validate post-build variable substitution before pushing changes to your Git repository.
 
@@ -131,7 +131,7 @@ export $(cat cluster-vars.env | xargs) && kustomize build ./apps/my-app | flux e
 
 You can maintain separate env files for each cluster or environment:
 
-```
+```text
 ├── envs/
 │   ├── production.env
 │   ├── staging.env

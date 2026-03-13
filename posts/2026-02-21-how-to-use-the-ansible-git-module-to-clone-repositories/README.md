@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Git, Version Control, Deployment
+Tags: Ansible, Git, Version Control, Deployments
 
 Description: Learn how to use the Ansible git module to clone repositories, manage versions, handle authentication, and automate code deployment on remote hosts.
 

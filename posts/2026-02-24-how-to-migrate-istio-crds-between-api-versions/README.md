@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, CRD, Migration, Kubernetes, API Versions
+Tags: Istio, CRDs, Migration, Kubernetes, API Versions
 
 Description: A practical walkthrough for migrating Istio Custom Resource Definitions from older API versions like v1alpha3 and v1beta1 to the stable v1 API.
 

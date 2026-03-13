@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, Sync Waves, Kubernetes, Deployment, GitOps, Orchestration
+Tags: ArgoCD, Sync Waves, Kubernetes, Deployments, GitOps, Orchestration
 
 Description: Master ArgoCD sync waves to control the order of resource deployment, ensuring dependencies are created before the resources that need them, with practical examples for common scenarios.
 

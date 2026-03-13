@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, SERIAL, Rolling Updates, Deployment, DevOps, High Availability, Automation
+Tags: Ansible, SERIAL, Rolling Updates, Deployments, DevOps, High Availability, Automation
 
 Description: Learn how to use Ansible serial execution for rolling updates, batch processing, and controlled deployments across your infrastructure.
 

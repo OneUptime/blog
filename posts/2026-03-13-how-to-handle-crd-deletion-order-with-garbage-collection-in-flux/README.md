@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, CRD, Garbage Collection, Pruning, Custom Resource Definitions
+Tags: Flux, Kubernetes, GitOps, CRDs, Garbage Collection, Pruning, Custom Resource Definitions
 
 Description: Learn how to manage CRD deletion order when Flux garbage collection removes custom resources and their definitions.
 

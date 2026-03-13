@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, StatefulSet, Storage
+Tags: Kubernetes, StatefulSets, Storage
 
 Description: Learn how to diagnose and fix Kubernetes StatefulSet pod startup failures caused by volume mount ordering issues with practical examples and solutions.
 

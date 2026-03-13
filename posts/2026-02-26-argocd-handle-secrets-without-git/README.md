@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Secret, Security
+Tags: ArgoCD, GitOps, Kubernetes, Secrets, Security
 
 Description: Compare practical approaches for managing Kubernetes secrets in ArgoCD GitOps workflows without storing sensitive data in Git repositories.
 

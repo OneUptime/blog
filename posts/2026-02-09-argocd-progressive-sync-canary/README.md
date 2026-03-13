@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, ApplicationSet, Canary Deployment, Progressive Delivery, GitOps
+Tags: ArgoCD, ApplicationSet, Canary Deployments, Progressive Delivery, GitOps
 
 Description: Implement safe canary deployments using ArgoCD ApplicationSet progressive sync to gradually roll out changes across environments and clusters with automated promotion and rollback capabilities.
 

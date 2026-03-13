@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployment, Monitoring
+Tags: Kubernetes, Deployments, Monitoring
 
 Description: Learn how progressDeadlineSeconds helps detect and handle stuck Kubernetes deployments automatically, preventing deployments from hanging indefinitely and enabling faster failure detection.
 

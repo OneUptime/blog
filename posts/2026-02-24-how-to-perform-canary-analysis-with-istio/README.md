@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Canary Deployment, Traffic Management, Kubernetes, Progressive Delivery
+Tags: Istio, Canary Deployments, Traffic Management, Kubernetes, Progressive Delivery
 
 Description: A step-by-step guide to performing canary deployments and automated canary analysis with Istio traffic splitting and metric-based promotion decisions.
 

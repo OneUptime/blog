@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Uvicorn, ASGI, FastAPI, Gunicorn, Production, Deployment, Docker, systemd, SSL, Performance
+Tags: Python, Uvicorn, ASGI, FastAPI, Gunicorn, Production, Deployments, Docker, systemd, SSL, Performance
 
 Description: Learn how to configure and deploy Uvicorn in production environments with worker management, SSL/TLS, logging, performance tuning, Docker containers, and systemd services.
 

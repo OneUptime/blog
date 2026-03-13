@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Django, Python, Deployment, DevOps
+Tags: Ansible, Django, Python, Deployments, DevOps
 
 Description: Automate Django application deployment with Ansible including database migrations, static file collection, and Gunicorn configuration.
 

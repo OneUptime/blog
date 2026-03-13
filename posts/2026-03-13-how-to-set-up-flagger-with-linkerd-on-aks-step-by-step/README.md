@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, linkerd, aks, azure, kubernetes, canary, progressive delivery, service mesh
+Tags: Flagger, Linkerd, AKS, Azure, Kubernetes, Canary, Progressive Delivery, Service Mesh
 
 Description: A step-by-step guide to setting up Flagger with Linkerd on Azure Kubernetes Service for progressive canary deployments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, Waypoint, HashiCorp, Deployment, DevOps, Linux
+Tags: RHEL, Waypoint, HashiCorp, Deployments, DevOps, Linux
 
 Description: Learn how to install and configure HashiCorp Waypoint on RHEL to build, deploy, and release applications across Docker, Kubernetes, and other platforms using a consistent workflow.
 

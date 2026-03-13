@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, StatefulSet, Kubernetes, Service Mesh, Database
+Tags: Istio, StatefulSets, Kubernetes, Service Mesh, Database
 
 Description: A complete guide to running StatefulSets with Istio covering sidecar injection, networking considerations, and common issues with stateful workloads.
 

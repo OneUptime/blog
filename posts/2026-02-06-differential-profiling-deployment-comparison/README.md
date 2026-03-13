@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Profiling, Differential, Deployment
+Tags: OpenTelemetry, Profiling, Differential, Deployments
 
 Description: Implement differential profiling with OpenTelemetry to compare application performance before and after deployments.
 

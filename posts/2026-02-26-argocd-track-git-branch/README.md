@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Git, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Git, Deployments
 
 Description: Learn how to configure ArgoCD applications to track a specific Git branch for automatic synchronization and continuous delivery workflows.
 

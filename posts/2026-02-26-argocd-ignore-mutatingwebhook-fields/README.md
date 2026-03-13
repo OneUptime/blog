@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Webhook, Diff Customization
+Tags: ArgoCD, GitOps, Kubernetes, Webhooks, Diff Customization
 
 Description: Learn how to configure ArgoCD to ignore fields injected by MutatingWebhookConfigurations so your applications stop showing false OutOfSync status.
 

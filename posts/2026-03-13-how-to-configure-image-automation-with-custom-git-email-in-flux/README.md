@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, git-email, gitops, kubernetes
+Tags: Flux, image-automation, Git-Email, GitOps, Kubernetes
 
 Description: Learn how to configure a custom Git email address for Flux ImageUpdateAutomation commits for proper attribution and platform integration.
 

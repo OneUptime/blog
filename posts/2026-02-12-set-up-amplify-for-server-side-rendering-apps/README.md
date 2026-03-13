@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, SSR, Next.js, Server-Side Rendering, Frontend, Deployment
+Tags: AWS, Amplify, SSR, Next.js, Server-Side Rendering, Frontend, Deployments
 
 Description: Learn how to deploy server-side rendering applications on AWS Amplify with full SSR support, including Next.js and Nuxt.js frameworks
 

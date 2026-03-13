@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Packer, AMI, AWS, Immutable Infrastructure, DevOps, Deployment
+Tags: Terraform, Packer, AMI, AWS, Immutable Infrastructure, DevOps, Deployments
 
 Description: Learn how to create custom AMIs with Packer and deploy them with Terraform for a complete immutable infrastructure pipeline with rolling updates and blue-green deployments.
 

@@ -1,4 +1,4 @@
-# How to Configure HelmRelease Upgrade Remediation with Rollback on Failure in Flux
+# HelmRelease Upgrade Remediation with Rollback on Failure in Flux
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

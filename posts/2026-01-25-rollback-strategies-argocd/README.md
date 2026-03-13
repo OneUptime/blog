@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, Rollback, Kubernetes, GitOps, Recovery, Deployment
+Tags: ArgoCD, Rollback, Kubernetes, GitOps, Recovery, Deployments
 
 Description: Learn different rollback strategies in ArgoCD including Git-based rollbacks, application history, and emergency procedures to quickly recover from failed deployments.
 

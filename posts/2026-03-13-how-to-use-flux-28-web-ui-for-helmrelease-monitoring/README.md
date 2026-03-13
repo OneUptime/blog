@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, helm, helmrelease, web-ui, monitoring, gitops, kubernetes
+Tags: Flux, fluxcd, Helm, HelmRelease, Web-Ui, Monitoring, GitOps, Kubernetes
 
 Description: Learn how to monitor HelmRelease resources using the Flux 2.8 Web UI dashboard for real-time visibility into your Helm deployments.
 

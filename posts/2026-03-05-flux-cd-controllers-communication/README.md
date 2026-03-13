@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Controller, Architecture, Custom Resource
+Tags: Flux CD, GitOps, Kubernetes, Controller, Architecture, Custom Resources
 
 Description: An in-depth look at how Flux CD's independent controllers communicate through the Kubernetes API using custom resource status fields, artifact references, and event-driven coordination.
 

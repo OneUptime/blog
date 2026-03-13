@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Windows Server 2025, Virtual Machines, Azure CLI, Deployment, IaaS, Cloud Computing
+Tags: Azure, Windows Server 2025, Virtual Machines, Azure CLI, Deployments, IaaS, Cloud Computing
 
 Description: A step-by-step guide to deploying a Windows Server 2025 virtual machine on Azure, including configuration, security, and post-deployment setup.
 

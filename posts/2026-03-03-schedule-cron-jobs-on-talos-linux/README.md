@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Cron Jobs, Kubernetes, Scheduling, Automation, CronJob
+Tags: Talos Linux, Cron Jobs, Kubernetes, Scheduling, Automation, CronJobs
 
 Description: How to schedule recurring tasks on Talos Linux using Kubernetes CronJobs since traditional cron is not available on the immutable OS.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Gloo Edge, Kubernetes, Canary Deployments, Ingress
+Tags: Flagger, Gloo Edge, Kubernetes, Canary Deployments, Ingresses
 
 Description: Learn how to set up Flagger with Gloo Edge ingress controller for automated canary deployments on Kubernetes.
 

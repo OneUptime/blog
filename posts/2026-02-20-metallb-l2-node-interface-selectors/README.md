@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, Layer 2, Node Selector, L2Advertisement
+Tags: Kubernetes, MetalLB, Layer 2, Node Selectors, L2Advertisement
 
 Description: Learn how to combine node selectors with L2Advertisement in MetalLB to control which nodes advertise LoadBalancer IPs via ARP. Covers label-based node selection and practical examples.
 

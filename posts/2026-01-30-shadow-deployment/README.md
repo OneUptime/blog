@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Deployment, Shadow, Testing, DevOps
+Tags: Deployments, Shadow, Testing, DevOps
 
 Description: Learn how to safely test new service versions in production using traffic mirroring without affecting real users.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, timoni, oci, oci-sync
+Tags: Flux, Kubernetes, GitOps, Timoni, OCI, Oci-Sync
 
 Description: Learn how to use the Timoni flux-oci-sync module to deploy Kubernetes manifests from OCI repositories with Flux.
 

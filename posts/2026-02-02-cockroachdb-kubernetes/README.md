@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CockroachDB, Kubernetes, Distributed Database, SQL, DevOps, StatefulSet
+Tags: CockroachDB, Kubernetes, Distributed Database, SQL, DevOps, StatefulSets
 
 Description: Learn how to deploy and configure CockroachDB on Kubernetes for production-ready distributed SQL workloads.
 

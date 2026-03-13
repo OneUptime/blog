@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Secret, Security, Kubernetes, Certificate Management
+Tags: Istio, Secrets, Security, Kubernetes, Certificate Management
 
 Description: Protect sensitive data used by Istio components including TLS certificates, CA keys, and service account tokens with proper secret management practices.
 

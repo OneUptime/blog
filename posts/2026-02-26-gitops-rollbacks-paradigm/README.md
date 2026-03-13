@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Rollback, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Rollback, Deployments
 
 Description: Learn the principles and practical approaches for implementing rollbacks in a GitOps paradigm using Git revert, history, and ArgoCD strategies.
 

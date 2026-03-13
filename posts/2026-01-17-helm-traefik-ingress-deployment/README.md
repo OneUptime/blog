@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, Traefik, Ingress, Load Balancer, DevOps, Networking
+Tags: Helm, Kubernetes, Traefik, Ingresses, Load Balancer, DevOps, Networking
 
 Description: Complete guide to deploying Traefik Ingress Controller using Helm including configuration, TLS termination, middleware, and advanced routing features.
 

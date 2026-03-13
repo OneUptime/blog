@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Hooks, Lifecycle, Deployment, Kubernetes
+Tags: Helm, Hooks, Lifecycle, Deployments, Kubernetes
 
 Description: Learn how to use Helm hooks for database migrations, cleanup, testing, and other pre/post deployment automation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: HashiCorp Vault, Kubernetes, Authentication, Service Account, Security
+Tags: HashiCorp Vault, Kubernetes, Authentication, Service Accounts, Security
 
 Description: Learn how to configure Vault Kubernetes authentication method to allow pods to authenticate using their service account tokens for secure secret access.
 

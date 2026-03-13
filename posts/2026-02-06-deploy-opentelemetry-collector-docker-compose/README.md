@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Docker, Docker Compose, Deployment, Containers, Observability
+Tags: OpenTelemetry, Collector, Docker, Docker Compose, Deployments, Containers, Observability
 
 Description: Deploy OpenTelemetry Collectors using Docker and Docker Compose for local development, testing, and production environments with complete configuration examples.
 

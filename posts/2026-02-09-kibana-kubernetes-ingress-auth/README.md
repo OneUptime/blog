@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kibana, Kubernetes, Ingress, Authentication, EFK Stack
+Tags: Kibana, Kubernetes, Ingresses, Authentication, EFK Stack
 
 Description: Deploy Kibana on Kubernetes with secure Ingress configuration, TLS termination, and multiple authentication methods including basic auth, OAuth, and SAML for production-ready log visualization.
 

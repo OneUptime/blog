@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Release, Reliability, DevOps
+Tags: Kubernetes, Releases, Reliability, DevOps
 
 Description: A practical explainer of blue-green deployments-how they work, how to run them with Kubernetes Services/Ingress, the operational guardrails to keep them safe.
 

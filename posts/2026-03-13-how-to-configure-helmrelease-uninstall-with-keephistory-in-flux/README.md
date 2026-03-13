@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Uninstall, keepHistory
+Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Uninstall, KeepHistory
 
 Description: Learn how to use the keepHistory option during HelmRelease uninstall in Flux CD to preserve or remove Helm release history.
 

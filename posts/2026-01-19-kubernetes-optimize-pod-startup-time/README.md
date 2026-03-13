@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Performance, Pod Startup, Container Images, Init Container, DevOps
+Tags: Kubernetes, Performance, Pod Startup, Container Images, Init Containers, DevOps
 
 Description: Learn techniques to reduce Kubernetes pod startup time including image optimization, startup probes, init container improvements, and preloading strategies.
 

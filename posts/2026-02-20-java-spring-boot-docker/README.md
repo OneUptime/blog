@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, Docker, Containers, Deployment
+Tags: Java, Spring Boot, Docker, Containers, Deployments
 
 Description: Learn how to containerize Spring Boot applications with Docker using multi-stage builds and JVM optimization.
 

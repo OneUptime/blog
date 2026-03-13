@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ruby, Rails, Heroku, Deployment, Cloud, DevOps
+Tags: Ruby, Rails, Heroku, Deployments, Cloud, DevOps
 
 Description: A comprehensive guide to deploying Ruby on Rails applications to Heroku. Learn project setup, database configuration, environment management, CI/CD pipelines, and production best practices.
 

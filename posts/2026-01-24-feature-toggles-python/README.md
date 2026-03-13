@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Feature Toggle, Feature Flags, DevOps, Deployment, Configuration
+Tags: Python, Feature Toggle, Feature Flags, DevOps, Deployments, Configuration
 
 Description: Learn how to implement feature toggles in Python applications to safely deploy new features, run A/B tests, and control functionality at runtime without redeploying your application.
 

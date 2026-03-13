@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DMS, Database Migration, Serverless, Cloud Migration
+Tags: AWS, DMS, Database Migrations, Serverless, Cloud Migration
 
 Description: A practical guide to setting up AWS DMS Serverless for seamless database migrations without managing replication instances
 

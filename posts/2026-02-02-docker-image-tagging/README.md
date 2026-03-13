@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Docker, Container Registry, DevOps, CI/CD, Versioning, Kubernetes, Deployment
+Tags: Docker, Container Registry, DevOps, CI/CD, Versioning, Kubernetes, Deployments
 
 Description: A comprehensive guide to Docker image tagging strategies, covering semantic versioning, Git-based tags, environment tags, and best practices for production deployments.
 

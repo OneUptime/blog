@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, linkerd, gke, gcp, canary, kubernetes, service-mesh
+Tags: Flagger, Linkerd, GKE, GCP, Canary, Kubernetes, Service-Mesh
 
 Description: A step-by-step guide to setting up Flagger with Linkerd on Google Kubernetes Engine for automated canary deployments.
 

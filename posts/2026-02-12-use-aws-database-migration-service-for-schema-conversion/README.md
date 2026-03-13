@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DMS, Database Migration, Schema Conversion
+Tags: AWS, DMS, Database Migrations, Schema Conversion
 
 Description: Guide to using AWS Database Migration Service and Schema Conversion Tool for migrating database schemas between engines, including stored procedures, triggers, and data type mapping.
 

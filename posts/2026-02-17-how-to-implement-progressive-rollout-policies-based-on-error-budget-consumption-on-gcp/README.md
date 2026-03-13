@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, SRE, Progressive Rollout, Error Budget, Canary Deployment, Cloud Deploy, Google Cloud
+Tags: GCP, SRE, Progressive Rollout, Error Budget, Canary Deployments, Cloud Deploy, Google Cloud
 
 Description: Implement progressive rollout policies that automatically adjust deployment speed based on error budget consumption on Google Cloud Platform.
 

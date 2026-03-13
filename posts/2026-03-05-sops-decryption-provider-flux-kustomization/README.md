@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secret, SOPS, Kustomization, Decryption
+Tags: Flux CD, GitOps, Kubernetes, Secrets, SOPS, Kustomization, Decryption
 
 Description: Learn how to configure the SOPS decryption provider in Flux Kustomization resources for automatic secret decryption during reconciliation.
 

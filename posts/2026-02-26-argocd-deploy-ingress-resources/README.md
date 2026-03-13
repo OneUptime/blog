@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Ingress, Networking
+Tags: ArgoCD, GitOps, Kubernetes, Ingresses, Networking
 
 Description: Learn how to deploy and manage Kubernetes Ingress resources with ArgoCD, including TLS configuration, path routing, multi-host setups, and ingress controller integration.
 

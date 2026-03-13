@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, artifactgenerator, troubleshooting, debugging, gitops, kubernetes
+Tags: Flux, fluxcd, artifactgenerator, Troubleshooting, Debugging, GitOps, Kubernetes
 
 Description: A practical guide to diagnosing and fixing common ArtifactGenerator build failures in Flux 2.8.
 
@@ -29,14 +29,14 @@ kubectl get artifactgenerators -n flux-system
 
 A healthy ArtifactGenerator shows:
 
-```
+```text
 NAME              READY   STATUS                AGE
 my-app            True    Artifact generated    10m
 ```
 
 A failing one shows:
 
-```
+```text
 NAME              READY   STATUS                        AGE
 my-app            False   build failed: <reason>        10m
 ```
@@ -55,7 +55,7 @@ The most common failure is the referenced source not being ready.
 
 **Symptoms:**
 
-```
+```yaml
 Status:
   Conditions:
     - type: Ready
@@ -88,7 +88,7 @@ If no files in the source artifact match the configured include paths, the Artif
 
 **Symptoms:**
 
-```
+```yaml
 Status:
   Conditions:
     - type: Ready
@@ -132,7 +132,7 @@ Invalid glob patterns cause build failures.
 
 **Symptoms:**
 
-```
+```yaml
 Status:
   Conditions:
     - type: Ready
@@ -202,7 +202,7 @@ Very large repositories may produce artifacts that exceed storage limits.
 
 **Symptoms:**
 
-```
+```yaml
 Status:
   Conditions:
     - type: Ready

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Edge Computing, Kubernetes, Service Mesh, Deployment
+Tags: Istio, Edge Computing, Kubernetes, Service Mesh, Deployments
 
 Description: A practical guide to deploying Istio service mesh in edge computing environments with resource-constrained nodes and distributed clusters.
 

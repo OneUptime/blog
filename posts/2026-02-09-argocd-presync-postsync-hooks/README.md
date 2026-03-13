@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ArgoCD, Kubernetes, GitOps, DevOps, Deployment
+Tags: ArgoCD, Kubernetes, GitOps, DevOps, Deployments
 
 Description: Learn how to implement ArgoCD PreSync and PostSync resource hooks to execute tasks before and after deployments, including database migrations, health checks.
 

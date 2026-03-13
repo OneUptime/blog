@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, AWS, GCP, Azure
+Tags: Kubernetes, Ingresses, AWS, GCP, Azure
 
 Description: Configure cloud-native ingress controllers on EKS, GKE, and AKS including AWS Load Balancer Controller, GKE Ingress, and Azure Application Gateway Ingress Controller.
 

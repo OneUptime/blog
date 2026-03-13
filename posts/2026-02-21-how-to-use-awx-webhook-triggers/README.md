@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWX, Webhook, CI/CD, GitOps
+Tags: Ansible, AWX, Webhooks, CI/CD, GitOps
 
 Description: Configure AWX webhook triggers to automatically launch job templates in response to events from GitHub, GitLab, and other systems.
 

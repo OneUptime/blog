@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, istio, mtls, canary, kubernetes, progressive delivery, security, service mesh
+Tags: Flagger, Istio, mTLS, Canary, Kubernetes, Progressive Delivery, Security, Service Mesh
 
 Description: Learn how to configure mutual TLS with Flagger and Istio canary deployments to ensure encrypted traffic during progressive delivery.
 

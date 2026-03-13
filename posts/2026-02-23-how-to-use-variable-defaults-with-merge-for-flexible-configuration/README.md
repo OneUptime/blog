@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Variables, MERGE, Configuration, Infrastructure as Code
+Tags: Terraform, HCL, Variables, Merge, Configuration, Infrastructure as Code
 
 Description: Learn how to combine Terraform variable defaults with the merge function to create flexible configuration patterns where users only need to override the specific settings they want to change.
 

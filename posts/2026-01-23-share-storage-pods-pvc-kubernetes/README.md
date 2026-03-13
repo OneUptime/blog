@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Storage, PersistentVolumeClaim, NFS, SharedStorage
+Tags: Kubernetes, Storage, PersistentVolumeClaims, NFS, SharedStorage
 
 Description: Learn how to share storage between multiple pods in Kubernetes using PersistentVolumeClaims with ReadWriteMany access mode. This guide covers NFS, cloud storage, and practical examples.
 

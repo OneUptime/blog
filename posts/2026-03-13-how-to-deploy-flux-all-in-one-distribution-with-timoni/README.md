@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, timoni, distribution, installation
+Tags: Flux, Kubernetes, GitOps, Timoni, Distribution, Installation
 
 Description: Learn how to deploy the complete Flux distribution as a single Timoni module for simplified cluster bootstrapping.
 

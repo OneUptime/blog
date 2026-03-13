@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, FastAPI, ASGI, Deployment
+Tags: Ansible, Python, FastAPI, ASGI, Deployments
 
 Description: Deploy FastAPI applications with Ansible including uvicorn workers, nginx reverse proxy, and systemd service management.
 

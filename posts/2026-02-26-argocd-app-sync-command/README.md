@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, CLI, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, CLI, Deployments
 
 Description: A detailed guide to the argocd app sync command covering sync strategies, selective sync, dry run, resource targeting, and CI/CD integration patterns.
 

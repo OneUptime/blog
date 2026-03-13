@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, JWT, API Gateway, RequestAuthentication, Ingress
+Tags: Istio, JWT, API Gateway, RequestAuthentication, Ingresses
 
 Description: How to set up JWT authentication at the Istio ingress gateway to validate tokens before traffic enters your mesh services.
 

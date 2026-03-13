@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, CRD, Health Check
+Tags: ArgoCD, GitOps, Kubernetes, CRDs, Health Checks
 
 Description: Learn how to write custom Lua health checks in ArgoCD so it correctly understands the health status of your CRD-based resources.
 

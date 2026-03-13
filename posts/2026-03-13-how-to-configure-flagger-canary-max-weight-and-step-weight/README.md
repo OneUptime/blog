@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, traffic shifting, max weight, step weight, kubernetes
+Tags: Flagger, Canary, Traffic Shifting, Max Weight, Step Weight, Kubernetes
 
 Description: Learn how to configure Flagger's maxWeight and stepWeight parameters to control the pace and extent of traffic shifting during canary deployments.
 
@@ -250,7 +250,7 @@ If `maxWeight` is not evenly divisible by `stepWeight`, Flagger will still work 
 
 A `stepWeight` of 1 with a 15-second interval means the canary takes a long time to reach `maxWeight`. Make sure the total rollout time is acceptable:
 
-```
+```text
 total_time = (maxWeight / stepWeight) * interval
 ```
 

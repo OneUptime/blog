@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Service Mesh, Traffic Management, Load Balancing, Canary Deployment
+Tags: Istio, Kubernetes, Service Mesh, Traffic Management, Load Balancing, Canary Deployments
 
 Description: Learn how to manage traffic in Istio using VirtualServices, DestinationRules, and Gateways for advanced routing, load balancing, and canary deployments.
 

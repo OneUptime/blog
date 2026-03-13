@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Subiquity, Automation, Deployment
+Tags: Ubuntu, Subiquity, Automation, Deployments
 
 Description: A practical guide to automating Ubuntu Server installations using Subiquity autoinstall, covering the YAML configuration format, cloud-init integration, and testing with virtual machines.
 

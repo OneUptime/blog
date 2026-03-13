@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, helmrelease, helm, alerts, gitops, kubernetes, notification-controller
+Tags: Flux, fluxcd, HelmRelease, Helm, Alerts, GitOps, Kubernetes, Notification-Controller
 
 Description: Learn how to configure Flux CD alerts scoped to specific HelmRelease resources, so you only receive notifications for the Helm charts that matter.
 
@@ -174,7 +174,7 @@ kubectl get alerts -n flux-system
 
 Expected output:
 
-```
+```text
 NAME                   AGE   READY   STATUS
 ingress-nginx-alert    10s   True    Initialized
 ```

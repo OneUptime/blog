@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, ARM Templates, Resource Manager, Deployment, Troubleshooting, Infrastructure as Code, DevOps
+Tags: Azure, ARM Templates, Resource Manager, Deployments, Troubleshooting, Infrastructure as Code, DevOps
 
 Description: Practical strategies for diagnosing and fixing DeploymentFailed errors in Azure Resource Manager template deployments.
 

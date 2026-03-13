@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Egress, Webhook, Kubernetes, Service Mesh
+Tags: Istio, Egress, Webhooks, Kubernetes, Service Mesh
 
 Description: Configure Istio egress rules to allow your services to send webhook callbacks to external endpoints while maintaining mesh security and observability.
 

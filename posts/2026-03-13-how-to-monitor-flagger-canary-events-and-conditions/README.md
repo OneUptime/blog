@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, events, conditions, monitoring, kubernetes
+Tags: Flagger, Canary, Events, Conditions, Monitoring, Kubernetes
 
 Description: Learn how to monitor Flagger canary events and conditions to track rollout progress, detect failures, and integrate with alerting systems.
 

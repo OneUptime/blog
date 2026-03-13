@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Database Migration, DMS, RDS, Infrastructure as Code
+Tags: Terraform, AWS, Database Migrations, DMS, RDS, Infrastructure as Code
 
 Description: Learn how to handle database migrations with Terraform using AWS DMS, Blue-Green deployments, and schema migration strategies for safe and repeatable database changes.
 

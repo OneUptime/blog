@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Configuration Management, Traffic Management, Canary Deployment, Kubernetes
+Tags: Istio, Configuration Management, Traffic Management, Canary Deployments, Kubernetes
 
 Description: Learn how to gradually roll out Istio configuration changes using traffic shifting, canary releases, and staged rollouts to minimize risk in production environments.
 

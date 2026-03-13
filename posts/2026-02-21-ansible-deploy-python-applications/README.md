@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Deployment, DevOps
+Tags: Ansible, Python, Deployments, DevOps
 
 Description: Deploy Python web applications with Ansible covering code checkout, dependency installation, service configuration, and rollbacks.
 

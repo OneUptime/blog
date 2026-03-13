@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, skip-analysis, promotion, kubernetes
+Tags: Flagger, Canary, Skip-Analysis, Promotion, Kubernetes
 
 Description: Learn how to use Flagger's skipAnalysis flag to promote canary deployments immediately without running the full analysis cycle.
 

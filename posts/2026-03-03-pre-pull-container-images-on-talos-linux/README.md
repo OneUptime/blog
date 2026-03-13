@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Container Images, Kubernetes, Performance, Deployment
+Tags: Talos Linux, Container Images, Kubernetes, Performance, Deployments
 
 Description: Learn different strategies for pre-pulling container images on Talos Linux nodes to speed up pod startup and improve deployment reliability.
 

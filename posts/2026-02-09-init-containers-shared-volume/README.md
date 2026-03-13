@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Container, Storage
+Tags: Kubernetes, Init Containers, Storage
 
 Description: Master the technique of using init containers with shared volumes to prepare data, download assets, and configure files before your main application starts.
 

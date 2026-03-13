@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, Gateway API, Networking, HTTP Routing
+Tags: Kubernetes, Ingresses, Gateway API, Networking, HTTP Routing
 
 Description: Compare Kubernetes Ingress and Gateway API features, migration paths, and when to adopt Gateway API for HTTP routing.
 

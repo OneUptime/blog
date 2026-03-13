@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, AWS, Lambda, Packaging, Deployment, Serverless
+Tags: Terraform, AWS, Lambda, Packaging, Deployments, Serverless
 
 Description: A practical guide to packaging AWS Lambda function code with Terraform, covering ZIP archives, Docker containers, dependency management, and deployment strategies.
 

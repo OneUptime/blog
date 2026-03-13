@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, CLI, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, CLI, Deployments
 
 Description: A comprehensive reference for the argocd app create command covering every option for Git sources, Helm, Kustomize, sync policies, and destination configuration.
 

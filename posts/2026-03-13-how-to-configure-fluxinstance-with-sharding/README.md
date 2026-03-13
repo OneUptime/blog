@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flux-operator, fluxinstance, sharding, kubernetes, gitops, scalability
+Tags: Flux, Flux-Operator, FluxInstance, Sharding, Kubernetes, GitOps, Scalability
 
 Description: Learn how to configure FluxInstance with sharding to distribute reconciliation workloads across multiple controller instances for large-scale clusters.
 
@@ -80,7 +80,7 @@ kubectl get deployments -n flux-system
 
 You should see deployments for each shard:
 
-```
+```bash
 NAME                              READY   UP-TO-DATE   AVAILABLE
 source-controller                 1/1     1            1
 kustomize-controller              1/1     1            1

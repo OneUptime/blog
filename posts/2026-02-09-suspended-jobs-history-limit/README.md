@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CronJob, Job Management
+Tags: Kubernetes, CronJobs, Job Management
 
 Description: Learn how to use suspendedJobsHistoryLimit in Kubernetes CronJobs to control how many suspended job instances are retained for tracking and debugging paused batch processing workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, gitops, git, kubernetes, continuous-deployment
+Tags: Flux, image-automation, GitOps, Git, Kubernetes, Continuous-Deployment
 
 Description: Learn how to configure Flux ImageUpdateAutomation to commit image tag updates directly to the same branch it checks out from.
 

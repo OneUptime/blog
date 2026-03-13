@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kustomization, orphaned-resources, garbage-collection, kubernetes
+Tags: Flux, fluxcd, GitOps, Kustomization, Orphaned-Resources, Garbage-Collection, Kubernetes
 
 Description: Learn how to handle orphaned resources that remain in your cluster after deleting a Flux Kustomization resource.
 

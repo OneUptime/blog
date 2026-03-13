@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Database Migration, Troubleshooting, DMS, Azure Database Migration Service, Error Resolution, Migration Failures
+Tags: Azure, Database Migrations, Troubleshooting, DMS, Azure Database Migration Service, Error Resolution, Migration Failures
 
 Description: A practical troubleshooting guide for common Azure Database Migration Service failures including connectivity issues, schema errors, and CDC problems.
 

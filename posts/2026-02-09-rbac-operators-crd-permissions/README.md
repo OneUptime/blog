@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, RBAC, Operator, CRD, Custom Resource
+Tags: Kubernetes, RBAC, Operator, CRDs, Custom Resources
 
 Description: Learn how to create precise RBAC roles for Kubernetes operators that need to manage Custom Resource Definitions and custom resources securely without excessive cluster permissions.
 

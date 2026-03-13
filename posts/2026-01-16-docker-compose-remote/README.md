@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Compose, Remote, Deployment, SSH
+Tags: Docker, Compose, Remote, Deployments, SSH
 
 Description: Learn how to deploy Docker Compose stacks to remote hosts using Docker contexts, SSH, and deployment automation.
 

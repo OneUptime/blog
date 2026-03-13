@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secret, Sealed Secrets, Controller, Helm
+Tags: Flux CD, GitOps, Kubernetes, Secrets, Sealed Secrets, Controller, Helm
 
 Description: Learn how to deploy and configure the Sealed Secrets controller using Flux CD HelmRelease for production-ready secret management.
 

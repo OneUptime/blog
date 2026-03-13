@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Logging, Fluentd, Log Aggregation
+Tags: Kubernetes, DaemonSets, Logging, Fluentd, Log Aggregation
 
 Description: Learn how to deploy log collection agents using Kubernetes DaemonSets to gather logs from every node and container, implementing centralized logging for observability.
 

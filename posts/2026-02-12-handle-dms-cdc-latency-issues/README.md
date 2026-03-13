@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DMS, CDC, Database Migration, Performance Tuning, Latency
+Tags: AWS, DMS, CDC, Database Migrations, Performance Tuning, Latency
 
 Description: Practical strategies to diagnose and fix CDC latency problems in AWS DMS replication tasks
 

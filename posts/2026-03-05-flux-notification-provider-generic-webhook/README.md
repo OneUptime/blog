@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Notifications, Webhook, Custom Integration, Monitoring
+Tags: Flux CD, GitOps, Kubernetes, Notifications, Webhooks, Custom Integration, Monitoring
 
 Description: Learn how to configure Flux CD's notification controller to send deployment and reconciliation events to any HTTP endpoint using the generic webhook Provider.
 

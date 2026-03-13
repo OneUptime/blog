@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, timoni, oci, registry, publishing
+Tags: Flux, Kubernetes, GitOps, Timoni, OCI, Registry, Publishing
 
 Description: Learn how to publish custom Timoni modules to OCI registries for distribution and consumption across Flux-managed clusters.
 

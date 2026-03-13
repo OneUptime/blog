@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kustomization, garbage-collection, kubernetes, pruning
+Tags: Flux, fluxcd, GitOps, Kustomization, Garbage-Collection, Kubernetes, Pruning
 
 Description: Learn how to enable garbage collection in Flux Kustomization to automatically remove resources that are no longer defined in your Git repository.
 

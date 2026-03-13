@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Sidecar Injection, Webhook, Kubernetes, Admission Controller
+Tags: Istio, Sidecar Injection, Webhooks, Kubernetes, Admission Controller
 
 Description: A thorough explanation of how Istio's sidecar injection webhook works, how it modifies pod specs, and how to troubleshoot injection issues.
 

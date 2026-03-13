@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Windows, Node Selector, Taints, Tolerations, Mixed OS
+Tags: Kubernetes, Windows, Node Selectors, Taints, Tolerations, Mixed OS
 
 Description: Learn how to properly configure node taints, tolerations, and selectors to ensure correct pod placement in Kubernetes clusters running both Linux and Windows nodes.
 

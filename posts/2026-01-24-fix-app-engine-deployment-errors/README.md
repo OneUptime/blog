@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Google Cloud, App Engine, Deployment, DevOps, Troubleshooting, GCP
+Tags: Google Cloud, App Engine, Deployments, DevOps, Troubleshooting, GCP
 
 Description: A practical guide to diagnosing and fixing common Google App Engine deployment errors, from permission issues to configuration problems.
 

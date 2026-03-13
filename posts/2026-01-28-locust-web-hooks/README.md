@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Locust, Webhook, Load Testing, Notifications, Slack, Integration, Event-Driven
+Tags: Locust, Webhooks, Load Testing, Notifications, Slack, Integration, Event-Driven
 
 Description: Learn how to implement webhooks in Locust to send real-time notifications about test progress, failures, and completion.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, helm, helmrelease, post-renderers, gitops, kubernetes
+Tags: Flux, Helm, HelmRelease, Post-Renderers, GitOps, Kubernetes
 
 Description: Learn how to chain multiple post-renderers in a Flux HelmRelease to apply sequential transformations to your Helm chart output before deployment.
 

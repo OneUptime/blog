@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Vertex AI, Canary Deployment, MLOps, Model Deployment, Google Cloud
+Tags: Vertex AI, Canary Deployments, MLOps, Model Deployment, Google Cloud
 
 Description: A step-by-step guide to setting up canary deployments for machine learning models on Vertex AI Endpoints with automated health checks and traffic management.
 

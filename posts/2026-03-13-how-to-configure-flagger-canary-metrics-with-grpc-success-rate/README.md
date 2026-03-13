@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, metrics, grpc, success rate, prometheus, kubernetes, progressive delivery
+Tags: Flagger, Canary, Metrics, gRPC, Success Rate, Prometheus, Kubernetes, Progressive Delivery
 
 Description: Learn how to configure Flagger to evaluate gRPC success rate during canary analysis using custom MetricTemplates with Prometheus queries.
 

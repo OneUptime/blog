@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ingress, Multi-Cluster, Kubernetes, Traffic Management
+Tags: Istio, Ingresses, Multi-Cluster, Kubernetes, Traffic Management
 
 Description: How to set up ingress gateways across multiple clusters in an Istio mesh with global load balancing, failover, and consistent routing rules.
 

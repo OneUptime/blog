@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: LLMOps, LLM, Deployment, Architecture
+Tags: LLMOps, LLM, Deployments, Architecture
 
 Description: Learn how to architect LLM deployments for scale, reliability, and cost efficiency.
 

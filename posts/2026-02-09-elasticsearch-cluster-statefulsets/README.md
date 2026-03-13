@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Kubernetes, StatefulSet, EFK Stack, Logging
+Tags: Elasticsearch, Kubernetes, StatefulSets, EFK Stack, Logging
 
 Description: Learn how to deploy a production-ready Elasticsearch cluster on Kubernetes using StatefulSets with proper persistent storage, node roles.
 

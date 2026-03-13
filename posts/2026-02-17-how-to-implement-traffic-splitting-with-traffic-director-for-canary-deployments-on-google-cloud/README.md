@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Traffic Director, Canary Deployment, Service Mesh, GKE, Google Cloud
+Tags: GCP, Traffic Director, Canary Deployments, Service Mesh, GKE, Google Cloud
 
 Description: Use Google Cloud Traffic Director to implement traffic splitting for canary deployments, gradually shifting traffic from stable to new versions of your services.
 

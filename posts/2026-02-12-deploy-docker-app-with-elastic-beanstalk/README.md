@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Elastic Beanstalk, Docker, Deployment, Containers
+Tags: AWS, Elastic Beanstalk, Docker, Deployments, Containers
 
 Description: Complete guide to deploying Docker containers on AWS Elastic Beanstalk, including single-container and multi-container setups with Docker Compose.
 

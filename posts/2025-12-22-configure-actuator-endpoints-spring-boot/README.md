@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Java, Spring Boot, Actuator, Monitoring, Health Check, Observability
+Tags: Java, Spring Boot, Actuator, Monitoring, Health Checks, Observability
 
 Description: Learn how to configure Spring Boot Actuator endpoints for production monitoring. This guide covers enabling endpoints, securing them, customizing health checks, and exposing metrics.
 

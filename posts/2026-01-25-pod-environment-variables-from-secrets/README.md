@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Secret, Environment Variables, Security, Configuration, DevOps
+Tags: Kubernetes, Secrets, Environment Variables, Security, Configuration, DevOps
 
 Description: Learn how to securely configure pod environment variables using Kubernetes Secrets.
 

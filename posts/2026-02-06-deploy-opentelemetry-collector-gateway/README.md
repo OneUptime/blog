@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Gateway, Architecture, Deployment
+Tags: OpenTelemetry, Collector, Gateway, Architecture, Deployments
 
 Description: Learn how to deploy the OpenTelemetry Collector as a centralized gateway for scalable telemetry aggregation and processing.
 

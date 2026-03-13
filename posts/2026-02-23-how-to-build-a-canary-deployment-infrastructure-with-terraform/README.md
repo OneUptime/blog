@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Infrastructure Patterns, Canary Deployment, Progressive Delivery, AWS, CodeDeploy
+Tags: Terraform, Infrastructure Patterns, Canary Deployments, Progressive Delivery, AWS, CodeDeploy
 
 Description: Learn how to build canary deployment infrastructure with Terraform using weighted target groups, automated traffic shifting, health monitoring, and automatic rollback.
 

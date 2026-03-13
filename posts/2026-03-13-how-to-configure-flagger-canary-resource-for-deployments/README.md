@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, kubernetes, deployments, progressive delivery
+Tags: Flagger, Canary, Kubernetes, Deployments, Progressive Delivery
 
 Description: Learn how to configure a Flagger Canary resource to automate progressive delivery for Kubernetes Deployments with traffic shifting and automated rollback.
 
@@ -222,7 +222,7 @@ kubectl describe canary podinfo -n demo
 
 The output will show the progression through each weight step:
 
-```
+```text
 STATUS
   canaryWeight:  0
   conditions:

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run Jobs, Cloud SQL, Database Migration, Serverless, DevOps
+Tags: GCP, Cloud Run Jobs, Cloud SQL, Database Migrations, Serverless, DevOps
 
 Description: Run database migrations as serverless Cloud Run Jobs on Google Cloud, connecting securely to Cloud SQL without managing migration servers or jump boxes.
 

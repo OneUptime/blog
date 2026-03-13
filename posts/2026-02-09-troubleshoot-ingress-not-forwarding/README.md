@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, Networking
+Tags: Kubernetes, Ingresses, Networking
 
 Description: Debug and fix Ingress controller issues that prevent HTTP requests from reaching backend services in Kubernetes clusters.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Edge Computing, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Edge Computing, Deployments
 
 Description: A practical guide to deploying and managing applications across distributed edge Kubernetes clusters using ArgoCD with hub-spoke topology and ApplicationSets.
 

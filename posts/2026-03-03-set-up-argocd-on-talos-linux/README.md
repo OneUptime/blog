@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, ArgoCD, GitOps, Kubernetes, Continuous Delivery, Deployment
+Tags: Talos Linux, ArgoCD, GitOps, Kubernetes, Continuous Delivery, Deployments
 
 Description: Deploy ArgoCD on Talos Linux for declarative GitOps-based application delivery with a visual dashboard and sync management.
 

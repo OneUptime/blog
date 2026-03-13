@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Deployment, Staging, Production, DevOps
+Tags: Ansible, Deployments, Staging, Production, DevOps
 
 Description: Structure your Ansible project to deploy the same application to staging and production environments with environment-specific configurations.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Ingress, Networking, Load Balancing, Infrastructure as Code
+Tags: Terraform, Kubernetes, Ingresses, Networking, Load Balancing, Infrastructure as Code
 
 Description: How to create Kubernetes Ingress resources with Terraform to route external HTTP and HTTPS traffic to your cluster services.
 

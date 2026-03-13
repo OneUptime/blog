@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, istio, eks, aws, canary, kubernetes, service-mesh
+Tags: Flagger, Istio, EKS, AWS, Canary, Kubernetes, Service-Mesh
 
 Description: A step-by-step guide to setting up Flagger with Istio on Amazon EKS for automated canary deployments.
 

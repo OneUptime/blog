@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Google Cloud, IAM, Service Account, Token Creator, Short-Lived Credentials, Security
+Tags: GCP, Google Cloud, IAM, Service Accounts, Token Creator, Short-Lived Credentials, Security
 
 Description: Learn how to implement short-lived credentials in Google Cloud using the Service Account Token Creator role for secure, temporary access without persistent keys.
 

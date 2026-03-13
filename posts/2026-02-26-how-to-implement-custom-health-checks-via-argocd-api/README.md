@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, API, Health Check
+Tags: ArgoCD, GitOps, Kubernetes, API, Health Checks
 
 Description: Define and manage custom health checks for ArgoCD applications using Lua scripts and the REST API to accurately assess the health of CRDs and custom resources.
 

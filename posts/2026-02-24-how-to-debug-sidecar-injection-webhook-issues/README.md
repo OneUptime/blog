@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Sidecar Injection, Webhook, Debugging
+Tags: Istio, Kubernetes, Sidecar Injection, Webhooks, Debugging
 
 Description: Step-by-step troubleshooting guide for diagnosing and fixing Istio sidecar injection webhook failures in Kubernetes clusters.
 

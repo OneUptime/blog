@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, NGINX, Ingress, Load Balancing
+Tags: Helm, Kubernetes, DevOps, NGINX, Ingresses, Load Balancing
 
 Description: Complete guide to deploying and configuring NGINX Ingress Controller on Kubernetes using Helm for production traffic management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Headless Service, StatefulSet, DNS, Networking
+Tags: Kubernetes, Headless Service, StatefulSets, DNS, Networking
 
 Description: Learn how headless services provide direct pod-to-pod DNS resolution for StatefulSets and other workloads that need stable network identities.
 

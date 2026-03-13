@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Traefik, Kubernetes, Ingress, DevOps, Load Balancing
+Tags: Traefik, Kubernetes, Ingresses, DevOps, Load Balancing
 
 Description: Learn how to deploy and configure Traefik as an Ingress Controller in Kubernetes, including routing rules, TLS termination, and automatic service discovery.
 

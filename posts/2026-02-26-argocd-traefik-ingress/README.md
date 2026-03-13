@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Traefik, Ingress
+Tags: ArgoCD, GitOps, Kubernetes, Traefik, Ingresses
 
 Description: Step-by-step guide to exposing ArgoCD server through Traefik Ingress Controller with IngressRoute CRDs, TLS, and gRPC routing.
 

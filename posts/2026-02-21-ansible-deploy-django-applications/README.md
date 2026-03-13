@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Python, Django, Deployment, Web
+Tags: Ansible, Python, Django, Deployments, Web
 
 Description: Deploy Django applications with Ansible including database migrations, static file collection, and multi-server setups.
 

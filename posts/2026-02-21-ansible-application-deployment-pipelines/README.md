@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Deployment, CI/CD, DevOps, Automation
+Tags: Ansible, Deployments, CI/CD, DevOps, Automation
 
 Description: Build automated application deployment pipelines with Ansible using rolling updates, health checks, and rollback strategies for zero-downtime releases.
 

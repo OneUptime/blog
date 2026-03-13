@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Deployment, Scheduling
+Tags: ArgoCD, GitOps, Kubernetes, Deployments, Scheduling
 
 Description: Learn how to configure sync windows in ArgoCD projects to control when applications can be deployed, with allow and deny windows for maintenance schedules and change freeze periods.
 

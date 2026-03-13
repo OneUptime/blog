@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Secret, Configuration Management
+Tags: ArgoCD, GitOps, Kubernetes, Secrets, Configuration Management
 
 Description: Learn how to configure ArgoCD to ignore secret data changes in diff comparisons, preventing false OutOfSync alerts when external tools manage your Kubernetes secrets.
 

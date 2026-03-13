@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, Multi-Tenancy
+Tags: Kubernetes, Ingresses, Multi-Tenancy
 
 Description: Learn how to deploy and manage multiple Ingress controllers in a single Kubernetes cluster using IngressClass resources for workload isolation, tenant separation, and specialized routing requirements.
 

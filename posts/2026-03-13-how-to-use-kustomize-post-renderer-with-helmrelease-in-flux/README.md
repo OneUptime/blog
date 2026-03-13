@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HelmRelease, Kustomize, Post-Renderer, Kubernetes, GitOps
+Tags: Flux CD, HelmRelease, Kustomize, Post-Renderers, Kubernetes, GitOps
 
 Description: Learn how to use Kustomize as a post-renderer in Flux HelmRelease to customize Helm chart output without modifying the chart itself.
 

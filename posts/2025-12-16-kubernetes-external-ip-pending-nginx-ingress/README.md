@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, NGINX, Ingress, LoadBalancer, DevOps
+Tags: Kubernetes, NGINX, Ingresses, LoadBalancer, DevOps
 
 Description: Learn how to resolve the 'External IP Pending' status for Kubernetes services when using Nginx Ingress, including solutions for bare-metal clusters, cloud environments, and local development.
 

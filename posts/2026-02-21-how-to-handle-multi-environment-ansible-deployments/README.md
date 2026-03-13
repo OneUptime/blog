@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Multi-Environment, Deployment, Infrastructure
+Tags: Ansible, Multi-Environment, Deployments, Infrastructure
 
 Description: Learn how to manage Ansible deployments across development, staging, and production environments with proper isolation and variable management.
 

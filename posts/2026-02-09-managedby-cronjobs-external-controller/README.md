@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CronJob, Controller, Custom Resource
+Tags: Kubernetes, CronJobs, Controller, Custom Resources
 
 Description: Learn how to use the managedBy field in Kubernetes CronJobs to integrate external controllers and implement custom scheduling logic beyond standard cron expressions.
 

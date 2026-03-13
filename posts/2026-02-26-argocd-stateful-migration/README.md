@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Storage, StatefulSet
+Tags: ArgoCD, GitOps, Kubernetes, Storage, StatefulSets
 
 Description: Learn how to handle stateful workload migrations with ArgoCD, including moving StatefulSets between storage backends, migrating PVCs, and handling data during cluster transitions.
 

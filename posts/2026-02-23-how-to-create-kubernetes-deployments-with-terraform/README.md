@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Deployment, Infrastructure as Code, DevOps, Containers
+Tags: Terraform, Kubernetes, Deployments, Infrastructure as Code, DevOps, Containers
 
 Description: Step-by-step guide to creating Kubernetes Deployments using Terraform including rolling updates, health checks, and resource management.
 

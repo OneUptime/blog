@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Microservices, Architecture, Deployment
+Tags: Helm, Kubernetes, DevOps, Microservices, Architecture, Deployments
 
 Description: Complete guide to using Helm umbrella charts to deploy multi-component applications including structure, dependency management, and value inheritance.
 

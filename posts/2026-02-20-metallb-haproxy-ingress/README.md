@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, HAProxy, Ingress, Load Balancing
+Tags: Kubernetes, MetalLB, HAProxy, Ingresses, Load Balancing
 
 Description: Learn how to deploy MetalLB with the HAProxy Ingress Controller for high-performance bare-metal load balancing.
 

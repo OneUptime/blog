@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Check, Liveness Probe
+Tags: Kubernetes, Health Checks, Liveness Probe
 
 Description: Configure Kubernetes liveness probes to automatically detect and restart unhealthy containers, recovering from deadlocks, memory leaks, and application crashes without manual intervention.
 

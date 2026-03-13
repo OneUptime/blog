@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Traefik, Ingress, Kubernetes, IngressRoute, Middleware, TLS, Load-balancer, Reverse-proxy
+Tags: Traefik, Ingresses, Kubernetes, IngressRoute, Middleware, TLS, Load-balancer, Reverse-proxy
 
 Description: A complete guide to deploying and configuring Traefik as an Ingress Controller on Kubernetes with IngressRoute CRDs, middleware, TLS, and advanced routing.
 

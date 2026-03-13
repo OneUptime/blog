@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, load testing, hey, http, kubernetes, progressive delivery, traffic generation
+Tags: Flagger, Canary, Load Testing, Hey, HTTP, Kubernetes, Progressive Delivery, Traffic Generation
 
 Description: Learn how to configure Flagger's load tester with the hey HTTP load generator to produce realistic traffic patterns for canary analysis.
 

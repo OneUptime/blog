@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployment, Rolling Updates, Zero Downtime, Strategy
+Tags: Kubernetes, Deployments, Rolling Updates, Zero Downtime, Strategy
 
 Description: Learn how to configure Kubernetes deployments for zero-downtime rolling updates with proper health checks and rollback strategies.
 

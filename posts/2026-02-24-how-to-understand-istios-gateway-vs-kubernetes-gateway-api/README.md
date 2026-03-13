@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway, Kubernetes Gateway API, Ingress, Networking
+Tags: Istio, Gateway, Kubernetes Gateway API, Ingresses, Networking
 
 Description: A thorough comparison of Istio Gateway and the Kubernetes Gateway API, covering their architecture differences, feature parity, and migration strategies.
 

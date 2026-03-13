@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Traefik, Migration, Kubernetes, Service Mesh, Ingress
+Tags: Istio, Traefik, Migration, Kubernetes, Service Mesh, Ingresses
 
 Description: A practical guide to migrating from Traefik ingress and middleware to Istio Gateway and VirtualService with configuration mapping and migration steps.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Feature Flags, Deployment, Progressive Delivery, Testing, DevOps
+Tags: Feature Flags, Deployments, Progressive Delivery, Testing, DevOps
 
 Description: Learn how to implement feature flags for safe deployments including progressive rollouts, A/B testing, and kill switches.
 

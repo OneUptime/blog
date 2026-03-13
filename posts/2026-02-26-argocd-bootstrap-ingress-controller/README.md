@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Ingress, Networking
+Tags: ArgoCD, GitOps, Kubernetes, Ingresses, Networking
 
 Description: Learn how to bootstrap and manage Kubernetes ingress controllers with ArgoCD including Nginx, Traefik, and AWS ALB with TLS, monitoring, and multi-environment configurations.
 

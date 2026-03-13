@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, garbage-collection, pruning, kubernetes, resource-ordering
+Tags: Flux, fluxcd, GitOps, Garbage-Collection, Pruning, Kubernetes, Resource-Ordering
 
 Description: Learn how Flux determines the order of resource deletion during garbage collection and how to manage deletion dependencies.
 

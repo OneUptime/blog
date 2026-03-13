@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Ingress, Networking, Service Mesh
+Tags: Istio, Kubernetes, Ingresses, Networking, Service Mesh
 
 Description: A practical guide to running Istio service mesh alongside existing ingress controllers like NGINX or Traefik without breaking your current traffic flow.
 

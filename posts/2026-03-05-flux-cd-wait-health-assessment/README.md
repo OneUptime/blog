@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Health Check, Readiness, Wait, Reconciliation
+Tags: Flux CD, GitOps, Kubernetes, Health Checks, Readiness, Wait, Reconciliation
 
 Description: A detailed explanation of how Flux CD's wait and health assessment mechanisms work, including how Flux determines resource readiness and how to configure health checks.
 

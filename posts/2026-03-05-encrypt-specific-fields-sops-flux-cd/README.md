@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secret, SOPS, Partial Encryption
+Tags: Flux CD, GitOps, Kubernetes, Secrets, SOPS, Partial Encryption
 
 Description: Learn how to selectively encrypt only specific fields in Kubernetes manifests using SOPS encrypted_regex and encrypted_suffix for Flux CD.
 

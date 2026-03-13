@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Check, API Design
+Tags: Kubernetes, Health Checks, API Design
 
 Description: Design comprehensive health check endpoints that return detailed status information about dependencies, resources, and system state to improve debugging and monitoring capabilities.
 

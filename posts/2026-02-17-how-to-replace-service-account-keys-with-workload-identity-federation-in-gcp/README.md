@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Workload Identity Federation, IAM, Security, Service Account
+Tags: GCP, Workload Identity Federation, IAM, Security, Service Accounts
 
 Description: Learn how to eliminate long-lived service account keys by configuring Workload Identity Federation to authenticate external workloads using tokens from AWS, Azure, or OIDC providers.
 

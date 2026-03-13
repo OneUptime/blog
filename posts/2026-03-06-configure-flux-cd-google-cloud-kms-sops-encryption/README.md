@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Google Cloud, KMS, SOPS, Encryption, Secret, GitOps, Kubernetes, Workload Identity, Security
+Tags: Flux CD, Google Cloud, KMS, SOPS, Encryption, Secrets, GitOps, Kubernetes, Workload Identity, Security
 
 Description: A hands-on guide to encrypting Kubernetes secrets with SOPS and Google Cloud KMS, and decrypting them automatically with Flux CD using Workload Identity.
 

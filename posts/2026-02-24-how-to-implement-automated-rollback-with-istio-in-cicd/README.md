@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, CI/CD, Rollback, Canary Deployment, Kubernetes, DevOps
+Tags: Istio, CI/CD, Rollback, Canary Deployments, Kubernetes, DevOps
 
 Description: Learn how to implement automated rollback mechanisms using Istio traffic management in your CI/CD pipelines to safely recover from bad deployments.
 

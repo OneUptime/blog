@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Tomcat, Java, Deployment, Linux
+Tags: RHEL, Tomcat, Java, Deployments, Linux
 
 Description: Learn how to deploy a WAR File to Tomcat on RHEL with step-by-step instructions, configuration examples, and best practices.
 

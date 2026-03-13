@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Express.js, Azure App Service, GitHub Actions, Node.js, CI/CD, Deployment, REST API
+Tags: Express.js, Azure App Service, GitHub Actions, Node.js, CI/CD, Deployments, REST API
 
 Description: Learn how to deploy an Express.js REST API to Azure App Service with automated CI/CD using GitHub Actions for continuous deployment on every push.
 

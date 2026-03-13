@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, timoni, git-sync, git
+Tags: Flux, Kubernetes, GitOps, Timoni, Git-Sync, Git
 
 Description: Learn how to use the Timoni flux-git-sync module to configure Git-based deployments with Flux using a simple values-driven approach.
 

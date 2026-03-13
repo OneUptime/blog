@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRD, Webhook
+Tags: Kubernetes, CRDs, Webhooks
 
 Description: Learn how to implement conversion webhooks for Custom Resource Definitions to support multiple API versions and seamless schema migrations in Kubernetes.
 

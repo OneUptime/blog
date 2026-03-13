@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Elasticsearch, Kubernetes, ECK, Deployment, Cloud Native, Containers
+Tags: Elasticsearch, Kubernetes, ECK, Deployments, Cloud Native, Containers
 
 Description: A practical guide to deploying Elasticsearch on Kubernetes using the Elastic Cloud on Kubernetes (ECK) operator, covering installation, configuration, scaling, and production best practices.
 

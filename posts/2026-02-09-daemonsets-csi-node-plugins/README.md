@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Storage
+Tags: Kubernetes, DaemonSets, Storage
 
 Description: Discover how to deploy CSI node plugins using DaemonSets to provide storage capabilities on every node in your Kubernetes cluster.
 

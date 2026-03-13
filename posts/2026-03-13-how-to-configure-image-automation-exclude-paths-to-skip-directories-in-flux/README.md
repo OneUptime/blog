@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, exclude-paths, gitops, kubernetes
+Tags: Flux, image-automation, Exclude-Paths, GitOps, Kubernetes
 
 Description: Learn how to configure Flux ImageUpdateAutomation to exclude specific directories from image tag scanning and updates.
 
@@ -198,7 +198,7 @@ Content in other repositories is completely excluded from this automation.
 
 Design your repository structure to make path inclusion simple:
 
-```
+```text
 clusters/
   production/
     automated/           # Scanned by image automation
@@ -224,7 +224,7 @@ spec:
 
 If your repository contains test fixtures with image references that should not be updated:
 
-```
+```text
 clusters/
   production/
     apps/

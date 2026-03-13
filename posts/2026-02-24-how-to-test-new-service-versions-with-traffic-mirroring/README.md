@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Traffic Mirroring, Service Mesh, Kubernetes, Testing, Canary Deployment
+Tags: Istio, Traffic Mirroring, Service Mesh, Kubernetes, Testing, Canary Deployments
 
 Description: Learn how to use Istio traffic mirroring to safely test new service versions by duplicating live production traffic without affecting real users.
 

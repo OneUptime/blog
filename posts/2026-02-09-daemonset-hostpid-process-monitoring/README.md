@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Monitoring
+Tags: Kubernetes, DaemonSets, Monitoring
 
 Description: Learn how to configure DaemonSets with hostPID namespace access to monitor and manage processes running directly on Kubernetes nodes.
 

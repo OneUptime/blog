@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, ARM Templates, Deployment, Troubleshooting, Infrastructure as Code, DevOps
+Tags: Azure, ARM Templates, Deployments, Troubleshooting, Infrastructure as Code, DevOps
 
 Description: A practical guide to diagnosing and fixing common ARM template deployment failures with real error examples and solutions.
 

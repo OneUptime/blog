@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, API Gateway, Ingress, Rate Limiting, Kubernetes
+Tags: Istio, API Gateway, Ingresses, Rate Limiting, Kubernetes
 
 Description: Build a full-featured API gateway using Istio with routing, rate limiting, authentication, CORS, and TLS termination.
 

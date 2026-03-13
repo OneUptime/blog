@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Service Account, RBAC, Multi-Tenancy, Security
+Tags: Flux CD, GitOps, Kubernetes, Service Accounts, RBAC, Multi-Tenancy, Security
 
 Description: Learn how Flux CD uses service account impersonation to enforce RBAC boundaries and enable secure multi-tenancy in your GitOps deployments.
 

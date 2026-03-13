@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Functions, IAM, Service Account, Security
+Tags: GCP, Cloud Functions, IAM, Service Accounts, Security
 
 Description: Step-by-step guide on configuring Google Cloud Functions to run with a custom service account for better security and least-privilege access control.
 

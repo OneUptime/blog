@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Git, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Git, Deployments
 
 Description: Learn how to configure ArgoCD to track Git tags for controlled production deployments with explicit versioning and easy rollbacks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployment, Rollback
+Tags: Kubernetes, Deployments, Rollback
 
 Description: Learn how to configure and manage deployment revision history in Kubernetes, implement safe rollback procedures.
 

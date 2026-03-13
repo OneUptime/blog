@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, cert-manager, TLS, Let's Encrypt, Kubernetes, HTTPS, Ingress
+Tags: AKS, cert-manager, TLS, Let's Encrypt, Kubernetes, HTTPS, Ingresses
 
 Description: Step-by-step guide to installing cert-manager on AKS and automating TLS certificate issuance and renewal with Let's Encrypt.
 

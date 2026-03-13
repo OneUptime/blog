@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Storage, CronJob, Backup Automation
+Tags: Kubernetes, Storage, CronJobs, Backup Automation
 
 Description: Learn how to automate volume snapshot creation using Kubernetes CronJobs to implement reliable backup schedules for persistent data with proper error handling and monitoring.
 

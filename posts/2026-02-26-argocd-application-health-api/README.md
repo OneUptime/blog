@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, REST API, Health Check
+Tags: ArgoCD, GitOps, Kubernetes, REST API, Health Checks
 
 Description: Learn how to query application health status through the ArgoCD REST API for monitoring, alerting, and automated health-based decision making.
 

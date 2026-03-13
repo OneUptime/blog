@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Init Container, DevOps, Pod Lifecycle, Troubleshooting
+Tags: Kubernetes, Init Containers, DevOps, Pod Lifecycle, Troubleshooting
 
 Description: A practical guide to using Kubernetes init containers for pre-flight checks, dependency waiting, configuration setup, and data preparation before your main application containers start.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Laravel, PHP, Deployment, DevOps
+Tags: Ansible, Laravel, PHP, Deployments, DevOps
 
 Description: Deploy PHP Laravel applications with Ansible covering PHP-FPM, Composer, Nginx, database migrations, and queue workers.
 

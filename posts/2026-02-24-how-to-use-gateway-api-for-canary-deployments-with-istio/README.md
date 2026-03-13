@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway API, Canary Deployment, Kubernetes, Traffic Management
+Tags: Istio, Gateway API, Canary Deployments, Kubernetes, Traffic Management
 
 Description: A step-by-step guide to implementing canary deployments using the Kubernetes Gateway API with Istio, covering weight-based splitting, header-based targeting, and progressive rollouts.
 

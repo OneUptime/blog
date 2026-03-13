@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Python, Django, Deployment, Production, DevOps
+Tags: Python, Django, Deployments, Production, DevOps
 
 Description: Learn how to deploy Django applications to production servers with Gunicorn, Nginx, PostgreSQL, SSL, and security hardening best practices.
 

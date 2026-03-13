@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Automation, Deployment, Infrastructure
+Tags: Ubuntu, Automation, Deployments, Infrastructure
 
 Description: Create a preseed configuration file to automate Ubuntu installations with predefined partitioning, locale, user accounts, and package selection without operator input.
 

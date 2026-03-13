@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, DestinationRule, Service Subsets, Canary Deployment, Kubernetes
+Tags: Istio, DestinationRule, Service Subsets, Canary Deployments, Kubernetes
 
 Description: Learn how to define service subsets in Istio DestinationRule to route traffic to specific versions of your services.
 

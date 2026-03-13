@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cloudflare, Cloudflare Workers, Wrangler, Deployment, CI/CD, Serverless, DevOps
+Tags: Cloudflare, Cloudflare Workers, Wrangler, Deployments, CI/CD, Serverless, DevOps
 
 Description: Learn how to deploy Cloudflare Workers using Wrangler CLI, from local development to production CI/CD pipelines.
 

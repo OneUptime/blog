@@ -151,7 +151,7 @@ kubectl get helmrelease -n default my-app -o yaml
 
 Look for conditions with type `Ready` and status `False`. Common error messages include:
 
-```
+```text
 error validating "": error validating data: ValidationError(MyCustomResource.spec):
 unknown field "customField" in io.example.v1.MyCustomResource.spec
 ```

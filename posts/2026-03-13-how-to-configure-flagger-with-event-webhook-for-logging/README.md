@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, webhook, event, logging, notifications, kubernetes, progressive delivery
+Tags: Flagger, Canary, Webhooks, Events, Logging, Notifications, Kubernetes, Progressive Delivery
 
 Description: Learn how to configure event webhooks in Flagger to log canary deployment state transitions and integrate with external notification and tracking systems.
 

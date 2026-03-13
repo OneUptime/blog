@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Spring Boot, Azure App Service, Maven Plugin, Java, Deployment, Cloud, Azure Web Apps
+Tags: Spring Boot, Azure App Service, Maven Plugin, Java, Deployments, Cloud, Azure Web Apps
 
 Description: Learn how to deploy a Spring Boot application to Azure App Service using the Azure Maven Plugin for streamlined cloud deployments.
 

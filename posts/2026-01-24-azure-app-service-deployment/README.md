@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, App Service, Deployment, CI/CD, DevOps, Web Apps, Cloud
+Tags: Azure, App Service, Deployments, CI/CD, DevOps, Web Apps, Cloud
 
 Description: A comprehensive guide to deploying applications to Azure App Service, covering multiple deployment methods, best practices, and troubleshooting common issues.
 

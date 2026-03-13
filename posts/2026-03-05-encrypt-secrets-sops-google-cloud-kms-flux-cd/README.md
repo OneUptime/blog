@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secret, SOPS, Google Cloud KMS, GCP, Encryption
+Tags: Flux CD, GitOps, Kubernetes, Secrets, SOPS, Google Cloud KMS, GCP, Encryption
 
 Description: Learn how to encrypt Kubernetes secrets using SOPS with Google Cloud KMS for secure GitOps workflows with Flux CD on GKE.
 

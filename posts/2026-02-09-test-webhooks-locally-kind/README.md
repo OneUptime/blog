@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Webhook, Kind, Testing
+Tags: Kubernetes, Webhooks, Kind, Testing
 
 Description: Learn how to test admission webhooks locally using kind clusters and port forwarding, enabling rapid development iteration without deploying to remote clusters.
 

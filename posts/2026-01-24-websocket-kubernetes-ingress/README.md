@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WebSocket, Kubernetes, Ingress, NGINX, Networking, DevOps
+Tags: WebSocket, Kubernetes, Ingresses, NGINX, Networking, DevOps
 
 Description: A practical guide to configuring WebSocket connections through Kubernetes Ingress controllers, including timeout settings, sticky sessions, and troubleshooting common issues.
 

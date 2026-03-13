@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Microsoft Teams, Alerting, Webhook, Monitoring
+Tags: RHEL, Microsoft Teams, Alerting, Webhooks, Monitoring
 
 Description: Send RHEL system alerts to Microsoft Teams channels using incoming webhooks for real-time team notifications.
 

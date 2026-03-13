@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderer, Sidecar, Containers
+Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderers, Sidecar, Containers
 
 Description: Learn how to inject sidecar containers into Helm chart deployments using Flux post-renderers without modifying the original chart.
 

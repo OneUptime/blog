@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, ASP.NET Core, App Service, Managed Identity, C#, Deployment, Security
+Tags: Azure, ASP.NET Core, App Service, Managed Identity, C#, Deployments, Security
 
 Description: Deploy an ASP.NET Core Web API to Azure App Service and configure managed identity for secure access to Azure services without secrets.
 

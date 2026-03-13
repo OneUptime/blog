@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Golang, Maps, Iteration, Sorting, Deterministic Order
+Tags: Go, Golang, Maps, Iterations, Sorting, Deterministic Order
 
 Description: Learn why Go maps have random iteration order and discover patterns to iterate maps in sorted, deterministic, or insertion order for consistent results.
 

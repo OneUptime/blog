@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CI/CD, Rollback, Health Check, Reliability
+Tags: Kubernetes, CI/CD, Rollback, Health Checks, Reliability
 
 Description: Implement automated rollback mechanisms in CI/CD pipelines that monitor Kubernetes health checks and application metrics after deployment.
 

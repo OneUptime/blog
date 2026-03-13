@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flux-operator, fluxinstance, bucket, s3, gcs, sync, kubernetes, gitops
+Tags: Flux, Flux-Operator, FluxInstance, Bucket, S3, GCS, Sync, Kubernetes, GitOps
 
 Description: Learn how to configure FluxInstance sync settings with a Bucket source to pull cluster manifests from S3-compatible or GCS object storage.
 

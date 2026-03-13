@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DocumentDB, MongoDB, Database Migration, DMS, Migration
+Tags: AWS, DocumentDB, MongoDB, Database Migrations, DMS, Migration
 
 Description: Learn how to migrate from self-hosted MongoDB to Amazon DocumentDB with minimal downtime using mongodump, DMS, and change stream replication.
 

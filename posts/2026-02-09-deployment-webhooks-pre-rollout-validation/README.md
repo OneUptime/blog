@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Webhook, Deployment
+Tags: Kubernetes, Webhooks, Deployments
 
 Description: Learn how to implement admission webhooks and pre-rollout validation hooks to automatically validate deployments before they roll out, preventing invalid configurations from reaching production.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Canary Testing, Metrics Comparison, Deployment, SRE
+Tags: OpenTelemetry, Canary Testing, Metrics Comparison, Deployments, SRE
 
 Description: Use OpenTelemetry metrics to compare canary and baseline deployments side by side and automate promotion or rollback decisions.
 

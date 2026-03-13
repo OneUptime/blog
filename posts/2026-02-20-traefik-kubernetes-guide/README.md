@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Traefik, Kubernetes, Ingress, Reverse Proxy, Configuration
+Tags: Traefik, Kubernetes, Ingresses, Reverse Proxy, Configuration
 
 Description: Step-by-step guide to configuring Traefik as a Kubernetes Ingress Controller with middleware, TLS, and routing rules.
 

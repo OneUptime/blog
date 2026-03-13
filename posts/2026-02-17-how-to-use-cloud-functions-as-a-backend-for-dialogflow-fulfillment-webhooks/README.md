@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Functions, Dialogflow, Chatbot, Webhook
+Tags: GCP, Cloud Functions, Dialogflow, Chatbot, Webhooks
 
 Description: Learn how to build Dialogflow fulfillment webhooks with Google Cloud Functions to create dynamic, data-driven conversational experiences for chatbots.
 

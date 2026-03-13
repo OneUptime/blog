@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, HAProxy, Ingress
+Tags: ArgoCD, GitOps, Kubernetes, HAProxy, Ingresses
 
 Description: Configure HAProxy Ingress Controller to expose ArgoCD with TLS termination, gRPC support, connection tuning, and high availability load balancing.
 

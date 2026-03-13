@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Rate Limiting, Ingress, API Security
+Tags: Kubernetes, Rate Limiting, Ingresses, API Security
 
 Description: Protect production APIs from abuse and overload by implementing rate limiting at the Kubernetes ingress layer, ensuring fair resource usage and preventing denial of service attacks.
 

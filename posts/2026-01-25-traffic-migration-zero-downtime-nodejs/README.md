@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Node.js, Traffic Migration, Zero Downtime, DevOps, Deployment, Blue-Green
+Tags: Node.js, Traffic Migration, Zero Downtime, DevOps, Deployments, Blue-Green
 
 Description: A practical guide to migrating traffic between service versions in Node.js without downtime, covering blue-green deployments, canary releases, and gradual traffic shifting strategies.
 

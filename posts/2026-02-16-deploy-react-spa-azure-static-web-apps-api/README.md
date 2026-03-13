@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: React, Azure, Static Web Apps, API, Azure Functions, SPA, Deployment
+Tags: React, Azure, Static Web Apps, API, Azure Functions, SPA, Deployments
 
 Description: Deploy a React single page application to Azure Static Web Apps with an integrated Azure Functions API backend for full-stack hosting.
 

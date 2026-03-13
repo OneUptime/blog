@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ingress, Access Control, Gateway, Security, Kubernetes
+Tags: Istio, Ingresses, Access Control, Gateway, Security, Kubernetes
 
 Description: How to configure authorization policies at the Istio ingress gateway to control external access to your services before traffic enters the mesh.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DNS, StatefulSet, Service Discovery
+Tags: Kubernetes, DNS, StatefulSets, Service Discovery
 
 Description: Learn how to implement DNS-based service discovery for StatefulSet pods using stable network identities.
 

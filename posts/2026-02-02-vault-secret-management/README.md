@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: HashiCorp Vault, Secret, Security, DevOps, Infrastructure
+Tags: HashiCorp Vault, Secrets, Security, DevOps, Infrastructure
 
 Description: Learn how to use HashiCorp Vault to securely store, access, and manage secrets in your applications and infrastructure.
 

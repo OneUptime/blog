@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, git-author, gitops, kubernetes
+Tags: Flux, image-automation, Git-Author, GitOps, Kubernetes
 
 Description: Learn how to configure a custom Git author name for Flux ImageUpdateAutomation commits to distinguish automated changes in your Git history.
 

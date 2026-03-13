@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Azure, Cloud, Deployment, Marketplace, Linux
+Tags: RHEL, Azure, Cloud, Deployments, Marketplace, Linux
 
 Description: Deploy RHEL virtual machines on Microsoft Azure using marketplace images, including sizing, networking, and initial configuration with cloud-init.
 

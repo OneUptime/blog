@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CronJob, Scheduling
+Tags: Kubernetes, CronJobs, Scheduling
 
 Description: Learn how to control concurrent job execution in Kubernetes CronJobs using concurrencyPolicy settings to prevent overlapping runs and manage resource usage.
 

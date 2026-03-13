@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, IAP, Service Account, Authentication, API Access, Security
+Tags: GCP, IAP, Service Accounts, Authentication, API Access, Security
 
 Description: Learn how to use GCP service accounts to programmatically access Identity-Aware Proxy protected web applications and APIs without interactive browser-based authentication.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DMS, Database Migration, Monitoring, CloudWatch
+Tags: AWS, DMS, Database Migrations, Monitoring, CloudWatch
 
 Description: Complete guide to monitoring AWS DMS replication tasks using CloudWatch metrics, task logs, and table statistics
 

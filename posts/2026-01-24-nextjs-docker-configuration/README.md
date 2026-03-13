@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Next.js, Docker, DevOps, Containerization, Deployment
+Tags: Next.js, Docker, DevOps, Containerization, Deployments
 
 Description: Learn how to configure and optimize Next.js applications for Docker deployment with multi-stage builds and best practices.
 

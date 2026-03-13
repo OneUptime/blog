@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kubernetes, Containers, Ingress, NGINX, Linux
+Tags: RHEL, Kubernetes, Containers, Ingresses, NGINX, Linux
 
 Description: Learn how to deploy Ingress-Nginx Controller on Kubernetes on RHEL with step-by-step instructions, configuration examples, and best practices.
 

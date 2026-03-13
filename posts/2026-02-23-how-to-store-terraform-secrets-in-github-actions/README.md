@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GitHub Actions, Secret, Security, CI/CD, DevOps, OIDC
+Tags: Terraform, GitHub Actions, Secrets, Security, CI/CD, DevOps, OIDC
 
 Description: Securely manage Terraform secrets in GitHub Actions using repository secrets, environment secrets, OIDC authentication, and external secret stores like AWS Secrets Manager and HashiCorp Vault.
 

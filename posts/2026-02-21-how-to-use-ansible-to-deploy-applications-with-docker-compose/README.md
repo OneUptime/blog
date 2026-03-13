@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Docker Compose, Deployment, DevOps
+Tags: Ansible, Docker, Docker Compose, Deployments, DevOps
 
 Description: Learn how to automate Docker Compose application deployments using Ansible playbooks for consistent multi-container deployments across environments.
 

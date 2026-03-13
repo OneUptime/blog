@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, Networking, NGINX, Traefik, HAProxy, DevOps
+Tags: Kubernetes, Ingresses, Networking, NGINX, Traefik, HAProxy, DevOps
 
 Description: A comprehensive comparison of NGINX, Traefik, and HAProxy Ingress controllers with installation guides, configuration examples, and decision criteria for choosing the right one.
 

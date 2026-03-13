@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Cosmos DB, Cassandra, Database Migration, CQL, NoSQL
+Tags: Azure, Cosmos DB, Cassandra, Database Migrations, CQL, NoSQL
 
 Description: A step-by-step guide to migrating your Apache Cassandra database to Azure Cosmos DB Cassandra API with schema mapping, data transfer, and validation.
 

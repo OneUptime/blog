@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Deployment, Testing, DevOps, Kubernetes
+Tags: Deployments, Testing, DevOps, Kubernetes
 
 Description: A practical guide to implementing A/B testing deployment strategies in Kubernetes using traffic splitting, feature flags, and metrics-driven rollouts.
 

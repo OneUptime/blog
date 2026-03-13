@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kustomize, Migration, Kubernetes, GitOps, Kustomization, Deployment
+Tags: Flux CD, Kustomize, Migration, Kubernetes, GitOps, Kustomization, Deployments
 
 Description: A hands-on guide to migrating from manual kustomize build and apply workflows to automated Flux CD Kustomization resources.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Ansible, Linux, Deployment, Configuration Management
+Tags: OpenTelemetry, Ansible, Linux, Deployments, Configuration Management
 
 Description: Use Ansible playbooks and roles to deploy and configure OpenTelemetry Collectors across a fleet of Linux servers consistently.
 

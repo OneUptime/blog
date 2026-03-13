@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Alerting, Monitoring, SRE, Thresholds
+Tags: Alerting, Monitoring, SRE, Threshold
 
 Description: Learn how to implement effective threshold-based alerting for proactive incident detection.
 

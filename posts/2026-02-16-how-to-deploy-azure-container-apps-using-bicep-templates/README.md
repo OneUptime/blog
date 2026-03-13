@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Apps, Bicep, Infrastructure as Code, DevOps, ARM Templates, Deployment
+Tags: Azure, Container Apps, Bicep, Infrastructure as Code, DevOps, ARM Templates, Deployments
 
 Description: A complete walkthrough of deploying Azure Container Apps using Bicep templates including environments, apps, secrets, and scaling configuration.
 

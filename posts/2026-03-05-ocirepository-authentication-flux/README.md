@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, OCI, OCIRepository, Authentication, Secret, Container Registry
+Tags: Flux CD, GitOps, Kubernetes, OCI, OCIRepository, Authentication, Secrets, Container Registry
 
 Description: Learn how to configure OCIRepository authentication in Flux CD using Kubernetes secrets, service accounts, and provider-specific credentials to pull OCI artifacts from private registries.
 

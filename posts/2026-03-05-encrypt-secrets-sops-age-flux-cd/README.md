@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secret, SOPS, Age, Encryption
+Tags: Flux CD, GitOps, Kubernetes, Secrets, SOPS, Age, Encryption
 
 Description: Learn how to encrypt Kubernetes secrets using SOPS with Age encryption for secure GitOps workflows with Flux CD.
 

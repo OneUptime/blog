@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, ECS, CloudWatch, Alarms, Deployment, Monitoring
+Tags: AWS, ECS, CloudWatch, Alarms, Deployments, Monitoring
 
 Description: Configure Amazon ECS service deployment alarms to automatically detect failed deployments and trigger rollbacks based on CloudWatch alarm states
 

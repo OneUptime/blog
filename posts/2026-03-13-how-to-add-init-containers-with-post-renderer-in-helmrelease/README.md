@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderer, Init Containers, Kustomize
+Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderers, Init Containers, Kustomize
 
 Description: Learn how to inject init containers into Helm chart deployments using Flux post-renderers for setup tasks and dependency checks.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, image-automation, kubernetes, gitops, regex
+Tags: Flux, fluxcd, image-automation, Kubernetes, GitOps, Regex
 
 Description: Learn how to use regex extraction in Flux CD ImagePolicy to parse complex image tag formats and select the right version.
 

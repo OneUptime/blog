@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Deployment, Readiness, CI/CD
+Tags: Ansible, Kubernetes, Deployments, Readiness, CI/CD
 
 Description: Implement deployment readiness checks with Ansible to ensure Kubernetes workloads are fully available before proceeding with pipeline steps.
 

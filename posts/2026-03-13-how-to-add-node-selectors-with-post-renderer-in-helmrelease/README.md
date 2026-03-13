@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderer, Node Selector, Scheduling
+Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderers, Node Selectors, Scheduling
 
 Description: Learn how to use Flux post-renderers to add node selectors to Helm chart workloads for controlling pod placement on specific nodes.
 

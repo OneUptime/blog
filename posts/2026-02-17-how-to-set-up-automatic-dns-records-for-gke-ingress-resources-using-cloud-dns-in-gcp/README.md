@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, GKE, Cloud DNS, Kubernetes, Ingress, ExternalDNS
+Tags: GCP, GKE, Cloud DNS, Kubernetes, Ingresses, ExternalDNS
 
 Description: Learn how to automatically create and update Cloud DNS records when Kubernetes Ingress resources are created in GKE using ExternalDNS.
 

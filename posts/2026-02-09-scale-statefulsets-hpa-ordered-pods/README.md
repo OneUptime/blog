@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, StatefulSet, Autoscaling
+Tags: Kubernetes, StatefulSets, Autoscaling
 
 Description: Learn how to configure HPA for StatefulSets while managing the challenges of ordered pod creation, persistent volumes, and stateful application requirements.
 

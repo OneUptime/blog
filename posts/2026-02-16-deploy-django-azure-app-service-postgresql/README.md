@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Django, Python, App Service, PostgreSQL, Deployment, Web Development
+Tags: Azure, Django, Python, App Service, PostgreSQL, Deployments, Web Development
 
 Description: Step-by-step guide to deploying a Django application to Azure App Service with an Azure Database for PostgreSQL backend.
 

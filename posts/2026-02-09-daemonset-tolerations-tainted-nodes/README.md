@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, DaemonSet, Tolerations, Taints, Node Scheduling
+Tags: Kubernetes, DaemonSets, Tolerations, Taints, Node Scheduling
 
 Description: Learn how to configure tolerations in Kubernetes DaemonSets to ensure critical node-level agents run on tainted nodes including master nodes, GPU nodes, and specialized workload nodes.
 

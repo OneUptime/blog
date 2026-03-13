@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Canary Deployment, Analysis, Monitoring, Deployment Strategy, DevOps
+Tags: Docker, Canary Deployments, Analysis, Monitoring, Deployment Strategy, DevOps
 
 Description: Implement canary analysis for Docker container deployments by comparing metrics between old and new versions before full rollout.
 

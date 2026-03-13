@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Railway, Observability, Tracing, Metrics, Node.js, Deployment
+Tags: OpenTelemetry, Railway, Observability, Tracing, Metrics, Node.js, Deployments
 
 Description: Learn how to configure OpenTelemetry for applications deployed on Railway, with practical examples covering tracing, metrics, and multi-service observability.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Edge Computing, Deployment, IoT, Distributed Systems
+Tags: Edge Computing, Deployments, IoT, Distributed Systems
 
 Description: Learn to implement edge deployment strategies with container orchestration, fleet management, and rolling updates for distributed edge infrastructure.
 

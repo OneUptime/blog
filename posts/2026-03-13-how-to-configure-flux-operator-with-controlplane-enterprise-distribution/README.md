@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, flux-operator, enterprise, controlplane
+Tags: Flux, Kubernetes, GitOps, Flux-Operator, Enterprise, Controlplane
 
 Description: Learn how to set up the Flux Operator with the ControlPlane Enterprise Distribution for production-grade Flux deployments with enterprise support and FIPS compliance.
 

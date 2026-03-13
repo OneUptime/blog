@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, AWX, Ansible Vault, Secret, Encryption
+Tags: Ansible, AWX, Ansible Vault, Secrets, Encryption
 
 Description: Integrate Ansible Vault encrypted files with AWX job templates using vault credentials for secure secret management in automated workflows.
 

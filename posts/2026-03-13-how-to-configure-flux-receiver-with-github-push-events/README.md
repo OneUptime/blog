@@ -103,7 +103,7 @@ kubectl get receiver github-push-receiver -n flux-system
 
 The output shows the webhook path:
 
-```
+```text
 NAME                    AGE   READY   STATUS
 github-push-receiver    10s   True    Receiver initialized for path: /hook/abc123def456...
 ```

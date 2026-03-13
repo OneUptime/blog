@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Webhook, SaaS Integrations, Retry Pipelines
+Tags: OpenTelemetry, Webhooks, SaaS Integrations, Retry Pipelines
 
 Description: Instrument webhook delivery and retry pipelines with OpenTelemetry to track delivery success rates and debug integration failures.
 

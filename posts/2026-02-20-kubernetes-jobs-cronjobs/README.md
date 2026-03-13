@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Jobs, CronJob, Batch Processing, Scheduling
+Tags: Kubernetes, Jobs, CronJobs, Batch Processing, Scheduling
 
 Description: Learn how to use Kubernetes Jobs for one-time tasks and CronJobs for scheduled batch processing with proper error handling.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Deployment, Canary, Routing, Progressive Delivery
+Tags: Deployments, Canary, Routing, Progressive Delivery
 
 Description: Learn how to implement canary routing for safe deployments.
 

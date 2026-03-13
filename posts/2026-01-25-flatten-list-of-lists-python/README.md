@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Python, Lists, Data Structures, Iteration, Performance
+Tags: Python, Lists, Data Structures, Iterations, Performance
 
 Description: Learn multiple ways to flatten nested lists in Python, from simple list comprehensions to recursive solutions for deeply nested structures.
 

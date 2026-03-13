@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Deployment, Incident Response, Observability, Tracing, Metrics, CI/CD
+Tags: OpenTelemetry, Deployments, Incident Response, Observability, Tracing, Metrics, CI/CD
 
 Description: Learn how to use OpenTelemetry to correlate deployment events with production incidents for faster root cause analysis.
 

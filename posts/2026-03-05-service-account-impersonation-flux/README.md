@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Security, RBAC, Service Account, Impersonation
+Tags: Flux CD, GitOps, Kubernetes, Security, RBAC, Service Accounts, Impersonation
 
 Description: Learn how to use service account impersonation in Flux CD to apply resources with scoped permissions using spec.serviceAccountName in Kustomization and HelmRelease.
 

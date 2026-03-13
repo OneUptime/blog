@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Ambient Mode, Node Troubleshooting, DaemonSet, Kubernetes
+Tags: Istio, Ambient Mode, Node Troubleshooting, DaemonSets, Kubernetes
 
 Description: How to diagnose and resolve node-level problems that affect Istio ambient mode operation including ztunnel and CNI agent issues.
 

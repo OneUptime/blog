@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CodeDeploy, Deployment, Lifecycle Hooks, CI/CD, DevOps
+Tags: AWS, CodeDeploy, Deployments, Lifecycle Hooks, CI/CD, DevOps
 
 Description: Learn how to set up AWS CodeDeploy lifecycle hooks to run custom scripts during deployments for validation, health checks, and graceful transitions.
 

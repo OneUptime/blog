@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: IPv6, Kubernetes, NGINX, Ingress, Networking, DevOps
+Tags: IPv6, Kubernetes, NGINX, Ingresses, Networking, DevOps
 
 Description: A comprehensive guide to configuring IPv6 support in NGINX Ingress Controller for Kubernetes, including dual-stack networking, load balancer setup, and production best practices.
 

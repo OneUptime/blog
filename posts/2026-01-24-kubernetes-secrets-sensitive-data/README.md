@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Secret, Security, DevOps, Configuration Management
+Tags: Kubernetes, Secrets, Security, DevOps, Configuration Management
 
 Description: A comprehensive guide to managing sensitive data in Kubernetes using Secrets, including creation methods, mounting options, encryption at rest, and security best practices.
 

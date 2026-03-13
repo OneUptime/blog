@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, image-automation, go-template, commit-message, gitops, kubernetes
+Tags: Flux, image-automation, Go-Template, Commit-Message, GitOps, Kubernetes
 
 Description: Learn how to use Go template syntax to customize Flux ImageUpdateAutomation commit messages with dynamic content about changed images.
 
@@ -85,7 +85,7 @@ spec:
 
 This produces a commit message like:
 
-```
+```text
 chore: automated image update
 
 Automation: flux-system/image-updates
@@ -137,7 +137,7 @@ spec:
 
 This produces messages like:
 
-```
+```text
 chore: update container images
 
 Changes:

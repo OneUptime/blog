@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, LangChain, Vertex AI, Deployment
+Tags: GCP, Cloud Run, LangChain, Vertex AI, Deployments
 
 Description: A complete guide to deploying LangChain applications as production services on Cloud Run with Vertex AI as the language model backend on GCP.
 

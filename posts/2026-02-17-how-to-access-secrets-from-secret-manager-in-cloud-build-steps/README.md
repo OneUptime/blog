@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Build, Secret Manager, Secret, CI/CD, Security
+Tags: GCP, Cloud Build, Secret Manager, Secrets, CI/CD, Security
 
 Description: Learn how to securely access secrets stored in Google Cloud Secret Manager from within your Cloud Build pipeline steps without exposing sensitive values.
 

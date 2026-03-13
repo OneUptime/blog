@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud SQL, Flyway, Spring Boot, GKE, Database Migration, Java
+Tags: GCP, Cloud SQL, Flyway, Spring Boot, GKE, Database Migrations, Java
 
 Description: Configure Flyway database migrations for Cloud SQL in a Spring Boot application on GKE with Cloud SQL Auth Proxy, migration strategies, and rollback patterns.
 

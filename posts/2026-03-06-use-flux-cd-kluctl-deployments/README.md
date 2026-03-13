@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, kluctl, Kubernetes, GitOps, Deployment, Templating
+Tags: Flux CD, kluctl, Kubernetes, GitOps, Deployments, Templating
 
 Description: Learn how to integrate Kluctl with Flux CD to leverage advanced templating, multi-environment deployments, and diff-based deployment strategies.
 

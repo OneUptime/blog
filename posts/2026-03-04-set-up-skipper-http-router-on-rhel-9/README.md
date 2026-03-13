@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: RHEL, Skipper, HTTP Router, Kubernetes, Ingress, Linux
+Tags: RHEL, Skipper, HTTP Router, Kubernetes, Ingresses, Linux
 
 Description: Learn how to install and configure Skipper as an HTTP router and ingress controller on RHEL, including route definitions, filters, predicates, and Kubernetes integration.
 

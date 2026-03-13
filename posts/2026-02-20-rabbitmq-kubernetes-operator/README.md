@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RabbitMQ, Kubernetes, Operator, StatefulSet, Deployment
+Tags: RabbitMQ, Kubernetes, Operator, StatefulSets, Deployments
 
 Description: Learn how to deploy and manage RabbitMQ clusters on Kubernetes using the RabbitMQ Cluster Operator.
 

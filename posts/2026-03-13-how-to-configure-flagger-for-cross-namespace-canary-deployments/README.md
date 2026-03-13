@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, kubernetes, namespace, istio, progressive delivery
+Tags: Flagger, Canary, Kubernetes, Namespace, Istio, Progressive Delivery
 
 Description: Learn how to configure Flagger canary deployments that work across Kubernetes namespaces with proper service mesh routing and RBAC.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Service Account, Security, RBAC
+Tags: Istio, Kubernetes, Service Accounts, Security, RBAC
 
 Description: Step-by-step guide to configuring Kubernetes service accounts for Istio workloads including identity, mTLS, and authorization policies.
 

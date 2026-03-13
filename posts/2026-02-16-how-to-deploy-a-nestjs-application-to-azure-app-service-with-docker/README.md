@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: NestJS, Azure App Service, Docker, Node.js, TypeScript, Containerization, Deployment
+Tags: NestJS, Azure App Service, Docker, Node.js, TypeScript, Containerization, Deployments
 
 Description: Learn how to containerize a NestJS application with Docker and deploy it to Azure App Service for production-ready hosting with automatic scaling.
 

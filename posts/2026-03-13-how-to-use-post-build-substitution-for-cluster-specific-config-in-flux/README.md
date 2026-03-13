@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, kustomization, post-build, substitution, multi-cluster
+Tags: Flux, fluxcd, GitOps, Kubernetes, Kustomization, Post-Build, Substitution, Multi-Cluster
 
 Description: Learn how to use Flux post-build variable substitution to manage cluster-specific configurations across multiple Kubernetes clusters from a single Git repository.
 
@@ -197,7 +197,7 @@ In this example, `REPLICAS` will be "5" regardless of what the ConfigMap contain
 
 A common pattern is to structure your repository with a shared base and per-cluster overlays that contain the Kustomization definitions:
 
-```
+```text
 ├── clusters/
 │   ├── production/
 │   │   ├── app.yaml          # Kustomization with prod variables

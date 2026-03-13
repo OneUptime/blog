@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, flux-operator, troubleshooting, debugging
+Tags: Flux, Kubernetes, GitOps, Flux-Operator, Troubleshooting, Debugging
 
 Description: A practical guide to diagnosing and resolving common Flux Operator installation and reconciliation issues on Kubernetes clusters.
 

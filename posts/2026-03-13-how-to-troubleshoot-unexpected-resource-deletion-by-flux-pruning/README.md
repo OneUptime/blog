@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, pruning, troubleshooting, garbage-collection, kubernetes
+Tags: Flux, fluxcd, GitOps, Pruning, Troubleshooting, Garbage-Collection, Kubernetes
 
 Description: Learn how to diagnose and fix unexpected resource deletions caused by Flux garbage collection pruning.
 

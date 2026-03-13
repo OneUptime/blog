@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, Blue-Green Deployment, Zero Downtime, DevOps, Deployment
+Tags: Go, Blue-Green Deployment, Zero Downtime, DevOps, Deployments
 
 Description: A hands-on guide to building a blue-green deployment system in Go, with working code for traffic switching, health checks, and graceful rollbacks.
 

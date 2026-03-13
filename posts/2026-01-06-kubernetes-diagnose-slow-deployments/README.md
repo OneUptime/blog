@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Troubleshooting, Deployment, Performance, DevOps
+Tags: Kubernetes, Troubleshooting, Deployments, Performance, DevOps
 
 Description: A systematic guide to diagnosing and fixing slow Kubernetes deployments, from image pull delays to probe timeouts and scheduling bottlenecks.
 

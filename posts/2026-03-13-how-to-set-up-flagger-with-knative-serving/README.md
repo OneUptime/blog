@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, knative, serving, canary, kubernetes, progressive delivery, serverless, traffic splitting
+Tags: Flagger, Knative, Serving, Canary, Kubernetes, Progressive Delivery, Serverless, Traffic Splitting
 
 Description: Learn how to set up Flagger with Knative Serving for progressive canary deployments of serverless workloads with automatic traffic management.
 

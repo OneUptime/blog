@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Laravel, PHP, Deployment, Elastic Beanstalk
+Tags: AWS, Laravel, PHP, Deployments, Elastic Beanstalk
 
 Description: Step-by-step guide to deploying Laravel PHP applications on AWS with Elastic Beanstalk, ECS, and proper configuration for queues, caching, and file storage.
 

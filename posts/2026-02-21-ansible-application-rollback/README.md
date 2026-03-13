@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Rollback, Deployment, Disaster Recovery, DevOps
+Tags: Ansible, Rollback, Deployments, Disaster Recovery, DevOps
 
 Description: Implement application rollback strategies with Ansible including symlink swaps, database rollback, and automated failure detection.
 

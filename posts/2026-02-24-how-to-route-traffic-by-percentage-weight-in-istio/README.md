@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Traffic Management, Canary Deployment, Kubernetes, Service Mesh
+Tags: Istio, Traffic Management, Canary Deployments, Kubernetes, Service Mesh
 
 Description: Learn how to split and route traffic by percentage weight in Istio using VirtualService and DestinationRule for canary deployments and gradual rollouts.
 

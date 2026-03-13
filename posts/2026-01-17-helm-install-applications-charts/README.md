@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Charts, Deployment
+Tags: Helm, Kubernetes, DevOps, Charts, Deployments
 
 Description: Learn how to install popular applications like nginx-ingress, cert-manager, and Prometheus using Helm charts with customization examples.
 

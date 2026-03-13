@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Canary Deployment, Rollback, Traffic Management, Kubernetes, DevOps
+Tags: Istio, Canary Deployments, Rollback, Traffic Management, Kubernetes, DevOps
 
 Description: Build an automated canary deployment pipeline with Istio that gradually shifts traffic and automatically rolls back when error rates spike.
 

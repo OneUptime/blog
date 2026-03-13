@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Spring Boot, Java, Deployment, ECS
+Tags: AWS, Spring Boot, Java, Deployments, ECS
 
 Description: Step-by-step instructions for deploying Spring Boot applications to AWS using Elastic Beanstalk, ECS Fargate, and EC2 with real-world configuration examples.
 

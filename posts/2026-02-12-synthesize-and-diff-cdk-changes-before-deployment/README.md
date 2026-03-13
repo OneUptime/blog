@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CDK, DevOps, Deployment
+Tags: AWS, CDK, DevOps, Deployments
 
 Description: Master the cdk synth and cdk diff commands to preview infrastructure changes before deploying, catch dangerous modifications, and build safer deployment workflows.
 

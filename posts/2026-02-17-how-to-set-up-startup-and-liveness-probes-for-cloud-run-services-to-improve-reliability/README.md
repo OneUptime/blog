@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Health Check, Liveness Probe, Startup Probe, Google Cloud
+Tags: GCP, Cloud Run, Health Checks, Liveness Probe, Startup Probe, Google Cloud
 
 Description: Learn how to configure startup and liveness probes for Cloud Run services to detect unhealthy containers and improve overall service reliability.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Canary Testing, Deployment, Kubernetes, DevOps, Automation
+Tags: Canary Testing, Deployments, Kubernetes, DevOps, Automation
 
 Description: Learn to automate canary deployments with progressive traffic shifting, automated rollback triggers, and metric-based promotion decisions using Kubernetes and Flagger.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Firestore, MongoDB, MongoDB Atlas, Database Migration
+Tags: GCP, Firestore, MongoDB, MongoDB Atlas, Database Migrations
 
 Description: Compare Firestore and MongoDB Atlas on GCP as migration targets for on-premises MongoDB and learn the migration process for each.
 

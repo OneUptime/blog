@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Ingress, VPC, Network Security, Google Cloud
+Tags: GCP, Cloud Run, Ingresses, VPC, Network Security, Google Cloud
 
 Description: Learn how to configure Cloud Run ingress settings to restrict access to only internal traffic from your VPC, blocking all public internet access.
 

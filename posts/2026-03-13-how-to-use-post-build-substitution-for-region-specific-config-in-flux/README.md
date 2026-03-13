@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, kubernetes, kustomization, post-build, substitution, multi-region
+Tags: Flux, fluxcd, GitOps, Kubernetes, Kustomization, Post-Build, Substitution, Multi-Region
 
-Description: Learn how to leverage Flux post-build variable substitution to manage region-specific configurations such as endpoints, domains, and resource sizing across geographically distributed Kubernetes clusters.
+Description: Learn how to leverage Flux post-build substitution to manage region-specific configurations such as endpoints, domains, and resource sizing across geographically distributed Kubernetes clusters.
 
 ---
 
@@ -198,7 +198,7 @@ When multiple sources define the same variable, the precedence order is: inline 
 
 A well-organized repository for multi-region deployments separates cluster definitions from application manifests:
 
-```
+```text
 ├── clusters/
 │   ├── us-east-1/
 │   │   ├── region-config.yaml

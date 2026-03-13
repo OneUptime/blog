@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Argo Workflows, CronJob, Automation, DevOps
+Tags: Kubernetes, Argo Workflows, CronJobs, Automation, DevOps
 
 Description: Upgrade from basic Kubernetes CronJobs to powerful Argo Workflows for complex scheduling patterns, dependency management, retries, and workflow orchestration with practical migration examples.
 

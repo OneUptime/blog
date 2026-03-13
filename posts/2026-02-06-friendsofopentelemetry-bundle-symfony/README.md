@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, PHP, Symfony, Bundle, FriendsOfOpenTelemetry, Setup
+Tags: OpenTelemetry, PHP, Symfony, Bundles, FriendsOfOpenTelemetry, Setup
 
 Description: Complete guide to installing and configuring the FriendsOfOpenTelemetry bundle in Symfony applications for comprehensive observability with automatic instrumentation.
 

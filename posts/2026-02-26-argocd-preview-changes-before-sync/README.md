@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Preview, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Preview, Deployments
 
 Description: Learn how to preview and review application changes before syncing them in ArgoCD, using diff tools, PR previews, and preview environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Rolling Updates, Drain, Kubernetes, Deployment
+Tags: Istio, Rolling Updates, Drain, Kubernetes, Deployments
 
 Description: Configure rolling update strategies with proper connection draining in Istio to achieve zero-downtime deployments for your services.
 

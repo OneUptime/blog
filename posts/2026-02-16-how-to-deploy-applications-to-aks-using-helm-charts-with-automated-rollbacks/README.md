@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Helm, Kubernetes, Deployment, Rollback, CI/CD, Azure
+Tags: AKS, Helm, Kubernetes, Deployments, Rollback, CI/CD, Azure
 
 Description: Learn how to deploy applications on AKS using Helm charts with automated rollback strategies to recover from failed deployments quickly.
 

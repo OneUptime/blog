@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Secret, Security, DevOps
+Tags: Kubernetes, Secrets, Security, DevOps
 
 Description: A comprehensive guide to managing sensitive data in Kubernetes using Secrets.
 

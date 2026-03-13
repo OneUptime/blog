@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Service Account, Key Rotation, Security, Automation
+Tags: GCP, Service Accounts, Key Rotation, Security, Automation
 
 Description: A practical guide to automating the rotation of GCP service account keys using Cloud Functions and Cloud Scheduler, reducing the risk of compromised credentials.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, istio, aks, azure, canary, kubernetes, service-mesh
+Tags: Flagger, Istio, AKS, Azure, Canary, Kubernetes, Service-Mesh
 
 Description: A step-by-step guide to setting up Flagger with Istio on Azure Kubernetes Service for automated canary deployments.
 

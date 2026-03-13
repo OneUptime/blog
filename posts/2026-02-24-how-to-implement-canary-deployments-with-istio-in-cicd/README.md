@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Canary Deployment, CI/CD, Kubernetes, Traffic Management
+Tags: Istio, Canary Deployments, CI/CD, Kubernetes, Traffic Management
 
 Description: How to implement canary deployments using Istio traffic splitting in CI/CD pipelines with gradual rollout, metric-based promotion, and automated rollback.
 

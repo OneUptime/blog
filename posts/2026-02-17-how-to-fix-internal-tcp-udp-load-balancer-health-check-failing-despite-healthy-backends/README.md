@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Load Balancer, Health Check, Networking, Google Cloud
+Tags: GCP, Load Balancer, Health Checks, Networking, Google Cloud
 
 Description: Troubleshoot and resolve internal TCP/UDP load balancer health check failures in Google Cloud when your backend instances are actually healthy and serving traffic.
 

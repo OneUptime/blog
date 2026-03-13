@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Secret, Troubleshooting
+Tags: ArgoCD, GitOps, Kubernetes, Secrets, Troubleshooting
 
 Description: A practical troubleshooting guide for diagnosing and fixing secret-related sync failures in ArgoCD, covering common error patterns, ESO issues, Sealed Secrets problems, and RBAC misconfigurations.
 

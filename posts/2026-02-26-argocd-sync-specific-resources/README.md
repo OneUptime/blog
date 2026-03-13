@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Selective Sync, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Selective Sync, Deployments
 
 Description: Learn how to sync individual resources in ArgoCD instead of syncing the entire application, using the CLI, UI, and API for targeted deployments.
 

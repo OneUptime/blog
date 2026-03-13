@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Harness CD, Continuous Delivery, Kubernetes, Canary Deployment
+Tags: Istio, Harness CD, Continuous Delivery, Kubernetes, Canary Deployments
 
 Description: How to configure Harness CD with Istio for traffic management during canary and blue-green deployments in Kubernetes clusters.
 

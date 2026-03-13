@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Windows, Deployment, Services, Observability, Monitoring
+Tags: OpenTelemetry, Collector, Windows, Deployments, Services, Observability, Monitoring
 
 Description: A practical guide to deploying the OpenTelemetry Collector as a Windows service with automatic startup, configuration management, and troubleshooting techniques.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, load testing, load tester, kubernetes, progressive delivery, traffic generation
+Tags: Flagger, Canary, Load Testing, Load Tester, Kubernetes, Progressive Delivery, Traffic Generation
 
 Description: Learn how to deploy and use the Flagger load tester to generate synthetic traffic for canary analysis during progressive delivery.
 

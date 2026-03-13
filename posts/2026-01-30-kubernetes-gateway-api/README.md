@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Gateway API, Ingress, Networking
+Tags: Kubernetes, Gateway API, Ingresses, Networking
 
 Description: Learn how to use Kubernetes Gateway API for flexible traffic routing.
 

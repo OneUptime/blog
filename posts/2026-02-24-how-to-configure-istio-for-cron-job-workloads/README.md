@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, CronJob, Kubernetes, Service Mesh, Scheduling
+Tags: Istio, CronJobs, Kubernetes, Service Mesh, Scheduling
 
 Description: A hands-on guide to configuring Istio for Kubernetes CronJob workloads with sidecar lifecycle management and proper scheduling configuration.
 

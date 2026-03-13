@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Repository Management, Secret
+Tags: ArgoCD, GitOps, Kubernetes, Repository Management, Secrets
 
 Description: Learn how to define and manage ArgoCD repository connections declaratively using Kubernetes secrets for reproducible and version-controlled Git and Helm repository configurations.
 

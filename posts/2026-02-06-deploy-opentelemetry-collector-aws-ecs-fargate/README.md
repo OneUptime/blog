@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, AWS, ECS, Fargate, Deployment, Cloud, Observability
+Tags: OpenTelemetry, Collector, AWS, ECS, Fargate, Deployments, Cloud, Observability
 
 Description: Deploy OpenTelemetry Collectors on AWS ECS Fargate with complete task definitions, service configurations, and integration with AWS observability services.
 

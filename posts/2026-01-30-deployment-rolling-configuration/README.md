@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployment, DevOps, CI/CD
+Tags: Kubernetes, Deployments, DevOps, CI/CD
 
 Description: Configure Kubernetes rolling deployments with maxSurge, maxUnavailable, and progress deadlines for zero-downtime updates.
 

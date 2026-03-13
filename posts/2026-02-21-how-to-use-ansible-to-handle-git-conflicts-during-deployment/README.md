@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Git, Conflict Resolution, Deployment
+Tags: Ansible, Git, Conflict Resolution, Deployments
 
 Description: Learn how to handle Git conflicts during Ansible deployments using force checkout, stash strategies, and clean workspace patterns for reliable code updates.
 

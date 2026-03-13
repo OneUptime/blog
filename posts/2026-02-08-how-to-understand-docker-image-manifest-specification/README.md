@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Image manifest, Container Registry, Docker Hub, OCI, Image specification, Multi-arch
+Tags: Docker, Image manifest, Container Registry, Docker Hub, OCI, Image specification, Multi-Arch
 
 Description: A deep dive into Docker image manifest specification, how manifests describe image layers and configuration, and how multi-architecture images work.
 

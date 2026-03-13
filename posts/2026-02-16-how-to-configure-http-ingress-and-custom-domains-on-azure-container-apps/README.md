@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Container Apps, Ingress, Custom Domain, TLS, Networking, Cloud
+Tags: Azure, Container Apps, Ingresses, Custom Domain, TLS, Networking, Cloud
 
 Description: A practical guide to configuring HTTP ingress, enabling external access, and mapping custom domains with TLS on Azure Container Apps.
 

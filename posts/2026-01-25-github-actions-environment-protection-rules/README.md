@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitHub Actions, Environment Protection, Security, CI/CD, Deployment, DevOps
+Tags: GitHub Actions, Environment Protection, Security, CI/CD, Deployments, DevOps
 
 Description: Learn how to protect production deployments with GitHub Actions environment rules.
 

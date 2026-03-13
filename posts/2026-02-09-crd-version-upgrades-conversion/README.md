@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRD, Webhook
+Tags: Kubernetes, CRDs, Webhooks
 
 Description: Master Custom Resource Definition version upgrades using conversion webhooks to migrate between API versions seamlessly while maintaining backward compatibility in Kubernetes.
 

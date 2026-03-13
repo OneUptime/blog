@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Datastream, Schema Drift, BigQuery, CDC, Database Migration, Data Engineering
+Tags: GCP, Datastream, Schema Drift, BigQuery, CDC, Database Migrations, Data Engineering
 
 Description: Practical strategies for handling schema drift in Google Cloud Datastream when source database columns are added, removed, or modified.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MLOps, Canary Deployment, Model Serving, Progressive Rollout
+Tags: MLOps, Canary Deployments, Model Serving, Progressive Rollout
 
 Description: Learn to implement canary model deployment for gradual rollout of new ML models with traffic splitting.
 

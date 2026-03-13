@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, VMSS, Scale Set, Deployment, Troubleshooting, DevOps, ARM Templates
+Tags: Azure, VMSS, Scale Set, Deployments, Troubleshooting, DevOps, ARM Templates
 
 Description: A practical guide to diagnosing and fixing common Azure Virtual Machine Scale Set deployment errors with real solutions and examples.
 

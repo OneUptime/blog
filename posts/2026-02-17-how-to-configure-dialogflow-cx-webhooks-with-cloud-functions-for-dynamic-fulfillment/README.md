@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Dialogflow CX, Webhook, Cloud Functions, Fulfillment, Conversational AI, Google Cloud
+Tags: GCP, Dialogflow CX, Webhooks, Cloud Functions, Fulfillment, Conversational AI, Google Cloud
 
 Description: Configure Dialogflow CX webhooks with Google Cloud Functions to provide dynamic fulfillment responses from external APIs and databases in your virtual agent.
 

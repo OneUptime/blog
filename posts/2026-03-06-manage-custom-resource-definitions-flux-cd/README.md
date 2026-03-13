@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Kubernetes, Custom Resource Definitions, CRD, GitOps, Infrastructure
+Tags: Flux CD, Kubernetes, Custom Resource Definitions, CRDs, GitOps, Infrastructure
 
 Description: A practical guide to managing Kubernetes CustomResourceDefinitions (CRDs) with Flux CD, including versioning strategies and dependency ordering.
 

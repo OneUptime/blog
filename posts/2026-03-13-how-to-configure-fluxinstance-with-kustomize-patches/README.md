@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flux-operator, fluxinstance, kustomize, patches, kubernetes, gitops
+Tags: Flux, Flux-Operator, FluxInstance, Kustomize, Patches, Kubernetes, GitOps
 
 Description: Learn how to use Kustomize patches in FluxInstance to customize Flux controller deployments, resource limits, tolerations, and more.
 

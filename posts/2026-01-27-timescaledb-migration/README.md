@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: TimescaleDB, PostgreSQL, Database Migration, Time-Series, DevOps, Performance
+Tags: TimescaleDB, PostgreSQL, Database Migrations, Time-Series, DevOps, Performance
 
 Description: A comprehensive guide to migrating your PostgreSQL database to TimescaleDB, covering planning, hypertable conversion, data migration strategies, application changes, and rollback procedures.
 

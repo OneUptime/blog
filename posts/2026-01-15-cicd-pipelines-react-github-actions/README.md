@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: React, GitHub Actions, CI/CD, DevOps, Automation, Deployment
+Tags: React, GitHub Actions, CI/CD, DevOps, Automation, Deployments
 
 Description: A comprehensive guide to building production-ready CI/CD pipelines for React applications using GitHub Actions, covering testing, building, caching, and multi-environment deployments.
 

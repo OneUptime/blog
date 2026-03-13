@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, GCP, Google Cloud, Service Account, Authentication, Provider
+Tags: Terraform, GCP, Google Cloud, Service Accounts, Authentication, Provider
 
 Description: Learn how to create a GCP service account and configure it with the Terraform Google provider for secure, automated infrastructure deployments and CI/CD pipelines.
 

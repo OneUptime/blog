@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Deployment, Best Practices, Kubernetes, Production
+Tags: Istio, Deployments, Best Practices, Kubernetes, Production
 
 Description: Essential best practices for deploying Istio in production, covering installation, upgrades, resource management, and operational readiness.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Kubernetes, Secret, Security, DevOps
+Tags: Ansible, Kubernetes, Secrets, Security, DevOps
 
 Description: Learn how to securely create and manage Kubernetes Secrets using Ansible with Ansible Vault integration for safe credential management.
 

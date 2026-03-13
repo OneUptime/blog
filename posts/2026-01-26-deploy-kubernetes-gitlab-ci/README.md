@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GitLab CI, Kubernetes, Deployment, DevOps, CI/CD, Container Orchestration
+Tags: GitLab CI, Kubernetes, Deployments, DevOps, CI/CD, Container Orchestration
 
 Description: Learn how to deploy applications to Kubernetes clusters from GitLab CI using kubectl, Helm, and the GitLab Kubernetes Agent for secure, automated deployments.
 

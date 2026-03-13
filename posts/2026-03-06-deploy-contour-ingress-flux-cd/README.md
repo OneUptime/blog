@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Contour, Ingress, Envoy, Kubernetes, GitOps, Networking
+Tags: Flux CD, Contour, Ingresses, Envoy, Kubernetes, GitOps, Networking
 
 Description: Learn how to deploy Contour ingress controller with Flux CD to leverage Envoy proxy for high-performance Kubernetes ingress management.
 

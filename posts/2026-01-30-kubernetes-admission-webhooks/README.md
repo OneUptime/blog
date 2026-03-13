@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Kubernetes, Webhook, Security, Validation
+Tags: Kubernetes, Webhooks, Security, Validation
 
 Description: Build admission webhooks for Kubernetes to validate and mutate resources before they are persisted with validating and mutating controllers.
 

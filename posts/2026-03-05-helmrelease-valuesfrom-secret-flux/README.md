@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Secret, ValuesFrom, Security
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Secrets, ValuesFrom, Security
 
 Description: Learn how to use spec.valuesFrom to load sensitive Helm chart values from Kubernetes Secrets in Flux CD HelmReleases.
 

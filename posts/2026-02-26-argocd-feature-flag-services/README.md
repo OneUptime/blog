@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Feature Flags, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, Feature Flags, Deployments
 
 Description: Learn how to deploy and manage feature flag services like Flagsmith, Unleash, and OpenFeature on Kubernetes using ArgoCD GitOps workflows.
 

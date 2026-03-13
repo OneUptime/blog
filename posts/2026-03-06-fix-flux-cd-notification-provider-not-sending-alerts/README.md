@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Notifications, Alerts, GitOps, Kubernetes, Troubleshooting, Slack, Webhook
+Tags: Flux CD, Notifications, Alerts, GitOps, Kubernetes, Troubleshooting, Slack, Webhooks
 
 Description: A step-by-step troubleshooting guide for fixing Flux CD notification providers that fail to deliver alerts to Slack, Teams, or other webhook endpoints.
 

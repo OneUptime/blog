@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure DevOps, YAML Pipelines, CI/CD, Approval Gates, Multi-Stage Pipeline, DevOps, Deployment
+Tags: Azure DevOps, YAML Pipelines, CI/CD, Approval Gates, Multi-Stage Pipeline, DevOps, Deployments
 
 Description: Learn how to build a multi-stage YAML pipeline in Azure DevOps with approval gates for controlled deployments across environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Health Check, Kubernetes, Envoy, Outlier Detection
+Tags: Istio, Health Checks, Kubernetes, Envoy, Outlier Detection
 
 Description: How to configure health checks in Istio including Kubernetes probes with sidecar interaction, outlier detection, and Envoy active health checking.
 

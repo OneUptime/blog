@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Gateway API, Ingress, Traffic Management, HTTPRoute, Load Balancing, Networking
+Tags: Kubernetes, Gateway API, Ingresses, Traffic Management, HTTPRoute, Load Balancing, Networking
 
 Description: Learn how to implement the Kubernetes Gateway API, the modern successor to Ingress, with support for advanced routing, traffic splitting, and cross-namespace references.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, NodePort, Kubernetes, Networking, Ingress
+Tags: Istio, NodePort, Kubernetes, Networking, Ingresses
 
 Description: Configure NodePort services to work correctly with Istio's sidecar proxy, including source IP preservation, traffic routing, and security considerations.
 

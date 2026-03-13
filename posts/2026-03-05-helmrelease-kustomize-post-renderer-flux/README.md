@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Kustomize, Post-Renderer, Resource Transformation
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRelease, Kustomize, Post-Renderers, Resource Transformation
 
 Description: Learn how to use the Kustomize post-renderer in HelmRelease to apply Kustomize transformations to Helm chart output in Flux CD.
 

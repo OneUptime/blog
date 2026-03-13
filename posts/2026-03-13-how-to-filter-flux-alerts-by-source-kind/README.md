@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, alerts, source-kind, gitops, kubernetes, notification-controller
+Tags: Flux, fluxcd, Alerts, Source-Kind, GitOps, Kubernetes, Notification-Controller
 
 Description: Learn how to configure Flux CD alerts that filter by resource kind, such as GitRepository, HelmRelease, Kustomization, and other Flux resource types.
 

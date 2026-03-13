@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: CircleCI, Kubernetes, CI/CD, DevOps, Containers, Deployment, Automation
+Tags: CircleCI, Kubernetes, CI/CD, DevOps, Containers, Deployments, Automation
 
 Description: A hands-on guide to deploying applications to Kubernetes clusters directly from CircleCI pipelines, covering authentication, image building, rollout strategies, and production-ready configurations.
 

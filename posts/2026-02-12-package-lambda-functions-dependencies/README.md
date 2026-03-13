@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Lambda, Serverless, Deployment
+Tags: AWS, Lambda, Serverless, Deployments
 
 Description: Learn how to package AWS Lambda functions with third-party dependencies for Python, Node.js, and other runtimes, including handling native binaries.
 

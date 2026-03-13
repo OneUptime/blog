@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Performance, Pre-Pull, Container Registry, DevOps, Kubernetes, Deployment
+Tags: Docker, Performance, Pre-Pull, Container Registry, DevOps, Kubernetes, Deployments
 
 Description: Learn how to pre-pull Docker images to eliminate cold-start delays during deployments and ensure fast container launches across your infrastructure.
 

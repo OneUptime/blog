@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, image-policy, kubernetes, gitops, sorting, date-tags
+Tags: Flux, fluxcd, image-policy, Kubernetes, GitOps, Sorting, Date-Tags
 
 Description: Learn how to configure Flux CD ImagePolicy to sort image tags by date suffix in formats like YYYYMMDD or YYYYMMDDHHMMSS.
 

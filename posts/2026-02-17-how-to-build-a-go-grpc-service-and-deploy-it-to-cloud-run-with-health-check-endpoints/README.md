@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Go, gRPC, Health Check, Microservices
+Tags: GCP, Cloud Run, Go, gRPC, Health Checks, Microservices
 
 Description: Build a Go gRPC service with proper health check endpoints and deploy it to Cloud Run for scalable, low-latency microservice communication.
 

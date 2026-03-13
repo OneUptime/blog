@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CDK, Deployment, Development
+Tags: AWS, CDK, Deployments, Development
 
 Description: Speed up your AWS CDK development workflow with cdk watch and hot-swap deployments that bypass CloudFormation for near-instant Lambda and container updates.
 

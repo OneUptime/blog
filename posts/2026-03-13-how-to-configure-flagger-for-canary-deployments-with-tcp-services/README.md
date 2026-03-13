@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, canary, kubernetes, tcp, istio, progressive delivery
+Tags: Flagger, Canary, Kubernetes, TCP, Istio, Progressive Delivery
 
 Description: Learn how to set up Flagger canary deployments for TCP-based services using Istio service mesh for weighted traffic routing.
 

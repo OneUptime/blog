@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Spring Boot, systemd, Java, Deployment
+Tags: RHEL, Spring Boot, systemd, Java, Deployments
 
 Description: Learn how to deploy a Spring Boot application as a systemd service on RHEL with proper logging, restart policies, and security hardening.
 

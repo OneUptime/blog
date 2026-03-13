@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, ArgoCD, GitOps, Kubernetes, Monitoring, Deployment
+Tags: OpenTelemetry, ArgoCD, GitOps, Kubernetes, Monitoring, Deployments
 
 Description: Learn how to monitor ArgoCD GitOps deployments with OpenTelemetry for full visibility into sync operations, health status, and deployment performance.
 

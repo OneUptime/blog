@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Gateway API, Ingress
+Tags: Kubernetes, Gateway API, Ingresses
 
 Description: Learn how to migrate from Kubernetes Ingress to the new Gateway API for more powerful traffic routing, better extensibility, and role-oriented design.
 

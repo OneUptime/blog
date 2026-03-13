@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Build, Cloud Functions, CI/CD, Serverless, Deployment
+Tags: GCP, Cloud Build, Cloud Functions, CI/CD, Serverless, Deployments
 
 Description: Learn how to set up Cloud Build CI/CD pipelines that automatically test and deploy Cloud Functions when you push code to your repository.
 

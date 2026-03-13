@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Go, Kubernetes, Operator, Kubebuilder, CRD, DevOps
+Tags: Go, Kubernetes, Operator, Kubebuilder, CRDs, DevOps
 
 Description: Build Kubernetes operators in Go using Kubebuilder with Custom Resource Definitions, controllers, and reconciliation loops.
 

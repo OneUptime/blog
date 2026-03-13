@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Canary Release, Kubernetes, Traffic Management, Deployment
+Tags: Istio, Canary Release, Kubernetes, Traffic Management, Deployments
 
 Description: Learn how to implement canary releases using Istio's weighted traffic routing to gradually roll out new versions and catch problems before they affect all users.
 

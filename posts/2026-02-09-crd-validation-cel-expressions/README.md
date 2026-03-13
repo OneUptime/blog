@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRD, Validation, CEL
+Tags: Kubernetes, CRDs, Validation, CEL
 
 Description: Learn how to use Common Expression Language (CEL) for advanced validation rules in Custom Resource Definitions to enforce complex business logic and field dependencies.
 

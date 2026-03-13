@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Deployment, Database
+Tags: Kubernetes, Deployments, Database
 
 Description: Learn when and how to use the Recreate deployment strategy in Kubernetes for handling breaking database schema changes and incompatible version updates that can't run simultaneously.
 

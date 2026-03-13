@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Weighted Load Balancing, DestinationRule, VirtualService, Canary Deployment
+Tags: Istio, Weighted Load Balancing, DestinationRule, VirtualService, Canary Deployments
 
 Description: Set up weighted load balancing in Istio to gradually shift traffic between service versions using DestinationRule and VirtualService.
 

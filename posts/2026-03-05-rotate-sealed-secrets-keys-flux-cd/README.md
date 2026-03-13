@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secret, Sealed Secrets, Key Rotation, Security
+Tags: Flux CD, GitOps, Kubernetes, Secrets, Sealed Secrets, Key Rotation, Security
 
 Description: Learn how to rotate Sealed Secrets encryption keys in a Flux CD environment while maintaining uninterrupted secret decryption.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, Ingress, NGINX, Traefik, Load Balancer, DevOps
+Tags: Terraform, Kubernetes, Ingresses, NGINX, Traefik, Load Balancer, DevOps
 
 Description: Learn how to deploy and configure popular Kubernetes ingress controllers like NGINX and Traefik using Terraform, including load balancer configuration and SSL termination.
 

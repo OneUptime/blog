@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, CRD, Kubernetes, Migration, Backup
+Tags: Istio, CRDs, Kubernetes, Migration, Backup
 
 Description: Complete guide to exporting all Istio Custom Resource Definitions and their instances from a Kubernetes cluster for migration, backup, or audit purposes.
 

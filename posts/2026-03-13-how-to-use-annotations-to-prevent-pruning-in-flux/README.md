@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, gitops, annotations, pruning, garbage-collection, kubernetes
+Tags: Flux, fluxcd, GitOps, Annotations, Pruning, Garbage-Collection, Kubernetes
 
 Description: Learn how to use Kubernetes annotations to prevent Flux from deleting specific resources during garbage collection pruning.
 
@@ -25,7 +25,7 @@ The `kustomize.toolkit.fluxcd.io/prune` annotation is the primary mechanism Flux
 
 Flux respects a single annotation to control pruning behavior on individual resources:
 
-```
+```text
 kustomize.toolkit.fluxcd.io/prune: disabled
 ```
 

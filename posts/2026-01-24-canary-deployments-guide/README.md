@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Canary Deployment, Kubernetes, Progressive Delivery, Argo Rollouts, Flagger, DevOps, Traffic Management
+Tags: Canary Deployments, Kubernetes, Progressive Delivery, Argo Rollouts, Flagger, DevOps, Traffic Management
 
 Description: A comprehensive guide to implementing canary deployments for safe, gradual rollouts with automatic rollback based on metrics and health checks.
 

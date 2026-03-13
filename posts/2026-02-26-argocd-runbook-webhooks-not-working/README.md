@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Webhook, Runbook
+Tags: ArgoCD, GitOps, Kubernetes, Webhooks, Runbook
 
 Description: A step-by-step operational runbook for diagnosing and fixing ArgoCD webhook failures, covering GitHub, GitLab, and Bitbucket webhook configuration, secret validation, and network connectivity.
 

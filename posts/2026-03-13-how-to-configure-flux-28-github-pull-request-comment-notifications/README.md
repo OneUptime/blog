@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, notifications, github, pull-requests
+Tags: Flux, Kubernetes, GitOps, Notifications, GitHub, Pull-Requests
 
 Description: Learn how to set up Flux 2.8 to post reconciliation status comments directly on GitHub pull requests for better GitOps visibility.
 

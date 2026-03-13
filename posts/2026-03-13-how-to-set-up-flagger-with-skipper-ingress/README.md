@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, skipper, ingress, canary, kubernetes, progressive delivery, traffic splitting
+Tags: Flagger, Skipper, Ingresses, Canary, Kubernetes, Progressive Delivery, Traffic Splitting
 
 Description: Learn how to set up Flagger with Skipper ingress controller for progressive canary deployments with annotation-based traffic routing.
 

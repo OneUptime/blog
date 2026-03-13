@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Ansible, Docker, Secret, Security, Containers
+Tags: Ansible, Docker, Secrets, Security, Containers
 
 Description: Securely manage container secrets with Ansible using Docker secrets, Ansible Vault, environment variable injection, and secret file mounting.
 

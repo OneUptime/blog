@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, PostgreSQL, Logical Replication, Data Sync, Flexible Server, Database Migration, Replication
+Tags: Azure, PostgreSQL, Logical Replication, Data Sync, Flexible Server, Database Migrations, Replication
 
 Description: A hands-on guide to configuring logical replication in Azure Database for PostgreSQL Flexible Server for selective table replication and data synchronization.
 

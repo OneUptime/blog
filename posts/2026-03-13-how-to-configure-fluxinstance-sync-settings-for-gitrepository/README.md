@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flux-operator, fluxinstance, gitrepository, sync, kubernetes, gitops
+Tags: Flux, Flux-Operator, FluxInstance, GitRepository, Sync, Kubernetes, GitOps
 
 Description: Learn how to configure FluxInstance sync settings to automatically create a GitRepository source and Kustomization for managing your cluster state from Git.
 

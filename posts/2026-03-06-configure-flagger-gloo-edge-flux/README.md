@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Flagger, Gloo, Gloo edge, Progressive Delivery, Canary, Kubernetes, GitOps, Envoy
+Tags: Flux, Flagger, Gloo, Gloo Edge, Progressive Delivery, Canary, Kubernetes, GitOps, Envoy
 
 Description: A hands-on guide to setting up Flagger with Gloo Edge API gateway and Flux for progressive canary deployments using upstream weighted routing.
 

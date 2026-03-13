@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, MySQL, Migration, Cloud Migration, Database Migration, DMS, DevOps
+Tags: Azure, MySQL, Migration, Cloud Migration, Database Migrations, DMS, DevOps
 
 Description: A comprehensive guide to migrating your on-premises MySQL database to Azure Database for MySQL using multiple approaches and best practices.
 

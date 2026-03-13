@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Elastic Beanstalk, Node.js, Deployment
+Tags: AWS, Elastic Beanstalk, Node.js, Deployments
 
 Description: Deploy a Node.js web application to AWS Elastic Beanstalk with step-by-step instructions covering project setup, configuration, database connection, and CI/CD.
 

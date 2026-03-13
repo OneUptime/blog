@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, StatefulSet, Persistent Storage, Stateful Applications
+Tags: Talos Linux, Kubernetes, StatefulSets, Persistent Storage, Stateful Applications
 
 Description: A complete guide to deploying and managing StatefulSets on Talos Linux for stateful applications like databases and message queues.
 

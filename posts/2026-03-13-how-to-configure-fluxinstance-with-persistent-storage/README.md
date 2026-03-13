@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, flux-operator, fluxinstance, persistent-storage, kubernetes, gitops
+Tags: Flux, Flux-Operator, FluxInstance, Persistent-Storage, Kubernetes, GitOps
 
 Description: Learn how to configure a FluxInstance custom resource with persistent storage to preserve Flux source artifacts across pod restarts.
 
@@ -94,7 +94,7 @@ kubectl get pvc -n flux-system
 
 You should see output similar to:
 
-```
+```bash
 NAME                    STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
 flux-source-artifacts   Bound    pvc-a1b2c3d4-e5f6-7890-abcd-ef1234567890   10Gi       RWO            standard       2m
 ```
@@ -107,7 +107,7 @@ kubectl describe pod -n flux-system -l app=source-controller
 
 Look for the volume mount in the output:
 
-```
+```text
 Mounts:
   /data from source-artifacts (rw)
 ```

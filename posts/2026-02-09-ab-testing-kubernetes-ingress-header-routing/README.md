@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, A/B Testing, Ingress
+Tags: Kubernetes, A/B Testing, Ingresses
 
 Description: Learn how to implement A/B testing in Kubernetes using Ingress header-based routing to direct specific users to experimental versions while keeping the majority on stable releases.
 

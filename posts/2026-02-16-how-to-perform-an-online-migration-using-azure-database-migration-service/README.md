@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Database Migration, Online Migration, DMS, Azure Database Migration Service, Zero Downtime, SQL Server
+Tags: Azure, Database Migrations, Online Migration, DMS, Azure Database Migration Service, Zero Downtime, SQL Server
 
 Description: Learn how to perform an online (near-zero downtime) database migration using Azure Database Migration Service with continuous data sync.
 

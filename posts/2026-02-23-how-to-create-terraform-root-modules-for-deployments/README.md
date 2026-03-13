@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Modules, Deployment, Infrastructure as Code, DevOps
+Tags: Terraform, Modules, Deployments, Infrastructure as Code, DevOps
 
 Description: A practical guide to structuring Terraform root modules for real-world deployments with proper state management, variable handling, and environment separation.
 

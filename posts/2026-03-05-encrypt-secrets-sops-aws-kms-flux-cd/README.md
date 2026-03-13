@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Secret, SOPS, AWS KMS, Encryption
+Tags: Flux CD, GitOps, Kubernetes, Secrets, SOPS, AWS KMS, Encryption
 
 Description: Learn how to encrypt Kubernetes secrets using SOPS with AWS KMS for cloud-native secret management in Flux CD GitOps workflows.
 

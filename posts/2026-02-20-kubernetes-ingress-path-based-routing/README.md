@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingress, Routing, Path-Based, Networking
+Tags: Kubernetes, Ingresses, Routing, Path-Based, Networking
 
 Description: Learn how to configure path-based routing in Kubernetes Ingress to route traffic to different services based on URL paths.
 

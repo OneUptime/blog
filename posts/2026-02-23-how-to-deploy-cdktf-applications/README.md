@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, CDKTF, Deployment, Infrastructure as Code, DevOps
+Tags: Terraform, CDKTF, Deployments, Infrastructure as Code, DevOps
 
 Description: A comprehensive guide to deploying CDKTF applications covering synthesis, planning, applying, and managing the full deployment lifecycle.
 

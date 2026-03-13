@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, WebAssembly, WASM, Deployment, Envoy, Kubernetes
+Tags: Istio, WebAssembly, WASM, Deployments, Envoy, Kubernetes
 
 Description: A practical guide covering different methods of deploying WebAssembly plugins to Istio proxies including OCI registries, HTTP, and local files.
 

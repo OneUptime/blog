@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Sidecar, Ingress, Envoy, Kubernetes, Service Mesh
+Tags: Istio, Sidecar, Ingresses, Envoy, Kubernetes, Service Mesh
 
 Description: Configure Istio Sidecar ingress listeners to control how workloads receive inbound traffic with custom ports, protocols, and TLS termination.
 

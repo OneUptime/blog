@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Canary Deployment, Release, DevOps, Reliability, Cloud Native
+Tags: Kubernetes, Canary Deployments, Releases, DevOps, Reliability, Cloud Native
 
 Description: Learn what canary deployments are, why they're essential for safe releases, and how to implement them in Kubernetes using native features and Istio for traffic splitting.
 

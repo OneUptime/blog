@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, StatefulSet, Database, Stateful Applications, Storage, DevOps
+Tags: Kubernetes, StatefulSets, Database, Stateful Applications, Storage, DevOps
 
 Description: Learn how to configure Kubernetes StatefulSets for stateful applications like databases and message queues.
 

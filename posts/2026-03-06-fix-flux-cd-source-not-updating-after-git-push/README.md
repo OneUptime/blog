@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitRepository, Kubernetes, Troubleshooting, GitOps, Webhook, Reconciliation, Source Controller
+Tags: Flux CD, GitRepository, Kubernetes, Troubleshooting, GitOps, Webhooks, Reconciliation, Source Controller
 
 Description: A practical guide to fixing Flux CD when it does not pick up new Git commits after pushing, covering reconciliation intervals, webhook configuration, caching issues, and manual force reconciliation.
 

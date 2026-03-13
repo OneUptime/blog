@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, Helm, Kubernetes, Charts, DevOps, Package Management, Deployment, Lightweight Kubernetes
+Tags: K3s, Helm, Kubernetes, Charts, DevOps, Package Management, Deployments, Lightweight Kubernetes
 
 Description: A practical guide to deploying applications on K3s using Helm charts, covering installation, repository management, chart customization, and production deployment patterns.
 

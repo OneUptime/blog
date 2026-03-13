@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, DNS, Deployment
+Tags: ArgoCD, GitOps, Kubernetes, DNS, Deployments
 
 Description: Learn how to handle DNS propagation delays during ArgoCD deployments including service discovery, external DNS integration, and strategies for zero-downtime DNS transitions.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Deployment, Blue-Green, DevOps, Zero Downtime, Release Management
+Tags: Deployments, Blue-Green, DevOps, Zero Downtime, Release Management
 
 Description: Implement blue-green deployments for zero-downtime releases with traffic switching, database migration strategies, and rollback procedures.
 

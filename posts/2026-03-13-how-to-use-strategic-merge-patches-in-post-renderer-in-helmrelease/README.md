@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderer, Strategic Merge Patch, Kustomize
+Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderers, Strategic Merge Patch, Kustomize
 
 Description: Learn how to use strategic merge patches in Flux HelmRelease post-renderers to customize Helm chart resources without modifying the chart.
 

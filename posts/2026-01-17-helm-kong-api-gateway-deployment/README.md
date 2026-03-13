@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, Kong, API Gateway, Ingress, Traffic Management
+Tags: Helm, Kubernetes, DevOps, Kong, API Gateway, Ingresses, Traffic Management
 
 Description: Complete guide to deploying Kong API Gateway on Kubernetes using Helm charts for advanced API management, traffic routing, and security.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, PersistentVolumeClaim, Storage, Infrastructure as Code
+Tags: Terraform, Kubernetes, PersistentVolumeClaims, Storage, Infrastructure as Code
 
 Description: How to create Kubernetes PersistentVolumeClaims with Terraform to request and consume persistent storage in your cluster workloads.
 

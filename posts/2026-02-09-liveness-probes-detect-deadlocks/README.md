@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Health Check, Deadlock
+Tags: Kubernetes, Health Checks, Deadlock
 
 Description: Configure liveness probes with heartbeat mechanisms to detect deadlocked application threads and goroutines.
 

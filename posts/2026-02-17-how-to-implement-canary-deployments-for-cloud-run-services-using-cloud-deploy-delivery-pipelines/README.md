@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Cloud Run, Cloud Deploy, Canary Deployment, CI/CD, Traffic Splitting
+Tags: GCP, Cloud Run, Cloud Deploy, Canary Deployments, CI/CD, Traffic Splitting
 
 Description: Learn how to set up canary deployments for Cloud Run services using Cloud Deploy delivery pipelines with gradual traffic shifting and automated rollback capabilities.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Ansible, Vault, Secret, Security, Linux
+Tags: RHEL, Ansible, Vault, Secrets, Security, Linux
 
 Description: Securely manage passwords, API keys, and sensitive data in your Ansible playbooks using Ansible Vault encryption on RHEL.
 

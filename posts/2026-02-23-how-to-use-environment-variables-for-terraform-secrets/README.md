@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Security, Environment Variables, Secret, DevOps
+Tags: Terraform, Security, Environment Variables, Secrets, DevOps
 
 Description: Learn how to properly use environment variables to pass secrets to Terraform without exposing them in code, state, or logs.
 

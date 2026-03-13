@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Angular, Azure, Static Web Apps, Azure Functions, Deployment, TypeScript, API
+Tags: Angular, Azure, Static Web Apps, Azure Functions, Deployments, TypeScript, API
 
 Description: Deploy an Angular application with an Azure Functions API backend to Azure Static Web Apps with automatic CI/CD and staging environments.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flagger, istio, virtualservice, traffic routing, canary, kubernetes, progressive delivery, service mesh
+Tags: Flagger, Istio, VirtualService, Traffic Routing, Canary, Kubernetes, Progressive Delivery, Service Mesh
 
 Description: Learn how Flagger manages Istio VirtualService resources for canary traffic routing and how to customize routing configuration.
 

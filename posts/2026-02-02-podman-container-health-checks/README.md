@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Containers, Health Check, DevOps, Monitoring, Linux, Orchestration
+Tags: Podman, Containers, Health Checks, DevOps, Monitoring, Linux, Orchestration
 
 Description: A hands-on guide to implementing container health checks in Podman, covering HEALTHCHECK instructions, custom scripts, systemd integration, and production monitoring strategies.
 

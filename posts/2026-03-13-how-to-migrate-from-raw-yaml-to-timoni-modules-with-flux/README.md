@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, kubernetes, gitops, timoni, migration, yaml
+Tags: Flux, Kubernetes, GitOps, Timoni, Migration, YAML
 
 Description: A practical guide to migrating existing raw YAML Flux configurations to Timoni modules for better maintainability and type safety.
 
@@ -257,7 +257,7 @@ timoni apply prod-frontend oci://ghcr.io/stefanprodan/modules/flux-git-sync \
 
 Establish a directory structure for your Timoni values:
 
-```
+```text
 fleet-config/
   modules/
     frontend/

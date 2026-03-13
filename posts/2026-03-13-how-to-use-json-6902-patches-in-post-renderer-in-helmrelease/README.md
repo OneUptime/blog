@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderer, JSON Patch, RFC 6902
+Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderers, JSON Patch, RFC 6902
 
 Description: Learn how to use JSON 6902 patches in Flux HelmRelease post-renderers to precisely modify Helm chart output.
 

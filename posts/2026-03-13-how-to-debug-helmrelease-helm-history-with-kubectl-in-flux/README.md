@@ -69,7 +69,7 @@ helm history my-app -n default
 
 This outputs a table showing all revisions:
 
-```
+```text
 REVISION  UPDATED                   STATUS      CHART          APP VERSION  DESCRIPTION
 1         2026-03-10 10:00:00       superseded  my-app-1.0.0   1.0.0       Install complete
 2         2026-03-11 14:30:00       superseded  my-app-1.1.0   1.1.0       Upgrade complete

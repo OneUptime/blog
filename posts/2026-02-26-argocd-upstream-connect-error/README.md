@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Ingress
+Tags: ArgoCD, GitOps, Kubernetes, Troubleshooting, Ingresses
 
 Description: Diagnose and fix the common 'upstream connect error or disconnect/reset before headers' error when accessing ArgoCD through an ingress controller.
 

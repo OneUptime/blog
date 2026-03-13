@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, DMS, Database Migration Service, RDS, Aurora, Database Migration
+Tags: AWS, DMS, Database Migration Service, RDS, Aurora, Database Migrations
 
 Description: Learn how to migrate databases to AWS using the Database Migration Service with continuous replication and minimal downtime for production workloads.
 

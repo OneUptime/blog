@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Compute Engine, Canary Deployment, Instance Groups, Rolling Updates
+Tags: GCP, Compute Engine, Canary Deployments, Instance Groups, Rolling Updates
 
 Description: Learn how to use managed instance groups with multiple instance templates to implement canary deployments on GCP Compute Engine for safe, gradual rollouts.
 

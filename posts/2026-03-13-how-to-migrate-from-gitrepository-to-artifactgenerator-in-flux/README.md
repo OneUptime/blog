@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: flux, fluxcd, artifactgenerator, gitrepository, migration, gitops, kubernetes
+Tags: Flux, fluxcd, artifactgenerator, GitRepository, Migration, GitOps, Kubernetes
 
 Description: A step-by-step guide for migrating existing Flux GitRepository-based workflows to ArtifactGenerator for improved path-based filtering.
 

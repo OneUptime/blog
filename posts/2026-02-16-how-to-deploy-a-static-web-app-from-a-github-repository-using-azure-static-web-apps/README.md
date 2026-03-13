@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Static Web Apps, GitHub, CI/CD, Deployment, Web Development, Cloud
+Tags: Azure, Static Web Apps, GitHub, CI/CD, Deployments, Web Development, Cloud
 
 Description: Step-by-step instructions for deploying a static web application directly from a GitHub repository using Azure Static Web Apps with automatic CI/CD.
 

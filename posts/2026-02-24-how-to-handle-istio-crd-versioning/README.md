@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, CRD, Kubernetes, API Versioning, Service Mesh
+Tags: Istio, CRDs, Kubernetes, API Versioning, Service Mesh
 
 Description: How to manage Istio Custom Resource Definition versioning, understand API version changes, and keep your configuration compatible across Istio upgrades.
 

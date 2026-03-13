@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Traffic Management, Shadow, Testing, Deployment
+Tags: Traffic Management, Shadow, Testing, Deployments
 
 Description: Learn how to implement shadow routing for traffic mirroring and testing.
 

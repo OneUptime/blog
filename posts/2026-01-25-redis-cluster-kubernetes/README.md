@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Redis, Kubernetes, Redis Cluster, StatefulSet, High Availability, DevOps, Helm
+Tags: Redis, Kubernetes, Redis Cluster, StatefulSets, High Availability, DevOps, Helm
 
 Description: A step-by-step guide to deploying a production-ready Redis Cluster on Kubernetes. Covers StatefulSets, persistent storage, cluster initialization, and operational best practices.
 

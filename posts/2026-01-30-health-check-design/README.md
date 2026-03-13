@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: High Availability, Health Check, Kubernetes, Load Balancing
+Tags: High Availability, Health Checks, Kubernetes, Load Balancing
 
 Description: Learn how to design effective health checks for high availability systems.
 

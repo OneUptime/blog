@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Draft, Kubernetes, Scaffolding, Deployment, DevOps, Azure
+Tags: AKS, Draft, Kubernetes, Scaffolding, Deployments, DevOps, Azure
 
 Description: Learn how to use the AKS Draft tool to automatically generate Dockerfiles, Kubernetes manifests, and GitHub Actions workflows for your applications.
 

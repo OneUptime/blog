@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Gateway API, Traffic Splitting, Kubernetes, Deployment
+Tags: Istio, Gateway API, Traffic Splitting, Kubernetes, Deployments
 
 Description: Learn how to configure traffic splitting with the Kubernetes Gateway API and Istio for blue-green deployments, A/B testing, percentage-based rollouts, and traffic mirroring alternatives.
 

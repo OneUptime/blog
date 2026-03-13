@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, SQL Managed Instance, Database Migration, Azure SQL, Cloud Migration
+Tags: Azure, SQL Managed Instance, Database Migrations, Azure SQL, Cloud Migration
 
 Description: A practical guide to migrating your databases from Azure SQL Database to Azure SQL Managed Instance with minimal downtime and data loss.
 
