@@ -9,7 +9,8 @@
     "fix": "npx ts-node src/scripts/fix-blogs.ts",
     "build": "tsc",
     "generate-social-image:js": "node dist/scripts/generate-social-image.js",
-    "validate:js": "node dist/scripts/validate-blogs.js"
+    "validate:js": "node dist/scripts/validate-blogs.js",
+    "count": "echo \"Total blogs: $(node -e \"console.log(require('./Blogs.json').length)\")\""
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65"
