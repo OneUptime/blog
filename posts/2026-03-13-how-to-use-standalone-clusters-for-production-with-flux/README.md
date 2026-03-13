@@ -46,7 +46,7 @@ Each production cluster operates independently. A failure in one region has zero
 
 Each production cluster gets a dedicated path in the repository:
 
-```
+```text
 fleet-repo/
 ├── clusters/
 │   ├── production-us-east/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: K3s, Kubernetes, Production, High Availability, DevOps, Infrastructure
+Tags: k3s, Kubernetes, Production, High Availability, DevOps, Infrastructure
 
 Description: A comprehensive guide to deploying K3s in production with high availability, security hardening, external databases, TLS configuration, and operational best practices.
 

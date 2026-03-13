@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Gateway API, CRDs
+Tags: Kubernetes, Gateway API, CRD
 
 Description: Learn how to install and configure Gateway API Custom Resource Definitions in your Kubernetes cluster as the foundation for modern ingress management.
 

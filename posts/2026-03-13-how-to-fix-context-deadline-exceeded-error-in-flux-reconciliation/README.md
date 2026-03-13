@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, Reconciliation, Timeout, Performance
 
-Description: Learn how to diagnose and fix the "context deadline exceeded" timeout error during Flux CD reconciliation of Kustomizations and HelmReleases.
+Description: Learn how to diagnose and fix the 'context deadline exceeded' timeout error during Flux CD reconciliation of Kustomizations and HelmReleases.
 
 ---
 
 A common error encountered when running Flux CD is:
 
-```
+```text
 Reconciliation failed after 5m0s, next try in 10m0s: context deadline exceeded
 ```
 
 or in more detail from the controller logs:
 
-```
+```text
 kustomize controller: failed to reconcile kustomization 'flux-system/my-app': context deadline exceeded
 ```
 

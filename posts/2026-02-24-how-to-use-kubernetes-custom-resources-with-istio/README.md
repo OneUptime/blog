@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Custom Resources, CRDs, Service Mesh
+Tags: Istio, Kubernetes, Custom Resources, CRD, Service Mesh
 
 Description: A hands-on guide to understanding and working with Istio's Custom Resource Definitions including VirtualService, DestinationRule, Gateway, and more.
 

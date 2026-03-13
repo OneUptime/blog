@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Kubernetes, CRDs, Exporter, Observability
+Tags: Prometheus, Kubernetes, CRD, Exporter, Observability
 
 Description: Learn how to build a Prometheus exporter that monitors Kubernetes Custom Resource Definition status fields and exposes them as metrics for alerting and visualization.
 

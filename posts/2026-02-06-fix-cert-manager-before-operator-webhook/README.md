@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, cert-manager, Operator, Webhooks
+Tags: OpenTelemetry, Cert-Manager, Operator, Webhook
 
 Description: Fix webhook TLS errors caused by installing the OpenTelemetry Operator before cert-manager is properly configured.
 

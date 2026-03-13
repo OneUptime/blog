@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Security, Security Contexts, Container Hardening
+Tags: Docker, Security, Security Context, Container Hardening
 
 Description: Learn to implement Docker security context with user namespaces, capabilities, seccomp profiles, and AppArmor for hardened containers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, TLS, Self-Signed Certificates, Ca bundle, GitOps, Kubernetes, Troubleshooting, cert-manager
+Tags: Flux CD, TLS, Self-Signed Certificates, CA Bundle, GitOps, Kubernetes, Troubleshooting, Cert-Manager
 
 Description: A step-by-step guide to resolving TLS certificate verification errors in Flux CD when working with self-signed certificates, private CAs, and TLS-intercepting proxies.
 

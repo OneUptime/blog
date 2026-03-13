@@ -57,7 +57,7 @@ The key to running both tools successfully is a clear boundary. Here is a recomm
 
 ## Repository Structure
 
-```
+```text
 fleet-repo/
 ├── infrastructure/
 │   ├── flux-managed/

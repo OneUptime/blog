@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, Edge Computing, Kubernetes, IoT, DevOps, ARM, Lightweight Kubernetes
+Tags: k3s, Edge Computing, Kubernetes, IoT, DevOps, ARM, Lightweight Kubernetes
 
 Description: A practical guide to leveraging K3s for edge computing scenarios.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, cert-manager, TLS, Security
+Tags: Kubernetes, Cert-Manager, TLS, Security
 
 Description: Learn how to configure certificate chain validation, trust anchors, and intermediate certificates in cert-manager to ensure proper TLS certificate verification in Kubernetes.
 

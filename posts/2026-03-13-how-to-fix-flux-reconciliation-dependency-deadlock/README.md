@@ -18,7 +18,7 @@ Multiple Kustomizations are stuck in `Not Ready` or `Progressing` state, all wai
 flux get kustomizations
 ```
 
-```
+```text
 NAME            REVISION    SUSPENDED   READY     MESSAGE
 kustomization-a             False       False     dependency 'flux-system/kustomization-b' is not ready
 kustomization-b             False       False     dependency 'flux-system/kustomization-c' is not ready

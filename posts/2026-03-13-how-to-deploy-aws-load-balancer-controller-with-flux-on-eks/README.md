@@ -21,7 +21,7 @@ The AWS Load Balancer Controller is a Kubernetes controller that manages AWS Ela
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   └── production/

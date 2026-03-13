@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Raspberry Pi, ARM64, K3s, Edge Computing
+Tags: Flux CD, GitOps, Kubernetes, Raspberry Pi, ARM64, k3s, Edge Computing
 
 Description: A complete guide to installing and running Flux CD on a Raspberry Pi Kubernetes cluster using K3s, with ARM64-specific considerations and resource optimizations.
 

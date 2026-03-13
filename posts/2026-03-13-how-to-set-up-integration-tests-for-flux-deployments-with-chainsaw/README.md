@@ -63,7 +63,7 @@ The longer assert timeout accounts for Flux reconciliation time.
 
 Create a test directory structure:
 
-```
+```text
 tests/
   flux-kustomization/
     chainsaw-test.yaml
@@ -155,7 +155,7 @@ Chainsaw will apply the resources, wait for the assertions to pass, and report t
 
 Create a test for a HelmRelease:
 
-```
+```text
 tests/
   flux-helmrelease/
     chainsaw-test.yaml

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Troubleshooting, Notification Controller, Pod Crashes, Alerts, Webhooks
+Tags: Flux, Kubernetes, GitOps, Troubleshooting, Notification Controller, Pod Crashes, Alerts, Webhook
 
 Description: Learn how to diagnose and fix Notification Controller pod crashes in Flux, including webhook endpoint failures, excessive event volumes, and configuration errors.
 

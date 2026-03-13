@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, Kubernetes, Multi-Cluster, Edge Computing, DevOps, GitOps, Infrastructure
+Tags: k3s, Kubernetes, Multi-Cluster, Edge Computing, DevOps, GitOps, Infrastructure
 
 Description: A practical guide to deploying and managing multiple K3s clusters across data centers, edge locations, and cloud environments.
 

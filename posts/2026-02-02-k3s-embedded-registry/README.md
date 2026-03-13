@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: K3s, Kubernetes, Container Registry, DevOps, Docker, Private Registry, Edge Computing
+Tags: k3s, Kubernetes, Container Registry, DevOps, Docker, Private Registry, Edge Computing
 
 Description: A practical guide to configuring the K3s embedded registry for local container image storage.
 

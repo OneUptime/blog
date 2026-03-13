@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Repository Structure, Kustomize, Environments
+Tags: Flux, Kubernetes, GitOps, Repository Structure, Kustomize, Environment
 
 Description: Learn how to organize a Flux repository to manage multiple environments like staging and production on a single Kubernetes cluster.
 
@@ -23,7 +23,7 @@ This pattern is appropriate when you have:
 
 ## Recommended Directory Structure
 
-```
+```text
 fleet-repo/
   clusters/
     my-cluster/

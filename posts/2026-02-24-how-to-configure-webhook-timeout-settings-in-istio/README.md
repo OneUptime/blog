@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Webhooks, Kubernetes, Timeout, Configuration
+Tags: Istio, Webhook, Kubernetes, Timeout, Configuration
 
 Description: How to configure and tune timeout settings for Istio mutating and validating webhooks to prevent pod creation failures and configuration rejections.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Grafana, Alerting, Contact Points, Notifications, Monitoring, Observability, Webhooks, Slack
+Tags: Grafana, Alerting, Contact Points, Notifications, Monitoring, Observability, Webhook, Slack
 
 Description: A hands-on guide to building and configuring Grafana alerting contact points.
 

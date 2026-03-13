@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Storage, PersistentVolumes, Repository Structure
+Tags: Flux, Kubernetes, GitOps, Storage, PersistentVolume, Repository Structure
 
 Description: Learn how to structure your Flux repository to ensure StorageClasses and CSI drivers are deployed before PersistentVolumeClaims that depend on them.
 
@@ -14,7 +14,7 @@ Kubernetes PersistentVolumeClaims (PVCs) reference StorageClasses to dynamically
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   └── production/

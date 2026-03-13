@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, GitLab, Webhooks
+Tags: Flux, Kubernetes, GitOps, Receiver, GitLab, Webhook
 
 Description: Learn how to configure a Flux Receiver for GitLab push events to enable instant reconciliation when code is pushed to your GitLab repositories.
 

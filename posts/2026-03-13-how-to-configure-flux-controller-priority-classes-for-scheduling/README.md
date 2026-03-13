@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Performance, Priority Classes, Scheduling, Controllers
+Tags: Flux, Kubernetes, GitOps, Performance, Priority Classes, Scheduling, Controller
 
 Description: Assign Kubernetes priority classes to Flux controllers to ensure they are scheduled before application workloads and protected from eviction.
 

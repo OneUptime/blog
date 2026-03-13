@@ -18,7 +18,7 @@ After a namespace is deleted, Flux may show various error states:
 flux get kustomizations
 ```
 
-```
+```text
 NAME        REVISION              SUSPENDED   READY   MESSAGE
 my-app      main@sha1:abc123      False       False   namespace "production" not found
 ```

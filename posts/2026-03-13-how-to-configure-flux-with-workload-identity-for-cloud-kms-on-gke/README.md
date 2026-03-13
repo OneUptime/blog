@@ -47,7 +47,7 @@ gcloud kms keys create sops-key \
 
 Note the full resource name of the key, which you will need for SOPS configuration:
 
-```
+```bash
 projects/my-project/locations/global/keyRings/flux-sops/cryptoKeys/sops-key
 ```
 

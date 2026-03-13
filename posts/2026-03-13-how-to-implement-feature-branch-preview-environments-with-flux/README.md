@@ -18,7 +18,7 @@ The approach uses a CI pipeline to generate Flux Kustomization manifests for eac
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   └── preview/

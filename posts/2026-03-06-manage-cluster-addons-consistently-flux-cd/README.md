@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Cluster addons, Multi-Cluster, GitOps, Kubernetes, Helm, Infrastructure
+Tags: Flux CD, Cluster Addons, Multi-Cluster, GitOps, Kubernetes, Helm, Infrastructure
 
 Description: A practical guide to managing cluster addons like cert-manager, ingress controllers, monitoring stacks, and more consistently across all clusters using Flux CD.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, controller-gen, CRDs, RBAC
+Tags: Kubernetes, controller-gen, CRD, RBAC
 
 Description: Learn how to use controller-gen to automatically generate Custom Resource Definitions, RBAC roles, and webhooks from annotated Go types in Kubernetes operators.
 

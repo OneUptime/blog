@@ -21,7 +21,7 @@ The AWS EFS CSI driver enables Kubernetes workloads to use Amazon Elastic File S
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   └── production/

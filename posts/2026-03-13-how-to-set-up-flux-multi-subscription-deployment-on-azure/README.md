@@ -26,7 +26,7 @@ This guide covers the architecture, repository structure, identity configuration
 
 A well-organized repository is critical for multi-subscription deployments. Use a structure that separates base configurations from cluster-specific overlays:
 
-```
+```text
 fleet-infra/
   base/
     infrastructure/

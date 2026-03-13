@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRDs, Validation
+Tags: Kubernetes, CRD, Validation
 
 Description: Master Common Expression Language validation rules in Kubernetes Custom Resource Definitions to enforce complex field constraints, improve data integrity, and reduce webhook complexity.
 

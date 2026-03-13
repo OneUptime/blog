@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Canary, Webhooks, Confirm-Rollout, Kubernetes, Progressive Delivery, Gates
+Tags: Flagger, Canary, Webhook, Confirm-Rollout, Kubernetes, Progressive Delivery, Gates
 
 Description: Learn how to configure a confirm-rollout webhook in Flagger to add manual or automated approval gates before a canary deployment begins.
 

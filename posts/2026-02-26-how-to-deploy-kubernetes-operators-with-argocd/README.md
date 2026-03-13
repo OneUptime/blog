@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Operator, CRDs
+Tags: ArgoCD, GitOps, Kubernetes, Operator, CRD
 
 Description: Learn how to deploy Kubernetes Operators with ArgoCD using GitOps principles, including CRD management, sync waves, and health checks for operator lifecycle management.
 

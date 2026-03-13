@@ -98,7 +98,7 @@ flux events --for kustomization/test-apps -n flux-system --watch
 
 You will see events like:
 
-```
+```text
 Deployment/default/my-app configured (server dry run)
 ```
 

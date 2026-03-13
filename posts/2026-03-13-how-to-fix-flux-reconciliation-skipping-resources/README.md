@@ -18,7 +18,7 @@ Reconciliation shows as `Ready` and `True`, but specific resources are missing f
 flux get kustomization my-app
 ```
 
-```
+```text
 NAME        REVISION              SUSPENDED   READY   MESSAGE
 my-app      main@sha1:abc123      False       True    Applied revision: main@sha1:abc123
 ```
@@ -29,7 +29,7 @@ But when you check for expected resources:
 kubectl get deployment my-new-service -n production
 ```
 
-```
+```text
 Error from server (NotFound): deployments.apps "my-new-service" not found
 ```
 

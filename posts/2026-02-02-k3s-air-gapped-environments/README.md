@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, Kubernetes, Air-Gapped, Security, DevOps, Edge Computing, Offline, Container Registry
+Tags: k3s, Kubernetes, Air-Gapped, Security, DevOps, Edge Computing, Offline, Container Registry
 
 Description: A practical guide to deploying and managing K3s clusters in air-gapped environments where internet access is restricted or unavailable, covering image mirroring, private registries.
 

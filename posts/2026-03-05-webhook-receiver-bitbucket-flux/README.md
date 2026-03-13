@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Webhooks, Bitbucket, Receiver
+Tags: Flux CD, GitOps, Kubernetes, Webhook, Bitbucket, Receiver
 
 Description: Learn how to configure a Flux Receiver to accept Bitbucket webhooks and trigger immediate reconciliation on push events.
 

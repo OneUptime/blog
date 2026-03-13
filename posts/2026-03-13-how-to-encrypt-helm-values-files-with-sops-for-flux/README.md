@@ -190,7 +190,7 @@ Each secret can be encrypted with different keys if needed.
 
 A recommended directory structure for this pattern:
 
-```
+```text
 apps/
   myapp/
     kustomization.yaml

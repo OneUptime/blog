@@ -2,27 +2,27 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, Kustomization, Resource Quotas, Capacity Planning
+Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, Kustomization, Resource Quota, Capacity Planning
 
-Description: Learn how to diagnose and fix the "quota exceeded" error in Flux Kustomization when resource creation is blocked by Kubernetes ResourceQuota limits.
+Description: Learn how to diagnose and fix the 'quota exceeded' error in Flux Kustomization when resource creation is blocked by Kubernetes ResourceQuota limits.
 
 ---
 
 When Flux attempts to create or update resources in a namespace with resource quotas, you may encounter:
 
-```
+```text
 kustomize controller: failed to reconcile kustomization 'flux-system/my-app': failed to create resource: forbidden: exceeded quota: default-quota, requested: requests.cpu=500m, used: requests.cpu=1800m, limited: requests.cpu=2
 ```
 
 or:
 
-```
+```text
 forbidden: exceeded quota: resource-quota, requested: pods=1, used: pods=10, limited: pods=10
 ```
 
 or:
 
-```
+```text
 forbidden: exceeded quota: storage-quota, requested: requests.storage=50Gi, used: requests.storage=90Gi, limited: requests.storage=100Gi
 ```
 

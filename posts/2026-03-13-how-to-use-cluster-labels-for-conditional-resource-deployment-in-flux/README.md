@@ -97,7 +97,7 @@ spec:
 
 Organize resources by feature or capability rather than by cluster name. This makes it easy to compose different sets of resources based on labels:
 
-```
+```text
 fleet-repo/
 ├── infrastructure/
 │   ├── base/

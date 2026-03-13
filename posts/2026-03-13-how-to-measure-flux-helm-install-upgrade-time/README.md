@@ -16,7 +16,7 @@ Helm install and upgrade operations are among the most time-consuming steps in a
 
 ### HelmRelease Reconciliation Duration
 
-```
+```promql
 gotk_reconcile_duration_seconds_bucket{kind="HelmRelease"}
 gotk_reconcile_duration_seconds_sum{kind="HelmRelease"}
 gotk_reconcile_duration_seconds_count{kind="HelmRelease"}
@@ -26,7 +26,7 @@ This captures the full reconciliation duration including chart download, templat
 
 ### Controller Runtime Metrics
 
-```
+```promql
 controller_runtime_reconcile_time_seconds_bucket{controller="helmrelease"}
 ```
 

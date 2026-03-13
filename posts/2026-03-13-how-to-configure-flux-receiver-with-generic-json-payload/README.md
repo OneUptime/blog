@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Webhooks, Generic, JSON, CI/CD
+Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Generic, JSON, CI/CD
 
 Description: Learn how to configure a Flux Receiver with the generic type to accept JSON webhook payloads from any CI/CD system or custom automation tool.
 

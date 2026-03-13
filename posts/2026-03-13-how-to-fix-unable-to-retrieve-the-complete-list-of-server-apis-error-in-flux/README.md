@@ -2,21 +2,21 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, API Server, CRDs, API Discovery
+Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, API Server, CRD, API Discovery
 
-Description: Learn how to diagnose and fix the "unable to retrieve the complete list of server APIs" error in Flux caused by broken API service registrations or missing CRDs.
+Description: Learn how to diagnose and fix the 'unable to retrieve the complete list of server APIs' error in Flux caused by broken API service registrations or missing CRDs.
 
 ---
 
 When Flux attempts to reconcile resources, you may encounter:
 
-```
+```text
 kustomize controller: failed to reconcile kustomization 'flux-system/my-app': unable to retrieve the complete list of server APIs: metrics.k8s.io/v1beta1: the server is currently unable to handle the request
 ```
 
 or:
 
-```
+```text
 unable to retrieve the complete list of server APIs: custom.metrics.k8s.io/v1beta1: an error on the server ("") has prevented the request from succeeding
 ```
 

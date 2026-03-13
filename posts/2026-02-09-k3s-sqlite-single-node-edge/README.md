@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, K3s, Edge Computing
+Tags: Kubernetes, k3s, Edge Computing
 
 Description: Learn how to deploy K3s with SQLite storage for lightweight single-node edge deployments, perfect for resource-constrained environments like IoT gateways and remote monitoring stations.
 

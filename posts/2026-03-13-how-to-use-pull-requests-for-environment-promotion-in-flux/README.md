@@ -16,7 +16,7 @@ Pull request-based promotion provides code review, approval gates, CI validation
 
 The key to PR-based promotion is using separate branches for each environment:
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   ├── staging/

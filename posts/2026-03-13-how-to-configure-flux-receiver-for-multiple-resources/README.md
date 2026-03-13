@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Webhooks, Configuration, Multi-Resource
+Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Configuration, Multi-Resource
 
 Description: Learn how to configure a single Flux Receiver to trigger reconciliation of multiple GitRepositories, HelmRepositories, Kustomizations, and other Flux resources simultaneously.
 

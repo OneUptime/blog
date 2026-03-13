@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Webhooks, Ingress, Nginx, Networking
+Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Ingress, NGINX, Networking
 
 Description: Learn how to expose the Flux notification-controller Receiver endpoint behind a Kubernetes Ingress controller so external services like GitHub and GitLab can trigger reconciliation.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Prometheus, Kubernetes, ServiceMonitor, Monitoring, CRDs
+Tags: Prometheus, Kubernetes, ServiceMonitor, Monitoring, CRD
 
 Description: Master the Prometheus ServiceMonitor Custom Resource Definition to automatically discover and scrape metrics from your Kubernetes services.
 

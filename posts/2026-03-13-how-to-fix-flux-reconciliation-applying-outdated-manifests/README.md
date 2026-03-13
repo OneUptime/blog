@@ -18,7 +18,7 @@ Your Git repository has new commits, but Flux shows an old revision:
 flux get sources git
 ```
 
-```
+```text
 NAME        REVISION              SUSPENDED   READY   MESSAGE
 my-repo     main@sha1:old123      False       True    stored artifact for revision 'main@sha1:old123'
 ```

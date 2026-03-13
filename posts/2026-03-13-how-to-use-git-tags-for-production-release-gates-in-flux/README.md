@@ -18,7 +18,7 @@ The strategy is straightforward: staging tracks a branch (like `main`) and autom
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   ├── staging/

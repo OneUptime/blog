@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, K3s, Traefik, Edge Computing, API Gateway
+Tags: Kubernetes, k3s, Traefik, Edge Computing, API Gateway
 
 Description: Learn how to configure K3s with Traefik as an edge API gateway with built-in rate limiting for resource-constrained environments and edge deployments.
 

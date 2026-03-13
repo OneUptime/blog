@@ -23,7 +23,7 @@ By keeping these separate, you can deploy the same application to multiple clust
 
 ## Recommended Directory Structure
 
-```
+```text
 fleet-repo/
   clusters/
     staging/

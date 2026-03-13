@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, Kubernetes, DevOps, cert-manager, TLS, SSL, Let's Encrypt
+Tags: Helm, Kubernetes, DevOps, Cert-Manager, TLS, SSL, Let's Encrypt
 
 Description: Complete guide to deploying cert-manager on Kubernetes using Helm for automated TLS certificate management with Let's Encrypt and other issuers.
 

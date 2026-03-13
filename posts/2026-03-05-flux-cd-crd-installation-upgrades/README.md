@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, CRDs, Custom Resource Definitions, Dependencies
+Tags: Flux CD, GitOps, Kubernetes, CRD, Custom Resource Definitions, Dependencies
 
 Description: A guide to managing Custom Resource Definition lifecycle with Flux CD, covering installation ordering, dependency management with dependsOn, and safe upgrade strategies.
 

@@ -14,7 +14,7 @@ Kustomize components are reusable pieces of configuration that can be selectivel
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   ├── staging/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Bitbucket, Webhooks
+Tags: Flux, Kubernetes, GitOps, Receiver, Bitbucket, Webhook
 
 Description: Learn how to configure a Flux Receiver for Bitbucket push events to trigger immediate reconciliation when code is pushed to Bitbucket repositories.
 

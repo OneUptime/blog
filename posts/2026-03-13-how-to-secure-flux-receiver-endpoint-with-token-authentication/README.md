@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Webhooks, Security, Authentication, Token
+Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Security, Authentication, Token
 
 Description: A comprehensive guide to securing Flux Receiver webhook endpoints with HMAC token authentication for GitHub, GitLab, Bitbucket, and generic webhook providers.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, TLS, cert-manager, Let's Encrypt, Security
+Tags: Kubernetes, TLS, Cert-Manager, Let's Encrypt, Security
 
 Description: Learn how to set up automatic TLS certificate management in Kubernetes using cert-manager and Let's Encrypt.
 

@@ -78,7 +78,7 @@ In your Kustomize overlay, reference the encrypted patch. However, Kustomize its
 
 Structure your overlay:
 
-```
+```text
 overlays/
   production/
     kustomization.yaml
@@ -165,7 +165,7 @@ resources:
 
 A best practice is to separate sensitive values into dedicated patch files:
 
-```
+```text
 overlays/
   production/
     kustomization.yaml

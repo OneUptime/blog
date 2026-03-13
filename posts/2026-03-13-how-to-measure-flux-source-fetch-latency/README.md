@@ -18,7 +18,7 @@ The source-controller exposes several Prometheus metrics that help you understan
 
 ### Reconciliation Duration by Kind
 
-```
+```promql
 gotk_reconcile_duration_seconds_bucket{kind="GitRepository"}
 gotk_reconcile_duration_seconds_bucket{kind="HelmRepository"}
 gotk_reconcile_duration_seconds_bucket{kind="HelmChart"}

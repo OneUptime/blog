@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AKS, Kubernetes, Pod Security, Security Contexts, Azure, Container Security, Admission Controller
+Tags: AKS, Kubernetes, Pod Security, Security Context, Azure, Container Security, Admission Controller
 
 Description: Learn how to implement the Pod Security Admission controller on AKS to enforce restricted security contexts and harden your cluster workloads.
 

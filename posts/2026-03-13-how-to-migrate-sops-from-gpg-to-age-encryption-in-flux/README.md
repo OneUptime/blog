@@ -33,7 +33,7 @@ age-keygen -o age.agekey
 
 This outputs something like:
 
-```
+```bash
 # created: 2026-03-13T10:00:00Z
 # public key: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 AGE-SECRET-KEY-1QFZN...

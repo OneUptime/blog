@@ -123,7 +123,7 @@ spec:
 
 Structure your manifests in the bucket so Flux can apply them with Kustomize. A typical layout:
 
-```
+```bash
 gs://my-flux-manifests/
   app/
     kustomization.yaml

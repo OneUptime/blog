@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, Webhooks, Notifications
+Tags: ArgoCD, GitOps, Kubernetes, Webhook, Notifications
 
 Description: Learn how to configure ArgoCD webhook notifications to send deployment events to any HTTP endpoint, enabling custom integrations and event-driven automation.
 

@@ -35,7 +35,7 @@ graph TD
 
 This is the most common and well-tested structure for Flux multi-cluster setups:
 
-```
+```text
 fleet-repo/
 ├── apps/
 │   ├── base/
@@ -298,7 +298,7 @@ There are two common branch strategies for multi-cluster setups:
 
 Use a single `main` branch with path-based separation. Each cluster points to a different path in the same branch.
 
-```
+```text
 main branch:
   clusters/staging/     -> staging cluster
   clusters/production/  -> production cluster
@@ -308,7 +308,7 @@ main branch:
 
 Use separate branches for each environment. Changes promote through branch merges.
 
-```
+```text
 staging branch    -> staging cluster
 production branch -> production cluster
 ```

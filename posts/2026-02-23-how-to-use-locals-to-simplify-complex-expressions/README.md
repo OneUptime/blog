@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Locals, Infrastructure as Code, Best Practices
+Tags: Terraform, HCL, Local, Infrastructure as Code, Best Practices
 
 Description: Learn how to use Terraform locals to break down complex expressions into readable, named components that make your infrastructure code easier to understand and maintain.
 

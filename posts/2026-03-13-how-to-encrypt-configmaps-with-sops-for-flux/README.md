@@ -201,7 +201,7 @@ envFrom:
 
 A recommended layout for mixed configuration:
 
-```
+```text
 config/
   kustomization.yaml
   plain-configmap.yaml          # Not encrypted

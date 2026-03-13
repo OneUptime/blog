@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, Source Controller, Networking, DNS
 
-Description: Learn how to diagnose and fix the "connection refused" error in the Flux source-controller when it cannot reach Git repositories or Helm registries.
+Description: Learn how to diagnose and fix the 'connection refused' error in the Flux source-controller when it cannot reach Git repositories or Helm registries.
 
 ---
 
 When the Flux source-controller cannot establish a connection to a remote repository or registry, you will see errors like:
 
-```
+```text
 source-controller: failed to checkout and determine revision: unable to clone 'https://github.com/my-org/my-repo.git': dial tcp 140.82.121.3:443: connect: connection refused
 ```
 
 or:
 
-```
+```text
 source-controller: failed to fetch Helm repository index: Get "https://charts.example.com/index.yaml": dial tcp 10.0.0.50:443: connect: connection refused
 ```
 

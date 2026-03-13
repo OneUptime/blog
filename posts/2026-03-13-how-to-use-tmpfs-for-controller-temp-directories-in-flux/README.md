@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Performance, tmpfs, Storage, Controllers
+Tags: Flux, Kubernetes, GitOps, Performance, tmpfs, Storage, Controller
 
 Description: Improve Flux controller I/O performance by mounting tmpfs volumes for temporary directories instead of relying on disk-backed storage.
 

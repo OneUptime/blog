@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Docker Hub, Webhooks, Container Registry
+Tags: Flux, Kubernetes, GitOps, Receiver, Docker Hub, Webhook, Container Registry
 
 Description: Learn how to configure a Flux Receiver for Docker Hub webhook events to trigger reconciliation when new container images are pushed.
 

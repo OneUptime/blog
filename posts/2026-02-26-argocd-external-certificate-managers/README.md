@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, TLS, cert-manager
+Tags: ArgoCD, GitOps, Kubernetes, TLS, Cert-Manager
 
 Description: A practical guide to integrating ArgoCD with external certificate managers like cert-manager, Venafi, and AWS ACM for automated TLS management.
 

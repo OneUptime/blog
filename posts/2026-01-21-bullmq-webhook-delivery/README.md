@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: BullMQ, Node.js, Redis, Webhooks, HTTP Delivery, Event-Driven, Retry Logic, Reliability
+Tags: BullMQ, Node.js, Redis, Webhook, HTTP Delivery, Event-Driven, Retry Logic, Reliability
 
 Description: A comprehensive guide to building a reliable webhook delivery system with BullMQ, including retry strategies, signature verification, rate limiting, delivery tracking.
 

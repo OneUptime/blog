@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRDs, OpenAPI
+Tags: Kubernetes, CRD, OpenAPI
 
 Description: Learn how to automatically generate OpenAPI v3 schemas for your custom resources using Kubebuilder markers and controller-gen, ensuring proper validation and documentation.
 

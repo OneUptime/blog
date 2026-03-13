@@ -18,7 +18,7 @@ After upgrading the Kubernetes cluster version, you may see:
 flux get kustomizations
 ```
 
-```
+```text
 NAME        REVISION              SUSPENDED   READY   MESSAGE
 my-app      main@sha1:abc123      False       False   resource mapping not found for name "my-ingress" ... no matches for kind "Ingress" in version "extensions/v1beta1"
 ```
@@ -29,7 +29,7 @@ Or controllers may be crashlooping:
 kubectl get pods -n flux-system
 ```
 
-```
+```text
 NAME                                       READY   STATUS             RESTARTS   AGE
 kustomize-controller-xxx                   0/1     CrashLoopBackOff   5          10m
 source-controller-xxx                      0/1     CrashLoopBackOff   5          10m

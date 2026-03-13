@@ -99,7 +99,7 @@ spec:
 If you have a monorepo that contains manifests for many different applications, consider splitting the Kubernetes manifests into a separate repository. This dedicated manifests repository will be much smaller and faster to clone.
 
 Before:
-```
+```text
 my-monorepo/
   app1/src/
   app1/deploy/
@@ -109,7 +109,7 @@ my-monorepo/
 ```
 
 After:
-```
+```text
 my-app-code/          # Large repo, not watched by Flux
   app1/src/
   app2/src/

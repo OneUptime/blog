@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Operator, Custom Controllers, CRDs, Automation
+Tags: Kubernetes, Operator, Custom Controllers, CRD, Automation
 
 Description: A deep dive into the Kubernetes Operator pattern for automating complex application lifecycle management.
 

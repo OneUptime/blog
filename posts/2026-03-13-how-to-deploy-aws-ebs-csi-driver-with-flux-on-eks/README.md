@@ -20,7 +20,7 @@ The AWS EBS CSI (Container Storage Interface) driver enables Kubernetes to manag
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   └── production/

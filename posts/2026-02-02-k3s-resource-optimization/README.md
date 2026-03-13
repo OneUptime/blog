@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, Kubernetes, Resource Optimization, DevOps, Edge Computing, Lightweight Kubernetes
+Tags: k3s, Kubernetes, Resource Optimization, DevOps, Edge Computing, Lightweight Kubernetes
 
 Description: Learn how to optimize K3s resource usage for edge deployments and resource-constrained environments.
 

@@ -86,7 +86,7 @@ Save this as `config-connector-context.yaml` in your Git repository.
 
 Organize the Config Connector configuration in your Git repository:
 
-```
+```text
 clusters/production/config-connector/
   kustomization.yaml
   config-connector-context.yaml
@@ -199,7 +199,7 @@ spec:
 
 Structure your GCP resources alongside your application manifests:
 
-```
+```text
 clusters/production/
   config-connector/
     kustomization.yaml

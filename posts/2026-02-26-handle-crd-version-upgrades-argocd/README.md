@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, CRDs, Upgrade
+Tags: ArgoCD, GitOps, Kubernetes, CRD, Upgrade
 
 Description: Learn how to safely upgrade Custom Resource Definition versions in ArgoCD without breaking existing custom resources or losing data.
 

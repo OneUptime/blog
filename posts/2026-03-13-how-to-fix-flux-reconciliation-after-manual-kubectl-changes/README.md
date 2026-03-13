@@ -22,7 +22,7 @@ After someone runs `kubectl edit`, `kubectl apply`, or `kubectl patch` on a Flux
 flux get kustomizations
 ```
 
-```
+```text
 NAME        REVISION              SUSPENDED   READY   MESSAGE
 my-app      main@sha1:abc123      False       False   Apply failed: conflict with field manager kubectl-client-side-apply
 ```

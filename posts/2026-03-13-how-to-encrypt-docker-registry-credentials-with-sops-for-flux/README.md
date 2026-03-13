@@ -221,7 +221,7 @@ namespace: app-namespace
 
 Or create separate encrypted secrets for each namespace:
 
-```
+```text
 infrastructure/
   registry/
     kustomization.yaml

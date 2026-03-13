@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Webhooks, Monitoring, Prometheus, Grafana, Metrics, Observability
+Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Monitoring, Prometheus, Grafana, Metrics, Observability
 
 Description: A complete guide to monitoring Flux Receiver webhook calls using Prometheus metrics, Grafana dashboards, and alerting rules to track delivery success rates and latency.
 
@@ -152,7 +152,7 @@ For a dashboard focused specifically on Receiver webhook activity, create a cust
 
 #### Panel 1: Receiver Readiness
 
-```
+```promql
 # PromQL: Current readiness status of all Receivers
 gotk_reconcile_condition{type="Ready", kind="Receiver"}
 ```
@@ -161,7 +161,7 @@ Display as a stat panel with value mappings: 1 = Ready (green), 0 = Not Ready (r
 
 #### Panel 2: Reconciliation Rate
 
-```
+```promql
 # PromQL: Reconciliations per minute for Receivers
 rate(controller_runtime_reconcile_total{controller="receiver"}[5m]) * 60
 ```
@@ -170,7 +170,7 @@ Display as a time series graph. Spikes indicate webhook activity.
 
 #### Panel 3: Reconciliation Errors
 
-```
+```promql
 # PromQL: Error rate for Receiver reconciliations
 rate(controller_runtime_reconcile_errors_total{controller="receiver"}[5m]) * 60
 ```
@@ -179,7 +179,7 @@ Display as a time series graph with red color. Any non-zero value warrants inves
 
 #### Panel 4: Reconciliation Duration
 
-```
+```promql
 # PromQL: 95th percentile reconciliation duration
 histogram_quantile(0.95, rate(gotk_reconcile_duration_seconds_bucket{kind="Receiver"}[5m]))
 ```
@@ -188,7 +188,7 @@ Display as a time series graph showing latency trends.
 
 #### Panel 5: Kubernetes API Requests from Notification Controller
 
-```
+```promql
 # PromQL: API requests for patching resources (the annotation update)
 rate(rest_client_requests_total{namespace="flux-system", job="notification-controller"}[5m])
 ```
@@ -197,7 +197,7 @@ This shows how many Kubernetes API calls the notification-controller is making, 
 
 #### Panel 6: Work Queue Depth
 
-```
+```promql
 # PromQL: Items waiting to be processed
 workqueue_depth{name="receiver"}
 ```
@@ -318,13 +318,13 @@ For detailed per-request monitoring, parse the notification-controller logs. The
 
 If you use Grafana Loki, query webhook handling logs:
 
-```
+```text
 {namespace="flux-system", container="manager"} |= "receiver" | json | level="info"
 ```
 
 Filter for errors:
 
-```
+```text
 {namespace="flux-system", container="manager"} |= "receiver" | json | level="error"
 ```
 
@@ -332,7 +332,7 @@ Filter for errors:
 
 A successful webhook handling produces log entries like:
 
-```
+```json
 {"level":"info","msg":"handling request","receiver":"flux-system/github-receiver"}
 {"level":"info","msg":"annotating resource","resource":"flux-system/flux-system","kind":"GitRepository"}
 ```
@@ -341,7 +341,7 @@ A successful webhook handling produces log entries like:
 
 A failed webhook produces entries like:
 
-```
+```json
 {"level":"error","msg":"signature verification failed","receiver":"flux-system/github-receiver"}
 ```
 

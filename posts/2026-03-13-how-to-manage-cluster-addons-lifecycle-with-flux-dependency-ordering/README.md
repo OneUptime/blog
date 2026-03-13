@@ -30,7 +30,7 @@ graph TD
 
 Organize your addons into separate directories so each can be managed as an independent Flux Kustomization with explicit dependencies.
 
-```
+```text
 repo/
 ├── infrastructure/
 │   ├── sources/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Locals, Conditional Logic, Infrastructure as Code
+Tags: Terraform, HCL, Local, Conditional Logic, Infrastructure as Code
 
 Description: Learn how to use Terraform locals with conditional expressions, ternary operators, and map lookups to build flexible infrastructure configurations that adapt to different environments.
 

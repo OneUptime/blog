@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, cert-manager, TLS
+Tags: ArgoCD, GitOps, Kubernetes, Cert-Manager, TLS
 
 Description: Automate TLS certificate provisioning for ArgoCD using cert-manager with Let's Encrypt, including HTTP01 and DNS01 challenge configurations.
 

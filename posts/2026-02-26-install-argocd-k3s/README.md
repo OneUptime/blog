@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, K3s, Edge Computing
+Tags: ArgoCD, GitOps, Kubernetes, k3s, Edge Computing
 
 Description: A practical guide to installing ArgoCD on K3s lightweight Kubernetes for edge computing, IoT, home labs, and resource-constrained environments.
 

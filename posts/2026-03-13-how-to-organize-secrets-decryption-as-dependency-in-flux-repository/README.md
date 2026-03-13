@@ -16,7 +16,7 @@ When managing Kubernetes clusters with Flux, encrypted secrets (using SOPS, Seal
 
 A well-organized Flux repository separates the secrets decryption infrastructure from the workloads that consume secrets:
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   └── production/

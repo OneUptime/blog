@@ -142,7 +142,7 @@ creation_rules:
 
 The `.sops.yaml` file should be placed at the root of your Git repository. SOPS searches for it starting from the file being encrypted and walking up the directory tree. You can also place `.sops.yaml` files in subdirectories to override the root configuration for specific paths.
 
-```
+```text
 flux-repo/
   .sops.yaml           # Root configuration
   clusters/

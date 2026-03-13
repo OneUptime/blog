@@ -82,7 +82,7 @@ Configure a custom Git merge driver that handles SOPS files automatically.
 
 Add to `.gitattributes`:
 
-```
+```text
 *secret*.yaml merge=sops
 *credential*.yaml merge=sops
 ```
@@ -147,7 +147,7 @@ chmod +x scripts/sops-merge-driver.sh
 
 Prevent most merge conflicts by storing each secret in its own file:
 
-```
+```text
 secrets/
   database-password.yaml
   api-key.yaml
@@ -157,7 +157,7 @@ secrets/
 
 Instead of:
 
-```
+```text
 secrets/
   all-secrets.yaml  # Multiple secrets in one file = frequent conflicts
 ```

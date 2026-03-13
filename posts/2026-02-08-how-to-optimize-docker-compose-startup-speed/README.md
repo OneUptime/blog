@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, Startup optimization, Healthcheck, depends_on, Development
+Tags: Docker, Docker Compose, Startup optimization, HealthCheck, depends_on, Development
 
 Description: Speed up Docker Compose startup times with parallel execution, healthchecks, and smart configuration
 

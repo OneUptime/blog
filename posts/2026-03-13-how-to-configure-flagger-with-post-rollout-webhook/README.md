@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Canary, Webhooks, Post-Rollout, Kubernetes, Progressive Delivery, Notifications
+Tags: Flagger, Canary, Webhook, Post-Rollout, Kubernetes, Progressive Delivery, Notifications
 
 Description: Learn how to configure post-rollout webhooks in Flagger to trigger notifications, cleanup tasks, or integration actions after a successful canary promotion.
 

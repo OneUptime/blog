@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, Kubernetes, Security, RBAC, Network Policies, CIS Benchmark, Secret Encryption, DevOps
+Tags: k3s, Kubernetes, Security, RBAC, Network Policies, CIS Benchmark, Secret Encryption, DevOps
 
 Description: A comprehensive guide to securing your K3s cluster with RBAC configuration, network policies, secret encryption at rest, and CIS benchmark compliance for production-ready deployments.
 

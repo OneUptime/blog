@@ -213,7 +213,7 @@ Encrypt and deploy this in a shared namespace, then reference it from multiple I
 
 Organize TLS secrets by environment:
 
-```
+```text
 infrastructure/
   tls/
     dev/

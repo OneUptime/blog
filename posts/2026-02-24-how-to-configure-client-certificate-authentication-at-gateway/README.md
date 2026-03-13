@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, mTLS, Client Certificates, Gateway, Security
+Tags: Istio, mTLS, Client Certificate, Gateway, Security
 
 Description: How to set up mutual TLS authentication at the Istio ingress gateway to require client certificates for secure API access and zero-trust network security.
 

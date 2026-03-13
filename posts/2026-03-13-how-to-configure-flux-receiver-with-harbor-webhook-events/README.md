@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Harbor, Webhooks, Container Registry
+Tags: Flux, Kubernetes, GitOps, Receiver, Harbor, Webhook, Container Registry
 
 Description: Learn how to configure a Flux Receiver for Harbor webhook events to trigger reconciliation when new images are pushed to your Harbor registry.
 

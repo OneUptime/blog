@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Canary, Load Testing, Shell, Custom Commands, Kubernetes, Progressive Delivery, Webhooks
+Tags: Flagger, Canary, Load Testing, Shell, Custom Commands, Kubernetes, Progressive Delivery, Webhook
 
 Description: Learn how to use the Flagger load tester to execute custom shell commands during canary analysis for validation, testing, and integration tasks.
 

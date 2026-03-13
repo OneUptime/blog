@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: RHEL, Kubernetes, Containers, K3s, Linux
+Tags: RHEL, Kubernetes, Containers, k3s, Linux
 
 Description: Learn how to deploy k3s Lightweight Kubernetes on RHEL with step-by-step instructions, configuration examples, and best practices.
 

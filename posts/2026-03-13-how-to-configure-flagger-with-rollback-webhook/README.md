@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flagger, Canary, Webhooks, Rollback, Kubernetes, Progressive Delivery, Notifications
+Tags: Flagger, Canary, Webhook, Rollback, Kubernetes, Progressive Delivery, Notifications
 
 Description: Learn how to configure rollback webhooks in Flagger to receive notifications and trigger automated actions when a canary deployment is rolled back.
 

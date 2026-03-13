@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Docker Compose, Healthcheck, Container Orchestration, DevOps, Monitoring
+Tags: Docker, Docker Compose, HealthCheck, Container Orchestration, DevOps, Monitoring
 
 Description: Learn how to configure Docker Compose healthcheck directives to monitor container health and build resilient service deployments.
 

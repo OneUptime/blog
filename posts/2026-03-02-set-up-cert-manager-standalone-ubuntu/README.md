@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, SSL, cert-manager, Kubernetes, Certificate Management
+Tags: Ubuntu, SSL, Cert-Manager, Kubernetes, Certificate Management
 
 Description: Install and configure cert-manager as a standalone tool on Ubuntu to automate certificate issuance and renewal from Let's Encrypt and other ACME CAs.
 

@@ -10,13 +10,13 @@ Description: Learn how to diagnose and fix server-side apply conflict errors in 
 
 When Flux uses server-side apply (SSA) to reconcile resources, you may encounter:
 
-```
+```text
 kustomize controller: failed to reconcile kustomization 'flux-system/my-app': Apply failed with 1 conflict: conflict with "helm-controller" using apps/v1: .spec.replicas
 ```
 
 or:
 
-```
+```text
 Apply failed with 1 conflict: conflict with "kubectl-client-side-apply" using apps/v1: .spec.template.spec.containers[name="app"].image
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Kubernetes, CRDs, Multi-Tenant Observability
+Tags: OpenTelemetry, Kubernetes, CRD, Multi-Tenant Observability
 
 Description: Build a Kubernetes controller with custom resource definitions to manage multi-tenant OpenTelemetry observability configurations.
 

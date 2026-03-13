@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, cert-manager, TLS, Development
+Tags: Kubernetes, Cert-Manager, TLS, Development
 
 Description: Learn how to configure and use cert-manager's SelfSigned issuer to generate self-signed certificates for development, testing, and internal testing environments.
 

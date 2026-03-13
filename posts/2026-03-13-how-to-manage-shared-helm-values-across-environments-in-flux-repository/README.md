@@ -14,7 +14,7 @@ When deploying the same Helm chart across multiple environments (development, st
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   ├── staging/

@@ -14,7 +14,7 @@ The Kustomize bases library pattern involves creating a shared library of base r
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   ├── staging/

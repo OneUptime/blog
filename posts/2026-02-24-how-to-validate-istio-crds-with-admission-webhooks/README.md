@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Admission Webhooks, Kubernetes, Validation, CRDs
+Tags: Istio, Admission Webhooks, Kubernetes, Validation, CRD
 
 Description: How to use Istio's built-in admission webhooks and external tools to validate Istio custom resources before they are applied to your cluster.
 

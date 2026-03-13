@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Let's Encrypt, TLS, cert-manager, Ingress Gateway
+Tags: Istio, Let's Encrypt, TLS, Cert-Manager, Ingress Gateway
 
 Description: How to automatically provision and renew Let's Encrypt TLS certificates for your Istio ingress gateway using cert-manager, with HTTP-01 and DNS-01 challenge examples.
 

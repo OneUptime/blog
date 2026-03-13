@@ -23,7 +23,7 @@ This pattern is appropriate when you have:
 
 ## Recommended Directory Structure
 
-```
+```text
 fleet-repo/
   clusters/
     us-east-1/

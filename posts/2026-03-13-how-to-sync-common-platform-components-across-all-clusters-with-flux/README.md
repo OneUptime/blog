@@ -42,7 +42,7 @@ graph TB
 
 ## Repository Structure
 
-```
+```text
 fleet-repo/
 ├── infrastructure/
 │   ├── base/

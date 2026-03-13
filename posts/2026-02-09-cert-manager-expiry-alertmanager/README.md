@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, cert-manager, Alertmanager, Monitoring
+Tags: Kubernetes, Cert-Manager, Alertmanager, Monitoring
 
 Description: Learn how to set up automated certificate expiry alerting for cert-manager using Prometheus and Alertmanager to prevent unexpected outages from expired certificates.
 

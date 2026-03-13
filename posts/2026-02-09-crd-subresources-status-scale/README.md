@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRDs, SubResources
+Tags: Kubernetes, CRD, SubResources
 
 Description: Learn how to configure status and scale subresources for Custom Resource Definitions to enable proper status management and horizontal pod autoscaling in Kubernetes.
 

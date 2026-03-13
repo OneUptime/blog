@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, cert-manager, Health Checks
+Tags: ArgoCD, GitOps, Kubernetes, Cert-Manager, Health Checks
 
 Description: Learn how to configure ArgoCD health checks for cert-manager Certificate and Issuer resources so expired or failed certificates show as Degraded.
 

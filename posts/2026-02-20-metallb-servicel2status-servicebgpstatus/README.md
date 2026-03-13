@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, Status, CRDs, Monitoring
+Tags: Kubernetes, MetalLB, Status, CRD, Monitoring
 
 Description: Learn how to read and interpret MetalLB ServiceL2Status and ServiceBGPStatus custom resources for monitoring service advertisement health.
 

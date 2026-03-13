@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Azure, aso, GitOps, Kubernetes, IaC, Cloud resources
+Tags: Flux CD, Azure, ASO, GitOps, Kubernetes, IaC, Cloud resources
 
 Description: Learn how to deploy and manage Azure resources using Azure Service Operator (ASO) integrated with Flux CD for GitOps-driven cloud infrastructure.
 

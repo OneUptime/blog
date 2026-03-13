@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, k3d, K3s, Kubernetes, Lightweight, Service Mesh
+Tags: Istio, k3d, k3s, Kubernetes, Lightweight, Service Mesh
 
 Description: How to deploy Istio on k3d clusters for fast local development with k3s-based Kubernetes running inside Docker containers.
 

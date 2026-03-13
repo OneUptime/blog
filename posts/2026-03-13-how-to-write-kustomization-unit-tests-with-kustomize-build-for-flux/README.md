@@ -37,7 +37,7 @@ kustomize version
 
 A typical Flux repository has bases and overlays.
 
-```
+```text
 ├── base/
 │   ├── deployment.yaml
 │   ├── service.yaml

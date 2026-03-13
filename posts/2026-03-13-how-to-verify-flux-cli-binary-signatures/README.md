@@ -65,7 +65,7 @@ cosign verify-blob checksums.txt \
 
 A successful verification will output:
 
-```
+```text
 Verified OK
 ```
 
@@ -83,7 +83,7 @@ shasum -a 256 -c checksums.txt --ignore-missing
 
 Expected output:
 
-```
+```bash
 flux_2.2.0_linux_amd64.tar.gz: OK
 ```
 

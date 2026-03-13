@@ -25,7 +25,7 @@ graph LR
 
 ## Repository Structure
 
-```
+```text
 repo/
 ├── infrastructure/
 │   └── secrets/

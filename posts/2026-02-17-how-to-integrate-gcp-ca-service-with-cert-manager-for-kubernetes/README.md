@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: GCP, Certificate Authority Service, cert-manager, Kubernetes, TLS
+Tags: GCP, Certificate Authority Service, Cert-Manager, Kubernetes, TLS
 
 Description: A step-by-step guide to integrating Google Cloud CA Service with cert-manager in Kubernetes for automated certificate issuance and renewal for your workloads.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Security, Security Contexts, Pod Security, Container Security
+Tags: Kubernetes, Security, Security Context, Pod Security, Container Security
 
 Description: Understand how security context settings interact between pod and container levels in Kubernetes, learning when settings override, merge, or complement each other for effective security configuration.
 

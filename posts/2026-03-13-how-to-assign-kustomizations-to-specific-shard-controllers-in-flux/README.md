@@ -22,7 +22,7 @@ Once you have deployed multiple kustomize-controller instances, you need a relia
 
 Shard assignment works through Kubernetes labels. Each shard controller watches for resources with a specific label value, and each Kustomization must have the corresponding label to be picked up by the intended shard.
 
-```
+```bash
 Kustomization (label: shard-1) --> kustomize-controller-shard-1
 Kustomization (label: shard-2) --> kustomize-controller-shard-2
 Kustomization (no shard label) --> kustomize-controller (main)

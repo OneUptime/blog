@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, Kustomization, RBAC, Secrets
 
-Description: Learn how to diagnose and fix the "failed to get secret" error in Flux Kustomization resources caused by missing secrets or RBAC issues.
+Description: Learn how to diagnose and fix the 'failed to get secret' error in Flux Kustomization resources caused by missing secrets or RBAC issues.
 
 ---
 
 When working with Flux CD Kustomizations, you may encounter this error in the kustomize-controller logs or Kustomization status:
 
-```
+```text
 failed to get secret 'my-namespace/my-secret': secrets "my-secret" not found
 ```
 
 or:
 
-```
+```text
 failed to get secret 'flux-system/git-credentials': secrets "git-credentials" is forbidden: User "system:serviceaccount:flux-system:kustomize-controller" cannot get resource "secrets" in API group "" in the namespace "flux-system"
 ```
 

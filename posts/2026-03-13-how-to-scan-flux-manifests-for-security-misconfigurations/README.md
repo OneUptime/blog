@@ -57,7 +57,7 @@ trivy config clusters/my-cluster/ --format json -o trivy-results.json
 
 Example output for a misconfigured deployment:
 
-```
+```text
 clusters/my-cluster/apps/deployment.yaml
 ==========================================
 Tests: 25 (SUCCESSES: 18, FAILURES: 7)

@@ -18,7 +18,7 @@ A typical Flux repository organizes resources by cluster and environment. Differ
 
 Consider a standard Flux repository layout:
 
-```
+```text
 flux-repo/
   .sops.yaml
   clusters/

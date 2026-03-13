@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, CRDs, Repository Structure, Dependencies
+Tags: Flux, Kubernetes, GitOps, CRD, Repository Structure, Dependencies
 
 Description: Learn how to organize Custom Resource Definition installation as the first dependency in your Flux repository to prevent reconciliation failures.
 
@@ -24,7 +24,7 @@ The recommended approach is to install CRDs in a separate Kustomization that run
 
 ## Directory Structure
 
-```
+```text
 fleet-repo/
   clusters/
     production/

@@ -18,7 +18,7 @@ After an etcd restore, Flux exhibits various errors:
 flux get kustomizations
 ```
 
-```
+```text
 NAME        REVISION              SUSPENDED   READY   MESSAGE
 my-app      main@sha1:old123      False       False   Apply failed: Operation cannot be fulfilled on ... the object has been modified
 ```

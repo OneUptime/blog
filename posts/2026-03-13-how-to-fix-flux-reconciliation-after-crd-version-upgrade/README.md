@@ -18,14 +18,14 @@ After a CRD version upgrade, Flux may report errors like:
 flux get kustomizations
 ```
 
-```
+```text
 NAME        REVISION              SUSPENDED   READY   MESSAGE
 my-app      main@sha1:abc123      False       False   no matches for kind "MyResource" in version "v1alpha1"
 ```
 
 Or:
 
-```
+```text
 Apply failed: resource mapping not found for name "my-resource" namespace "production" from "": no matches for kind "MyResource" in version "example.com/v1alpha1"
 ```
 

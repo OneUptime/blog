@@ -18,7 +18,7 @@ After a disaster recovery event, you may encounter a combination of issues:
 flux check
 ```
 
-```
+```text
 > prerequisites
 > controllers
 x kustomize-controller: deployment not ready

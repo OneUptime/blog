@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, Immutable Fields, Server-Side Apply
 
-Description: Learn how to diagnose and fix the "immutable field cannot be patched" error in Flux when Kubernetes prevents changes to fields that cannot be updated in place.
+Description: Learn how to diagnose and fix the 'immutable field cannot be patched' error in Flux when Kubernetes prevents changes to fields that cannot be updated in place.
 
 ---
 
 When Flux attempts to update a resource, you may see:
 
-```
+```text
 kustomize controller: failed to reconcile kustomization 'flux-system/my-app': The Job "my-job" is invalid: spec.template: Invalid value: core.PodTemplateSpec{...}: field is immutable
 ```
 
 or:
 
-```
+```text
 failed to update resource: admission webhook denied the request: spec.selector: Invalid value: field is immutable after creation
 ```
 

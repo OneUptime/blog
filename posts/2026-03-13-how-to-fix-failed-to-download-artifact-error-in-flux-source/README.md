@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, Source Controller, Artifacts, OCI
 
-Description: Learn how to diagnose and fix the "failed to download artifact" error in the Flux source-controller when pulling from Git, Helm, or OCI repositories.
+Description: Learn how to diagnose and fix the 'failed to download artifact' error in the Flux source-controller when pulling from Git, Helm, or OCI repositories.
 
 ---
 
 When Flux attempts to fetch sources from a Git repository, Helm chart registry, or OCI artifact store, you may see the following error in the source-controller:
 
-```
+```text
 source-controller: failed to download artifact from 'oci://registry.example.com/charts/my-chart:1.2.0': GET https://registry.example.com/v2/charts/my-chart/manifests/1.2.0: UNAUTHORIZED: authentication required
 ```
 
 or:
 
-```
+```text
 source-controller: failed to download artifact: unexpected EOF
 ```
 

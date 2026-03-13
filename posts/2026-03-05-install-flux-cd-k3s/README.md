@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, K3s, Lightweight Kubernetes, DevOps
+Tags: Flux CD, GitOps, Kubernetes, k3s, Lightweight Kubernetes, DevOps
 
 Description: A step-by-step guide to installing and bootstrapping Flux CD on a K3s lightweight Kubernetes cluster for GitOps-driven deployments.
 

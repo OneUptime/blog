@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PostgreSQL, Database, Security, TLS, SSL, Client Certificates, Authentication
+Tags: PostgreSQL, Database, Security, TLS, SSL, Client Certificate, Authentication
 
 Description: Learn how to set up mutual TLS authentication in PostgreSQL using client certificates.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Locals, DRY, Infrastructure as Code, Best Practices
+Tags: Terraform, HCL, Local, DRY, Infrastructure as Code, Best Practices
 
 Description: Learn how to use Terraform locals to eliminate repeated expressions across your configuration, keeping your code DRY and reducing the risk of inconsistencies when values change.
 

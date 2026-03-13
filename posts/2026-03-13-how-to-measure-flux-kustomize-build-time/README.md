@@ -18,7 +18,7 @@ The kustomize-controller spends a significant portion of each reconciliation cyc
 
 The primary metric is the reconciliation duration for Kustomization objects:
 
-```
+```promql
 gotk_reconcile_duration_seconds_bucket{kind="Kustomization"}
 gotk_reconcile_duration_seconds_sum{kind="Kustomization"}
 gotk_reconcile_duration_seconds_count{kind="Kustomization"}

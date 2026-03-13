@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Microsoft Teams, Azure DevOps, Sprint Notifications, Automation, DevOps, Agile, Webhooks
+Tags: Microsoft Teams, Azure DevOps, Sprint Notifications, Automation, DevOps, Agile, Webhook
 
 Description: Integrate Microsoft Teams with Azure DevOps to send automated sprint notifications for stand-ups, burndown updates, and PR reviews.
 

@@ -47,7 +47,7 @@ flux check --pre
 
 The key to standalone mode is organizing your Git repository so each cluster has its own directory with dedicated configuration. A recommended structure looks like this:
 
-```
+```text
 fleet-repo/
 ├── clusters/
 │   ├── cluster-1/

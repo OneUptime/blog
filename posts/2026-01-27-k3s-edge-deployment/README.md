@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, K3s, Edge Computing, IoT, DevOps, Infrastructure, Air-Gapped, Fleet Management
+Tags: Kubernetes, k3s, Edge Computing, IoT, DevOps, Infrastructure, Air-Gapped, Fleet Management
 
 Description: A comprehensive guide to deploying K3s at the edge, covering lightweight configuration, air-gapped installation, resource constraints.
 

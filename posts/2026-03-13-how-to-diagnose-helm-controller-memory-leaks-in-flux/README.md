@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Troubleshooting, Helm Controller, Memory Leaks, Helm, Performance, Monitoring
+Tags: Flux, Kubernetes, GitOps, Troubleshooting, Helm Controller, Memory Leak, Helm, Performance, Monitoring
 
 Description: Learn how to identify, diagnose, and fix memory leaks in the Flux Helm Controller caused by release history accumulation, large chart rendering, and reconciliation loops.
 
@@ -41,13 +41,13 @@ If restarts happen at increasing intervals (e.g., every 2 hours, then every 4 ho
 
 Query memory usage over time:
 
-```
+```promql
 container_memory_working_set_bytes{namespace="flux-system", container="manager", pod=~"helm-controller.*"}
 ```
 
 Calculate the rate of memory growth:
 
-```
+```promql
 deriv(container_memory_working_set_bytes{namespace="flux-system", container="manager", pod=~"helm-controller.*"}[2h])
 ```
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, Kubernetes, Development, DevOps, Local Development, Containers, Lightweight Kubernetes
+Tags: k3s, Kubernetes, Development, DevOps, Local Development, Containers, Lightweight Kubernetes
 
 Description: Learn how to set up and configure K3s for local development environments. Covers installation, configuration, persistent storage, ingress setup, and tips for productive local Kubernetes development.
 

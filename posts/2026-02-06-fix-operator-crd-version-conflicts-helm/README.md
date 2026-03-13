@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Operator, CRDs, Helm
+Tags: OpenTelemetry, Operator, CRD, Helm
 
 Description: Resolve CRD version conflicts that occur after upgrading the OpenTelemetry Operator Helm chart to a newer version.
 

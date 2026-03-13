@@ -35,7 +35,7 @@ chmod +x /usr/local/bin/kubectl-kuttl
 
 Set up your test directory:
 
-```
+```text
 tests/
   kuttl/
     kuttl-test.yaml

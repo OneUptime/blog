@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Azure, AKS, Cluster Upgrades, Maintenance, Node Pools
+Tags: Flux, Kubernetes, GitOps, Azure, AKS, Cluster Upgrade, Maintenance, Node Pool
 
 Description: Learn how to configure AKS automatic cluster upgrades alongside Flux CD to maintain compatibility between your GitOps workflows and Kubernetes version updates.
 

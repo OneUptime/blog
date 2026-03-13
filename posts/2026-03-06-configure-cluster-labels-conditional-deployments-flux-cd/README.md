@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Cluster labels, Conditional Deployments, Multi-Cluster, GitOps, Kubernetes
+Tags: Flux CD, Cluster Labels, Conditional Deployment, Multi-Cluster, GitOps, Kubernetes
 
 Description: Learn how to use cluster labels and metadata to conditionally deploy resources with Flux CD, enabling selective rollouts and feature gating across clusters.
 

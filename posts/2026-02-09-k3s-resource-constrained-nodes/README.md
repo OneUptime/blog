@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, K3s, Resource Management, Edge Computing, Performance
+Tags: Kubernetes, k3s, Resource Management, Edge Computing, Performance
 
 Description: Learn how to configure K3s on resource-constrained devices with proper memory and CPU limits, including system reservation, eviction policies, and workload optimization for edge deployments.
 

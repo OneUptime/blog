@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Infrastructure as Code, Locals, DevOps
+Tags: Terraform, HCL, Infrastructure as Code, Local, DevOps
 
 Description: Learn how to define and use local values in Terraform to create named expressions, reduce repetition, and keep your infrastructure code clean and maintainable.
 

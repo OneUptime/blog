@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, SOPS, Secrets, Encryption, Service Accounts, Tokens, RBAC
+Tags: Flux, Kubernetes, GitOps, SOPS, Secrets, Encryption, Service Accounts, Token, RBAC
 
 Description: Learn how to encrypt Kubernetes service account tokens and external service credentials with SOPS for secure deployment through Flux.
 
@@ -202,7 +202,7 @@ spec:
 
 Organize credential secrets by type:
 
-```
+```text
 infrastructure/
   credentials/
     kustomization.yaml

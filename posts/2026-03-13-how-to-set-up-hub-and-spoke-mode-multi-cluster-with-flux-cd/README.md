@@ -146,7 +146,7 @@ Repeat this process for each spoke cluster.
 
 Structure the repository to separate management and spoke configurations:
 
-```
+```text
 fleet-repo/
 ├── clusters/
 │   └── management/

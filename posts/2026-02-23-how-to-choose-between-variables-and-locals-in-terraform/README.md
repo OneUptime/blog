@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, HCL, Variables, Locals, Best Practices, Infrastructure as Code
+Tags: Terraform, HCL, Variables, Local, Best Practices, Infrastructure as Code
 
 Description: Understand when to use Terraform input variables versus local values, with clear guidelines and practical examples that help you structure your configurations correctly.
 

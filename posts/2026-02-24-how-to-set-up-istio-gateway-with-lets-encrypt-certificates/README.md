@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Let's Encrypt, TLS, cert-manager, Gateway, Kubernetes
+Tags: Istio, Let's Encrypt, TLS, Cert-Manager, Gateway, Kubernetes
 
 Description: How to automate TLS certificate provisioning for Istio Gateway using Let's Encrypt and cert-manager in Kubernetes.
 

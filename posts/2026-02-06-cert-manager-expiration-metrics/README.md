@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, cert-manager, TLS Certificates, Kubernetes, Monitoring
+Tags: OpenTelemetry, Cert-Manager, TLS Certificates, Kubernetes, Monitoring
 
 Description: Monitor cert-manager certificate expiration, issuance latency, and renewal events using the OpenTelemetry Collector in Kubernetes.
 

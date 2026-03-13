@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CodeCatalyst, Dev Environments, Cloud IDE, Development, Remote Development
+Tags: AWS, CodeCatalyst, Dev Environment, Cloud IDE, Development, Remote Development
 
 Description: Learn how to set up and configure CodeCatalyst Dev Environments for cloud-based development with consistent tooling and IDE integration.
 

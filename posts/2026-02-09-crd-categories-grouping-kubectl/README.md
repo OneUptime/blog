@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRDs, kubectl
+Tags: Kubernetes, CRD, kubectl
 
 Description: Learn how to use CRD categories to group related custom resources together, enabling kubectl to list multiple resource types with a single command for better resource management.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Ingresses, TLS, HTTPS, Security, cert-manager, DevOps
+Tags: Kubernetes, Ingresses, TLS, HTTPS, Security, Cert-Manager, DevOps
 
 Description: Learn how to configure Kubernetes Ingress with TLS termination for secure HTTPS traffic.
 

@@ -18,7 +18,7 @@ Reconciliation failures that appear randomly and resolve on retry:
 flux get kustomizations
 ```
 
-```
+```text
 NAME            REVISION              SUSPENDED   READY   MESSAGE
 infra           main@sha1:abc123      False       True    Applied revision: ...
 apps            main@sha1:abc123      False       False   CustomResourceDefinition ... not found
@@ -129,7 +129,7 @@ spec:
 
 Always install CRDs in a dedicated Kustomization that runs before any Kustomization creating custom resources:
 
-```
+```text
 infrastructure/
   crds/          # CRD definitions only
   controllers/   # Operator deployments

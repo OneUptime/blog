@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Multi-Cluster, Overlays, Kustomize, Configuration Management
+Tags: Flux, Kubernetes, GitOps, Multi-Cluster, Overlay, Kustomize, Configuration Management
 
 Description: Learn how to use Kustomize overlays with Flux CD to apply cluster-specific application configurations while maintaining a shared base across your fleet.
 
@@ -27,7 +27,7 @@ graph LR
 
 ## Repository Structure
 
-```
+```text
 fleet-repo/
 ├── apps/
 │   ├── base/

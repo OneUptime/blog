@@ -43,7 +43,7 @@ slsa-verifier verify-image ghcr.io/fluxcd/source-controller:v1.2.0 \
 
 A successful verification output will look like:
 
-```
+```text
 Verified build using builder "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@refs/tags/v1.9.0" at commit abc123...
 PASSED: Verified SLSA provenance
 ```

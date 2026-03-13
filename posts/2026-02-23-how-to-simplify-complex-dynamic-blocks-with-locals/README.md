@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Dynamic Blocks, Locals, HCL, Best Practices, Infrastructure as Code
+Tags: Terraform, Dynamic Blocks, Local, HCL, Best Practices, Infrastructure as Code
 
 Description: Learn how to use Terraform locals to pre-process data and simplify complex dynamic blocks, making your configurations more readable and maintainable.
 

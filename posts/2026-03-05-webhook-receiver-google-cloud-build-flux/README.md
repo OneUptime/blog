@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Webhooks, Google Cloud, GCR, Receiver, Cloud Build
+Tags: Flux CD, GitOps, Kubernetes, Webhook, Google Cloud, GCR, Receiver, Cloud Build
 
 Description: Learn how to configure a Flux Receiver to accept Google Cloud Build webhooks and trigger reconciliation when container images are pushed to GCR.
 

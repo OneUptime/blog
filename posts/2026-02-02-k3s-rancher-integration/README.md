@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, Rancher, Kubernetes, DevOps, Container Management, Edge Computing
+Tags: k3s, Rancher, Kubernetes, DevOps, Container Management, Edge Computing
 
 Description: A practical guide to managing K3s clusters with Rancher, covering installation, cluster import, workload deployment, and multi-cluster management from a single dashboard.
 

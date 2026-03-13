@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderers, Security Contexts, Pod Security
+Tags: Flux, HelmRelease, Kubernetes, GitOps, Helm, Post-Renderers, Security Context, Pod Security
 
 Description: Learn how to add and modify security contexts for pods and containers in Helm chart resources using Flux post-renderers.
 

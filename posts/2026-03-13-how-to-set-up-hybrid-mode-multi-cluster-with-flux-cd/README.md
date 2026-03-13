@@ -41,7 +41,7 @@ The management cluster handles dev and staging through remote kubeconfigs. Produ
 
 The repository must accommodate both patterns. Each production cluster gets its own top-level directory alongside the management cluster:
 
-```
+```text
 fleet-repo/
 ├── clusters/
 │   ├── management/

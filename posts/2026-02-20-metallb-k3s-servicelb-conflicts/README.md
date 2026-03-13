@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, K3s, ServiceLB, Load Balancing
+Tags: Kubernetes, MetalLB, k3s, ServiceLB, Load Balancing
 
 Description: Learn how to install MetalLB on K3s clusters and resolve conflicts with K3s built-in ServiceLB (formerly Klipper).
 

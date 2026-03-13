@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, HelmRelease, CRDs, Kubernetes, GitOps, Helm
+Tags: Flux CD, HelmRelease, CRD, Kubernetes, GitOps, Helm
 
 Description: Learn how to configure the CreateReplace CRD installation policy in Flux HelmRelease to manage Custom Resource Definitions during Helm chart installations and upgrades.
 

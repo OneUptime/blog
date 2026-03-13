@@ -325,7 +325,7 @@ Common issues include:
 
 For reproducibility, keep the cluster identity ConfigMap in your repository alongside the Flux bootstrap configuration:
 
-```
+```text
 clusters/
 ├── production-us-east/
 │   ├── flux-system/

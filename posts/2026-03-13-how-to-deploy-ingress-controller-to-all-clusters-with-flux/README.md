@@ -33,7 +33,7 @@ graph TD
 
 ## Repository Structure
 
-```
+```text
 repo/
 ├── infrastructure/
 │   ├── sources/

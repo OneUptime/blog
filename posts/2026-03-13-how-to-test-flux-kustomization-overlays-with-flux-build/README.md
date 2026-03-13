@@ -49,7 +49,7 @@ This renders all the Kubernetes resources that the Kustomization would produce w
 
 A common pattern is having a base configuration with environment-specific overlays. Consider this structure:
 
-```
+```text
 apps/
   base/
     deployment.yaml

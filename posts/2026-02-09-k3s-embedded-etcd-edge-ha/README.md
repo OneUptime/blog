@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, K3s, Edge Computing
+Tags: Kubernetes, k3s, Edge Computing
 
 Description: Learn how to set up a highly available K3s cluster using embedded etcd at the edge, eliminating the need for external databases while maintaining resilience in resource-constrained environments.
 

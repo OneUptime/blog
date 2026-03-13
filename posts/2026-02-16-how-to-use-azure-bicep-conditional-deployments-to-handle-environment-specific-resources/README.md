@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure Bicep, Conditional Deployments, Infrastructure as Code, Azure DevOps, DevOps, Cloud Infrastructure
+Tags: Azure Bicep, Conditional Deployment, Infrastructure as Code, Azure DevOps, DevOps, Cloud Infrastructure
 
 Description: Use Bicep conditional expressions to deploy different resources based on environment, feature flags, and configuration parameters in a single template.
 

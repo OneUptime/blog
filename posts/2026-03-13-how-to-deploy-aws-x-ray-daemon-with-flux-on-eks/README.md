@@ -21,7 +21,7 @@ AWS X-Ray is a distributed tracing service that helps developers analyze and deb
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   └── production/

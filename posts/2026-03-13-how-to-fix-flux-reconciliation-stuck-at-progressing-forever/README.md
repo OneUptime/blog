@@ -18,7 +18,7 @@ You run `flux get kustomizations` or `flux get helmreleases` and see output like
 flux get kustomizations
 ```
 
-```
+```text
 NAME        REVISION    SUSPENDED   READY   MESSAGE
 my-app                  False       Unknown Reconciliation in progress
 ```

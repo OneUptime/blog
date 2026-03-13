@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Webhooks, Testing, curl, Debugging
+Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Testing, curl, Debugging
 
 Description: A practical guide to testing Flux Receiver webhook endpoints using curl commands for GitHub, GitLab, Bitbucket, and generic receiver types with proper authentication headers.
 

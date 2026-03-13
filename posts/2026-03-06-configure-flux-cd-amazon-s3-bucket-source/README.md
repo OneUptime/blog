@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, Amazon s3, Bucket source, GitOps, Kubernetes, AWS, IRSA
+Tags: Flux CD, Amazon s3, Bucket Source, GitOps, Kubernetes, AWS, IRSA
 
 Description: A practical guide to configuring Flux CD to use Amazon S3 buckets as a source for Kubernetes manifests and Helm charts.
 

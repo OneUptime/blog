@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, ArgoCD, Notifications, GitOps, Kubernetes, Alerting, Comparison, Slack, Webhooks
+Tags: Flux CD, ArgoCD, Notifications, GitOps, Kubernetes, Alerting, Comparison, Slack, Webhook
 
 Description: A detailed comparison of notification and alerting systems in Flux CD and ArgoCD, covering providers, event types, configuration, and integration with external services.
 

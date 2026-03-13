@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MetalLB, cert-manager, TLS, Kubernetes, SSL, Load Balancing, Security, Automation
+Tags: MetalLB, Cert-Manager, TLS, Kubernetes, SSL, Load Balancing, Security, Automation
 
 Description: Learn how to use MetalLB with cert-manager for automated TLS certificate management on bare-metal Kubernetes services.
 

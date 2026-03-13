@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRepository, Jetstack, cert-manager, TLS, Certificates
+Tags: Flux CD, GitOps, Kubernetes, Helm, HelmRepository, Jetstack, Cert-Manager, TLS, Certificates
 
 Description: Step-by-step guide to configuring a Flux CD HelmRepository for Jetstack charts and deploying cert-manager for automated TLS certificate management.
 

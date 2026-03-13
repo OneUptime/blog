@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, Kubernetes, Webhooks, Monitoring, Prometheus
+Tags: Istio, Kubernetes, Webhook, Monitoring, Prometheus
 
 Description: How to monitor Istio sidecar injection webhook performance including latency, error rates, and throughput using Prometheus metrics and Kubernetes tooling.
 

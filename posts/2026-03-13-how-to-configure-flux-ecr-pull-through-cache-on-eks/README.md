@@ -174,7 +174,7 @@ spec:
 
 Update your Flux-managed workloads to use the ECR pull-through cache URLs. The pattern is:
 
-```
+```yaml
 Original: docker.io/library/nginx:1.25
 Cached:   <account-id>.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/nginx:1.25
 

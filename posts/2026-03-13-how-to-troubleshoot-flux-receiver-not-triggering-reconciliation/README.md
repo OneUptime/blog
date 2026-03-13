@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Webhooks, Troubleshooting, Debugging, Reconciliation
+Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Troubleshooting, Debugging, Reconciliation
 
 Description: A systematic troubleshooting guide for diagnosing and fixing issues when a Flux Receiver accepts webhooks but does not trigger resource reconciliation.
 
@@ -41,7 +41,7 @@ kubectl -n flux-system get receiver
 
 Expected output:
 
-```
+```text
 NAME              AGE   READY   STATUS
 github-receiver   10m   True    Receiver initialized for path /hook/abc123...
 ```
@@ -69,7 +69,7 @@ kubectl -n flux-system logs deploy/notification-controller --since=10m | grep -i
 
 Look for lines indicating a request was received:
 
-```
+```text
 "msg":"handling request","receiver":"flux-system/github-receiver"
 ```
 

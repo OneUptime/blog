@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: K3s, Kubernetes, Ubuntu, Linux, DevOps
+Tags: k3s, Kubernetes, Ubuntu, Linux, DevOps
 
 Description: A step-by-step guide to installing K3s on Ubuntu, from prerequisites to running your first workload on a lightweight Kubernetes cluster.
 

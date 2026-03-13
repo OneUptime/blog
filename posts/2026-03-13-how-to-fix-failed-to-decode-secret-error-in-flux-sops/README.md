@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, SOPS, Secrets Management, Encryption
 
-Description: Learn how to diagnose and fix the "failed to decode secret" error when using SOPS decryption with Flux CD Kustomization controller.
+Description: Learn how to diagnose and fix the 'failed to decode secret' error when using SOPS decryption with Flux CD Kustomization controller.
 
 ---
 
 If you are using Flux CD with SOPS for secret management, you may encounter the following error during reconciliation:
 
-```
+```text
 kustomize controller: failed to decode secret 'flux-system/sops-age': illegal base64 data at input byte 0
 ```
 
 or a variant such as:
 
-```
+```text
 kustomize controller: failed to decode secret data: failed to decrypt sops-encrypted data: error decrypting key
 ```
 

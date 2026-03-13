@@ -18,7 +18,7 @@ Running `flux get kustomizations` shows a persistent failure:
 flux get kustomizations
 ```
 
-```
+```text
 NAME        REVISION        SUSPENDED   READY   MESSAGE
 my-app      main@sha1:abc   False       False   kustomize build failed: ...
 ```

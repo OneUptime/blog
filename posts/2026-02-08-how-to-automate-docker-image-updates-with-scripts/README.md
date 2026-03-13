@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Docker, Automation, Image updates, Scripting, Watchtower, CI/CD, DevOps
+Tags: Docker, Automation, Image Updates, Scripting, Watchtower, CI/CD, DevOps
 
 Description: Automate Docker image updates with custom scripts and tools like Watchtower to keep your containers running the latest secure versions.
 

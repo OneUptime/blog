@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: PHP, Laravel, Webhooks, API, Events, HTTP
+Tags: PHP, Laravel, Webhook, API, Events, HTTP
 
 Description: Learn how to implement webhooks in Laravel for both sending and receiving real-time event notifications.
 

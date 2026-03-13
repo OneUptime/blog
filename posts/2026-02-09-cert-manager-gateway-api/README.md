@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, cert-manager, Gateway API, TLS
+Tags: Kubernetes, Cert-Manager, Gateway API, TLS
 
 Description: Learn how to automatically provision TLS certificates for Kubernetes Gateway API resources using cert-manager, including HTTPRoute and TLSRoute configuration.
 

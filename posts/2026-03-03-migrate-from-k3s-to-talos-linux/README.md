@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Kubernetes, K3s, Migration, Lightweight Kubernetes, Cluster Management
+Tags: Talos Linux, Kubernetes, k3s, Migration, Lightweight Kubernetes, Cluster Management
 
 Description: Step-by-step instructions for migrating your k3s Kubernetes clusters to Talos Linux while preserving workloads and minimizing service disruptions.
 

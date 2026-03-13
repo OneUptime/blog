@@ -25,7 +25,7 @@ Separating them provides:
 
 ## Directory Structure
 
-```
+```text
 fleet-repo/
   clusters/
     production/

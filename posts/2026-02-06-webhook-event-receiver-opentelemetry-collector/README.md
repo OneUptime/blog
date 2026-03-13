@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Collector, Webhooks, Events, Logs, HTTP
+Tags: OpenTelemetry, Collector, Webhook, Events, Logs, HTTP
 
 Description: Learn how to configure the Webhook Event Receiver in the OpenTelemetry Collector to receive events from external systems via HTTP webhooks.
 

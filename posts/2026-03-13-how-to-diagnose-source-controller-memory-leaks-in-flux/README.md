@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Troubleshooting, Source Controller, Memory Leaks, Performance, Monitoring
+Tags: Flux, Kubernetes, GitOps, Troubleshooting, Source Controller, Memory Leak, Performance, Monitoring
 
 Description: Learn how to identify, diagnose, and fix memory leaks in the Flux Source Controller using Prometheus metrics, profiling tools, and configuration adjustments.
 
@@ -41,13 +41,13 @@ Run this command repeatedly over several hours to observe the trend. If memory c
 
 The Source Controller exposes Prometheus metrics at `/metrics`. Query for memory usage patterns:
 
-```
+```promql
 container_memory_working_set_bytes{namespace="flux-system", container="manager", pod=~"source-controller.*"}
 ```
 
 To see the rate of memory growth:
 
-```
+```promql
 rate(container_memory_working_set_bytes{namespace="flux-system", container="manager", pod=~"source-controller.*"}[1h])
 ```
 
@@ -147,7 +147,7 @@ go tool pprof heap.prof
 
 Inside the pprof shell, use `top` to see the largest memory allocators:
 
-```
+```text
 (pprof) top 10
 ```
 

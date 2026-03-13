@@ -18,7 +18,7 @@ Flux controllers expose Prometheus metrics on port 8080. The most important ones
 
 ### Reconciliation Duration
 
-```
+```promql
 gotk_reconcile_duration_seconds_bucket
 gotk_reconcile_duration_seconds_sum
 gotk_reconcile_duration_seconds_count
@@ -28,7 +28,7 @@ This histogram shows how long each reconciliation takes, broken down by kind (Ku
 
 ### Reconciliation Count
 
-```
+```promql
 gotk_reconcile_condition
 ```
 
@@ -36,7 +36,7 @@ This gauge shows the current condition of each reconciled object.
 
 ### Controller Runtime Metrics
 
-```
+```promql
 controller_runtime_reconcile_total
 controller_runtime_reconcile_time_seconds_bucket
 controller_runtime_active_workers

@@ -16,7 +16,7 @@ Cert-manager must be fully installed and operational before any Ingress resource
 
 Organize your Flux repository into distinct layers with explicit dependencies:
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   └── production/

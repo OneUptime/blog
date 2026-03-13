@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, HelmRelease, Annotations, Helm
 
-Description: Learn how to diagnose and fix the "metadata.annotations too long" error in Flux HelmRelease caused by the last-applied-configuration annotation exceeding Kubernetes limits.
+Description: Learn how to diagnose and fix the 'metadata.annotations too long' error in Flux HelmRelease caused by the last-applied-configuration annotation exceeding Kubernetes limits.
 
 ---
 
 When Flux manages HelmReleases with large values or many resources, you may encounter:
 
-```
+```text
 helm-controller: failed to create resource: metadata.annotations: Too long: must have at most 262144 bytes
 ```
 
 or:
 
-```
+```text
 The ConfigMap "my-config" is invalid: metadata.annotations: Too long: must have at most 262144 bytes
 ```
 

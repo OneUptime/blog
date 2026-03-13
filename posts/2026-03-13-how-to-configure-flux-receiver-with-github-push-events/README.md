@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, GitHub, Webhooks
+Tags: Flux, Kubernetes, GitOps, Receiver, GitHub, Webhook
 
 Description: Learn how to configure a Flux Receiver to trigger immediate reconciliation when GitHub push events occur, eliminating polling delays.
 

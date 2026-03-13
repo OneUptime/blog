@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, MetalLB, cert-manager, TLS, Let's Encrypt
+Tags: Kubernetes, MetalLB, Cert-Manager, TLS, Let's Encrypt
 
 Description: Learn how to combine MetalLB with cert-manager to automatically provision TLS certificates for services exposed via LoadBalancer.
 

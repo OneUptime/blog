@@ -375,7 +375,7 @@ Parallelize independent scanning jobs and cache tool installations:
 
 Use a `.trivyignore` file to suppress known false positives:
 
-```
+```text
 # .trivyignore
 CVE-2023-12345
 CVE-2023-67890

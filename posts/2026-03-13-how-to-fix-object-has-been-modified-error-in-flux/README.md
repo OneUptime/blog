@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, Optimistic Locking, Resource Version, Concurrency
 
-Description: Learn how to diagnose and fix the "object has been modified" optimistic concurrency error in Flux when concurrent updates cause resource version conflicts.
+Description: Learn how to diagnose and fix the 'object has been modified' optimistic concurrency error in Flux when concurrent updates cause resource version conflicts.
 
 ---
 
 During Flux reconciliation, you may see:
 
-```
+```text
 kustomize controller: failed to reconcile kustomization 'flux-system/my-app': Operation cannot be fulfilled on deployments.apps "my-app": the object has been modified; please apply your changes to the latest version of the object
 ```
 
 or:
 
-```
+```text
 helm-controller: upgrade failed: Operation cannot be fulfilled on configmaps "my-config": the object has been modified; please apply your changes to the latest version of the object
 ```
 

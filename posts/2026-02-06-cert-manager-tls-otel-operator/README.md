@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, cert-manager, TLS, Operator, Kubernetes Webhook
+Tags: OpenTelemetry, Cert-Manager, TLS, Operator, Kubernetes Webhook
 
 Description: Configure cert-manager to issue and manage TLS certificates for the OpenTelemetry Operator webhook admission controller in Kubernetes.
 

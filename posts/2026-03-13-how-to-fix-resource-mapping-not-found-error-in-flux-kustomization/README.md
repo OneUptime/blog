@@ -2,21 +2,21 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, Kustomization, CRDs, Resource Mapping
+Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, Kustomization, CRD, Resource Mapping
 
-Description: Learn how to diagnose and fix the "resource mapping not found" error in Flux Kustomization caused by missing Custom Resource Definitions.
+Description: Learn how to diagnose and fix the 'resource mapping not found' error in Flux Kustomization caused by missing Custom Resource Definitions.
 
 ---
 
 When Flux attempts to apply manifests that reference custom resource types, you may encounter:
 
-```
+```text
 kustomize controller: failed to reconcile kustomization 'flux-system/my-app': resource mapping not found for name: "my-resource" namespace: "default" from "my-resource.yaml": no matches for kind "MyCustomResource" in version "example.com/v1alpha1"
 ```
 
 or:
 
-```
+```text
 resource mapping not found for name: "my-certificate" namespace: "cert-manager" from "certificate.yaml": no matches for kind "Certificate" in version "cert-manager.io/v1"
 ```
 
@@ -116,7 +116,7 @@ spec:
 
 Move CRDs into their own directory and Kustomization:
 
-```
+```text
 infrastructure/
   cert-manager/
     crds/

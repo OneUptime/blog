@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, TLS, Networking, Source Controller
 
-Description: Learn how to diagnose and fix the "TLS handshake timeout" error in Flux CD when controllers cannot establish secure connections to remote endpoints.
+Description: Learn how to diagnose and fix the 'TLS handshake timeout' error in Flux CD when controllers cannot establish secure connections to remote endpoints.
 
 ---
 
 When Flux controllers attempt to connect to remote services over HTTPS, you may see:
 
-```
+```text
 source-controller: failed to checkout and determine revision: unable to clone 'https://github.com/my-org/my-repo.git': net/http: TLS handshake timeout
 ```
 
 or:
 
-```
+```text
 helm-controller: failed to download chart: Get "https://charts.example.com/my-chart-1.0.0.tgz": net/http: TLS handshake timeout
 ```
 

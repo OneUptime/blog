@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Istio, cert-manager, TLS, Gateway, Kubernetes, Automation
+Tags: Istio, Cert-Manager, TLS, Gateway, Kubernetes, Automation
 
 Description: Complete guide to integrating cert-manager with Istio Gateway for automated TLS certificate provisioning and renewal.
 

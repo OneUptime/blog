@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, Web PubSub, Event Handler, Webhooks, Real-Time, Server-Side, Node.js
+Tags: Azure, Web PubSub, Event Handler, Webhook, Real-Time, Server-Side, Node.js
 
 Description: Learn how to implement event handlers in Azure Web PubSub to process client connections, messages, and disconnection events on the server side.
 

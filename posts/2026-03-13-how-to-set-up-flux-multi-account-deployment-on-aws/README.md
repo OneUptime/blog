@@ -34,7 +34,7 @@ Each cluster runs its own Flux instance, all pointing to the same Git repository
 
 Organize your repository to support multiple clusters across accounts:
 
-```
+```text
 fleet-infra/
   ├── base/                          # Shared base configurations
   │   ├── sources/                   # Shared Helm repositories

@@ -41,7 +41,7 @@ kubectl get pods -n flux-system -o jsonpath='{range .items[*]}{.spec.containers[
 
 You should see images like:
 
-```
+```bash
 ghcr.io/fluxcd/source-controller:v1.2.0
 ghcr.io/fluxcd/kustomize-controller:v1.2.0
 ghcr.io/fluxcd/helm-controller:v0.37.0

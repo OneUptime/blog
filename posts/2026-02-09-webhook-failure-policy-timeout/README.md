@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Webhooks, Configuration, Reliability
+Tags: Kubernetes, Webhook, Configuration, Reliability
 
 Description: Learn how to configure webhook failure policies and timeout settings to balance reliability and cluster availability when admission webhooks fail or respond slowly.
 

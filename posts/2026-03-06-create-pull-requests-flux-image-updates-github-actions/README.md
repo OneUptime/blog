@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitHub Actions, Pull Requests, Image updates, Automation, GitOps, Review workflow
+Tags: Flux CD, GitHub Actions, Pull Requests, Image Updates, Automation, GitOps, Review workflow
 
 Description: Learn how to automate pull request creation for Flux image updates using GitHub Actions, enabling a review-based workflow for container image deployments.
 

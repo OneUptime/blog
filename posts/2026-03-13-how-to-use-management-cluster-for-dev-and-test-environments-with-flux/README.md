@@ -134,7 +134,7 @@ done
 
 Organize your repository to clearly separate environments:
 
-```
+```text
 fleet-repo/
 ├── clusters/
 │   └── management/

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, cert-manager, PKI, Security
+Tags: Kubernetes, Cert-Manager, PKI, Security
 
 Description: Learn how to integrate cert-manager with external PKI infrastructure including enterprise certificate authorities, hardware security modules, and existing certificate management systems.
 

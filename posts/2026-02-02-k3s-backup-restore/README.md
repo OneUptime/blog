@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: K3s, Kubernetes, Backup, Restore, Disaster Recovery, etcd, DevOps, Infrastructure
+Tags: k3s, Kubernetes, Backup, Restore, Disaster Recovery, etcd, DevOps, Infrastructure
 
 Description: A comprehensive guide to backing up and restoring K3s clusters, covering etcd snapshots, automated backup strategies, disaster recovery procedures.
 

@@ -160,7 +160,7 @@ git push
 
 A well-organized repository structure makes local references clean and maintainable:
 
-```
+```text
 my-k8s-repo/
   bases/
     app-template/

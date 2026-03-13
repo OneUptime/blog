@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Webhooks, Receiver, Generic
+Tags: Flux CD, GitOps, Kubernetes, Webhook, Receiver, Generic
 
 Description: Learn how to configure a Flux Receiver with the generic webhook type to accept webhooks from any source and trigger reconciliation.
 

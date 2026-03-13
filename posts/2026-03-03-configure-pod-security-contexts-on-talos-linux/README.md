@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Pod Security, Kubernetes, Security Contexts, Container Security
+Tags: Talos Linux, Pod Security, Kubernetes, Security Context, Container Security
 
 Description: Learn how to properly configure pod security contexts on Talos Linux to enforce least-privilege access and harden your Kubernetes workloads.
 

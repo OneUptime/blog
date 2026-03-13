@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Linux, K3s, Kubernetes, Edge, DevOps
+Tags: Ubuntu, Linux, k3s, Kubernetes, Edge, DevOps
 
 Description: Deploy K3s on Ubuntu for lightweight edge Kubernetes with single-node and multi-node cluster configurations.
 

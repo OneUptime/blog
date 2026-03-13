@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, ACR, Azure, Webhooks, Container Registry
+Tags: Flux, Kubernetes, GitOps, Receiver, ACR, Azure, Webhook, Container Registry
 
 Description: Learn how to configure a Flux Receiver for Azure Container Registry webhook events to trigger reconciliation when new images are pushed to ACR.
 

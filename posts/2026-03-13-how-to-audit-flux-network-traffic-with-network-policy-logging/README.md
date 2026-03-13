@@ -81,7 +81,7 @@ spec:
 
 Each log entry contains the following fields:
 
-```
+```text
 calico-packet: IN=<interface> OUT=<interface> SRC=<source-ip> DST=<dest-ip> PROTO=<protocol> SPT=<src-port> DPT=<dst-port> MARK=<policy-mark>
 ```
 
@@ -165,13 +165,13 @@ cilium hubble enable --ui \
 
 Query policy verdicts in Prometheus:
 
-```
+```bash
 hubble_flows_processed_total{namespace="flux-system", verdict="DROPPED"}
 ```
 
 Create a Grafana dashboard to visualize Flux network activity:
 
-```
+```bash
 rate(hubble_flows_processed_total{namespace="flux-system"}[5m])
 ```
 

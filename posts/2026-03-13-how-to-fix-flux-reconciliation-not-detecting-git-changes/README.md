@@ -18,7 +18,7 @@ After pushing commits, the GitRepository source shows no change:
 flux get sources git my-repo
 ```
 
-```
+```text
 NAME        REVISION              SUSPENDED   READY   MESSAGE
 my-repo     main@sha1:old123      False       True    stored artifact for revision 'main@sha1:old123'
 ```
@@ -142,7 +142,7 @@ cat .sourceignore
 
 Ensure it does not exclude the paths you are changing. The syntax is similar to `.gitignore`:
 
-```
+```text
 # .sourceignore
 # Do NOT ignore the apps directory
 !apps/

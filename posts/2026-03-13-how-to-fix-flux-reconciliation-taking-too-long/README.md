@@ -18,7 +18,7 @@ Reconciliation completes successfully but takes far longer than expected:
 flux get kustomizations
 ```
 
-```
+```text
 NAME        REVISION              SUSPENDED   READY   MESSAGE
 my-app      main@sha1:abc123      False       True    Applied revision: main@sha1:abc123
 ```

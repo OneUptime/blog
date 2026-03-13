@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, CRDs, Operator
+Tags: ArgoCD, GitOps, Kubernetes, CRD, Operator
 
 Description: Learn how to manage the chicken-and-egg problem of deploying CRDs before operators and custom resources in ArgoCD using sync waves, phases, and app-of-apps patterns.
 

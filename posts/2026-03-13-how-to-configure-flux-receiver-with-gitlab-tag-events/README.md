@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, GitLab, Tags, Webhooks
+Tags: Flux, Kubernetes, GitOps, Receiver, GitLab, Tags, Webhook
 
 Description: Learn how to configure a Flux Receiver for GitLab tag push events to trigger reconciliation when new version tags are created.
 

@@ -23,7 +23,7 @@ Trunk-based development and Flux are a natural fit because:
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   ├── staging/

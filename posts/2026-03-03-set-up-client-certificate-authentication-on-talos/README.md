@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Talos Linux, Client Certificates, TLS, Authentication, Kubernetes, PKI
+Tags: Talos Linux, Client Certificate, TLS, Authentication, Kubernetes, PKI
 
 Description: Learn how to configure client certificate authentication on Talos Linux for strong mutual TLS authentication between users and the Kubernetes API server.
 

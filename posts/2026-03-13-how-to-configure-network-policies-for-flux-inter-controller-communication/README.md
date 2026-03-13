@@ -25,7 +25,7 @@ kubectl get deployments -n flux-system
 
 Expected output:
 
-```
+```bash
 NAME                      READY   UP-TO-DATE   AVAILABLE
 helm-controller           1/1     1            1
 kustomize-controller      1/1     1            1

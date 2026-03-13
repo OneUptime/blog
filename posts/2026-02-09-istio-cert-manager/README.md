@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Istio, cert-manager, TLS, Kubernetes, Security, Service Mesh
+Tags: Istio, Cert-Manager, TLS, Kubernetes, Security, Service Mesh
 
 Description: Integrate cert-manager with Istio to automate TLS certificate provisioning and rotation for ingress gateways and service mesh workloads.
 

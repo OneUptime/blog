@@ -525,6 +525,7 @@
 - APIM
 - apiserver-builder
 - APISIX
+- APIVersion
 - APM
 - APNs
 - Apollo
@@ -686,7 +687,7 @@
 - AS2
 - ASGI
 - ASK
-- aso
+- ASO
 - ASP.NET
 - ASP.NET Core
 - ASP.NET Core 8
@@ -1097,6 +1098,7 @@
 - Azure SDK
 - Azure Security
 - Azure Service Bus
+- Azure Service Operator
 - Azure Service Tags
 - Azure SignalR
 - Azure SignalR Service
@@ -1334,6 +1336,7 @@
 - Binary Logs
 - Binary Protocol
 - Binary Size
+- Binary Verification
 - BinaryAuthorization
 - BIND
 - Bind Mounts
@@ -1519,7 +1522,7 @@
 - Bucket
 - Bucket Lock
 - Bucket Policies
-- Bucket source
+- Bucket Source
 - Bucket4j
 - Budget
 - Budget Alerts
@@ -1561,14 +1564,17 @@
 - Build Pipeline
 - Build Process
 - Build Provenance
+- Build Security
 - Build Server
 - Build System
 - Build Tags
+- Build Time
 - Build Tool
 - Build Tracing
 - Build Triggers
 - Build Validation
 - Build Variables
+- Build Verification
 - Buildah
 - Buildbot
 - BuildConfigs
@@ -1614,6 +1620,7 @@
 - Business Value
 - BUSY Errors
 - BYOL
+- Bypass
 - Bytecode Instrumentation
 - C
 - C Extension
@@ -1624,7 +1631,7 @@
 - C++
 - C4 Model
 - CA
-- Ca bundle
+- CA Bundle
 - CA Certificates
 - CA Trust Store
 - CAB
@@ -1763,7 +1770,7 @@
 - cephadm
 - CephFS
 - Cerner
-- cert-manager
+- Cert-Manager
 - Certbot
 - Certificate Authentication
 - Certificate Authority
@@ -1791,6 +1798,7 @@
 - Chain Validation
 - Chainguard
 - Chains
+- Chainsaw
 - Change Analysis
 - Change Data Capture
 - Change Detection
@@ -1963,7 +1971,7 @@
 - Client
 - Client Authentication
 - Client Buffer
-- Client Certificates
+- Client Certificate
 - Client Configuration
 - Client Credentials
 - Client Development
@@ -2152,7 +2160,7 @@
 - CLU
 - Cluster
 - Cluster Access
-- Cluster addons
+- Cluster Addons
 - Cluster Administration
 - Cluster API
 - Cluster Autoscaler
@@ -2167,7 +2175,7 @@
 - Cluster Health
 - Cluster Hygiene
 - Cluster Initialization
-- Cluster labels
+- Cluster Labels
 - Cluster Lifecycle
 - Cluster Maintenance
 - Cluster Management
@@ -2188,6 +2196,7 @@
 - Cluster Sizing
 - Cluster State
 - Cluster Templates
+- Cluster Tiers
 - Cluster Topology
 - Cluster Upgrade
 - Cluster Validation
@@ -2203,6 +2212,7 @@
 - ClusterRole
 - ClusterRoleBinding
 - ClusterTrustBundle
+- ClusterUpgrade
 - CMake
 - CMDB
 - CMEK
@@ -2404,7 +2414,7 @@
 - Conditional
 - Conditional Access
 - Conditional Compilation
-- Conditional Deployments
+- Conditional Deployment
 - Conditional Display
 - Conditional Forwarding
 - Conditional Logic
@@ -2413,6 +2423,7 @@
 - Conditions
 - Confd
 - Confidential Computing
+- Confidential Containers
 - Confidential GKE
 - Confidential Ledger
 - Confidential VMs
@@ -2663,7 +2674,8 @@
 - Control Tower
 - Controlled Components
 - Controller
-- Controller configuration
+- Controller Assignment
+- Controller Configuration
 - Controller development
 - Controller failures
 - Controller instances
@@ -2797,7 +2809,7 @@
 - Crates
 - Crawlers
 - CRC
-- CRDs
+- CRD
 - CRDT
 - Create
 - Create React App
@@ -3342,6 +3354,7 @@
 - Date Time
 - Date-Tags
 - datetime
+- Datree
 - DAX
 - DBA
 - DbContext
@@ -3381,6 +3394,7 @@
 - Debug
 - Debug Exporter
 - Debug Logging
+- Debug Logs
 - Debug Mode
 - Debugging
 - Decentralization
@@ -3394,6 +3408,7 @@
 - Declarative Configuration
 - Declarative Management
 - Decoding
+- Decommission
 - Decommissioning
 - Decorators
 - Decoupling
@@ -3533,7 +3548,7 @@
 - Deterministic UUID
 - Detox
 - Dev Containers
-- Dev Environments
+- Dev Environment
 - Developer
 - Developer Education
 - Developer Experience
@@ -3661,6 +3676,7 @@
 - disableWait
 - Disaster Recovery
 - Disaster-Recovery
+- DisasterRecovery
 - Disconnected
 - DisconnectException
 - Discord
@@ -3947,6 +3963,7 @@
 - Dramatiq
 - Drawer Navigation
 - DRBD
+- Drift
 - Drift Detection
 - Drift Management
 - Drivers
@@ -3963,6 +3980,7 @@
 - Drug Interactions
 - Drupal
 - DRY
+- DRY Patterns
 - Dry Run
 - Dry-run failed
 - DSC
@@ -4309,6 +4327,7 @@
 - Error Impact
 - Error Logs
 - Error Management
+- Error Messages
 - Error Monitoring
 - Error Pages
 - Error Propagation
@@ -5476,7 +5495,7 @@
 - Healthcare Compliance
 - Healthcare Messaging
 - Healthcare NLP
-- Healthcheck
+- HealthCheck
 - Heap
 - Heap Profiling
 - Heap Snapshots
@@ -5486,7 +5505,7 @@
 - HEC
 - Helm
 - Helm Charts
-- Helm controller
+- Helm Controller
 - Helm Hooks
 - Helm operator
 - Helm Repositories
@@ -5724,8 +5743,10 @@
 - Hybrid Connectivity
 - Hybrid Deployment
 - Hybrid DNS
+- Hybrid GitOps
 - Hybrid Identity
 - Hybrid Integration
+- Hybrid Mode
 - Hybrid Monitoring
 - Hybrid NEG
 - Hybrid Networking
@@ -5825,6 +5846,7 @@
 - Image Allow Lists
 - Image Analysis
 - Image Automation
+- Image Automation Controller
 - Image Builder
 - Image Building
 - Image Caching
@@ -5851,6 +5873,7 @@
 - Image Recognition
 - Image Redaction
 - Image Reflector
+- Image Reflector Controller
 - Image Registry
 - Image Scanning
 - Image Signing
@@ -5859,7 +5882,7 @@
 - Image Tagging
 - Image update automation
 - Image Updater
-- Image updates
+- Image Updates
 - Image Verification
 - image-automation
 - image-management
@@ -6025,6 +6048,7 @@
 - Ingester
 - Ingestion
 - Ingestion Keys
+- Ingress
 - Ingress Controller
 - Ingress Controls
 - Ingress Gateway
@@ -6076,6 +6100,7 @@
 - Inspection Pipeline
 - Inspection Rules
 - Inspector
+- Instability
 - Install
 - Install Failures
 - Install Remediation
@@ -6435,7 +6460,7 @@
 - k0s
 - k3d
 - k3OS
-- K3s
+- k3s
 - k6
 - K8s
 - K8s Attributes Processor
@@ -6491,6 +6516,7 @@
 - Key Access Justifications
 - Key Design
 - Key Generation
+- Key Groups
 - Key Management
 - Key Pairs
 - Key Rotation
@@ -6511,6 +6537,7 @@
 - Keycloak
 - KeyDB
 - Keyfile
+- Keyless Verification
 - Keyrings
 - Keys
 - Keyspace
@@ -6545,6 +6572,7 @@
 - Knowledge Store
 - Knowledge-base
 - Knowledge-management
+- Known Hosts
 - known_hosts
 - Koa.js
 - Koin
@@ -6566,6 +6594,7 @@
 - Ktor
 - kube-bench
 - kube-dns
+- kube-linter
 - kube-prometheus-stack
 - kube-proxy
 - kube-state-metrics
@@ -6610,8 +6639,10 @@
 - Kubernetes Upgrades
 - Kubernetes Webhook
 - Kubescape
+- Kubesec
 - KubeSpan
 - KubeSphere
+- kubeval
 - KubeVirt
 - Kubewarden
 - Kueue
@@ -6622,6 +6653,8 @@
 - Kustomization
 - Kustomization Path
 - Kustomize
+- Kustomize Controller
+- kuttl
 - KV
 - KV Secrets
 - KV Store
@@ -6898,6 +6931,7 @@
 - LMTP
 - LNP
 - Load Balancer
+- Load Balancer Controller
 - Load Balancing
 - Load Distribution
 - Load Management
@@ -6913,6 +6947,7 @@
 - Loader Hook
 - Loading States
 - Loan Origination
+- Local
 - Local Action
 - Local AI
 - Local Backend
@@ -6951,7 +6986,6 @@
 - Locality-Aware Routing
 - Localization
 - LocalPV
-- Locals
 - LocalStack
 - LocalVolume
 - Location
@@ -7180,6 +7214,7 @@
 - Managed Service
 - Managed-identity
 - Management
+- Management Cluster
 - Management Groups
 - Mandatory Access Control
 - Manifest Generation
@@ -7631,6 +7666,7 @@
 - MOVED
 - Moved Blocks
 - Moving Average
+- Mozilla SOPS
 - MPI
 - MPIO
 - MPLS
@@ -7719,6 +7755,7 @@
 - Multi-Regional
 - Multi-Registry
 - Multi-Repo
+- Multi-Resource
 - Multi-SDK
 - Multi-Server
 - Multi-Service
@@ -7989,6 +8026,7 @@
 - Network Teaming
 - Network Testing
 - Network Tiers
+- Network Timeouts
 - Network Tools
 - Network Topology
 - Network Troubleshooting
@@ -8000,6 +8038,7 @@
 - NetworkManager
 - NetworkPolicies
 - NetworkPolicy
+- NetworkSet
 - Neural Voice
 - Neuron SDK
 - Neutron
@@ -8055,6 +8094,7 @@
 - no_log
 - no-advertise
 - No-Code
+- No-Proxy
 - noatime
 - Nocalhost
 - Nocloud
@@ -8147,7 +8187,7 @@
 - NoSQL Injection
 - Not Ready
 - Notary
-- notation
+- Notation
 - Note-Taking
 - Notebook
 - Notebook Orchestration
@@ -8159,6 +8199,7 @@
 - Notifications
 - NOTIFY
 - NotLeaderForPartition
+- NotReady
 - now Function
 - Npgsql
 - npm
@@ -8694,6 +8735,7 @@
 - Path References
 - Path Resolution
 - Path Routing
+- Path Rules
 - Path Traversal
 - Path Triggers
 - Path Units
@@ -8936,6 +8978,7 @@
 - plantimestamp
 - Plasma
 - Platform
+- Platform Components
 - Platform Engineering
 - Platform Management
 - Platform Monitoring
@@ -8984,11 +9027,13 @@
 - Pod Assignment
 - Pod Communication
 - Pod Configuration
+- Pod Crashes
 - Pod Debugging
 - Pod Disruption
 - Pod Disruption Budget
 - Pod Distribution
 - Pod Eviction
+- Pod Hardening
 - Pod Identity
 - Pod Labels
 - Pod Lifecycle
@@ -9611,6 +9656,7 @@
 - RabbitMQ
 - Race Conditions
 - Race Detection
+- RaceCondition
 - Rack
 - Rack and Spine
 - Rack Awareness
@@ -9839,6 +9885,7 @@
 - Refunds
 - Regex
 - Regex Filters
+- Region
 - Region Migration
 - Region Pairing
 - Region Recovery
@@ -10077,6 +10124,7 @@
 - Resource Locks
 - Resource Management
 - Resource Manager
+- Resource Mapping
 - Resource Monitoring
 - Resource Naming
 - Resource Optimization
@@ -10106,6 +10154,7 @@
 - Resource Updates
 - Resource Usage
 - Resource Utilization
+- Resource Version
 - Resource-Management
 - Resource-Ordering
 - ResourceQuota
@@ -10135,6 +10184,7 @@
 - Restoration
 - Restore
 - restorecon
+- Restricted PSS
 - RestTemplate
 - Result
 - Result Set Caching
@@ -10618,8 +10668,8 @@
 - Security Benchmarks
 - Security Center
 - Security Command Center
+- Security Context
 - Security Context Constraints
-- Security Contexts
 - Security Correlation
 - Security Dashboards
 - Security Events
@@ -10894,6 +10944,7 @@
 - Shadow Testing
 - Shadow Traffic
 - Shadowing
+- Shallow Clone
 - SHAP
 - Shard Allocation
 - Sharding
@@ -11161,6 +11212,7 @@
 - sosreport
 - Sound
 - Sound Server
+- Source
 - Source Address
 - Source Build
 - Source Connector
@@ -11176,7 +11228,7 @@
 - Source-Based
 - Source-Based Routing
 - Source-Kind
-- Sources
+- SourceController
 - SOX
 - SOX Compliance
 - SP Configuration
@@ -11390,6 +11442,7 @@
 - Stampede
 - Stampede Prevention
 - Standalone
+- Standalone Mode
 - Standard
 - Standard HDD
 - Standard Library
@@ -11932,6 +11985,7 @@
 - Technical Debt
 - Technical Writing
 - Technology Strategy
+- TEE
 - Tekton
 - Telecom
 - Telecommunications
@@ -13140,11 +13194,11 @@
 - WebDriver
 - Webex
 - WebFlux
+- Webhook
 - Webhook Authentication
 - Webhook Development
 - Webhook Security
 - Webhook Triggers
-- Webhooks
 - WebJobs
 - Webmail
 - Webmin
@@ -13311,6 +13365,7 @@
 - X11
 - X12
 - x2go
+- x509
 - x86
 - x86_64
 - XADD

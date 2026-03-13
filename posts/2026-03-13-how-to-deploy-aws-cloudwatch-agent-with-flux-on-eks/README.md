@@ -20,7 +20,7 @@ CloudWatch Container Insights provides monitoring and observability for EKS clus
 
 ## Repository Structure
 
-```
+```text
 flux-repo/
 ├── clusters/
 │   └── production/

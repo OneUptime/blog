@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Webhooks, Rate Limiting, Performance, Ingress, Throttling
+Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Rate Limiting, Performance, Ingress, Throttling
 
 Description: Learn how to rate limit incoming webhook requests to the Flux Receiver to prevent API throttling, excessive reconciliations, and resource exhaustion in your cluster.
 

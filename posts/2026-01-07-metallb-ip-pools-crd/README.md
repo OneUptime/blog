@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: MetalLB, Kubernetes, CRDs, IP Management, Load Balancing, Networking, Configuration
+Tags: MetalLB, Kubernetes, CRD, IP Management, Load Balancing, Networking, Configuration
 
 Description: Deep dive into managing MetalLB IP pools using Custom Resource Definitions including IPAddressPool and L2Advertisement.
 

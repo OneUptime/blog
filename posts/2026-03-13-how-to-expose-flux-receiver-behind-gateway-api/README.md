@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Webhooks, Gateway API, Networking, HTTPRoute
+Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Gateway API, Networking, HTTPRoute
 
 Description: A step-by-step guide to exposing the Flux notification-controller Receiver through the Kubernetes Gateway API for external webhook delivery.
 

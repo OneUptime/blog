@@ -85,7 +85,7 @@ Each cached index occupies memory proportional to the size of the repository's i
 
 Estimate the additional memory requirement:
 
-```
+```text
 Additional memory = number_of_cached_repos x average_index_size
 ```
 

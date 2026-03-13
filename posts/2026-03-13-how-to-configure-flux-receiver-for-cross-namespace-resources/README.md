@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Webhooks, Cross-Namespace, RBAC, Multi-Tenancy
+Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Cross-Namespace, RBAC, Multi-Tenancy
 
 Description: Learn how to configure Flux Receivers to trigger reconciliation of resources in different namespaces, including the RBAC and service account setup required for cross-namespace access.
 

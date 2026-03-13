@@ -28,7 +28,7 @@ graph TD
 
 Start by organizing your repository so that base manifests live in a shared directory and cluster-specific variable definitions live alongside each cluster's configuration.
 
-```
+```text
 repo/
 ├── base/
 │   └── app/

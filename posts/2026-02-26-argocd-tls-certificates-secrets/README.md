@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: ArgoCD, GitOps, Kubernetes, TLS, cert-manager
+Tags: ArgoCD, GitOps, Kubernetes, TLS, Cert-Manager
 
 Description: Learn how to manage TLS certificates as Kubernetes secrets in ArgoCD environments using cert-manager, Sealed Secrets, and External Secrets Operator for automated certificate lifecycle management.
 

@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux, Kubernetes, GitOps, Troubleshooting, Error Messages, TLS, Certificates, x509
 
-Description: Learn how to diagnose and fix the "x509 certificate signed by unknown authority" error in Flux when connecting to services with custom or self-signed certificates.
+Description: Learn how to diagnose and fix the 'x509 certificate signed by unknown authority' error in Flux when connecting to services with custom or self-signed certificates.
 
 ---
 
 When Flux controllers connect to Git repositories, Helm registries, or OCI endpoints that use self-signed or enterprise CA certificates, you will see:
 
-```
+```text
 source-controller: failed to checkout and determine revision: unable to clone 'https://git.internal.example.com/my-org/my-repo.git': x509: certificate signed by unknown authority
 ```
 
 or:
 
-```
+```text
 helm-controller: failed to download chart: Get "https://charts.internal.example.com/my-chart-1.0.0.tgz": x509: certificate signed by unknown authority
 ```
 

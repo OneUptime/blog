@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, SNS, HTTP, Webhooks, Integration
+Tags: AWS, SNS, HTTP, Webhook, Integration
 
 Description: Learn how to subscribe HTTP and HTTPS endpoints to SNS topics for webhook-style notifications, including confirmation handling, signature verification, and retry policies.
 

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux, Kubernetes, GitOps, Receiver, Webhooks, Security, TLS, Certificates, cert-manager
+Tags: Flux, Kubernetes, GitOps, Receiver, Webhook, Security, TLS, Certificates, Cert-Manager
 
 Description: Learn how to secure your Flux Receiver webhook endpoint with TLS encryption using cert-manager, self-signed certificates, and manual certificate management.
 

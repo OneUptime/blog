@@ -235,7 +235,7 @@ spec:
 
 Structure these resources in your Git repository:
 
-```
+```text
 clusters/production/ingress/
   kustomization.yaml
   managed-certificate.yaml

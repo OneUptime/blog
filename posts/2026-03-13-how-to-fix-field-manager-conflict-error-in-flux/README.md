@@ -10,13 +10,13 @@ Description: Learn how to diagnose and fix field manager conflict errors in Flux
 
 When working with Flux and server-side apply, you may encounter field manager conflicts:
 
-```
+```text
 kustomize controller: failed to reconcile: Apply failed with 2 conflicts: conflicts with "before-first-apply" using apps/v1: .spec.template.spec.containers[name="nginx"].ports[index=0].containerPort, .spec.template.spec.containers[name="nginx"].resources.limits.memory
 ```
 
 or:
 
-```
+```text
 Apply failed with 1 conflict: conflict with "manager" using v1: .data.config.yaml
 ```
 
@@ -116,7 +116,7 @@ kubectl get deployment my-app -n default -o json | \
 
 If two Kustomizations overlap on the same resource, restructure them so each resource is managed by exactly one Kustomization:
 
-```
+```text
 clusters/my-cluster/
   infrastructure/
     kustomization.yaml  # manages infrastructure resources

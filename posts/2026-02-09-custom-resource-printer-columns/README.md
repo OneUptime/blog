@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, CRDs, kubectl
+Tags: Kubernetes, CRD, kubectl
 
 Description: Learn how to configure additionalPrinterColumns in your CRDs to display custom fields in kubectl output, making your custom resources easier to inspect and manage.
 

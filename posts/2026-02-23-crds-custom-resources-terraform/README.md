@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Terraform, Kubernetes, CRDs, Custom Resources, Operator, Infrastructure as Code
+Tags: Terraform, Kubernetes, CRD, Custom Resources, Operator, Infrastructure as Code
 
 Description: Learn how to manage Kubernetes Custom Resource Definitions and custom resources in Terraform, including installation ordering, lifecycle management, and integration with popular operators.
 

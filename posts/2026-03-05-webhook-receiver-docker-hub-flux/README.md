@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Webhooks, Docker Hub, Receiver, Container Registry
+Tags: Flux CD, GitOps, Kubernetes, Webhook, Docker Hub, Receiver, Container Registry
 
 Description: Learn how to configure a Flux Receiver to accept Docker Hub webhooks and trigger reconciliation when new container images are pushed.
 

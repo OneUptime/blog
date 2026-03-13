@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, K3s, WireGuard
+Tags: Kubernetes, k3s, WireGuard
 
 Description: Learn how to connect multiple edge K3s clusters using WireGuard mesh networking, enabling secure cluster-to-cluster communication and distributed workload coordination across edge locations.
 

@@ -23,7 +23,7 @@ This pattern works well when you have:
 
 ## Recommended Directory Structure
 
-```
+```text
 fleet-repo/
   clusters/
     my-cluster/

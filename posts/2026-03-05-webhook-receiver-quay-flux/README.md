@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Flux CD, GitOps, Kubernetes, Webhooks, Quay, Receiver, Container Registry
+Tags: Flux CD, GitOps, Kubernetes, Webhook, Quay, Receiver, Container Registry
 
 Description: Learn how to configure a Flux Receiver to accept Quay container registry webhooks and trigger reconciliation on image push events.
 
