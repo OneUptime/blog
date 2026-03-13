@@ -115,14 +115,14 @@ spec:
                   metadata:
                     annotations:
                       prometheus.io/scrape: "true"
-                      prometheus.io/port: "9114"
+                      prometheus.io/port: "9102"
                   spec:
                     containers:
                       - name: exporter
                         image: prom/statsd-exporter:v0.26.0
                         ports:
                           - name: metrics
-                            containerPort: 9114
+                            containerPort: 9102
                         resources:
                           requests:
                             cpu: 10m

@@ -148,7 +148,7 @@ flux get helmreleases -A
 For detailed information about a specific HelmRelease:
 
 ```bash
-flux get helmrelease my-app -n default
+flux get helmreleases my-app -n default
 ```
 
 To force a reconciliation and watch the output:

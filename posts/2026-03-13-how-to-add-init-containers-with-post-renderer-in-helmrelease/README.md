@@ -61,7 +61,7 @@ spec:
                   spec:
                     initContainers:
                       - name: wait-for-db
-                        image: busybox:1.36
+                        image: busybox:1.28
                         command:
                           - sh
                           - -c
@@ -173,7 +173,7 @@ spec:
                   spec:
                     initContainers:
                       - name: wait-for-db
-                        image: busybox:1.36
+                        image: busybox:1.28
                         command:
                           - sh
                           - -c
@@ -245,7 +245,7 @@ spec:
                   spec:
                     initContainers:
                       - name: fix-permissions
-                        image: busybox:1.36
+                        image: busybox:1.28
                         command:
                           - sh
                           - -c
@@ -302,7 +302,7 @@ spec:
                   spec:
                     initContainers:
                       - name: sysctl-tuning
-                        image: busybox:1.36
+                        image: busybox:1.28
                         command:
                           - sysctl
                           - -w

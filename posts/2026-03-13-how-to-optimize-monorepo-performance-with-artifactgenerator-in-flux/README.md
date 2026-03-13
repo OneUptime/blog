@@ -43,41 +43,37 @@ Every Kustomization and HelmRelease references this single source. When a develo
 Create one ArtifactGenerator per service, each scoped to its own directory:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: user-service
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: platform
-  paths:
-    include:
-      - "services/user-service/**"
-    exclude:
-      - "services/user-service/docs/**"
-      - "services/user-service/**/*.md"
-      - "services/user-service/**/*_test.go"
+  sources:
+    - kind: GitRepository
+      name: platform
+  artifacts:
+    - path: "services/user-service/**"
+      exclude:
+        - "services/user-service/docs/**"
+        - "services/user-service/**/*.md"
+        - "services/user-service/**/*_test.go"
 ---
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: order-service
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: platform
-  paths:
-    include:
-      - "services/order-service/**"
-    exclude:
-      - "services/order-service/docs/**"
-      - "services/order-service/**/*.md"
-      - "services/order-service/**/*_test.go"
+  sources:
+    - kind: GitRepository
+      name: platform
+  artifacts:
+    - path: "services/order-service/**"
+      exclude:
+        - "services/order-service/docs/**"
+        - "services/order-service/**/*.md"
+        - "services/order-service/**/*_test.go"
 ```
 
 Repeat this pattern for each service. Each ArtifactGenerator only triggers when its specific service files change.
@@ -87,21 +83,19 @@ Repeat this pattern for each service. Each ArtifactGenerator only triggers when 
 Many monorepos have shared directories that multiple services depend on. Handle this by including shared paths in each relevant ArtifactGenerator:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: user-service
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: platform
-  paths:
-    include:
-      - "services/user-service/**"
-      - "shared/k8s-base/**"
-      - "shared/monitoring/**"
+  sources:
+    - kind: GitRepository
+      name: platform
+  artifacts:
+    - path: "services/user-service/**"
+    - path: "shared/k8s-base/**"
+    - path: "shared/monitoring/**"
 ```
 
 When files in `shared/k8s-base/` change, all ArtifactGenerators that include that path generate new artifacts, causing their downstream resources to reconcile. Services that do not depend on these shared paths remain unaffected.
@@ -111,47 +105,41 @@ When files in `shared/k8s-base/` change, all ArtifactGenerators that include tha
 Separate infrastructure components from application deployments:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: infra-controllers
   namespace: flux-system
 spec:
-  interval: 10m
-  sourceRef:
-    kind: GitRepository
-    name: platform
-  paths:
-    include:
-      - "infrastructure/controllers/**"
+  sources:
+    - kind: GitRepository
+      name: platform
+  artifacts:
+    - path: "infrastructure/controllers/**"
 ---
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: infra-networking
   namespace: flux-system
 spec:
-  interval: 10m
-  sourceRef:
-    kind: GitRepository
-    name: platform
-  paths:
-    include:
-      - "infrastructure/networking/**"
+  sources:
+    - kind: GitRepository
+      name: platform
+  artifacts:
+    - path: "infrastructure/networking/**"
 ---
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: apps-production
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: platform
-  paths:
-    include:
-      - "apps/production/**"
+  sources:
+    - kind: GitRepository
+      name: platform
+  artifacts:
+    - path: "apps/production/**"
 ```
 
 Infrastructure components typically change less frequently than applications. By separating them, you avoid reconciling infrastructure when only application code changes, and vice versa.
@@ -175,40 +163,36 @@ kubectl top pods -n flux-system
 
 In a typical monorepo with 20 services receiving 50 commits per day, switching from a single GitRepository to per-service ArtifactGenerators can reduce reconciliation events by 80-90%, since most commits only touch one or two services.
 
-## Optimizing ArtifactGenerator Intervals
+## ArtifactGenerator is Event-Driven
 
-Set appropriate reconciliation intervals for ArtifactGenerators based on how frequently each area of the repo changes:
+ArtifactGenerator does not use a `spec.interval` field — it is event-driven and triggers only when a referenced source produces a new revision. There is no need to tune per-service intervals; the source (e.g., GitRepository) controls the polling interval, and the ArtifactGenerator reacts to source changes automatically:
 
 ```yaml
-# Frequently changing service - shorter interval
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+# Event-driven service (no interval needed - ArtifactGenerator is event-driven)
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: api-gateway
   namespace: flux-system
 spec:
-  interval: 2m
-  sourceRef:
-    kind: GitRepository
-    name: platform
-  paths:
-    include:
-      - "services/api-gateway/**"
+  sources:
+    - kind: GitRepository
+      name: platform
+  artifacts:
+    - path: "services/api-gateway/**"
 ---
-# Rarely changing infrastructure - longer interval
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+# Infrastructure - same event-driven approach
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: cert-manager-config
   namespace: flux-system
 spec:
-  interval: 30m
-  sourceRef:
-    kind: GitRepository
-    name: platform
-  paths:
-    include:
-      - "infrastructure/cert-manager/**"
+  sources:
+    - kind: GitRepository
+      name: platform
+  artifacts:
+    - path: "infrastructure/cert-manager/**"
 ```
 
 ## Reducing Artifact Storage Overhead
@@ -217,15 +201,17 @@ Each ArtifactGenerator creates artifacts that consume storage. To minimize overh
 
 ```yaml
 spec:
-  paths:
-    include:
-      - "services/data-pipeline/**"
-    exclude:
-      - "services/data-pipeline/**/*.csv"
-      - "services/data-pipeline/**/*.parquet"
-      - "services/data-pipeline/fixtures/**"
-      - "services/data-pipeline/**/*.png"
-      - "services/data-pipeline/**/*.jpg"
+  sources:
+    - kind: GitRepository
+      name: platform
+  artifacts:
+    - path: "services/data-pipeline/**"
+      exclude:
+        - "services/data-pipeline/**/*.csv"
+        - "services/data-pipeline/**/*.parquet"
+        - "services/data-pipeline/fixtures/**"
+        - "services/data-pipeline/**/*.png"
+        - "services/data-pipeline/**/*.jpg"
 ```
 
 ## Conclusion

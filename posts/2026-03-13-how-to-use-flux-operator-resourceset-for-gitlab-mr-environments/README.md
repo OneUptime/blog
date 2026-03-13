@@ -52,7 +52,29 @@ kubectl create secret generic gitlab-token \
 
 ## Configuring the ResourceSet for GitLab MR Environments
 
-Create a ResourceSet that watches for open merge requests:
+MR preview environments require two resources: a `ResourceSetInputProvider` that polls GitLab for open merge requests, and a `ResourceSet` that templates the preview resources using the inputs from the provider.
+
+First, create the `ResourceSetInputProvider` that watches GitLab for MRs with the `preview` label:
+
+```yaml
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: app-merge-requests
+  namespace: flux-system
+spec:
+  type: GitLabMergeRequest
+  url: https://gitlab.com/my-group/my-app
+  secretRef:
+    name: gitlab-token
+  filter:
+    labels:
+      - preview
+  defaultValues:
+    deployPath: "./deploy/preview"
+```
+
+Then create the `ResourceSet` that references the provider via `inputsFrom` and generates preview environments:
 
 ```yaml
 apiVersion: fluxcd.controlplane.io/v1
@@ -61,66 +83,57 @@ metadata:
   name: mr-previews
   namespace: flux-system
 spec:
-  inputs:
-    - gitlab:
-        project: "my-group/my-app"
-        api: "https://gitlab.com"
-        token:
-          secretRef:
-            name: gitlab-token
-            key: token
-        mergeRequests:
-          labels:
-            - preview
-          interval: 1m
+  inputsFrom:
+    - kind: ResourceSetInputProvider
+      name: app-merge-requests
   resources:
     - apiVersion: v1
       kind: Namespace
       metadata:
-        name: "mr-{{ .iid }}"
+        name: "mr-<< inputs.id >>"
         labels:
           preview: "true"
-          mr-id: "{{ .iid }}"
+          mr-id: "<< inputs.id >>"
     - apiVersion: source.toolkit.fluxcd.io/v1
       kind: GitRepository
       metadata:
-        name: "mr-{{ .iid }}"
-        namespace: "mr-{{ .iid }}"
+        name: "mr-<< inputs.id >>"
+        namespace: "mr-<< inputs.id >>"
       spec:
         interval: 1m
         url: "https://gitlab.com/my-group/my-app.git"
         ref:
-          branch: "{{ .source_branch }}"
+          branch: "<< inputs.branch >>"
         secretRef:
           name: gitlab-credentials
     - apiVersion: kustomize.toolkit.fluxcd.io/v1
       kind: Kustomization
       metadata:
-        name: "mr-{{ .iid }}"
-        namespace: "mr-{{ .iid }}"
+        name: "mr-<< inputs.id >>"
+        namespace: "mr-<< inputs.id >>"
       spec:
         interval: 5m
         sourceRef:
           kind: GitRepository
-          name: "mr-{{ .iid }}"
-        path: ./deploy/preview
+          name: "mr-<< inputs.id >>"
+        path: << inputs.deployPath >>
         prune: true
         postBuild:
           substitute:
-            MR_ID: "{{ .iid }}"
-            MR_BRANCH: "{{ .source_branch }}"
-            PREVIEW_HOST: "mr-{{ .iid }}.preview.example.com"
+            MR_ID: "<< inputs.id >>"
+            MR_BRANCH: "<< inputs.branch >>"
+            PREVIEW_HOST: "mr-<< inputs.id >>.preview.example.com"
     - apiVersion: networking.k8s.io/v1
       kind: Ingress
       metadata:
-        name: "mr-{{ .iid }}"
-        namespace: "mr-{{ .iid }}"
+        name: "mr-<< inputs.id >>"
+        namespace: "mr-<< inputs.id >>"
         annotations:
           nginx.ingress.kubernetes.io/rewrite-target: /
       spec:
         ingressClassName: nginx
         rules:
-          - host: "mr-{{ .iid }}.preview.example.com"
+          - host: "mr-<< inputs.id >>.preview.example.com"
             http:
               paths:
                 - path: /
@@ -151,43 +164,37 @@ You will need to copy this Secret into each MR namespace. Add a resource templat
   kind: Secret
   metadata:
     name: gitlab-credentials
-    namespace: "mr-{{ .iid }}"
+    namespace: "mr-<< inputs.id >>"
   type: Opaque
   stringData:
     username: gitlab-ci-token
-    password: "{{ .token }}"
+    password: "<< inputs.provider.token >>"
 ```
 
 Alternatively, use an ExternalSecret operator or a Kustomize patch to handle credential distribution.
 
 ## Available Template Variables
 
-The GitLab merge request input provides these variables:
+The `ResourceSetInputProvider` for GitLab merge requests provides these variables:
 
-- `{{ .iid }}`: The MR internal ID (project-scoped number)
-- `{{ .source_branch }}`: The source branch name
-- `{{ .target_branch }}`: The target branch name
-- `{{ .title }}`: The MR title
-- `{{ .author }}`: The MR author username
-- `{{ .sha }}`: The latest commit SHA
+- `<< inputs.id >>`: The MR internal ID (project-scoped number)
+- `<< inputs.branch >>`: The source branch name
+- `<< inputs.sha >>`: The latest commit SHA
+- `<< inputs.author >>`: The MR author username
 
 ## Self-Hosted GitLab Configuration
 
-For self-hosted GitLab instances, update the `api` field:
+For self-hosted GitLab instances, update the `url` field in the `ResourceSetInputProvider`:
 
 ```yaml
-inputs:
-  - gitlab:
-      project: "my-group/my-app"
-      api: "https://gitlab.internal.company.com"
-      token:
-        secretRef:
-          name: gitlab-token
-          key: token
-      mergeRequests:
-        labels:
-          - preview
-        interval: 1m
+spec:
+  type: GitLabMergeRequest
+  url: https://gitlab.internal.company.com/my-group/my-app
+  secretRef:
+    name: gitlab-token
+  filter:
+    labels:
+      - preview
 ```
 
 ## Adding Resource Constraints
@@ -200,7 +207,7 @@ Prevent preview environments from consuming excessive resources:
   kind: ResourceQuota
   metadata:
     name: preview-limits
-    namespace: "mr-{{ .iid }}"
+    namespace: "mr-<< inputs.id >>"
   spec:
     hard:
       requests.cpu: "500m"
@@ -212,7 +219,7 @@ Prevent preview environments from consuming excessive resources:
   kind: LimitRange
   metadata:
     name: preview-defaults
-    namespace: "mr-{{ .iid }}"
+    namespace: "mr-<< inputs.id >>"
   spec:
     limits:
       - default:
@@ -226,14 +233,13 @@ Prevent preview environments from consuming excessive resources:
 
 ## Filtering MRs by Label
 
-The `labels` filter ensures only MRs with the `preview` label trigger environment creation. This gives developers control over when preview environments are created:
+The `filter.labels` field in the `ResourceSetInputProvider` ensures only MRs with the `preview` label trigger environment creation. This gives developers control over when preview environments are created:
 
 ```yaml
-mergeRequests:
+filter:
   labels:
     - preview
     - deploy-to-k8s
-  interval: 1m
 ```
 
 Developers add the label when they want a preview:

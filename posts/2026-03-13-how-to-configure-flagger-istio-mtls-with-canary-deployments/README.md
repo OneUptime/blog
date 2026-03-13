@@ -241,7 +241,7 @@ spec:
         http:
           http2MaxRequests: 500
       outlierDetection:
-        consecutiveErrors: 5
+        consecutive5xxErrors: 5
         interval: 10s
         baseEjectionTime: 30s
   analysis:

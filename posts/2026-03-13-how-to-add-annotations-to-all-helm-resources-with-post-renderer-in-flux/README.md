@@ -25,9 +25,9 @@ To follow this guide, you need:
 - kubectl access to the cluster
 - Basic understanding of Kustomize overlays
 
-## Adding Annotations with commonAnnotations
+## Adding Annotations to All Resources
 
-Flux post-renderers support the Kustomize `commonAnnotations` feature, which adds annotations to the metadata of every resource:
+To add annotations to every resource rendered by a Helm chart, use `spec.commonMetadata.annotations` (available since helm-controller v1.4 / Flux 2.7):
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -37,6 +37,11 @@ metadata:
   namespace: default
 spec:
   interval: 10m
+  commonMetadata:
+    annotations:
+      company.com/owner: platform-team
+      company.com/slack-channel: "#platform-alerts"
+      company.com/runbook: "https://wiki.internal/runbooks/my-app"
   chart:
     spec:
       chart: my-app
@@ -45,13 +50,6 @@ spec:
         kind: HelmRepository
         name: my-repo
         namespace: flux-system
-  postRenderers:
-    - kustomize:
-        patches: []
-        commonAnnotations:
-          company.com/owner: platform-team
-          company.com/slack-channel: "#platform-alerts"
-          company.com/runbook: "https://wiki.internal/runbooks/my-app"
 ```
 
 Every resource rendered by the chart will have these three annotations added to its metadata section.
@@ -182,7 +180,7 @@ spec:
 
 This adds Istio sidecar injection annotations directly to the pod template, which is where Istio looks for its configuration.
 
-## Combining commonAnnotations with Targeted Patches
+## Combining commonMetadata with Targeted Patches
 
 For a comprehensive annotation strategy, combine global annotations with resource-specific ones:
 
@@ -194,6 +192,10 @@ metadata:
   namespace: production
 spec:
   interval: 5m
+  commonMetadata:
+    annotations:
+      company.com/managed-by: flux
+      company.com/team: backend
   chart:
     spec:
       chart: my-app
@@ -204,9 +206,6 @@ spec:
         namespace: flux-system
   postRenderers:
     - kustomize:
-        commonAnnotations:
-          company.com/managed-by: flux
-          company.com/team: backend
         patches:
           - target:
               kind: Deployment
@@ -223,7 +222,7 @@ spec:
                       cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
 ```
 
-The `commonAnnotations` apply to all resources, while the patch adds a specific annotation only to the pod template of the my-app Deployment.
+The `commonMetadata.annotations` apply to all resources, while the patch adds a specific annotation only to the pod template of the my-app Deployment.
 
 ## Verifying Annotations
 
@@ -247,4 +246,4 @@ However, some annotations trigger specific controller behaviors. For example, ad
 
 ## Conclusion
 
-Flux post-renderers provide a clean and maintainable way to add annotations to all Helm-rendered resources. Use `commonAnnotations` for metadata that should appear on every resource, and use targeted patches for annotations specific to certain resource types or controllers. This approach keeps your annotation strategy decoupled from chart values, making it easy to enforce organizational standards and integrate with cluster tooling without maintaining chart forks.
+Flux provides a clean and maintainable way to add annotations to all Helm-rendered resources. Use `spec.commonMetadata.annotations` for metadata that should appear on every resource (requires Flux 2.7+), and use post-renderer patches for annotations specific to certain resource types or controllers. This approach keeps your annotation strategy decoupled from chart values, making it easy to enforce organizational standards and integrate with cluster tooling without maintaining chart forks.

@@ -169,7 +169,7 @@ scrape_configs:
         action: keep
         regex: "true"
       - source_labels:
-          - __meta_kubernetes_pod_annotation_prometheus_io_port
+          - __meta_kubernetes_pod_annotation_prometheus_io_path
         action: replace
         target_label: __metrics_path__
         regex: (.+)

@@ -145,7 +145,12 @@ spec:
       author:
         name: flux-bot
         email: flux@example.com
-      messageTemplate: 'chore(staging): update image to {{.NewImage}}'
+      messageTemplate: |
+        chore(staging): update images
+
+        {{ range .Changed.Changes -}}
+        - {{ .OldValue }} -> {{ .NewValue }}
+        {{ end -}}
     push:
       branch: staging
   update:

@@ -47,7 +47,7 @@ kubectl get -n flux-system secret -o yaml > flux-secrets-backup.yaml
 Add the Flux Operator Helm repository and install it alongside your existing Flux installation:
 
 ```bash
-helm repo add fluxcd-community https://fluxcd-community.github.io/helm-charts
+helm repo add controlplaneio-fluxcd https://controlplaneio-fluxcd.github.io/charts
 helm repo update
 ```
 
@@ -61,13 +61,13 @@ metadata:
   name: flux-operator-system
 ---
 # Install via Helm
-# helm install flux-operator fluxcd-community/flux-operator \
+# helm install flux-operator controlplaneio-fluxcd/flux-operator \
 #   -n flux-operator-system \
 #   -f flux-operator-values.yaml
 ```
 
 ```bash
-helm install flux-operator fluxcd-community/flux-operator \
+helm install flux-operator controlplaneio-fluxcd/flux-operator \
   -n flux-operator-system \
   --create-namespace
 ```

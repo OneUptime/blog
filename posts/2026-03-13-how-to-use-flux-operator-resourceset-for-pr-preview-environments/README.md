@@ -52,7 +52,29 @@ kubectl create secret generic github-token \
 
 ## Configuring the ResourceSet for PR Previews
 
-Create a ResourceSet that watches for open pull requests and generates preview environments:
+PR preview environments require two resources: a `ResourceSetInputProvider` that polls GitHub for open pull requests, and a `ResourceSet` that templates the preview resources using the inputs from the provider.
+
+First, create the `ResourceSetInputProvider` that watches GitHub for PRs with the `preview` label:
+
+```yaml
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: app-pull-requests
+  namespace: flux-system
+spec:
+  type: GitHubPullRequest
+  url: https://github.com/my-org/my-app
+  secretRef:
+    name: github-token
+  filter:
+    labels:
+      - preview
+  defaultValues:
+    deployPath: "./deploy/preview"
+```
+
+Then create the `ResourceSet` that references the provider via `inputsFrom` and generates preview environments:
 
 ```yaml
 apiVersion: fluxcd.controlplane.io/v1
@@ -61,64 +83,55 @@ metadata:
   name: pr-previews
   namespace: flux-system
 spec:
-  inputs:
-    - github:
-        owner: my-org
-        repo: my-app
-        token:
-          secretRef:
-            name: github-token
-            key: token
-        pullRequests:
-          labels:
-            - preview
-          interval: 1m
+  inputsFrom:
+    - kind: ResourceSetInputProvider
+      name: app-pull-requests
   resources:
     - apiVersion: v1
       kind: Namespace
       metadata:
-        name: "pr-{{ .number }}"
+        name: "pr-<< inputs.id >>"
         labels:
           preview: "true"
-          pr-number: "{{ .number }}"
+          pr-number: "<< inputs.id >>"
     - apiVersion: source.toolkit.fluxcd.io/v1
       kind: GitRepository
       metadata:
-        name: "pr-{{ .number }}"
-        namespace: "pr-{{ .number }}"
+        name: "pr-<< inputs.id >>"
+        namespace: "pr-<< inputs.id >>"
       spec:
         interval: 1m
         url: "https://github.com/my-org/my-app.git"
         ref:
-          branch: "{{ .head_branch }}"
+          branch: "<< inputs.branch >>"
     - apiVersion: kustomize.toolkit.fluxcd.io/v1
       kind: Kustomization
       metadata:
-        name: "pr-{{ .number }}"
-        namespace: "pr-{{ .number }}"
+        name: "pr-<< inputs.id >>"
+        namespace: "pr-<< inputs.id >>"
       spec:
         interval: 5m
         sourceRef:
           kind: GitRepository
-          name: "pr-{{ .number }}"
-        path: ./deploy/preview
+          name: "pr-<< inputs.id >>"
+        path: << inputs.deployPath >>
         prune: true
         postBuild:
           substitute:
-            PR_NUMBER: "{{ .number }}"
-            PR_BRANCH: "{{ .head_branch }}"
-            PREVIEW_HOST: "pr-{{ .number }}.preview.example.com"
+            PR_NUMBER: "<< inputs.id >>"
+            PR_BRANCH: "<< inputs.branch >>"
+            PREVIEW_HOST: "pr-<< inputs.id >>.preview.example.com"
     - apiVersion: networking.k8s.io/v1
       kind: Ingress
       metadata:
-        name: "pr-{{ .number }}"
-        namespace: "pr-{{ .number }}"
+        name: "pr-<< inputs.id >>"
+        namespace: "pr-<< inputs.id >>"
         annotations:
           nginx.ingress.kubernetes.io/rewrite-target: /
       spec:
         ingressClassName: nginx
         rules:
-          - host: "pr-{{ .number }}.preview.example.com"
+          - host: "pr-<< inputs.id >>.preview.example.com"
             http:
               paths:
                 - path: /
@@ -130,9 +143,10 @@ spec:
                         number: 80
 ```
 
-Apply this ResourceSet:
+Apply both resources:
 
 ```bash
+kubectl apply -f app-pull-requests-provider.yaml
 kubectl apply -f pr-previews.yaml
 ```
 
@@ -140,20 +154,19 @@ kubectl apply -f pr-previews.yaml
 
 The ResourceSet controller performs the following actions:
 
-1. **Polls GitHub**: Every minute (as specified by `interval`), the controller queries the GitHub API for open pull requests with the `preview` label.
-2. **Generates Resources**: For each matching PR, it renders the resource templates using the PR metadata (number, branch name, author, etc.).
+1. **Polls GitHub**: The `ResourceSetInputProvider` polls the GitHub API at its reconciliation interval for open pull requests with the `preview` label.
+2. **Generates Resources**: For each matching PR, the `ResourceSet` renders the resource templates using the PR metadata provided as inputs.
 3. **Creates Environments**: The generated resources are applied to the cluster, creating a namespace, GitRepository, Kustomization, and Ingress for each PR.
 4. **Cleans Up**: When a PR is closed or merged (or the `preview` label is removed), the controller deletes the corresponding resources.
 
 ## Available Template Variables
 
-The GitHub pull request input provides these variables for templates:
+The `ResourceSetInputProvider` for GitHub pull requests provides these variables for templates:
 
-- `{{ .number }}`: The PR number
-- `{{ .head_branch }}`: The source branch name
-- `{{ .head_sha }}`: The latest commit SHA on the PR branch
-- `{{ .title }}`: The PR title
-- `{{ .author }}`: The PR author's username
+- `<< inputs.id >>`: The PR number
+- `<< inputs.branch >>`: The source branch name
+- `<< inputs.sha >>`: The latest commit SHA on the PR branch
+- `<< inputs.author >>`: The PR author's username
 
 ## Configuring the Preview Application
 
@@ -190,7 +203,7 @@ To prevent preview environments from consuming too many cluster resources, add R
   kind: ResourceQuota
   metadata:
     name: preview-quota
-    namespace: "pr-{{ .number }}"
+    namespace: "pr-<< inputs.id >>"
   spec:
     hard:
       requests.cpu: "500m"
@@ -242,4 +255,4 @@ kubectl get all -n pr-42
 
 ## Conclusion
 
-Using the Flux Operator ResourceSet for PR preview environments gives your team instant feedback on changes in a real Kubernetes environment. The GitHub input source automates the lifecycle: environments are created when PRs are labeled and destroyed when PRs are closed. Combined with Flux's GitOps reconciliation, each preview environment stays in sync with the latest commits on the PR branch. This approach requires minimal CI/CD configuration and leverages the Kubernetes-native capabilities of the Flux Operator.
+Using the Flux Operator ResourceSet for PR preview environments gives your team instant feedback on changes in a real Kubernetes environment. The `ResourceSetInputProvider` automates the lifecycle by polling GitHub: environments are created when PRs are labeled and destroyed when PRs are closed. Combined with Flux's GitOps reconciliation, each preview environment stays in sync with the latest commits on the PR branch. This approach requires minimal CI/CD configuration and leverages the Kubernetes-native capabilities of the Flux Operator.

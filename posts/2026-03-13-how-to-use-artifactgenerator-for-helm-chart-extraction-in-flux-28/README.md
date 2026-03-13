@@ -54,22 +54,17 @@ With a standard GitRepository, any change anywhere in this repo triggers all Kus
 The ArtifactGenerator lets you define which paths to include in the generated artifact. For Helm chart extraction, you specify the chart directory:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: frontend-chart
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: monorepo
-  paths:
-    include:
-      - "charts/frontend/**"
-  output:
-    artifactRef:
-      kind: HelmChart
+  sources:
+    - kind: GitRepository
+      name: monorepo
+  artifacts:
+    - path: "charts/frontend/**"
 ```
 
 This ArtifactGenerator watches the `monorepo` GitRepository but only generates a new artifact when files under `charts/frontend/` change.
@@ -90,33 +85,29 @@ spec:
   ref:
     branch: main
 ---
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: frontend-chart
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: monorepo
-  paths:
-    include:
-      - "charts/frontend/**"
+  sources:
+    - kind: GitRepository
+      name: monorepo
+  artifacts:
+    - path: "charts/frontend/**"
 ---
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: backend-chart
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: monorepo
-  paths:
-    include:
-      - "charts/backend/**"
+  sources:
+    - kind: GitRepository
+      name: monorepo
+  artifacts:
+    - path: "charts/backend/**"
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -160,20 +151,18 @@ With this setup, changing `charts/frontend/values.yaml` only triggers the fronte
 If your charts share common templates or library charts, you can include multiple paths in the ArtifactGenerator:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: frontend-chart
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: monorepo
-  paths:
-    include:
-      - "charts/frontend/**"
-      - "charts/common-lib/**"
+  sources:
+    - kind: GitRepository
+      name: monorepo
+  artifacts:
+    - path: "charts/frontend/**"
+    - path: "charts/common-lib/**"
 ```
 
 This ensures that changes to the shared library chart also trigger a new artifact generation for the frontend chart.
@@ -183,23 +172,21 @@ This ensures that changes to the shared library chart also trigger a new artifac
 You can exclude non-essential files from the generated artifact to keep it lean:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: frontend-chart
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: monorepo
-  paths:
-    include:
-      - "charts/frontend/**"
-    exclude:
-      - "charts/frontend/ci/**"
-      - "charts/frontend/test-values/**"
-      - "charts/frontend/*.md"
+  sources:
+    - kind: GitRepository
+      name: monorepo
+  artifacts:
+    - path: "charts/frontend/**"
+      exclude:
+        - "charts/frontend/ci/**"
+        - "charts/frontend/test-values/**"
+        - "charts/frontend/*.md"
 ```
 
 This includes all chart files but excludes CI test values, test configurations, and documentation files that should not affect the deployed chart.

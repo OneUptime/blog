@@ -110,7 +110,7 @@ find platform-repo -type f | head -20
 Compare with your ArtifactGenerator paths:
 
 ```bash
-kubectl get artifactgenerator my-app -n flux-system -o yaml | grep -A 10 paths
+kubectl get artifactgenerator my-app -n flux-system -o yaml | grep -A 10 artifacts
 ```
 
 **Fix:**
@@ -119,12 +119,11 @@ Update the path patterns to match the actual directory structure:
 
 ```yaml
 spec:
-  paths:
-    include:
-      # Wrong: directory uses dashes not underscores
-      # - "apps/my_app/**"
-      # Correct:
-      - "apps/my-app/**"
+  artifacts:
+    # Wrong: directory uses dashes not underscores
+    # - path: "apps/my_app/**"
+    # Correct:
+    - path: "apps/my-app/**"
 ```
 
 ## Common Failure: Glob Pattern Syntax Errors
@@ -148,12 +147,11 @@ Ensure your glob patterns are syntactically correct:
 
 ```yaml
 spec:
-  paths:
-    include:
-      # Wrong: unclosed bracket
-      # - "apps/[invalid/**"
-      # Correct:
-      - "apps/[a-z]*/**"
+  artifacts:
+    # Wrong: unclosed bracket
+    # - path: "apps/[invalid/**"
+    # Correct:
+    - path: "apps/[a-z]*/**"
 ```
 
 ## Common Failure: Source Controller Resource Limits
@@ -219,13 +217,12 @@ Use exclude patterns to remove large files from the artifact:
 
 ```yaml
 spec:
-  paths:
-    include:
-      - "apps/data-service/**"
-    exclude:
-      - "apps/data-service/testdata/**"
-      - "apps/data-service/**/*.bin"
-      - "apps/data-service/**/*.tar.gz"
+  artifacts:
+    - path: "apps/data-service/**"
+      exclude:
+        - "apps/data-service/testdata/**"
+        - "apps/data-service/**/*.bin"
+        - "apps/data-service/**/*.tar.gz"
 ```
 
 ## Debugging with Source Controller Logs

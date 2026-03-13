@@ -12,7 +12,7 @@ Description: Learn how to configure a Flagger Canary resource for Kubernetes Sta
 
 StatefulSets manage stateful applications in Kubernetes, providing stable network identities and persistent storage for each pod. Updating stateful workloads like databases, message queues, and caches carries higher risk than updating stateless Deployments because data integrity and ordering guarantees must be maintained.
 
-Flagger supports StatefulSets as a target resource, enabling you to apply canary analysis to stateful application updates. This guide explains how to configure a Canary resource for a StatefulSet.
+> **Important**: As of Flagger v1.x, the Canary CRD's `targetRef.kind` field only accepts `Deployment`, `DaemonSet`, or `Service` as valid values. `StatefulSet` is **not** a supported `targetRef.kind`. There is an open feature request ([GitHub issue #410](https://github.com/weaveworks/flagger/issues/410)) and a closed pull request ([PR #1391](https://github.com/fluxcd/flagger/pull/1391)) for StatefulSet support, but neither has been merged into the official Flagger release. The patterns described in this guide (iteration-based analysis, health check webhooks, and custom Prometheus metrics) remain valid approaches once official StatefulSet support is added. For current production use, manage StatefulSet rollouts using native Kubernetes rolling update strategies combined with Flagger-monitored sidecar Deployments or external validation tooling.
 
 ## Prerequisites
 

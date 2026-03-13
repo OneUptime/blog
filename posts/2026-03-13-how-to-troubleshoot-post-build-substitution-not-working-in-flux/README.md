@@ -135,15 +135,15 @@ postBuild:
       name: cluster-config  # REPLICAS in here is ignored
 ```
 
-Among `substituteFrom` entries, earlier entries take precedence over later ones:
+Among `substituteFrom` entries, later entries take precedence over earlier ones:
 
 ```yaml
 postBuild:
   substituteFrom:
     - kind: ConfigMap
-      name: primary-config    # Takes precedence
+      name: primary-config    # Lower precedence
     - kind: ConfigMap
-      name: secondary-config  # Only fills in missing variables
+      name: secondary-config  # Takes precedence over primary-config for matching keys
 ```
 
 ## Step 6: Confirm All Variables Are Defined

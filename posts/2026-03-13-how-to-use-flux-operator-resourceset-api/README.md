@@ -25,8 +25,8 @@ This guide covers the ResourceSet CRD, its input sources, templating syntax, and
 
 A ResourceSet consists of two main parts:
 
-1. **Inputs**: Data sources that provide values for template rendering. These can be inline values, ConfigMaps, Secrets, or GitHub/GitLab API data.
-2. **Resources**: Kubernetes resource templates that use Go template syntax to reference input values.
+1. **Inputs**: Data sources that provide values for template rendering. These can be inline values, ConfigMaps, or Secrets.
+2. **Resources**: Kubernetes resource templates that use `<< inputs.fieldname >>` syntax to reference input values.
 
 ```mermaid
 graph LR
@@ -48,41 +48,40 @@ metadata:
   namespace: flux-system
 spec:
   inputs:
-    - data:
-        - team: "frontend"
-          repo: "https://github.com/org/frontend-apps.git"
-          branch: "main"
-        - team: "backend"
-          repo: "https://github.com/org/backend-apps.git"
-          branch: "main"
-        - team: "data"
-          repo: "https://github.com/org/data-pipelines.git"
-          branch: "main"
+    - team: "frontend"
+      repo: "https://github.com/org/frontend-apps.git"
+      branch: "main"
+    - team: "backend"
+      repo: "https://github.com/org/backend-apps.git"
+      branch: "main"
+    - team: "data"
+      repo: "https://github.com/org/data-pipelines.git"
+      branch: "main"
   resources:
     - apiVersion: v1
       kind: Namespace
       metadata:
-        name: "team-{{ .team }}"
+        name: "team-<< inputs.team >>"
     - apiVersion: source.toolkit.fluxcd.io/v1
       kind: GitRepository
       metadata:
-        name: "{{ .team }}-repo"
-        namespace: "team-{{ .team }}"
+        name: "<< inputs.team >>-repo"
+        namespace: "team-<< inputs.team >>"
       spec:
         interval: 5m
-        url: "{{ .repo }}"
+        url: "<< inputs.repo >>"
         ref:
-          branch: "{{ .branch }}"
+          branch: "<< inputs.branch >>"
     - apiVersion: kustomize.toolkit.fluxcd.io/v1
       kind: Kustomization
       metadata:
-        name: "{{ .team }}-apps"
-        namespace: "team-{{ .team }}"
+        name: "<< inputs.team >>-apps"
+        namespace: "team-<< inputs.team >>"
       spec:
         interval: 10m
         sourceRef:
           kind: GitRepository
-          name: "{{ .team }}-repo"
+          name: "<< inputs.team >>-repo"
         path: ./deploy
         prune: true
 ```
@@ -126,21 +125,21 @@ spec:
     - apiVersion: v1
       kind: Namespace
       metadata:
-        name: "tenant-{{ .name }}"
+        name: "tenant-<< inputs.name >>"
         labels:
-          environment: "{{ .environment }}"
+          environment: "<< inputs.environment >>"
     - apiVersion: kustomize.toolkit.fluxcd.io/v1
       kind: Kustomization
       metadata:
-        name: "{{ .name }}-apps"
-        namespace: "tenant-{{ .name }}"
+        name: "<< inputs.name >>-apps"
+        namespace: "tenant-<< inputs.name >>"
       spec:
         interval: 10m
         sourceRef:
           kind: GitRepository
           name: fleet-repo
           namespace: flux-system
-        path: "./tenants/{{ .name }}"
+        path: "./tenants/<< inputs.name >>"
         prune: true
 ```
 
@@ -178,12 +177,12 @@ spec:
     - apiVersion: v1
       kind: Secret
       metadata:
-        name: "{{ .name }}-credentials"
+        name: "<< inputs.name >>-credentials"
         namespace: app
       type: Opaque
       stringData:
-        DB_HOST: "{{ .host }}"
-        DB_PASSWORD: "{{ .password }}"
+        DB_HOST: "<< inputs.host >>"
+        DB_PASSWORD: "<< inputs.password >>"
 ```
 
 ## Template Functions
@@ -195,11 +194,11 @@ resources:
   - apiVersion: v1
     kind: ConfigMap
     metadata:
-      name: "{{ .name | lower }}-config"
-      namespace: "{{ .namespace }}"
+      name: "<< inputs.name | lower >>-config"
+      namespace: "<< inputs.namespace >>"
     data:
-      app-name: "{{ .name | upper }}"
-      environment: "{{ .env }}"
+      app-name: "<< inputs.name | upper >>"
+      environment: "<< inputs.env >>"
 ```
 
 ## Lifecycle Management

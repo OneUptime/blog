@@ -157,9 +157,9 @@ Ensure the routing resources exist and have the expected configuration. If the m
 If you have identified and fixed the underlying issue, you can restart the canary analysis by triggering a new revision.
 
 ```bash
-# Add an annotation to trigger a restart
-kubectl annotate deployment/<name> \
-  flagger.app/restart=$(date +%s) -n <namespace>
+# Add a timestamp annotation to the pod template to trigger a restart
+kubectl patch deployment/<name> -n <namespace> \
+  -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"timestamp\":\"$(date +%s)\"}}}}}"
 ```
 
 Alternatively, you can delete the canary resource and recreate it to start fresh.

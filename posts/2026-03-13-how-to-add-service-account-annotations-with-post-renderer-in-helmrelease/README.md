@@ -101,7 +101,7 @@ This connects the Kubernetes ServiceAccount to a GCP service account through Wor
 
 ## Adding Azure Workload Identity Annotations
 
-For Azure Kubernetes Service with Workload Identity:
+For Azure Kubernetes Service with Workload Identity, you need two patches: an annotation on the ServiceAccount with the client ID, and a label on the Deployment pod template to enable the mutating admission webhook:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -132,11 +132,22 @@ spec:
                 name: my-app
                 annotations:
                   azure.workload.identity/client-id: "00000000-0000-0000-0000-000000000000"
-                labels:
-                  azure.workload.identity/use: "true"
+          - target:
+              kind: Deployment
+              name: my-app
+            patch: |
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: my-app
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      azure.workload.identity/use: "true"
 ```
 
-Azure Workload Identity requires both the annotation with the client ID and a label to enable the injection webhook.
+Azure Workload Identity requires the `azure.workload.identity/client-id` annotation on the ServiceAccount and the `azure.workload.identity/use: "true"` label on the Pod template (not the ServiceAccount) to trigger the mutating admission webhook that injects OIDC token volumes.
 
 ## Multiple Annotations for Cross-Service Access
 
@@ -239,9 +250,9 @@ spec:
                   eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/cert-manager-role"
 ```
 
-## Adding Custom Annotations for Other Integrations
+## Adding Vault Agent Injection Annotations
 
-ServiceAccount annotations are not limited to cloud IAM. You can add any annotation:
+HashiCorp Vault Agent Injector uses annotations on **Pod templates** (not ServiceAccounts) to trigger sidecar injection. Use a post-renderer patch targeting the Deployment:
 
 ```yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -263,19 +274,22 @@ spec:
     - kustomize:
         patches:
           - target:
-              kind: ServiceAccount
+              kind: Deployment
               name: my-app
             patch: |
-              apiVersion: v1
-              kind: ServiceAccount
+              apiVersion: apps/v1
+              kind: Deployment
               metadata:
                 name: my-app
-                annotations:
-                  vault.hashicorp.com/agent-inject: "true"
-                  vault.hashicorp.com/role: "my-app-role"
+              spec:
+                template:
+                  metadata:
+                    annotations:
+                      vault.hashicorp.com/agent-inject: "true"
+                      vault.hashicorp.com/role: "my-app-role"
 ```
 
-This configures HashiCorp Vault Agent injection for the ServiceAccount.
+This configures HashiCorp Vault Agent injection by annotating the pod template, which is where the Vault mutating webhook looks for its configuration.
 
 ## Verifying ServiceAccount Annotations
 

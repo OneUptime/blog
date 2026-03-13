@@ -149,7 +149,7 @@ Define a GRPCRoute that routes gRPC traffic through the Gateway to your service.
 ```yaml
 # grpcroute.yaml
 # Gateway API GRPCRoute for gRPC traffic routing
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: GRPCRoute
 metadata:
   name: grpc-service

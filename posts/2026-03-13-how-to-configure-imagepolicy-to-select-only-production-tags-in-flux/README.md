@@ -203,7 +203,12 @@ spec:
       author:
         name: flux-bot
         email: flux@example.com
-      messageTemplate: 'chore: update production image to {{.NewImage}}'
+      messageTemplate: |
+        chore: update production images
+
+        {{ range .Changed.Changes -}}
+        - {{ .OldValue }} -> {{ .NewValue }}
+        {{ end -}}
     push:
       branch: main
   update:

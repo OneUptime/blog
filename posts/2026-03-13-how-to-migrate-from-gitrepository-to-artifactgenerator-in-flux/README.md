@@ -87,33 +87,29 @@ spec:
 Create one ArtifactGenerator for each Kustomization or HelmRelease that you want to scope:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: frontend-artifacts
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: app-repo
-  paths:
-    include:
-      - "apps/frontend/**"
+  sources:
+    - kind: GitRepository
+      name: app-repo
+  artifacts:
+    - path: "apps/frontend/**"
 ---
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: backend-artifacts
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: app-repo
-  paths:
-    include:
-      - "apps/backend/**"
+  sources:
+    - kind: GitRepository
+      name: app-repo
+  artifacts:
+    - path: "apps/backend/**"
 ```
 
 Apply these resources and verify they are ready:
@@ -193,19 +189,17 @@ spec:
 First, create an ArtifactGenerator for the chart:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: api-chart
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: app-repo
-  paths:
-    include:
-      - "charts/api/**"
+  sources:
+    - kind: GitRepository
+      name: app-repo
+  artifacts:
+    - path: "charts/api/**"
 ```
 
 Then update the HelmRelease:
@@ -229,21 +223,19 @@ spec:
 If your services share common resources, include those paths in each relevant ArtifactGenerator:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: frontend-artifacts
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: app-repo
-  paths:
-    include:
-      - "apps/frontend/**"
-      - "common/base/**"
-      - "common/overlays/production/**"
+  sources:
+    - kind: GitRepository
+      name: app-repo
+  artifacts:
+    - path: "apps/frontend/**"
+    - path: "common/base/**"
+    - path: "common/overlays/production/**"
 ```
 
 ## Migration Step 6: Verify the Migration

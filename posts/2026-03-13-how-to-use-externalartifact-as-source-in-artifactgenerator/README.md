@@ -26,7 +26,7 @@ ExternalArtifact is a Flux source type that represents an artifact whose lifecyc
 A basic ExternalArtifact looks like this:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ExternalArtifact
 metadata:
   name: ci-built-manifests
@@ -54,7 +54,7 @@ Using ExternalArtifact directly with a Kustomization or HelmRelease works for si
 Here is how to set up ArtifactGenerator to consume an ExternalArtifact:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ExternalArtifact
 metadata:
   name: build-output
@@ -65,21 +65,19 @@ spec:
     revision: "build-1234"
     digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 ---
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: production-manifests
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: ExternalArtifact
-    name: build-output
-  paths:
-    include:
-      - "deploy/production/**"
-    exclude:
-      - "deploy/production/tests/**"
+  sources:
+    - kind: ExternalArtifact
+      name: build-output
+  artifacts:
+    - path: "deploy/production/**"
+      exclude:
+        - "deploy/production/tests/**"
 ```
 
 The ArtifactGenerator references the ExternalArtifact as its source and applies path filtering to extract only production deployment manifests.
@@ -134,33 +132,29 @@ jobs:
 A single ExternalArtifact can contain manifests for multiple environments. Use separate ArtifactGenerators to extract each environment:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: staging-from-ci
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: ExternalArtifact
-    name: build-output
-  paths:
-    include:
-      - "deploy/staging/**"
+  sources:
+    - kind: ExternalArtifact
+      name: build-output
+  artifacts:
+    - path: "deploy/staging/**"
 ---
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: production-from-ci
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: ExternalArtifact
-    name: build-output
-  paths:
-    include:
-      - "deploy/production/**"
+  sources:
+    - kind: ExternalArtifact
+      name: build-output
+  artifacts:
+    - path: "deploy/production/**"
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization

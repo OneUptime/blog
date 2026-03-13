@@ -10,7 +10,7 @@ Description: Learn how to monitor HelmRelease resources using the Flux 2.8 Web U
 
 ## Introduction
 
-Flux 2.8 introduced a built-in web UI that provides real-time visibility into your GitOps resources. One of its most valuable features is HelmRelease monitoring, which lets you track the status, revision history, and health of your Helm-based deployments without relying solely on CLI commands. This post walks through setting up and using the Flux Web UI specifically for monitoring HelmRelease resources.
+Flux 2.8, together with the Flux Operator, provides a web UI that offers real-time visibility into your GitOps resources. One of its most valuable features is HelmRelease monitoring, which lets you track the status, revision history, and health of your Helm-based deployments without relying solely on CLI commands. This post walks through setting up and using the Flux Web UI specifically for monitoring HelmRelease resources.
 
 ## Prerequisites
 
@@ -21,50 +21,23 @@ Flux 2.8 introduced a built-in web UI that provides real-time visibility into yo
 
 ## Installing the Flux Web UI
 
-The Flux Web UI ships as part of the Flux distribution starting with version 2.8. If you installed Flux using the CLI bootstrap, the UI component may need to be enabled separately. You can enable it by adding the web-ui component to your Flux installation.
-
-First, verify your Flux version supports the web UI:
+The Flux Web UI is provided by the Flux Operator, not as a core Flux component. Install the Flux Operator to get access to the Web UI:
 
 ```bash
-flux version
-```
-
-To enable the web UI during bootstrap, add the `--components-extra` flag:
-
-```bash
-flux bootstrap github \
-  --owner=my-org \
-  --repository=fleet-infra \
-  --path=clusters/my-cluster \
-  --components-extra=web-ui
-```
-
-If Flux is already installed, you can add the web UI component by applying the appropriate Kustomization overlay:
-
-```yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: flux-web-ui
-  namespace: flux-system
-spec:
-  interval: 10m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./web-ui
-  prune: true
+helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator \
+  --namespace flux-system \
+  --create-namespace
 ```
 
 ## Accessing the Web UI
 
-Once the web UI pod is running, you can access it via port-forwarding:
+Once the Flux Operator is running, access the Web UI via port-forwarding:
 
 ```bash
-kubectl -n flux-system port-forward svc/flux-web-ui 9000:9000
+kubectl -n flux-system port-forward svc/flux-web 9080:9080
 ```
 
-Then open your browser at `http://localhost:9000`. You will see the Flux dashboard with tabs for different resource types.
+Then open your browser at `http://localhost:9080`. You will see the Flux dashboard with tabs for different resource types.
 
 ## Navigating to HelmRelease Monitoring
 

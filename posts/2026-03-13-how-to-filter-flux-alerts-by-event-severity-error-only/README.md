@@ -168,18 +168,8 @@ metadata:
   namespace: flux-system
 spec:
   type: pagerduty
-  channel: flux-errors
-  secretRef:
-    name: pagerduty-secret
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: pagerduty-secret
-  namespace: flux-system
-stringData:
-  address: https://events.pagerduty.com/generic/2010-04-15/create_event.json
-  token: YOUR_PAGERDUTY_INTEGRATION_KEY
+  address: https://events.pagerduty.com
+  channel: YOUR_PAGERDUTY_INTEGRATION_KEY
 ```
 
 ## Complementary Info Alert

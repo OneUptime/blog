@@ -130,7 +130,7 @@ spec:
 
 ## Using CEL Expressions for Non-Standard Resources
 
-Some custom resources do not use the standard `Ready` condition. Flux v2.3 introduced CEL expression support for evaluating health of such resources. Use the `spec.healthChecks[].cel` field:
+Some custom resources do not use the standard `Ready` condition. Flux v2.3 introduced CEL expression support for evaluating health of such resources. Use the `spec.healthCheckExprs` field at the spec level (not nested inside `healthChecks` items):
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -151,10 +151,14 @@ spec:
       kind: RDSInstance
       name: production-db
       namespace: crossplane-system
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')
-          && status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: database.aws.crossplane.io/v1beta1
+      kind: RDSInstance
+      current: >-
+        status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'True')
+        && status.conditions.filter(e, e.type == 'Synced').all(e, e.status == 'True')
+      failed: >-
+        status.conditions.filter(e, e.type == 'Ready').all(e, e.status == 'False')
 ```
 
 This CEL expression requires both the `Ready` and `Synced` conditions to be `True` before considering the resource healthy.
@@ -192,7 +196,7 @@ healthChecks:
 
 ## Health Checking Sealed Secrets
 
-Sealed Secrets expose a `Synced` condition. Use a CEL expression to check it:
+Sealed Secrets expose a `Synced` condition. Use a CEL expression to check it via `spec.healthCheckExprs`:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -213,9 +217,13 @@ spec:
       kind: SealedSecret
       name: database-credentials
       namespace: production
-      cel:
-        healthyWhen: >-
-          status.conditions.exists(c, c.type == 'Synced' && c.status == 'True')
+  healthCheckExprs:
+    - apiVersion: bitnami.com/v1alpha1
+      kind: SealedSecret
+      current: >-
+        status.conditions.filter(e, e.type == 'Synced').all(e, e.status == 'True')
+      failed: >-
+        status.conditions.filter(e, e.type == 'Synced').all(e, e.status == 'False')
 ```
 
 ## Multiple Custom Resources

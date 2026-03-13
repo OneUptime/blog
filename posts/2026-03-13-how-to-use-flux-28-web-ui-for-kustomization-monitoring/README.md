@@ -21,25 +21,23 @@ Kustomization resources are the backbone of Flux GitOps workflows. They define w
 
 ## Enabling the Flux Web UI
 
-If you have not yet enabled the web UI, you can do so by updating your Flux installation. During bootstrap:
+The Flux Web UI is provided by the Flux Operator. Install it to enable the Web UI:
 
 ```bash
-flux bootstrap github \
-  --owner=my-org \
-  --repository=fleet-infra \
-  --path=clusters/my-cluster \
-  --components-extra=web-ui
+helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator \
+  --namespace flux-system \
+  --create-namespace
 ```
 
-Once the web UI is running, access it via port-forward:
+Once the Flux Operator is running, access the Web UI via port-forward:
 
 ```bash
-kubectl -n flux-system port-forward svc/flux-web-ui 9000:9000
+kubectl -n flux-system port-forward svc/flux-web 9080:9080
 ```
 
 ## Navigating to the Kustomization View
 
-After opening the web UI at `http://localhost:9000`, click on the "Kustomizations" tab in the left sidebar. This view lists all Kustomization resources managed by Flux across all namespaces.
+After opening the web UI at `http://localhost:9080`, click on the "Kustomizations" tab in the left sidebar. This view lists all Kustomization resources managed by Flux across all namespaces.
 
 Each entry in the list displays:
 

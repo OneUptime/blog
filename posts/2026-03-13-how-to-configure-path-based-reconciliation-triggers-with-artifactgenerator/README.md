@@ -37,19 +37,17 @@ If no changed files match the patterns, the ArtifactGenerator does not produce a
 The simplest configuration includes a single directory path:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: api-service
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: platform-repo
-  paths:
-    include:
-      - "services/api/**"
+  sources:
+    - kind: GitRepository
+      name: platform-repo
+  artifacts:
+    - path: "services/api/**"
 ```
 
 This triggers artifact generation only when files under `services/api/` change.
@@ -59,21 +57,19 @@ This triggers artifact generation only when files under `services/api/` change.
 You can include multiple directories to create a single artifact from several sources:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: api-service
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: platform-repo
-  paths:
-    include:
-      - "services/api/**"
-      - "shared/config/**"
-      - "shared/templates/**"
+  sources:
+    - kind: GitRepository
+      name: platform-repo
+  artifacts:
+    - path: "services/api/**"
+    - path: "shared/config/**"
+    - path: "shared/templates/**"
 ```
 
 This configuration triggers when changes occur in the API service directory OR in shared configuration and template directories. This is useful when your service depends on shared resources.
@@ -83,24 +79,22 @@ This configuration triggers when changes occur in the API service directory OR i
 Exclude patterns refine the include set by removing files that should not trigger reconciliation:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: api-service
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: platform-repo
-  paths:
-    include:
-      - "services/api/**"
-    exclude:
-      - "services/api/docs/**"
-      - "services/api/tests/**"
-      - "services/api/**/*.md"
-      - "services/api/.gitignore"
+  sources:
+    - kind: GitRepository
+      name: platform-repo
+  artifacts:
+    - path: "services/api/**"
+      exclude:
+        - "services/api/docs/**"
+        - "services/api/tests/**"
+        - "services/api/**/*.md"
+        - "services/api/.gitignore"
 ```
 
 This includes all files under `services/api/` except documentation, tests, markdown files, and the .gitignore file. Changes to excluded files do not trigger reconciliation.
@@ -110,23 +104,21 @@ This includes all files under `services/api/` except documentation, tests, markd
 You can use glob patterns to filter by file extension:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: k8s-manifests
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: platform-repo
-  paths:
-    include:
-      - "deploy/**/*.yaml"
-      - "deploy/**/*.yml"
-    exclude:
-      - "deploy/**/test-*.yaml"
-      - "deploy/**/example-*.yaml"
+  sources:
+    - kind: GitRepository
+      name: platform-repo
+  artifacts:
+    - path: "deploy/**/*.yaml"
+    - path: "deploy/**/*.yml"
+      exclude:
+        - "deploy/**/test-*.yaml"
+        - "deploy/**/example-*.yaml"
 ```
 
 This configuration only triggers on YAML file changes within the deploy directory, ignoring test and example files.
@@ -136,35 +128,31 @@ This configuration only triggers on YAML file changes within the deploy director
 A common pattern is having environment-specific directories. You can create separate ArtifactGenerators for each environment:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: staging-manifests
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: platform-repo
-  paths:
-    include:
-      - "environments/staging/**"
-      - "environments/base/**"
+  sources:
+    - kind: GitRepository
+      name: platform-repo
+  artifacts:
+    - path: "environments/staging/**"
+    - path: "environments/base/**"
 ---
-apiVersion: source.toolkit.fluxcd.io/v1alpha1
+apiVersion: source.extensions.fluxcd.io/v1beta1
 kind: ArtifactGenerator
 metadata:
   name: production-manifests
   namespace: flux-system
 spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: platform-repo
-  paths:
-    include:
-      - "environments/production/**"
-      - "environments/base/**"
+  sources:
+    - kind: GitRepository
+      name: platform-repo
+  artifacts:
+    - path: "environments/production/**"
+    - path: "environments/base/**"
 ```
 
 Changes to `environments/base/` trigger both staging and production ArtifactGenerators, while changes to environment-specific directories only trigger the corresponding generator.

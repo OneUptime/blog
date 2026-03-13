@@ -63,7 +63,7 @@ The output shows the OCIRepository and Kustomization that will be created:
 
 ```yaml
 # Generated OCIRepository
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: app-sync

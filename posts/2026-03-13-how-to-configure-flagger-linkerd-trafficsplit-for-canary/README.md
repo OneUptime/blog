@@ -45,9 +45,9 @@ spec:
   service: my-app
   backends:
     - service: my-app-primary
-      weight: "100"
+      weight: 100
     - service: my-app-canary
-      weight: "0"
+      weight: 0
 ```
 
 During canary analysis, Flagger updates the weights:
@@ -57,9 +57,9 @@ spec:
   service: my-app
   backends:
     - service: my-app-primary
-      weight: "90"
+      weight: 90
     - service: my-app-canary
-      weight: "10"
+      weight: 10
 ```
 
 ## Configuring a Canary with Linkerd TrafficSplit

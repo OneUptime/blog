@@ -185,21 +185,22 @@ spec:
 
 This narrows the scope to only the resources you care about, preventing alerts from less important dependency chains in staging or development namespaces.
 
-## Using a Summary for Context
+## Using Metadata for Context
 
-Adding a summary field gives your team immediate context about what the alert means:
+Adding contextual metadata gives your team immediate context about what the alert means. Use the `eventMetadata` field to attach key-value annotations to the alert:
 
 ```yaml
 apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
-  name: dependency-alert-with-summary
+  name: dependency-alert-with-metadata
   namespace: flux-system
 spec:
   providerRef:
     name: teams-provider
   eventSeverity: info
-  summary: "A Flux resource is blocked waiting for a dependency to become ready. Check the upstream resource status."
+  eventMetadata:
+    summary: "A Flux resource is blocked waiting for a dependency to become ready. Check the upstream resource status."
   inclusionList:
     - ".*DependencyNotReady.*"
   eventSources:
@@ -209,7 +210,7 @@ spec:
       name: "*"
 ```
 
-The summary appears in the notification message, helping on-call engineers quickly understand the situation without looking up what `DependencyNotReady` means.
+The `eventMetadata` field attaches key-value pairs to the notification, helping on-call engineers quickly understand the situation without looking up what `DependencyNotReady` means. Note: the older `summary` field is deprecated in v1beta3 and will be removed in Alert API v1 GA; use `eventMetadata` instead.
 
 ## Verifying and Testing
 

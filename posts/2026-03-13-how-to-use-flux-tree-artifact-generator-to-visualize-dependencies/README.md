@@ -63,10 +63,10 @@ flux-system  infra-controllers     True   1       1
 flux-system  observability-stack   False  4       3
 ```
 
-For a detailed tree of all generators:
+For a detailed tree of all generators, run the command for each generator name from the list above, or use the JSON output and format it:
 
 ```bash
-flux tree artifactgenerator -A --output=tree
+flux tree artifactgenerator -A -o json
 ```
 
 ## Step 3: Trace Source to Deployment
@@ -96,10 +96,10 @@ Kustomization/flux-system/app-deployment
 
 ## Step 4: Identify Stale or Failing Dependencies
 
-Use the tree view to find which input sources are causing issues:
+Use the tree view to find which input sources are causing issues. First, list all generators and identify which are not ready:
 
 ```bash
-flux tree artifactgenerator -A --status-selector ready=false
+flux get all -A | grep ArtifactGenerator | grep -v True
 ```
 
 For a specific generator that is not ready:

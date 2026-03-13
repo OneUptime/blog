@@ -75,7 +75,7 @@ spec:
           http1MaxPendingRequests: 100
           http2MaxRequests: 1000
       outlierDetection:
-        consecutiveErrors: 5
+        consecutive5xxErrors: 5
         interval: 30s
         baseEjectionTime: 30s
         maxEjectionPercent: 50
@@ -130,16 +130,15 @@ Outlier detection configures circuit breaking behavior for the service:
     targetPort: 8080
     trafficPolicy:
       outlierDetection:
-        consecutiveErrors: 5
+        consecutive5xxErrors: 5
         interval: 10s
         baseEjectionTime: 30s
         maxEjectionPercent: 100
-        consecutive5xxErrors: 3
 ```
 
 This ejects unhealthy pods from the load balancing pool:
 
-- `consecutiveErrors`: Number of consecutive errors before ejection
+- `consecutive5xxErrors`: Number of consecutive 5xx errors before ejection (replaces the deprecated `consecutiveErrors` field)
 - `interval`: How often the ejection analysis runs
 - `baseEjectionTime`: Minimum ejection duration
 - `maxEjectionPercent`: Maximum percentage of hosts that can be ejected
@@ -222,7 +221,7 @@ spec:
       loadBalancer:
         simple: LEAST_REQUEST
       outlierDetection:
-        consecutiveErrors: 5
+        consecutive5xxErrors: 5
         interval: 10s
         baseEjectionTime: 30s
         maxEjectionPercent: 50

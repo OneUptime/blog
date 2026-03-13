@@ -190,7 +190,12 @@ spec:
       author:
         name: flux-bot
         email: flux@example.com
-      messageTemplate: "Update image {{ .AutomationObject }} to {{ .NewValue }}"
+      messageTemplate: |
+        Update images via {{ .AutomationObject }}
+
+        {{ range .Changed.Changes -}}
+        - {{ .OldValue }} -> {{ .NewValue }}
+        {{ end -}}
     push:
       branch: main
   update:

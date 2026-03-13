@@ -37,16 +37,16 @@ spec:
     apiVersion: kustomize.toolkit.fluxcd.io/v1
     kind: Kustomization
     metadata:
-      name: tenant-{{ .name }}
+      name: tenant-<< inputs.name >>
       namespace: flux-system
     spec:
       interval: 10m
       sourceRef:
         kind: GitRepository
         name: flux-system
-      path: ./tenants/{{ .name }}
+      path: ./tenants/<< inputs.name >>
       prune: true
-      targetNamespace: {{ .namespace }}
+      targetNamespace: << inputs.namespace >>
   inputs:
     - name: "alpha"
       namespace: "tenant-alpha"
@@ -60,7 +60,7 @@ This ResourceSet generates three Kustomization resources, one for each tenant.
 
 ## Accessing the ResourceSet View in the Web UI
 
-Open the Flux Web UI at `http://localhost:9000` (after port-forwarding) and navigate to the "ResourceSets" tab in the left sidebar. This view lists all ResourceSet resources in the cluster.
+Open the Flux Web UI at `http://localhost:9080` (after port-forwarding with `kubectl -n flux-system port-forward svc/flux-web 9080:9080`) and navigate to the "ResourceSets" tab in the left sidebar. This view lists all ResourceSet resources in the cluster.
 
 Each entry shows:
 
@@ -108,23 +108,23 @@ spec:
     apiVersion: helm.toolkit.fluxcd.io/v2
     kind: HelmRelease
     metadata:
-      name: {{ .name }}
-      namespace: {{ .namespace }}
+      name: << inputs.name >>
+      namespace: << inputs.namespace >>
     spec:
       interval: 5m
       chart:
         spec:
-          chart: {{ .chart }}
-          version: "{{ .version }}"
+          chart: << inputs.chart >>
+          version: << inputs.version | quote >>
           sourceRef:
             kind: HelmRepository
             name: internal-charts
             namespace: flux-system
       values:
-        replicaCount: {{ .replicas }}
+        replicaCount: << inputs.replicas | int >>
         image:
-          repository: registry.example.com/{{ .name }}
-          tag: {{ .imageTag }}
+          repository: registry.example.com/<< inputs.name >>
+          tag: << inputs.imageTag >>
   inputs:
     - name: "api-gateway"
       namespace: "production"
