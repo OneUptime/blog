@@ -269,11 +269,13 @@ spec:
   resources:
     - apiVersion: source.toolkit.fluxcd.io/v1
       kind: GitRepository
+      name: "*"
       namespace: team-alpha
       matchLabels:
         webhook-enabled: "true"
     - apiVersion: source.toolkit.fluxcd.io/v1
       kind: GitRepository
+      name: "*"
       namespace: team-beta
       matchLabels:
         webhook-enabled: "true"

@@ -113,7 +113,7 @@ spec:
 ### Step 2: Configure the OCIRepository with AWS Provider
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-ecr-app
@@ -166,7 +166,7 @@ kubectl create secret docker-registry ecr-credentials \
 ### Step 3: Configure the OCIRepository
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-ecr-app

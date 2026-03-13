@@ -66,7 +66,7 @@ Add image verification to your Flux Kustomization resource using the `verify` fi
 
 ```yaml
 # clusters/my-cluster/apps/ocirepository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app
@@ -106,7 +106,7 @@ For images signed with keyless Cosign (using Sigstore), configure verification w
 
 ```yaml
 # clusters/my-cluster/apps/ocirepository-keyless.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-keyless
@@ -168,7 +168,7 @@ When working with images from multiple registries, create separate verification 
 
 ```yaml
 # clusters/my-cluster/apps/oci-internal.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: internal-app
@@ -185,7 +185,7 @@ spec:
 
 ---
 # clusters/my-cluster/apps/oci-vendor.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: vendor-app

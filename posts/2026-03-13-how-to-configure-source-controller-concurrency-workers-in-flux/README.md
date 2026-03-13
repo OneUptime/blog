@@ -10,13 +10,13 @@ Description: Learn how to tune the source-controller concurrency workers in Flux
 
 ## Why Source Controller Concurrency Matters
 
-The Flux source-controller is responsible for fetching artifacts from Git repositories, Helm repositories, OCI registries, and S3-compatible buckets. By default it processes one reconciliation at a time per source kind. When you manage dozens or hundreds of sources, this single-threaded behavior creates a bottleneck that delays the entire delivery pipeline.
+The Flux source-controller is responsible for fetching artifacts from Git repositories, Helm repositories, OCI registries, and S3-compatible buckets. By default it processes two concurrent reconciliations per controller. When you manage dozens or hundreds of sources, this low concurrency creates a bottleneck that delays the entire delivery pipeline.
 
 Increasing the number of concurrent reconciliation workers lets the controller fetch multiple sources in parallel, which significantly reduces the time between a commit being pushed and the corresponding manifests being applied to your cluster.
 
 ## Default Behavior
 
-Out of the box, the source-controller starts with a concurrency value of one for each source kind. This means that even if 50 GitRepository objects are due for reconciliation, they queue up and are processed sequentially. The same applies to HelmRepository, HelmChart, OCIRepository, and Bucket resources.
+Out of the box, the source-controller starts with a default concurrency value of two per controller. This means that even if 50 GitRepository objects are due for reconciliation, only two are processed at a time while the rest queue up. The same applies to HelmRepository, HelmChart, OCIRepository, and Bucket resources.
 
 ## How to Increase Concurrency
 

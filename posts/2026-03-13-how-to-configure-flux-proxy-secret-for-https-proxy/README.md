@@ -100,17 +100,21 @@ spec:
     name: flux-https-proxy
 ```
 
-## Step 5: Reference the Proxy in HelmRepository
+## Step 5: Reference the Proxy in OCIRepository
+
+HelmRepository (type `default`) does not support `proxySecretRef`. If you need proxy support for Helm charts, use an OCIRepository source instead:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
 metadata:
   name: ingress-nginx
   namespace: flux-system
 spec:
   interval: 30m
-  url: https://kubernetes.github.io/ingress-nginx
+  url: oci://ghcr.io/my-org/charts/ingress-nginx
+  ref:
+    tag: latest
   proxySecretRef:
     name: flux-https-proxy
 ```
@@ -124,7 +128,7 @@ kubectl apply -f helm-repository.yaml
 
 # Check status
 flux get sources git
-flux get sources helm
+flux get sources oci
 
 # Force reconciliation
 flux reconcile source git my-app
@@ -135,7 +139,7 @@ kubectl events -n flux-system --for gitrepository/my-app
 
 ## Handling TLS Inspection Proxies
 
-Some HTTPS proxies perform TLS inspection (man-in-the-middle) by re-signing certificates with an internal CA. In this scenario, the upstream server certificates will appear to be signed by your proxy CA. You may need to provide the proxy CA as a TLS secret on the source resource in addition to the proxy secret.
+Some HTTPS proxies perform TLS inspection (man-in-the-middle) by re-signing certificates with an internal CA. In this scenario, the upstream server certificates will appear to be signed by your proxy CA. You need to provide the proxy CA in the `secretRef` secret (using the `ca.crt` key) so the source controller trusts the re-signed certificates.
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -151,18 +155,18 @@ spec:
   proxySecretRef:
     name: flux-https-proxy
   secretRef:
-    name: my-app-auth
-  certSecretRef:
     name: tls-inspection-ca
 ```
 
-Create the TLS inspection CA secret:
+Create the secret containing the CA certificate and any authentication credentials:
 
 ```bash
 kubectl create secret generic tls-inspection-ca \
   --namespace=flux-system \
   --from-file=ca.crt=./proxy-inspection-ca.crt
 ```
+
+Note: GitRepository does not have a `certSecretRef` field. TLS certificates (`ca.crt`, `tls.crt`, `tls.key`) are placed in the secret referenced by `secretRef`.
 
 ## Troubleshooting
 

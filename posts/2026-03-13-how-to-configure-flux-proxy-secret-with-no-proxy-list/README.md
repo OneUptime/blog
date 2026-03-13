@@ -28,37 +28,60 @@ Without a no-proxy list, all HTTP and HTTPS traffic from the source controller r
 - The proxy adds unnecessary latency for internal traffic
 - Internal services use certificates not recognized by the proxy
 
-## Step 1: Create a Proxy Secret with No-Proxy
+## Important Note on No-Proxy Support
 
-The proxy secret supports an `address` field for the proxy URL and a `no_proxy` field for the bypass list.
+As of Flux v2.x, the `no_proxy` field is **not supported** in per-object proxy secrets (the secrets referenced by `proxySecretRef`). Per-object proxy secrets only support `address`, `username`, and `password` keys. There is an open feature request ([fluxcd/flux2#5062](https://github.com/fluxcd/flux2/issues/5062)) to add `no_proxy` support to per-object proxy configuration.
+
+Currently, the supported way to configure a no-proxy list is through **controller-level environment variables** (`NO_PROXY`, `HTTP_PROXY`, `HTTPS_PROXY`). This guide covers that approach.
+
+## Step 1: Configure No-Proxy via Controller Environment Variables
+
+The recommended way to set a no-proxy list is by patching the Flux source-controller deployment with environment variables:
 
 ```bash
-kubectl create secret generic flux-proxy-config \
-  --namespace=flux-system \
-  --from-literal=address=http://proxy.corp.example.com:8080 \
-  --from-literal=no_proxy=".internal.example.com,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,localhost,127.0.0.1,.cluster.local,.svc"
+kubectl set env deployment/source-controller -n flux-system \
+  HTTP_PROXY=http://proxy.corp.example.com:8080 \
+  HTTPS_PROXY=http://proxy.corp.example.com:8080 \
+  NO_PROXY=".internal.example.com,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,localhost,127.0.0.1,.cluster.local,.svc"
 ```
 
-## Step 2: Declarative YAML Manifest
+For a GitOps-managed approach, use a Kustomize patch in your Flux bootstrap repository:
+
+## Step 2: Declarative Kustomize Patch
+
+Create a patch file that adds the environment variables to the source-controller:
 
 ```yaml
-apiVersion: v1
-kind: Secret
+# patches/source-controller-proxy.yaml
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: flux-proxy-config
+  name: source-controller
   namespace: flux-system
-type: Opaque
-stringData:
-  address: "http://proxy.corp.example.com:8080"
-  username: "proxyuser"
-  password: "proxypassword"
-  no_proxy: ".internal.example.com,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,localhost,127.0.0.1,.cluster.local,.svc"
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          env:
+            - name: HTTP_PROXY
+              value: "http://proxy.corp.example.com:8080"
+            - name: HTTPS_PROXY
+              value: "http://proxy.corp.example.com:8080"
+            - name: NO_PROXY
+              value: ".internal.example.com,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,localhost,127.0.0.1,.cluster.local,.svc"
 ```
 
-Apply it:
+Reference it in your `kustomization.yaml`:
 
-```bash
-kubectl apply -f flux-proxy-config.yaml
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gotk-components.yaml
+  - gotk-sync.yaml
+patches:
+  - path: patches/source-controller-proxy.yaml
 ```
 
 ## Step 3: Understanding the No-Proxy Format
@@ -77,9 +100,11 @@ The `no_proxy` value is a comma-separated list of hosts, domains, and CIDR range
 | `.cluster.local` | Bypasses proxy for Kubernetes internal DNS |
 | `.svc` | Bypasses proxy for Kubernetes services |
 
-## Step 4: Reference the Secret in Source Resources
+## Step 4: How the No-Proxy List Affects Source Resources
 
-### GitRepository with Internal Server (No Proxy)
+With the `NO_PROXY` environment variable set on the source-controller, the proxy bypass applies globally to all sources managed by that controller.
+
+### GitRepository with Internal Server (Bypasses Proxy)
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -94,11 +119,9 @@ spec:
     branch: main
   secretRef:
     name: internal-git-auth
-  proxySecretRef:
-    name: flux-proxy-config
 ```
 
-Since `git.internal.example.com` matches `.internal.example.com` in the no-proxy list, this connection bypasses the proxy.
+Since `git.internal.example.com` matches `.internal.example.com` in the `NO_PROXY` environment variable, this connection bypasses the proxy automatically.
 
 ### GitRepository with External Server (Uses Proxy)
 
@@ -113,11 +136,9 @@ spec:
   url: https://github.com/my-org/external-app.git
   ref:
     branch: main
-  proxySecretRef:
-    name: flux-proxy-config
 ```
 
-Since `github.com` is not in the no-proxy list, this connection goes through the proxy.
+Since `github.com` is not in the `NO_PROXY` list, this connection goes through the proxy defined in `HTTPS_PROXY`.
 
 ### HelmRepository with Cluster-Internal Chart Museum
 
@@ -130,11 +151,11 @@ metadata:
 spec:
   interval: 30m
   url: http://chartmuseum.default.svc.cluster.local:8080
-  proxySecretRef:
-    name: flux-proxy-config
 ```
 
-The `.cluster.local` and `.svc` entries in the no-proxy list ensure this bypasses the proxy.
+The `.cluster.local` and `.svc` entries in the `NO_PROXY` variable ensure this bypasses the proxy.
+
+Note: If a specific source needs a different proxy than the controller-level setting, you can use `proxySecretRef` on GitRepository or OCIRepository resources to override the environment variable proxy. However, `proxySecretRef` does not currently support a `no_proxy` field -- it overrides the proxy entirely for that source.
 
 ## Step 5: Verify the Configuration
 
@@ -145,6 +166,9 @@ flux get sources git internal-app
 # Check that external sources reconcile through the proxy
 flux get sources git external-app
 
+# Verify the environment variables are set on the controller
+kubectl get deployment source-controller -n flux-system -o jsonpath='{.spec.template.spec.containers[0].env[*]}' | jq .
+
 # View source controller logs for proxy usage
 kubectl logs -n flux-system deploy/source-controller --tail=100
 ```
@@ -153,42 +177,38 @@ kubectl logs -n flux-system deploy/source-controller --tail=100
 
 ### AWS Environment
 
-```yaml
-stringData:
-  no_proxy: "169.254.169.254,.ec2.internal,.amazonaws.com,10.0.0.0/8,.cluster.local,.svc,localhost,127.0.0.1"
+```
+NO_PROXY="169.254.169.254,.ec2.internal,.amazonaws.com,10.0.0.0/8,.cluster.local,.svc,localhost,127.0.0.1"
 ```
 
 ### GCP Environment
 
-```yaml
-stringData:
-  no_proxy: "169.254.169.254,metadata.google.internal,.googleapis.com,10.0.0.0/8,.cluster.local,.svc,localhost,127.0.0.1"
+```
+NO_PROXY="169.254.169.254,metadata.google.internal,.googleapis.com,10.0.0.0/8,.cluster.local,.svc,localhost,127.0.0.1"
 ```
 
 ### Azure Environment
 
-```yaml
-stringData:
-  no_proxy: "169.254.169.254,.azure.com,.windows.net,10.0.0.0/8,.cluster.local,.svc,localhost,127.0.0.1"
+```
+NO_PROXY="169.254.169.254,.azure.com,.windows.net,10.0.0.0/8,.cluster.local,.svc,localhost,127.0.0.1"
 ```
 
 ### On-Premises Environment
 
-```yaml
-stringData:
-  no_proxy: ".corp.example.com,.internal.example.com,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.cluster.local,.svc,localhost,127.0.0.1"
+```
+NO_PROXY=".corp.example.com,.internal.example.com,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.cluster.local,.svc,localhost,127.0.0.1"
 ```
 
 ## Troubleshooting
 
 ### Internal Host Still Going Through Proxy
 
-Check that the domain or IP in the no-proxy list matches exactly. A leading dot (`.example.com`) matches all subdomains, while `example.com` without the dot matches only the exact host.
+Check that the domain or IP in the `NO_PROXY` variable matches exactly. A leading dot (`.example.com`) matches all subdomains, while `example.com` without the dot matches only the exact host.
 
 ```bash
-# View the no_proxy value
-kubectl get secret flux-proxy-config -n flux-system \
-  -o jsonpath='{.data.no_proxy}' | base64 -d
+# View the NO_PROXY value on the source-controller
+kubectl get deployment source-controller -n flux-system \
+  -o jsonpath='{.spec.template.spec.containers[0].env}' | jq '.[] | select(.name=="NO_PROXY")'
 ```
 
 ### Kubernetes Services Not Bypassing Proxy
@@ -206,4 +226,4 @@ python3 -c "import ipaddress; print(ipaddress.ip_address('10.96.0.1') in ipaddre
 
 ## Conclusion
 
-A no-proxy list is essential when using Flux with a proxy in environments that have both internal and external sources. By listing internal hosts, CIDR ranges, and Kubernetes DNS domains in the `no_proxy` field, you ensure that internal traffic goes direct while external traffic routes through the proxy. This keeps Flux working efficiently across mixed network environments.
+A no-proxy list is essential when using Flux with a proxy in environments that have both internal and external sources. By listing internal hosts, CIDR ranges, and Kubernetes DNS domains in the `NO_PROXY` environment variable on the source-controller deployment, you ensure that internal traffic goes direct while external traffic routes through the proxy. Note that per-object proxy secrets (`proxySecretRef`) do not currently support a `no_proxy` field -- this is configured at the controller level via environment variables.

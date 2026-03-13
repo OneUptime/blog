@@ -111,7 +111,7 @@ spec:
 For S3-compatible bucket sources:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: Bucket
 metadata:
   name: my-bucket

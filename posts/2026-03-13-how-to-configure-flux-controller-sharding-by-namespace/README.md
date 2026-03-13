@@ -23,13 +23,13 @@ Before configuring namespace-based sharding, ensure you have the following in pl
 
 ## Understanding Namespace-Based Sharding
 
-In namespace-based sharding, each controller instance watches only the namespaces assigned to it. This is achieved by setting the `--watch-all-namespaces=false` flag and specifying the target namespace for each shard instance.
+In namespace-based sharding, each controller instance reconciles only resources in the namespaces assigned to it. This is achieved by labeling Flux resources in each namespace with a shard key and configuring each shard controller with the `--watch-label-selector` flag to match that key. Flux controllers do not have a `--watch-namespace` flag; instead, namespace-based sharding is implemented through label selectors.
 
-The main controller continues to handle resources in namespaces that are not assigned to any shard, while dedicated shard instances handle their assigned namespaces.
+The main controller continues to handle resources that do not have a shard label assigned, while dedicated shard instances handle their labeled resources.
 
 ## Step 1: Create a Shard Controller Deployment
 
-Create a new deployment for the shard controller. This example creates a shard for the kustomize-controller that watches a specific namespace.
+Create a new deployment for the shard controller. This example creates a shard for the kustomize-controller that reconciles resources labeled for team-alpha.
 
 ```yaml
 apiVersion: apps/v1
@@ -51,8 +51,8 @@ spec:
         - name: manager
           image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
           args:
-            - --watch-all-namespaces=false
-            - --watch-namespace=team-alpha
+            - --watch-all-namespaces=true
+            - --watch-label-selector=sharding.fluxcd.io/key=shard-alpha
             - --log-level=info
             - --log-encoding=json
             - --enable-leader-election=false
@@ -114,10 +114,18 @@ spec:
 
 ## Step 4: Label Resources for Shard Assignment
 
-Apply a shard label to the Kustomization resources that should be handled by the shard controller.
+Apply a shard label to the Kustomization resources in the team-alpha namespace so the shard controller picks them up.
 
 ```bash
 kubectl label kustomization my-app \
+  sharding.fluxcd.io/key=shard-alpha \
+  -n team-alpha
+```
+
+Label all Kustomization resources in the namespace to ensure the shard handles the entire namespace's workload:
+
+```bash
+kubectl label kustomization --all \
   sharding.fluxcd.io/key=shard-alpha \
   -n team-alpha
 ```
@@ -162,8 +170,8 @@ spec:
         - name: manager
           image: ghcr.io/fluxcd/kustomize-controller:v1.4.0
           args:
-            - --watch-all-namespaces=false
-            - --watch-namespace=team-beta
+            - --watch-all-namespaces=true
+            - --watch-label-selector=sharding.fluxcd.io/key=shard-beta
             - --log-level=info
             - --log-encoding=json
             - --enable-leader-election=false

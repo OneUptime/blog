@@ -42,9 +42,9 @@ Before writing policies, understand how the controllers interact:
 | kustomize-controller | source-controller | 9090 | Download artifacts (tarballs) |
 | helm-controller | source-controller | 9090 | Download Helm charts |
 | notification-controller | source-controller | 9090 | Read artifact metadata for events |
-| kustomize-controller | notification-controller | 9292 | Send events for alerting |
-| helm-controller | notification-controller | 9292 | Send events for alerting |
-| source-controller | notification-controller | 9292 | Send events for alerting |
+| kustomize-controller | notification-controller | 9090 | Send events for alerting |
+| helm-controller | notification-controller | 9090 | Send events for alerting |
+| source-controller | notification-controller | 9090 | Send events for alerting |
 | All controllers | Kubernetes API server | 443/6443 | Reconciliation and status updates |
 | Prometheus | All controllers | 8080 | Metrics scraping |
 
@@ -261,7 +261,7 @@ spec:
               app: notification-controller
       ports:
         - protocol: TCP
-          port: 9292
+          port: 9090
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -286,7 +286,7 @@ spec:
                   - helm-controller
       ports:
         - protocol: TCP
-          port: 9292
+          port: 9090
 ```
 
 ```bash
@@ -409,7 +409,7 @@ spec:
                   - helm-controller
       ports:
         - protocol: TCP
-          port: 9292
+          port: 9090
 EOF
 
 kubectl apply -f flux-inter-controller-policies.yaml

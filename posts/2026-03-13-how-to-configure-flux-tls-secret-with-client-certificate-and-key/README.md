@@ -113,7 +113,7 @@ kubectl apply -f flux-mtls-secret.yaml
 
 ## Step 5: Reference the Secret in a GitRepository
 
-Use `certSecretRef` to point to the mTLS secret. The source controller will use `tls.crt` and `tls.key` for client authentication and `ca.crt` for server verification.
+For GitRepository, use `secretRef` (not `certSecretRef`, which does not exist on GitRepository). The source controller reads `tls.crt` and `tls.key` for client authentication and `ca.crt` for server verification from the `secretRef` secret.
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -126,9 +126,11 @@ spec:
   url: https://git.secure.example.com/team/secure-app.git
   ref:
     branch: main
-  certSecretRef:
+  secretRef:
     name: flux-mtls-secret
 ```
+
+Note: HelmRepository and other source types (OCIRepository, Bucket) use `certSecretRef` for TLS certificates. GitRepository is different -- it uses `secretRef` for both authentication credentials and TLS certificates.
 
 ## Step 6: Reference the Secret in a HelmRepository
 
@@ -173,7 +175,7 @@ stringData:
     -----END CERTIFICATE-----
 ```
 
-Reference this single secret for both authentication and TLS:
+For GitRepository, reference this single secret using `secretRef` -- it handles both authentication and TLS:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -188,8 +190,23 @@ spec:
     branch: main
   secretRef:
     name: secure-git-full-auth
+```
+
+For HelmRepository, you would use both `secretRef` (for credentials) and `certSecretRef` (for TLS):
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: secure-charts
+  namespace: flux-system
+spec:
+  interval: 30m
+  url: https://charts.secure.example.com
+  secretRef:
+    name: secure-helm-auth
   certSecretRef:
-    name: secure-git-full-auth
+    name: secure-helm-auth
 ```
 
 ## Step 8: Verify the Configuration
@@ -275,4 +292,4 @@ kubectl get secret flux-mtls-secret -n flux-system -o jsonpath='{.data}' | jq 'k
 
 ## Conclusion
 
-Configuring Flux with client TLS certificates enables mutual TLS authentication against secured repositories. By including `tls.crt`, `tls.key`, and `ca.crt` in a Kubernetes secret and referencing it with `certSecretRef`, Flux source controller can authenticate and establish secure connections to mTLS-protected endpoints.
+Configuring Flux with client TLS certificates enables mutual TLS authentication against secured repositories. By including `tls.crt`, `tls.key`, and `ca.crt` in a Kubernetes secret and referencing it appropriately -- with `secretRef` for GitRepository or `certSecretRef` for HelmRepository, OCIRepository, and Bucket -- Flux source controller can authenticate and establish secure connections to mTLS-protected endpoints.

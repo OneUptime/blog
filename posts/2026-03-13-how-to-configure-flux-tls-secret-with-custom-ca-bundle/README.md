@@ -86,7 +86,7 @@ kubectl apply -f flux-custom-ca.yaml
 
 ## Step 4: Reference the CA Secret in a GitRepository
 
-Use the `certSecretRef` field to point to the CA secret.
+For GitRepository, TLS certificates are provided through `secretRef` (GitRepository does not have a `certSecretRef` field). You can include the `ca.crt` key alongside authentication credentials in a single secret.
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -100,9 +100,17 @@ spec:
   ref:
     branch: main
   secretRef:
-    name: internal-git-auth
-  certSecretRef:
-    name: flux-custom-ca
+    name: internal-git-auth-with-ca
+```
+
+The secret should contain both authentication and CA data:
+
+```bash
+kubectl create secret generic internal-git-auth-with-ca \
+  --namespace=flux-system \
+  --from-literal=username=git-user \
+  --from-literal=password=git-token \
+  --from-file=ca.crt=./ca-bundle.crt
 ```
 
 ## Step 5: Reference the CA Secret in a HelmRepository
@@ -141,7 +149,7 @@ spec:
 
 ## Step 7: Combining CA Bundle with Authentication
 
-You can combine the CA certificate with Git authentication credentials in a single secret. Flux will use `ca.crt` for TLS verification and the other fields for authentication.
+For GitRepository, you combine the CA certificate with authentication credentials in a single secret referenced by `secretRef`. Flux reads `ca.crt` for TLS verification and `username`/`password` for authentication from the same secret.
 
 ```yaml
 apiVersion: v1
@@ -160,7 +168,7 @@ stringData:
     -----END CERTIFICATE-----
 ```
 
-Then reference it as both the auth and cert secret:
+Reference the single secret:
 
 ```yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -175,8 +183,23 @@ spec:
     branch: main
   secretRef:
     name: internal-git-auth-with-ca
+```
+
+For HelmRepository, use `secretRef` for credentials and `certSecretRef` for TLS:
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: internal-charts
+  namespace: flux-system
+spec:
+  interval: 30m
+  url: https://charts.internal.example.com
+  secretRef:
+    name: helm-auth
   certSecretRef:
-    name: internal-git-auth-with-ca
+    name: helm-ca
 ```
 
 ## Step 8: Verify the Configuration
@@ -257,4 +280,4 @@ kubectl get secret flux-custom-ca -n flux-system -o jsonpath='{.data}' | jq 'key
 
 ## Conclusion
 
-Providing a custom CA bundle through a Kubernetes secret allows Flux to trust internal certificates and connect securely to private Git servers, Helm repositories, and bucket sources. Use `certSecretRef` on your source resources and ensure the `ca.crt` key contains the full certificate chain needed for verification.
+Providing a custom CA bundle through a Kubernetes secret allows Flux to trust internal certificates and connect securely to private Git servers, Helm repositories, and bucket sources. For GitRepository, include `ca.crt` in the `secretRef` secret. For HelmRepository, OCIRepository, and Bucket sources, use `certSecretRef` to reference a separate secret containing `ca.crt`. Ensure the `ca.crt` key contains the full certificate chain needed for verification.

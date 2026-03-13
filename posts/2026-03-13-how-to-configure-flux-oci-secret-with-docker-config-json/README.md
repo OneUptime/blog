@@ -98,7 +98,7 @@ kubectl apply -f oci-secret.yaml
 If you are storing Kubernetes manifests or Kustomize overlays as OCI artifacts:
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-manifests

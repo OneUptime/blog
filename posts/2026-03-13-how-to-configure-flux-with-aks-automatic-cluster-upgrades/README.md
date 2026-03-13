@@ -58,12 +58,13 @@ For most production clusters running Flux, `patch` or `stable` channels are reco
 Define when upgrades can occur to avoid disrupting peak traffic:
 
 ```bash
-az aks maintenancewindow add \
+az aks maintenanceconfiguration add \
   --resource-group my-resource-group \
   --cluster-name my-flux-cluster \
-  --name default \
+  --name aksManagedAutoUpgradeSchedule \
   --schedule-type Weekly \
   --day-of-week Saturday \
+  --interval-weeks 1 \
   --start-time 02:00 \
   --duration 4 \
   --utc-offset -08:00
@@ -72,12 +73,13 @@ az aks maintenancewindow add \
 For node OS upgrades, set a separate maintenance window:
 
 ```bash
-az aks maintenancewindow add \
+az aks maintenanceconfiguration add \
   --resource-group my-resource-group \
   --cluster-name my-flux-cluster \
   --name aksManagedNodeOSUpgradeSchedule \
   --schedule-type Weekly \
   --day-of-week Sunday \
+  --interval-weeks 1 \
   --start-time 02:00 \
   --duration 4 \
   --utc-offset -08:00
@@ -271,7 +273,7 @@ az aks show \
   --name my-flux-cluster \
   --query "autoUpgradeProfile"
 
-az aks maintenancewindow list \
+az aks maintenanceconfiguration list \
   --resource-group my-resource-group \
   --cluster-name my-flux-cluster
 ```

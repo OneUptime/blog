@@ -22,11 +22,13 @@ Container image signing is a critical part of supply chain security. Notation (a
 
 ## Understanding Notation in Flux
 
-Flux image automation and the kustomize controller can verify Notation signatures on container images before applying updates. This verification uses:
+Flux source controller can verify Notation signatures on OCI artifacts before making them available to downstream resources. This verification uses:
 
-- A trust policy that defines which registries and images require verification
-- A trust store containing the signing certificates or public keys
-- A Kubernetes secret that holds the verification certificate
+- A trust policy (`trustpolicy.json`) that defines which registries and images require verification
+- A trust store containing the signing CA certificates (with `.pem` or `.crt` extension)
+- A Kubernetes Secret that holds both the trust policy and the verification certificates
+
+The verification is configured on `OCIRepository` resources (and `HelmChart` resources) using the `.spec.verify` field, not on `ImagePolicy` resources.
 
 ## Step 1: Obtain the Verification Certificate
 
@@ -43,12 +45,15 @@ cat signing-cert.pem
 
 ## Step 2: Create the Notation Verification Secret
 
-Create a Kubernetes secret containing the verification certificate.
+Flux expects the Notation secret to contain a trust policy file named `trustpolicy.json` and one or more CA certificates with `.pem` or `.crt` file extensions.
+
+Create a Kubernetes Secret containing both the trust policy and the verification certificate:
 
 ```bash
-kubectl create secret generic notation-verify-cert \
+kubectl create secret generic notation-config \
   --namespace=flux-system \
-  --from-file=notation-cert=./signing-cert.pem
+  --from-file=signing-cert.crt=./signing-cert.pem \
+  --from-file=trustpolicy.json=./trustpolicy.json
 ```
 
 ## Step 3: Declarative YAML Manifest for the Secret
@@ -57,73 +62,15 @@ kubectl create secret generic notation-verify-cert \
 apiVersion: v1
 kind: Secret
 metadata:
-  name: notation-verify-cert
+  name: notation-config
   namespace: flux-system
 type: Opaque
 stringData:
-  notation-cert: |
+  signing-cert.crt: |
     -----BEGIN CERTIFICATE-----
     MIIEpDCCAoygAwIBAgIRAKz1b2c3d4e5f6g7h8i9j0kLMN0wDQYJKoZIhvcNAQEL
     ... (your signing verification certificate) ...
     -----END CERTIFICATE-----
-```
-
-Apply it:
-
-```bash
-kubectl apply -f notation-verify-cert.yaml
-```
-
-## Step 4: Configure the ImagePolicy with Notation Verification
-
-Flux `ImagePolicy` resources can include a verification section that references the Notation certificate.
-
-```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
-kind: ImagePolicy
-metadata:
-  name: my-app
-  namespace: flux-system
-spec:
-  imageRepositoryRef:
-    name: my-app
-  policy:
-    semver:
-      range: ">=1.0.0"
-  verification:
-    provider: notation
-    secretRef:
-      name: notation-verify-cert
-```
-
-## Step 5: Create the ImageRepository
-
-The `ImageRepository` scans for new tags in the registry.
-
-```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
-kind: ImageRepository
-metadata:
-  name: my-app
-  namespace: flux-system
-spec:
-  interval: 5m
-  image: myregistry.example.com/my-app
-  secretRef:
-    name: registry-credentials
-```
-
-## Step 6: Configure the Trust Policy
-
-Notation uses a trust policy to define verification rules. Create a ConfigMap or include the trust policy in the secret.
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: notation-trust-policy
-  namespace: flux-system
-data:
   trustpolicy.json: |
     {
       "version": "1.0",
@@ -147,32 +94,56 @@ data:
     }
 ```
 
-## Step 7: Apply All Resources
+Note: The CA certificate key must have a `.pem` or `.crt` extension, and the trust policy must be named `trustpolicy.json`.
+
+Apply it:
 
 ```bash
-kubectl apply -f notation-verify-cert.yaml
-kubectl apply -f notation-trust-policy.yaml
-kubectl apply -f image-repository.yaml
-kubectl apply -f image-policy.yaml
+kubectl apply -f notation-config.yaml
 ```
 
-## Step 8: Verify the Setup
+## Step 4: Configure an OCIRepository with Notation Verification
+
+Notation verification is configured on `OCIRepository` resources using the `.spec.verify` field (not on `ImagePolicy` resources).
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: my-app-manifests
+  namespace: flux-system
+spec:
+  interval: 10m
+  url: oci://myregistry.example.com/my-app-manifests
+  ref:
+    tag: "latest"
+  verify:
+    provider: notation
+    secretRef:
+      name: notation-config
+```
+
+## Step 5: Apply All Resources
 
 ```bash
-# Check ImageRepository status
-kubectl get imagerepository -n flux-system my-app
+kubectl apply -f notation-config.yaml
+kubectl apply -f ocirepository.yaml
+```
 
-# Check ImagePolicy status
-kubectl get imagepolicy -n flux-system my-app
+## Step 6: Verify the Setup
 
-# Describe the ImagePolicy for verification details
-kubectl describe imagepolicy -n flux-system my-app
+```bash
+# Check OCIRepository status
+kubectl get ocirepository -n flux-system my-app-manifests
+
+# Describe the OCIRepository for verification details
+kubectl describe ocirepository -n flux-system my-app-manifests
 
 # Check for verification events
-kubectl events -n flux-system --for imagepolicy/my-app
+kubectl events -n flux-system --for ocirepository/my-app-manifests
 ```
 
-## Step 9: Sign Images with Notation
+## Step 7: Sign Images with Notation
 
 For reference, here is how to sign images with the `notation` CLI:
 
@@ -187,72 +158,52 @@ notation sign myregistry.example.com/my-app:1.0.0
 notation verify myregistry.example.com/my-app:1.0.0
 ```
 
-## Step 10: Using Notation with OCIRepository
+## Multiple Signing Certificates
 
-You can also verify Notation signatures on OCI artifacts pulled by `OCIRepository`.
+If artifacts are signed by different teams with different certificates, create separate secrets (each containing their own `trustpolicy.json` and certificate files) and reference them in the corresponding `OCIRepository` resources.
+
+```bash
+kubectl create secret generic team-a-notation-config \
+  --namespace=flux-system \
+  --from-file=team-a-cert.crt=./team-a-signing-cert.pem \
+  --from-file=trustpolicy.json=./team-a-trustpolicy.json
+
+kubectl create secret generic team-b-notation-config \
+  --namespace=flux-system \
+  --from-file=team-b-cert.crt=./team-b-signing-cert.pem \
+  --from-file=trustpolicy.json=./team-b-trustpolicy.json
+```
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
-  name: my-app-manifests
+  name: team-a-app
   namespace: flux-system
 spec:
   interval: 10m
-  url: oci://myregistry.example.com/my-app-manifests
+  url: oci://myregistry.example.com/team-a-app
   ref:
     tag: "latest"
   verify:
     provider: notation
     secretRef:
-      name: notation-verify-cert
-```
-
-## Multiple Signing Certificates
-
-If images are signed by different teams with different certificates, create separate secrets and reference them in the corresponding image policies.
-
-```bash
-kubectl create secret generic team-a-cert \
-  --namespace=flux-system \
-  --from-file=notation-cert=./team-a-signing-cert.pem
-
-kubectl create secret generic team-b-cert \
-  --namespace=flux-system \
-  --from-file=notation-cert=./team-b-signing-cert.pem
-```
-
-```yaml
-apiVersion: image.toolkit.fluxcd.io/v1beta2
-kind: ImagePolicy
-metadata:
-  name: team-a-app
-  namespace: flux-system
-spec:
-  imageRepositoryRef:
-    name: team-a-app
-  policy:
-    semver:
-      range: ">=1.0.0"
-  verification:
-    provider: notation
-    secretRef:
-      name: team-a-cert
+      name: team-a-notation-config
 ```
 
 ## Troubleshooting
 
 ### Signature Verification Failed
 
-Check that the certificate in the secret matches the one used to sign the images:
+Check that the certificate in the secret matches the one used to sign the artifacts:
 
 ```bash
 # View the certificate in the secret
-kubectl get secret notation-verify-cert -n flux-system \
-  -o jsonpath='{.data.notation-cert}' | base64 -d | openssl x509 -text -noout
+kubectl get secret notation-config -n flux-system \
+  -o jsonpath='{.data.signing-cert\.crt}' | base64 -d | openssl x509 -text -noout
 
 # Verify the image signature locally
-notation verify --cert signing-cert.pem myregistry.example.com/my-app:1.0.0
+notation verify myregistry.example.com/my-app:1.0.0
 ```
 
 ### No Signature Found
@@ -263,13 +214,12 @@ Ensure the image was actually signed:
 notation ls myregistry.example.com/my-app:1.0.0
 ```
 
-### Image Controller Logs
+### Source Controller Logs
 
 ```bash
-kubectl logs -n flux-system deploy/image-reflector-controller --tail=50
-kubectl logs -n flux-system deploy/image-automation-controller --tail=50
+kubectl logs -n flux-system deploy/source-controller --tail=50
 ```
 
 ## Conclusion
 
-Configuring Notation verification in Flux adds a supply chain security layer that prevents unsigned or tampered images from being deployed. By creating a secret with the signing certificate and referencing it in your `ImagePolicy` or `OCIRepository` resources, you ensure that only images signed by trusted parties are accepted by your GitOps pipeline.
+Configuring Notation verification in Flux adds a supply chain security layer that prevents unsigned or tampered OCI artifacts from being deployed. By creating a Secret containing both the trust policy (`trustpolicy.json`) and the signing CA certificates (with `.pem` or `.crt` extensions) and referencing it in your `OCIRepository` resources via the `.spec.verify` field, you ensure that only artifacts signed by trusted parties are accepted by your GitOps pipeline.

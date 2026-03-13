@@ -135,11 +135,13 @@ spec:
     # Match all GitRepositories with this label
     - apiVersion: source.toolkit.fluxcd.io/v1
       kind: GitRepository
+      name: "*"
       matchLabels:
         webhook-trigger: "true"
     # Match all Kustomizations with this label
     - apiVersion: kustomize.toolkit.fluxcd.io/v1
       kind: Kustomization
+      name: "*"
       matchLabels:
         webhook-trigger: "true"
 ```
@@ -240,6 +242,7 @@ spec:
     # Also reconcile any Kustomization tagged for webhooks
     - apiVersion: kustomize.toolkit.fluxcd.io/v1
       kind: Kustomization
+      name: "*"
       matchLabels:
         webhook-trigger: "true"
 ```

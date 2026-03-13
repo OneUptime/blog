@@ -14,7 +14,7 @@ The kustomize-controller is the workhorse of a Flux installation. It takes sourc
 
 ## Default Concurrency
 
-The kustomize-controller defaults to processing one Kustomization at a time. For a cluster with five or ten Kustomization objects this is usually fine. However, in multi-tenant clusters or large platform setups with 50 or more Kustomizations, sequential processing means some reconciliations wait minutes before they even start.
+The kustomize-controller defaults to processing four Kustomizations concurrently (`--concurrent=4`). For a cluster with five or ten Kustomization objects this is usually fine. However, in multi-tenant clusters or large platform setups with 50 or more Kustomizations, sequential processing means some reconciliations wait minutes before they even start.
 
 ## Increasing the Worker Count
 

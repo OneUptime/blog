@@ -106,7 +106,7 @@ metadata:
 spec:
   interval: 10m
   url: https://charts.secure.example.com
-  secretRef:
+  certSecretRef:
     name: helm-tls-credentials
 ```
 
@@ -116,22 +116,30 @@ Apply the resource:
 kubectl apply -f helmrepository.yaml
 ```
 
-The Source Controller will use the `tls.crt` and `tls.key` for client authentication, and `ca.crt` to verify the server's certificate.
+The Source Controller will use the `tls.crt` and `tls.key` for client authentication, and `ca.crt` to verify the server's certificate. Note that TLS certificate configuration uses `certSecretRef` (not `secretRef`), as the `secretRef` field is reserved for basic authentication credentials.
 
 ## Step 4: Combine with Basic Auth (Optional)
 
-If your Helm repository requires both TLS client certificates and basic auth, you can include all credentials in a single Secret:
+If your Helm repository requires both TLS client certificates and basic auth, use two separate secrets referenced by `secretRef` (for basic auth) and `certSecretRef` (for TLS):
 
 ```yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: helm-tls-basic-credentials
+  name: helm-basic-credentials
   namespace: flux-system
 type: Opaque
 stringData:
   username: your-username
   password: your-password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: helm-tls-credentials
+  namespace: flux-system
+type: Opaque
+stringData:
   tls.crt: |
     -----BEGIN CERTIFICATE-----
     <your-client-certificate-content>
@@ -144,6 +152,23 @@ stringData:
     -----BEGIN CERTIFICATE-----
     <your-ca-certificate-content>
     -----END CERTIFICATE-----
+```
+
+Then reference both in the `HelmRepository`:
+
+```yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: secure-charts
+  namespace: flux-system
+spec:
+  interval: 10m
+  url: https://charts.secure.example.com
+  secretRef:
+    name: helm-basic-credentials
+  certSecretRef:
+    name: helm-tls-credentials
 ```
 
 ## Step 5: Deploy a Chart from the Secured Repository
@@ -266,7 +291,7 @@ Flux expects specific key names in the Secret:
 
 - `tls.crt`: Client certificate in PEM format
 - `tls.key`: Client private key in PEM format
-- `ca.crt` or `caFile`: CA certificate in PEM format
+- `ca.crt`: CA certificate in PEM format
 
 Using different key names will cause authentication to fail silently.
 

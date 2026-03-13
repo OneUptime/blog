@@ -97,7 +97,7 @@ kubectl apply -f flux-gcr-secret.yaml
 Create an `OCIRepository` resource that references the secret for authentication.
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-app-charts

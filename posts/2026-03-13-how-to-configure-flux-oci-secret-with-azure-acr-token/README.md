@@ -105,7 +105,7 @@ kubectl patch deployment source-controller -n flux-system --type=json \
 ### Step 6: Configure OCIRepository with Azure Provider
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-acr-app
@@ -182,7 +182,7 @@ kubectl create secret docker-registry acr-token-credentials \
 ### Step 4: Reference in OCIRepository
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-acr-app
@@ -222,7 +222,7 @@ kubectl create secret docker-registry acr-sp-credentials \
 ### Step 3: Reference in OCIRepository
 
 ```yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
   name: my-acr-app

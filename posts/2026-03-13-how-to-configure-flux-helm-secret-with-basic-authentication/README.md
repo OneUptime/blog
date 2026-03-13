@@ -133,7 +133,7 @@ type: Opaque
 stringData:
   username: your-username
   password: your-password
-  caFile: |
+  ca.crt: |
     -----BEGIN CERTIFICATE-----
     <your-ca-certificate-content>
     -----END CERTIFICATE-----

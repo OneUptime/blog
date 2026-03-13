@@ -14,7 +14,7 @@ The notification-controller is responsible for two things: dispatching alerts ba
 
 ## Why Concurrency Matters for Notifications
 
-Notification delivery involves HTTP calls to external services like Slack, Microsoft Teams, PagerDuty, or generic webhooks. Each call may take hundreds of milliseconds or more depending on network latency and the responsiveness of the target service. With the default concurrency of one, a slow webhook endpoint can delay all other alert deliveries.
+Notification delivery involves HTTP calls to external services like Slack, Microsoft Teams, PagerDuty, or generic webhooks. Each call may take hundreds of milliseconds or more depending on network latency and the responsiveness of the target service. With the default concurrency of four (`--concurrent=4`), a slow webhook endpoint can still delay other alert deliveries when many events fire simultaneously.
 
 ## Configuring Concurrent Workers
 
@@ -70,7 +70,7 @@ git push
 
 The notification-controller is generally lightweight compared to the kustomize or helm controllers. Its main cost is network I/O for outbound webhook calls:
 
-- Under 10 Provider/Alert pairs: default is usually fine
+- Under 10 Provider/Alert pairs: the default (`--concurrent=4`) is usually fine
 - 10 to 30 Provider/Alert pairs: `--concurrent=5`
 - Over 30 Provider/Alert pairs: `--concurrent=10`
 

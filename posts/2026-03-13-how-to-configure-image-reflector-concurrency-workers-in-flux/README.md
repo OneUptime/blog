@@ -78,7 +78,7 @@ If you set concurrency too high you may hit rate limits and start seeing errors.
 
 ## Sizing Recommendations
 
-- Under 10 ImageRepositories: default is usually fine
+- Under 10 ImageRepositories: the default (`--concurrent=4`) is usually fine
 - 10 to 50 ImageRepositories: `--concurrent=5`
 - Over 50 ImageRepositories: `--concurrent=10` with registry rate limit monitoring
 

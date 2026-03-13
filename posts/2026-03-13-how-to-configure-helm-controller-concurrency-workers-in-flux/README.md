@@ -14,7 +14,7 @@ The helm-controller manages the lifecycle of HelmRelease objects. It downloads H
 
 ## Default Behavior
 
-Like the other Flux controllers, the helm-controller defaults to a concurrency of one. This means HelmRelease reconciliations queue up and execute one after another. In a cluster with 30 HelmReleases, a full reconciliation cycle can take many minutes even when individual installs or upgrades only take a few seconds each.
+Like the other Flux controllers, the helm-controller defaults to a concurrency of four (`--concurrent=4`). While this handles moderate workloads, in a cluster with 30 or more HelmReleases a full reconciliation cycle can still take many minutes when individual installs or upgrades are slow.
 
 ## Configuring Concurrency
 
