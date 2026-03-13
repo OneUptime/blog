@@ -109,7 +109,7 @@ spec:
 
 ## What Happens When the Cache is Full
 
-When the cache reaches its maximum size, the oldest entries are evicted to make room for new ones. This is a standard LRU (Least Recently Used) eviction strategy. Evicted entries will be re-downloaded on the next reconciliation that requires them.
+When the cache reaches its maximum size, no more items can be added. The source-controller will report a warning event indicating that the cache is full, and subsequent reconciliations that require a cache miss will download the index directly from the remote server without caching it. To avoid this, set the cache size to at least the number of HelmRepository objects in your cluster.
 
 ## Verifying the Configuration
 
